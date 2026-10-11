@@ -255,7 +255,7 @@ jobs:
           PY
           # Rebuild the full published history with the pinned builder's existing parameter.
           # No published catalog entries or duplicate dependency versions are merged by us.
-          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$empty" >/tmp/vpm-listing-empty-http.log 2>&1 &
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$empty" >"$RUNNER_TEMP/vpm-listing-empty-http.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           curl --fail --retry 5 --retry-connrefused --retry-delay 1 \
