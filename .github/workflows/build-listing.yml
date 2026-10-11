@@ -25,7 +25,7 @@ jobs:
   changes:
     if: github.event_name == 'pull_request'
     runs-on: exporter-general-mac-arm64
-    timeout-minutes: 2
+    timeout-minutes: 30
     permissions:
       pull-requests: read
     outputs:
@@ -92,7 +92,7 @@ jobs:
     if: github.event_name == 'pull_request' && needs.changes.outputs.relevant == 'true'
     needs: changes
     runs-on: exporter-general-mac-arm64
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -152,7 +152,7 @@ jobs:
           data["packages"] = releases
           source.write_text(json.dumps(data), encoding="utf-8")
           PY
-          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP" >/tmp/vpm-listing-http.log 2>&1 &
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP" >"$RUNNER_TEMP/vpm-listing-http.log" 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           curl --fail --retry 5 --retry-connrefused --retry-delay 1 \
@@ -177,7 +177,7 @@ jobs:
     if: ${{ always() && github.event_name == 'pull_request' }}
     needs: [changes, check-listing-builder]
     runs-on: exporter-general-mac-arm64
-    timeout-minutes: 2
+    timeout-minutes: 30
     steps:
       - name: Require successful listing validation for changed listing files
         env:
@@ -214,7 +214,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: exporter-general-mac-arm64
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
