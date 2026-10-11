@@ -97,13 +97,15 @@ jobs:
           UNIVRM_VERSION: ${{ inputs.univrm_version }}
         run: |
           UNIVRM_COMMIT=$(python3 -c 'import json, os; d=json.load(open("Compatibility/dependencies.json")); print(d["uniVrm"]["versions"][os.environ["UNIVRM_VERSION"]])')
-          curl --fail --location --retry 3 "https://github.com/vrm-c/UniVRM/archive/${UNIVRM_COMMIT}.tar.gz" -o /tmp/univrm.tar.gz
-          mkdir -p /tmp/univrm artifacts/unigltf artifacts/vrm10
-          tar -xzf /tmp/univrm.tar.gz -C /tmp/univrm --strip-components=1
-          rsync -a /tmp/univrm/Packages/UniGLTF/ artifacts/unigltf/
-          rsync -a /tmp/univrm/Packages/VRM10/ artifacts/vrm10/
-          cp /tmp/univrm/LICENSE.txt artifacts/unigltf/UPSTREAM-LICENSE.txt
-          cp /tmp/univrm/LICENSE.txt artifacts/vrm10/UPSTREAM-LICENSE.txt
+          UNIVRM_TEMP=$(mktemp -d "$RUNNER_TEMP/univrm.XXXXXX")
+          curl --fail --location --retry 3 "https://github.com/vrm-c/UniVRM/archive/${UNIVRM_COMMIT}.tar.gz" -o "$UNIVRM_TEMP/univrm.tar.gz"
+          mkdir "$UNIVRM_TEMP/source"
+          mkdir -p artifacts/unigltf artifacts/vrm10
+          tar -xzf "$UNIVRM_TEMP/univrm.tar.gz" -C "$UNIVRM_TEMP/source" --strip-components=1
+          rsync -a "$UNIVRM_TEMP/source/Packages/UniGLTF/" artifacts/unigltf/
+          rsync -a "$UNIVRM_TEMP/source/Packages/VRM10/" artifacts/vrm10/
+          cp "$UNIVRM_TEMP/source/LICENSE.txt" artifacts/unigltf/UPSTREAM-LICENSE.txt
+          cp "$UNIVRM_TEMP/source/LICENSE.txt" artifacts/vrm10/UPSTREAM-LICENSE.txt
           python3 - <<'PY'
           import json, os
           gltf = json.load(open("artifacts/unigltf/package.json", encoding="utf-8-sig"))
