@@ -10,7 +10,9 @@
 
 ## 参加とレビュー
 
-[参加ガイド](../CONTRIBUTING.md)に従い、forkから作業ブランチを作ります。PRでは問題、変更後の動作、対象のIssue、実行した検証と残る制限、依存・形式・ライセンスへの影響を説明します。PRの自動検証は読み取り権限の標準Ubuntu runnerで実行し、公開用の権限や秘密情報を渡しません。初回の外部貢献者についてGitHubが実行承認を求める場合は、メンテナーが差分を確認してから実行を承認します。
+[参加ガイド](../CONTRIBUTING.md)に従い、forkから作業ブランチを作ります。PRでは問題、変更後の動作、対象のIssue、実行した検証と残る制限、依存・形式・ライセンスへの影響を説明します。PRの自動検証は専用label `exporter-general-mac-arm64` のself-hosted Mac runnerで実行し、PR経路の権限は読取りだけに限定して公開用の権限や秘密情報を渡しません。初回の外部貢献者についてGitHubが実行承認を求める場合は、メンテナーが差分を確認してから実行を承認します。
+
+root所有の監督処理は、jobごとにephemeral runnerを登録し、新しいhome・作業領域・一時領域を用意します。専用の非管理者UIDでsandbox内のjobを実行し、共有SDKは読取りだけにします。job終了後は専用UIDのプロセスを停止し、前の世代を次のjobの実行環境へ再利用しません。PRから後の配布jobへの永続化を防ぐ境界は、この監督処理・新しい世代・書込み制限・停止確認を合わせたものです。job間の共有homeや書込み可能な共有ツールキャッシュを前提にしません。隔離と停止を確認できない場合は後続jobを開始せず、失敗・復旧記録を保持します。
 
 メンテナーは最新headの必須 `schema` / `listing-validation`、自動Codex Review、未解決の指摘、変更に必要なUnity/実機の証跡を確認します。hostテストの成功だけで実際のUnity・画像・端末受入を通過したとは扱いません。検証済みheadから変更があれば、その変更に必要な検証とレビューを最新headでやり直します。
 
@@ -21,11 +23,13 @@ workflowの編集では、構文チェックに加え、攻撃者のPRが書込�
 | 経路 | 起動条件 | 公開権限 | 上限・保存 |
 | --- | --- | --- | --- |
 | Validate / `schema` | 全PR、mainへのpush | 読取りのみ | 30分。古い同一PRの検証は取消し |
-| listing検証 | 全PRで変更判定、必要時だけbuilder | PR経路は読取りのみ | 判定/必須gate各2分、builder15分 |
+| listing検証 | 全PRで変更判定、必要時だけbuilder | PR経路は読取りのみ | 各job30分 |
 | Build release candidate | mainへの手動起動、完全なexpected SHA | 読取りのみ。公開しない | 30分、ZIP最大20MiB・JSON各128KiB、artifact7日 |
 | Release VPM Packages | mainへの手動起動、候補run ID・版・channel・SHA一致 | 配布jobに限定 | 30分、同時公開を直列化 |
-| Pages / VPM更新 | mainへの手動起動、または公開releaseの既存経路 | 配布jobに限定 | 15分、Pages artifact1日、進行中の配置は取消さない |
-| upstream調査 | 手動起動 | 読取りのみ。対応版は変更しない | 2分 |
+| Pages / VPM更新 | mainへの手動起動、または公開releaseの既存経路 | 配布jobに限定 | 30分、Pages artifact1日、進行中の配置は取消さない |
+| upstream調査 | 手動起動 | 読取りのみ。対応版は変更しない | 30分 |
+
+上記の全jobは同じ専用self-hosted Mac経路を使います。共有host/device予約と資源条件に従って開始を待ち、SDKや他タスクの領域を削除して待機を回避しません。listingサーバーのログとUniVRMの取得・展開は、そのjobの `$RUNNER_TEMP` 内に置きます。
 
 既存の `github-pages` environment・mainルール・配布承認を維持します。workflowや環境を新しく有効化すること、リポジトリの公開設定を変更すること、OSSを告知することは、この手順を整えただけで自動的に許可されません。
 
@@ -69,11 +73,11 @@ Unityが必要な変更は[既存の互換性・回帰profile](../Compatibility/
 
 ## Actions費用のモデル
 
-2026-10-10時点の[GitHub公式料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions)では、公開リポジトリの標準runner実行は無料です。この構成は標準Ubuntuだけを使い、大型runner・新しい有料サービス・キャッシュの有料拡張を導入しません。PR検証を増やしてもrunner実行料金の増分は$0です。
+2026-10-11時点の[GitHub公式料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions)では、self-hosted runnerのGitHub Actions実行料金は無料です。この構成は既存Mac miniの専用runnerを使い、新しい有料CIサービス・大型GitHub-hosted runner・キャッシュの有料拡張を導入しません。以下のrunner料金$0はGitHubへの実行料金の増分だけを表します。Macの電気・保守・運用・ローカル保存・必要なライセンスの費用は別で、この表には含めません。
 
 新たに保存するのは成功した手動候補だけです。最大ZIP20MiBとJSON計256KiBを保守的に見込み、7日保存、30日月に均等に作成する定常状態を仮定すると、追加の平均保存量は `月の候補数 × 20.25MiB × 7/30` です。PR・mainのhost報告はrunner内だけに置き、artifactとして毎回保存しません。既存Pages artifactは1日保存です。新しいUnityキャッシュも作りません。
 
-| 月のPR workflow実行数 / 候補数（仮定） | runner料金の増分 | 候補の平均追加保存量 | 無料枠が既に埋まっている場合の候補保存費用 |
+| 月のPR workflow実行数 / 候補数（仮定） | GitHub runner料金の増分 | 候補の平均追加保存量 | 無料枠が既に埋まっている場合の候補保存費用 |
 | --- | --- | --- | --- |
 | 100 / 2 | $0 | 約9.45MiB | 約$0.0023/月 |
 | 500 / 8 | $0 | 約37.8MiB | 約$0.0092/月 |
@@ -85,4 +89,4 @@ Unityが必要な変更は[既存の互換性・回帰profile](../Compatibility/
 python3 Tools/estimate-pipeline-cost.py --pr-runs 500 --candidate-runs 8
 ```
 
-メンテナーは候補数・実サイズ・保存期間とアカウントの使用量を確認します。repositoryをprivateへ変える、大型runnerを導入する、保存期間を延ばす、キャッシュ上限を10GiBより増やす場合は、承認前に[runner料金](https://docs.github.com/en/billing/reference/actions-runner-pricing)と[保存料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions#storage-pricing)で再見積もりします。手元端末の運用や必要なUnityライセンスはActionsの請求とは別です。
+メンテナーは候補数・実サイズ・保存期間とアカウントの使用量を確認します。repositoryをprivateへ変える、実行経路を変える、大型runnerを導入する、保存期間を延ばす、キャッシュ上限を10GiBより増やす場合は、必要な個別承認の前に[runner料金](https://docs.github.com/en/billing/reference/actions-runner-pricing)と[保存料金](https://docs.github.com/en/billing/concepts/product-billing/github-actions#storage-pricing)で再見積もりします。電気・運用・ローカル保存の実費とアカウント全体の無料枠・請求額は未確認です。
