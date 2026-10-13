@@ -44,7 +44,10 @@ python3 Tools/sync-legacy-listing.py --site-root /path/to/mitsuya0077.github.io
 
 ツールは正式な公開JSONを取得し、旧URL用のルート `url` だけを変更します。
 既に公開したversionの削除やZIP hashの変更、別repository ID、不正なJSON、
-同時同期を拒否し、失敗時は既存JSONを保持します。差分をレビューしたPRを
+同時同期を拒否し、失敗時は既存JSONを保持します。移管前の旧所有者のZIP URLを
+持つ一覧からの初回同期も受け付け、取得元は組織側に限定します。OSが管理する
+ロックを使うため、同期プロセスの強制終了後も再実行できます。ロックファイルは
+削除せずGitの管理対象から除きます。差分をレビューしたPRを
 個人Pagesのmainへ統合し、既存のPages公開完了を確認します。
 
 旧・新URLのJSONを取得し、ルート `url` 以外が一致すること、全versionの

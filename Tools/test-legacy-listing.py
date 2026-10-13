@@ -3,7 +3,10 @@
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -68,6 +71,19 @@ class LegacyListingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sync.parse_listing(raw, sync.SOURCE_URL)
 
+    def test_historical_release_urls_are_accepted_only_for_previous_listing(self):
+        source = listing()
+        historical = json.loads(sync.make_legacy(source))
+        for package in historical["packages"].values():
+            for manifest in package["versions"].values():
+                manifest["url"] = manifest["url"].replace(sync.RELEASE_PREFIX, sync.HISTORICAL_RELEASE_PREFIX)
+        raw = json.dumps(historical).encode()
+        previous = sync.parse_listing(raw, sync.LEGACY_URL, allow_historical_urls=True)
+        self.assertEqual(json.loads(sync.make_legacy(source, previous))["packages"], source["packages"])
+        historical["url"] = sync.SOURCE_URL
+        with self.assertRaises(ValueError):
+            sync.parse_listing(json.dumps(historical).encode(), sync.SOURCE_URL)
+
     def test_failed_replace_preserves_previous_file_and_cleans_own_temporary_files(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); (root / ".nojekyll").touch()
@@ -77,17 +93,36 @@ class LegacyListingTests(unittest.TestCase):
             with patch.object(sync.os, "replace", side_effect=OSError("disk failure")):
                 with self.assertRaises(OSError): sync.synchronize(root, source)
             self.assertEqual(target.read_bytes(), before)
-            self.assertFalse((root / ".sync-legacy-listing.lock").exists())
+            self.assertTrue((root / ".sync-legacy-listing.lock").exists())
             self.assertEqual(list(target.parent.iterdir()), [target])
 
-    def test_repeated_sync_is_noop_and_existing_lock_is_not_removed(self):
+    def test_repeated_sync_is_noop_and_active_lock_is_not_removed(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); (root / ".nojekyll").touch()
             self.assertTrue(sync.synchronize(root, listing()))
             self.assertFalse(sync.synchronize(root, listing()))
             lock = root / ".sync-legacy-listing.lock"; lock.write_text("another owner")
-            with self.assertRaises(FileExistsError): sync.synchronize(root, listing())
+            with sync.publication_lock(lock):
+                with self.assertRaises(OSError): sync.synchronize(root, listing())
             self.assertEqual(lock.read_text(), "another owner")
+
+    @unittest.skipIf(os.name == "nt", "Process termination case uses the POSIX fixture")
+    def test_killed_owner_lock_is_released_without_deleting_lock_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); (root / ".nojekyll").touch()
+            lock = root / ".sync-legacy-listing.lock"
+            program = "import fcntl,sys; f=open(sys.argv[1],'a+b'); fcntl.flock(f,fcntl.LOCK_EX); print('locked',flush=True); sys.stdin.read()"
+            process = subprocess.Popen([sys.executable, "-c", program, str(lock)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(process.stdout.readline().strip(), "locked")
+                with self.assertRaises(OSError): sync.synchronize(root, listing())
+                process.kill(); process.wait(timeout=5)
+                self.assertTrue(lock.exists())
+                self.assertTrue(sync.synchronize(root, listing()))
+            finally:
+                if process.poll() is None:
+                    process.kill(); process.wait(timeout=5)
+                process.stdin.close(); process.stdout.close()
 
     def test_symlink_is_rejected_without_overwriting_its_destination(self):
         with tempfile.TemporaryDirectory() as folder:
