@@ -116,6 +116,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(clone.Disabled && clone.MissingAutomatic, Is.True);
         }
 
+        [Test] public void LateEyelidNamesNeverReplaceAnEarlierChoice()
+        {
+            Skin("Blink", "vrc.blink_left", "vrc.blink_right");
+            var resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Slots[0].Single().Shape, Is.EqualTo("Blink"));
+            Assert.That(resolved.Slots[1], Is.Empty, "A bilateral name keeps its earlier result without the late pair.");
+            Object.DestroyImmediate(root.transform.GetChild(0).gameObject);
+            Skin("EyeClosedLeft", "EyeClosedRight", "vrc.blink_left", "vrc.blink_right", "eyelid_Blink");
+            resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Slots[1].Single().Shape, Is.EqualTo("EyeClosedLeft"));
+            Assert.That(resolved.Slots[2].Single().Shape, Is.EqualTo("EyeClosedRight"));
+            Assert.That(resolved.Slots[0].Select(binding => binding.Shape), Has.No.Member("eyelid_Blink"));
+        }
+
         [Test] public void EyelidFamilyAndSdkEyelidPairResolveAutomatically()
         {
             Skin("vrc.blink_left", "vrc.blink_right", "eyelid_Blink", "eyelid_Blink.L", "eyelid_Blink.R");

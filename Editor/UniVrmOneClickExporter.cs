@@ -156,7 +156,7 @@ namespace VRVlog.LilToonExporter
                     AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights);
                     blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
                         suppressHdrTextureEmission: suppressHdrTextureEmission);
-                    if (blink.MissingAutomatic) warnings?.Add(BlinkExportSession.MissingAutomaticWarning);
+                    if (blink.MissingAutomatic) warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     preparedMenuBindings.Capture(menu);

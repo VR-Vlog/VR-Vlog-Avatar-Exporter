@@ -77,6 +77,7 @@ BEHAVIOR_CASES = {
         'InertPreferredUnifiedAliasCannotSelectTheMovingLowerAlias': 1,
         'InertUnifiedClosureCannotWaiveMissingBlinkForSharedJaw': 2,
         'InertUnifiedClosureIsNotSelectedAlongsideUsableExplicitJaw': 4,
+        'LateEyelidNamesNeverReplaceAnEarlierChoice': 1,
         'LeftAndRightMustBelongToOneNameFamily': 1,
         'LegacyEyesOnDifferentRenderersResolveWithoutTrackingEvidence': 5,
         'ManualAdjustmentCopiesTheResolvedBindingsWithoutChangingTheAutomaticResult': 1,
