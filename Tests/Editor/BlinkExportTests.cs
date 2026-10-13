@@ -73,13 +73,19 @@ namespace VRVlog.LilToonExporter.Tests
             var calls = 0;
             BlinkExportSession Resolve() { calls++; return BlinkExportSession.Resolve(root); }
             cache.Refresh(0, Resolve);
-            skin.enabled = false;
+            // A duplicate closing name is still an error. An avatar without any
+            // closing name now resolves to no blink instead (see the fallback tests).
+            var valid = skin.sharedMesh;
+            var duplicate = Object.Instantiate(valid); duplicate.ClearBlendShapes(); owned.Add(duplicate);
+            foreach (var name in new[] { "Blink", "BLINK" })
+                duplicate.AddBlendShapeFrame(name, 100, new[] { Vector3.up * .2f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
+            skin.sharedMesh = duplicate;
             cache.Refresh(1, Resolve);
             Assert.That(cache.Resolved, Is.Null);
             Assert.That(cache.Error, Is.Not.Empty);
             cache.Refresh(1.1, Resolve);
             Assert.That(calls, Is.EqualTo(2), "An invalid avatar must not be rescanned on every repaint either.");
-            skin.enabled = true;
+            skin.sharedMesh = valid;
             cache.Invalidate();
             cache.Refresh(1.2, Resolve);
             Assert.That(cache.Resolved, Is.Not.Null);

@@ -56,6 +56,8 @@ namespace VRVlog.LilToonExporter
             if (source == null) throw new InvalidOperationException("アバターを指定してください。");
             options = options ?? new BlinkExportOptions();
             var result = new BlinkExportSession();
+            // Any exact, unified or one-sided closing name, even an inert one.
+            var namedClosure = false;
             if (options.Mode == BlinkExportMode.None)
             {
                 result.Disabled = true;
@@ -105,6 +107,8 @@ namespace VRVlog.LilToonExporter
                         .Where(renderer => excluded?.Invoke(renderer.transform) != true && renderer.sharedMesh != null)
                         .ToDictionary(renderer => renderer, renderer => Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
                             .Select(renderer.sharedMesh.GetBlendShapeName).ToArray());
+                    namedClosure = rendererNames.Values.Any(names =>
+                        BlinkShapeNames.AutomaticCandidates(names).Any() || BlinkShapeNames.PartialCandidates(names).Any());
                     result.allowMissingAutomaticBlink = deferAutomaticUsability || source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile == null &&
                         UnifiedExpressionPreparation.HasUsableEvidence(source, excluded, suppressSharedTextureEmission, suppressHdrTextureEmission);
                     var completePairs = true;
@@ -176,10 +180,10 @@ namespace VRVlog.LilToonExporter
                     result.Description = "自動設定";
                 }
             }
-            // No exact or partial closing name anywhere: export without blink
-            // instead of stopping. Ambiguous or one-sided names still need a choice.
+            // No closing name anywhere: export without blink instead of stopping.
+            // Inert, ambiguous or one-sided closing names still need a choice.
             if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
-                !result.allowMissingAutomaticBlink && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+                !result.allowMissingAutomaticBlink && !namedClosure && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
             {
                 result.Disabled = true;
                 result.MissingAutomatic = true;
