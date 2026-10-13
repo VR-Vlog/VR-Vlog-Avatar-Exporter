@@ -381,6 +381,7 @@ namespace VRVlog.LilToonExporter
             // Shared masks are converted once per export and owned until all
             // fallback materials have been serialized. Never cache across exports.
             var outlineMasks = new Dictionary<Texture, Texture2D>();
+            var others = new Dictionary<Material, Material>();
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
             {
                 var materials = renderer.sharedMaterials;
@@ -388,7 +389,17 @@ namespace VRVlog.LilToonExporter
                 for (var i = 0; i < materials.Length; i++)
                 {
                     var source = materials[i];
-                    if (!LilToonMaterialReader.IsLilToon(source)) continue;
+                    if (source == null) continue;
+                    if (!LilToonMaterialReader.IsLilToon(source))
+                    {
+                        // MToon materials already export as MToon. Other shaders keep
+                        // only their color and main image instead of stopping the export.
+                        if (source.shader != null && source.shader.name == MToon10Meta.UnityShaderName) continue;
+                        if (!others.TryGetValue(source, out var plain)) others.Add(source, plain = CreateMToonDefault(source, created));
+                        materials[i] = plain;
+                        changed = true;
+                        continue;
+                    }
                     if (!converted.TryGetValue(source, out var fallback))
                     {
                         fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks);
@@ -399,8 +410,45 @@ namespace VRVlog.LilToonExporter
                 }
                 if (changed) renderer.sharedMaterials = materials;
             }
-            if (converted.Count == 0) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
+            if (others.Count > 0)
+                warnings?.Add(NonLilToonWarning + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
+            if (converted.Count == 0 && others.Count == 0) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
             return converted;
+        }
+
+        internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
+
+        internal static Material CreateMToonDefault(Material source, List<Material> created)
+        {
+            var shader = Shader.Find(MToon10Meta.UnityShaderName);
+            if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
+            var material = new Material(shader) { name = source.name };
+            created.Add(material);
+            var mainName = source.HasProperty("_MainTex") ? "_MainTex" : source.HasProperty("_BaseMap") ? "_BaseMap" : null;
+            var main = mainName != null ? source.GetTexture(mainName) as Texture2D : null;
+            var color = source.HasProperty("_Color") ? source.GetColor("_Color") : source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : Color.white;
+            // Flat toon: the shade color equals the base color, so no shading band appears.
+            var shaderName = source.shader != null ? source.shader.name : "";
+            var cutout = shaderName.IndexOf("Cutout", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                shaderName.IndexOf("Clipping", StringComparison.OrdinalIgnoreCase) >= 0;
+            var context = new MToon10Context(material)
+            {
+                AlphaMode = cutout ? MToon10AlphaMode.Cutout : MToon10AlphaMode.Opaque,
+                AlphaCutoff = 0.5f,
+                DoubleSidedMode = MToon10DoubleSidedMode.Off,
+                BaseColorFactorSrgb = new Color(color.r, color.g, color.b, 1f),
+                BaseColorTexture = main,
+                ShadeColorFactorSrgb = new Color(color.r, color.g, color.b, 1f),
+                ShadeColorTexture = main,
+                OutlineWidthMode = MToon10OutlineMode.None,
+            };
+            if (main != null)
+            {
+                context.TextureScale = source.GetTextureScale(mainName);
+                context.TextureOffset = source.GetTextureOffset(mainName);
+            }
+            context.Validate();
+            return material;
         }
 
         internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null)

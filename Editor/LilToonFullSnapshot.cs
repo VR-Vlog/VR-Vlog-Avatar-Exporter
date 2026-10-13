@@ -46,7 +46,8 @@ namespace VRVlog.LilToonExporter
                     if (material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) && !result.records.ContainsKey(material))
                         result.records.Add(material, result.ReadMaterial(material));
             }
-            if (result.records.Count == 0) throw new InvalidOperationException("公式lilToon材質が見つかりません。");
+            // An avatar without lilToon still exports: its materials become MToon
+            // defaults and the extension carries no lilToon records.
             return result;
         }
 

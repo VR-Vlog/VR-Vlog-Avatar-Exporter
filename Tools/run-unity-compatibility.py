@@ -101,6 +101,11 @@ BEHAVIOR_CASES = {
     'LegacyBlinkMenuRoundTripTests': {
         'SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport': 2,
     },
+    'NonLilToonExportTests': {
+        'AMissingBehaviourIsNeverTreatedAsAnExportComponent': 1,
+        'AvatarWithoutLilToonStillProducesASnapshot': 1,
+        'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
+    },
     'PhysBoneSpringExportTests': {
         'AParentTailCannotShareTheChildOwnersFirstJoint': 1,
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
