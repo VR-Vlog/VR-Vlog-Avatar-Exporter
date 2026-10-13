@@ -802,7 +802,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(encrypted.Size, Is.EqualTo(vector.Number("wireSize")));
                 Assert.That(encrypted.FileHash, Is.EqualTo(vector.Text("envelopeSha256")));
                 Assert.That(encrypted.KeyForQr(), Is.EqualTo(vector.Text("key")));
-                var envelope = File.ReadAllBytes(encrypted.SnapshotPath);
+                // The snapshot keeps its file open for writing, which Windows does not share with File.ReadAllBytes.
+                byte[] envelope;
+                using (var reader = encrypted.OpenRead())
+                using (var copy = new MemoryStream()) { reader.CopyTo(copy); envelope = copy.ToArray(); }
                 Assert.That(LanTransferProtocol.Hex(envelope.Skip(envelope.Length - 32).ToArray()), Is.EqualTo(vector.Text("tagHex")));
                 if (size <= 257) Assert.That(LanTransferProtocol.Hex(envelope), Is.EqualTo(vector.Text("envelopeHex")));
                 Assert.That(AuthenticatedDecrypt(envelope, Unhex(vector.Text("keyHex")), source.Name, source.Size, source.FileHash), Is.EqualTo(plain));
