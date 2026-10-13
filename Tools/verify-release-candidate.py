@@ -15,7 +15,8 @@ import zipfile
 from pathlib import Path
 import importlib.util
 
-REPOSITORY = "mitsuya0077/VR-Vlog-lilToon-Exporter"
+REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+LEGACY_REPOSITORY = "mitsuya0077/VR-Vlog-lilToon-Exporter"
 WORKFLOW = ".github/workflows/release-candidate.yml"
 MAX_ARCHIVE_BYTES = 24 * 1024 * 1024
 
@@ -64,7 +65,12 @@ def verify_archive(data, sha, version, expected_hash, run_id):
         metadata = json.loads(archive.read("candidate.json"))
         report = json.loads(archive.read("validation.json"))
         actual = hashlib.sha256(archive.read(package)).hexdigest()
-    expected = {"schema": 1, "repository": REPOSITORY, "commit": sha,
+    # Existing candidates retain their receipt bytes after a repository transfer.
+    # The authentic run is separately read from this repository before inspection.
+    receipt_repository = metadata.get("repository")
+    if receipt_repository not in (REPOSITORY, LEGACY_REPOSITORY):
+        raise ValueError("Candidate receipt belongs to another repository")
+    expected = {"schema": 1, "repository": receipt_repository, "commit": sha,
                 "run_id": run_id, "version": version, "package": package,
                 "package_sha256": expected_hash, "validation_scope": "host-only"}
     if type(metadata.get("schema")) is not int or metadata != expected or actual != expected_hash:

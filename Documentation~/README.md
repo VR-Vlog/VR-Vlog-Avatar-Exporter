@@ -18,7 +18,7 @@ VCC／ALCOMのパッケージ一覧から **0.11.15** を選択してくださ�
 
 lilToonのアバターを、iPhoneのVR Vlogで使うVRM 1.0に書き出すUnity用パッケージです。
 
-PhysBoneの重複は元の静止姿勢を残して担当を分け、左右別メッシュの瞬きや最適化後の空メッシュも扱います。揺れ方はVRM向けの近似となる場合があります。[保持する内容と検証方針](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/blob/v0.11.15/Compatibility/AvatarPreservation.md)を確認してください。
+PhysBoneの重複は元の静止姿勢を残して担当を分け、左右別メッシュの瞬きや最適化後の空メッシュも扱います。揺れ方はVRM向けの近似となる場合があります。[保持する内容と検証方針](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/blob/v0.11.15/Compatibility/AvatarPreservation.md)を確認してください。
 
 ## 必要な環境
 
@@ -40,7 +40,7 @@ Unity 2022.3、lilToon **2.3.4**、UniVRM **0.131.0／0.131.1／0.131.2**、VR V
 
 ## 公開済み従来版の自動取り込み
 
-0.11.0以降では、APL登録やVRChat/Modular Avatarメニューから静止姿勢を確定できるポーズを自動で同梱します。**ポーズを確認・調整** で除外・名前変更・プレビューや、未登録.animの手動追加と採用時刻の指定ができます。利用には静止ポーズ対応版のVR Vlogが必要です。元のUnityアバターから再出力し、アプリの **ポーズ** から選択してください。0.11.11-beta.12 では手動追加した動く .anim の開始時刻以降をアニメーションとして保存し、元クリップのループ設定も引き継ぎます。動くポーズは対応する読み込み・再生処理を備えた VR Vlog が必要です。複雑な合成、外部入力や履歴に依存する姿勢は対象外です。[動くポーズの仕様](HumanoidAnimations.md)を参照してください。[対応範囲の詳細](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/blob/v0.11.0/Documentation~/HumanoidPoses.md)を確認してください。
+0.11.0以降では、APL登録やVRChat/Modular Avatarメニューから静止姿勢を確定できるポーズを自動で同梱します。**ポーズを確認・調整** で除外・名前変更・プレビューや、未登録.animの手動追加と採用時刻の指定ができます。利用には静止ポーズ対応版のVR Vlogが必要です。元のUnityアバターから再出力し、アプリの **ポーズ** から選択してください。0.11.11-beta.12 では手動追加した動く .anim の開始時刻以降をアニメーションとして保存し、元クリップのループ設定も引き継ぎます。動くポーズは対応する読み込み・再生処理を備えた VR Vlog が必要です。複雑な合成、外部入力や履歴に依存する姿勢は対象外です。[動くポーズの仕様](HumanoidAnimations.md)を参照してください。[対応範囲の詳細](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/blob/v0.11.0/Documentation~/HumanoidPoses.md)を確認してください。
 
 0.10.6以降では、導入済みVRChat SDKのPhysBoneから髪・衣装の揺れ設定を引き継ぎます。力・減衰・重力は近似で、件数や未対応項目は書き出し結果の **書き出しの詳細** で確認できます。SDKは必須ではありません。揺れ設定がない既存VRMは、元のUnityモデルから書き出し直してください。
 
@@ -80,7 +80,7 @@ Aim・Rotation Constraintが有効かつロックされ、回転の全軸を完�
 
 対策を選んで書き出せた場合は、**書き出すVRM** でlilToonの見た目を確認してから保存します。設定を変えずに再試行して成功した場合は自動保存し、保存先にファイルがあれば上書きを再確認します。上書きを断ると保存しません。再試行に失敗しても直前の成功結果と保存済みVRMは残ります。対策の選択を解除すると元の設定を使い、原本や参照アセットが変わった場合は再検査が必要です。共有用診断のコピーには、個別アバター名や材質名、絶対パス、画像、元のスタックトレースを含めません。
 
-[導入ガイド・対応範囲](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter#readme) · [変更履歴](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/blob/main/CHANGELOG.md) · [不具合報告](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/issues/new/choose)
+[導入ガイド・対応範囲](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter#readme) · [変更履歴](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/blob/main/CHANGELOG.md) · [不具合報告](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose)
 
 ## ライセンス
 
@@ -88,7 +88,7 @@ Aim・Rotation Constraintが有効かつロックされ、回転の全軸を完�
 
 アバター・衣装・テクスチャには各権利者の利用条件が適用されます。
 
-0.11.11 は MA の参照解決・生成された表情と、FaceEmo を使わず直接編集した FX の固定表情候補を扱います。更新後に元アバターから再出力してください。対応範囲と省略理由は [互換性の説明](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/blob/main/Compatibility/AvatarPreservation.md#modular-avatar-と直接編集した-fx-の表情) を確認してください。
+0.11.11 は MA の参照解決・生成された表情と、FaceEmo を使わず直接編集した FX の固定表情候補を扱います。更新後に元アバターから再出力してください。対応範囲と省略理由は [互換性の説明](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/blob/main/Compatibility/AvatarPreservation.md#modular-avatar-と直接編集した-fx-の表情) を確認してください。
 
 ### メインカラー2nd／3rdの色空間
 
@@ -98,4 +98,4 @@ lilToon専用表示のレイヤー合成には、書き出し元のUnityプロ�
 
 ## 脆弱性の報告
 
-脆弱性は[セキュリティポリシー](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/security/policy)に従い、[GitHubの非公開報告](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/security/advisories/new)から管理者へ連絡してください（GitHubへのログインが必要です）。再現手順や悪用条件を公開Issue・PRへ投稿しないでください。
+脆弱性は[セキュリティポリシー](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/security/policy)に従い、[GitHubの非公開報告](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/security/advisories/new)から管理者へ連絡してください（GitHubへのログインが必要です）。再現手順や悪用条件を公開Issue・PRへ投稿しないでください。

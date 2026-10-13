@@ -5,11 +5,11 @@
 [日本語](README.md) · [English](README.en.md)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Validate](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml)
+[![Validate](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml)
 
 Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity package saves a standard MToon fallback and a validated lilToon extension in the same file, using temporary copies to preserve the source avatar.
 
-[Install](https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/) · [Latest stable release](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[Install](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/) · [Latest stable release](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 ## Features
 
@@ -33,14 +33,14 @@ Install Modular Avatar and its dependencies beforehand if your avatar uses them.
 
 ## Installation
 
-1. Open the [installation page](https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
+1. Open the [installation page](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
 3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions. VPM resolves the UniVRM dependencies.
 
 If the button does not open your package manager, add this repository URL manually:
 
 ```text
-https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/index.json
+https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json
 ```
 
 For manual installation, use **ZIPで導入** on the installation page. Download the exporter, UniGLTF and VRM ZIPs and extract each into a separate folder under the project's `Packages` directory, with its `package.json` directly inside that folder. Avoid installing the same UniVRM package twice.
@@ -88,7 +88,7 @@ Report vulnerabilities using the [private reporting instructions](SECURITY.md). 
 
 Use **VR Vlog → VRMを書き出す** to inspect installed package versions. Export details explain unsupported items and possible next steps.
 
-[Report a bug or propose an improvement](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/issues/new/choose) with the relevant versions, reproduction steps and a short sanitized error excerpt. Please keep private avatar assets, credentials and full logs out of public reports. Documentation fixes and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+[Report a bug or propose an improvement](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose) with the relevant versions, reproduction steps and a short sanitized error excerpt. Please keep private avatar assets, credentials and full logs out of public reports. Documentation fixes and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

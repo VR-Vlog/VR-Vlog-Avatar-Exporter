@@ -260,6 +260,13 @@ class PublicationReceiptTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 release.verify_run(run, 123, SHA)
 
+    def test_pre_transfer_receipt_preserves_exact_run_and_package_binding(self):
+        data, digest = self.archive({"repository": release.LEGACY_REPOSITORY})
+        release.verify_run(self.run_fixture(), 123, SHA)
+        release.verify_archive(data, SHA, "1.2.3", digest, 42)
+        with self.assertRaises(ValueError):
+            release.verify_archive(data, SHA, "1.2.3", digest, 43)
+
     def test_duplicate_expired_and_oversize_artifacts_fail(self):
         row = {"name": "release-candidate-" + SHA, "expired": False, "size_in_bytes": 100}
         self.assertEqual(row, release.select_artifact([row], SHA))
