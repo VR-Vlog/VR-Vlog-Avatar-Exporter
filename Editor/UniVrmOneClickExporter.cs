@@ -192,6 +192,10 @@ namespace VRVlog.LilToonExporter
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
+                // A lilToon-named shader outside the official 2.3.4 set is not "no lilToon";
+                // keep stopping there rather than silently flattening it.
+                if (withoutLilToon && ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
+                    throw new InvalidOperationException("公式lilToon材質が見つかりません。");
                 if (withoutLilToon) { fullSnapshot = null; fallbackWarnings = warnings; }
                 if (fullSnapshot == null) LilToonMainTextureBaker.ValidateAvatar(clone);
                 LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
@@ -207,7 +211,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "揺れ物変換";
                 var springs = PhysBoneSpringExport.Convert(source, clone, warnings);
                 recoveryReport.Stage = "材質保存";
-                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission);
+                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon);
                 optimizerBindings.VerifyMaterialEvidence();
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -380,7 +384,7 @@ namespace VRVlog.LilToonExporter
             return meta;
         }
 
-        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission)
+        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -397,8 +401,9 @@ namespace VRVlog.LilToonExporter
                     if (source == null) continue;
                     if (!LilToonMaterialReader.IsLilToon(source))
                     {
-                        // MToon materials already export as MToon. Other shaders keep
-                        // only their color and main image instead of stopping the export.
+                        // Mixed avatars keep UniVRM's own export of other shaders. Only an
+                        // avatar without any lilToon material gets color-and-image MToon.
+                        if (!convertOthers) continue;
                         if (source.shader != null && source.shader.name == MToon10Meta.UnityShaderName) continue;
                         if (!others.TryGetValue(source, out var plain)) others.Add(source, plain = CreateMToonDefault(source, created));
                         materials[i] = plain;
@@ -416,7 +421,7 @@ namespace VRVlog.LilToonExporter
                 if (changed) renderer.sharedMaterials = materials;
             }
             if (others.Count > 0)
-                warnings?.Add(NonLilToonWarning + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
+                warnings?.Add(ExporterLocalization.T(NonLilToonWarning) + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
             if (converted.Count == 0 && others.Count == 0) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
             return converted;
         }
