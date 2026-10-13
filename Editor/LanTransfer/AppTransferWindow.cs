@@ -90,7 +90,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             exportAttempt++;
             flow?.Stop();
             ClearQr();
-            var untouched = opened || string.IsNullOrWhiteSpace(avatarName) || avatar != null && avatarName == avatar.name;
+            // A name left over from an avatar that no longer exists is not the user's choice for this one.
+            var untouched = opened || avatar == null || string.IsNullOrWhiteSpace(avatarName) || avatarName == avatar.name;
             avatar = target;
             if (untouched) avatarName = target != null ? target.name : "";
             consented = false;
@@ -158,8 +159,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void ShowQr()
         {
+            // A status request can end the wait between the view check and this read.
+            var link = flow.Link;
+            if (link == null) return;
             ClearQr();
-            try { qrTexture = CloudVrmTransferWindow.RenderQr(flow.Link); }
+            try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
         }
 
@@ -232,7 +236,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Repaint();
         }
 
-        private float SlotSide => TransferQrCode.DisplaySide(Mathf.Max(placeholderSide, 2 * TransferQrCode.QuietZone + 21), EditorGUIUtility.pixelsPerPoint);
+        // The placeholder has the longest numbers a link can have, so the real QR is the same
+        // version or one smaller. Reserve the larger of the two drawn sizes for whole-pixel modules.
+        private float SlotSide
+        {
+            get
+            {
+                var side = Mathf.Max(placeholderSide, 2 * TransferQrCode.QuietZone + 21);
+                var scale = EditorGUIUtility.pixelsPerPoint;
+                var smaller = side - 4 >= 2 * TransferQrCode.QuietZone + 21 ? TransferQrCode.DisplaySide(side - 4, scale) : 0f;
+                return Mathf.Max(TransferQrCode.DisplaySide(side, scale), smaller);
+            }
+        }
 
         // The window is at least as large as the QR it is about to show.
         private void FitTransferSize()

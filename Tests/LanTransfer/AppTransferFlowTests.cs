@@ -263,6 +263,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void SnapshotThatCannotBeTransferredFailsInPlaceAndIsDeleted()
         {
+            // The source accepts 1 byte to 256 MiB; an empty file takes the same branch as one that is too large.
             using (var run = new FlowRun(length: 0))
             {
                 run.Flow.Upload(run.Path, "fixture.vrm");
