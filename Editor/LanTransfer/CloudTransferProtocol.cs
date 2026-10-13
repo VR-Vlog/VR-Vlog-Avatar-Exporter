@@ -42,6 +42,32 @@ namespace VRVlog.LilToonExporter.LanTransfer
             + ",\"name\":" + LanTransferProtocol.JsonString(name) + ",\"size\":" + size.ToString(CultureInfo.InvariantCulture)
             + ",\"sha256\":" + LanTransferProtocol.JsonString(hash) + ",\"expiresAt\":" + expiresAt.ToString(CultureInfo.InvariantCulture) + ",\"key\":" + LanTransferProtocol.JsonString(key) + "}";
 
+        internal const string ImportLinkPrefix = "vrvlog://import#";
+        internal const int MaximumImportLinkLength = 4096;
+
+        // The same eight members as Qr, as a link the phone's own camera opens
+        // in VR Vlog. They sit in the fragment, which activity-launch logs omit.
+        // The name is the Qr/AAD string; only its representation differs.
+        internal static string ImportLink(string id, string token, string name, long size, string hash, long expiresAt, string key)
+        {
+            if (!IsHex(id, 32) || !IsToken(token) || name == null || size < 1 || !IsHex(hash, 64) || expiresAt < 1 || !IsKey(key))
+                throw new InvalidOperationException("転送リンクの項目が正しくありません。");
+            byte[] nameBytes;
+            try { nameBytes = new UTF8Encoding(false, true).GetBytes(name); }
+            catch (ArgumentException) { throw new InvalidOperationException("転送リンクの項目が正しくありません。"); }
+            var link = new StringBuilder(ImportLinkPrefix).Append("v=3&id=").Append(id).Append("&token=").Append(token).Append("&name=");
+            foreach (var value in nameBytes)
+            {
+                // RFC 3986 unreserved characters stay; every other byte is %XX in upper case.
+                if (value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z' || value >= '0' && value <= '9' || value == '-' || value == '.' || value == '_' || value == '~') link.Append((char)value);
+                else link.Append('%').Append(value.ToString("X2", CultureInfo.InvariantCulture));
+            }
+            link.Append("&size=").Append(size.ToString(CultureInfo.InvariantCulture)).Append("&sha256=").Append(hash)
+                .Append("&exp=").Append(expiresAt.ToString(CultureInfo.InvariantCulture)).Append("&key=").Append(key);
+            if (link.Length > MaximumImportLinkLength) throw new InvalidOperationException("転送リンクのサイズ上限を超えました。");
+            return link.ToString();
+        }
+
         // The service contract is a bounded flat JSON object. Reject duplicate
         // fields, arrays, nested objects and number coercions before using it.
         internal sealed class Fields
