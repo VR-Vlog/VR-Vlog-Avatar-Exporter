@@ -19,6 +19,10 @@ namespace VRVlog.LilToonExporter
         internal bool PreserveAuthored;
         internal bool ConfiguredByDescriptor;
         internal bool Disabled;
+        // Automatic setup found no closing shape at all and fell back to no blink.
+        internal bool MissingAutomatic;
+        internal const string MissingAutomaticDescription = "瞬きなし（閉眼用の変形が見つかりません）";
+        internal const string MissingAutomaticWarning = "閉眼用の変形が見つからないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
         bool allowMissingAutomaticBlink;
         bool deferredAutomatic;
         sealed class Candidate
@@ -172,6 +176,15 @@ namespace VRVlog.LilToonExporter
                     result.Description = "自動設定";
                 }
             }
+            // No exact or partial closing name anywhere: export without blink
+            // instead of stopping. Ambiguous or one-sided names still need a choice.
+            if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
+                !result.allowMissingAutomaticBlink && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+            {
+                result.Disabled = true;
+                result.MissingAutomatic = true;
+                result.Description = MissingAutomaticDescription;
+            }
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
             return result;
@@ -293,6 +306,8 @@ namespace VRVlog.LilToonExporter
                 Slots[slot].Clear(); Slots[slot].AddRange(resolved.Slots[slot].Select(binding => binding.Copy()));
             }
             Description = resolved.Description;
+            Disabled = resolved.Disabled;
+            MissingAutomatic = resolved.MissingAutomatic;
             PreserveAuthored = resolved.PreserveAuthored;
             Array.Copy(resolved.authored, authored, authored.Length);
             allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
@@ -358,7 +373,7 @@ namespace VRVlog.LilToonExporter
         internal BlinkExportSession ForClone(GameObject source, GameObject clone)
         {
             if (source == clone) throw new ArgumentException("An independent export copy is required.");
-            var copy = new BlinkExportSession { Description = Description, PreserveAuthored = PreserveAuthored, Disabled = Disabled,
+            var copy = new BlinkExportSession { Description = Description, PreserveAuthored = PreserveAuthored, Disabled = Disabled, MissingAutomatic = MissingAutomatic,
                 allowMissingAutomaticBlink = allowMissingAutomaticBlink, deferredAutomatic = deferredAutomatic };
             Array.Copy(authored, copy.authored, authored.Length);
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)

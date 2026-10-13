@@ -88,11 +88,41 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("eye_close")][TestCase("previewBlink")][TestCase("eye_close_left")]
-        public void AmbiguousOrPartialNamesNeedAnExplicitChoice(string name)
+        public void UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing(string name)
         {
             Skin(name);
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
-            Assert.That(BlinkExportSession.Resolve(root, new BlinkExportOptions { Mode = BlinkExportMode.None }).Disabled, Is.True);
+            var resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Disabled, Is.True, "An unrecognized name is never guessed as a blink.");
+            Assert.That(resolved.MissingAutomatic, Is.True);
+            Assert.That(resolved.Slots.All(slot => slot.Count == 0), Is.True);
+            Assert.That(resolved.Description, Is.EqualTo(BlinkExportSession.MissingAutomaticDescription));
+            var none = BlinkExportSession.Resolve(root, new BlinkExportOptions { Mode = BlinkExportMode.None });
+            Assert.That(none.Disabled, Is.True);
+            Assert.That(none.MissingAutomatic, Is.False, "Choosing no blink is not reported as a missing shape.");
+        }
+
+        [Test] public void AvatarWithoutAnyClosingShapeFallsBackToNoBlink()
+        {
+            Skin("mouth_A", "eyebrow_Up");
+            var resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Disabled && resolved.MissingAutomatic, Is.True);
+            using var clone = resolved.ForClone(root, copy = Object.Instantiate(root));
+            Assert.That(clone.Disabled && clone.MissingAutomatic, Is.True);
+        }
+
+        [Test] public void EyelidFamilyAndSdkEyelidPairResolveAutomatically()
+        {
+            Skin("vrc.blink_left", "vrc.blink_right", "eyelid_Blink", "eyelid_Blink.L", "eyelid_Blink.R");
+            var resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Disabled, Is.False);
+            Assert.That(resolved.Slots[0].Single().Shape, Is.EqualTo("eyelid_Blink"));
+            Assert.That(resolved.Slots[1].Single().Shape, Is.EqualTo("eyelid_Blink.L"));
+            Assert.That(resolved.Slots[2].Single().Shape, Is.EqualTo("eyelid_Blink.R"));
+            Object.DestroyImmediate(root.transform.GetChild(0).gameObject);
+            Skin("vrc.blink_left", "vrc.blink_right");
+            resolved = BlinkExportSession.Resolve(root);
+            Assert.That(resolved.Slots[1].Single().Shape, Is.EqualTo("vrc.blink_left"));
+            Assert.That(resolved.Slots[2].Single().Shape, Is.EqualTo("vrc.blink_right"));
         }
 
         [Test] public void LeftAndRightMustBelongToOneNameFamily()

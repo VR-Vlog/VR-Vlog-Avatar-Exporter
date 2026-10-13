@@ -8,11 +8,13 @@ namespace VRVlog.LilToonExporter
     {
         internal const int PartialPair = -3;
         internal static readonly string[] Presets = { "blink", "blinkLeft", "blinkRight" };
-        static readonly string[] Both = { "vrc.Blink", "Blink", "Fcl_EYE_Close", "まばたき", "eye_blink_1", "eye_blink_2" };
+        static readonly string[] Both = { "vrc.Blink", "Blink", "Fcl_EYE_Close", "まばたき", "eye_blink_1", "eye_blink_2", "eyelid_Blink" };
         static readonly (string Left, string Right)[] Pairs = {
             ("Blink_L", "Blink_R"), ("BlinkLeft", "BlinkRight"),
             ("EyeBlinkLeft", "EyeBlinkRight"), ("Fcl_EYE_Close_L", "Fcl_EYE_Close_R"),
-            ("eye_blink_1_L", "eye_blink_1_R"), ("eye_blink_2_L", "eye_blink_2_R")
+            ("eye_blink_1_L", "eye_blink_1_R"), ("eye_blink_2_L", "eye_blink_2_R"),
+            // Lowest priority: the eyelid family and the VRChat SDK eyelid pair.
+            ("eyelid_Blink.L", "eyelid_Blink.R"), ("vrc.blink_left", "vrc.blink_right")
         };
 
         internal static int PartialFamily(string shape, bool left)
