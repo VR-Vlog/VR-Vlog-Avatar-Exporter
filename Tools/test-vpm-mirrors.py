@@ -72,10 +72,10 @@ def receipt_bytes(files, context=None):
                        indent=2, allow_nan=False) + "\n").encode()
 
 
-def write_receipt(root):
+def write_receipt(root, context=None):
     files = {path.relative_to(root).as_posix(): path.read_bytes() for path in root.rglob("*")
              if path.is_file() and path.name != sync.PUBLICATION_RECEIPT}
-    (root / sync.PUBLICATION_RECEIPT).write_bytes(receipt_bytes(files))
+    (root / sync.PUBLICATION_RECEIPT).write_bytes(receipt_bytes(files, context))
 
 
 class FakeReceipt:
@@ -985,6 +985,188 @@ class ApiTests(unittest.TestCase):
         with patch.object(sync, "read_response", return_value=(raw, Response(request, raw, content_type="text/html").headers)):
             with self.assertRaisesRegex(sync.SyncError, "did not return JSON"):
                 sync.fetch_publication_receipt(sync.CANONICAL_RECEIPT_URL, sync.Budget())
+
+
+class BeforeDeploymentTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.snapshot = self.root / "snapshot"
+        self.snapshot.mkdir()
+        self.publisher = publisher(2, 1002, "b" * 40)
+        self.source = listing()
+        self.original = {"index.json": json.dumps(self.source).encode(),
+                         "index.html": ('<main id="main"><input id="listing-url" value="' + sync.CANONICAL_URL
+                                        + '"><a href="vcc://vpm/addRepo?url=' + sync.CANONICAL_URL + '">Add</a></main>').encode(),
+                         "assets/image.png": b"\x89PNG\r\n"}
+        for path, raw in self.original.items():
+            output = self.snapshot / path
+            output.parent.mkdir(parents=True, exist_ok=True)
+            output.write_bytes(raw)
+        write_receipt(self.snapshot, self.publisher)
+        self.receipt = sync.parse_publication_receipt((self.snapshot / sync.PUBLICATION_RECEIPT).read_bytes())
+        self.proof = {"schema": 1, "publisher": self.publisher, "official": None}
+        self.api = FakeApi()
+        self.reads = []
+        original_snapshot = self.api.snapshot
+        def read(target):
+            self.reads.append(target)
+            return original_snapshot(target)
+        self.api.snapshot = read
+
+    def guard(self):
+        with patch.object(sync, "fetch_listing", side_effect=AssertionError("Guard must not poll public URLs")), \
+             patch.object(sync, "fetch_publication_receipt", side_effect=AssertionError("Guard must not poll public receipts")):
+            return sync.verify_before_deployment(self.snapshot, self.publisher, self.api, self.proof)
+
+    def publish_receipt(self, context, files=None):
+        self.api.files[sync.OFFICIAL][sync.OFFICIAL.prefix + sync.PUBLICATION_RECEIPT] = receipt_bytes(files or self.original, context)
+
+    def test_valid_bootstrap_rechecks_both_git_trees_official_last_and_never_commits(self):
+        report = self.guard()
+        self.assertEqual(report["status"], "verified-before-deployment")
+        self.assertEqual(report["publicationDigest"], self.receipt["digest"])
+        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.api.commits, [])
+        self.assertEqual([entry["repository"] for entry in report["repositories"]], [target.repository for target in sync.TARGETS])
+
+    def test_rechecks_target_changes_after_an_earlier_preflight_observation(self):
+        observed = sync.parse_publication_receipt(receipt_bytes(self.original, publisher()))
+        self.proof["official"] = {"publisher": observed["publisher"], "digest": observed["digest"]}
+        self.publish_receipt(publisher(3, 1003, "c" * 40))
+        with self.assertRaisesRegex(sync.SyncError, "Older publication run"):
+            self.guard()
+        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.api.commits, [])
+
+    def test_official_update_during_legacy_read_is_detected_by_the_last_git_observation(self):
+        original = self.api.snapshot
+        def advance(target):
+            current = original(target)
+            if target == sync.LEGACY:
+                self.publish_receipt(publisher(3, 1003, "c" * 40))
+            return current
+        self.api.snapshot = advance
+        with self.assertRaisesRegex(sync.SyncError, "Older publication run"):
+            self.guard()
+        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.api.commits, [])
+
+    def test_equal_sequence_different_full_snapshot_run_or_source_is_rejected(self):
+        for context, files in ((self.publisher, {**self.original, "index.html": b"Newer direct HTML edit"}),
+                               (publisher(2, 9999, "b" * 40), self.original),
+                               (publisher(2, 1002, "c" * 40), self.original)):
+            self.publish_receipt(context, files)
+            with self.subTest(context=context), self.assertRaisesRegex(sync.SyncError, "Equal publication sequence"):
+                self.guard()
+        self.assertEqual(self.api.commits, [])
+
+    def test_equal_exact_or_lower_published_sequence_is_safe(self):
+        for context in (self.publisher, publisher()):
+            self.publish_receipt(context)
+            with self.subTest(context=context):
+                self.assertEqual(self.guard()["status"], "verified-before-deployment")
+        self.assertEqual(self.api.commits, [])
+
+    def test_known_official_receipt_disappearance_is_not_bootstrap(self):
+        previous = sync.parse_publication_receipt(receipt_bytes(self.original, publisher()))
+        self.proof["official"] = {"publisher": previous["publisher"], "digest": previous["digest"]}
+        with self.assertRaisesRegex(sync.SyncError, "now missing"):
+            self.guard()
+        self.assertEqual(self.api.commits, [])
+
+    def test_both_target_histories_and_hashes_are_checked_before_deployment(self):
+        for target in sync.TARGETS:
+            previous = new_version(self.source)
+            self.api.files[target][target.listing_path] = sync.render_listing(previous, target.listing_url)
+            with self.subTest(target=target), self.assertRaisesRegex(sync.SyncError, "published version"):
+                self.guard()
+            del self.api.files[target][target.listing_path]
+        previous = copy.deepcopy(self.source)
+        previous["packages"][sync.EXPORTER]["versions"]["1.0.0"]["zipSHA256"] = "c" * 64
+        self.api.files[sync.LEGACY][sync.LEGACY.listing_path] = sync.render_listing(previous, sync.LEGACY_URL)
+        with self.assertRaisesRegex(sync.SyncError, "published version"):
+            self.guard()
+        self.assertEqual(self.api.commits, [])
+
+    def test_full_snapshot_hashes_publisher_and_cached_equal_digest_fail_before_git_reads(self):
+        (self.snapshot / "assets/image.png").write_bytes(b"Changed after snapshot")
+        with self.assertRaisesRegex(sync.SyncError, "full built snapshot"):
+            self.guard()
+        self.assertEqual(self.reads, [])
+        (self.snapshot / "assets/image.png").write_bytes(self.original["assets/image.png"])
+        with self.assertRaisesRegex(sync.SyncError, "different GitHub run"):
+            sync.verify_before_deployment(self.snapshot, publisher(3, 1003), self.api, self.proof)
+        self.assertEqual(self.reads, [])
+        self.proof["official"] = {"publisher": self.publisher, "digest": "c" * 64}
+        with self.assertRaisesRegex(sync.SyncError, "preflight snapshot"):
+            self.guard()
+        self.assertEqual(self.reads, [])
+
+    def test_fixed_preflight_reader_reuses_producer_and_rejects_missing_or_foreign_proof(self):
+        with patch.dict(os.environ, {"RUNNER_TEMP": str(self.root)}, clear=True):
+            sync.save_preflight_evidence(self.proof)
+            self.assertEqual(sync.read_preflight_evidence(self.publisher), self.proof)
+            self.assertEqual(self.guard()["status"], "verified-before-deployment")
+            (self.root / sync.PREFLIGHT_FILENAME).unlink()
+            with self.assertRaisesRegex(sync.SyncError, "could not be verified"):
+                sync.read_preflight_evidence(self.publisher)
+        foreign = {**self.proof, "publisher": {**self.publisher, "workflow": ".github/workflows/other.yml"}}
+        with self.assertRaisesRegex(sync.SyncError, "does not match this run"):
+            sync.verify_before_deployment(self.snapshot, self.publisher, self.api, foreign)
+
+    def test_proof_helper_failure_never_echoes_response_or_credential_text(self):
+        helper = unittest.mock.Mock()
+        helper.read_preflight.side_effect = ValueError("sensitive-fake-marker")
+        with patch.object(sync, "load_producer_tools", return_value=helper):
+            with self.assertRaises(sync.SyncError) as caught:
+                sync.read_preflight_evidence(self.publisher, {})
+        self.assertNotIn("sensitive-fake-marker", str(caught.exception))
+
+    def test_malformed_foreign_and_schema1_fresh_receipts_fail_without_commit(self):
+        for raw in (b"invalid", b'{"schema":1}', receipt_bytes(self.original,
+                    {**self.publisher, "workflow": ".github/workflows/other.yml"})):
+            self.api.files[sync.OFFICIAL][sync.OFFICIAL.prefix + sync.PUBLICATION_RECEIPT] = raw
+            with self.subTest(raw=raw), self.assertRaises(sync.SyncError):
+                self.guard()
+        self.assertEqual(self.api.commits, [])
+
+    def test_cli_mode_checks_ci_checkout_then_guard_without_mutation_or_public_polling(self):
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--verify-before-deployment", str(self.snapshot)]), \
+             patch.dict(os.environ, {**ci_environment(self.publisher), sync.TOKEN_ENV: "local-test-token", "RUNNER_TEMP": str(self.root)}, clear=True), \
+             patch.object(sync, "validate_checkout") as checkout, \
+             patch.object(sync, "GitHubApi", return_value=self.api), \
+             patch.object(sync, "synchronize", side_effect=AssertionError("Guard must not synchronize")), \
+             patch.object(sync, "fetch_listing", side_effect=AssertionError("Guard must not poll public URLs")), \
+             patch.object(sync, "fetch_publication_receipt", side_effect=AssertionError("Guard must not poll public receipts")), \
+             patch.object(sys, "stdout", output):
+            sync.save_preflight_evidence(self.proof)
+            sync.main()
+        checkout.assert_called_once_with(self.publisher)
+        self.assertEqual(json.loads(output.getvalue())["status"], "verified-before-deployment")
+        self.assertNotIn("local-test-token", output.getvalue())
+        self.assertEqual(self.api.commits, [])
+
+    def test_cli_rejects_pr_context_before_reading_targets(self):
+        with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--verify-before-deployment", str(self.snapshot)]), \
+             patch.dict(os.environ, {**ci_environment(self.publisher), "GITHUB_EVENT_NAME": "pull_request"}, clear=True), \
+             patch.object(sync, "GitHubApi") as api, patch.object(sys, "stderr", io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                sync.main()
+        self.assertEqual(error.exception.code, 1)
+        api.assert_not_called()
+
+    def test_cli_deployment_guard_is_mutually_exclusive_with_other_modes(self):
+        for other in (("--preflight",), ("--publication-root", str(self.snapshot))):
+            args = ["sync-vpm-mirrors.py", "--verify-before-deployment", str(self.snapshot), *other]
+            with self.subTest(other=other), patch.object(sys, "argv", args), \
+                 patch.object(sync, "GitHubApi") as api, patch.object(sys, "stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    sync.main()
+                self.assertEqual(error.exception.code, 2)
+                api.assert_not_called()
 
 
 if __name__ == "__main__":

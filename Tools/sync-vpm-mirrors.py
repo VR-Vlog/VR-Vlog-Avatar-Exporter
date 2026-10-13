@@ -17,6 +17,7 @@ import argparse
 import base64
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -303,6 +304,26 @@ def save_preflight_evidence(evidence):
     finally:
         if temporary is not None:
             temporary.unlink()
+
+
+def load_producer_tools():
+    # Runtime-only import: the producer also loads this module for its fixed
+    # Git reader, so neither module imports the other while being defined.
+    try:
+        spec = importlib.util.spec_from_file_location("exporter_producer_proof", Path(__file__).with_name("prepare-exporter-publication.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        raise SyncError("Publication proof helper could not be loaded") from None
+
+
+def read_preflight_evidence(publisher, environment=None):
+    environment = os.environ if environment is None else environment
+    try:
+        return load_producer_tools().read_preflight(environment, publisher)
+    except Exception:
+        raise SyncError("Publication preflight evidence could not be verified") from None
 
 
 def parse_publication_receipt(raw):
@@ -746,6 +767,34 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
             "verifiedPublicationReceipts": [CANONICAL_RECEIPT_URL, OFFICIAL_RECEIPT_URL]}
 
 
+def verify_before_deployment(root, publisher, api, preflight):
+    """Re-read approved Git trees after upload; neither publish nor poll URLs."""
+    validate_publisher(publisher)
+    source, desired = read_publication(root)
+    receipt = parse_publication_receipt(desired[OFFICIAL.repository][OFFICIAL.prefix + PUBLICATION_RECEIPT])
+    require(receipt["publisher"] == publisher, "Built publication belongs to a different GitHub run or source commit")
+    try:
+        cached = load_producer_tools().validate_preflight(preflight, publisher)
+    except Exception:
+        raise SyncError("Publication preflight evidence does not match this run") from None
+    if cached is not None and cached["publisher"]["run_number"] == publisher["run_number"]:
+        require(receipt["digest"] == cached["digest"], "Equal publication sequence differs from its preflight snapshot")
+    # The proof is an observation from before building. Read both repositories
+    # again here, immediately before deploy-pages, instead of reusing that state.
+    # Official is read last, keeping the deployment anchor newer than the
+    # legacy-history observation without claiming an atomic cross-repo read.
+    snapshots = {target: api.snapshot(target) for target in reversed(TARGETS)}
+    require(cached is None or snapshots[OFFICIAL].receipt is not None,
+            "Previously observed official publication receipt is now missing")
+    repositories = []
+    for target in TARGETS:
+        changes = plan_changes(target, snapshots[target], desired[target.repository], source)
+        repositories.append({"repository": target.repository, "commit": snapshots[target].head,
+                             "pendingFileChanges": len(changes.additions) + len(changes.deletions)})
+    return {"status": "verified-before-deployment", "repositoryId": REPOSITORY_ID,
+            "publicationDigest": receipt["digest"], "repositories": repositories}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -753,6 +802,8 @@ def main():
                         help="Actual built Website directory from the just-published canonical deployment")
     mode.add_argument("--preflight", action="store_true",
                       help="Read-only credential and approved target-repository availability check")
+    mode.add_argument("--verify-before-deployment", type=Path,
+                      help="Read-only check of the full saved snapshot and fresh Git trees immediately before canonical deployment")
     args = parser.parse_args()
     try:
         publisher = publisher_from_environment()
@@ -762,6 +813,9 @@ def main():
         if args.preflight:
             report, evidence = api.preflight(publisher)
             save_preflight_evidence(evidence)
+        elif args.verify_before_deployment is not None:
+            proof = read_preflight_evidence(publisher)
+            report = verify_before_deployment(args.verify_before_deployment, publisher, api, proof)
         else:
             source, desired = read_publication(args.publication_root)
             receipt = parse_publication_receipt(desired[OFFICIAL.repository][OFFICIAL.prefix + PUBLICATION_RECEIPT])

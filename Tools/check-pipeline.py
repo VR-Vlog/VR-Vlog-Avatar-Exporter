@@ -29,6 +29,7 @@ MIRROR_ENV = {"VPM_MIRROR_TOKEN": "${{ secrets.VPM_MIRROR_TOKEN }}"}
 PUBLICATION_RUNS = {
     "mirror-preflight": "python3 Tools/sync-vpm-mirrors.py --preflight",
     "prepare-publication": 'python3 Tools/prepare-exporter-publication.py --publication-root Website --official-root "$RUNNER_TEMP/official-exporter-publication"',
+    "mirror-deploy-guard": 'python3 Tools/sync-vpm-mirrors.py --verify-before-deployment "$RUNNER_TEMP/official-exporter-publication"',
     "mirrors": 'python3 Tools/sync-vpm-mirrors.py --publication-root "$RUNNER_TEMP/official-exporter-publication"',
 }
 PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "sync-vpm-mirrors.py", "prepare-exporter-publication.py")
@@ -128,8 +129,11 @@ def check_mirror_publication(workflow, job):
               and "if" not in step]
     require(len(checks) == 1 and checks[0] < positions["prepare-publication"],
             "Validate the complete listing before preparing publication")
-    require(positions["mirror-preflight"] < positions["prepare-publication"] < uploads[0] < deployments[0] < positions["mirrors"],
-            "Credential preflight and preparation must precede deployment; mirrors require deployment success")
+    require(positions["mirror-preflight"] < positions["prepare-publication"] < uploads[0]
+            < positions["mirror-deploy-guard"] < deployments[0] < positions["mirrors"],
+            "Preserve preflight, preparation, upload, fresh deployment guard, deployment and mirror order")
+    require(positions["mirror-deploy-guard"] == deployments[0] - 1,
+            "The fresh mirror guard must immediately precede canonical deployment")
     require(positions["mirrors"] == len(steps) - 1, "Mirror publication must be the final Pages publication step")
 
 

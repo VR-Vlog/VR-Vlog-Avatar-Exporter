@@ -126,7 +126,7 @@ class WorkflowTrustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check("build-listing.yml", data)
 
-    def test_mirror_credentials_cannot_escape_the_three_publication_steps(self):
+    def test_mirror_credentials_cannot_escape_the_four_publication_steps(self):
         approved = {"id": "mirrors", "run": policy.PUBLICATION_RUNS["mirrors"],
                     "env": dict(policy.MIRROR_ENV)}
         data = self.workflow()
@@ -202,7 +202,7 @@ class WorkflowTrustTests(unittest.TestCase):
                 policy.check("build-listing.yml", data)
 
     def test_mirrors_run_only_after_successful_deployment_of_the_prepared_listing(self):
-        for identity, target in (("mirrors", "deployment"), ("prepare-publication", "mirror-preflight"),
+        for identity, target in (("mirrors", "deployment"), ("mirror-deploy-guard", "prepare-publication"), ("prepare-publication", "mirror-preflight"),
                                  ("mirror-preflight", "mirrors")):
             data = self.workflow("build-listing.yml")
             steps = data["jobs"]["build-listing"]["steps"]
@@ -220,6 +220,21 @@ class WorkflowTrustTests(unittest.TestCase):
         step["if"] = False
         with self.assertRaises(ValueError):
             policy.check("build-listing.yml", data)
+
+    def test_fresh_guard_cannot_run_after_deployment_or_leave_an_intervening_step(self):
+        for mutation in ("after-deployment", "intervening-step"):
+            data = self.workflow("build-listing.yml")
+            steps = data["jobs"]["build-listing"]["steps"]
+            guard = next(s for s in steps if s.get("id") == "mirror-deploy-guard")
+            if mutation == "after-deployment":
+                steps.remove(guard)
+                deployment = next(i for i, s in enumerate(steps) if s.get("id") == "deployment")
+                steps.insert(deployment + 1, guard)
+            else:
+                deployment = next(i for i, s in enumerate(steps) if s.get("id") == "deployment")
+                steps.insert(deployment, {"run": "echo intervening-operation"})
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
 
     def test_mirror_credential_and_approval_environment_are_fixed(self):
         for identity in policy.PUBLICATION_RUNS:
