@@ -68,6 +68,8 @@ namespace VRVlog.LilToonExporter
             }
             var glb = GlbDocument.Read(bytes); var extensions = Object(glb.Json, "extensions", false);
             RequireVrm10Root(glb.Json);
+            // Only the exporter's own marker allows a VRM without any lilToon extension.
+            if ((extensions == null || !extensions.ContainsKey(LilToonMobileProfile.ExtensionName)) && IsWithoutLilToon(glb.Json)) return;
             if (extensions == null || !extensions.TryGetValue(LilToonMobileProfile.ExtensionName, out var raw) || !(raw is Dictionary<string, object> root)) throw new InvalidOperationException("lilToon extension is missing after round trip.");
             var extension = FromDom(root);
             if (!LilToonExtensionValidator.TryValidate(extension, out var error)) throw new InvalidOperationException(error);
@@ -209,6 +211,25 @@ namespace VRVlog.LilToonExporter
             {"rightThumbMetacarpal","rightHand"},{"rightThumbProximal","rightThumbMetacarpal"},{"rightThumbDistal","rightThumbProximal"},{"rightIndexProximal","rightHand"},{"rightIndexIntermediate","rightIndexProximal"},{"rightIndexDistal","rightIndexIntermediate"},{"rightMiddleProximal","rightHand"},{"rightMiddleIntermediate","rightMiddleProximal"},{"rightMiddleDistal","rightMiddleIntermediate"},{"rightRingProximal","rightHand"},{"rightRingIntermediate","rightRingProximal"},{"rightRingDistal","rightRingIntermediate"},{"rightLittleProximal","rightHand"},{"rightLittleIntermediate","rightLittleProximal"},{"rightLittleDistal","rightLittleIntermediate"}
         };
         private static readonly HashSet<string> BonesRequiringDirectParent=new HashSet<string>(StringComparer.Ordinal){"upperChest","leftThumbProximal","leftThumbDistal","leftIndexIntermediate","leftIndexDistal","leftMiddleIntermediate","leftMiddleDistal","leftRingIntermediate","leftRingDistal","leftLittleIntermediate","leftLittleDistal","rightThumbProximal","rightThumbDistal","rightIndexIntermediate","rightIndexDistal","rightMiddleIntermediate","rightMiddleDistal","rightRingIntermediate","rightRingDistal","rightLittleIntermediate","rightLittleDistal"};
+        internal const string WithoutLilToonKey = "vrvlogWithoutLilToonMaterials";
+
+        // Marks an export whose avatar had no lilToon material, so the save-time
+        // round-trip check accepts the absent extension for this file only.
+        internal static byte[] MarkWithoutLilToon(byte[] bytes)
+        {
+            var glb = GlbDocument.Read(bytes);
+            var extras = Object(Object(glb.Json, "asset", true), "extras", true);
+            extras[WithoutLilToonKey] = true;
+            return glb.Write();
+        }
+
+        private static bool IsWithoutLilToon(Dictionary<string, object> root)
+        {
+            var asset = Object(root, "asset", false);
+            var extras = asset == null ? null : Object(asset, "extras", false);
+            return extras != null && extras.TryGetValue(WithoutLilToonKey, out var value) && value is bool marked && marked;
+        }
+
         private static void RequireVrm10Root(Dictionary<string,object> root)
         {
             var used=Array(root,"extensionsUsed",false);var extensions=Object(root,"extensions",false);

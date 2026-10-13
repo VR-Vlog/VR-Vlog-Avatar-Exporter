@@ -48,7 +48,9 @@ namespace VRVlog.LilToonExporter.Tests
             var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.transform.SetParent(avatar.transform, false);
             part.GetComponent<Renderer>().sharedMaterial = Standard(Color.white, null);
             var warnings = new List<string>();
-            Assert.DoesNotThrow(() => LilToonFullSnapshot.Capture(avatar, warnings: warnings));
+            LilToonFullSnapshot snapshot = null;
+            Assert.DoesNotThrow(() => snapshot = LilToonFullSnapshot.Capture(avatar, warnings: warnings));
+            Assert.That(snapshot.IsEmpty, Is.True, "The exporter saves a plain MToon VRM instead of an empty lilToon extension.");
         }
 
         [Test] public void AMissingBehaviourIsNeverTreatedAsAnExportComponent()

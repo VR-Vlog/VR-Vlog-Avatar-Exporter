@@ -189,6 +189,10 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "材質保存";
                 var fullSnapshot = exporterVersion != null ? LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
+                // With no lilToon material at all the lilToon extension has nothing to
+                // carry. Save a plain MToon VRM that is marked as intentionally so.
+                var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
+                if (withoutLilToon) { fullSnapshot = null; fallbackWarnings = warnings; }
                 if (fullSnapshot == null) LilToonMainTextureBaker.ValidateAvatar(clone);
                 LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
                 // Also cover meshes/joints newly created by authoring passes.
@@ -225,13 +229,14 @@ namespace VRVlog.LilToonExporter
                 exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false));
                 if (trackingProfile != null) exported = optimizerBindings.ApplyTracking(exported);
                 else exported = optimizerBindings.ApplyUnified(exported, warnings);
-                if (exporterVersion != null)
+                if (fullSnapshot != null)
                 {
                     // The dedicated snapshot predates fallback baking. Its binary
                     // payloads no longer depend on mutable Unity texture objects.
                     exported = fullSnapshot.Inject(exported, exporterVersion, lilToonVersion);
                     foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
                 }
+                else if (withoutLilToon) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (blink.RequiresUnifiedEvidence && !VrmUnifiedExpressions.HasUsableEvidence(exported))
                     throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
                 PhysBoneSpringExport.VerifyOutput(exported, springs);

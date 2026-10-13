@@ -15,6 +15,7 @@ namespace VRVlog.LilToonExporter
     {
         readonly Dictionary<Renderer, Material[]> sources = new Dictionary<Renderer, Material[]>();
         readonly Dictionary<Material, Dictionary<string, object>> records = new Dictionary<Material, Dictionary<string, object>>();
+        internal bool IsEmpty => records.Count == 0;
         readonly List<object> textures = new List<object>();
         readonly Dictionary<(Texture, bool), int> textureIds = new Dictionary<(Texture, bool), int>();
         readonly List<DeflatePayload> payloads = new List<DeflatePayload>();
