@@ -65,6 +65,8 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 
 See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. In 0.11.15, select **QRコードでスマホに送る** in the result section, read the linked privacy policy, check consent, then press **アップロードしてQRを表示**. Scan the QR in a compatible iPhone version of VR Vlog using **モデルを変更 → PCから受け取る**. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
 
+Not yet released: in the next version, right-click the avatar in the Hierarchy and select **VR Vlog → アプリに転送…** to go from a name and terms consent to export, upload and a QR code in one window. Scan that QR with the phone's own camera; it needs a version of VR Vlog that imports from the OS camera. See the [cloud transfer guide](Documentation~/CloudTransfer.md#アプリに転送).
+
 Textures retain their aspect ratio and are reduced to fit within 1024 × 1024. Smaller textures are not enlarged. The original avatar and textures remain unchanged.
 
 To import on iPhone, save the `.vrm` in Files, enable **lilToon専用表示** in VR Vlog settings, then choose **モデルを変更 → 端末のVRMを選ぶ**. Reload the model after changing the rendering setting.
