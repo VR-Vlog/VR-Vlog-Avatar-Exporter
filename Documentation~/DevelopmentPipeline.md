@@ -12,7 +12,7 @@
 
 [参加ガイド](../CONTRIBUTING.md)に従い、forkから作業ブランチを作ります。PRでは問題、変更後の動作、対象のIssue、実行した検証と残る制限、依存・形式・ライセンスへの影響を説明します。PRの自動検証は読み取り権限の標準Ubuntu runnerで実行し、公開用の権限や秘密情報を渡しません。初回の外部貢献者についてGitHubが実行承認を求める場合は、メンテナーが差分を確認してから実行を承認します。
 
-メンテナーは最新headの必須 `schema` / `listing-validation`、自動Codex Review、未解決の指摘、変更に必要なUnity/実機の証跡を確認します。hostテストの成功だけで実際のUnity・画像・端末受入を通過したとは扱いません。検証済みheadから変更があれば、その変更に必要な検証とレビューを最新headでやり直します。
+メンテナーは最新headの必須 `schema` / `listing-validation`、手動で依頼するCodex Review、未解決の指摘、変更に必要なUnity/実機の証跡を確認します。本人の既存方針に従い、自動Codex Reviewは有効化しません。hostテストの成功だけで実際のUnity・画像・端末受入を通過したとは扱いません。検証済みheadから変更があれば、その変更に必要な検証とレビューを最新headでやり直します。
 
 workflowの編集では、構文チェックに加え、攻撃者のPRが書込み権限や秘密情報を得られないか、入力をshellへ直接挿入していないか、必須チェックがskip・失敗無視で通らないか、配布候補のrun/コミット/ZIPを取り違えないかをレビューします。SHA固定だけで外部Actionの内容が安全と証明されるわけではありません。
 
@@ -58,6 +58,8 @@ Unityが必要な変更は[既存の互換性・回帰profile](../Compatibility/
 5. 承認後だけ **Release VPM Packages**をmainから起動し、同じ情報を指定します。公開処理は、同じリポジトリの正式な候補workflowがmainで成功したこと、artifactが有効なこと、receiptとZIPの一致を確認し、host検証とローカル再生成ZIPのSHAも再確認します。fork PR・別workflow・失敗・取消し・途中のrunは拒否します。
 6. 既存のタグ保護・stable/beta区別を保って公開します。betaはstableのlatestを動かしません。同じタグは上書きしません。Releases生成後、既存の許可されたVPM/Pages経路で全公開履歴を生成・検証します。
 7. ReleasesとVPMのURL・版・ZIP hash・依存の整合、VCC/ALCOMへの導入・更新と必要な動作確認を行い、実際に確認した環境を記録して関連Issueへ反映します。
+
+既存利用者向けの旧VPM URLも、[Organization移管の互換配信手順](OrganizationMigration.md#メンテナーの互換配信更新)で同期します。ローカルの同期ツールとレビューした個人Pages PRを使用し、旧・新一覧の全公開version・ZIP hashの一致と実URLの公開を確認するまで、互換配信を含む公開完了とは扱いません。新しいCIや自動同期はこの手順に含みません。
 
 ## 失敗・公開後の対応
 
