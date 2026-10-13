@@ -10,7 +10,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = "mitsuya0077/VR-Vlog-lilToon-Exporter"
+REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
 EXPORTER = "com.vrvlog.liltoon-vrm-exporter"
 FIXTURE_BASE = "http://127.0.0.1:8765/listing-fixture/release"
 MAX_ZIP_BYTES = 64 * 1024 * 1024
