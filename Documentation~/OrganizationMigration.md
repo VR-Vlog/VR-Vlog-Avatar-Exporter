@@ -24,7 +24,7 @@ GitHubの移管redirectを維持するため、元のリポジトリ名を個人
 
 1. `Tools/sync-vpm-mirrors.py --preflight` が専用認証と公開先を読み取りで確認し、公式サイトに保存済みの公開記録と今回の実行番号を照合します。
 2. 全公開履歴を生成し、既存の `Tools/check-listing.py` で検証します。
-3. `Tools/prepare-exporter-publication.py` が実際に生成済みの公式ページ・一覧を保存し、組織側の導入HTMLだけを転送ページにします。組織側JSONは変更しません。
+3. `Tools/prepare-exporter-publication.py` が公式サイトの最新Git treeに保存済みの公開記録を再取得して順序を照合します。確認後、実際に生成済みの公式ページ・一覧を保存し、組織側の導入HTMLだけを転送ページにします。組織側JSONは変更しません。再取得失敗や新しい公開との競合では、配置用HTMLを変更する前に止めます。
 4. 既存Pagesが組織側を公開し、同期ツールが今回の検証済みsnapshotとの一致を待ちます。
 5. `Tools/sync-vpm-mirrors.py` が2つの公開先を同期し、3つの実URLのHTTP 200と内容一致を確認して完了します。
 
@@ -42,7 +42,7 @@ GitHubの移管redirectを維持するため、元のリポジトリ名を個人
 ## 認証と復旧
 
 Exporterの既存main限定 `github-pages` EnvironmentのSecret `VPM_MIRROR_TOKEN` に、上記2リポジトリだけの `Contents: Read and write` を持つFine-grained tokenを設定します。自動で付くMetadata読み取り以外は不要です。リポジトリ全体の同名Secretは保存せず、他ブランチのworkflowに専用認証を渡しません。
-専用の事前確認・同期stepの環境変数だけへ渡し、ログ・引数・サイト・ZIP・snapshotには含めません。有効期限前にSecretを更新します。
+専用の事前確認・配置前の再確認・同期の3つのstepの環境変数だけへ渡し、ログ・引数・サイト・ZIP・snapshotには含めません。有効期限前にSecretを更新します。
 期待するmainのheadを指定して通常のコミットを作り、同時変更時は最新headを読み直して計画し直します。force pushやbranch保護の回避は行いません。
 既存versionの削除、ZIP hashの変更、不正JSON、別repository ID、異なるZIP配布元、symlinkを拒否します。
 複数サイトの配置は同時確定ではないため、CDNの反映待ちを上限付きで行います。途中失敗はworkflowの失敗として報告し、反映済みコミットのURLを残します。

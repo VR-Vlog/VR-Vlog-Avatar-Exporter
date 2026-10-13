@@ -7,6 +7,7 @@ sync-vpm-mirrors.py. The mirror tool rewrites the official site's URLs.
 import argparse
 import hashlib
 from html.parser import HTMLParser
+import importlib.util
 import json
 import math
 import os
@@ -146,6 +147,45 @@ def read_preflight(environment, publisher):
         raise PreparationError("Mirror preflight proof is not valid UTF-8 JSON") from error
     validate_preflight(proof, publisher)
     return proof
+
+
+def load_mirror_tools():
+    try:
+        spec = importlib.util.spec_from_file_location("exporter_mirror_api", Path(__file__).with_name("sync-vpm-mirrors.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    except Exception:
+        raise PreparationError("Mirror API helper could not be loaded") from None
+
+
+def official_reader_from_environment(environment, publisher):
+    mirror = load_mirror_tools()
+    def read_official():
+        require(mirror.publisher_from_environment(environment) == publisher,
+                "Publication publisher context changed after preflight")
+        mirror.validate_checkout(publisher)
+        api = mirror.GitHubApi(environment.get(mirror.TOKEN_ENV), mirror.Budget())
+        return api.snapshot(mirror.OFFICIAL).receipt
+    return read_official
+
+
+def require_fresh_official(candidate, cached_official, reader):
+    try:
+        raw = reader()
+    except Exception:
+        # Readers may raise OS, network or API errors containing response bodies
+        # or credentials. Only this fixed message is suitable for CLI output.
+        raise PreparationError("Latest official publication could not be checked") from None
+    if raw is None:
+        require(cached_official is None, "Previously observed official publication receipt is now missing")
+        return
+    latest = parse_publication_receipt(raw)
+    context = candidate["publisher"]
+    observed = {"publisher": latest["publisher"], "digest": latest["digest"]}
+    validate_preflight({"schema": 1, "publisher": context, "official": observed}, context)
+    if context["run_number"] == latest["publisher"]["run_number"]:
+        require(candidate == latest, "An equal publisher sequence cannot replace a different latest official publication")
 
 
 def publication_receipt(files, publisher):
@@ -344,7 +384,8 @@ def redirect_html():
 '''.encode("utf-8")
 
 
-def prepare(publication_root, official_root, *, publisher, preflight):
+def prepare(publication_root, official_root, *, publisher, preflight, fresh_official_reader):
+    require(callable(fresh_official_reader), "Publication requires a fresh official receipt reader")
     official = validate_preflight(preflight, publisher)
     source_arg, destination_arg = Path(publication_root).absolute(), Path(official_root).absolute()
     require(not source_arg.is_symlink() and not destination_arg.is_symlink(), "Publication roots cannot be symlinks")
@@ -382,6 +423,9 @@ def prepare(publication_root, official_root, *, publisher, preflight):
         require(read_snapshot(snapshot) == snapshot_files, "Staged snapshot bytes differ from the built publication")
         if original_receipt is not None:
             previous_receipt.write_bytes(original_receipt)
+        # Read the latest official Git tree after validating/staging the full
+        # candidate, before creating canonical temp files or replacing outputs.
+        require_fresh_official(parse_publication_receipt(receipt), official, fresh_official_reader)
         with tempfile.NamedTemporaryFile(prefix=".exporter-redirect-", dir=source, delete=False) as stream:
             redirect_temp = Path(stream.name)
             stream.write(redirect_html())
@@ -442,7 +486,9 @@ def main():
     try:
         publisher = publisher_from_environment(os.environ)
         preflight = read_preflight(os.environ, publisher)
-        report = prepare(args.publication_root, args.official_root, publisher=publisher, preflight=preflight)
+        reader = official_reader_from_environment(os.environ, publisher)
+        report = prepare(args.publication_root, args.official_root, publisher=publisher, preflight=preflight,
+                         fresh_official_reader=reader)
     except (PreparationError, OSError) as error:
         message = str(error) if isinstance(error, PreparationError) else "Local publication could not be prepared"
         parser.exit(1, f"Exporter publication preparation failed: {message}.\n")

@@ -1,13 +1,16 @@
 """Exercise publication splitting, retry safety, and rejection before mutation."""
 import copy
+import contextlib
 import hashlib
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -37,6 +40,7 @@ class PublicationTests(unittest.TestCase):
                           "workflow": publication.PUBLISHER_WORKFLOW,
                           "run_number": 42, "run_id": 38434276596, "source_commit": "c" * 40}
         self.preflight = {"schema": 1, "publisher": self.publisher, "official": None}
+        self.fresh_official_reader = lambda: None
         self.listing = {"id": publication.REPOSITORY_ID, "url": publication.CANONICAL_URL, "packages": {}}
         for name in publication.REQUIRED_PACKAGES:
             version = "0.11.14" if name == publication.REQUIRED_PACKAGES[0] else "0.131.0"
@@ -54,9 +58,10 @@ class PublicationTests(unittest.TestCase):
         (self.source / "localize.js").write_text('const languages = {en: {copy: "Copy"}};\n', encoding="utf-8")
         (self.source / "styles.css").write_text("body { color: #fff; }\n", encoding="utf-8")
 
-    def prepare(self, source, destination, *, publisher=None, preflight=None):
+    def prepare(self, source, destination, *, publisher=None, preflight=None, fresh_official_reader=None):
         return publication.prepare(source, destination, publisher=publisher or self.publisher,
-                                   preflight=self.preflight if preflight is None else preflight)
+                                   preflight=self.preflight if preflight is None else preflight,
+                                   fresh_official_reader=self.fresh_official_reader if fresh_official_reader is None else fresh_official_reader)
 
     def ci_environment(self):
         return {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": publication.PUBLISHER_REPOSITORY,
@@ -426,6 +431,7 @@ class PublicationTests(unittest.TestCase):
         expected = publication.publication_receipt(contents(self.source), self.publisher)
         digest = publication.parse_publication_receipt(expected)["digest"]
         self.preflight = self.observed(self.publisher, digest)
+        self.fresh_official_reader = lambda: expected
         self.prepare(self.source, self.official)
         saved = contents(self.official)
         self.assertEqual(expected, saved[publication.PUBLICATION_RECEIPT])
@@ -439,6 +445,7 @@ class PublicationTests(unittest.TestCase):
         old = publication.parse_publication_receipt(publication.publication_receipt(contents(self.source), previous))
         self.publisher = dict(previous, run_number=43, run_id=38434276597, source_commit="d" * 40)
         self.preflight = self.observed(previous, old["digest"])
+        self.fresh_official_reader = lambda: json.dumps(old).encode("utf-8")
         self.prepare(self.source, self.official)
         fresh = publication.validate_publication_receipt(contents(self.official))
         self.assertEqual(self.publisher, fresh["publisher"])
@@ -453,7 +460,8 @@ class PublicationTests(unittest.TestCase):
             with self.subTest(proof=proof):
                 before = contents(self.source)
                 with self.assertRaises(publication.PreparationError):
-                    publication.prepare(self.source, self.official, publisher=self.publisher, preflight=proof)
+                    publication.prepare(self.source, self.official, publisher=self.publisher, preflight=proof,
+                                        fresh_official_reader=lambda: None)
                 self.assertEqual(before, contents(self.source))
                 self.assertFalse(self.official.exists())
 
@@ -523,9 +531,14 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(before, contents(self.source))
         self.assertFalse(self.official.exists())
         (self.root / publication.PREFLIGHT_FILE).write_text(json.dumps(self.preflight), encoding="utf-8")
-        ready = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=10)
-        self.assertEqual(0, ready.returncode, ready.stderr)
-        self.assertEqual("prepared", json.loads(ready.stdout)["status"])
+        output = io.StringIO()
+        with mock.patch.object(publication, "official_reader_from_environment", return_value=lambda: None) as reader_factory, \
+                mock.patch.dict(os.environ, environment, clear=True), mock.patch.object(sys, "argv", command[1:]), \
+                contextlib.redirect_stdout(output):
+            publication.main()
+        reader_factory.assert_called_once()
+        self.assertEqual(self.publisher, reader_factory.call_args.args[1])
+        self.assertEqual("prepared", json.loads(output.getvalue())["status"])
         self.assertEqual(self.publisher, publication.validate_publication_receipt(contents(self.official))["publisher"])
 
     def test_newer_sequence_cannot_reuse_an_earlier_run_identity(self):
@@ -534,6 +547,97 @@ class PublicationTests(unittest.TestCase):
         with mock.patch.object(publication.os, "replace") as replacement:
             self.assert_rejected_unchanged("newer publisher sequence.*reuse")
             replacement.assert_not_called()
+
+    def test_fresh_read_happens_after_staging_and_before_either_published_tree_changes(self):
+        before = contents(self.source)
+        previous = self.previous_snapshot()
+        calls = []
+        def reader():
+            calls.append("fresh")
+            stages = list(self.root.glob(".exporter-publication-*/snapshot"))
+            self.assertEqual(1, len(stages))
+            staged = publication.read_snapshot(stages[0])
+            self.assertEqual(before, original_files(staged))
+            self.assertEqual(self.publisher, publication.validate_publication_receipt(staged)["publisher"])
+            self.assertEqual(before, contents(self.source))
+            self.assertEqual(previous, contents(self.official))
+            return None
+        self.prepare(self.source, self.official, fresh_official_reader=reader)
+        self.assertEqual(["fresh"], calls)
+
+    def test_cached_bootstrap_cannot_deploy_over_a_fresh_newer_official_receipt(self):
+        newer = dict(self.publisher, run_number=43, run_id=38434276597)
+        latest = publication.publication_receipt(contents(self.source), newer)
+        self.fresh_official_reader = lambda: latest
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("older publisher run")
+            replacement.assert_not_called()
+
+    def test_cached_bootstrap_cannot_deploy_over_equal_sequence_different_html(self):
+        changed = contents(self.source)
+        changed["index.html"] += b"\n<!-- direct update after preflight -->\n"
+        latest = publication.publication_receipt(changed, self.publisher)
+        self.fresh_official_reader = lambda: latest
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("equal publisher sequence.*different latest official publication")
+            replacement.assert_not_called()
+
+    def test_cached_older_receipt_cannot_deploy_when_latest_official_advanced(self):
+        old = dict(self.publisher, run_number=41, run_id=38434276595)
+        old_raw = publication.publication_receipt(contents(self.source), old)
+        self.preflight = self.observed(old, publication.parse_publication_receipt(old_raw)["digest"])
+        latest = publication.publication_receipt(contents(self.source), dict(self.publisher, run_number=43, run_id=38434276597))
+        self.fresh_official_reader = lambda: latest
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("older publisher run")
+            replacement.assert_not_called()
+
+    def test_previously_observed_receipt_cannot_disappear_and_be_treated_as_bootstrap(self):
+        previous = dict(self.publisher, run_number=41, run_id=38434276595)
+        raw = publication.publication_receipt(contents(self.source), previous)
+        self.preflight = self.observed(previous, publication.parse_publication_receipt(raw)["digest"])
+        self.assert_rejected_unchanged("Previously observed.*now missing")
+
+    def test_malformed_fresh_receipt_fails_without_any_output_replacement(self):
+        for raw in (b"malformed receipt", b'{"schema":1}', b'{}'):
+            with self.subTest(raw=raw), mock.patch.object(publication.os, "replace") as replacement:
+                self.fresh_official_reader = lambda: raw
+                self.assert_rejected_unchanged("receipt")
+                replacement.assert_not_called()
+
+    def test_fresh_api_failure_is_clipped_and_preserves_source_and_previous_snapshot(self):
+        self.previous_snapshot()
+        def failure():
+            raise RuntimeError("private response body must not appear")
+        self.fresh_official_reader = failure
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("^Latest official publication could not be checked$")
+            replacement.assert_not_called()
+        self.assertFalse(list(self.root.glob(".exporter-publication-*")))
+
+    def test_fresh_reader_is_mandatory_and_never_defaults_to_live_network(self):
+        before = contents(self.source)
+        with self.assertRaisesRegex(publication.PreparationError, "fresh official receipt reader"):
+            publication.prepare(self.source, self.official, publisher=self.publisher,
+                                preflight=self.preflight, fresh_official_reader=None)
+        self.assertEqual(before, contents(self.source))
+        self.assertFalse(self.official.exists())
+
+    def test_cli_reader_reuses_fixed_mirror_api_context_checkout_and_official_target(self):
+        target = object()
+        api = types.SimpleNamespace(snapshot=mock.Mock(return_value=types.SimpleNamespace(receipt=None)))
+        mirror = types.SimpleNamespace(publisher_from_environment=mock.Mock(return_value=self.publisher),
+                                       validate_checkout=mock.Mock(), GitHubApi=mock.Mock(return_value=api),
+                                       Budget=mock.Mock(return_value="bounded-budget"), TOKEN_ENV="VPM_MIRROR_TOKEN", OFFICIAL=target)
+        environment = dict(self.ci_environment(), VPM_MIRROR_TOKEN="fixture")
+        with mock.patch.object(publication, "load_mirror_tools", return_value=mirror):
+            reader = publication.official_reader_from_environment(environment, self.publisher)
+            mirror.GitHubApi.assert_not_called()
+            self.assertIsNone(reader())
+        mirror.publisher_from_environment.assert_called_once_with(environment)
+        mirror.validate_checkout.assert_called_once_with(self.publisher)
+        mirror.GitHubApi.assert_called_once_with("fixture", "bounded-budget")
+        api.snapshot.assert_called_once_with(target)
 
 
 if __name__ == "__main__":

@@ -85,10 +85,8 @@ def check_publication_step(name, job_name, step):
             "Mirror preparation and credentials belong only to the Pages publication job")
     require(identity in PUBLICATION_RUNS and step.get("run") == PUBLICATION_RUNS[identity],
             "Unreviewed mirror command or destination override")
-    allowed = {"id", "name", "run"}
-    if identity in {"mirror-preflight", "mirrors"}:
-        allowed.add("env")
-        require(step.get("env") == MIRROR_ENV, "Mirror credential must use only the dedicated step environment")
+    allowed = {"id", "name", "run", "env"}
+    require(step.get("env") == MIRROR_ENV, "Mirror credential must use only the dedicated step environment")
     require(set(step) <= allowed, "Publication steps must use default success, shell and working directory")
 
 
@@ -97,7 +95,7 @@ def check_step_secrets(name, job_name, step):
         return
     require((name, job_name) == ("build-listing.yml", "build-listing"),
             "Only the existing Pages publication job may reference secrets")
-    if step.get("id") in {"mirror-preflight", "mirrors"}:
+    if step.get("id") in PUBLICATION_RUNS:
         require(step.get("env") == MIRROR_ENV, "Mirror credential environment is not approved")
     else:
         require(step.get("name") == "Generate VPM listing"

@@ -126,7 +126,7 @@ class WorkflowTrustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check("build-listing.yml", data)
 
-    def test_mirror_credentials_cannot_escape_the_two_publication_steps(self):
+    def test_mirror_credentials_cannot_escape_the_three_publication_steps(self):
         approved = {"id": "mirrors", "run": policy.PUBLICATION_RUNS["mirrors"],
                     "env": dict(policy.MIRROR_ENV)}
         data = self.workflow()
@@ -222,7 +222,7 @@ class WorkflowTrustTests(unittest.TestCase):
             policy.check("build-listing.yml", data)
 
     def test_mirror_credential_and_approval_environment_are_fixed(self):
-        for identity in ("mirror-preflight", "mirrors"):
+        for identity in policy.PUBLICATION_RUNS:
             for env in ({}, {"VPM_MIRROR_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},
                         {"VPM_MIRROR_TOKEN": "${{ secrets['VPM_MIRROR_TOKEN'] }}"},
                         dict(policy.MIRROR_ENV, OTHER_TOKEN="${{ secrets.OTHER_TOKEN }}")):

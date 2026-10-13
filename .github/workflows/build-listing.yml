@@ -277,6 +277,8 @@ jobs:
       - name: Prepare official site and canonical compatibility publication
         id: prepare-publication
         run: python3 Tools/prepare-exporter-publication.py --publication-root Website --official-root "$RUNNER_TEMP/official-exporter-publication"
+        env:
+          VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
