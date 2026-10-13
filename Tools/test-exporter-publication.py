@@ -5,6 +5,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -31,6 +33,10 @@ class PublicationTests(unittest.TestCase):
         self.source = self.root / "Website"
         self.official = self.root / "official-exporter-publication"
         self.source.mkdir()
+        self.publisher = {"repository": publication.PUBLISHER_REPOSITORY,
+                          "workflow": publication.PUBLISHER_WORKFLOW,
+                          "run_number": 42, "run_id": 38434276596, "source_commit": "c" * 40}
+        self.preflight = {"schema": 1, "publisher": self.publisher, "official": None}
         self.listing = {"id": publication.REPOSITORY_ID, "url": publication.CANONICAL_URL, "packages": {}}
         for name in publication.REQUIRED_PACKAGES:
             version = "0.11.14" if name == publication.REQUIRED_PACKAGES[0] else "0.131.0"
@@ -48,6 +54,21 @@ class PublicationTests(unittest.TestCase):
         (self.source / "localize.js").write_text('const languages = {en: {copy: "Copy"}};\n', encoding="utf-8")
         (self.source / "styles.css").write_text("body { color: #fff; }\n", encoding="utf-8")
 
+    def prepare(self, source, destination, *, publisher=None, preflight=None):
+        return publication.prepare(source, destination, publisher=publisher or self.publisher,
+                                   preflight=self.preflight if preflight is None else preflight)
+
+    def ci_environment(self):
+        return {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": publication.PUBLISHER_REPOSITORY,
+                "GITHUB_WORKFLOW_REF": publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@refs/heads/main",
+                "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
+                "GITHUB_RUN_NUMBER": str(self.publisher["run_number"]), "GITHUB_RUN_ID": str(self.publisher["run_id"]),
+                "GITHUB_SHA": self.publisher["source_commit"], "RUNNER_TEMP": str(self.root)}
+
+    def observed(self, publisher, digest):
+        return {"schema": 1, "publisher": self.publisher,
+                "official": {"publisher": publisher, "digest": digest}}
+
     def write_listing(self):
         (self.source / "index.json").write_text(json.dumps(self.listing, indent=2) + "\n", encoding="utf-8")
 
@@ -64,7 +85,7 @@ class PublicationTests(unittest.TestCase):
         before = contents(self.source)
         destination_before = contents(self.official) if self.official.exists() else None
         with self.assertRaisesRegex(publication.PreparationError, pattern):
-            publication.prepare(source or self.source, official or self.official)
+            self.prepare(source or self.source, official or self.official)
         self.assertEqual(before, contents(self.source))
         if destination_before is None:
             self.assertFalse(self.official.exists())
@@ -73,7 +94,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_full_snapshot_is_byte_identical_with_receipt_and_canonical_html_redirect(self):
         before = contents(self.source)
-        report = publication.prepare(self.source, self.official)
+        report = self.prepare(self.source, self.official)
         self.assertEqual("prepared", report["status"])
         saved = contents(self.official)
         self.assertEqual(before, original_files(saved))
@@ -94,18 +115,18 @@ class PublicationTests(unittest.TestCase):
         self.assertNotIn('vcc://', redirect)
 
     def test_completed_retry_rejects_redirect_and_retains_both_publications(self):
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         self.assert_rejected_unchanged("already a redirect")
 
     def test_rebuilt_retry_replaces_snapshot_without_retaining_stale_files(self):
         self.previous_snapshot()
         before = contents(self.source)
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         self.assertEqual(before, original_files(contents(self.official)))
         (self.source / "index.html").write_bytes(self.html)
         (self.source / "assets/new.bin").write_bytes(b"new version")
         rebuilt = contents(self.source)
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         saved = contents(self.official)
         self.assertEqual(original_files(rebuilt), original_files(saved))
         publication.validate_publication_receipt(saved)
@@ -124,7 +145,7 @@ class PublicationTests(unittest.TestCase):
     def test_similar_sibling_name_is_not_mistaken_for_an_overlapping_root(self):
         sibling = self.root / "Website-official"
         before = contents(self.source)
-        publication.prepare(self.source, sibling)
+        self.prepare(self.source, sibling)
         self.assertEqual(before, original_files(contents(sibling)))
 
     def test_unrendered_html_package_loop_and_script_tokens_are_rejected(self):
@@ -213,7 +234,7 @@ class PublicationTests(unittest.TestCase):
         before = contents(self.source)
         with mock.patch.object(publication.os, "scandir", side_effect=fail_assets), \
                 self.assertRaisesRegex(publication.PreparationError, "directory could not be read"):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertFalse(self.official.exists())
 
@@ -226,7 +247,7 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated snapshot installation failure")
             return real_replace(source, destination)
         with mock.patch.object(publication.os, "replace", side_effect=fail_snapshot), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertEqual(old, contents(self.official))
 
@@ -239,7 +260,7 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated redirect installation failure")
             return real_replace(source, destination)
         with mock.patch.object(publication.os, "replace", side_effect=fail_redirect), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertEqual(old, contents(self.official))
 
@@ -252,7 +273,7 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated failure")
             return real_replace(source, destination)
         with mock.patch.object(publication.os, "replace", side_effect=fail_redirect_and_restore), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         backups = list(self.root.glob(".exporter-publication-*/previous"))
         self.assertEqual(1, len(backups))
         self.assertEqual(old, contents(backups[0]))
@@ -260,30 +281,30 @@ class PublicationTests(unittest.TestCase):
 
     def test_receipt_is_deterministic_and_matches_the_agreed_digest_encoding(self):
         files = contents(self.source)
-        raw = publication.publication_receipt(files)
-        self.assertEqual(raw, publication.publication_receipt(dict(reversed(list(files.items())))))
+        raw = publication.publication_receipt(files, self.publisher)
+        self.assertEqual(raw, publication.publication_receipt(dict(reversed(list(files.items()))), self.publisher))
         receipt = publication.parse_publication_receipt(raw)
-        payload = {"schema": 1, "id": publication.REPOSITORY_ID,
+        payload = {"schema": 2, "id": publication.REPOSITORY_ID, "publisher": self.publisher,
                    "files": {path: hashlib.sha256(value).hexdigest() for path, value in files.items()}}
         expected = hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True,
                                             separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
         self.assertEqual(expected, receipt["digest"])
         with self.assertRaisesRegex(publication.PreparationError, "cannot include itself"):
-            publication.publication_receipt(dict(files, **{publication.PUBLICATION_RECEIPT: raw}))
+            publication.publication_receipt(dict(files, **{publication.PUBLICATION_RECEIPT: raw}), self.publisher)
 
     def test_same_listing_with_different_html_has_a_different_publication_identity(self):
         files = contents(self.source)
-        first = publication.publication_receipt(files)
+        first = publication.publication_receipt(files, self.publisher)
         changed = dict(files)
         changed["index.html"] += b"\n<!-- newer introduction -->\n"
-        second = publication.publication_receipt(changed)
+        second = publication.publication_receipt(changed, self.publisher)
         self.assertEqual(files["index.json"], changed["index.json"])
         self.assertNotEqual(first, second)
         self.assertNotEqual(publication.parse_publication_receipt(first)["digest"],
                             publication.parse_publication_receipt(second)["digest"])
 
     def test_tampered_missing_or_added_snapshot_assets_fail_receipt_validation(self):
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         files = contents(self.official)
         for action in ("changed", "missing", "added"):
             with self.subTest(action=action):
@@ -301,7 +322,7 @@ class PublicationTests(unittest.TestCase):
             publication.read_snapshot(self.official)
 
     def test_malformed_reserved_receipt_is_rejected_before_changes(self):
-        valid = json.loads(publication.publication_receipt(contents(self.source)))
+        valid = json.loads(publication.publication_receipt(contents(self.source), self.publisher))
         bad_receipts = [b"unrelated source file", b"{}", b'{"schema":1,"schema":1}']
         for change in ("schema", "digest", "hash", "self", "path", "extra"):
             bad = copy.deepcopy(valid)
@@ -318,7 +339,7 @@ class PublicationTests(unittest.TestCase):
             else:
                 bad["unapproved"] = "field"
             if change != "digest":
-                bad["digest"] = publication.receipt_digest({key: bad[key] for key in ("schema", "id", "files")})
+                bad["digest"] = publication.receipt_digest({key: bad[key] for key in ("schema", "id", "files", "publisher")})
             bad_receipts.append(json.dumps(bad).encode("utf-8"))
         for raw in bad_receipts:
             with self.subTest(raw=raw[:80]):
@@ -326,11 +347,11 @@ class PublicationTests(unittest.TestCase):
                 self.assert_rejected_unchanged("receipt|publication path")
 
     def test_rebuilt_source_regenerates_a_valid_prior_receipt_from_new_html(self):
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         old = (self.source / publication.PUBLICATION_RECEIPT).read_bytes()
         listing = (self.source / "index.json").read_bytes()
         (self.source / "index.html").write_bytes(self.html + b"\n<!-- updated page -->\n")
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         saved = contents(self.official)
         self.assertNotEqual(old, saved[publication.PUBLICATION_RECEIPT])
         self.assertEqual(saved[publication.PUBLICATION_RECEIPT], (self.source / publication.PUBLICATION_RECEIPT).read_bytes())
@@ -346,7 +367,7 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated receipt write failure")
             return real_write(path, raw)
         with mock.patch.object(Path, "write_bytes", autospec=True, side_effect=fail_receipt), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertEqual(previous, contents(self.official))
 
@@ -359,12 +380,12 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated receipt replacement failure")
             return real_replace(source, destination)
         with mock.patch.object(publication.os, "replace", side_effect=fail_receipt), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertEqual(previous, contents(self.official))
 
     def test_redirect_failure_restores_existing_canonical_receipt_and_previous_snapshot(self):
-        publication.prepare(self.source, self.official)
+        self.prepare(self.source, self.official)
         (self.source / "index.html").write_bytes(self.html + b"\n<!-- rebuilt page -->\n")
         before = contents(self.source)
         previous = contents(self.official)
@@ -374,9 +395,145 @@ class PublicationTests(unittest.TestCase):
                 raise OSError("simulated redirect replacement failure")
             return real_replace(source, destination)
         with mock.patch.object(publication.os, "replace", side_effect=fail_redirect), self.assertRaises(OSError):
-            publication.prepare(self.source, self.official)
+            self.prepare(self.source, self.official)
         self.assertEqual(before, contents(self.source))
         self.assertEqual(previous, contents(self.official))
+
+    def test_older_full_workflow_rerun_is_rejected_before_any_replacement(self):
+        self.previous_snapshot()
+        newer = dict(self.publisher, run_number=43, run_id=38434276597, source_commit="d" * 40)
+        self.preflight = self.observed(newer, "a" * 64)
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("older publisher run")
+            replacement.assert_not_called()
+
+    def test_equal_sequence_with_changed_page_digest_is_rejected_before_deployment(self):
+        old_receipt = publication.parse_publication_receipt(publication.publication_receipt(contents(self.source), self.publisher))
+        self.preflight = self.observed(self.publisher, old_receipt["digest"])
+        (self.source / "index.html").write_bytes(self.html + b"\n<!-- changed after publication -->\n")
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("equal publisher sequence.*different.*digest")
+            replacement.assert_not_called()
+
+    def test_equal_sequence_with_different_run_or_source_commit_is_rejected(self):
+        for previous in (dict(self.publisher, run_id=self.publisher["run_id"] + 1),
+                         dict(self.publisher, source_commit="d" * 40)):
+            with self.subTest(previous=previous):
+                self.preflight = self.observed(previous, "a" * 64)
+                self.assert_rejected_unchanged("Equal publisher sequence.*different run or source")
+
+    def test_exact_same_run_rerun_regenerates_identical_receipt_and_recovers(self):
+        expected = publication.publication_receipt(contents(self.source), self.publisher)
+        digest = publication.parse_publication_receipt(expected)["digest"]
+        self.preflight = self.observed(self.publisher, digest)
+        self.prepare(self.source, self.official)
+        saved = contents(self.official)
+        self.assertEqual(expected, saved[publication.PUBLICATION_RECEIPT])
+        (self.source / "index.html").write_bytes(self.html)
+        report = self.prepare(self.source, self.official)
+        self.assertEqual(saved, contents(self.official))
+        self.assertEqual(digest, report["publicationDigest"])
+
+    def test_newer_dispatch_has_new_publisher_bound_receipt_even_for_identical_files(self):
+        previous = dict(self.publisher)
+        old = publication.parse_publication_receipt(publication.publication_receipt(contents(self.source), previous))
+        self.publisher = dict(previous, run_number=43, run_id=38434276597, source_commit="d" * 40)
+        self.preflight = self.observed(previous, old["digest"])
+        self.prepare(self.source, self.official)
+        fresh = publication.validate_publication_receipt(contents(self.official))
+        self.assertEqual(self.publisher, fresh["publisher"])
+        self.assertEqual(old["files"], fresh["files"])
+        self.assertNotEqual(old["digest"], fresh["digest"])
+
+    def test_proof_from_another_ci_run_and_invalid_proof_shapes_are_rejected(self):
+        cases = [None, {}, {"schema": True, "publisher": self.publisher, "official": None},
+                 {"schema": 1, "publisher": dict(self.publisher, run_id=38434276598), "official": None},
+                 self.observed(self.publisher, "A" * 64), self.observed(self.publisher, None)]
+        for proof in cases:
+            with self.subTest(proof=proof):
+                before = contents(self.source)
+                with self.assertRaises(publication.PreparationError):
+                    publication.prepare(self.source, self.official, publisher=self.publisher, preflight=proof)
+                self.assertEqual(before, contents(self.source))
+                self.assertFalse(self.official.exists())
+
+    def test_receipt_rejects_schema_one_and_foreign_or_invalid_publisher_contexts(self):
+        receipt = json.loads(publication.publication_receipt(contents(self.source), self.publisher))
+        old = {key: value for key, value in receipt.items() if key != "publisher"}
+        old["schema"] = 1
+        old["digest"] = publication.receipt_digest({key: old[key] for key in ("schema", "id", "files")})
+        with self.assertRaisesRegex(publication.PreparationError, "schema or identity"):
+            publication.parse_publication_receipt(json.dumps(old).encode("utf-8"))
+        for key, value in (("repository", "other/repository"), ("workflow", ".github/workflows/other.yml"),
+                           ("run_number", True), ("run_number", 0), ("run_id", "38434276596"),
+                           ("source_commit", "C" * 40)):
+            bad = dict(self.publisher, **{key: value})
+            with self.subTest(key=key, value=value), self.assertRaises(publication.PreparationError):
+                publication.publication_receipt(contents(self.source), bad)
+
+    def test_ci_context_requires_fixed_workflow_main_dispatch_or_matching_release_tag(self):
+        environment = self.ci_environment()
+        self.assertEqual(self.publisher, publication.publisher_from_environment(environment))
+        release = dict(environment, GITHUB_EVENT_NAME="release", GITHUB_REF="refs/tags/v0.11.14-beta.1",
+                       GITHUB_WORKFLOW_REF=publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@refs/tags/v0.11.14-beta.1")
+        self.assertEqual(self.publisher, publication.publisher_from_environment(release))
+        for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_REPOSITORY", "fork/repository"), ("GITHUB_EVENT_NAME", "pull_request"),
+                           ("GITHUB_REF", "refs/heads/feature"), ("GITHUB_WORKFLOW_REF", "foreign/workflow@refs/heads/main"),
+                           ("GITHUB_RUN_NUMBER", "042"), ("GITHUB_RUN_NUMBER", "0"),
+                           ("GITHUB_RUN_ID", "1e10"), ("GITHUB_SHA", "c" * 39)):
+            with self.subTest(key=key, value=value), self.assertRaises(publication.PreparationError):
+                publication.publisher_from_environment(dict(environment, **{key: value}))
+        for key in environment:
+            if key == "RUNNER_TEMP":
+                continue
+            missing = dict(environment)
+            del missing[key]
+            with self.subTest(missing=key), self.assertRaises(publication.PreparationError):
+                publication.publisher_from_environment(missing)
+
+    def test_preflight_reader_requires_bounded_regular_file_in_runner_temp(self):
+        environment = self.ci_environment()
+        path = self.root / publication.PREFLIGHT_FILE
+        with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
+            publication.read_preflight(environment, self.publisher)
+        path.write_text(json.dumps(self.preflight), encoding="utf-8")
+        self.assertEqual(self.preflight, publication.read_preflight(environment, self.publisher))
+        with mock.patch.object(publication, "MAX_FILE_BYTES", 1), self.assertRaisesRegex(publication.PreparationError, "size bound"):
+            publication.read_preflight(environment, self.publisher)
+        path.write_text('{"schema":1,"schema":1}', encoding="utf-8")
+        with self.assertRaisesRegex(publication.PreparationError, "not valid UTF-8 JSON"):
+            publication.read_preflight(environment, self.publisher)
+        path.unlink()
+        path.symlink_to(self.source / "index.json")
+        with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
+            publication.read_preflight(environment, self.publisher)
+        path.unlink()
+        os.mkfifo(path)
+        with self.assertRaisesRegex(publication.PreparationError, "missing or unsafe"):
+            publication.read_preflight(environment, self.publisher)
+
+    def test_cli_refuses_missing_preflight_and_succeeds_with_matching_ci_proof(self):
+        command = [sys.executable, str(Path(__file__).with_name("prepare-exporter-publication.py")),
+                   "--publication-root", str(self.source), "--official-root", str(self.official)]
+        environment = dict(os.environ, **self.ci_environment())
+        before = contents(self.source)
+        missing = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=10)
+        self.assertEqual(1, missing.returncode)
+        self.assertIn("Mirror preflight proof is missing", missing.stderr)
+        self.assertEqual(before, contents(self.source))
+        self.assertFalse(self.official.exists())
+        (self.root / publication.PREFLIGHT_FILE).write_text(json.dumps(self.preflight), encoding="utf-8")
+        ready = subprocess.run(command, env=environment, capture_output=True, text=True, timeout=10)
+        self.assertEqual(0, ready.returncode, ready.stderr)
+        self.assertEqual("prepared", json.loads(ready.stdout)["status"])
+        self.assertEqual(self.publisher, publication.validate_publication_receipt(contents(self.official))["publisher"])
+
+    def test_newer_sequence_cannot_reuse_an_earlier_run_identity(self):
+        previous = dict(self.publisher, run_number=self.publisher["run_number"] - 1)
+        self.preflight = self.observed(previous, "a" * 64)
+        with mock.patch.object(publication.os, "replace") as replacement:
+            self.assert_rejected_unchanged("newer publisher sequence.*reuse")
+            replacement.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,12 @@
 
 The canonical Pages deployment must already have succeeded. Its publication.json
 receipt binds the original rendered page, catalog and every asset; changing that
-receipt invalidates a synchronization even if the catalog is unchanged. This tool creates
+receipt invalidates a synchronization even if the catalog is unchanged. The
+official Git tree's publisher sequence also prevents a complete old workflow
+rerun from rolling back that site after re-deploying its old canonical receipt.
+Preflight saves non-secret publisher/digest evidence for the producer to check
+before canonical deployment. The CLI requires the approved GitHub Actions run.
+This tool creates
 ordinary commits using GitHub's expectedHeadOid compare-and-swap mutation; it
 does not force push, configure hosting, create releases, or bypass branch rules.
 The token is read from VPM_MIRROR_TOKEN and is used only at api.github.com.
@@ -17,6 +22,8 @@ import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import subprocess
+import tempfile
 import time
 from typing import NamedTuple, Optional
 import urllib.error
@@ -46,6 +53,10 @@ TOKEN_ENV = "VPM_MIRROR_TOKEN"
 PUBLICATION_RECEIPT = "publication.json"
 CANONICAL_RECEIPT_URL = CANONICAL_BASE + PUBLICATION_RECEIPT
 OFFICIAL_RECEIPT_URL = OFFICIAL_BASE + PUBLICATION_RECEIPT
+PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_WORKFLOW = ".github/workflows/build-listing.yml"
+PREFLIGHT_FILENAME = "vpm-mirror-preflight.json"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class SyncError(ValueError):
@@ -85,6 +96,7 @@ class Snapshot(NamedTuple):
     head: str
     entries: dict
     listing: Optional[bytes]
+    receipt: Optional[bytes] = None
 
 
 class Changes(NamedTuple):
@@ -206,20 +218,109 @@ def official_asset(path, raw):
     return text.encode("utf-8")
 
 
+def validate_publisher(publisher):
+    require(isinstance(publisher, dict) and set(publisher) ==
+            {"repository", "workflow", "run_number", "run_id", "source_commit"}, "Invalid publication publisher context")
+    require(publisher["repository"] == PUBLISHER_REPOSITORY and publisher["workflow"] == PUBLISHER_WORKFLOW,
+            "Unexpected publication publisher identity")
+    for key in ("run_number", "run_id"):
+        require(type(publisher[key]) is int and 0 < publisher[key] < 2 ** 63, "Invalid publication run identity")
+    require(isinstance(publisher["source_commit"], str) and re.fullmatch(r"[0-9a-f]{40}", publisher["source_commit"]),
+            "Invalid publication source commit")
+    return publisher
+
+
+def publisher_from_environment(environment=None):
+    environment = os.environ if environment is None else environment
+    require(environment.get("GITHUB_ACTIONS") == "true" and environment.get("GITHUB_REPOSITORY") == PUBLISHER_REPOSITORY,
+            "Mirror publication requires the approved GitHub Actions repository context")
+    event = environment.get("GITHUB_EVENT_NAME")
+    ref = environment.get("GITHUB_REF")
+    allowed_ref = event == "workflow_dispatch" and ref == "refs/heads/main"
+    allowed_ref |= event == "release" and isinstance(ref, str) and bool(re.fullmatch(r"refs/tags/v[0-9A-Za-z][0-9A-Za-z.+-]*", ref))
+    require(allowed_ref and environment.get("GITHUB_WORKFLOW_REF") ==
+            f"{PUBLISHER_REPOSITORY}/{PUBLISHER_WORKFLOW}@{ref}", "Unexpected publication workflow or ref")
+    numbers = {}
+    for field, variable in (("run_number", "GITHUB_RUN_NUMBER"), ("run_id", "GITHUB_RUN_ID")):
+        value = environment.get(variable)
+        require(isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,18}", value), "Missing or invalid publication run context")
+        numbers[field] = int(value)
+    return validate_publisher({"repository": PUBLISHER_REPOSITORY, "workflow": PUBLISHER_WORKFLOW,
+                               **numbers, "source_commit": environment.get("GITHUB_SHA")})
+
+
+def validate_checkout(publisher):
+    try:
+        result = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, check=True,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise SyncError("Publication source checkout could not be verified") from None
+    require(result.stdout.strip() == publisher["source_commit"], "Publication source checkout differs from its GitHub run")
+
+
+def preserve_publisher_order(candidate, previous):
+    validate_publisher(candidate)
+    if previous is None:
+        return
+    validate_publisher(previous)
+    require(candidate["run_number"] >= previous["run_number"], "Older publication run cannot replace the official site")
+    if candidate["run_number"] == previous["run_number"]:
+        require(candidate == previous, "Equal publication sequence has a different run identity or source commit")
+    else:
+        require(candidate["run_id"] != previous["run_id"], "Different publication sequences have the same run identity")
+
+
+def preserve_publication_order(candidate, previous):
+    preserve_publisher_order(candidate["publisher"], None if previous is None else previous["publisher"])
+    if previous is not None and candidate["publisher"]["run_number"] == previous["publisher"]["run_number"]:
+        require(candidate == previous, "Equal publication sequence has a different full snapshot")
+
+
+def save_preflight_evidence(evidence):
+    runner_temp = os.environ.get("RUNNER_TEMP")
+    require(isinstance(runner_temp, str) and runner_temp, "Missing publication runner temporary directory")
+    directory = Path(runner_temp)
+    require(directory.is_absolute() and directory.is_dir() and not directory.is_symlink(),
+            "Publication runner temporary directory is unavailable")
+    target = directory / PREFLIGHT_FILENAME
+    require(not target.is_symlink() and (not target.exists() or stat.S_ISREG(target.lstat().st_mode)),
+            "Preflight evidence path is not a regular task file")
+    if target.exists() and hasattr(os, "getuid"):
+        require(target.lstat().st_uid == os.getuid(), "Preflight evidence file is not owned by this task user")
+    raw = (json.dumps(evidence, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=directory, prefix=".vpm-mirror-preflight-", delete=False) as output:
+            temporary = Path(output.name)
+            output.write(raw)
+            output.flush()
+            os.fsync(output.fileno())
+        os.chmod(temporary, 0o600)
+        require(not target.is_symlink() and (not target.exists() or stat.S_ISREG(target.lstat().st_mode)),
+                "Preflight evidence path changed during preparation")
+        os.replace(temporary, target)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink()
+
+
 def parse_publication_receipt(raw):
     receipt = parse_json(raw, MAX_LISTING_BYTES)
-    require(isinstance(receipt, dict) and set(receipt) == {"schema", "id", "files", "digest"}
-            and type(receipt.get("schema")) is int and receipt["schema"] == 1
+    require(isinstance(receipt, dict) and set(receipt) == {"schema", "id", "publisher", "files", "digest"}
+            and type(receipt.get("schema")) is int and receipt["schema"] == 2
             and receipt.get("id") == REPOSITORY_ID, "Unexpected publication receipt identity or schema")
+    validate_publisher(receipt["publisher"])
     files = receipt.get("files")
-    require(isinstance(files, dict) and files and len(files) <= MAX_FILES
+    require(isinstance(files, dict) and len(files) < MAX_FILES
+            and all(path in files for path in ("index.html", "index.json"))
             and PUBLICATION_RECEIPT not in files, "Invalid publication receipt file map")
     for path, digest in files.items():
         safe_path(path)
         require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid publication file checksum")
     digest = receipt.get("digest")
     require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid publication receipt digest")
-    payload = {key: receipt[key] for key in ("schema", "id", "files")}
+    payload = {key: receipt[key] for key in ("schema", "id", "publisher", "files")}
     try:
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True,
                                separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -299,6 +400,14 @@ def plan_changes(target, snapshot, desired, source):
                 "Desired publication file exceeds its size bound")
     require(sum(map(len, desired.values())) <= MAX_PUBLICATION_BYTES and len(desired) <= MAX_FILES,
             "Desired publication exceeds its size or file-count bound")
+    if target == OFFICIAL:
+        receipt_path = target.prefix + PUBLICATION_RECEIPT
+        require(receipt_path in desired, "Official publication receipt is absent")
+        candidate = parse_publication_receipt(desired[receipt_path])
+        require(receipt_path not in snapshot.entries or snapshot.receipt is not None,
+                "Official publication receipt blob is absent")
+        previous_receipt = None if snapshot.receipt is None else parse_publication_receipt(snapshot.receipt)
+        preserve_publication_order(candidate, previous_receipt)
     for path, entry in snapshot.entries.items():
         safe_path(path)
         require(in_scope(target, path) and entry.mode in ("100644", "100755"), "Unexpected mirror tree entry")
@@ -454,7 +563,9 @@ class GitHubApi:
         raw, _ = read_response(request, MAX_API_BYTES, self.budget, opener=self.opener)
         return parse_json(raw, MAX_API_BYTES)
 
-    def preflight(self):
+    def preflight(self, publisher):
+        validate_publisher(publisher)
+        previous = None
         for target in TARGETS:
             metadata = self.request("/repos/" + target.repository)
             name = metadata.get("full_name") if isinstance(metadata, dict) else None
@@ -464,8 +575,14 @@ class GitHubApi:
             permissions = metadata.get("permissions")
             require(isinstance(permissions, dict) and permissions.get("push") is True,
                     "Mirror credential does not have repository write access")
-            self.snapshot(target)
-        return {"status": "passed", "repositories": [target.repository for target in TARGETS]}
+            snapshot = self.snapshot(target)
+            if target == OFFICIAL and snapshot.receipt is not None:
+                receipt = parse_publication_receipt(snapshot.receipt)
+                preserve_publisher_order(publisher, receipt["publisher"])
+                previous = {"publisher": receipt["publisher"], "digest": receipt["digest"]}
+        evidence = {"schema": 1, "publisher": publisher, "official": previous}
+        report = {"status": "passed", "repositories": [target.repository for target in TARGETS]}
+        return report, evidence
 
     def snapshot(self, target):
         require(target in TARGETS, "Unapproved GitHub repository")
@@ -502,18 +619,22 @@ class GitHubApi:
             require(isinstance(oid, str) and re.fullmatch(r"[0-9a-f]{40}", oid), "Invalid mirror blob identity")
             entries[path] = Entry(oid, item["mode"])
             require(len(entries) <= MAX_FILES, "Mirror tree exceeds the file-count bound")
-        listing = None
-        if target.listing_path in entries:
-            oid = entries[target.listing_path].oid
+        def blob_contents(path):
+            if path not in entries:
+                return None
+            oid = entries[path].oid
             blob = self.request(base + "/git/blobs/" + oid)
             require(isinstance(blob, dict) and blob.get("encoding") == "base64"
-                    and isinstance(blob.get("content"), str), "Invalid mirror listing blob")
+                    and isinstance(blob.get("content"), str), "Invalid mirror publication blob")
             try:
-                listing = base64.b64decode("".join(blob["content"].split()), validate=True)
+                raw = base64.b64decode("".join(blob["content"].split()), validate=True)
             except (ValueError, UnicodeError) as error:
-                raise SyncError("Invalid mirror listing encoding") from error
-            require(len(listing) <= MAX_LISTING_BYTES and git_blob_oid(listing) == oid, "Mirror listing blob identity differs")
-        return Snapshot(head, entries, listing)
+                raise SyncError("Invalid mirror publication encoding") from error
+            require(len(raw) <= MAX_LISTING_BYTES and git_blob_oid(raw) == oid, "Mirror publication blob identity differs")
+            return raw
+        listing = blob_contents(target.listing_path)
+        receipt = blob_contents(OFFICIAL.prefix + PUBLICATION_RECEIPT) if target == OFFICIAL else None
+        return Snapshot(head, entries, listing, receipt)
 
     def commit(self, target, expected_head, changes):
         require(target in TARGETS and isinstance(expected_head, str)
@@ -570,6 +691,15 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
     for target in TARGETS:
         plan_changes(target, initial[target], desired[target.repository], source)
     reports = []
+
+    def require_official_order():
+        current = api.snapshot(OFFICIAL)
+        path = OFFICIAL.prefix + PUBLICATION_RECEIPT
+        require(path in current.entries and current.receipt is not None, "Confirmed official publication receipt is absent")
+        receipt = parse_publication_receipt(current.receipt)
+        preserve_publication_order(expected_receipt, receipt)
+        require(receipt == expected_receipt, "Confirmed official publication no longer matches this snapshot")
+
     for target in TARGETS:
         snapshot = initial[target]
         attempted = False
@@ -583,6 +713,8 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
         for attempt in range(MAX_CAS_ATTEMPTS):
             budget.remaining()
             require_current_source(source, expected_receipt, fetch, receipt_fetch, budget)
+            if target == LEGACY:
+                require_official_order()
             changes = plan_changes(target, snapshot, desired[target.repository], source)
             if not changes.additions and not changes.deletions:
                 record(snapshot.head, None if attempted else False)
@@ -607,6 +739,7 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
                        freshness=lambda: require_current_receipt(expected_receipt, receipt_fetch, budget))
     wait_for_official_receipt(source, expected_receipt, fetch, receipt_fetch, budget, sleep=sleep)
     require_current_source(source, expected_receipt, fetch, receipt_fetch, budget)
+    require_official_order()
     return {"status": "passed", "repositoryId": REPOSITORY_ID, "repositories": reports,
             "verifiedEndpoints": [CANONICAL_URL, OFFICIAL_URL, LEGACY_URL],
             "publicationDigest": expected_receipt["digest"],
@@ -622,12 +755,17 @@ def main():
                       help="Read-only credential and approved target-repository availability check")
     args = parser.parse_args()
     try:
+        publisher = publisher_from_environment()
+        validate_checkout(publisher)
         budget = Budget()
         api = GitHubApi(os.environ.get(TOKEN_ENV), budget)
         if args.preflight:
-            report = api.preflight()
+            report, evidence = api.preflight(publisher)
+            save_preflight_evidence(evidence)
         else:
             source, desired = read_publication(args.publication_root)
+            receipt = parse_publication_receipt(desired[OFFICIAL.repository][OFFICIAL.prefix + PUBLICATION_RECEIPT])
+            require(receipt["publisher"] == publisher, "Built publication belongs to a different GitHub run or source commit")
             report = synchronize(source, desired, api, fetch_listing, budget,
                                  progress=lambda entry: print(json.dumps({"event": "mirror-tree-confirmed", **entry}), flush=True))
     except (SyncError, OSError) as error:

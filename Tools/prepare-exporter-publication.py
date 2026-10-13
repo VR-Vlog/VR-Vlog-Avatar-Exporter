@@ -21,6 +21,9 @@ CANONICAL_URL = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
 OFFICIAL_BASE = "https://vrvlog.fun/exporter/"
 REPOSITORY_ID = "com.vrvlog.packages"
 PUBLICATION_RECEIPT = "publication.json"
+PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_WORKFLOW = ".github/workflows/build-listing.yml"
+PREFLIGHT_FILE = "vpm-mirror-preflight.json"
 REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter", "com.vrmc.gltf", "com.vrmc.vrm")
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
@@ -61,7 +64,92 @@ def receipt_digest(payload):
     return hashlib.sha256(raw).hexdigest()
 
 
-def publication_receipt(files):
+def validate_publisher(publisher):
+    require(isinstance(publisher, dict) and set(publisher) ==
+            {"repository", "workflow", "run_number", "run_id", "source_commit"}
+            and publisher.get("repository") == PUBLISHER_REPOSITORY
+            and publisher.get("workflow") == PUBLISHER_WORKFLOW,
+            "Unexpected publication publisher identity")
+    for key in ("run_number", "run_id"):
+        require(type(publisher[key]) is int and 0 < publisher[key] < 2 ** 63,
+                "Invalid publication publisher run identity")
+    require(isinstance(publisher["source_commit"], str)
+            and re.fullmatch(r"[0-9a-f]{40}", publisher["source_commit"]),
+            "Invalid publication publisher source commit")
+    return publisher
+
+
+def publisher_from_environment(environment):
+    repository = environment.get("GITHUB_REPOSITORY")
+    workflow_ref = environment.get("GITHUB_WORKFLOW_REF")
+    event = environment.get("GITHUB_EVENT_NAME")
+    ref = environment.get("GITHUB_REF")
+    require(environment.get("GITHUB_ACTIONS") == "true" and repository == PUBLISHER_REPOSITORY and isinstance(workflow_ref, str)
+            and isinstance(ref, str) and workflow_ref == f"{repository}/{PUBLISHER_WORKFLOW}@{ref}",
+            "Publication requires the fixed publisher workflow context")
+    require((event == "workflow_dispatch" and ref == "refs/heads/main")
+            or (event == "release" and re.fullmatch(r"refs/tags/v[0-9A-Za-z][0-9A-Za-z.+-]*", ref)),
+            "Publication requires main dispatch or a release tag context")
+    publisher = {"repository": repository, "workflow": PUBLISHER_WORKFLOW,
+                 "source_commit": environment.get("GITHUB_SHA")}
+    for key, variable in (("run_number", "GITHUB_RUN_NUMBER"), ("run_id", "GITHUB_RUN_ID")):
+        value = environment.get(variable)
+        require(isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,18}", value),
+                "Publication requires a valid CI run identity")
+        publisher[key] = int(value)
+    return validate_publisher(publisher)
+
+
+def validate_preflight(preflight, publisher):
+    validate_publisher(publisher)
+    require(isinstance(preflight, dict) and set(preflight) == {"schema", "publisher", "official"}
+            and type(preflight.get("schema")) is int and preflight["schema"] == 1,
+            "Publication requires a valid mirror preflight proof")
+    require(validate_publisher(preflight["publisher"]) == publisher,
+            "Mirror preflight proof belongs to a different publisher run")
+    official = preflight["official"]
+    if official is None:
+        return None
+    require(isinstance(official, dict) and set(official) == {"publisher", "digest"},
+            "Invalid observed official publication context")
+    previous = validate_publisher(official["publisher"])
+    require(isinstance(official["digest"], str) and re.fullmatch(r"[0-9a-f]{64}", official["digest"]),
+            "Invalid observed official publication digest")
+    require(publisher["run_number"] >= previous["run_number"],
+            "An older publisher run cannot replace a newer official publication")
+    if publisher["run_number"] == previous["run_number"]:
+        require(publisher == previous, "Equal publisher sequence belongs to a different run or source commit")
+    else:
+        require(publisher["run_id"] != previous["run_id"],
+                "A newer publisher sequence cannot reuse an earlier run identity")
+    return official
+
+
+def read_preflight(environment, publisher):
+    runner_temp = environment.get("RUNNER_TEMP")
+    require(isinstance(runner_temp, str) and runner_temp and Path(runner_temp).is_absolute(),
+            "Publication requires the runner temporary directory")
+    root = Path(runner_temp)
+    require(root.is_dir() and not root.is_symlink(), "Runner temporary directory must be a real directory")
+    path = root / PREFLIGHT_FILE
+    require(path.exists() and stat.S_ISREG(path.lstat().st_mode), "Mirror preflight proof is missing or unsafe")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Mirror preflight proof is not a regular file")
+        raw = stream.read(MAX_FILE_BYTES + 1)
+    require(len(raw) <= MAX_FILE_BYTES, "Mirror preflight proof exceeds its size bound")
+    def invalid_constant(_):
+        raise PreparationError("Mirror preflight proof contains invalid JSON")
+    try:
+        proof = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)
+    except (UnicodeError, ValueError, RecursionError) as error:
+        raise PreparationError("Mirror preflight proof is not valid UTF-8 JSON") from error
+    validate_preflight(proof, publisher)
+    return proof
+
+
+def publication_receipt(files, publisher):
+    validate_publisher(publisher)
     require(PUBLICATION_RECEIPT not in files, "Publication receipt cannot include itself")
     require("index.html" in files and "index.json" in files and len(files) < MAX_FILES,
             "Publication receipt requires a complete bounded snapshot")
@@ -70,7 +158,7 @@ def publication_receipt(files):
         safe_path(relative)
         require(isinstance(raw, bytes), "Publication receipt requires file bytes")
         hashes[relative] = hashlib.sha256(raw).hexdigest()
-    payload = {"schema": 1, "id": REPOSITORY_ID, "files": hashes}
+    payload = {"schema": 2, "id": REPOSITORY_ID, "files": hashes, "publisher": dict(publisher)}
     receipt = dict(payload, digest=receipt_digest(payload))
     raw = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
     require(len(raw) <= MAX_FILE_BYTES, "Publication receipt exceeds its size bound")
@@ -85,9 +173,10 @@ def parse_publication_receipt(raw):
         data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)
     except (UnicodeError, ValueError, RecursionError) as error:
         raise PreparationError("Publication receipt is not valid UTF-8 JSON") from error
-    require(isinstance(data, dict) and set(data) == {"schema", "id", "files", "digest"}
-            and type(data.get("schema")) is int and data["schema"] == 1 and data.get("id") == REPOSITORY_ID,
+    require(isinstance(data, dict) and set(data) == {"schema", "id", "files", "publisher", "digest"}
+            and type(data.get("schema")) is int and data["schema"] == 2 and data.get("id") == REPOSITORY_ID,
             "Unexpected publication receipt schema or identity")
+    validate_publisher(data["publisher"])
     hashes = data["files"]
     require(isinstance(hashes, dict) and "index.html" in hashes and "index.json" in hashes
             and PUBLICATION_RECEIPT not in hashes and len(hashes) < MAX_FILES,
@@ -98,7 +187,7 @@ def parse_publication_receipt(raw):
                 "Invalid publication receipt file hash")
     digest = data["digest"]
     require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid publication receipt digest")
-    require(digest == receipt_digest({key: data[key] for key in ("schema", "id", "files")}),
+    require(digest == receipt_digest({key: data[key] for key in ("schema", "id", "files", "publisher")}),
             "Publication receipt digest differs")
     return data
 
@@ -107,7 +196,7 @@ def validate_publication_receipt(files):
     require(PUBLICATION_RECEIPT in files, "Publication receipt is missing")
     receipt = parse_publication_receipt(files[PUBLICATION_RECEIPT])
     expected = parse_publication_receipt(publication_receipt(
-        {path: raw for path, raw in files.items() if path != PUBLICATION_RECEIPT}))
+        {path: raw for path, raw in files.items() if path != PUBLICATION_RECEIPT}, receipt["publisher"]))
     require(receipt == expected, "Publication receipt differs from the complete snapshot")
     return receipt
 
@@ -255,7 +344,8 @@ def redirect_html():
 '''.encode("utf-8")
 
 
-def prepare(publication_root, official_root):
+def prepare(publication_root, official_root, *, publisher, preflight):
+    official = validate_preflight(preflight, publisher)
     source_arg, destination_arg = Path(publication_root).absolute(), Path(official_root).absolute()
     require(not source_arg.is_symlink() and not destination_arg.is_symlink(), "Publication roots cannot be symlinks")
     source, destination = source_arg.resolve(), destination_arg.resolve()
@@ -263,7 +353,10 @@ def prepare(publication_root, official_root):
             "Publication roots must be distinct and non-overlapping")
     files = read_snapshot(source, allow_stale_receipt=True)
     original_receipt = files.pop(PUBLICATION_RECEIPT, None)
-    receipt = publication_receipt(files)
+    receipt = publication_receipt(files, publisher)
+    if official is not None and official["publisher"]["run_number"] == publisher["run_number"]:
+        require(parse_publication_receipt(receipt)["digest"] == official["digest"],
+                "An equal publisher sequence cannot replace a different official publication digest")
     snapshot_files = dict(files, **{PUBLICATION_RECEIPT: receipt})
     require(not destination.exists() or destination.is_dir(), "Official snapshot root must be a directory")
     if destination.exists() and any(destination.iterdir()):
@@ -347,7 +440,9 @@ def main():
                         help="Separate temporary directory for the full snapshot used by mirror sync")
     args = parser.parse_args()
     try:
-        report = prepare(args.publication_root, args.official_root)
+        publisher = publisher_from_environment(os.environ)
+        preflight = read_preflight(os.environ, publisher)
+        report = prepare(args.publication_root, args.official_root, publisher=publisher, preflight=preflight)
     except (PreparationError, OSError) as error:
         message = str(error) if isinstance(error, PreparationError) else "Local publication could not be prepared"
         parser.exit(1, f"Exporter publication preparation failed: {message}.\n")
