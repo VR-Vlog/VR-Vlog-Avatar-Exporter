@@ -426,7 +426,7 @@ namespace VRVlog.LilToonExporter
             created.Add(material);
             var mainName = source.HasProperty("_MainTex") ? "_MainTex" : source.HasProperty("_BaseMap") ? "_BaseMap" : null;
             var main = mainName != null ? source.GetTexture(mainName) as Texture2D : null;
-            var color = source.HasProperty("_Color") ? source.GetColor("_Color") : source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : Color.white;
+            var color = source.HasProperty("_Color") ? source.GetColor("_Color") : source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : UnityEngine.Color.white;
             // Flat toon: the shade color equals the base color, so no shading band appears.
             var shaderName = source.shader != null ? source.shader.name : "";
             var cutout = shaderName.IndexOf("Cutout", StringComparison.OrdinalIgnoreCase) >= 0 ||
@@ -436,9 +436,9 @@ namespace VRVlog.LilToonExporter
                 AlphaMode = cutout ? MToon10AlphaMode.Cutout : MToon10AlphaMode.Opaque,
                 AlphaCutoff = 0.5f,
                 DoubleSidedMode = MToon10DoubleSidedMode.Off,
-                BaseColorFactorSrgb = new Color(color.r, color.g, color.b, 1f),
+                BaseColorFactorSrgb = new UnityEngine.Color(color.r, color.g, color.b, 1f),
                 BaseColorTexture = main,
-                ShadeColorFactorSrgb = new Color(color.r, color.g, color.b, 1f),
+                ShadeColorFactorSrgb = new UnityEngine.Color(color.r, color.g, color.b, 1f),
                 ShadeColorTexture = main,
                 OutlineWidthMode = MToon10OutlineMode.None,
             };
