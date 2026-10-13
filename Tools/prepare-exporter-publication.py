@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""Preserve the built exporter site before replacing its canonical HTML with a redirect.
+
+The saved snapshot retains the canonical listing URL and is the input to
+sync-vpm-mirrors.py. The mirror tool rewrites the official site's URLs.
+"""
+import argparse
+import hashlib
+from html.parser import HTMLParser
+import json
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import stat
+import tempfile
+from urllib.parse import parse_qs, urlsplit
+
+CANONICAL_URL = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
+OFFICIAL_BASE = "https://vrvlog.fun/exporter/"
+REPOSITORY_ID = "com.vrvlog.packages"
+PUBLICATION_RECEIPT = "publication.json"
+REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter", "com.vrmc.gltf", "com.vrmc.vrm")
+MAX_FILE_BYTES = 4 * 1024 * 1024
+MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
+MAX_FILES = 1000
+MAX_DIRECTORIES = 1000
+TEMPLATE_TOKEN = re.compile(r"\{\{[^\r\n]*?\}\}|\{\{\s*[-~]?\s*(?:listingInfo|packages?|for|end)\b", re.I)
+LISTING_TOKEN_BYTES = re.compile(rb"\{\{\s*[-~]?\s*(?:listingInfo|packages?|for|end)\b", re.I)
+
+
+class PreparationError(ValueError):
+    pass
+
+
+def require(condition, message):
+    if not condition:
+        raise PreparationError(message)
+
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "Listing contains duplicate JSON keys")
+        result[key] = value
+    return result
+
+
+def safe_path(relative):
+    require(isinstance(relative, str) and relative and not relative.startswith("/")
+            and all(part not in ("", ".", "..", ".git") and "\\" not in part
+                    and not any(ord(char) < 32 for char in part) for part in relative.split("/")),
+            "Invalid publication path")
+    return relative
+
+
+def receipt_digest(payload):
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                     allow_nan=False).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def publication_receipt(files):
+    require(PUBLICATION_RECEIPT not in files, "Publication receipt cannot include itself")
+    require("index.html" in files and "index.json" in files and len(files) < MAX_FILES,
+            "Publication receipt requires a complete bounded snapshot")
+    hashes = {}
+    for relative, raw in sorted(files.items()):
+        safe_path(relative)
+        require(isinstance(raw, bytes), "Publication receipt requires file bytes")
+        hashes[relative] = hashlib.sha256(raw).hexdigest()
+    payload = {"schema": 1, "id": REPOSITORY_ID, "files": hashes}
+    receipt = dict(payload, digest=receipt_digest(payload))
+    raw = (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    require(len(raw) <= MAX_FILE_BYTES, "Publication receipt exceeds its size bound")
+    return raw
+
+
+def parse_publication_receipt(raw):
+    require(isinstance(raw, bytes) and len(raw) <= MAX_FILE_BYTES, "Publication receipt exceeds its size bound")
+    def invalid_constant(_):
+        raise PreparationError("Publication receipt contains a non-finite JSON value")
+    try:
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object, parse_constant=invalid_constant)
+    except (UnicodeError, ValueError, RecursionError) as error:
+        raise PreparationError("Publication receipt is not valid UTF-8 JSON") from error
+    require(isinstance(data, dict) and set(data) == {"schema", "id", "files", "digest"}
+            and type(data.get("schema")) is int and data["schema"] == 1 and data.get("id") == REPOSITORY_ID,
+            "Unexpected publication receipt schema or identity")
+    hashes = data["files"]
+    require(isinstance(hashes, dict) and "index.html" in hashes and "index.json" in hashes
+            and PUBLICATION_RECEIPT not in hashes and len(hashes) < MAX_FILES,
+            "Publication receipt does not describe a complete bounded snapshot")
+    for relative, digest in hashes.items():
+        safe_path(relative)
+        require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest),
+                "Invalid publication receipt file hash")
+    digest = data["digest"]
+    require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest), "Invalid publication receipt digest")
+    require(digest == receipt_digest({key: data[key] for key in ("schema", "id", "files")}),
+            "Publication receipt digest differs")
+    return data
+
+
+def validate_publication_receipt(files):
+    require(PUBLICATION_RECEIPT in files, "Publication receipt is missing")
+    receipt = parse_publication_receipt(files[PUBLICATION_RECEIPT])
+    expected = parse_publication_receipt(publication_receipt(
+        {path: raw for path, raw in files.items() if path != PUBLICATION_RECEIPT}))
+    require(receipt == expected, "Publication receipt differs from the complete snapshot")
+    return receipt
+
+
+def validate_listing(raw):
+    def invalid_constant(_):
+        raise PreparationError("Listing contains a non-finite JSON value")
+    def finite_float(value):
+        number = float(value)
+        require(math.isfinite(number), "Listing contains a non-finite JSON value")
+        return number
+    try:
+        data = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object,
+                          parse_constant=invalid_constant, parse_float=finite_float)
+    except PreparationError:
+        raise
+    except (UnicodeError, ValueError, RecursionError) as error:
+        raise PreparationError("Built listing is not valid UTF-8 JSON") from error
+    require(isinstance(data, dict) and data.get("id") == REPOSITORY_ID,
+            "Unexpected listing repository identity")
+    require(data.get("url") == CANONICAL_URL, "Built listing must retain the canonical URL")
+    packages = data.get("packages")
+    require(isinstance(packages, dict) and all(name in packages for name in REQUIRED_PACKAGES),
+            "Built listing is missing the exporter or required dependencies")
+    for name, package in packages.items():
+        require(isinstance(name, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name),
+                "Invalid listed package name")
+        versions = package.get("versions") if isinstance(package, dict) else None
+        require(isinstance(versions, dict) and versions, "Listed package versions are missing")
+        for version, manifest in versions.items():
+            require(isinstance(version, str) and re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]*", version)
+                    and isinstance(manifest, dict) and manifest.get("name") == name
+                    and manifest.get("version") == version, "Listed package identity differs")
+            digest = manifest.get("zipSHA256")
+            require(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest),
+                    "Listed package is missing its ZIP checksum")
+            url = manifest.get("url")
+            require(isinstance(url, str), "Listed package is missing its ZIP URL")
+            try:
+                parsed = urlsplit(url)
+            except ValueError as error:
+                raise PreparationError("Invalid listed ZIP URL") from error
+            prefix = "/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
+            require(parsed.scheme == "https" and parsed.netloc == "github.com"
+                    and not parsed.query and not parsed.fragment and parsed.path.startswith(prefix),
+                    "Unexpected listed ZIP origin")
+            suffix = parsed.path[len(prefix):].split("/")
+            require(len(suffix) == 2 and suffix[0] and suffix[1] == f"{name}-{version}.zip",
+                    "Unexpected listed ZIP asset path")
+            if name == REQUIRED_PACKAGES[0]:
+                require(suffix[0] == f"v{version}", "Exporter release tag differs from its version")
+    return data
+
+
+class RenderedPage(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.main = self.listing_field = self.vcc = self.refresh = False
+
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        self.main |= tag == "main" and attrs.get("id") == "main"
+        self.listing_field |= tag == "input" and attrs.get("id") == "listing-url" and attrs.get("value") == CANONICAL_URL
+        self.refresh |= tag == "meta" and attrs.get("http-equiv", "").lower() == "refresh"
+        if tag == "a" and attrs.get("href", "").startswith("vcc:"):
+            try:
+                parsed = urlsplit(attrs["href"])
+            except ValueError as error:
+                raise PreparationError("Invalid VCC installation URL") from error
+            self.vcc |= parsed.scheme == "vcc" and parsed.netloc == "vpm" and parsed.path == "/addRepo" \
+                and parse_qs(parsed.query).get("url") == [CANONICAL_URL]
+
+
+def read_snapshot(root, *, allow_stale_receipt=False):
+    require(root.is_dir() and not root.is_symlink(), "Publication root must be a real directory")
+    files = {}
+    total = 0
+    directory_count = 0
+    def walk_error(error):
+        raise PreparationError("Publication directory could not be read") from error
+    for folder, directories, filenames in os.walk(root, followlinks=False, onerror=walk_error):
+        directory_count += 1
+        require(directory_count <= MAX_DIRECTORIES, "Publication exceeds its directory-count bound")
+        require(not Path(folder).is_symlink(), "Publication contains a directory symlink")
+        for name in directories:
+            require(name != ".git" and "\\" not in name and not any(ord(char) < 32 for char in name),
+                    "Invalid publication directory")
+            require(not (Path(folder) / name).is_symlink(), "Publication contains a directory symlink")
+        for name in filenames:
+            path = Path(folder) / name
+            relative = safe_path(path.relative_to(root).as_posix())
+            require(stat.S_ISREG(path.lstat().st_mode), "Publication contains a non-regular file")
+            # O_NOFOLLOW pins the final component; O_NONBLOCK avoids hanging on a
+            # special file if an entry changes between validation and opening.
+            descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(descriptor, "rb") as stream:
+                require(stat.S_ISREG(os.fstat(stream.fileno()).st_mode), "Publication contains a non-regular file")
+                raw = stream.read(MAX_FILE_BYTES + 1)
+            require(len(raw) <= MAX_FILE_BYTES, "Publication file exceeds its size bound")
+            require(not LISTING_TOKEN_BYTES.search(raw), "Publication contains unresolved template tokens")
+            total += len(raw)
+            require(total <= MAX_PUBLICATION_BYTES and len(files) < MAX_FILES,
+                    "Publication exceeds its size or file-count bound")
+            if path.suffix.lower() in (".html", ".js", ".css", ".json"):
+                try:
+                    text = raw.decode("utf-8")
+                except UnicodeError as error:
+                    raise PreparationError("Publication text is not UTF-8") from error
+                require(not TEMPLATE_TOKEN.search(text), "Publication contains unresolved template tokens")
+            files[relative] = raw
+    require("index.html" in files and "index.json" in files, "Built publication requires index.html and index.json")
+    validate_listing(files["index.json"])
+    page = RenderedPage()
+    page.feed(files["index.html"].decode("utf-8"))
+    require(not page.refresh, "Publication is already a redirect; rebuild Website before retrying")
+    require(page.main and page.listing_field and page.vcc, "Publication must contain the rendered exporter page")
+    if PUBLICATION_RECEIPT in files:
+        if allow_stale_receipt:
+            # A rebuilt Website can retain a prior successful preparation's
+            # well-formed receipt. Exclude it and bind the newly rendered files.
+            parse_publication_receipt(files[PUBLICATION_RECEIPT])
+        else:
+            validate_publication_receipt(files)
+    return files
+
+
+def redirect_html():
+    return f'''<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VR Vlog lilToon Exporter</title>
+  <link rel="canonical" href="{OFFICIAL_BASE}">
+  <meta http-equiv="refresh" content="0; url={OFFICIAL_BASE}">
+  <script>location.replace("{OFFICIAL_BASE}" + location.search + location.hash);</script>
+</head>
+<body>
+  <h1>VR Vlog lilToon Exporter</h1>
+  <p><a href="{OFFICIAL_BASE}">公式の導入ページを開く</a></p>
+  <p>VCC／ALCOMの登録済みVPM URLは引き続き利用できます。登録変更や再インストールは不要です。</p>
+  <p><a href="index.json">登録用のVPM一覧</a></p>
+</body>
+</html>
+'''.encode("utf-8")
+
+
+def prepare(publication_root, official_root):
+    source_arg, destination_arg = Path(publication_root).absolute(), Path(official_root).absolute()
+    require(not source_arg.is_symlink() and not destination_arg.is_symlink(), "Publication roots cannot be symlinks")
+    source, destination = source_arg.resolve(), destination_arg.resolve()
+    require(source != destination and source not in destination.parents and destination not in source.parents,
+            "Publication roots must be distinct and non-overlapping")
+    files = read_snapshot(source, allow_stale_receipt=True)
+    original_receipt = files.pop(PUBLICATION_RECEIPT, None)
+    receipt = publication_receipt(files)
+    snapshot_files = dict(files, **{PUBLICATION_RECEIPT: receipt})
+    require(not destination.exists() or destination.is_dir(), "Official snapshot root must be a directory")
+    if destination.exists() and any(destination.iterdir()):
+        read_snapshot(destination)
+    # All input checks happen before creating or replacing either publication.
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=".exporter-publication-", dir=destination.parent))
+    redirect_temp = None
+    receipt_temp = None
+    previous = staging / "previous"
+    previous_receipt = staging / "previous-publication.json"
+    snapshot = staging / "snapshot"
+    installed = False
+    receipt_installed = False
+    completed = False
+    rollback_failed = False
+    try:
+        snapshot.mkdir()
+        for relative, raw in snapshot_files.items():
+            path = snapshot / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(raw)
+        require(read_snapshot(snapshot) == snapshot_files, "Staged snapshot bytes differ from the built publication")
+        if original_receipt is not None:
+            previous_receipt.write_bytes(original_receipt)
+        with tempfile.NamedTemporaryFile(prefix=".exporter-redirect-", dir=source, delete=False) as stream:
+            redirect_temp = Path(stream.name)
+            stream.write(redirect_html())
+        redirect_temp.chmod(0o644)
+        with tempfile.NamedTemporaryFile(prefix=".exporter-receipt-", dir=source, delete=False) as stream:
+            receipt_temp = Path(stream.name)
+            stream.write(receipt)
+        receipt_temp.chmod(0o644)
+        if destination.exists():
+            os.replace(destination, previous)
+        try:
+            os.replace(snapshot, destination)
+            installed = True
+            os.replace(receipt_temp, source / PUBLICATION_RECEIPT)
+            receipt_installed = True
+            os.replace(redirect_temp, source / "index.html")
+            completed = True
+        except OSError:
+            try:
+                if receipt_installed:
+                    if original_receipt is None:
+                        (source / PUBLICATION_RECEIPT).unlink()
+                    else:
+                        os.replace(previous_receipt, source / PUBLICATION_RECEIPT)
+            except OSError:
+                rollback_failed = True
+                raise
+            finally:
+                try:
+                    if installed:
+                        shutil.rmtree(destination)
+                    if previous.exists():
+                        os.replace(previous, destination)
+                except OSError:
+                    rollback_failed = True
+                    raise
+            raise
+    finally:
+        if redirect_temp is not None:
+            redirect_temp.unlink(missing_ok=True)
+        if receipt_temp is not None:
+            receipt_temp.unlink(missing_ok=True)
+        # If restoring an older destination fails, retain its backup for recovery.
+        if completed or (not rollback_failed and not previous.exists()):
+            shutil.rmtree(staging, ignore_errors=True)
+    return {"status": "prepared", "files": len(snapshot_files), "bytes": sum(map(len, snapshot_files.values())),
+            "publicationDigest": parse_publication_receipt(receipt)["digest"],
+            "redirect": OFFICIAL_BASE, "listingUrl": CANONICAL_URL}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--publication-root", required=True, type=Path,
+                        help="Actual rendered Website directory produced by the listing builder")
+    parser.add_argument("--official-root", required=True, type=Path,
+                        help="Separate temporary directory for the full snapshot used by mirror sync")
+    args = parser.parse_args()
+    try:
+        report = prepare(args.publication_root, args.official_root)
+    except (PreparationError, OSError) as error:
+        message = str(error) if isinstance(error, PreparationError) else "Local publication could not be prepared"
+        parser.exit(1, f"Exporter publication preparation failed: {message}.\n")
+    print(json.dumps(report, indent=2))
+
+
+if __name__ == "__main__":
+    main()

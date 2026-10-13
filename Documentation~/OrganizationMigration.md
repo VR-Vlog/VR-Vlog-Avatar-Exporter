@@ -1,56 +1,51 @@
-# Organizationへの移管
+# Organizationと公式ドメインへの移行
 
-ソース・Issue・PR・Releaseは
-[VR-Vlog/VR-Vlog-lilToon-Exporter](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter)
-で管理します。個人アカウントから履歴を維持して移管しました。
+ソース・Issue・PR・Releaseは [VR-Vlog/VR-Vlog-lilToon-Exporter](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter) で管理します。
+公式導入ページはアプリと同じドメインの [vrvlog.fun/exporter/](https://vrvlog.fun/exporter/) です。
 公開済みのバージョン・タグ・ZIPとパッケージIDは変更しません。
 
-導入ページとVPM一覧の新URLは次のとおりです。
+## 利用者の登録を維持する
 
-- https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/
+新規導入には https://vrvlog.fun/exporter/index.json を使用します。
+VCC／ALCOMへ次のURLを登録済みの場合も、その登録を使い続けられます。
+
 - https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json
-
-GitHubの旧リポジトリURLは新所有者へredirectされますが、
-旧個人アカウントのGitHub Pages URLにはredirectがありません。
-旧URLは既存の個人Pagesで互換配信します。VCC／ALCOMで次のURLを
-登録済みの場合、登録変更やエクスポーターの再インストールは不要です。
-
 - https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/index.json
 
-互換一覧は同じrepository ID `com.vrvlog.packages` と全公開パッケージを
-保持し、ZIPのURL・SHA-256・version・依存も正式な一覧と揃えます。
-HTML/JavaScriptによる転送ではなく、HTTP 200のVPM JSONを配信します。
-新規導入には組織側のURLを使用してください。既に新URLへ変更した場合も、
-旧URLを追加し直す必要はありません。
+3つのURLはHTTP 200のVPM JSONを返します。ブラウザの導入HTMLだけを転送し、JSONは転送HTMLにしません。
+同じrepository ID `com.vrvlog.packages`、全公開version、ZIPのURL・SHA-256・依存を保持し、ルート `url` だけを各登録先に合わせます。
+新URLの追加、登録の削除、再インストール、Unityプロジェクトやアバターの作り直しは不要です。通常の更新操作は従来どおりです。
+ZIPで手動導入した利用者の更新方法も変わりません。既存の配布候補のrun・commit・版・ZIP SHA-256の照合を維持します。
+GitHubの移管redirectを維持するため、元のリポジトリ名を個人側で再作成しません。
 
-導入済みのUnityプロジェクトやアバター、書き出し済みVRMを作り直す必要は
-ありません。ZIPで手動導入した利用者にも登録先の移行は不要です。
-移行前に生成した配布候補は、元のrun・commit・版・ZIP SHA-256を
-照合する検証を維持して利用できます。
+## 公開時の自動同期
 
-## メンテナーの互換配信更新
+正式な一覧の生成元は組織側のまま維持します。既存 `Build VPM Listing` のmain手動起動・公開release経路、environment、直列化とリリース承認を保持します。PR検証へ公開権限や同期Secretを渡しません。
 
-互換窓口は既存の
-[mitsuya0077.github.io](https://github.com/mitsuya0077/mitsuya0077.github.io)
-の静的Pagesで管理します。元のExporterリポジトリ名を個人側で再作成すると
-GitHubの移管redirectが失われるため、再作成しません。
+1. `Tools/sync-vpm-mirrors.py --preflight` が専用認証と公開先を読み取りで確認します。
+2. 全公開履歴を生成し、既存の `Tools/check-listing.py` で検証します。
+3. `Tools/prepare-exporter-publication.py` が実際に生成済みの公式ページ・一覧を保存し、組織側の導入HTMLだけを転送ページにします。組織側JSONは変更しません。
+4. 既存Pagesが組織側を公開し、同期ツールが今回の検証済みsnapshotとの一致を待ちます。
+5. `Tools/sync-vpm-mirrors.py` が2つの公開先を同期し、3つの実URLのHTTP 200と内容一致を確認して完了します。
 
-正式なPages/VPM更新が成功した後、既存の個人Pages checkoutに対して
-次のローカルコマンドを実行します。新しいCIや自動同期は導入していません。
+生成済みHTML・一覧・全資産のSHA-256を束ねた `publication.json` を組織側と公式サイトへ公開します。一覧が同じでもページだけ新しくなった場合を区別し、古い公開の再試行による上書きを拒否します。3つの一覧と公式サイトの公開記録が一致するまで同期成功とは扱いません。
 
-```sh
-python3 Tools/sync-legacy-listing.py --site-root /path/to/mitsuya0077.github.io
-```
+| リポジトリ | 自動更新する範囲 | 既存の公開方法 |
+| --- | --- | --- |
+| `mitsuya0077/vr-vlog-website` | `public/exporter/` の導入ページ・資産・一覧 | 既存Next.js静的ビルドとPages |
+| `mitsuya0077/mitsuya0077.github.io` | `VR-Vlog-lilToon-Exporter/index.json` | 既存mainの静的Pages |
 
-ツールは正式な公開JSONを取得し、旧URL用のルート `url` だけを変更します。
-既に公開したversionの削除やZIP hashの変更、別repository ID、不正なJSON、
-同時同期を拒否し、失敗時は既存JSONを保持します。移管前の旧所有者のZIP URLを
-持つ一覧からの初回同期も受け付け、取得元は組織側に限定します。OSが管理する
-ロックを使うため、同期プロセスの強制終了後も再実行できます。ロックファイルは
-削除せずGitの管理対象から除きます。差分をレビューしたPRを
-個人Pagesのmainへ統合し、既存のPages公開完了を確認します。
+生成済み公式サイトを直接編集せず、Exporterの `Website/` を編集します。同期は対象範囲外のファイルを変えません。
+通常のサイトビルドが一覧を消さないよう、生成済みファイルもサイトリポジトリへ保存します。
+新しいworkflow、定期実行、Unityビルド、パッケージ版の自動公開は追加しません。
 
-旧・新URLのJSONを取得し、ルート `url` 以外が一致すること、全versionの
-ZIP hash、既存登録からの一覧取得と必要な導入・更新を確認してください。
-旧窓口は新しいリリースのたびに同期し、旧登録を使う利用者がいる間は
-保持します。正式な一覧の更新だけで互換配信の更新完了とは扱いません。
+## 認証と復旧
+
+Exporterの既存main限定 `github-pages` EnvironmentのSecret `VPM_MIRROR_TOKEN` に、上記2リポジトリだけの `Contents: Read and write` を持つFine-grained tokenを設定します。自動で付くMetadata読み取り以外は不要です。リポジトリ全体の同名Secretは保存せず、他ブランチのworkflowに専用認証を渡しません。
+専用の事前確認・同期stepの環境変数だけへ渡し、ログ・引数・サイト・ZIP・snapshotには含めません。有効期限前にSecretを更新します。
+期待するmainのheadを指定して通常のコミットを作り、同時変更時は最新headを読み直して計画し直します。force pushやbranch保護の回避は行いません。
+既存versionの削除、ZIP hashの変更、不正JSON、別repository ID、異なるZIP配布元、symlinkを拒否します。
+複数サイトの配置は同時確定ではないため、CDNの反映待ちを上限付きで行います。途中失敗はworkflowの失敗として報告し、反映済みコミットのURLを残します。
+同じ公開を再試行すると、反映済みの内容は再コミットせず、残りの同期・公開確認を続行できます。公開済み履歴を失う古いsnapshotは拒否します。
+組織側の公開成功だけで互換配信も完了したとは扱いません。旧登録を使う利用者がいる間は、両方の既存JSON URLと導入ページの転送を保持します。
+検証では3つの一覧の全公開version・ZIP hashと、登録済みクライアントからの一覧取得を確認してください。

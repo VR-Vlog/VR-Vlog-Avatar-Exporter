@@ -25,6 +25,14 @@ WRITE_JOBS = {
     ("release-vpm.yml", "dispatch-listing"): {"contents": "read", "actions": "write"},
     ("build-listing.yml", "build-listing"): {"contents": "read", "pages": "write", "id-token": "write"},
 }
+MIRROR_ENV = {"VPM_MIRROR_TOKEN": "${{ secrets.VPM_MIRROR_TOKEN }}"}
+PUBLICATION_RUNS = {
+    "mirror-preflight": "python3 Tools/sync-vpm-mirrors.py --preflight",
+    "prepare-publication": 'python3 Tools/prepare-exporter-publication.py --publication-root Website --official-root "$RUNNER_TEMP/official-exporter-publication"',
+    "mirrors": 'python3 Tools/sync-vpm-mirrors.py --publication-root "$RUNNER_TEMP/official-exporter-publication"',
+}
+PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "sync-vpm-mirrors.py", "prepare-exporter-publication.py")
+DEPLOYMENT = {"id": "deployment", "uses": "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e"}
 
 
 class WorkflowLoader(yaml.SafeLoader):
@@ -63,6 +71,70 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def contains_secret_reference(value):
+    return re.search(r"\bsecrets\s*[.\[]", json.dumps(value)) is not None
+
+
+def check_publication_step(name, job_name, step):
+    """Only the reviewed publication commands may handle the mirror credential."""
+    identity = step.get("id")
+    text = json.dumps(step)
+    if identity not in PUBLICATION_RUNS and not any(marker in text for marker in PUBLICATION_MARKERS):
+        return
+    require((name, job_name) == ("build-listing.yml", "build-listing"),
+            "Mirror preparation and credentials belong only to the Pages publication job")
+    require(identity in PUBLICATION_RUNS and step.get("run") == PUBLICATION_RUNS[identity],
+            "Unreviewed mirror command or destination override")
+    allowed = {"id", "name", "run"}
+    if identity in {"mirror-preflight", "mirrors"}:
+        allowed.add("env")
+        require(step.get("env") == MIRROR_ENV, "Mirror credential must use only the dedicated step environment")
+    require(set(step) <= allowed, "Publication steps must use default success, shell and working directory")
+
+
+def check_step_secrets(name, job_name, step):
+    if not contains_secret_reference(step):
+        return
+    require((name, job_name) == ("build-listing.yml", "build-listing"),
+            "Only the existing Pages publication job may reference secrets")
+    if step.get("id") in {"mirror-preflight", "mirrors"}:
+        require(step.get("env") == MIRROR_ENV, "Mirror credential environment is not approved")
+    else:
+        require(step.get("name") == "Generate VPM listing"
+                and step.get("env") == {"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},
+                "Unreviewed secret reference outside the mirror steps or existing listing builder")
+    require(not contains_secret_reference({key: value for key, value in step.items() if key != "env"}),
+            "Secrets must enter only the approved step environment")
+
+
+def check_mirror_publication(workflow, job):
+    require(workflow.get("env") == {"listPublishDirectory": "Website", "pathToCi": "ci"},
+            "Preserve the fixed publication paths and command environment")
+    require(not workflow.get("defaults") and not job.get("defaults") and not job.get("env"),
+            "Publication commands must not inherit shell, directory or credential overrides")
+    require(job.get("environment") == {"name": "github-pages", "url": "${{ steps.deployment.outputs.page_url }}"},
+            "Preserve the existing Pages environment and approval boundary")
+    steps = job.get("steps", [])
+    positions = {}
+    for identity in PUBLICATION_RUNS:
+        matches = [i for i, step in enumerate(steps) if step.get("id") == identity]
+        require(len(matches) == 1, "Exactly one reviewed " + identity + " step is required")
+        positions[identity] = matches[0]
+    deployments = [i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/deploy-pages@")]
+    require(len(deployments) == 1 and steps[deployments[0]] == DEPLOYMENT,
+            "Preserve the sole successful canonical Pages deployment")
+    uploads = [i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/upload-pages-artifact@")]
+    require(len(uploads) == 1, "Exactly one canonical Pages artifact upload is required")
+    checks = [i for i, step in enumerate(steps)
+              if step.get("run") == 'python3 Tools/check-listing.py --listing "$listPublishDirectory/index.json"'
+              and "if" not in step]
+    require(len(checks) == 1 and checks[0] < positions["prepare-publication"],
+            "Validate the complete listing before preparing publication")
+    require(positions["mirror-preflight"] < positions["prepare-publication"] < uploads[0] < deployments[0] < positions["mirrors"],
+            "Credential preflight and preparation must precede deployment; mirrors require deployment success")
+    require(positions["mirrors"] == len(steps) - 1, "Mirror publication must be the final Pages publication step")
+
+
 def check(name, workflow):
     events = workflow.get("on")
     require(isinstance(events, dict), name + ": explicit event mapping required")
@@ -72,7 +144,11 @@ def check(name, workflow):
     require(isinstance(workflow.get("concurrency"), dict), name + ": concurrency required")
     jobs = workflow.get("jobs", {})
     require(set(jobs) == JOBS[name], name + ": job inventory requires review")
-    require("secrets." not in json.dumps(workflow.get("env", {})), name + ": global secrets are not approved")
+    require(not contains_secret_reference(workflow.get("env", {})), name + ": global secrets are not approved")
+    metadata = {key: value for key, value in workflow.items() if key != "jobs"}
+    require(not contains_secret_reference(metadata), name + ": global secret references are not approved")
+    require(not any(marker in json.dumps(metadata) for marker in PUBLICATION_MARKERS),
+            name + ": mirror commands and credentials must be step scoped")
     for job_name, job in jobs.items():
         prefix = name + ": " + job_name
         require(job.get("runs-on") == "ubuntu-latest", prefix + ": only standard hosted Ubuntu is approved")
@@ -86,9 +162,13 @@ def check(name, workflow):
             require(job.get("if"), prefix + ": publication trigger gate required")
         else:
             require(set(permissions.values()) <= {"read", "none"}, prefix + ": unknown permission")
-            require("secrets." not in json.dumps(job), prefix + ": read-only jobs must not receive secrets")
+            require(not contains_secret_reference(job), prefix + ": read-only jobs must not receive secrets")
         require(job.get("container") is None and job.get("services") is None,
                 prefix + ": unreviewed containers/services")
+        metadata = {key: value for key, value in job.items() if key != "steps"}
+        require(not contains_secret_reference(metadata), prefix + ": secrets must be step scoped")
+        require(not any(marker in json.dumps(metadata) for marker in PUBLICATION_MARKERS),
+                prefix + ": mirror commands and credentials must be step scoped")
         for step in job.get("steps", []):
             require(step.get("continue-on-error", False) is False, prefix + ": step failures must block")
             action = step.get("uses")
@@ -102,6 +182,8 @@ def check(name, workflow):
                     path = step.get("with", {}).get("path", "")
                     require(path in {"work/candidate", "${{ env.listPublishDirectory }}"}, prefix + ": artifact upload scope is not approved")
             require("${{" not in step.get("run", ""), prefix + ": expressions must enter scripts through env")
+            check_publication_step(name, job_name, step)
+            check_step_secrets(name, job_name, step)
 
     if name == "validate.yml":
         require(set(events) == {"pull_request", "push"}, "Validate must run on every PR and main push")
@@ -131,14 +213,25 @@ def check(name, workflow):
                 "Candidate verification must precede publication")
         require(any("Tools/run-validation.py" in run for run in runs), "Full publication validation missing")
     if name == "build-listing.yml":
+        require(set(events) == {"workflow_dispatch", "pull_request", "release"}
+                and events["release"] == {"types": ["published", "released"]},
+                "Preserve the existing listing validation and approved publication events")
         require("listing-validation" in jobs, "Required listing-validation check must be preserved")
+        require(jobs["changes"].get("if") == "github.event_name == 'pull_request'"
+                and jobs["check-listing-builder"].get("if") == "github.event_name == 'pull_request' && needs.changes.outputs.relevant == 'true'"
+                and jobs["check-listing-builder"].get("needs") == "changes"
+                and jobs["listing-validation"].get("if") == "${{ always() && github.event_name == 'pull_request' }}"
+                and jobs["listing-validation"].get("needs") == ["changes", "check-listing-builder"],
+                "Preserve PR listing detection, builder and unconditional required gate")
         gate = jobs["build-listing"].get("if", "")
         require(gate == PAGES_GATE,
                 "Pages manual deployment must target main")
-        require(workflow["concurrency"].get("group") == "listing-${{ github.event.pull_request.number || github.run_id }}",
+        require(workflow["concurrency"] == {"group": "listing-${{ github.event.pull_request.number || github.run_id }}",
+                                            "cancel-in-progress": "${{ github.event_name == 'pull_request' }}"},
                 "Do not replace pending publication workflows")
         require(jobs["build-listing"].get("concurrency") == {"group": "pages", "cancel-in-progress": False, "queue": "max"},
                 "Preserve pending Pages deployments")
+        check_mirror_publication(workflow, jobs["build-listing"])
 
 
 def check_all(root=ROOT):

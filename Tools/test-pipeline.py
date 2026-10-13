@@ -64,6 +64,7 @@ class WorkflowTrustTests(unittest.TestCase):
     def test_pr_cannot_receive_secrets_or_persist_checkout_credentials(self):
         mutations = (lambda j: j["steps"][0]["with"].update({"persist-credentials": True}),
                      lambda j: j.update({"env": {"KEY": "${{ secrets.PRIVATE_KEY }}"}}),
+                     lambda j: j.update({"env": {"KEY": "${{ secrets['PRIVATE_KEY'] }}"}}),
                      lambda j: j["steps"][0].update({"uses": "actions/checkout@v4"}),
                      lambda j: j["steps"].append({"run": "echo '${{ github.event.pull_request.title }}'"}))
         for mutation in mutations:
@@ -125,8 +126,130 @@ class WorkflowTrustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check("build-listing.yml", data)
 
+    def test_mirror_credentials_cannot_escape_the_two_publication_steps(self):
+        approved = {"id": "mirrors", "run": policy.PUBLICATION_RUNS["mirrors"],
+                    "env": dict(policy.MIRROR_ENV)}
+        data = self.workflow()
+        data["jobs"]["schema"]["steps"].append(approved)
+        with self.assertRaises(ValueError):
+            policy.check("validate.yml", data)
+        for mutation in (
+                lambda w: w["env"].update(policy.MIRROR_ENV),
+                lambda w: w["jobs"]["build-listing"].update({"env": dict(policy.MIRROR_ENV)}),
+                lambda w: w["jobs"]["build-listing"]["steps"][0].update({"env": dict(policy.MIRROR_ENV)}),
+                lambda w: w["jobs"]["check-listing-builder"]["steps"].append(copy.deepcopy(approved)),
+                lambda w: w["jobs"]["build-listing"]["steps"][0].update({"env": {"KEY": "${{ secrets[format('VPM_{0}_TOKEN', 'MIRROR')] }}"}}),
+                lambda w: w["jobs"]["build-listing"]["steps"].append({"run": "echo token", "env": {"KEY": "${{ secrets['VPM_MIRROR_TOKEN'] }}"}})):
+            data = self.workflow("build-listing.yml")
+            mutation(data)
+            with self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+        data = self.workflow("release-vpm.yml")
+        data["jobs"]["release"]["steps"].append(approved)
+        with self.assertRaises(ValueError):
+            policy.check("release-vpm.yml", data)
+
+    def test_mirror_extension_preserves_listing_events_required_gate_and_concurrency(self):
+        mutations = (
+            lambda w: w["on"].update({"schedule": []}),
+            lambda w: w["on"]["release"].update({"types": ["created"]}),
+            lambda w: w["concurrency"].update({"cancel-in-progress": True}),
+            lambda w: w["jobs"]["changes"].update({"if": "false"}),
+            lambda w: w["jobs"]["check-listing-builder"].update({"if": "false"}),
+            lambda w: w["jobs"]["listing-validation"].update({"if": "false"}),
+            lambda w: w["jobs"]["listing-validation"].update({"needs": ["changes"]}),
+        )
+        for mutation in mutations:
+            data = self.workflow("build-listing.yml")
+            mutation(data)
+            with self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+
+    def test_publication_commands_cannot_be_skipped_overridden_or_redirected(self):
+        changes = ({"if": "always()"}, {"if": False}, {"continue-on-error": True},
+                   {"shell": "bash --noprofile --norc {0}"}, {"working-directory": "untrusted"})
+        for identity in policy.PUBLICATION_RUNS:
+            for change in changes:
+                data = self.workflow("build-listing.yml")
+                step = next(s for s in data["jobs"]["build-listing"]["steps"] if s.get("id") == identity)
+                step.update(change)
+                with self.subTest(identity=identity, change=change), self.assertRaises(ValueError):
+                    policy.check("build-listing.yml", data)
+            for suffix in (' --repository attacker/fork', ' --publication-root unreviewed', ' &', ' || true'):
+                data = self.workflow("build-listing.yml")
+                step = next(s for s in data["jobs"]["build-listing"]["steps"] if s.get("id") == identity)
+                step["run"] += suffix
+                with self.subTest(identity=identity, suffix=suffix), self.assertRaises(ValueError):
+                    policy.check("build-listing.yml", data)
+
+    def test_mirror_requires_one_preflight_preparation_and_unchanged_deployment(self):
+        for identity in policy.PUBLICATION_RUNS:
+            for duplicate in (False, True):
+                data = self.workflow("build-listing.yml")
+                steps = data["jobs"]["build-listing"]["steps"]
+                step = next(s for s in steps if s.get("id") == identity)
+                if duplicate:
+                    steps.append(copy.deepcopy(step))
+                else:
+                    steps.remove(step)
+                with self.subTest(identity=identity, duplicate=duplicate), self.assertRaises(ValueError):
+                    policy.check("build-listing.yml", data)
+        for change in ({"if": "always()"}, {"if": False}, {"continue-on-error": True}, {"id": "other-deployment"}):
+            data = self.workflow("build-listing.yml")
+            step = next(s for s in data["jobs"]["build-listing"]["steps"] if s.get("id") == "deployment")
+            step.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+
+    def test_mirrors_run_only_after_successful_deployment_of_the_prepared_listing(self):
+        for identity, target in (("mirrors", "deployment"), ("prepare-publication", "mirror-preflight"),
+                                 ("mirror-preflight", "mirrors")):
+            data = self.workflow("build-listing.yml")
+            steps = data["jobs"]["build-listing"]["steps"]
+            step = next(s for s in steps if s.get("id") == identity)
+            steps.remove(step)
+            steps.insert(next(i for i, s in enumerate(steps) if s.get("id") == target), step)
+            with self.subTest(identity=identity, target=target), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+        data = self.workflow("build-listing.yml")
+        data["jobs"]["build-listing"]["steps"].append({"run": "echo another publication"})
+        with self.assertRaises(ValueError):
+            policy.check("build-listing.yml", data)
+        data = self.workflow("build-listing.yml")
+        step = next(s for s in data["jobs"]["build-listing"]["steps"] if "Tools/check-listing.py" in s.get("run", ""))
+        step["if"] = False
+        with self.assertRaises(ValueError):
+            policy.check("build-listing.yml", data)
+
+    def test_mirror_credential_and_approval_environment_are_fixed(self):
+        for identity in ("mirror-preflight", "mirrors"):
+            for env in ({}, {"VPM_MIRROR_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},
+                        {"VPM_MIRROR_TOKEN": "${{ secrets['VPM_MIRROR_TOKEN'] }}"},
+                        dict(policy.MIRROR_ENV, OTHER_TOKEN="${{ secrets.OTHER_TOKEN }}")):
+                data = self.workflow("build-listing.yml")
+                step = next(s for s in data["jobs"]["build-listing"]["steps"] if s.get("id") == identity)
+                step["env"] = env
+                with self.subTest(identity=identity, env=env), self.assertRaises(ValueError):
+                    policy.check("build-listing.yml", data)
+        for change in ({"environment": "other"}, {"defaults": {"run": {"working-directory": "other"}}},
+                       {"env": {"PATH": "untrusted"}}):
+            data = self.workflow("build-listing.yml")
+            data["jobs"]["build-listing"].update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+
 
 class ValidationReceiptTests(unittest.TestCase):
+    def test_mirror_and_publication_regressions_join_every_complete_host_plan(self):
+        existing = ("check-pipeline.py", "test-pipeline.py", "validate.py", "test-release-policy.py",
+                    "test-listing.py", "check-public-content.py", "test-package.py",
+                    "test-aao-vertex-buffer-patch.py", "generate-compatibility.py", "test-compatibility-tooling.py")
+        added = {"test-vpm-mirrors.py", "test-exporter-publication.py"}
+        self.assertEqual(existing, tuple(name for name in runner.PYTHON_CHECKS if name not in added))
+        for name in added:
+            self.assertEqual(1, runner.PYTHON_CHECKS.count(name))
+            self.assertIn(["test-python", "Tools/" + name], runner.plan("test-python", "test-pwsh"))
+
     def test_commit_changed_during_checks_cannot_receive_a_success_receipt(self):
         state = mock.Mock(side_effect=[(SHA, True), ("b" * 40, True)])
         execute = mock.Mock(return_value=subprocess.CompletedProcess([], 0))
