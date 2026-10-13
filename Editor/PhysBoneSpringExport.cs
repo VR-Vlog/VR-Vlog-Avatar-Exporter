@@ -299,7 +299,8 @@ namespace VRVlog.LilToonExporter
             {
                 if (!(item is Component collider) || collider == null) continue;
                 if (!Active(collider)) { warnings?.Add(source.name + ": 無効なPhysBoneコライダーを省略しました。"); continue; }
-                if (collider.GetType().FullName != ColliderType) throw Unsupported(source, "未対応のコライダー型");
+                if (collider.GetType().FullName != ColliderType)
+                { warnings?.Add(source.name + ": 未対応の種類のコライダーを当たり判定から外しました（" + collider.name + "）"); continue; }
                 var colliderRoot = Root(collider); RequireLocal(copy, colliderRoot);
                 if (!colliderRoot.gameObject.activeInHierarchy)
                 { warnings?.Add(source.name + ": 非表示のRoot Transformを持つコライダーを省略しました。"); continue; }
@@ -308,7 +309,15 @@ namespace VRVlog.LilToonExporter
                     var root = colliderRoot;
                     var shape = EnumNumber(collider, "shapeType", 0);
                     var inside = Read(collider, "insideBounds", false);
-                    if (shape < 0 || shape > 2 || shape == 2 && inside) throw Unsupported(collider, "Collider Shape");
+                    // VRM has no inside plane. Export the plane itself and name the
+                    // collider whose Inside Bounds flag is not reproduced.
+                    if (shape == 2 && inside)
+                    {
+                        warnings?.Add(source.name + ": 平面コライダーのInside Boundsは再現せず通常の平面で書き出しました（" + collider.name + "）");
+                        inside = false;
+                    }
+                    if (shape < 0 || shape > 2)
+                    { warnings?.Add(source.name + ": 形を変換できないコライダーを当たり判定から外しました（" + collider.name + "）"); continue; }
                     converted = root.gameObject.AddComponent<VRM10SpringBoneCollider>();
                     converted.ColliderType = shape == 0 ? (inside ? VRM10SpringBoneColliderTypes.SphereInside : VRM10SpringBoneColliderTypes.Sphere) :
                         shape == 1 ? (inside ? VRM10SpringBoneColliderTypes.CapsuleInside : VRM10SpringBoneColliderTypes.Capsule) : VRM10SpringBoneColliderTypes.Plane;
