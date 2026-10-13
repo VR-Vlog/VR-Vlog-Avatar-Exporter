@@ -1,0 +1,91 @@
+using System;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+
+namespace VRVlog.LilToonExporter
+{
+    // Export side of the "アプリに転送" window. That window ships with the optional
+    // QR module and binds these members by name where it uses them, so the
+    // exporter keeps compiling and working in packages without the module.
+    internal sealed class AppTransferExport
+    {
+        // Only the open/closed state of the section. No avatar data is stored.
+        private const string TermsFoldoutPreference = "VRVlog.AppTransfer.ShowVrmTerms";
+        private string author = "";
+        private AvatarLicenseOptions license = new AvatarLicenseOptions();
+        private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
+        private GUIStyle summaryStyle;
+
+        // The export windows keep the author and the license settings only in
+        // the open window. Start from them when one shows this avatar; like
+        // those windows, another avatar starts from the default license.
+        public void SelectAvatar(GameObject avatar)
+        {
+            license = new AvatarLicenseOptions();
+            foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
+            {
+                if (string.IsNullOrWhiteSpace(author)) author = window.Author ?? "";
+                var shown = window.LicenseFor(avatar);
+                if (shown != null) license = shown;
+            }
+        }
+
+        public bool HasAuthor() => !string.IsNullOrWhiteSpace(author);
+
+        // The VRM meta fields of the export window, under this window's own foldout.
+        public void DrawTerms()
+        {
+            if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
+            // A required field that is still empty is never left folded away.
+            if (!HasAuthor()) showTerms = true;
+            var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
+            if (open != showTerms && HasAuthor())
+            {
+                showTerms = open;
+                EditorPrefs.SetBool(TermsFoldoutPreference, open);
+            }
+            if (!showTerms)
+            {
+                // Folded, the section still says what the VRM will carry.
+                var rect = EditorGUILayout.GetControlRect(false, 16f);
+                rect.xMin += 14f;
+                GUI.Label(rect, author.Trim() + " / " + AvatarLicenseSettingsUi.Summary(license), summaryStyle);
+                return;
+            }
+            EditorGUILayout.Space(4f);
+            var previousLabelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = 164f;
+            try
+            {
+                author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
+            }
+            finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
+            AvatarLicenseSettingsUi.DrawFields(license);
+        }
+
+        // Writes the VRM to destination through the entry the export windows use,
+        // with the settings an export window has before anything is adjusted.
+        // Returns null when it saved (saved has run) or the user canceled, and the
+        // reason when it failed. After a failure the recovery window is open;
+        // saving from there writes the same destination and then runs saved.
+        public string Export(GameObject avatar, string name, string destination, Action saved)
+        {
+            if (saved == null) throw new ArgumentNullException(nameof(saved));
+            var targetAuthor = author;
+            var targetLicense = license.Copy();
+            void Completed(byte[] bytes, IEnumerable<string> warnings) => saved();
+            var recovery = LilToonExporterWindow.ExportAndSaveNormally(avatar, destination, (options, report, warnings) =>
+            {
+                if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
+                return UniVrmOneClickExporter.Export(avatar, name, targetAuthor, warnings,
+                    exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: Compatibility.DependencyPolicy.LilToonVersion,
+                    poseOptions: new PoseExportOptions(), licenseOptions: targetLicense, disableAudioLink: true,
+                    recoveryOptions: options, recoveryReport: report);
+            }, Completed, previewGimmicks: new ExportGimmickOptions());
+            if (recovery == null) return null;
+            ExportFailureWindow.Show(recovery, () => Completed(recovery.LastSuccess.Bytes, recovery.LastSuccess.Warnings));
+            return recovery.Failure?.Message ?? "";
+        }
+    }
+}

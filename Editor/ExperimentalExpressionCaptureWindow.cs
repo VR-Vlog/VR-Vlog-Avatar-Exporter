@@ -42,6 +42,11 @@ namespace VRVlog.LilToonExporter
         System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation> recommendations;
         [SerializeField] AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
 
+        // The "アプリに転送" window starts from what this window shows: these
+        // values live only in the open window and are not stored anywhere else.
+        internal string Author => author;
+        internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
+
         public static void Open()
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();

@@ -16,8 +16,22 @@ namespace VRVlog.LilToonExporter
         internal static void Draw(ref bool showSettings, AvatarLicenseOptions options)
         {
             showSettings = EditorGUILayout.Foldout(showSettings, ExporterLocalization.T("ライセンス設定"), true);
-            if (!showSettings) return;
+            if (showSettings) DrawFields(options);
+        }
 
+        // One line for a collapsed section, so the choices that go into the VRM stay visible.
+        internal static string Summary(AvatarLicenseOptions options)
+        {
+            return string.Join(" / ",
+                ExporterLocalization.T(AvatarPermissionOptions[(int)options.AvatarPermission]),
+                ExporterLocalization.T(CommercialUsageOptions[(int)options.CommercialUsage]),
+                ExporterLocalization.T("改変") + " " + ExporterLocalization.T(ModificationOptions[(int)options.Modification]),
+                ExporterLocalization.T("再配布") + " " + ExporterLocalization.T(PermissionOptions[options.AllowRedistribution ? 1 : 0]));
+        }
+
+        // The fields without their foldout, for a window that supplies its own.
+        internal static void DrawFields(AvatarLicenseOptions options)
+        {
             EditorGUILayout.Space(6f);
             EditorGUILayout.HelpBox(ExporterLocalization.T("元の利用規約に合わせて設定してください。"), MessageType.None);
 

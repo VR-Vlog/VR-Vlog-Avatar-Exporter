@@ -11,7 +11,7 @@ using NUnit.Framework;
 
 namespace VRVlog.LilToonExporter.LanTransfer.Tests
 {
-    public sealed class CloudTransferTests
+    public sealed partial class CloudTransferTests
     {
         [Test]
         public void CloudDevelopmentAvailabilityRequiresBothEditorAndExplicitDevelopmentDefine()

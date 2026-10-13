@@ -49,6 +49,45 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [Test]
+        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneObject()
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod("OpenFromMenu", flags).GetCustomAttributes(typeof(MenuItem), false).Single();
+            Assert.That(entry.menuItem, Is.EqualTo("GameObject/VR Vlog/アプリに転送…"));
+            Assert.That(entry.validate, Is.False);
+            // Without a priority in the creation block the Hierarchy context menu does not list the entry.
+            Assert.That(entry.priority, Is.EqualTo(49));
+            var validation = typeof(AppTransferWindow).GetMethod("CanOpenFromMenu", flags);
+            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
+            var selection = Selection.objects;
+            var first = new GameObject("vrvlog-app-transfer-first");
+            var second = new GameObject("vrvlog-app-transfer-second");
+            try
+            {
+                Selection.objects = Array.Empty<Object>();
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { first };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(true));
+                Selection.objects = new Object[] { first, second };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+            }
+            finally { Selection.objects = selection; Object.DestroyImmediate(first); Object.DestroyImmediate(second); }
+        }
+
+        [Test]
+        public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
+        {
+            var exporter = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
+            var bound = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(bound != null, Is.EqualTo(exporter != null));
+            if (bound == null) return;
+            var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(members.Length, Is.EqualTo(4));
+            foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
+        }
+
 #if UNITY_EDITOR
         [Test]
         public void ExpressionCaptureSavedResultOpensAnImmutableCopyWithoutUploading()

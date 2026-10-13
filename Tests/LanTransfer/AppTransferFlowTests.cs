@@ -1,0 +1,388 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using NUnit.Framework;
+
+namespace VRVlog.LilToonExporter.LanTransfer.Tests
+{
+    // What the "アプリに転送" window shows and when, without UnityEditor. These
+    // share the cloud fixture and its fake service with the session tests.
+    public sealed partial class CloudTransferTests
+    {
+        [TestCase(false, "SampleAvatar", true, true, true, AppTransferText.NeedsAvatar)]
+        [TestCase(true, "", true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "   ", true, true, false, AppTransferText.NeedsName)]
+        [TestCase(true, "SampleAvatar", false, true, true, AppTransferText.NeedsShorterName)]
+        [TestCase(true, "SampleAvatar", true, false, true, AppTransferText.NeedsAuthor)]
+        [TestCase(true, "SampleAvatar", true, true, false, AppTransferText.NeedsConsent)]
+        [TestCase(true, "SampleAvatar", true, true, true, null)]
+        public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, string reason) =>
+            Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented), Is.EqualTo(reason));
+
+        [TestCase("SampleAvatar_v1.2", "SampleAvatar_v1.2.vrm")]
+        [TestCase("  サンプル v1.2+α  ", "サンプル v1.2+α.vrm")]
+        [TestCase("avatar.VRM", "avatar.vrm")]
+        [TestCase("衣装/夜\\昼\u0000‮", "衣装-夜-昼.vrm")]
+        public void TransferNameIsTheTypedNameAsAVrmFileName(string typed, string expected) =>
+            Assert.That(AppTransferFlow.TransferName(typed), Is.EqualTo(expected));
+
+        [Test]
+        public void TransferNameKeepsItsExtensionWithinTheServiceBound()
+        {
+            var japanese = AppTransferFlow.TransferName(new string('あ', 300));
+            Assert.That(japanese, Is.EqualTo(new string('あ', 252) + ".vrm"));
+            Assert.That(AppTransferFlow.TransferName(new string('あ', 252)), Is.EqualTo(japanese));
+            Assert.That(AppTransferFlow.TransferName(new string('あ', 251)).Length, Is.EqualTo(255));
+            // A surrogate pair that would straddle the bound is dropped whole.
+            var emoji = AppTransferFlow.TransferName("a" + string.Concat(Enumerable.Repeat("😀", 130)));
+            Assert.That(emoji, Is.EqualTo("a" + string.Concat(Enumerable.Repeat("😀", 125)) + ".vrm"));
+            foreach (var name in new[] { japanese, emoji })
+            {
+                Assert.That(name.Length, Is.LessThanOrEqualTo(256));
+                Assert.That(CloudTransferProtocol.DisplayName(name), Is.EqualTo(name));
+            }
+        }
+
+        [Test]
+        public void NamesThatCannotBecomeOneQrAreRefusedBeforeAnyExport()
+        {
+            Assert.That(AppTransferFlow.NameFits("SampleAvatar_v1.2"), Is.True);
+            Assert.That(AppTransferFlow.NameFits(new string('a', 300)), Is.True);
+            Assert.That(AppTransferFlow.NameFits(new string('あ', 200)), Is.True);
+            // 252 three-byte characters stay under the link bound but exceed one QR symbol.
+            var longest = AppTransferFlow.TransferName(new string('あ', 300));
+            Assert.That(AppTransferFlow.PlaceholderLink(longest).Length, Is.LessThanOrEqualTo(CloudTransferProtocol.MaximumImportLinkLength));
+            Assert.That(AppTransferFlow.NameFits(new string('あ', 300)), Is.False);
+        }
+
+        [Test]
+        public void PlaceholderLinkIsNeverShorterThanARealLinkAndHoldsNoSecret()
+        {
+            var placeholder = AppTransferFlow.PlaceholderLink("サンプル.vrm");
+            Assert.That(Link("サンプル.vrm").Length, Is.LessThanOrEqualTo(placeholder.Length));
+            var fields = ImportLinkFields(placeholder, out _);
+            Assert.That(fields["id"], Is.EqualTo(new string('0', 32)));
+            Assert.That(fields["token"], Is.EqualTo(new string('A', 43)));
+            Assert.That(fields["key"], Is.EqualTo(new string('A', 86)));
+            Assert.That(fields["size"], Is.EqualTo(CloudTransferProtocol.MaximumSize.ToString()));
+        }
+
+        [Test]
+        public void QrKeepsAFourModuleQuietZoneAndAtLeastThreeHundredPointsOfSymbol()
+        {
+            var link = Link("サンプル v1.2+α\"q\".vrm");
+            var matrix = TransferQrCode.Encode(link);
+            Assert.That(matrix.Width, Is.EqualTo(matrix.Height));
+            // A reader gets the link back unchanged from the drawn modules.
+            const int zoom = 4;
+            var pixels = new byte[matrix.Width * zoom * matrix.Height * zoom];
+            for (var y = 0; y < matrix.Height * zoom; y++)
+                for (var x = 0; x < matrix.Width * zoom; x++)
+                    pixels[y * matrix.Width * zoom + x] = matrix[x / zoom, y / zoom] ? (byte)0 : (byte)255;
+            var image = new ZXing.RGBLuminanceSource(pixels, matrix.Width * zoom, matrix.Height * zoom, ZXing.RGBLuminanceSource.BitmapFormat.Gray8);
+            Assert.That(new ZXing.QrCode.QRCodeReader().decode(new ZXing.BinaryBitmap(new ZXing.Common.HybridBinarizer(image))).Text, Is.EqualTo(link));
+            Assert.That((matrix.Width - 2 * TransferQrCode.QuietZone - 17) % 4, Is.EqualTo(0));
+            for (var offset = 0; offset < matrix.Width; offset++)
+                for (var border = 0; border < TransferQrCode.QuietZone; border++)
+                    Assert.That(matrix[offset, border] || matrix[border, offset] || matrix[offset, matrix.Height - 1 - border] || matrix[matrix.Width - 1 - border, offset], Is.False);
+            Assert.That(matrix[TransferQrCode.QuietZone, TransferQrCode.QuietZone], Is.True);
+            foreach (var scale in new[] { 1f, 1.25f, 1.5f, 2f })
+                foreach (var side in new[] { 29, matrix.Width, 185 })
+                {
+                    var points = TransferQrCode.DisplaySide(side, scale);
+                    var pixelsPerModule = points * scale / side;
+                    Assert.That(Math.Abs(pixelsPerModule - Math.Round(pixelsPerModule)) < 0.001, Is.True);
+                    Assert.That(points * (side - 2 * TransferQrCode.QuietZone) / side >= TransferQrCode.MinimumSymbolSide, Is.True);
+                    // One pixel per module less would fall under the minimum: the QR is no larger than needed.
+                    Assert.That((pixelsPerModule - 1) * (side - 2 * TransferQrCode.QuietZone) / scale < TransferQrCode.MinimumSymbolSide, Is.True);
+                }
+            Assert.Throws<ArgumentOutOfRangeException>(() => TransferQrCode.DisplaySide(2 * TransferQrCode.QuietZone));
+        }
+
+        [Test]
+        public async Task FlowShowsTheLinkAfterTheUploadAndCountsDownToTheServiceDeadline()
+        {
+            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var run = new FlowRun(() => currentTime))
+            {
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Form));
+                run.Flow.BeginExport();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Exporting));
+                Assert.That(run.Flow.Link == null, Is.True);
+                // The upload takes a minute of the three the service allows.
+                run.BeforePart = () => currentTime += 60;
+                run.Flow.Upload(run.Path, AppTransferFlow.TransferName("サンプル v1.2"));
+                Assert.That(run.Flow.Link == null, Is.True);
+                await run.Until(() => run.Flow.View != AppTransferView.Uploading);
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+                var fields = ImportLinkFields(run.Flow.Link, out _);
+                Assert.That(fields["name"], Is.EqualTo("サンプル v1.2.vrm"));
+                Assert.That(fields["exp"], Is.EqualTo((currentTime + 120).ToString()));
+                Assert.That(run.Flow.Remaining, Is.EqualTo(120L));
+                Assert.That(run.Flow.RemainingFraction, Is.EqualTo(1f));
+                currentTime += 30;
+                Assert.That(run.Flow.Remaining, Is.EqualTo(90L));
+                Assert.That(run.Flow.RemainingFraction, Is.EqualTo(0.75f));
+                currentTime += 89;
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+                Assert.That(run.Flow.Remaining, Is.EqualTo(1L));
+                currentTime += 1;
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Expired));
+                Assert.That(run.Flow.Link == null, Is.True);
+                Assert.That(run.Flow.Remaining, Is.EqualTo(0L));
+                Assert.That(run.Flow.RemainingFraction, Is.EqualTo(0f));
+                Assert.That(run.Flow.CanRegenerate, Is.True);
+                Assert.That(File.Exists(run.Path), Is.True);
+            }
+        }
+
+        [Test]
+        public async Task RegeneratingUploadsAgainAsANewSessionFromTheSameExport()
+        {
+            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var run = new FlowRun(() => currentTime))
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                var first = run.Flow.Link;
+                var firstTransport = run.Transport;
+                currentTime += 180;
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Expired));
+                run.Flow.Regenerate();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(ReferenceEquals(run.Transport, firstTransport), Is.False);
+                Assert.That(run.Transport.Parts.Count, Is.EqualTo(1));
+                Assert.That(run.Flow.Link != first, Is.True);
+                Assert.That(ImportLinkFields(run.Flow.Link, out _)["key"] != ImportLinkFields(first, out _)["key"], Is.True);
+                Assert.That(run.Flow.Remaining, Is.EqualTo(180L));
+                // While a QR is waiting, a new one cancels it first.
+                var waiting = run.Transport;
+                run.Flow.Regenerate();
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting && !ReferenceEquals(run.Transport, waiting));
+                await run.Until(() => waiting.CancelCalls == 1);
+                Assert.That(waiting.CancelCalls, Is.EqualTo(1));
+            }
+        }
+
+        [TestCase("completed", "Completed")]
+        [TestCase("cancelled", "Canceled")]
+        [TestCase("failed", "Failed")]
+        [TestCase("expired", "Expired")]
+        public async Task FlowFollowsEveryEndTheServiceReports(string remote, string view)
+        {
+            var expected = (AppTransferView)Enum.Parse(typeof(AppTransferView), view);
+            using (var run = new FlowRun())
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                run.Transport.RemoteState = remote;
+                await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(expected));
+                Assert.That(run.Flow.Link == null, Is.True);
+                Assert.That(run.Flow.Remaining, Is.EqualTo(0L));
+                Assert.That(run.Flow.RemainingFraction, Is.EqualTo(0f));
+                if (expected == AppTransferView.Failed) Assert.That(run.Flow.FailureText(text => text).Length > 0, Is.True);
+                // Once the phone has the avatar the exported copy is deleted; otherwise it stays for a new QR.
+                Assert.That(File.Exists(run.Path), Is.EqualTo(expected != AppTransferView.Completed));
+                Assert.That(run.Flow.CanRegenerate, Is.EqualTo(expected != AppTransferView.Completed));
+            }
+        }
+
+        [Test]
+        public async Task UploadFailureStaysOnScreenWithItsReasonUntilRetried()
+        {
+            using (var run = new FlowRun())
+            {
+                run.Failure = "quota";
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                await run.Until(() => run.Flow.View != AppTransferView.Uploading);
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                Assert.That(run.Flow.ExportDidFail, Is.False);
+                Assert.That(run.Flow.FailureText(text => text).Contains("HTTP 429"), Is.True);
+                Assert.That(run.Flow.Link == null, Is.True);
+                Assert.That(run.Flow.CanRegenerate, Is.True);
+                run.Failure = null;
+                run.Flow.Regenerate();
+                await run.Until(() => run.Flow.View != AppTransferView.Uploading);
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+            }
+        }
+
+        [Test]
+        public async Task UnreachableStatusIsShownWithoutEndingTheWait()
+        {
+            using (var run = new FlowRun())
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                run.Transport.Failure = "poll-failure";
+                await run.Until(() => run.Flow.StatusUnknown);
+                Assert.That(run.Flow.StatusUnknown, Is.True);
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+                Assert.That(run.Flow.Link != null, Is.True);
+                run.Transport.Failure = null;
+                await run.Until(() => !run.Flow.StatusUnknown);
+                Assert.That(run.Flow.StatusUnknown, Is.False);
+            }
+        }
+
+        [Test]
+        public void ExportFailureAndCancellationNeverStartAnUpload()
+        {
+            using (var run = new FlowRun())
+            {
+                run.Flow.BeginExport();
+                run.Flow.ExportCanceled();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Form));
+                run.Flow.BeginExport();
+                run.Flow.ExportFailed("理由");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                Assert.That(run.Flow.ExportDidFail, Is.True);
+                Assert.That(run.Flow.FailureText(text => "[" + text + "]"), Is.EqualTo("[理由]"));
+                Assert.That(run.Flow.CanRegenerate, Is.False);
+                run.Flow.Regenerate();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                run.Flow.BeginExport();
+                run.Flow.ExportFailed(null);
+                Assert.That(run.Flow.FailureText(text => "[" + text + "]"), Is.EqualTo(""));
+                run.Flow.BeginExport();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Exporting));
+                Assert.That(run.Flow.ExportDidFail, Is.False);
+                Assert.That(run.Transport == null, Is.True);
+            }
+        }
+
+        [Test]
+        public void SnapshotThatCannotBeTransferredFailsInPlaceAndIsDeleted()
+        {
+            using (var run = new FlowRun(length: 0))
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                Assert.That(run.Flow.FailureText(text => text), Is.EqualTo(AppTransferText.SnapshotTooLarge));
+                Assert.That(File.Exists(run.Path), Is.False);
+                Assert.That(run.Flow.CanRegenerate, Is.False);
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                Assert.That(run.Flow.FailureText(text => text), Is.EqualTo(AppTransferText.SnapshotUnreadable));
+                Assert.That(run.Transport == null, Is.True);
+            }
+        }
+
+        [TestCase(false)][TestCase(true)]
+        public async Task ClosingCancelsTheTransferAndDeletesTheExportedCopy(bool waiting)
+        {
+            using (var run = new FlowRun())
+            {
+                TaskCompletionSource<bool> held = null;
+                if (!waiting) run.Configure = transport => transport.CreateRelease = held = new TaskCompletionSource<bool>();
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                if (waiting) await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                else await run.Until(() => run.Transport != null && run.Transport.CreateObserved.Task.IsCompleted);
+                var transport = run.Transport;
+                run.Flow.Stop();
+                held?.SetResult(true);
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Form));
+                Assert.That(run.Flow.Link == null, Is.True);
+                Assert.That(File.Exists(run.Path), Is.False);
+                await run.Until(() => transport.CancelCalls == 1);
+                Assert.That(transport.CancelCalls, Is.EqualTo(1));
+                Assert.That(transport.PublishCalls, Is.EqualTo(waiting ? 1 : 0));
+            }
+        }
+
+        [Test]
+        public void ConsentSentenceAndTermsPageStayExactlyAsAgreed()
+        {
+            Assert.That(AppTransferFlow.ConsentText, Is.EqualTo("このアバターを VR Vlog へ転送して利用することに同意します（利用規約）"));
+            Assert.That(AppTransferFlow.TermsUrl, Is.EqualTo("https://vrvlog.fun/terms/"));
+        }
+
+        [Test]
+        public void WindowTextFollowsTheWordingRulesAndExistsInEveryLocale()
+        {
+#if VRVLOG_LAN_TRANSFER_CLI
+            var root = Directory.GetCurrentDirectory();
+#else
+            var root = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CloudVrmTransferSession).Assembly).resolvedPath;
+#endif
+            var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
+                .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
+            Assert.That(texts.Length, Is.EqualTo(27));
+            Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
+            foreach (var text in texts)
+            {
+                // One line, no punctuation, no request or ability phrasing, no exclamation.
+                Assert.That(Regex.IsMatch(text, "[。、！!\n]|ください|できます|しまいました"), Is.False);
+                // This package writes Japanese and Latin text without a space between them.
+                Assert.That(Regex.IsMatch(text, "[ぁ-んァ-ヶ一-龠] [A-Za-z0-9]|[A-Za-z0-9] [ぁ-んァ-ヶ一-龠]"), Is.False);
+            }
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
+                foreach (var text in texts)
+                {
+                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
+                    Assert.That(entry.Success, Is.True);
+                    var translated = entry.Groups[1].Value;
+                    Assert.That(Regex.IsMatch(translated, "[ぁ-んァ-ヶ]"), Is.False);
+                    Assert.That(Regex.Matches(translated, @"\{\d").Count, Is.EqualTo(Regex.Matches(text, @"\{\d").Count));
+                    // No closing period, no "please" and no exclamation in any language.
+                    Assert.That(Regex.IsMatch(translated, @"[.。！!]$|\bPlease\b|주세요|请|請", RegexOptions.IgnoreCase), Is.False);
+                }
+            }
+        }
+
+        // One exported snapshot and the flow that adopts it, against the fake service.
+        private sealed class FlowRun : IDisposable
+        {
+            internal readonly string Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vrvlog-app-transfer-test-" + Guid.NewGuid().ToString("N") + ".vrm");
+            internal readonly AppTransferFlow Flow;
+            internal FakeTransport Transport;
+            internal Action BeforePart;
+            internal string Failure;
+            internal Action<FakeTransport> Configure;
+            private double time;
+
+            internal FlowRun(Func<long> now = null, int length = 47)
+            {
+                var clock = now ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+                var bytes = new byte[length];
+                for (var index = 0; index < length; index++) bytes[index] = (byte)(index % 251);
+                File.WriteAllBytes(Path, bytes);
+                Flow = new AppTransferFlow(source =>
+                {
+                    Transport = new FakeTransport(source) { Now = clock, BeforePart = BeforePart, Failure = Failure };
+                    Configure?.Invoke(Transport);
+                    return new CloudVrmTransferSession(source, Transport, clock);
+                }, clock);
+            }
+
+            // Each tick is later than the status interval, so every one may ask the service again.
+            internal void Tick() => Flow.Tick(time += 10);
+
+            internal async Task Until(Func<bool> reached)
+            {
+                for (var attempt = 0; attempt < 1000 && !reached(); attempt++)
+                {
+                    Tick();
+                    if (!reached()) await Task.Delay(5);
+                }
+                Assert.That(reached(), Is.True);
+            }
+
+            public void Dispose()
+            {
+                Flow.Dispose();
+                if (File.Exists(Path)) File.Delete(Path);
+            }
+        }
+    }
+}
