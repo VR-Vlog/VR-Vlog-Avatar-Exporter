@@ -73,15 +73,21 @@ namespace VRVlog.LilToonExporter.Compatibility
 
         public static string Error(Dictionary<string, string> packages) =>
             DependencyPolicy.UniVrmError(Version(packages, "com.vrmc.vrm"), Version(packages, "com.vrmc.gltf")) ??
-            DependencyPolicy.LilToonError(Version(packages, "jp.lilxyzw.liltoon"));
+            LilToonError(packages);
+
+        static string LilToonError(Dictionary<string, string> packages) =>
+            DependencyPolicy.LilToonError(Version(packages, "jp.lilxyzw.liltoon"), T);
 
         public static bool IsBusy => EditorApplication.isCompiling || EditorApplication.isUpdating;
 
         public static string StartupError(Dictionary<string, string> packages)
         {
             if (IsBusy) return "Unityがパッケージを読み込み中です。完了すると自動で再確認します。";
-            var dependencyError = Error(packages);
-            if (dependencyError != null) return dependencyError + DependencyPolicy.Recovery;
+            var uniVrmError = DependencyPolicy.UniVrmError(Version(packages, "com.vrmc.vrm"), Version(packages, "com.vrmc.gltf"));
+            if (uniVrmError != null) return uniVrmError + DependencyPolicy.Recovery;
+            // The lilToon message already names its own fix.
+            var lilToonError = LilToonError(packages);
+            if (lilToonError != null) return lilToonError;
             if (OpenExporter != null) return null;
             if (EditorUtility.scriptCompilationFailed)
                 return "Unityでコンパイルエラーが発生しています。Consoleの赤いエラーを確認してください。黄色い更新通知だけでは書き出しを止めません。";

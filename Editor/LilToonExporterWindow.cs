@@ -10,7 +10,6 @@ namespace VRVlog.LilToonExporter
 {
     public sealed class LilToonExporterWindow : EditorWindow
     {
-        private const string SupportedLilToonVersion = Compatibility.DependencyPolicy.LilToonVersion;
         private GameObject avatar;
         private string author = "";
         private string outputPath = "";
@@ -550,17 +549,19 @@ namespace VRVlog.LilToonExporter
         private static string InstalledLilToonStatus()
         {
             var package = FindLilToonPackage();
-            return package == null ? ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）") : package.version;
+            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）");
+            return Compatibility.DependencyPolicy.AcceptsLilToon(package.version) ? package.version : string.Format(
+                ExporterLocalization.T("{0}（対応範囲 {1}〜{2} の外）"), package.version,
+                Compatibility.DependencyPolicy.LilToonMinimum, Compatibility.DependencyPolicy.LilToonMaximum);
         }
 
-        private static string RequireSupportedLilToon()
+        // Stops before export when the installed lilToon is outside the
+        // supported range. Returns the catalogue version the export conforms to.
+        internal static string RequireSupportedLilToon()
         {
-            var package = FindLilToonPackage();
-            if (package == null || !string.Equals(package.version, SupportedLilToonVersion, StringComparison.Ordinal))
-                throw new InvalidOperationException(string.Format(
-                    ExporterLocalization.T("lilToon {0} が必要です。現在のバージョン：{1}"),
-                    SupportedLilToonVersion, package?.version ?? ExporterLocalization.T("不明")));
-            return package.version;
+            var error = Compatibility.DependencyPolicy.LilToonError(FindLilToonPackage()?.version, ExporterLocalization.T);
+            if (error != null) throw new InvalidOperationException(error);
+            return Compatibility.DependencyPolicy.LilToonVersion;
         }
 
         private static PackageManagerPackageInfo FindLilToonPackage()
