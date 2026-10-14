@@ -215,6 +215,11 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Verify mirror publication access
+        id: mirror-preflight
+        run: python3 Tools/sync-vpm-mirrors.py --preflight
+        env:
+          VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vrchat-community/package-list-action
@@ -269,10 +274,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify beta and stable packages before deployment
         run: python3 Tools/check-listing.py --listing "$listPublishDirectory/index.json"
+      - name: Prepare official site and canonical compatibility publication
+        id: prepare-publication
+        run: python3 Tools/prepare-exporter-publication.py --publication-root Website --official-root "$RUNNER_TEMP/official-exporter-publication"
+        env:
+          VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: ${{ env.listPublishDirectory }}
           retention-days: 1
+      - name: Require current mirrors immediately before canonical deployment
+        id: mirror-deploy-guard
+        run: python3 Tools/sync-vpm-mirrors.py --verify-before-deployment "$RUNNER_TEMP/official-exporter-publication"
+        env:
+          VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+      - name: Publish and verify official and legacy VPM mirrors
+        id: mirrors
+        run: python3 Tools/sync-vpm-mirrors.py --publication-root "$RUNNER_TEMP/official-exporter-publication"
+        env:
+          VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
