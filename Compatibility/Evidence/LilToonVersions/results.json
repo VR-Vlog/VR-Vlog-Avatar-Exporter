@@ -1,0 +1,743 @@
+{
+ "schema": 1,
+ "versions": [
+  {
+   "lilToon": "2.0.0",
+   "lilToonZipSha256": "a45b411d9c433732d92c332114c3709e83161e4f9ec1bbe23725531337810004",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.0.0",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "598783d10d7dbefa12aeff10ea09c371bf4d99ee",
+     "total": 31,
+     "passed": 30,
+     "failed": 1,
+     "skipped": 0,
+     "result": "Failed",
+     "lilToon": null,
+     "seconds": null,
+     "notPassed": [
+      "VRVlog.LilToonExporter.Tests.DependencyStartupTests.MenuResolvesBackendWithoutInitializationRegistration"
+     ]
+    },
+    {
+     "attempt": "fix",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.0.0",
+      "installed": "2.0.0",
+      "source": "embedded"
+     },
+     "seconds": 107,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.0.0",
+      "installed": "2.0.0",
+      "source": "embedded"
+     },
+     "seconds": 37,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.0.0",
+      "installed": "2.0.0",
+      "source": "embedded"
+     },
+     "seconds": 654,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.0.0",
+      "installed": "2.0.0",
+      "source": "embedded"
+     },
+     "seconds": 678,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.0.0",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.0.0",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  },
+  {
+   "lilToon": "2.1.0",
+   "lilToonZipSha256": "3c18da9be8dce0b921459fddbbbae928c558f2b1888f588f26c173a1ac8ec836",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.1.0",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "598783d10d7dbefa12aeff10ea09c371bf4d99ee",
+     "total": 31,
+     "passed": 30,
+     "failed": 1,
+     "skipped": 0,
+     "result": "Failed",
+     "lilToon": null,
+     "seconds": null,
+     "notPassed": [
+      "VRVlog.LilToonExporter.Tests.DependencyStartupTests.MenuResolvesBackendWithoutInitializationRegistration"
+     ]
+    },
+    {
+     "attempt": "fix",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.0",
+      "installed": "2.1.0",
+      "source": "embedded"
+     },
+     "seconds": 104,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.0",
+      "installed": "2.1.0",
+      "source": "embedded"
+     },
+     "seconds": 37,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.0",
+      "installed": "2.1.0",
+      "source": "embedded"
+     },
+     "seconds": 625,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.0",
+      "installed": "2.1.0",
+      "source": "embedded"
+     },
+     "seconds": 1164,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.1.0",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.1.0",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  },
+  {
+   "lilToon": "2.1.10",
+   "lilToonZipSha256": "975cb1e06597f3ce7405cff67073627ca88e8097fb49d1dae88a8141fdfabbd9",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.1.10",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "598783d10d7dbefa12aeff10ea09c371bf4d99ee",
+     "total": 31,
+     "passed": 30,
+     "failed": 1,
+     "skipped": 0,
+     "result": "Failed",
+     "lilToon": null,
+     "seconds": null,
+     "notPassed": [
+      "VRVlog.LilToonExporter.Tests.DependencyStartupTests.MenuResolvesBackendWithoutInitializationRegistration"
+     ]
+    },
+    {
+     "attempt": "fix",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.10",
+      "installed": "2.1.10",
+      "source": "embedded"
+     },
+     "seconds": 76,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.10",
+      "installed": "2.1.10",
+      "source": "embedded"
+     },
+     "seconds": 37,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.1.10",
+      "installed": "2.1.10",
+      "source": "embedded"
+     },
+     "seconds": 621,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.1.10",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.1.10",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  },
+  {
+   "lilToon": "2.2.1",
+   "lilToonZipSha256": "2aab5ddd64ba6aaed0278301c425bb3188ee8542251d38d9f18a12ff6f10f7b9",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.2.1",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.2.1",
+      "installed": "2.2.1",
+      "source": "embedded"
+     },
+     "seconds": 93,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.2.1",
+      "installed": "2.2.1",
+      "source": "embedded"
+     },
+     "seconds": 37,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.2.1",
+      "installed": "2.2.1",
+      "source": "embedded"
+     },
+     "seconds": 618,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.2.1",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.2.1",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  },
+  {
+   "lilToon": "2.3.0",
+   "lilToonZipSha256": "211c4e5c0168dfa58701b30e13660b4917b409484c910a6d2121e9f783297945",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.3.0",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 30,
+     "failed": 1,
+     "skipped": 0,
+     "result": "Failed",
+     "lilToon": null,
+     "seconds": null,
+     "notPassed": [
+      "VRVlog.LilToonExporter.Tests.DependencyStartupTests.MenuResolvesBackendWithoutInitializationRegistration"
+     ]
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.3.0",
+      "installed": "2.3.0",
+      "source": "embedded"
+     },
+     "seconds": 40,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.3.0",
+      "installed": "2.3.0",
+      "source": "embedded"
+     },
+     "seconds": 621,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.3.0",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.3.0",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  },
+  {
+   "lilToon": "2.3.4",
+   "lilToonZipSha256": "34d172761c51aa9469a904704109086aafa6125a4fa0e058766e2ddc73d3b303",
+   "resolved": {
+    "unity": "2022.3.22f1",
+    "unityRevision": "887be4894c44",
+    "packages": {
+     "jp.lilxyzw.liltoon": "2.3.4",
+     "com.vrchat.avatars": "3.10.4",
+     "com.vrchat.base": "3.10.4",
+     "com.vrmc.gltf": "0.131.2",
+     "com.vrmc.vrm": "0.131.2",
+     "nadena.dev.modular-avatar": "1.18.7",
+     "nadena.dev.ndmf": "1.14.8",
+     "com.vrvlog.liltoon-vrm-exporter": "0.11.15"
+    }
+   },
+   "compatibility": [
+    {
+     "attempt": "first",
+     "commit": "237f4c61701d3991cd1f4e06763ad67de09c2591",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.3.4",
+      "installed": "2.3.4",
+      "source": "embedded"
+     },
+     "seconds": 80,
+     "notPassed": []
+    },
+    {
+     "attempt": "r2",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 31,
+     "passed": 31,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.3.4",
+      "installed": "2.3.4",
+      "source": "embedded"
+     },
+     "seconds": 37,
+     "notPassed": []
+    }
+   ],
+   "exporterBehavior": [
+    {
+     "attempt": "first",
+     "commit": "eb85f007a94e2a9bbafbed35b8f024ec090884d7",
+     "total": 2085,
+     "passed": 2085,
+     "failed": 0,
+     "skipped": 0,
+     "result": "Passed",
+     "lilToon": {
+      "expected": "2.3.4",
+      "installed": "2.3.4",
+      "source": "embedded"
+     },
+     "seconds": 620,
+     "notPassed": []
+    }
+   ],
+   "parity": {
+    "groups": 63,
+    "exportFailures": {
+     "A": 0,
+     "B": 0
+    },
+    "lilToon": {
+     "A": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     },
+     "B": {
+      "version": "2.3.4",
+      "source": "Embedded"
+     }
+    },
+    "lilToonVersionProperty": {
+     "A": [
+      45
+     ],
+     "B": [
+      45
+     ]
+    },
+    "AvsAagain": {
+     "ok": true,
+     "pairs": 63
+    },
+    "AvsB": {
+     "ok": true,
+     "pairs": 63,
+     "allowedKey": "VRVLOG_lilToonInstalledVersion",
+     "allowed": {
+      "A": "2.3.4",
+      "B": "2.3.4"
+     },
+     "jsonDifferences": 0,
+     "binaryDifferences": 0,
+     "renamedPlaceholderNames": 63
+    }
+   }
+  }
+ ]
+}
