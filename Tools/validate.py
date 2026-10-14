@@ -34,10 +34,10 @@ assert package["vpmDependencies"] == {
     "com.vrmc.vrm": "0.131.x",
 }
 assert listing["url"].startswith("https://") and listing["url"].endswith("/index.json")
-assert listing["url"] == "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
-assert listing["author"]["url"] == "https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter"
-assert listing["infoLink"]["url"] == "https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter"
-assert listing["githubRepos"] == ["VR-Vlog/VR-Vlog-lilToon-Exporter"]
+assert listing["url"] == "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/index.json"
+assert listing["author"]["url"] == "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter"
+assert listing["infoLink"]["url"] == "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter"
+assert listing["githubRepos"] == ["VR-Vlog/VR-Vlog-Avatar-Exporter"]
 assert schema["properties"]["schemaMajor"]["const"] == 1
 assert schema["$id"].endswith("/1.3/schema.json")
 assert 'backlight' in schema["$defs"]["material"]["properties"]["features"]["items"]["enum"]

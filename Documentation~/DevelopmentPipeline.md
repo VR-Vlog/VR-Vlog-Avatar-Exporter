@@ -59,7 +59,7 @@ Unityが必要な変更は[既存の互換性・回帰profile](../Compatibility/
 6. 既存のタグ保護・stable/beta区別を保って公開します。betaはstableのlatestを動かしません。同じタグは上書きしません。Releases生成後、既存の許可されたVPM/Pages経路で全公開履歴を生成・検証します。
 7. ReleasesとVPMのURL・版・ZIP hash・依存の整合、VCC/ALCOMへの導入・更新と必要な動作確認を行い、実際に確認した環境を記録して関連Issueへ反映します。
 
-公式ドメインと既存利用者向けのVPM URLは、[公式ドメイン・互換配信の自動同期手順](OrganizationMigration.md#公開時の自動同期)で更新します。既存の一覧公開jobは専用認証を事前確認し、生成済み公式サイトを保存して組織側を公開した後、2つの公開先を同期します。3つの実URL、全公開version・ZIP hashの一致を確認するまで、互換配信を含む公開完了とは扱いません。既存の公開承認・event gate・environment・直列化を維持し、新しいworkflowや定期実行は追加しません。
+公式ドメインと既存利用者向けのVPM URLは、[公式ドメイン・互換配信の自動同期手順](OrganizationMigration.md#公開時の自動同期)で更新します。既存の一覧公開jobは個人・組織それぞれの専用認証を事前確認し、生成済み公式サイトを保存して組織側を公開した後、3つの公開先を同期します。公式ドメイン・新組織パス・旧組織パス・旧個人パスの4つの実URL、全公開version・ZIP hashの一致を確認するまで、互換配信を含む公開完了とは扱いません。既存の公開承認・event gate・environment・直列化とExporterのworkflow・job・起動条件を維持します。旧組織パスは承認済みのaccount Pagesリポジトリのmain・rootで配信し、GitHub管理の標準Pages公開を使います。定期実行は追加しません。
 
 ## 失敗・公開後の対応
 

@@ -15,7 +15,9 @@ import zipfile
 from pathlib import Path
 import importlib.util
 
-REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+REPOSITORY = "VR-Vlog/VR-Vlog-Avatar-Exporter"
+REPOSITORY_GITHUB_ID = 1355769104
+PRE_RENAME_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
 LEGACY_REPOSITORY = "mitsuya0077/VR-Vlog-lilToon-Exporter"
 WORKFLOW = ".github/workflows/release-candidate.yml"
 MAX_ARCHIVE_BYTES = 24 * 1024 * 1024
@@ -30,6 +32,8 @@ def candidate_tool():
 
 def verify_run(run, workflow_id, sha):
     if (run.get("repository", {}).get("full_name") != REPOSITORY
+            or type(run.get("repository", {}).get("id")) is not int
+            or run["repository"]["id"] != REPOSITORY_GITHUB_ID
             or run.get("workflow_id") != workflow_id or run.get("path") != WORKFLOW
             or run.get("head_sha") != sha or run.get("head_branch") != "main"
             or run.get("event") != "workflow_dispatch" or run.get("status") != "completed"
@@ -68,7 +72,7 @@ def verify_archive(data, sha, version, expected_hash, run_id):
     # Existing candidates retain their receipt bytes after a repository transfer.
     # The authentic run is separately read from this repository before inspection.
     receipt_repository = metadata.get("repository")
-    if receipt_repository not in (REPOSITORY, LEGACY_REPOSITORY):
+    if receipt_repository not in (REPOSITORY, PRE_RENAME_REPOSITORY, LEGACY_REPOSITORY):
         raise ValueError("Candidate receipt belongs to another repository")
     expected = {"schema": 1, "repository": receipt_repository, "commit": sha,
                 "run_id": run_id, "version": version, "package": package,
