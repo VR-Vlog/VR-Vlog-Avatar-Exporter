@@ -47,7 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExportAuthor.ForSelection(ExportAuthor.Remembered(first), "TypedName"), Is.EqualTo("SampleAuthor"),
                     "The avatar's remembered author replaces the field.");
                 Assert.That(ExportAuthor.ForSelection(ExportAuthor.Remembered(second), ""), Is.Empty,
-                    "Another avatar is not offered the first avatar's author.");
+                    "Another avatar's record does not fill an empty field with the first avatar's author.");
                 Assert.That(ExportAuthor.ForSelection(ExportAuthor.Remembered(second), "TypedName"), Is.EqualTo("TypedName"),
                     "Without a remembered author the field keeps what was typed.");
             }
@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter.Tests
                 select.Invoke(window, new object[] { first });
                 Assert.That(author.GetValue(window), Is.EqualTo("SampleAuthor"));
                 select.Invoke(other, new object[] { second });
-                Assert.That(author.GetValue(other), Is.Empty, "A window opened for another avatar starts empty.");
+                Assert.That(author.GetValue(other), Is.Empty, "A new window for an avatar without a record starts empty.");
                 author.SetValue(other, "TypedName");
                 select.Invoke(other, new object[] { first });
                 Assert.That(author.GetValue(other), Is.EqualTo("SampleAuthor"));

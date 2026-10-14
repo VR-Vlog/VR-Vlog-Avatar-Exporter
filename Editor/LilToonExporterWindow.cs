@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter
                 gimmickFindings.Clear();
                 InvalidateAvatarScan();
                 licenseOptions = new AvatarLicenseOptions();
-                if (selectedAvatar != null) author = ExportAuthor.ForSelection(ExportAuthor.Remembered(selectedAvatar), author);
+                if (selectedAvatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(selectedAvatar), author));
             }
             avatar = selectedAvatar;
             EditorGUILayout.LabelField(ExporterLocalization.T("Hierarchyからアバターを指定"), hintStyle);
@@ -175,9 +175,7 @@ namespace VRVlog.LilToonExporter
             var canExport = avatar != null && ExportAuthor.IsValid(author);
             using (new EditorGUI.DisabledScope(!canExport))
                 if (GUILayout.Button(ExporterLocalization.T("保存先を選んでVRMを書き出す"), GUILayout.Height(40f))) ExportOneClick();
-
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField(canExport ? "" : ExporterLocalization.T("アバターと作者名を入力してください"), centeredHintStyle);
+            // Each missing input is named once, under its own field.
 
             if (!string.IsNullOrEmpty(lastSavedPath))
             {

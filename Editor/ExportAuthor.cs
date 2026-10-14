@@ -46,5 +46,14 @@ namespace VRVlog.LilToonExporter
         // the new avatar, else what the field already holds (as before).
         internal static string ForSelection(string rememberedForNext, string current) =>
             IsValid(rememberedForNext) ? rememberedForNext : current ?? "";
+
+        // A focused IMGUI text field keeps its own buffer and would write the
+        // old text back on the next key, so release the focus when the shown
+        // author is replaced during OnGUI.
+        internal static string Replace(string current, string next)
+        {
+            if (next != current && Event.current != null) GUI.FocusControl(null);
+            return next;
+        }
     }
 }

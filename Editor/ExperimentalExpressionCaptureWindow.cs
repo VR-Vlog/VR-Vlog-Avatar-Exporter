@@ -229,7 +229,7 @@ namespace VRVlog.LilToonExporter
             var chosen = clipInputs.Where(input => input.Selected).ToArray();
             var remaining = session.Expressions.Count(pose => !fileRecords.Values.Contains(pose));
             EditorGUILayout.LabelField(ExporterLocalization.T("表情 ") + (remaining + chosen.Length) + ExporterLocalization.T("件　・　ポーズ ") + session.PoseOptions.Manual.Count + ExporterLocalization.T("件"), EditorStyles.miniLabel);
-            author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名（必須）"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
+            author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
             // The line is always reserved so typing does not move the rows below.
             EditorGUILayout.LabelField(ExportAuthor.IsValid(author) ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
             if (licenseOptions == null) licenseOptions = new AvatarLicenseOptions();
@@ -529,7 +529,7 @@ namespace VRVlog.LilToonExporter
         void SelectSource(GameObject next)
         {
             if (source == next) return;
-            if (next != null) author = ExportAuthor.ForSelection(ExportAuthor.Remembered(next), author);
+            if (next != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(next), author));
             source = next;
             licenseOptions = new AvatarLicenseOptions();
         }
