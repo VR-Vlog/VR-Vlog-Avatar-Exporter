@@ -23,7 +23,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(true, " \u200B .vrm", true, true, true, true, AppTransferText.NeedsName)]
         [TestCase(true, "\u202E\u0000", true, true, true, true, AppTransferText.NeedsName)]
         [TestCase(true, "\uDB40\uDC41", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u00A0", true, true, true, true, AppTransferText.NeedsName)]
         [TestCase(true, "a.vrm", true, true, true, true, null)]
+        [TestCase(true, ".vrm.vrm", true, true, true, true, null)]
+        [TestCase(true, "avatar", true, true, true, true, null)]
         [TestCase(true, "\u200Bavatar", true, true, true, true, null)]
         [TestCase(true, "😀", true, true, true, true, null)]
         [TestCase(true, "SampleAvatar", false, true, true, true, AppTransferText.NeedsShorterName)]
@@ -35,10 +38,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
             Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
 
-        // Attribute arguments cannot carry a lone surrogate, so this case lives here.
+        // Cases an attribute cannot carry: a lone surrogate, and a name whose visible
+        // character falls past the length bound so only spaces stay in the transfer name.
         [Test]
-        public void LoneSurrogateIsNotAName() =>
+        public void NamesWithNothingVisibleLeftNeedAName()
+        {
             Assert.That(AppTransferFlow.BlockReason(true, "\uD800", true, true, true, true), Is.EqualTo(AppTransferText.NeedsName));
+            Assert.That(AppTransferFlow.BlockReason(true, "\u200B" + new string(' ', 252) + "a", true, true, true, true), Is.EqualTo(AppTransferText.NeedsName));
+        }
 
         [TestCase("SampleAvatar_v1.2", "SampleAvatar_v1.2.vrm")]
         [TestCase("  サンプル v1.2+α  ", "サンプル v1.2+α.vrm")]
