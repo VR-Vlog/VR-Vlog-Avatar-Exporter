@@ -326,6 +326,47 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             });
         }
 
+        [Test]
+        public void AppTransferNeedsTheSavedPrivacyConsentBeforeAnExportOrANewUpload()
+        {
+            WithPrivacyPreference(() =>
+            {
+                var type = typeof(AppTransferWindow);
+                var avatar = new GameObject("vrvlog-app-transfer-privacy");
+                var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+                try
+                {
+                    type.GetField("avatar", Instance).SetValue(window, avatar);
+                    type.GetField("avatarName", Instance).SetValue(window, "SampleAvatar");
+                    type.GetField("consented", Instance).SetValue(window, true);
+                    // Every other input is ready, whatever exporter the test project has.
+                    var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
+                    var entry = Activator.CreateInstance(entryType, true);
+                    entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
+                    type.GetField("exporter", Instance).SetValue(window, entry);
+                    type.GetField("exporterResolved", Instance).SetValue(window, true);
+                    var reason = type.GetMethod("Reason", Instance);
+
+                    EditorPrefs.DeleteKey(CloudVrmTransferWindow.PrivacyConsentPreference);
+                    Assert.That(reason.Invoke(window, null), Is.EqualTo(AppTransferText.NeedsPrivacyConsent));
+                    type.GetMethod("Begin", Instance).Invoke(window, null);
+                    Assert.That(type.GetField("flow", Instance).GetValue(window), Is.Null, "No export may start before the privacy consent.");
+
+                    // A consent withdrawn in "スマホに送る" stops a new QR and returns to the form.
+                    var flow = new AppTransferFlow();
+                    type.GetField("flow", Instance).SetValue(window, flow);
+                    flow.BeginExport();
+                    flow.ExportFailed("fixture");
+                    type.GetMethod("Retry", Instance).Invoke(window, null);
+                    Assert.That(flow.View, Is.EqualTo(AppTransferView.Form));
+
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    Assert.That(reason.Invoke(window, null), Is.Null);
+                }
+                finally { Object.DestroyImmediate(window); Object.DestroyImmediate(avatar); }
+            });
+        }
+
         private static void WithPrivacyPreference(Action test)
         {
             var exists = EditorPrefs.HasKey(CloudVrmTransferWindow.PrivacyConsentPreference);

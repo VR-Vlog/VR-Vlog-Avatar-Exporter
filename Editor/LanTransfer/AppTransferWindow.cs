@@ -28,6 +28,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [SerializeField] private string avatarName = "";
         // Consent is for the avatar on screen, so it is asked again each time.
         [NonSerialized] private bool consented;
+        // The privacy policy row stays once shown, so ticking it does not move the form.
+        [NonSerialized] private bool showPrivacy;
         [NonSerialized] private bool? nameFits;
         [NonSerialized] private AppTransferFlow flow;
         [NonSerialized] private ExportEntry exporter;
@@ -178,7 +180,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private string Reason()
         {
             if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
-            return AppTransferFlow.BlockReason(avatar != null, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented);
+            return AppTransferFlow.BlockReason(avatar != null, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
+                CloudVrmTransferWindow.PrivacyConsentAccepted);
         }
 
         private void Begin()
@@ -196,6 +199,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void Retry()
         {
             ClearQr();
+            // The privacy policy choice is shared with "スマホに送る" and can be withdrawn there.
+            if (!CloudVrmTransferWindow.PrivacyConsentAccepted)
+            {
+                flow.Stop();
+                minSize = FormMinimumSize;
+                Repaint();
+                return;
+            }
             if (flow.CanRegenerate) flow.Regenerate();
             else if (Exporter != null && !EditorApplication.isPlayingOrWillChangePlaymode) { flow.BeginExport(); ExpectExportPaint(); }
             Repaint();
@@ -366,6 +377,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     var consentHeight = Mathf.Max(EditorGUIUtility.singleLineHeight,
                         consentStyle.CalcHeight(new GUIContent(AppTransferFlow.ConsentText), Mathf.Max(100f, EditorGUIUtility.currentViewWidth - 2f * Padding - 34f)));
                     consented = EditorGUILayout.ToggleLeft(AppTransferFlow.ConsentText, consented, consentStyle, GUILayout.Height(consentHeight));
+                    // The same saved choice, link and wording as "スマホに送る".
+                    if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
+                    if (showPrivacy)
+                    {
+                        EditorGUILayout.Space(6f);
+                        var policy = Field(EditorGUILayout.GetControlRect(false, 20f));
+                        policy.width = Mathf.Min(policy.width, linkStyle.CalcSize(new GUIContent(T("プライバシーポリシーを開く"))).x);
+                        EditorGUIUtility.AddCursorRect(policy, MouseCursor.Link);
+                        if (GUI.Button(policy, T("プライバシーポリシーを開く"), linkStyle)) Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl);
+                        var privacy = T("プライバシーポリシーに同意する");
+                        var privacyHeight = Mathf.Max(EditorGUIUtility.singleLineHeight,
+                            consentStyle.CalcHeight(new GUIContent(privacy), Mathf.Max(100f, EditorGUIUtility.currentViewWidth - 2f * Padding - 34f)));
+                        var accepted = EditorGUILayout.ToggleLeft(privacy, CloudVrmTransferWindow.PrivacyConsentAccepted, consentStyle, GUILayout.Height(privacyHeight));
+                        if (accepted != CloudVrmTransferWindow.PrivacyConsentAccepted) CloudVrmTransferWindow.PrivacyConsentAccepted = accepted;
+                    }
 
                     EditorGUILayout.Space(8f);
                     entry?.DrawTerms();

@@ -12,15 +12,17 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
     // share the cloud fixture and its fake service with the session tests.
     public sealed partial class CloudTransferTests
     {
-        [TestCase(false, "SampleAvatar", true, true, true, AppTransferText.NeedsAvatar)]
-        [TestCase(true, "", true, true, true, AppTransferText.NeedsName)]
-        [TestCase(true, "   ", true, true, false, AppTransferText.NeedsName)]
-        [TestCase(true, "SampleAvatar", false, true, true, AppTransferText.NeedsShorterName)]
-        [TestCase(true, "SampleAvatar", true, false, true, AppTransferText.NeedsAuthor)]
-        [TestCase(true, "SampleAvatar", true, true, false, AppTransferText.NeedsConsent)]
-        [TestCase(true, "SampleAvatar", true, true, true, null)]
-        public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, string reason) =>
-            Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented), Is.EqualTo(reason));
+        [TestCase(false, "SampleAvatar", true, true, true, true, AppTransferText.NeedsAvatar)]
+        [TestCase(true, "", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "   ", true, true, false, false, AppTransferText.NeedsName)]
+        [TestCase(true, "SampleAvatar", false, true, true, true, AppTransferText.NeedsShorterName)]
+        [TestCase(true, "SampleAvatar", true, false, true, true, AppTransferText.NeedsAuthor)]
+        [TestCase(true, "SampleAvatar", true, true, false, true, AppTransferText.NeedsConsent)]
+        [TestCase(true, "SampleAvatar", true, true, false, false, AppTransferText.NeedsConsent)]
+        [TestCase(true, "SampleAvatar", true, true, true, false, AppTransferText.NeedsPrivacyConsent)]
+        [TestCase(true, "SampleAvatar", true, true, true, true, null)]
+        public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
+            Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
 
         [TestCase("SampleAvatar_v1.2", "SampleAvatar_v1.2.vrm")]
         [TestCase("  サンプル v1.2+α  ", "サンプル v1.2+α.vrm")]
@@ -316,7 +318,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(27));
+            Assert.That(texts.Length, Is.EqualTo(28));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {

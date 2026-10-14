@@ -28,6 +28,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string NeedsShorterName = "名前を短くすると作れます";
         internal const string NeedsAuthor = "作者名を入れると作れます";
         internal const string NeedsConsent = "利用規約に同意すると作れます";
+        internal const string NeedsPrivacyConsent = "プライバシーポリシーに同意すると作れます";
         internal const string Exporting = "VRMを書き出しています";
         internal const string ExportFailed = "書き出せませんでした";
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
@@ -94,12 +95,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         // Why the primary button is disabled, or null when it can be pressed.
-        internal static string BlockReason(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented) =>
+        // privacyAccepted is the saved privacy policy choice shared with "スマホに送る".
+        internal static string BlockReason(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
             !hasAvatar ? AppTransferText.NeedsAvatar
             : string.IsNullOrWhiteSpace(name) ? AppTransferText.NeedsName
             : !nameFits ? AppTransferText.NeedsShorterName
             : !hasAuthor ? AppTransferText.NeedsAuthor
-            : consented ? null : AppTransferText.NeedsConsent;
+            : !consented ? AppTransferText.NeedsConsent
+            : privacyAccepted ? null : AppTransferText.NeedsPrivacyConsent;
 
         // The phone stores the transfer under this name and lists the avatar
         // without the extension. This string is also the QR and AAD name.
