@@ -463,6 +463,8 @@ namespace VRVlog.LilToonExporter
             IEnumerable<PresetAssignment> presets = null)
         {
             RequireValid();
+            // Stop on an unsupported or differently built lilToon before preparing the export copy.
+            var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
@@ -473,7 +475,7 @@ namespace VRVlog.LilToonExporter
             if (expressions.Length == 0 && presetFaces.Length == 0)
                 return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
-                    lilToonVersion: "2.3.4", blinkOptions: blinkOptions, poseOptions: poses,
+                    lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport);
             // Emotion presets alone keep that ordinary route. They enter its copy
@@ -650,7 +652,7 @@ namespace VRVlog.LilToonExporter
                 }
                 var bytes = UniVrmOneClickExporter.Export(exportCopy, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
-                    lilToonVersion: "2.3.4", blinkOptions: exportBlinkOptions,
+                    lilToonVersion: lilToonVersion, blinkOptions: exportBlinkOptions,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material);

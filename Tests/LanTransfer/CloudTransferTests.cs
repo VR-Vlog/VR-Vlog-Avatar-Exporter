@@ -11,7 +11,7 @@ using NUnit.Framework;
 
 namespace VRVlog.LilToonExporter.LanTransfer.Tests
 {
-    public sealed class CloudTransferTests
+    public sealed partial class CloudTransferTests
     {
         [Test]
         public void CloudDevelopmentAvailabilityRequiresBothEditorAndExplicitDevelopmentDefine()
@@ -201,6 +201,145 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(display, Is.EqualTo(name.Substring(0, 256)));
             var qr = CloudTransferProtocol.Qr(new string('0', 32), new string('A', 43), display, CloudTransferProtocol.MaximumSize, new string('0', 64), 2147483647, new string('A', 86));
             Assert.That(Encoding.UTF8.GetByteCount(qr), Is.LessThanOrEqualTo(4096));
+        }
+
+        private const string LinkId = "0123456789abcdef0123456789abcdef";
+        private static readonly string LinkToken = LanTransferProtocol.Base64Url(Enumerable.Range(0, 32).Select(index => (byte)index).ToArray());
+        private static readonly string LinkKey = LanTransferProtocol.Base64Url(Enumerable.Range(0, 64).Select(index => (byte)index).ToArray());
+        private static readonly string LinkHash = string.Concat(Enumerable.Repeat("ab", 32));
+        private static string Link(string name) => CloudTransferProtocol.ImportLink(LinkId, LinkToken, name, 1234567, LinkHash, 1791910000, LinkKey);
+
+        // The app checks this exact vector against its own parser.
+        [Test]
+        public void ImportLinkMatchesTheVectorSharedWithTheApp() =>
+            Assert.That(Link("サンプル v1.2+α\"q\".vrm"), Is.EqualTo(
+                "vrvlog://import#v=3&id=0123456789abcdef0123456789abcdef&token=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+                + "&name=%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB%20v1.2%2B%CE%B1%22q%22.vrm&size=1234567"
+                + "&sha256=abababababababababababababababababababababababababababababababab&exp=1791910000"
+                + "&key=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0-Pw"));
+
+        [TestCase("Az09-._~", "Az09-._~")]
+        [TestCase("a b+c&d=e#f%g/h?i", "a%20b%2Bc%26d%3De%23f%25g%2Fh%3Fi")]
+        [TestCase("!\"$'()*,:;<>@[\\]^`{|}", "%21%22%24%27%28%29%2A%2C%3A%3B%3C%3E%40%5B%5C%5D%5E%60%7B%7C%7D")]
+        [TestCase("サンプル", "%E3%82%B5%E3%83%B3%E3%83%97%E3%83%AB")]
+        [TestCase("😀", "%F0%9F%98%80")]
+        public void ImportLinkPercentEncodesEveryNameByteOutsideTheUnreservedSet(string name, string encoded)
+        {
+            var fields = ImportLinkFields(Link(name), out var rawName);
+            Assert.That(rawName, Is.EqualTo(encoded));
+            Assert.That(fields["name"], Is.EqualTo(name));
+        }
+
+        [Test]
+        public void ImportLinkCarriesTheSameEightValuesAsTheQrInItsFixedOrder()
+        {
+            var name = "衣装-夜 昼.vrm";
+            var link = Link(name);
+            var qr = CloudTransferProtocol.Fields.Read(CloudTransferProtocol.Qr(LinkId, LinkToken, name, 1234567, LinkHash, 1791910000, LinkKey).Substring(LanTransferProtocol.QrPrefix.Length));
+            Assert.That(link.StartsWith("vrvlog://import#v=3&id=", StringComparison.Ordinal), Is.True);
+            Assert.That(link.Substring(CloudTransferProtocol.ImportLinkPrefix.Length).Split('&').Select(pair => pair.Substring(0, pair.IndexOf('='))).ToArray(),
+                Is.EqualTo(new[] { "v", "id", "token", "name", "size", "sha256", "exp", "key" }));
+            var fields = ImportLinkFields(link, out _);
+            Assert.That(fields["v"], Is.EqualTo(qr.Number("v").ToString()));
+            foreach (var member in new[] { "id", "token", "name", "sha256", "key" }) Assert.That(fields[member], Is.EqualTo(qr.Text(member)));
+            Assert.That(fields["size"], Is.EqualTo(qr.Number("size").ToString()));
+            Assert.That(fields["exp"], Is.EqualTo(qr.Number("expiresAt").ToString()));
+        }
+
+        [Test]
+        public void ImportLinkAcceptsEveryNameTheCloudDisplayBoundAllows()
+        {
+            // 256 UTF-16 units is the service bound. Three-byte characters are the longest encoding per unit.
+            var japanese = CloudTransferProtocol.DisplayName(new string('あ', 300));
+            var emoji = CloudTransferProtocol.DisplayName(string.Concat(Enumerable.Repeat("😀", 200)));
+            Assert.That(japanese.Length, Is.EqualTo(256));
+            Assert.That(emoji.Length, Is.EqualTo(256));
+            foreach (var name in new[] { japanese, emoji })
+            {
+                var link = Link(name);
+                Assert.That(link.Length, Is.LessThanOrEqualTo(CloudTransferProtocol.MaximumImportLinkLength));
+                Assert.That(ImportLinkFields(link, out _)["name"], Is.EqualTo(name));
+            }
+            Assert.That(Link(japanese).Length, Is.EqualTo(Link("a").Length - 1 + 256 * 9));
+        }
+
+        [Test]
+        public void ImportLinkOverItsLengthBoundIsNotIssued()
+        {
+            var longest = new string('あ', (CloudTransferProtocol.MaximumImportLinkLength - Link("").Length) / 9);
+            Assert.That(Link(longest).Length, Is.LessThanOrEqualTo(CloudTransferProtocol.MaximumImportLinkLength));
+            Assert.Throws<InvalidOperationException>(() => Link(longest + "あ"));
+            Assert.Throws<InvalidOperationException>(() => Link(new string('あ', 500)));
+        }
+
+        [Test]
+        public void ImportLinkRejectsValuesThatCouldChangeItsShape()
+        {
+            Assert.Throws<InvalidOperationException>(() => Link("\ud83d"));
+            Assert.Throws<InvalidOperationException>(() => Link(null));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId.ToUpperInvariant(), LinkToken, "a.vrm", 1, LinkHash, 1, LinkKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken + "&x=1", "a.vrm", 1, LinkHash, 1, LinkKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken, "a.vrm", 0, LinkHash, 1, LinkKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken, "a.vrm", 1, LinkHash.Substring(1), 1, LinkKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken, "a.vrm", 1, LinkHash, 0, LinkKey));
+            Assert.Throws<InvalidOperationException>(() => CloudTransferProtocol.ImportLink(LinkId, LinkToken, "a.vrm", 1, LinkHash, 1, LinkToken));
+        }
+
+        [Test]
+        public async Task SessionIssuesTheImportLinkWithItsQrAndForgetsBothTogether()
+        {
+            using (var fixture = new Fixture(47, "サンプル v1.2+α.vrm"))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport))
+            {
+                fixture.Transport.BeforePublish = () => Assert.That(session.ImportLink == null, Is.True);
+                Assert.That(session.ImportLink == null, Is.True);
+                await session.UploadAsync();
+                var qr = CloudTransferProtocol.Fields.Read(session.Qr.Substring(LanTransferProtocol.QrPrefix.Length));
+                var link = ImportLinkFields(session.ImportLink, out _);
+                foreach (var member in new[] { "id", "token", "name", "sha256", "key" }) Assert.That(link[member], Is.EqualTo(qr.Text(member)));
+                Assert.That(link["name"], Is.EqualTo(fixture.Source.Name));
+                Assert.That(link["size"], Is.EqualTo(fixture.Source.Size.ToString()));
+                Assert.That(link["exp"], Is.EqualTo(session.ExpiresAt.ToString()));
+                Assert.That(session.ImportLink.Contains(fixture.Transport.UploadToken) || session.ImportLink.Contains("https://"), Is.False);
+                Assert.That(DecryptUploaded(fixture.Transport, session.Qr), Is.EqualTo(fixture.Bytes));
+                await session.CancelAsync();
+                Assert.That(session.ImportLink == null, Is.True);
+                Assert.That(session.Qr == null, Is.True);
+            }
+        }
+
+        [TestCase("expired")][TestCase("completed")][TestCase("failed")]
+        public async Task TerminalSessionsNoLongerExposeTheImportLink(string end)
+        {
+            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var fixture = new Fixture(11))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, () => currentTime))
+            {
+                await session.UploadAsync();
+                Assert.That(session.ImportLink != null, Is.True);
+                if (end == "expired") { currentTime = session.ExpiresAt; Assert.That(session.ExpireIfDue(), Is.True); }
+                else { fixture.Transport.RemoteState = end; await session.RefreshAsync(); }
+                Assert.That(session.Terminal, Is.True);
+                Assert.That(session.ImportLink == null, Is.True);
+            }
+        }
+
+        // Splits the documented form strictly and decodes the name as the app does.
+        private static Dictionary<string, string> ImportLinkFields(string link, out string rawName)
+        {
+            Assert.That(link.StartsWith(CloudTransferProtocol.ImportLinkPrefix, StringComparison.Ordinal), Is.True);
+            var fields = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var pair in link.Substring(CloudTransferProtocol.ImportLinkPrefix.Length).Split('&'))
+                fields.Add(pair.Substring(0, pair.IndexOf('=')), pair.Substring(pair.IndexOf('=') + 1));
+            Assert.That(fields.Count, Is.EqualTo(8));
+            rawName = fields["name"];
+            Assert.That(Regex.IsMatch(rawName, @"\A(?:[A-Za-z0-9._~-]|%[0-9A-F]{2})*\z"), Is.True);
+            var bytes = new List<byte>();
+            for (var index = 0; index < rawName.Length; index++)
+                if (rawName[index] == '%') { bytes.Add(Convert.ToByte(rawName.Substring(index + 1, 2), 16)); index += 2; }
+                else bytes.Add((byte)rawName[index]);
+            fields["name"] = new UTF8Encoding(false, true).GetString(bytes.ToArray());
+            return fields;
         }
 
         [TestCase("part-failure")][TestCase("publish-mismatch")][TestCase("redirect")][TestCase("quota")][TestCase("legacy-create")][TestCase("legacy-publish")]
@@ -663,7 +802,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(encrypted.Size, Is.EqualTo(vector.Number("wireSize")));
                 Assert.That(encrypted.FileHash, Is.EqualTo(vector.Text("envelopeSha256")));
                 Assert.That(encrypted.KeyForQr(), Is.EqualTo(vector.Text("key")));
-                var envelope = File.ReadAllBytes(encrypted.SnapshotPath);
+                // The snapshot keeps its file open for writing, which Windows does not share with File.ReadAllBytes.
+                byte[] envelope;
+                using (var reader = encrypted.OpenRead())
+                using (var copy = new MemoryStream()) { reader.CopyTo(copy); envelope = copy.ToArray(); }
                 Assert.That(LanTransferProtocol.Hex(envelope.Skip(envelope.Length - 32).ToArray()), Is.EqualTo(vector.Text("tagHex")));
                 if (size <= 257) Assert.That(LanTransferProtocol.Hex(envelope), Is.EqualTo(vector.Text("envelopeHex")));
                 Assert.That(AuthenticatedDecrypt(envelope, Unhex(vector.Text("keyHex")), source.Name, source.Size, source.FileHash), Is.EqualTo(plain));

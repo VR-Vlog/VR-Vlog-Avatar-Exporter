@@ -121,12 +121,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private FileStream activeReader;
         private CloudEncryptedSnapshot encrypted;
         private CloudTransferState state = CloudTransferState.Preparing;
-        private string qr, failureStage;
+        private string qr, importLink, failureStage;
         private SafeTransferFailure failure;
         private long transferred, expiresAt, uploadSize;
         private bool started, disposed;
         internal CloudTransferState State { get { lock (gate) return state; } }
         internal string Qr { get { lock (gate) return qr; } }
+        // vrvlog://import#... for the phone's own camera. The in-app scanner keeps reading Qr.
+        internal string ImportLink { get { lock (gate) return importLink; } }
         internal long Transferred { get { lock (gate) return transferred; } }
         internal long UploadSize { get { lock (gate) return uploadSize; } }
         internal bool HasEncryptionKey { get { lock (gate) return encrypted?.HasKey == true; } }
@@ -227,7 +229,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     lock (gate)
                     {
                         ct.ThrowIfCancellationRequested();
-                        qr = CloudTransferProtocol.Qr(id, readToken, source.Name, source.Size, source.FileHash, expiresAt, protectedSnapshot.KeyForQr());
+                        var key = protectedSnapshot.KeyForQr();
+                        qr = CloudTransferProtocol.Qr(id, readToken, source.Name, source.Size, source.FileHash, expiresAt, key);
+                        // The link is an additional representation. A name it cannot carry
+                        // leaves it null and never fails the QR the in-app scanner reads.
+                        try { importLink = CloudTransferProtocol.ImportLink(id, readToken, source.Name, source.Size, source.FileHash, expiresAt, key); }
+                        catch (InvalidOperationException) { importLink = null; }
                         state = CloudTransferState.Ready;
                         protectedSnapshot.ReleaseFile();
                     }
@@ -235,7 +242,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 catch (Exception exception)
                 {
                     lock (gate) { failureStage = stage; failure = SafeFailure(exception); }
-                    lock (gate) { activeReader = null; qr = null; encrypted?.Dispose(); encrypted = null; if (state != CloudTransferState.Canceled && state != CloudTransferState.Expired) state = CloudTransferState.Failed; }
+                    lock (gate) { activeReader = null; qr = null; importLink = null; encrypted?.Dispose(); encrypted = null; if (state != CloudTransferState.Canceled && state != CloudTransferState.Expired) state = CloudTransferState.Failed; }
                     await DeleteRemote().ConfigureAwait(false);
                     throw new InvalidOperationException(Message); // Never disclose service bodies, credentials or paths.
                 }
@@ -262,7 +269,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         case "failed": state = CloudTransferState.Failed; break;
                         default: throw CloudTransferProtocol.Invalid();
                     }
-                    qr = null; encrypted?.Dispose(); encrypted = null;
+                    qr = null; importLink = null; encrypted?.Dispose(); encrypted = null;
                 }
             }
         }
@@ -272,7 +279,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             lock (gate)
             {
                 if (state >= CloudTransferState.Completed || expiresAt == 0 || now() < expiresAt) return false;
-                state = CloudTransferState.Expired; qr = null;
+                state = CloudTransferState.Expired; qr = null; importLink = null;
                 stop.Cancel(); activeReader?.Dispose(); activeReader = null;
                 encrypted?.Dispose(); encrypted = null;
                 return true;
@@ -334,12 +341,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
         internal async Task CancelAsync()
         {
-            lock (gate) { if (Terminal) return; state = CloudTransferState.Canceled; qr = null; stop.Cancel(); activeReader?.Dispose(); activeReader = null; encrypted?.Dispose(); encrypted = null; }
+            lock (gate) { if (Terminal) return; state = CloudTransferState.Canceled; qr = null; importLink = null; stop.Cancel(); activeReader?.Dispose(); activeReader = null; encrypted?.Dispose(); encrypted = null; }
             await DeleteRemote().ConfigureAwait(false);
         }
         public void Dispose()
         {
-            lock (gate) { if (disposed) return; disposed = true; stop.Cancel(); activeReader?.Dispose(); activeReader = null; if (!Terminal) state = CloudTransferState.Canceled; qr = null; encrypted?.Dispose(); encrypted = null; }
+            lock (gate) { if (disposed) return; disposed = true; stop.Cancel(); activeReader?.Dispose(); activeReader = null; if (!Terminal) state = CloudTransferState.Canceled; qr = null; importLink = null; encrypted?.Dispose(); encrypted = null; }
             _ = DeleteRemote();
         }
     }
