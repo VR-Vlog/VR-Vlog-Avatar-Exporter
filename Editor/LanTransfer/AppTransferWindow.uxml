@@ -10,7 +10,8 @@
             <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
         </ui:VisualElement>
         <ui:VisualElement class="hairline" />
-        <ui:ScrollView name="form" class="fill">
+        <ui:VisualElement name="form" class="fill">
+        <ui:ScrollView name="form-scroll" class="fill">
             <ui:VisualElement class="body">
                 <ui:HelpBox name="exporter-problem" message-type="Warning" class="box" />
                 <ui:Button name="diagnostics" class="diagnostics" />
@@ -45,13 +46,17 @@
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:IMGUIContainer name="terms" class="terms" />
-                    <ui:VisualElement class="hairline section" />
                 </ui:VisualElement>
-                <ui:Label name="reason" class="t reason" />
-                <ui:Button name="create" class="primary create" />
-                <ui:Label name="create-hint" class="t mini grey create-hint" />
             </ui:VisualElement>
         </ui:ScrollView>
+        <!-- Outside the scroll, so the reason and the button stay in view while the VRM terms are open. -->
+        <ui:VisualElement class="hairline" />
+        <ui:VisualElement class="form-footer">
+            <ui:Label name="reason" class="t reason" />
+            <ui:Button name="create" class="primary create" />
+            <ui:Label name="create-hint" class="t mini grey create-hint" />
+        </ui:VisualElement>
+        </ui:VisualElement>
         <ui:VisualElement name="transfer" class="fill">
             <ui:ScrollView name="transfer-scroll" class="fill">
                 <ui:VisualElement class="body">
