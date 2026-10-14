@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON_CHECKS = (
     "check-pipeline.py", "test-pipeline.py", "validate.py",
     "test-release-policy.py", "test-listing.py", "test-vpm-mirrors.py",
-    "test-exporter-publication.py", "check-public-content.py",
+    "test-exporter-publication.py", "test-runner-lifecycle.py", "check-public-content.py",
     "test-package.py", "test-aao-vertex-buffer-patch.py",
     "generate-compatibility.py", "test-compatibility-tooling.py",
 )
