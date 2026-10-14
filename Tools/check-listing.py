@@ -10,7 +10,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+REPOSITORY = "VR-Vlog/VR-Vlog-Avatar-Exporter"
+RELEASE_REPOSITORIES = (REPOSITORY, "VR-Vlog/VR-Vlog-lilToon-Exporter", "mitsuya0077/VR-Vlog-lilToon-Exporter")
 EXPORTER = "com.vrvlog.liltoon-vrm-exporter"
 FIXTURE_BASE = "http://127.0.0.1:8765/listing-fixture/release"
 MAX_ZIP_BYTES = 64 * 1024 * 1024
@@ -67,9 +68,10 @@ def validate(listing, package, source, compatibility, *, expected_version=None,
         if fixture_base is not None:
             require(url == f"{fixture_base}/{filename}", f"Unexpected fixture URL: {name}@{version}")
         else:
-            prefix = f"/{REPOSITORY}/releases/download/"
+            prefixes = tuple(f"/{repository}/releases/download/" for repository in RELEASE_REPOSITORIES)
+            prefix = next((prefix for prefix in prefixes if parsed.path.startswith(prefix)), None)
             require(parsed.scheme == "https" and parsed.netloc == "github.com"
-                    and parsed.path.startswith(prefix), f"Unexpected release URL: {name}@{version}")
+                    and prefix is not None, f"Unexpected release URL: {name}@{version}")
             suffix = parsed.path[len(prefix):].split("/")
             require(len(suffix) == 2 and suffix[1] == filename,
                     f"Unexpected release asset: {name}@{version}")
