@@ -35,7 +35,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
-        internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしない";
+        internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしないでください";
         internal const string Waiting = "読み取り待ち";
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
