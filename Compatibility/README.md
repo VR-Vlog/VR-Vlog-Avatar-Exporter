@@ -113,6 +113,33 @@ Pass `--expect-liltoon VERSION` to the runner. It reads the project's
 Unity and stops on a different, missing or unreadable version. The JSON receipt
 records the expected and installed lilToon version, with or without this option.
 
+### Export parity after upgrading lilToon
+
+The supported range rests on one claim: exporting with lilToon X gives the same
+file as upgrading the project to 2.3.4 and exporting again, apart from
+`asset.extras.VRVLOG_lilToonInstalledVersion`. Check it per version project:
+
+```text
+python3 Tools/run-liltoon-version-parity.py --unity UNITY_EXECUTABLE --project VERSION_PROJECTS/liltoon-X --upgrade-package VERSION_PROJECTS/liltoon-2.3.4/Packages/jp.lilxyzw.liltoon --work WORK --output OUTPUT
+```
+
+The script copies the version project (the original stays as it is), points the
+copy at this checkout and runs
+`Tests/Editor/LilToonVersionParityHarness.cs` in batch mode. The harness saves
+synthetic materials made with lilToon X (backlight colour and texture alpha below
+1, fur, Outline Lit, MatCap UV1 blend, shadow colours, rim, rim shade,
+transparent and cutout main textures, and the default material of every catalogue
+shader) and exports each on the synthetic Humanoid used by the tests (`A`, then
+`A-again` in the same session). It then replaces the embedded lilToon with 2.3.4,
+reopens the copy so lilToon's own startup runs, and exports the saved materials
+again (`B`). `Tools/compare-liltoon-version-exports.py` compares every glTF JSON
+value exactly and every bufferView by SHA-256, including the DEFLATE chunks of
+`VRVLOG_materials_liltoon`. The exporter's per-export placeholder morph target
+names (`__VRVlog_BlinkNone_<GUID>`) are renumbered first because two exports in
+the same session already differ there. `OUTPUT/parity.json` records the
+versions, the commit and both comparisons. Results:
+[Evidence/LilToonVersions](Evidence/LilToonVersions/README.md).
+
 ## Exporter behavior and integration regression profiles
 
 Dependency compatibility alone does not prove the one-click export pipeline.
