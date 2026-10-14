@@ -63,7 +63,19 @@ namespace VRVlog.LilToonExporter.Tests
             prepared = Object.Instantiate(source);
             using var blink = captured.ForClone(source, prepared);
             Assert.DoesNotThrow(() => blink.VerifyPreparedIdentity(prepared));
-            Assert.Throws<InvalidOperationException>(() => blink.ResolvePreparedNeutral(prepared));
+            // The deferred waiver still never survives to the prepared neutral, but a
+            // missing closing shape is now a reported no-blink export instead of an
+            // error (blink fallback, 2026-10-13 decision record).
+            Assert.DoesNotThrow(() => blink.ResolvePreparedNeutral(prepared));
+            Assert.That(blink.Disabled && blink.MissingAutomatic, Is.True);
+            Assert.That(blink.RequiresUnifiedEvidence, Is.False, "The deferred waiver is not kept as a tracking requirement.");
+            Assert.That(blink.Description, Is.EqualTo(BlinkExportSession.MissingAutomaticDescription));
+            // The full export continues and reports the missing closing shape.
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var warnings = new List<string>();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(fixture.Source, "Missing blink fallback", "Tests", warnings));
+            Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));
         }
 
         [Test]
