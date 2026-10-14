@@ -32,6 +32,8 @@
 
 `MenuResolvesBackendWithoutInitializationRegistration` は、Unity がインポートかコンパイルをしている間にメニューを実行すると、仕様どおり診断画面（`DependencyDiagnosticsWindow`）を開く（`DependencyDiagnostics.StartupError` が `IsBusy` を返す）。Exporter を入れ替えた直後の 1 回目の実行では、テストが始まった時点でまだ取り込みが続いていることがあり、書き出し画面が開かずに落ちていた。テストを `[UnityTest]` にし、`DependencyDiagnostics.IsBusy` が下りるまで（最大 300 秒）待ってからメニューを実行する。失敗したときは `DependencyDiagnostics.CreateReport()` をメッセージに出す。ケース数は 1 のまま。
 
+待つだけでは足りない場合があった。2.3.0 のプロジェクトでは、テストの開始直前に「Define symbols changed」で再コンパイルが要求され、コンパイルが終わってもテストランナーがアセンブリの再読み込みを止めている（`EditorApplication.LockReloadAssemblies`）ため、`isCompiling` が下りないまま 180 秒の既定のタイムアウトで落ちた。テストの先頭で `EditorApplication.isCompiling` なら Test Framework の `WaitForDomainReload` を yield し、再読み込みをさせてから続ける。再読み込みの後は列挙子の状態だけが戻り、ローカル変数は失われるので、この yield はテストの最初に置き、その前で作った値を後で使わない。タイムアウトは 600 秒にした。
+
 ## 検討した代替案と不採用理由
 
 - ハーネスを NUnit のテストにして runner のプロファイルで回す: 2 回の Unity の起動の間で lilToon を差し替える必要があり、1 回の `-runTests` では書けない。`[Explicit]` のテストにしても、既存のプロファイルのフィルタと件数の照合に手を入れることになる。

@@ -1,11 +1,14 @@
 import importlib.util
+import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 def load(name, file):
@@ -63,8 +66,9 @@ def make_project(root, version='2.1.0'):
 class FakeUnity:
     """Stands in for the harness: writes GLBs and a manifest stamped with the embedded lilToon version."""
 
-    def __init__(self, mutate_b=None, codes=None, timeout_side=None):
+    def __init__(self, mutate_b=None, codes=None, timeout_side=None, no_manifest_side=None):
         self.mutate_b, self.codes, self.timeout_side = mutate_b, codes or {}, timeout_side
+        self.no_manifest_side = no_manifest_side
         self.commands = []
 
     def __call__(self, command, timeout):
@@ -83,7 +87,11 @@ class FakeUnity:
                 (output / target / (name + '.glb')).write_bytes(glbs.build(version, mutate=mutate))
         groups = [{'name': name, 'lilToonVersionProperty': 41.0 if side == 'A' else 44.0,
                    'missing': ['_FurMask'] if side == 'A' and name == 'fur' else []} for name in GROUPS]
-        write_json(output / ('manifest-' + side + '.json'), {'side': side, 'groups': groups, 'failures': 0})
+        failures = 1 if self.codes.get(side) == 1 else 0
+        if failures:
+            groups[0]['error'] = 'material not found'
+        if side != self.no_manifest_side:
+            write_json(output / ('manifest-' + side + '.json'), {'side': side, 'groups': groups, 'failures': failures})
         return self.codes.get(side, 0)
 
 
@@ -206,6 +214,8 @@ class RunTests(unittest.TestCase):
         self.assertEqual(('2.1.0', 'embedded'), (receipt['lilToon']['before']['version'], receipt['lilToon']['before']['source']))
         self.assertEqual('2.3.4', receipt['lilToon']['after']['version'])
         self.assertEqual({'version': '2022.3.62f3', 'revision': '96770f904ca7'}, receipt['unity'])
+        self.assertEqual({'A': 0, 'B': 0}, receipt['unityExitCodes'])
+        self.assertEqual([], receipt['pairCountMismatches'])
         self.assertEqual('0.10.0-preview.1', receipt['exporter']['packageVersion'])
         self.assertEqual('file:' + self.exporter.resolve().as_posix(), receipt['exporter']['manifestReference']['after'])
         manifest = json.loads((self.copy / 'Packages' / 'manifest.json').read_text(encoding='utf-8'))
@@ -268,21 +278,111 @@ class RunTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertEqual([{'name': 'backlight-color-a050', 'error': 'material not found'}], receipt['manifests']['B']['errors'])
 
-    def test_timeout_and_nonzero_exit_stop_with_a_receipt(self):
-        for name, unity, message in (('timeout', FakeUnity(timeout_side='A'), 'did not exit within 5 s'),
-                                     ('exit', FakeUnity(codes={'B': 1}), 'Unity B exited with 1')):
+    def reset(self):
+        for path in (self.work, self.output):
+            if path.exists():
+                runner._remove_tree(path)
+
+    def test_timeout_and_unexpected_exit_stop_with_a_receipt(self):
+        cases = (('timeout', FakeUnity(timeout_side='A'), 'did not exit within 5 s', {'A': None, 'B': None}),
+                 ('exit 3', FakeUnity(codes={'B': 3}), 'Unity B exited with 3;', {'A': 0, 'B': 3}),
+                 ('exit 1 without manifest', FakeUnity(codes={'B': 1}, no_manifest_side='B'),
+                  'Unity B exited with 1 without writing manifest-B.json', {'A': 0, 'B': 1}))
+        for name, unity, message, exit_codes in cases:
             with self.subTest(name):
-                for path in (self.work, self.output):
-                    if path.exists():
-                        runner._remove_tree(path)
+                self.reset()
                 code, receipt = self.run_parity(unity, timeout=5)
                 self.assertEqual(2, code)
                 self.assertEqual('Error', receipt['result'])
                 self.assertIn(message, receipt['error'])
+                self.assertEqual(exit_codes, receipt['unityExitCodes'])
+                self.assertIsNone(receipt['comparisons']['B'])
                 self.assertTrue((self.copy / 'Library').is_dir())
                 self.assert_original_untouched()
-        self.assertIsNone(receipt['comparisons']['B'])
         self.assertEqual('2.1.0', receipt['lilToon']['before']['version'])
+
+    def test_exit_1_with_manifest_is_a_harness_failure(self):
+        # A: the upgrade and B are skipped.
+        unity = FakeUnity(codes={'A': 1})
+        code, receipt = self.run_parity(unity)
+        self.assertEqual(1, code, self.lines)
+        self.assertEqual('Failed', receipt['result'])
+        self.assertIsNone(receipt['error'])
+        self.assertEqual({'A': 1, 'B': None}, receipt['unityExitCodes'])
+        self.assertEqual(1, receipt['manifests']['A']['failures'])
+        self.assertEqual([{'name': 'backlight-color-a050', 'error': 'material not found'}], receipt['manifests']['A']['errors'])
+        self.assertIsNone(receipt['manifests']['B'])
+        self.assertEqual(['CreateAndExport'], [c[c.index('-executeMethod') + 1].rsplit('.', 1)[1] for c, _ in unity.commands])
+        self.assertNotIn('swap', receipt['seconds'])
+        self.assertEqual({'A-again': None, 'B': None}, receipt['comparisons'])
+        self.assertEqual('2.1.0', runner.installed_liltoon(self.copy)['version'])
+        self.assertTrue((self.copy / 'Library').is_dir())
+        self.assert_original_untouched()
+        # B: the comparisons still run and the manifest failure fails the run.
+        self.reset()
+        code, receipt = self.run_parity(FakeUnity(codes={'B': 1}))
+        self.assertEqual(1, code, self.lines)
+        self.assertEqual('Failed', receipt['result'])
+        self.assertIsNone(receipt['error'])
+        self.assertEqual({'A': 0, 'B': 1}, receipt['unityExitCodes'])
+        self.assertEqual(1, receipt['manifests']['B']['failures'])
+        self.assertTrue(receipt['comparisons']['B']['ok'])
+        self.assertTrue((self.copy / 'Library').is_dir())
+
+    def test_pair_count_must_match_manifest_groups(self):
+        class Dropping(FakeUnity):
+            """Loses fur.glb on every side while the manifests still list two groups without failures."""
+            def __call__(self, command, timeout):
+                code = super().__call__(command, timeout)
+                output = Path(command[command.index('-parityOutput') + 1])
+                for path in output.glob('*/fur.glb'):
+                    path.unlink()
+                return code
+        code, receipt = self.run_parity(Dropping())
+        self.assertEqual(1, code, self.lines)
+        self.assertEqual('Failed', receipt['result'])
+        self.assertTrue(all(c['ok'] and c['pairs'] == 1 for c in receipt['comparisons'].values()))
+        self.assertEqual(['A vs A-again compared 1 pairs but manifest-A lists 2 groups',
+                          'A vs B compared 1 pairs but manifest-A lists 2 groups',
+                          'A vs B compared 1 pairs but manifest-B lists 2 groups'], receipt['pairCountMismatches'])
+        self.assertIn('[parity] A vs B compared 1 pairs but manifest-B lists 2 groups', self.lines)
+        self.assertEqual(['A vs B compared 2 pairs but manifest-B has no group count'],
+                         runner.pair_count_mismatches({'B': {'pairs': 2}}, {'A': {'groups': 2}, 'B': None}))
+
+    def test_invalid_liltoon_version_in_project_stops_before_copy(self):
+        for version in ('2.1.0-beta.1', '..'):
+            with self.subTest(version):
+                self.reset()
+                package = self.project / 'Packages' / LILTOON / 'package.json'
+                write_json(package, {'name': LILTOON, 'version': version})
+                unity = FakeUnity()
+                code, receipt = self.run_parity(unity)
+                self.assertEqual(2, code)
+                self.assertEqual('Error', receipt['result'])
+                self.assertIn('expected a release such as 2.1.0', receipt['error'])
+                self.assertIn(repr(version), receipt['error'])
+                self.assertIsNone(receipt['copy'])
+                self.assertEqual([], unity.commands)
+                self.assertFalse(self.work.exists())
+
+    def test_old_python_stops_before_any_work(self):
+        unity = FakeUnity()
+        lines = []
+        with mock.patch.object(runner.sys, 'version_info', (3, 11, 9)):
+            code = runner.run_parity(Path('Unity.exe'), self.project, self.upgrade, self.work, self.output,
+                                     exporter=self.exporter, runner=unity, log=lines.append)
+            with mock.patch.object(runner, 'run_parity') as run_parity, \
+                    mock.patch('sys.stderr', new_callable=io.StringIO) as stderr:
+                main_code = runner.main(['--unity', 'Unity.exe', '--project', str(self.project),
+                                         '--upgrade-package', str(self.upgrade), '--work', str(self.work),
+                                         '--output', str(self.output)])
+        self.assertEqual((2, 2), (code, main_code))
+        self.assertEqual(['ERROR Python 3.12 or later is required'], lines)
+        self.assertIn('Python 3.12 or later is required', stderr.getvalue())
+        run_parity.assert_not_called()
+        self.assertEqual([], unity.commands)
+        self.assertFalse(self.output.exists())
+        self.assertFalse(self.work.exists())
 
     def test_invalid_inputs_stop_before_unity(self):
         unity = FakeUnity()
@@ -310,6 +410,48 @@ class RunUnityTests(unittest.TestCase):
             runner.run_unity([sys.executable, '-c', 'import time; time.sleep(60)'], 1)
         self.assertLess(time.monotonic() - started, 30)
         self.assertEqual(3, runner.run_unity([sys.executable, '-c', 'raise SystemExit(3)'], 30))
+
+    def test_timeout_kills_the_tree_of_the_started_process(self):
+        process = mock.Mock(pid=4321)
+        process.wait.side_effect = [subprocess.TimeoutExpired('Unity', 5), 1]
+        popen, kill = mock.Mock(return_value=process), mock.Mock()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            runner.run_unity(['Unity.exe'], 5, popen=popen, kill=kill)
+        kill.assert_called_once_with(process)
+        self.assertEqual([mock.call(timeout=5), mock.call()], process.wait.call_args_list)
+        flags = popen.call_args.kwargs
+        if os.name == 'nt':
+            self.assertEqual({'creationflags': subprocess.CREATE_NO_WINDOW}, flags)
+        else:
+            self.assertEqual({'start_new_session': True}, flags)
+
+    def test_windows_kill_uses_taskkill_on_the_tree_without_a_window(self):
+        process = mock.Mock(pid=4321)
+        run = mock.Mock(return_value=subprocess.CompletedProcess([], 0))
+        runner.kill_tree(process, windows=True, run=run)
+        run.assert_called_once()
+        self.assertEqual(['taskkill', '/T', '/F', '/PID', '4321'], run.call_args.args[0])
+        self.assertEqual(getattr(subprocess, 'CREATE_NO_WINDOW', 0), run.call_args.kwargs['creationflags'])
+        self.assertFalse(run.call_args.kwargs['check'])
+        process.kill.assert_not_called()
+        # taskkill missing or failing falls back to killing the process itself.
+        for result in (OSError('taskkill not found'), subprocess.CompletedProcess([], 128)):
+            with self.subTest(result=result):
+                process.reset_mock()
+                fallback = mock.Mock(side_effect=result) if isinstance(result, Exception) else mock.Mock(return_value=result)
+                runner.kill_tree(process, windows=True, run=fallback)
+                process.kill.assert_called_once_with()
+
+    def test_posix_kill_signals_the_process_group(self):
+        process = mock.Mock(pid=4321)
+        with mock.patch.object(runner.signal, 'SIGKILL', 9, create=True), \
+                mock.patch.object(runner.os, 'killpg', create=True) as killpg:
+            runner.kill_tree(process, windows=False, run=mock.Mock())
+            killpg.assert_called_once_with(4321, 9)
+            process.kill.assert_not_called()
+            killpg.side_effect = ProcessLookupError()
+            runner.kill_tree(process, windows=False, run=mock.Mock())
+            process.kill.assert_called_once_with()
 
 
 if __name__ == '__main__':
