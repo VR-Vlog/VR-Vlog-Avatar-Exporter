@@ -45,6 +45,8 @@ python3 Tools/test-release-policy.py
 python3 Tools/test-listing.py
 python3 Tools/generate-compatibility.py
 python3 Tools/test-compatibility-tooling.py
+python3 Tools/check-liltoon-structure.py
+python3 Tools/test-liltoon-catalogue.py
 python3 Tools/test-aao-vertex-buffer-patch.py
 git diff --check
 ```
