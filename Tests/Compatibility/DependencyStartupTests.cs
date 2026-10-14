@@ -12,9 +12,15 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public class DependencyStartupTests
     {
-        [UnityTest]
+        [UnityTest, Timeout(600000)]
         public IEnumerator MenuResolvesBackendWithoutInitializationRegistration()
         {
+            // While Unity is importing or compiling, the menu opens the diagnostics
+            // window on purpose. The first test after a fresh import can start in
+            // that state. The test runner locks assembly reloads, so a pending
+            // recompile never finishes by itself: let it reload, then continue.
+            // Nothing before this yield may be relied on after the reload.
+            if (EditorApplication.isCompiling) yield return new WaitForDomainReload();
             var entries = TypeCache.GetMethodsWithAttribute<MenuItem>()
                 .SelectMany(method => method.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>())
                 .Where(item => item.menuItem.StartsWith("VR Vlog/", StringComparison.Ordinal))
@@ -23,12 +29,9 @@ namespace VRVlog.LilToonExporter.Tests
             var expected = Environment.GetEnvironmentVariable("VRVLOG_TEST_UNIVRM");
             if (string.IsNullOrEmpty(expected)) Assert.Ignore("Requires an explicit compatibility environment.");
             var supported = DependencyPolicy.SupportsUniVrm(expected);
-            // While Unity is importing or compiling, the menu opens the diagnostics
-            // window on purpose. The first test after a fresh import can start in
-            // that state, so wait for the editor to settle before using the menu.
             var deadline = EditorApplication.timeSinceStartup + 300;
             while (DependencyDiagnostics.IsBusy && EditorApplication.timeSinceStartup < deadline) yield return null;
-            Assert.That(DependencyDiagnostics.IsBusy, Is.False, "Unity was still importing or compiling after 300 seconds.");
+            Assert.That(DependencyDiagnostics.IsBusy, Is.False, "Unity was still importing or compiling after 300 seconds.\n" + DependencyDiagnostics.CreateReport());
             // Reproduces the 0.10.3 dead end without relying on the user's reload
             // timing. This is a no-op once the eager registration field is removed.
             var legacyField = typeof(DependencyDiagnostics).GetField("OpenExporter", BindingFlags.Public | BindingFlags.Static);
