@@ -119,6 +119,7 @@ namespace VRVlog.LilToonExporter
                 gimmickFindings.Clear();
                 InvalidateAvatarScan();
                 licenseOptions = new AvatarLicenseOptions();
+                if (selectedAvatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(selectedAvatar), author));
             }
             avatar = selectedAvatar;
             EditorGUILayout.LabelField(ExporterLocalization.T("Hierarchyからアバターを指定"), hintStyle);
@@ -130,6 +131,8 @@ namespace VRVlog.LilToonExporter
             author = EditorGUI.TextField(authorRect, author);
             if (string.IsNullOrEmpty(author) && GUI.GetNameOfFocusedControl() != AuthorControlName)
                 GUI.Label(authorRect, ExporterLocalization.T("作者名を入力"), placeholderStyle);
+            // The line is always reserved so typing does not move the rows below.
+            EditorGUILayout.LabelField(ExportAuthor.IsValid(author) ? "" : ExporterLocalization.T(ExportAuthor.Required), hintStyle);
 
             EditorGUILayout.Space(12f);
             using (new EditorGUILayout.HorizontalScope())
@@ -169,12 +172,10 @@ namespace VRVlog.LilToonExporter
             AvatarLicenseSettingsUi.Draw(ref showLicenseSettings, licenseOptions);
 
             EditorGUILayout.Space(14f);
-            var canExport = avatar != null && !string.IsNullOrWhiteSpace(author);
+            var canExport = avatar != null && ExportAuthor.IsValid(author);
             using (new EditorGUI.DisabledScope(!canExport))
                 if (GUILayout.Button(ExporterLocalization.T("保存先を選んでVRMを書き出す"), GUILayout.Height(40f))) ExportOneClick();
-
-            EditorGUILayout.Space(6f);
-            EditorGUILayout.LabelField(canExport ? "" : ExporterLocalization.T("アバターと作者名を入力してください"), centeredHintStyle);
+            // Each missing input is named once, under its own field.
 
             if (!string.IsNullOrEmpty(lastSavedPath))
             {
@@ -411,6 +412,8 @@ namespace VRVlog.LilToonExporter
 
         private void ExportOneClick()
         {
+            // The disabled button is the normal guard; nothing starts without an author.
+            if (!ExportAuthor.IsValid(author)) return;
             try { using var resolved = ResolveBlink(); }
             catch (Exception)
             {
@@ -440,6 +443,7 @@ namespace VRVlog.LilToonExporter
             if (File.Exists(targetOutput) && !EditorUtility.DisplayDialog(
                 ExporterLocalization.T("ファイルを上書きしますか？"), targetOutput,
                 ExporterLocalization.T("上書き"), ExporterLocalization.T("キャンセル"))) return;
+            ExportAuthor.Remember(targetAvatar, targetAuthor);
             ExportRecoverySession session = null;
             void ExportCompleted(byte[] bytes, IEnumerable<string> warnings)
             {
