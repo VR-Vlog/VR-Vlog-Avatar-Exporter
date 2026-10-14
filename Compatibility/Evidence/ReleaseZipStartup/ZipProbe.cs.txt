@@ -1,0 +1,126 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
+using System.Text;
+using System.Text.RegularExpressions;
+using UnityEditor;
+using UnityEngine;
+
+// Release ZIP check: runs the production startup probe, then exports a generated
+// humanoid with one lilToon material through the production export path.
+public static class E145ZipProbe
+{
+    public static void Run()
+    {
+        var outDir = Environment.GetEnvironmentVariable("E145_OUT") ?? "e145out";
+        Directory.CreateDirectory(outDir);
+        var result = new List<string>();
+        var ok = true;
+        void Log(string key, string value) { result.Add("\"" + key + "\": \"" + (value ?? "").Replace("\\", "/").Replace("\"", "'").Replace("\n", " ").Replace("\r", "") + "\""); Debug.Log("E145 " + key + "=" + value); }
+        try { ExporterStartupProbe.Run(); Log("startup", "passed"); }
+        catch (Exception e) { ok = false; Log("startup", "failed: " + e.Message); }
+        try
+        {
+            var lil = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(p => p.name == "jp.lilxyzw.liltoon");
+            var exp = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(p => p.name == "com.vrvlog.liltoon-vrm-exporter");
+            Log("lilToonPackage", lil == null ? "missing" : lil.version + " " + lil.source);
+            Log("exporterPackage", exp == null ? "missing" : exp.version + " " + exp.source);
+            var asm = AppDomain.CurrentDomain.GetAssemblies().First(a => a.GetName().Name == "VRVlog.LilToonExporter.Editor");
+            var window = asm.GetType("VRVlog.LilToonExporter.LilToonExporterWindow", true);
+            var exporter = asm.GetType("VRVlog.LilToonExporter.UniVrmOneClickExporter", true);
+            const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+            var source = BuildAvatar();
+            var packageVersion = (string)window.GetMethod("PackageVersion", Any).Invoke(null, null);
+            var installed = (string)window.GetMethod("RequireSupportedLilToon", Any).Invoke(null, new object[] { source });
+            Log("exporterVersion", packageVersion);
+            Log("requireSupportedLilToon", installed);
+            var export = exporter.GetMethod("Export", Any);
+            var args = export.GetParameters().Select(p => p.HasDefaultValue ? p.DefaultValue : Type.Missing).ToArray();
+            var warnings = new List<string>();
+            args[0] = source; args[1] = "Generated avatar"; args[2] = "E145"; args[3] = warnings;
+            args[5] = packageVersion; args[6] = installed;
+            var bytes = (byte[])export.Invoke(null, args);
+            File.WriteAllBytes(Path.Combine(outDir, "generated.vrm"), bytes);
+            Log("vrmBytes", bytes.Length.ToString());
+            Log("warnings", string.Join(" | ", warnings));
+            var json = GlbJson(bytes);
+            File.WriteAllText(Path.Combine(outDir, "generated.gltf.json"), json, Encoding.UTF8);
+            var extrasVersion = Regex.Match(json, "\"VRVLOG_lilToonInstalledVersion\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value;
+            var sourceVersion = Regex.Match(json, "\"sourceLilToonVersion\"\\s*:\\s*\"([^\"]*)\"").Groups[1].Value;
+            Log("extrasInstalledVersion", extrasVersion);
+            Log("sourceLilToonVersion", sourceVersion);
+            if (extrasVersion != lil?.version || sourceVersion != "2.3.4") { ok = false; Log("export", "failed: version fields"); }
+            else Log("export", "passed");
+        }
+        catch (Exception e)
+        {
+            ok = false;
+            var inner = e is TargetInvocationException t && t.InnerException != null ? t.InnerException : e;
+            Log("export", "failed: " + inner.GetType().Name + ": " + inner.Message);
+            Debug.LogException(inner);
+        }
+        Log("result", ok ? "passed" : "failed");
+        File.WriteAllText(Path.Combine(outDir, "result.json"), "{\n  " + string.Join(",\n  ", result) + "\n}\n", Encoding.UTF8);
+        EditorApplication.Exit(ok ? 0 : 1);
+    }
+
+    static string GlbJson(byte[] bytes)
+    {
+        if (BitConverter.ToUInt32(bytes, 0) != 0x46546C67) throw new Exception("Not GLB");
+        var length = (int)BitConverter.ToUInt32(bytes, 12);
+        if (BitConverter.ToUInt32(bytes, 16) != 0x4E4F534A) throw new Exception("First chunk is not JSON");
+        return Encoding.UTF8.GetString(bytes, 20, length);
+    }
+
+    static Transform Child(Transform parent, string name) { var t = new GameObject(name).transform; t.SetParent(parent, false); return t; }
+
+    static GameObject BuildAvatar()
+    {
+        var source = new GameObject("Avatar");
+        var bones = new Dictionary<HumanBodyBones, Transform>();
+        Transform Bone(HumanBodyBones kind, Transform parent, Vector3 world) { var v = Child(parent, kind.ToString()); v.position = world; bones.Add(kind, v); return v; }
+        var hips = Bone(HumanBodyBones.Hips, source.transform, new Vector3(0, 1, 0));
+        var spine = Bone(HumanBodyBones.Spine, hips, new Vector3(0, 1.2f, 0));
+        var chest = Bone(HumanBodyBones.Chest, spine, new Vector3(0, 1.4f, 0));
+        var neck = Bone(HumanBodyBones.Neck, chest, new Vector3(0, 1.6f, 0));
+        var head = Bone(HumanBodyBones.Head, neck, new Vector3(0, 1.75f, 0));
+        foreach (var left in new[] { true, false })
+        {
+            var x = left ? -1f : 1f;
+            var arm = Bone(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm, chest, new Vector3(x * .25f, 1.5f, 0));
+            var forearm = Bone(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm, arm, new Vector3(x * .55f, 1.5f, 0));
+            Bone(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand, forearm, new Vector3(x * .8f, 1.5f, 0));
+            var leg = Bone(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg, hips, new Vector3(x * .12f, .9f, 0));
+            var shin = Bone(left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg, leg, new Vector3(x * .12f, .45f, 0));
+            Bone(left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot, shin, new Vector3(x * .12f, .1f, .1f));
+        }
+        var avatar = AvatarBuilder.BuildHumanAvatar(source, new HumanDescription
+        {
+            human = bones.Select(p => new HumanBone { boneName = p.Value.name, humanName = HumanTrait.BoneName[(int)p.Key], limit = new HumanLimit { useDefaultValues = true } }).ToArray(),
+            skeleton = source.GetComponentsInChildren<Transform>().Select(t => new SkeletonBone { name = t.name, position = t.localPosition, rotation = t.localRotation, scale = t.localScale }).ToArray(),
+            upperArmTwist = .5f, lowerArmTwist = .5f, upperLegTwist = .5f, lowerLegTwist = .5f, armStretch = .05f, legStretch = .05f
+        });
+        if (!avatar.isValid || !avatar.isHuman) throw new Exception("Generated avatar is not humanoid");
+        source.AddComponent<Animator>().avatar = avatar;
+        // A small box around the body so the app has something visible to show.
+        var mesh = new Mesh { name = "Body" };
+        var c = new[] { new Vector3(-.2f, .1f, -.1f), new Vector3(.2f, .1f, -.1f), new Vector3(.2f, 1.8f, -.1f), new Vector3(-.2f, 1.8f, -.1f),
+                        new Vector3(-.2f, .1f, .1f), new Vector3(.2f, .1f, .1f), new Vector3(.2f, 1.8f, .1f), new Vector3(-.2f, 1.8f, .1f) };
+        mesh.vertices = c;
+        mesh.triangles = new[] { 0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 6, 2, 3, 7, 6, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5 };
+        mesh.uv = c.Select(v => new Vector2(v.x + .5f, v.y / 2)).ToArray();
+        mesh.RecalculateNormals();
+        mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, c.Length).ToArray();
+        mesh.bindposes = new[] { hips.worldToLocalMatrix };
+        var shader = Shader.Find("lilToon");
+        if (shader == null) throw new Exception("lilToon shader not found");
+        var material = new Material(shader) { name = "Generated lilToon" };
+        if (material.HasProperty("_Color")) material.SetColor("_Color", new Color(.9f, .55f, .4f, 1));
+        var skin = Child(source.transform, "Body").gameObject.AddComponent<SkinnedMeshRenderer>();
+        skin.sharedMesh = mesh; skin.sharedMaterials = new[] { material };
+        skin.bones = new[] { hips }; skin.rootBone = hips;
+        return source;
+    }
+}

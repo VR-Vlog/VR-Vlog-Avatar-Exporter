@@ -15,6 +15,20 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(false, "SampleAvatar", true, true, true, true, AppTransferText.NeedsAvatar)]
         [TestCase(true, "", true, true, true, true, AppTransferText.NeedsName)]
         [TestCase(true, "   ", true, true, false, false, AppTransferText.NeedsName)]
+        // Names the phone would list as empty once the extension and invisible characters go.
+        [TestCase(true, ".vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, " .VRM ", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u200B", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u200B.vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, " \u200B .vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u202E\u0000", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\uDB40\uDC41", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u00A0", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "a.vrm", true, true, true, true, null)]
+        [TestCase(true, ".vrm.vrm", true, true, true, true, null)]
+        [TestCase(true, "avatar", true, true, true, true, null)]
+        [TestCase(true, "\u200Bavatar", true, true, true, true, null)]
+        [TestCase(true, "😀", true, true, true, true, null)]
         [TestCase(true, "SampleAvatar", false, true, true, true, AppTransferText.NeedsShorterName)]
         [TestCase(true, "SampleAvatar", true, false, true, true, AppTransferText.NeedsAuthor)]
         [TestCase(true, "SampleAvatar", true, true, false, true, AppTransferText.NeedsConsent)]
@@ -23,6 +37,15 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(true, "SampleAvatar", true, true, true, true, null)]
         public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
             Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
+
+        // Cases an attribute cannot carry: a lone surrogate, and a name whose visible
+        // character falls past the length bound so only spaces stay in the transfer name.
+        [Test]
+        public void NamesWithNothingVisibleLeftNeedAName()
+        {
+            Assert.That(AppTransferFlow.BlockReason(true, "\uD800", true, true, true, true), Is.EqualTo(AppTransferText.NeedsName));
+            Assert.That(AppTransferFlow.BlockReason(true, "\u200B" + new string(' ', 252) + "a", true, true, true, true), Is.EqualTo(AppTransferText.NeedsName));
+        }
 
         [TestCase("SampleAvatar_v1.2", "SampleAvatar_v1.2.vrm")]
         [TestCase("  サンプル v1.2+α  ", "サンプル v1.2+α.vrm")]
@@ -323,7 +346,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             foreach (var text in texts)
             {
                 // One line, no punctuation, no request or ability phrasing, no exclamation.
-                Assert.That(Regex.IsMatch(text, "[。、！!\n]|ください|できます|しまいました"), Is.False);
+                // The QR notice alone asks politely, as the owner chose for that line.
+                var request = text == AppTransferText.DoNotShare ? "" : "|ください";
+                Assert.That(Regex.IsMatch(text, "[。、！!\n]" + request + "|できます|しまいました"), Is.False);
                 // This package writes Japanese and Latin text without a space between them.
                 Assert.That(Regex.IsMatch(text, "[ぁ-んァ-ヶ一-龠] [A-Za-z0-9]|[A-Za-z0-9] [ぁ-んァ-ヶ一-龠]"), Is.False);
             }
