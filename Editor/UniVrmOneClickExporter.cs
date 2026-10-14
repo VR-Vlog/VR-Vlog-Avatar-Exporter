@@ -225,6 +225,7 @@ namespace VRVlog.LilToonExporter
                 optimizerBindings.VerifyMaterialEvidence();
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
+                var lookAt = VrmLookAtExport.Capture(source, clone, warnings);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -240,6 +241,7 @@ namespace VRVlog.LilToonExporter
                     }, warnings: warnings);
                 recoveryReport.Stage = "出力検査";
                 exported = ExportSkinRoots.Repair(exported, warnings);
+                if (lookAt != null) exported = lookAt.Apply(exported);
                 exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false));
                 if (trackingProfile != null) exported = optimizerBindings.ApplyTracking(exported);
                 else exported = optimizerBindings.ApplyUnified(exported, warnings);
