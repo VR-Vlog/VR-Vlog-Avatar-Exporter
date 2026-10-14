@@ -42,7 +42,7 @@
 - `Compatibility/liltoon-structure.json` に、lilToon 2.0.0〜2.3.4 の全タグ（19 個）と比較用の 1.10.3 の commit・構成ハッシュ・2.3.4 と一致するかを置く。
 - `Tools/check-liltoon-structure.py`（`Tools/run-validation.py` から呼ぶ・ネットワーク不要）が、表の 2.3.4 のハッシュと `LilToon234Catalogue.cs` から計算したハッシュの一致、対応範囲の全タグが 2.3.4 と一致すること、表の形を確かめる。
 - 範囲内のタグが表から抜けていないことは、オフラインの検査では範囲の両端だけを確かめる（タグの一覧はネットワークが無いと分からない）。2.0.0〜2.3.4 の 19 タグが揃っていることは `Tools/test-liltoon-catalogue.py` で確かめ、表を作り直すときは `structure --fetch` が GitHub のタグ一覧から範囲内の全タグを取る。
-- 対応範囲は `Compatibility/dependencies.json` の `lilToon.supportedRange`（`minimum`・`maximum`）から読み、無ければ 2.0.0〜2.3.4 とする。範囲を dependencies.json に入れる変更が入ったら、`supported_range` の 1 か所を合わせる。
+- 対応範囲は `Compatibility/dependencies.json` の `lilToon.supported`（`minimum`・`maximum`。#146 で追加）から読む。Exporter の版の判定（`DependencyPolicy.LilToonMinimum`／`LilToonMaximum`）と同じ値を使う。
 - `Tools/check-upstream-dependencies.py`（手動実行）は、lilToon の新しいリリースがあるときだけそのタグを取得して構成ハッシュを計算し、2.3.4 と一致するかと差の一覧を出力に足す。パッケージや対応範囲は変えない。
 
 ## 計算した結果

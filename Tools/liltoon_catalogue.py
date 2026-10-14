@@ -20,7 +20,7 @@ CATALOGUE_PATH = "Editor/LilToon234Catalogue.cs"
 STRUCTURE_PATH = "Compatibility/liltoon-structure.json"
 STRUCTURE_SCHEMA = 1
 REFERENCE_VERSION = "2.3.4"
-# Used until Compatibility/dependencies.json records the supported lilToon range.
+# The range recorded in Compatibility/dependencies.json (lilToon.supported); tests use it as a fixture.
 DEFAULT_SUPPORTED_RANGE = ("2.0.0", "2.3.4")
 
 # Shader files whose names start with these prefixes are internal pass libraries and bakers,
@@ -478,11 +478,9 @@ def parse_version(value):
 
 
 def supported_range(config):
-    """Supported lilToon range from dependencies.json, or the default until it is recorded there."""
-    recorded = config.get("lilToon", {}).get("supportedRange")
-    if recorded:
-        return recorded["minimum"], recorded["maximum"]
-    return DEFAULT_SUPPORTED_RANGE
+    """Supported lilToon range from dependencies.json (lilToon.supported)."""
+    supported = config["lilToon"]["supported"]
+    return supported["minimum"], supported["maximum"]
 
 
 def in_range(tag, bounds):

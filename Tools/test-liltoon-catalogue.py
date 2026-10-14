@@ -328,10 +328,13 @@ class StructureTableTests(unittest.TestCase):
             with self.subTest(case=index):
                 self.assertNotEqual([], self.problems(table))
 
-    def test_supported_range_reads_dependencies_or_falls_back(self):
-        self.assertEqual(('2.0.0', '2.3.4'), lc.supported_range({'lilToon': {'version': '2.3.4'}}))
+    def test_supported_range_reads_dependencies(self):
         self.assertEqual(('2.1.0', '2.3.4'), lc.supported_range(
-            {'lilToon': {'supportedRange': {'minimum': '2.1.0', 'maximum': '2.3.4'}}}))
+            {'lilToon': {'supported': {'minimum': '2.1.0', 'maximum': '2.3.4'}}}))
+        with self.assertRaises(KeyError):
+            lc.supported_range({'lilToon': {'version': '2.3.4'}})
+        config = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
+        self.assertEqual(lc.DEFAULT_SUPPORTED_RANGE, lc.supported_range(config))
         self.assertTrue(lc.in_range('2.1.10', ('2.0.0', '2.3.4')))
         self.assertFalse(lc.in_range('2.3.5', ('2.0.0', '2.3.4')))
         with self.assertRaises(lc.CatalogueError):
