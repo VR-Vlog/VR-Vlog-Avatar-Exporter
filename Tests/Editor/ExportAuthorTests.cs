@@ -103,6 +103,88 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void AppTransferStartsFromTheAvatarsRememberedAuthor()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var scenePath = "Assets/ExportAuthorTransfer-" + Guid.NewGuid().ToString("N") + ".unity";
+            string identity = null;
+            try
+            {
+                var avatar = new GameObject("SampleAvatar");
+                Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                identity = ExportAuthor.Identity(avatar);
+                ExportAuthor.Remember(avatar, "SampleAuthor");
+                var transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                var author = typeof(AppTransferExport).GetField("author", Flags);
+                Assert.That(transfer.HasAuthor(), Is.True);
+                Assert.That(author.GetValue(transfer), Is.EqualTo("SampleAuthor"));
+                author.SetValue(transfer, "  ");
+                Assert.That(transfer.HasAuthor(), Is.False, "A blank author still blocks the transfer.");
+            }
+            finally
+            {
+                ExportAuthor.Forget(identity);
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        [Test]
+        public void AppTransferAsksBeforeSavingAnExportWithFallbacks()
+        {
+            var transfer = new AppTransferExport();
+            typeof(AppTransferExport).GetField("author", Flags).SetValue(transfer, "SampleAuthor");
+            var source = new GameObject("SampleAvatar");
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-transfer-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var original = AppTransferExport.SaveNormally;
+            bool? interactive = null;
+            var saved = false;
+            try
+            {
+                // Declining the confirmation returns without a recovery session and without saving.
+                AppTransferExport.SaveNormally = (avatar, destination, create, completed, excluded, gimmicks, asks, openBlink) =>
+                {
+                    interactive = asks;
+                    Assert.That(avatar, Is.SameAs(source));
+                    Assert.That(destination, Is.EqualTo(path));
+                    return null;
+                };
+                Assert.That(transfer.Export(source, "SampleAvatar", path, () => saved = true), Is.Null);
+                Assert.That(interactive, Is.True, "The upload path asks about fallbacks like the export window.");
+                Assert.That(saved, Is.False, "Nothing is uploaded when the export was not saved.");
+            }
+            finally
+            {
+                AppTransferExport.SaveNormally = original;
+                Object.DestroyImmediate(source);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [TestCase("")]
+        [TestCase("   ")]
+        public void AppTransferDoesNotExportWithoutAnAuthor(string author)
+        {
+            var transfer = new AppTransferExport();
+            typeof(AppTransferExport).GetField("author", Flags).SetValue(transfer, author);
+            var source = new GameObject("SampleAvatar");
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-author-transfer-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var saved = false;
+            try
+            {
+                Assert.That(transfer.Export(source, "SampleAvatar", path, () => saved = true), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         [TestCase("")]
         [TestCase("   ")]
         public void ExportWindowDoesNotStartSavingWithoutAnAuthor(string author)

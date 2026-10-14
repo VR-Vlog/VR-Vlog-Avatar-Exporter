@@ -1,0 +1,100 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <ui:HelpBox name="disabled" message-type="Info" class="box" />
+    <ui:VisualElement name="content" class="content">
+        <ui:VisualElement name="header" class="header">
+            <ui:Image name="header-icon" class="header-icon" />
+            <ui:VisualElement class="header-text">
+                <ui:Label name="heading" class="t heading" />
+                <ui:Label name="subtitle" class="t mini grey subtitle" />
+            </ui:VisualElement>
+            <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
+        </ui:VisualElement>
+        <ui:VisualElement class="hairline" />
+        <ui:VisualElement name="form" class="fill">
+        <ui:ScrollView name="form-scroll" class="fill">
+            <ui:VisualElement class="body">
+                <ui:HelpBox name="exporter-problem" message-type="Warning" class="box" />
+                <ui:Button name="diagnostics" class="diagnostics" />
+                <ui:HelpBox name="playing" message-type="Info" class="box" />
+                <ui:VisualElement name="form-fields">
+                    <ui:VisualElement class="row">
+                        <ui:Label name="avatar-label" class="t label-col" />
+                        <uie:ObjectField name="avatar-field" class="field" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="row row--spaced">
+                        <ui:Label name="name-label" class="t label-col bold" />
+                        <ui:TextField name="name-field" class="field" />
+                    </ui:VisualElement>
+                    <ui:Label name="name-hint" class="t mini grey field-line" />
+                    <ui:VisualElement class="hairline section" />
+                    <ui:VisualElement class="row row--terms">
+                        <ui:Label name="terms-label" class="t label-col bold" />
+                        <ui:Label name="read-terms" class="t link" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="check-row">
+                        <ui:Toggle name="consent-toggle" class="check" />
+                        <ui:Label name="consent-text" class="t check-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="privacy" class="privacy">
+                        <ui:VisualElement class="row row--terms">
+                            <ui:VisualElement class="label-col" />
+                            <ui:Label name="privacy-link" class="t link" />
+                        </ui:VisualElement>
+                        <ui:VisualElement class="check-row">
+                            <ui:Toggle name="privacy-toggle" class="check" />
+                            <ui:Label name="privacy-text" class="t check-text" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:IMGUIContainer name="terms" class="terms" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:ScrollView>
+        <!-- Outside the scroll, so the reason and the button stay in view while the VRM terms are open. -->
+        <ui:VisualElement class="hairline" />
+        <ui:VisualElement class="form-footer">
+            <ui:Label name="reason" class="t reason" />
+            <ui:Button name="create" class="primary create" />
+            <ui:Label name="create-hint" class="t mini grey create-hint" />
+        </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="transfer" class="fill">
+            <ui:ScrollView name="transfer-scroll" class="fill">
+                <ui:VisualElement class="body">
+                    <ui:VisualElement name="slot-row" class="slot-row">
+                        <ui:VisualElement name="slot" class="slot">
+                            <ui:Image name="qr" class="qr" />
+                            <ui:VisualElement name="message" class="slot-inner">
+                                <ui:Label name="message-title" class="t slot-title" />
+                                <ui:Label name="message-body" class="t slot-body" />
+                                <ui:Button name="message-button" class="primary slot-button" />
+                            </ui:VisualElement>
+                            <ui:VisualElement name="upload" class="slot-inner">
+                                <ui:Label name="upload-title" class="t slot-title" />
+                                <ui:IMGUIContainer name="upload-bar" class="upload-bar" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:Label name="scan" class="t scan" />
+                    <ui:VisualElement name="warning" class="warning">
+                        <ui:Image name="warning-icon" class="warning-icon" />
+                        <ui:Label name="warning-text" class="t warning-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="status-row">
+                        <ui:Label name="status" class="t mini grey status" />
+                        <ui:Label name="remaining" class="t bold remaining" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="bar-track">
+                        <ui:VisualElement name="bar-fill" class="bar-fill" />
+                    </ui:VisualElement>
+                    <ui:Label name="lifetime" class="t mini grey lifetime" />
+                </ui:VisualElement>
+            </ui:ScrollView>
+            <ui:VisualElement class="hairline" />
+            <ui:VisualElement class="footer">
+                <ui:Button name="regenerate" class="footer-button regenerate" />
+                <ui:VisualElement class="fill" />
+                <ui:Button name="close" class="footer-button close" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

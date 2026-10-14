@@ -1,0 +1,350 @@
+// E145 visual comparison: renders synthetic lilToon materials and an avatar prefab with a fixed camera/light.
+// Usage (batchmode): -executeMethod E145Visual.SetupAndRender -e145vOut <dir> -e145vLabel <label>
+//                    -executeMethod E145Visual.RenderOnly     -e145vOut <dir> -e145vLabel <label>
+// SetupAndRender creates the synthetic materials only if they do not exist yet, so the same .mat assets
+// are rendered again after the lilToon package is swapped to 2.3.4 (the "upgraded" view).
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+public static class E145Visual
+{
+    const string Root = "Assets/E145V";
+    const int Size = 768;
+
+    static string Arg(string name)
+    {
+        var a = Environment.GetCommandLineArgs();
+        for (int i = 0; i < a.Length - 1; i++) if (a[i] == name) return a[i + 1];
+        return null;
+    }
+
+    public static void SetupAndRender() { Run(true); }
+    public static void RenderOnly() { Run(false); }
+
+    static void Run(bool setup)
+    {
+        int code = 0;
+        try
+        {
+            if (PlayerSettings.colorSpace != ColorSpace.Linear) PlayerSettings.colorSpace = ColorSpace.Linear;
+            QualitySettings.shadows = ShadowQuality.All;
+            QualitySettings.shadowResolution = ShadowResolution.VeryHigh;
+            QualitySettings.shadowDistance = 20f;
+            QualitySettings.shadowCascades = 1;
+            QualitySettings.antiAliasing = 0;
+            if (setup) Setup();
+            Render(Arg("-e145vOut"), Arg("-e145vLabel") ?? "X");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError("[E145V] FAILED " + e);
+            code = 1;
+        }
+        EditorApplication.Exit(code);
+    }
+
+    // ---------- synthetic materials ----------
+    static void Setup()
+    {
+        Directory.CreateDirectory(Root);
+        var lil = Shader.Find("lilToon");
+        var lilOutline = Shader.Find("Hidden/lilToonOutline");
+        var lilLite = Shader.Find("Hidden/lilToonLite");
+        if (lil == null || lilOutline == null) throw new Exception("lilToon shaders not found");
+        Debug.Log("[E145V] lite shader " + (lilLite != null ? lilLite.name : "missing"));
+
+        var halfA = MakeTex("tex_rgba_halfalpha", 64, 64, (x, y) => new Color(1, 1, 1, 0.5f));
+        var matcap = MakeTex("tex_matcap", 128, 128, (x, y) =>
+        {
+            float u = x / 127f * 2 - 1, v = y / 127f * 2 - 1;
+            float r = Mathf.Sqrt(u * u + v * v);
+            return new Color(Mathf.Clamp01(0.5f + 0.5f * u), Mathf.Clamp01(0.5f + 0.5f * v), Mathf.Clamp01(1 - r), 1);
+        });
+        var atlas = MakeTex("tex_atlas2x2", 128, 128, (x, y) =>
+        {
+            int q = (x < 64 ? 0 : 1) + (y < 64 ? 0 : 2);
+            var c = new[] { new Color(1, 0, 0, 1), new Color(0, 1, 0, 1), new Color(0, 0, 1, 1), new Color(1, 1, 0, 1) }[q];
+            return c;
+        });
+        var shadowTex = MakeTex("tex_shadow_purple", 16, 16, (x, y) => new Color(0.55f, 0.45f, 0.75f, 1f));
+        MakeUv1Sphere();
+        MakeEnvCube();
+
+        Mat("m00_standard_probe", Shader.Find("Standard"), m => { m.SetColor("_Color", new Color(0.9f, 0.85f, 0.8f, 1)); m.SetFloat("_Glossiness", 0f); });
+        Mat("m01_control", lil, m => { Base(m); });
+        Mat("m02_backlight_colorA050", lil, m =>
+        {
+            Base(m); m.SetFloat("_UseBacklight", 1); m.SetColor("_BacklightColor", new Color(1f, 0.55f, 0.2f, 0.5f));
+        });
+        Mat("m03_backlight_texA050", lil, m =>
+        {
+            Base(m); m.SetFloat("_UseBacklight", 1); m.SetColor("_BacklightColor", new Color(1f, 0.55f, 0.2f, 1f));
+            m.SetTexture("_BacklightColorTex", halfA);
+        });
+        Mat("m04_backlight_A100", lil, m =>
+        {
+            Base(m); m.SetFloat("_UseBacklight", 1); m.SetColor("_BacklightColor", new Color(1f, 0.55f, 0.2f, 1f));
+        });
+        Mat("m05_shadow3_env", lil, m =>
+        {
+            Base(m); m.SetFloat("_ShadowEnvStrength", 1f);
+            m.SetColor("_Shadow3rdColor", new Color(0.3f, 0.2f, 0.5f, 1f));
+            m.SetFloat("_ShadowMainStrength", 0.5f);
+        });
+        if (lilLite != null)
+            Mat("m06_lite_shadow_env", lilLite, m =>
+            {
+                m.SetColor("_Color", new Color(0.9f, 0.85f, 0.8f, 1)); m.SetFloat("_UseShadow", 1); m.SetFloat("_ShadowEnvStrength", 1f);
+                m.SetTexture("_ShadowColorTex", shadowTex);
+            });
+        Mat("m07_outline_lit", lilOutline, m =>
+        {
+            Base(m); m.SetFloat("_OutlineWidth", 1f); m.SetColor("_OutlineColor", new Color(0.1f, 0.1f, 0.3f, 1f));
+            m.SetColor("_OutlineLitColor", new Color(1f, 0.8f, 0f, 1f));
+        });
+        Mat("m08_matcap_uv1", lil, m =>
+        {
+            Base(m); m.SetFloat("_UseMatCap", 1); m.SetTexture("_MatCapTex", matcap);
+            m.SetVector("_MatCapBlendUV1", new Vector4(1, 1, 0, 0));
+        });
+        Mat("m09_decal_anim", lil, m =>
+        {
+            Base(m); m.SetFloat("_UseMain2ndTex", 1); m.SetTexture("_Main2ndTex", atlas);
+            m.SetFloat("_Main2ndTexIsDecal", 1);
+            m.SetTextureScale("_Main2ndTex", new Vector2(2f, 2f));
+            m.SetVector("_Main2ndTexDecalAnimation", new Vector4(2, 2, 4, 0));
+            m.SetVector("_Main2ndTexDecalSubParam", new Vector4(1, 1, 0, 1));
+        });
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+    }
+
+    static void Base(Material m)
+    {
+        m.SetColor("_Color", new Color(0.9f, 0.85f, 0.8f, 1));
+        m.SetFloat("_UseShadow", 1);
+    }
+
+    static void Mat(string name, Shader shader, Action<Material> init)
+    {
+        var path = Root + "/" + name + ".mat";
+        if (AssetDatabase.LoadAssetAtPath<Material>(path) != null) return;
+        var m = new Material(shader);
+        init(m);
+        AssetDatabase.CreateAsset(m, path);
+    }
+
+    static Texture2D MakeTex(string name, int w, int h, Func<int, int, Color> f)
+    {
+        var path = Root + "/" + name + ".png";
+        if (!File.Exists(path))
+        {
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false);
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) t.SetPixel(x, y, f(x, y));
+            File.WriteAllBytes(path, t.EncodeToPNG());
+            AssetDatabase.ImportAsset(path);
+            var imp = (TextureImporter)AssetImporter.GetAtPath(path);
+            imp.alphaIsTransparency = false; imp.mipmapEnabled = false; imp.textureCompression = TextureImporterCompression.Uncompressed;
+            imp.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    static void MakeUv1Sphere()
+    {
+        var path = Root + "/sphere_uv1_outside.asset";
+        if (AssetDatabase.LoadAssetAtPath<Mesh>(path) != null) return;
+        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        var mesh = UnityEngine.Object.Instantiate(go.GetComponent<MeshFilter>().sharedMesh);
+        UnityEngine.Object.DestroyImmediate(go);
+        mesh.uv2 = mesh.uv.Select(u => u * 3f - Vector2.one).ToArray(); // UV1 outside 0..1 on purpose
+        AssetDatabase.CreateAsset(mesh, path);
+    }
+
+    static void MakeEnvCube()
+    {
+        var path = Root + "/env_cube.cubemap";
+        if (AssetDatabase.LoadAssetAtPath<Cubemap>(path) != null) return;
+        var cube = new Cubemap(16, TextureFormat.RGBA32, false);
+        for (int f = 0; f < 6; f++)
+        {
+            var face = (CubemapFace)f;
+            var col = face == CubemapFace.PositiveY ? new Color(0.75f, 0.8f, 0.9f, 1) : face == CubemapFace.NegativeY ? new Color(0.3f, 0.28f, 0.25f, 1) : new Color(0.5f, 0.5f, 0.52f, 1);
+            var px = Enumerable.Repeat(col, 16 * 16).ToArray();
+            cube.SetPixels(px, face);
+        }
+        cube.Apply();
+        AssetDatabase.CreateAsset(cube, path);
+    }
+
+    // ---------- rendering ----------
+    // Every condition uses the default procedural skybox except "noskybox": lilToon 2.1.0 fixed
+    // "Shadows are not cast if the Skybox is invalid", so 2.0.0 loses its shading in a scene without one.
+    struct Cond { public string name; public Vector3 lightEuler; public float ambient; public bool skybox; }
+    static readonly Cond[] Conds =
+    {
+        new Cond { name = "front", lightEuler = new Vector3(35, -35, 0), ambient = 0.35f, skybox = true },
+        new Cond { name = "back", lightEuler = new Vector3(20, 160, 0), ambient = 0.35f, skybox = true },
+        new Cond { name = "noskybox", lightEuler = new Vector3(35, -35, 0), ambient = 0.35f, skybox = false },
+    };
+    static Material skyboxMat;
+    static ReflectionProbe reflProbe;
+    static string summary0 = "";
+
+    static void Render(string outDir, string label)
+    {
+        if (string.IsNullOrEmpty(outDir)) throw new Exception("-e145vOut missing");
+        Directory.CreateDirectory(outDir);
+        var info = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/jp.lilxyzw.liltoon/package.json");
+        string lilVer = info != null ? info.version : "unknown";
+        File.WriteAllText(Path.Combine(outDir, label + "_liltoon_version.txt"), lilVer);
+        Debug.Log("[E145V] render label=" + label + " lilToon=" + lilVer);
+
+        // A saved scene with the default skybox and baked environment lighting, like a scene an author opens in the
+        // Editor. An unsaved empty scene leaves the skybox/environment invalid, where lilToon 2.0.0 loses its shading.
+        var scenePath = Root + "/capture.unity";
+        var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+        foreach (var root in scene.GetRootGameObjects()) UnityEngine.Object.DestroyImmediate(root);
+        RenderSettings.skybox = AssetDatabase.GetBuiltinExtraResource<Material>("Default-Skybox.mat");
+        RenderSettings.ambientMode = AmbientMode.Skybox;
+        RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+        Lightmapping.bakedGI = false; Lightmapping.realtimeGI = false;
+        EditorSceneManager.SaveScene(scene, scenePath);
+        bool baked = Lightmapping.Bake();
+        Debug.Log("[E145V] environment bake " + baked);
+        var camGo = new GameObject("cam");
+        var cam = camGo.AddComponent<Camera>();
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.5f, 0.5f, 0.5f, 1);
+        cam.fieldOfView = 30; cam.nearClipPlane = 0.05f; cam.farClipPlane = 50f;
+        cam.allowMSAA = true; cam.allowHDR = false;
+        var lightGo = new GameObject("light");
+        var light = lightGo.AddComponent<Light>();
+        light.type = LightType.Directional; light.intensity = 1f; light.color = Color.white;
+        light.shadows = LightShadows.Soft; light.shadowStrength = 1f;
+
+        var probeGo = new GameObject("probe");
+        reflProbe = probeGo.AddComponent<ReflectionProbe>();
+        reflProbe.mode = ReflectionProbeMode.Custom;
+        reflProbe.customBakedTexture = AssetDatabase.LoadAssetAtPath<Cubemap>(Root + "/env_cube.cubemap");
+        reflProbe.size = new Vector3(100, 100, 100);
+        reflProbe.importance = 10;
+        summary0 = "probe cubemap " + (reflProbe.customBakedTexture != null);
+
+        var rt = new RenderTexture(Size, Size, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 8 };
+        rt.Create();
+        cam.targetTexture = rt;
+
+        // synthetic spheres
+        var sphereMesh = GetPrimitiveMesh();
+        var uv1Mesh = AssetDatabase.LoadAssetAtPath<Mesh>(Root + "/sphere_uv1_outside.asset");
+        var mats = AssetDatabase.FindAssets("t:Material", new[] { Root }).Select(AssetDatabase.GUIDToAssetPath).OrderBy(p => p).ToList();
+        var summary = new List<string> { summary0 };
+        foreach (var mp in mats)
+        {
+            var mat = AssetDatabase.LoadAssetAtPath<Material>(mp);
+            var go = new GameObject("obj");
+            go.AddComponent<MeshFilter>().sharedMesh = mp.Contains("matcap_uv1") ? uv1Mesh : sphereMesh;
+            go.AddComponent<MeshRenderer>().sharedMaterial = mat;
+            var floor = MakeFloor();
+            cam.transform.position = new Vector3(0, 0.25f, -3.2f);
+            cam.transform.LookAt(new Vector3(0, 0, 0));
+            foreach (var c in Conds)
+            {
+                Apply(c, light, go.GetComponentsInChildren<Renderer>());
+                Shoot(cam, rt, Path.Combine(outDir, string.Format("{0}__{1}__{2}.png", label, Path.GetFileNameWithoutExtension(mp), c.name)));
+            }
+            summary.Add(Path.GetFileNameWithoutExtension(mp) + " shader=" + mat.shader.name + " supported=" + mat.shader.isSupported);
+            UnityEngine.Object.DestroyImmediate(go);
+            UnityEngine.Object.DestroyImmediate(floor);
+        }
+
+        // avatar
+        var prefabPath = Arg("-e145vPrefab");
+        if (!string.IsNullOrEmpty(prefabPath))
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefab == null) throw new Exception("prefab not found " + prefabPath);
+            var av = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            av.transform.position = Vector3.zero; av.transform.rotation = Quaternion.Euler(0, 180, 0); // face -Z, toward the camera side used for the spheres
+            foreach (var smr in av.GetComponentsInChildren<SkinnedMeshRenderer>(true)) { smr.updateWhenOffscreen = true; smr.forceMatrixRecalculationPerRender = true; }
+            var rends = av.GetComponentsInChildren<Renderer>().Where(r => r.enabled && r.gameObject.activeInHierarchy).ToArray();
+            var b = rends[0].bounds; foreach (var r in rends) b.Encapsulate(r.bounds);
+            summary.Add("avatar bounds " + b + " renderers=" + rends.Length);
+            foreach (var r in rends) foreach (var m in r.sharedMaterials) if (m != null) summary.Add("  avmat " + m.name + " shader=" + m.shader.name);
+            var floor = MakeFloor();
+            var shots = new[]
+            {
+                new { name = "body", target = b.center, dist = b.size.y * 2.1f, yaw = 180f },
+                new { name = "face", target = new Vector3(b.center.x, b.max.y - b.size.y * 0.12f, b.center.z), dist = b.size.y * 0.45f, yaw = 180f },
+                new { name = "bodyside", target = b.center, dist = b.size.y * 2.1f, yaw = 225f },
+            };
+            foreach (var s in shots)
+            {
+                var dir = Quaternion.Euler(0, s.yaw, 0) * Vector3.forward; // avatar faces -Z after the 180 turn; camera stands in front of it
+                cam.transform.position = s.target + dir * s.dist;
+                cam.transform.LookAt(s.target);
+                foreach (var c in Conds)
+                {
+                    Apply(c, light, rends);
+                    Shoot(cam, rt, Path.Combine(outDir, string.Format("{0}__avatar_{1}__{2}.png", label, s.name, c.name)));
+                }
+            }
+            UnityEngine.Object.DestroyImmediate(av);
+            UnityEngine.Object.DestroyImmediate(floor);
+        }
+        File.WriteAllLines(Path.Combine(outDir, label + "_summary.txt"), summary);
+        cam.targetTexture = null;
+        rt.Release();
+        Debug.Log("[E145V] done " + label);
+    }
+
+    static GameObject MakeFloor()
+    {
+        // no floor: shadows from the object itself only (keeps the frame clean). Kept as a hook.
+        return new GameObject("nofloor");
+    }
+
+    static Mesh GetPrimitiveMesh()
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        var m = go.GetComponent<MeshFilter>().sharedMesh;
+        UnityEngine.Object.DestroyImmediate(go);
+        return m;
+    }
+
+    static void Apply(Cond c, Light light, Renderer[] targets)
+    {
+        light.transform.rotation = Quaternion.Euler(c.lightEuler);
+        RenderSettings.sun = light;
+        if (reflProbe != null) reflProbe.enabled = false; // the baked skybox reflection is used instead
+        // Skybox conditions keep the baked environment (light probes from the saved scene).
+        // "noskybox" hands every renderer a zero SH, which is what an empty unsaved scene gives.
+        var mpb = new MaterialPropertyBlock();
+        if (!c.skybox) mpb.CopySHCoefficientArraysFrom(new[] { new SphericalHarmonicsL2() });
+        foreach (var r in targets)
+        {
+            r.lightProbeUsage = c.skybox ? LightProbeUsage.BlendProbes : LightProbeUsage.CustomProvided;
+            r.SetPropertyBlock(c.skybox ? null : mpb);
+        }
+    }
+
+    static void Shoot(Camera cam, RenderTexture rt, string path)
+    {
+        cam.Render();
+        var prev = RenderTexture.active;
+        RenderTexture.active = rt;
+        var tex = new Texture2D(Size, Size, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, Size, Size), 0, 0);
+        tex.Apply();
+        RenderTexture.active = prev;
+        File.WriteAllBytes(path, tex.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(tex);
+    }
+}

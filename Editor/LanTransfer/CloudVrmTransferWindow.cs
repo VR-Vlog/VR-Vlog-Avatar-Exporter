@@ -4,9 +4,6 @@ using System.IO;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
-using ZXing;
-using ZXing.QrCode;
-using ZXing.QrCode.Internal;
 
 namespace VRVlog.LilToonExporter.LanTransfer
 {
@@ -185,10 +182,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (session?.Terminal == true) ClearQr();
             if (session != null || uploading != null) Repaint();
         }
-        private static Texture2D RenderQr(string payload)
+        // Shared with the "アプリに転送" window. The texture is one pixel per module, quiet zone included.
+        internal static Texture2D RenderQr(string payload)
         {
-            var matrix = new QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 0, 0,
-                new Dictionary<EncodeHintType, object> { [EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M, [EncodeHintType.MARGIN] = 4, [EncodeHintType.CHARACTER_SET] = "UTF-8" });
+            var matrix = TransferQrCode.Encode(payload);
             var pixels = new Color32[matrix.Width * matrix.Height];
             for (var y = 0; y < matrix.Height; y++) for (var x = 0; x < matrix.Width; x++)
                 pixels[(matrix.Height - y - 1) * matrix.Width + x] = matrix[x, y] ? new Color32(0, 0, 0, 255) : new Color32(255, 255, 255, 255);
