@@ -455,7 +455,7 @@ namespace VRVlog.LilToonExporter
                 {
                     if (targetAvatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
                     return UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,
-                        PackageVersion(), RequireSupportedLilToon(), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
+                        PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
                         recoveryOptions: options, recoveryReport: report, licenseOptions: targetLicense);
                 }, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
                 {
@@ -556,13 +556,15 @@ namespace VRVlog.LilToonExporter
         }
 
         // Stops before export when the installed lilToon is outside the
-        // supported range. Returns the installed version for asset.extras;
+        // supported range or its shaders used by the avatar differ from the
+        // catalogue. Returns the installed version for asset.extras;
         // sourceLilToonVersion is always the catalogue version.
-        internal static string RequireSupportedLilToon()
+        internal static string RequireSupportedLilToon(GameObject avatar)
         {
             var version = FindLilToonPackage()?.version;
             var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
+            LilToonStructureCheck.Require(avatar, version);
             return version;
         }
 

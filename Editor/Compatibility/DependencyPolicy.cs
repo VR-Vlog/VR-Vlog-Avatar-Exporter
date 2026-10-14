@@ -17,8 +17,11 @@ namespace VRVlog.LilToonExporter.Compatibility
 
         public enum LilToonSupport { Supported, Missing, Unreadable, Older, Newer }
 
-        // Versions above LilToonMaximum are unverified. Set this to true only
-        // together with a pre-export structure check against the 2.3.4 catalogue.
+        // Versions above LilToonMaximum are unverified. Setting this to true
+        // relies on LilToonStructureCheck, which every export entry runs after
+        // this version check: it stops when the shaders the avatar uses differ
+        // from the 2.3.4 catalogue in names, types, dimensions or passes.
+        // Behaviour changes with an identical structure are not detected.
         public static readonly bool AcceptsNewerLilToon = false;
 
         static readonly int[] Minimum = ParseRelease(LilToonMinimum) ?? throw new InvalidOperationException("Invalid LilToonMinimum.");

@@ -456,8 +456,8 @@ namespace VRVlog.LilToonExporter
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null)
         {
             RequireValid();
-            // Stop on an unsupported lilToon before preparing the export copy.
-            var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon();
+            // Stop on an unsupported or differently built lilToon before preparing the export copy.
+            var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);

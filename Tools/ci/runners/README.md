@@ -1,0 +1,37 @@
+# Exporter runner ownership
+
+This runtime belongs to `VR-Vlog/VR-Vlog-Avatar-Exporter`, independently of mySI's implementation, database, configuration and application lifecycle. The existing controller uses a root-protected GitHub CLI at `/opt/LocalGitHubRunners/tools/gh` and the owner's existing native GUI/keychain API session. No credentials are copied from mySI or passed to a job.
+
+The only role is the already installed `exporter` service, `_mysi_ci_exporter` UID/GID **402**, `exporter-general-mac-arm64`. The inherited service name `jp.mitsuya0077.mysi.general-exporter`, `/Library/Application Support/mySI-CI` state root and `/opt/mySI-CI` tool/disposable runtime remain compatibility names. They are owned and maintained as CI infrastructure. This source does not install or update those shared tools, create accounts, provision services or add GitHub jobs/workflows/triggers.
+
+## Preserved lifecycle and contracts
+
+The root supervisor authenticates the repository, workflow/event, exact run/attempt/head and assigned GitHub job before checkout. External PRs still require protected owner approval for that exact canonical repository and head SHA; existing approval history remains untouched. One registration is ephemeral, one job gets a new private HOME/cache/tree, job children run as UID 402 inside the same write sandbox, and existing native host/iOS locks coordinate access. The controller uses only the fixed CI-owned CLI; every owner credential remains outside job environments.
+
+After the root parent reaps its captured session leader, cleanup classifies every UID 402 process using native process identity and code-signing state. Only stable, Apple platform-signed, root-protected `/usr/sbin/distnoted` and `/usr/sbin/cfprefsd` may remain as OS helpers. They are never signalled. Unknown or changing process identity keeps the reservation and evidence. Old interrupted work without a captured leader must be independently stopped and verified before recovery; this source never guesses a PID or session to kill.
+
+`registries/exporter.json`, current registrations, receipts and approval history remain protected external records. The migration preserves existing receipt/registration schemas, each historical ID/name/group/label, the registry installation source SHA and approval input, and approval/current bytes. Before changing the registry repository field, native GitHub GETs for the old alias and canonical name must both prove repository ID 1355769104 and canonical full name. Only that repository field changes, so strict consumers recognize future canonical results without trusting aliases. API admission uses the renamed canonical repository. Runtime state is never used to imply a successful job or an online runner without GitHub evidence.
+
+## Source and review
+
+The task-owned checkout was created from the existing source-only local Git repository, then fetched from the canonical remote and based on `origin/main` **98dfb7a8f602b941dbbba50715c070d38b495893**. No `AGENTS.md` is present at that revision. The original ProjectOrchestrator checkout was not edited; no Unity Library or build caches were copied. The generic disposable supervisor, resource sampler and hook were extracted from the previously reviewed local standalone CI runtime. VR Vlog/mobile/cohort/persistent policy and code were removed; native process cleanup was adapted to UID 402 only.
+
+Focused checks use the existing native runtime:
+
+```sh
+/opt/mySI-CI/tools/python/bin/python3.12 -m unittest discover -s Tools/ci/runners/tests -p 'test_*.py'
+```
+
+These focused checks also run in the existing complete host-validation command; no CI job or trigger was added. The root task is the final verification owner. Product validation, native inspection and final deployment evidence must be recorded there, without duplicate complete test runs by reviewers.
+
+## Existing-service source migration
+
+`update_runtime.py` is an update tool, not a provisioning or recovery tool. It never stops/starts a service, registers/removes runners, cancels jobs, reads runner credentials or edits CI workflow files. The operator must first review/merge a concrete source revision, independently unload the existing service safely, reap its real parent/listener through the established native stop procedure, and verify isolated work is stopped. A merely offline GitHub row or Apple-helper process count is insufficient proof.
+
+1. Stage only `supervisor.py`, `policy.py`, `resources.py`, `hook.py`, and `ci_processes.py` from the reviewed commit in a dedicated owner-501 directory with mode `0700`, plain owner-only files, and a `manifest.json` containing `schema: 1`, the 40-character `source_sha`, and `files` mapping those five file names to SHA-256 hashes. Pin the SHA-256 of the exact manifest bytes. Run the updater itself from separately reviewed, protected root staging; don't run administrator Python imports from a mutable checkout.
+2. Install/verify the root-owned fixed GitHub CLI through the infrastructure owner. The updater checks the CLI and Python path protection without reading keychain or credential files.
+3. Run the reviewed updater with `--stage PATH --manifest-sha256 HASH` under native root. It requires the service to be absent from launchd, UID 402 to be idle, the exact existing account/policy, the existing service lock, no admitted current record, and no Exporter pending reservation. Ambiguous/error/active state returns `held` before any replacement. Any admitted or unknown record needs reviewed native recovery first.
+4. Review the returned `ready` plan and exact `plan_sha256`. Apply that same source/manifest with `--apply-plan-sha256 HASH`. The pinned snapshot must still match. Code is installed into a new root-owned `/Library/Application Support/mySI-CI/exporter/code/SOURCE_SHA` directory. The updater proves old/canonical repository ID equality through the existing CI-owned controller, validates the complete root registry schema/provenance/history, and changes only its repository field. It also changes the existing config's canonical repository and `controller_gh`, Exporter hook, and existing plist program arguments. Service properties, state, historical registrations, registry installation source/approval provenance, approval history, host locks, and strict public result contracts are preserved. A durable root-private journal starts before mutation; partial/unknown updates cannot automatically replay.
+5. The result `installed_stopped` does not mean online or validated execution. The infrastructure owner may separately bootstrap the same already existing service after checking the stopped installation, then confirm actual GitHub online/idle state. This resumes its inherited ephemeral lifecycle; the migration itself performs no registration. Root journals also preserve the pinned native rename proof. A failure requires manual review of the journal and preserved original evidence.
+
+No live migration, bootstrap, push, merge, registration or workflow trigger was performed while authoring these files.
