@@ -17,7 +17,8 @@ DEPENDENCY_PATCH_FILES = {
     "Documentation~/DependencyPatches/aao-1.9.20-dispose-vertex-buffer.patch",
     "Documentation~/DependencyPatches/AAO-LICENSE.txt",
 }
-PACKAGE_SUFFIXES = {".cs", ".asmdef", ".meta", ".shader"}
+# UXML and USS are the layout and styles of UI Toolkit windows.
+PACKAGE_SUFFIXES = {".cs", ".asmdef", ".meta", ".shader", ".uxml", ".uss"}
 LOCALE_ASSETS = {
     f"Editor/Locales/ExporterLocale_{locale}.json"
     for locale in ("en", "ko", "zh-Hans", "zh-Hant")

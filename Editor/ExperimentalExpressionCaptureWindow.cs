@@ -42,6 +42,11 @@ namespace VRVlog.LilToonExporter
         System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation> recommendations;
         [SerializeField] AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
 
+        // The "アプリに転送" window starts from what this window shows: these
+        // values live only in the open window and are not stored anywhere else.
+        internal string Author => author;
+        internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
+
         public static void Open()
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
@@ -229,7 +234,9 @@ namespace VRVlog.LilToonExporter
             var chosen = clipInputs.Where(input => input.Selected).ToArray();
             var remaining = session.Expressions.Count(pose => !fileRecords.Values.Contains(pose));
             EditorGUILayout.LabelField(ExporterLocalization.T("表情 ") + (remaining + chosen.Length) + ExporterLocalization.T("件　・　ポーズ ") + session.PoseOptions.Manual.Count + ExporterLocalization.T("件"), EditorStyles.miniLabel);
-            author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名（必須）"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
+            author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
+            // The line is always reserved so typing does not move the rows below.
+            EditorGUILayout.LabelField(ExportAuthor.IsValid(author) ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
             if (licenseOptions == null) licenseOptions = new AvatarLicenseOptions();
             AvatarLicenseSettingsUi.Draw(ref showLicenseSettings, licenseOptions);
             using (new EditorGUILayout.HorizontalScope())
@@ -238,8 +245,7 @@ namespace VRVlog.LilToonExporter
                 if (GUILayout.Button(ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) Queue(ShowBlinkConfiguration);
             }
             EditorGUILayout.Space(8);
-            if (string.IsNullOrWhiteSpace(author)) EditorGUILayout.LabelField(ExporterLocalization.T("作者名を入力すると保存できます。"), EditorStyles.miniLabel);
-            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(author) || chosen.Any(input => input.Error != null)))
+            using (new EditorGUI.DisabledScope(!ExportAuthor.IsValid(author) || chosen.Any(input => input.Error != null)))
                 if (GUILayout.Button(ExporterLocalization.T("VRMを保存"), GUILayout.Height(38))) Queue(Export);
             EditorGUILayout.Space(8);
             DrawSavedResult();
@@ -439,16 +445,26 @@ namespace VRVlog.LilToonExporter
 
         void Export()
         {
+            RequireAuthor();
             var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", AvatarName() + "-expressions", "vrm");
             if (string.IsNullOrEmpty(path)) return;
             SaveVrm(path, interactive: true);
         }
 
+        // The disabled button is the normal guard; this also stops a call from
+        // elsewhere before any record, file or recovery session is started.
+        void RequireAuthor()
+        {
+            if (!ExportAuthor.IsValid(author)) throw new InvalidOperationException(ExporterLocalization.T(ExportAuthor.Required));
+        }
+
         internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
         {
+            RequireAuthor();
             RecordSelectedClips();
             var target = session;
             var name = AvatarName(); var targetAuthor = author;
+            ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = automaticBlink ? configuredBlink?.Copy() : new BlinkExportOptions { Mode = BlinkExportMode.None };
             var license = licenseOptions.Copy();
             var expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
@@ -518,6 +534,7 @@ namespace VRVlog.LilToonExporter
         void SelectSource(GameObject next)
         {
             if (source == next) return;
+            if (next != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(next), author));
             source = next;
             licenseOptions = new AvatarLicenseOptions();
         }

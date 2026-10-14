@@ -49,6 +49,63 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [Test]
+        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot()
+        {
+            var flags = BindingFlags.NonPublic | BindingFlags.Static;
+            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod("OpenFromMenu", flags).GetCustomAttributes(typeof(MenuItem), false).Single();
+            Assert.That(entry.menuItem, Is.EqualTo("GameObject/VR Vlog/アプリに転送…"));
+            Assert.That(entry.validate, Is.False);
+            // Without a priority in the creation block the Hierarchy context menu does not list the entry.
+            Assert.That(entry.priority, Is.EqualTo(49));
+            var validation = typeof(AppTransferWindow).GetMethod("CanOpenFromMenu", flags);
+            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
+            var selection = Selection.objects;
+            var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
+            var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
+            var plain = new GameObject("vrvlog-app-transfer-plain");
+            var nested = new GameObject("vrvlog-app-transfer-nested", typeof(Animator));
+            var group = new GameObject("vrvlog-app-transfer-group");
+            nested.transform.SetParent(first.transform);
+            second.transform.SetParent(group.transform);
+            try
+            {
+                // Versions that do not transfer never list the entry.
+                var enabled = CloudTransferAvailability.Enabled;
+                Selection.objects = Array.Empty<Object>();
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { first };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
+                // A parent without an Animator does not make its child less of a root.
+                Selection.objects = new Object[] { second };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
+                Selection.objects = new Object[] { first, second };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { plain };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { nested };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+            }
+            finally
+            {
+                Selection.objects = selection;
+                Object.DestroyImmediate(first); Object.DestroyImmediate(group); Object.DestroyImmediate(plain);
+            }
+        }
+
+        [Test]
+        public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
+        {
+            var exporter = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
+            var bound = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(bound != null, Is.EqualTo(exporter != null));
+            if (bound == null) return;
+            var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.That(members.Length, Is.EqualTo(4));
+            foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
+        }
+
 #if UNITY_EDITOR
         [Test]
         public void ExpressionCaptureSavedResultOpensAnImmutableCopyWithoutUploading()
@@ -285,6 +342,68 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 }
                 finally { Object.DestroyImmediate(window); session.Dispose(); source.Dispose(); if (File.Exists(path)) File.Delete(path); }
             });
+        }
+
+        [Test]
+        public void AppTransferNeedsTheSavedPrivacyConsentBeforeAnExportOrANewUpload()
+        {
+            WithPrivacyPreference(() =>
+            {
+                var type = typeof(AppTransferWindow);
+                var avatar = new GameObject("vrvlog-app-transfer-privacy");
+                var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+                try
+                {
+                    type.GetField("avatar", Instance).SetValue(window, avatar);
+                    type.GetField("avatarName", Instance).SetValue(window, "SampleAvatar");
+                    type.GetField("consented", Instance).SetValue(window, true);
+                    // Every other input is ready, whatever exporter the test project has.
+                    var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
+                    var entry = Activator.CreateInstance(entryType, true);
+                    entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
+                    type.GetField("exporter", Instance).SetValue(window, entry);
+                    type.GetField("exporterResolved", Instance).SetValue(window, true);
+                    var reason = type.GetMethod("Reason", Instance);
+
+                    EditorPrefs.DeleteKey(CloudVrmTransferWindow.PrivacyConsentPreference);
+                    Assert.That(reason.Invoke(window, null), Is.EqualTo(AppTransferText.NeedsPrivacyConsent));
+                    type.GetMethod("Begin", Instance).Invoke(window, null);
+                    Assert.That(type.GetField("flow", Instance).GetValue(window), Is.Null, "No export may start before the privacy consent.");
+
+                    // A consent withdrawn in "スマホに送る" stops a new QR and returns to the form.
+                    var flow = new AppTransferFlow();
+                    type.GetField("flow", Instance).SetValue(window, flow);
+                    flow.BeginExport();
+                    flow.ExportFailed("fixture");
+                    type.GetMethod("Retry", Instance).Invoke(window, null);
+                    Assert.That(flow.View, Is.EqualTo(AppTransferView.Form));
+
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    Assert.That(reason.Invoke(window, null), Is.Null);
+                }
+                finally { Object.DestroyImmediate(window); Object.DestroyImmediate(avatar); }
+            });
+        }
+
+        [Test]
+        public void AppTransferExportsOnlyWithTheSupportedDependencyVersions()
+        {
+            var diagnostics = Type.GetType("VRVlog.LilToonExporter.Compatibility.DependencyDiagnostics, VRVlog.LilToonExporter.Compatibility", true);
+            var installed = diagnostics.GetMethod("Installed").Invoke(null, null);
+            var dependencyError = (string)diagnostics.GetMethod("Error").Invoke(null, new[] { installed });
+            var resolvable = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null) != null;
+            var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+            try
+            {
+                var exporter = typeof(AppTransferWindow).GetProperty("Exporter", Instance).GetValue(window);
+                // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
+                Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
+                var problem = (string)typeof(AppTransferWindow).GetField("exporterProblem", Instance).GetValue(window);
+                if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
+                if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
+            }
+            finally { Object.DestroyImmediate(window); }
         }
 
         private static void WithPrivacyPreference(Action test)
