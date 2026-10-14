@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null)
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -28,7 +28,8 @@ namespace VRVlog.LilToonExporter
             try
             {
                 var bytes = ExportCore(source, avatarName, author, warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
-                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink);
+                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
+                    authorCopyExpressions);
                 report.Stage = "完了";
                 report.Succeeded = true;
                 return bytes;
@@ -45,7 +46,8 @@ namespace VRVlog.LilToonExporter
         static byte[] ExportCore(GameObject source, string avatarName, string author, ICollection<string> warnings, bool suppressSharedTextureEmission,
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
-            ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink)
+            ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
+            Action<GameObject> authorCopyExpressions)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             // Cloning detaches the avatar from its parents. Reject an inactive
@@ -120,6 +122,9 @@ namespace VRVlog.LilToonExporter
                     expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true);
                 List<VrmMenuExpressions.Expression> expressions = null;
                 recoveryReport.Stage = "ビルド処理";
+                // Caller-selected faces join the copy as authored VRM clips, so
+                // the same identity capture, relocation and neutral baking apply.
+                authorCopyExpressions?.Invoke(clone);
                 expressionBindings.CaptureAuthoredExpressions();
                 using var preparation = NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
