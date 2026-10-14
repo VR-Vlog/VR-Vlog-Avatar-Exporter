@@ -573,7 +573,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
 
-            internal Fixture()
+            internal Fixture(bool eyes = false)
             {
                 Source = new GameObject("Avatar");
                 var bones = new Dictionary<HumanBodyBones, Transform>();
@@ -585,7 +585,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var spine = Bone(HumanBodyBones.Spine, hips, new Vector3(0, 1.2f, 0));
                 var chest = Bone(HumanBodyBones.Chest, spine, new Vector3(0, 1.4f, 0));
                 var neck = Bone(HumanBodyBones.Neck, chest, new Vector3(0, 1.6f, 0));
-                Bone(HumanBodyBones.Head, neck, new Vector3(0, 1.75f, 0));
+                var head = Bone(HumanBodyBones.Head, neck, new Vector3(0, 1.75f, 0));
+                if (eyes)
+                {
+                    Bone(HumanBodyBones.LeftEye, head, new Vector3(-.03f, 1.8f, .05f));
+                    Bone(HumanBodyBones.RightEye, head, new Vector3(.03f, 1.8f, .05f));
+                }
                 foreach (var left in new[] { true, false })
                 {
                     var x = left ? -1f : 1f;
