@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -74,7 +75,13 @@ namespace VRVlog.LilToonExporter
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             var targetAuthor = author;
             var targetLicense = license.Copy();
-            void Completed(byte[] bytes, IEnumerable<string> warnings) => saved();
+            void Completed(byte[] bytes, IEnumerable<string> warnings)
+            {
+                // Like the export windows, the details of this export go to the Console.
+                var details = (warnings ?? Array.Empty<string>()).ToArray();
+                if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
+                saved();
+            }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(avatar, destination, (options, report, warnings) =>
             {
                 if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
