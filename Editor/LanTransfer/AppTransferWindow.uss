@@ -1,0 +1,438 @@
+/* "アプリに転送". Every row has a fixed height, so text never moves the rows below it.
+   Colours: neutral greys, the one accent (#3D7DD9), amber for why the button is disabled, red for an expired QR. */
+
+.app-transfer {
+    flex-grow: 1;
+}
+
+.content,
+.fill {
+    flex-grow: 1;
+}
+
+/* Labels of this window: the rules below set their spacing. */
+.t {
+    margin: 0;
+    padding: 0;
+}
+
+.box {
+    margin: 0 0 8px 0;
+}
+
+.app-transfer > .box {
+    margin: 8px;
+}
+
+.hairline {
+    height: 1px;
+    flex-shrink: 0;
+}
+
+.section {
+    margin: 8px 0;
+}
+
+.body {
+    padding: 16px;
+}
+
+.mini {
+    font-size: 10px;
+}
+
+.bold {
+    -unity-font-style: bold;
+}
+
+/* Header */
+
+.header {
+    height: 60px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 0 16px;
+}
+
+.header-icon {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    margin-right: 10px;
+}
+
+.header-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    overflow: hidden;
+    justify-content: center;
+}
+
+.heading {
+    height: 22px;
+    font-size: 14px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.subtitle {
+    height: 16px;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.scale-probe {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1px;
+    height: 1px;
+}
+
+/* Form */
+
+.diagnostics {
+    height: 22px;
+    margin: 0 0 16px 0;
+}
+
+.row {
+    height: 22px;
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+}
+
+.row--spaced {
+    margin-top: 8px;
+}
+
+.row--terms {
+    height: 20px;
+}
+
+.label-col {
+    width: 64px;
+    flex-shrink: 0;
+    padding-right: 4px;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.field {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin: 0;
+}
+
+.field-line {
+    height: 16px;
+    margin-left: 64px;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.link {
+    flex-grow: 0;
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: link;
+}
+
+.check-row {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: flex-start;
+    margin-top: 4px;
+    min-height: 18px;
+}
+
+.check {
+    margin: 1px 4px 0 0;
+    flex-shrink: 0;
+}
+
+/* The consent sentence wraps inside its width and is never shortened. */
+.check-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    white-space: normal;
+    padding-top: 2px;
+}
+
+.privacy {
+    margin-top: 8px;
+}
+
+.terms {
+    margin-top: 8px;
+}
+
+/* Below the scrolling fields: what blocks the button and the button are always in view. */
+.form-footer {
+    flex-shrink: 0;
+    padding: 8px 16px 12px 16px;
+}
+
+.reason {
+    height: 18px;
+    flex-shrink: 0;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.primary {
+    margin: 0;
+    border-width: 0;
+    border-radius: 3px;
+    font-size: 12px;
+    -unity-font-style: bold;
+    color: rgb(255, 255, 255);
+    background-color: rgb(61, 125, 217);
+}
+
+.primary:hover {
+    background-color: rgb(77, 140, 230);
+}
+
+.primary:active {
+    background-color: rgb(50, 106, 190);
+}
+
+.primary:disabled {
+    opacity: 0.45;
+}
+
+.create {
+    height: 34px;
+    flex-shrink: 0;
+}
+
+.create-hint {
+    margin-top: 8px;
+    white-space: normal;
+}
+
+/* Transfer */
+
+.slot-row {
+    flex-shrink: 0;
+}
+
+.slot {
+    position: absolute;
+}
+
+.qr {
+    position: absolute;
+}
+
+.slot-inner {
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    top: 12px;
+    bottom: 12px;
+    justify-content: center;
+}
+
+.slot-title {
+    height: 22px;
+    flex-shrink: 0;
+    font-size: 13px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    overflow: hidden;
+}
+
+.slot-body {
+    margin-top: 8px;
+    flex-shrink: 1;
+    -unity-text-align: upper-center;
+    white-space: normal;
+    overflow: hidden;
+}
+
+.slot-button {
+    width: 160px;
+    max-width: 100%;
+    height: 30px;
+    flex-shrink: 0;
+    align-self: center;
+    margin-top: 12px;
+}
+
+.upload-bar {
+    height: 20px;
+    flex-shrink: 0;
+    margin-top: 10px;
+}
+
+.scan {
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 8px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.warning {
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 4px;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.warning-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-right: 4px;
+}
+
+.warning-text {
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.status-row {
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 12px;
+    flex-direction: row;
+}
+
+.status {
+    flex-grow: 1;
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.remaining {
+    width: 120px;
+    flex-shrink: 0;
+    -unity-text-align: middle-right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.bar-track {
+    height: 4px;
+    flex-shrink: 0;
+}
+
+/* Filled from the left by what remains, so it shrinks toward the deadline. */
+.bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgb(61, 125, 217);
+}
+
+.lifetime {
+    height: 16px;
+    flex-shrink: 0;
+    -unity-text-align: middle-right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.footer {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 16px;
+}
+
+.footer-button {
+    height: 24px;
+    margin: 0;
+}
+
+.regenerate {
+    width: 140px;
+}
+
+.close {
+    width: 88px;
+}
+
+/* Theme colours */
+
+.app-transfer--dark .hairline {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+
+.app-transfer--light .hairline {
+    background-color: rgba(0, 0, 0, 0.18);
+}
+
+.app-transfer--dark .slot,
+.app-transfer--dark .bar-track {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.app-transfer--light .slot,
+.app-transfer--light .bar-track {
+    background-color: rgba(0, 0, 0, 0.07);
+}
+
+.app-transfer--dark .slot.slot--qr,
+.app-transfer--light .slot.slot--qr {
+    background-color: rgb(255, 255, 255);
+}
+
+.app-transfer--dark .grey {
+    color: rgb(153, 153, 153);
+}
+
+.app-transfer--light .grey {
+    color: rgb(110, 110, 110);
+}
+
+.app-transfer--dark .link {
+    color: rgb(110, 160, 240);
+}
+
+.app-transfer--light .link {
+    color: rgb(30, 90, 190);
+}
+
+.app-transfer--dark .reason {
+    color: rgb(230, 170, 60);
+}
+
+.app-transfer--light .reason {
+    color: rgb(150, 95, 0);
+}
+
+.app-transfer--dark .remaining.expired {
+    color: rgb(245, 107, 102);
+}
+
+.app-transfer--light .remaining.expired {
+    color: rgb(184, 36, 31);
+}

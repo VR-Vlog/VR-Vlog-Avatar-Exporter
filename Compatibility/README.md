@@ -67,9 +67,13 @@ the version the material was made in:
 - 2.3.0 and later multiply backlight strength by the alpha of
   `_BacklightColor` and `_BacklightColorTex`. Before 2.3.0 the alpha was
   ignored, so a material with alpha below 1 becomes darker.
-- 2.1.0 changed the environment light blend of shadow color (visible only under
-  strong ambient light) and clamps the UV1 used by `_MatCapBlendUV1` to 0-1.
-- Outline Lit is computed per vertex in 2.1.0 and per pixel in 2.1.10.
+- 2.1.0 clamps the UV1 used by `_MatCapBlendUV1` to 0-1. In lilToonLite it
+  also changed how shadow color mixes with environment light; this shows only
+  when the main light color is below 1.
+- Outline Lit is computed per vertex up to 2.1.9 and per pixel from 2.1.10.
+
+Rendered comparisons of these cases are in
+[Evidence/LilToonVersionVisual](Evidence/LilToonVersionVisual/README.md).
 
 `_EnvRimBorder` (the VRC Light Volumes rim) defaults to 0.85 in 2.0.0-2.1.9
 and 3.0 from 2.1.10, and migration keeps the stored value. The exporter does
@@ -110,7 +114,9 @@ A matching hash is not proof of visual equivalence.
    VRM10 packages from the same source commit, lilToon 2.3.4, this exporter as a
    local development package and Unity Test Framework 1.4.6. Include
    `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` in each manifest. Use
-   `com.unity.collections` 2.1.4 for the existing mesh tests. Never test by changing
+   `com.unity.collections` 2.1.4 for the existing mesh tests. Keep lilToon's Shader
+   Setting at its defaults: `LilToonStructureCheckTests` compares every installed
+   official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
 4. Run the focused test runner for every supported version:
 
@@ -134,6 +140,32 @@ A matching hash is not proof of visual equivalence.
 6. Record exact versions, editor, source commits, results and remaining limits.
    Review the PR and required checks before changing the supported matrix.
 
+## lilToon version projects
+
+To repeat the focused tests for each lilToon release, create one empty project
+per version:
+
+```text
+python3 Tools/create-liltoon-version-projects.py --output VERSION_PROJECTS --dependencies PINNED_PACKAGES --unity UNITY_EXECUTABLE
+```
+
+`PINNED_PACKAGES` contains the unpacked official UniGLTF and VRM packages of one
+supported version and, for the exporter profiles, the VRChat SDK, NDMF and
+Modular Avatar packages. The script embeds the official lilToon VPM release ZIP
+(default 2.0.0, 2.1.0, 2.1.10, 2.2.1, 2.3.0 and 2.3.4; `--versions` selects others),
+references this checkout with `file:` and `testables`, and records each ZIP's
+source URL and SHA-256 after checking it against the reviewed SHA-256 listed in
+the script (`--sha256 VERSION=SHA256` for an unlisted release). With `--unity`,
+it opens every project once in batch mode
+and records the Unity, lilToon and dependency versions Unity actually resolved in
+`liltoon-version-project.json`; a compile error or a different resolved version
+stops it. Existing folders are never reused. lilToon is not committed here.
+
+Pass `--expect-liltoon VERSION` to the runner. It reads the project's
+`packages-lock.json` and the installed lilToon `package.json` before launching
+Unity and stops on a different, missing or unreadable version. The JSON receipt
+records the expected and installed lilToon version, with or without this option.
+
 ## Exporter behavior and integration regression profiles
 
 Dependency compatibility alone does not prove the one-click export pipeline.
@@ -144,7 +176,7 @@ run the generated-fixture behavior profile in a separate, explicitly pinned proj
 python3 Tools/run-unity-compatibility.py --profile exporter-behavior --unity UNITY_EXECUTABLE --project INTEGRATION_TEST_PROJECT --expect-univrm 0.131.0 --expect-unity 2022.3.22f1 --output TEST_RESULTS
 ```
 
-The default `compatibility` profile still requires the same 20 real-package cases
+The default `compatibility` profile requires 31 real-package cases
 in a supported environment, or two diagnostic cases in a missing/unsupported one.
 Both exporter profiles require a supported real UniVRM environment, the packages
 listed in step 3, and the actual VRChat SDK, Modular Avatar and NDMF. Use the

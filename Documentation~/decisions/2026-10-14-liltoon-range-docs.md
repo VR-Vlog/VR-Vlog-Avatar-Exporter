@@ -11,7 +11,7 @@
 
 - 対応範囲は README・README.en・`Documentation~/README.md`・Website・CHANGELOG で「lilToon 2.0.0〜2.3.4」と書く。英語・中国語・韓国語の Website では範囲を `2.0.0–2.3.4`（en dash）で書く。
 - 止まる版と対処の表、`sourceLilToonVersion` と `asset.extras.VRVLOG_lilToonInstalledVersion` の意味、lilToon 側の描画の変更は `Compatibility/README.md` の「Supported lilToon versions」に 1 か所でまとめる。README には要点とリンクだけを置く。
-- 描画の変更として書くのは、2.3.0 のバックライトの A（`_BacklightColor` とテクスチャの A が強度に掛かる）、2.1.0 の影色の環境光ブレンドと `_MatCapBlendUV1` の UV1 の 0〜1 への制限、Outline Lit の計算（2.1.0 は頂点単位、2.1.10 はピクセル単位）。補正しない理由は「版ごとの変換を Exporter で保守しない」の 1 文にする。
+- 描画の変更として書くのは、2.3.0 のバックライトの A（`_BacklightColor` とテクスチャの A が強度に掛かる）、2.1.0 の `_MatCapBlendUV1` の UV1 の 0〜1 への制限と lilToonLite の影色と環境光の混ぜ方（主光源の色が 1 未満のときだけ出る）、Outline Lit の計算（2.1.9 までは頂点単位、2.1.10 からピクセル単位）。実物で描いた比較は #172（`Compatibility/Evidence/LilToonVersionVisual`）。補正しない理由は「版ごとの変換を Exporter で保守しない」の 1 文にする。
 - 2.1.9 以前の `_EnvRimBorder` の既定値 0.85 は、描画の違いの一覧に入れない。Exporter はこのプロパティを書き出さない（カタログで `external`）ので、書き出したファイルに差が出ないことだけを書く。Epic #145 の「0.85 のまま書き出される」は Exporter の挙動と違う。
 - 書き出しの前にシェーダーの構成を 2.3.4 と照合して止めることも書く（#148 の後半で入る）。
 - `ThirdPartyNotices/lilToon.md` の出典は 2.3.4 のままにする。同梱のベイク用シェーダーは 2.3.4 の処理を改変したもので、導入済みの版で変わらないため。
