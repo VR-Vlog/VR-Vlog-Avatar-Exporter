@@ -42,6 +42,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
         internal const string Completed = "取り込みが終わりました";
+        internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
     }
 
     // One encoder for both transfer windows, so their QR codes cannot drift.

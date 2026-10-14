@@ -176,12 +176,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void Poll()
         {
             var time = EditorApplication.timeSinceStartup;
-            if (flow == null)
-            {
-                // Before the first transfer only the form follows the Editor (Play mode, the shared privacy choice).
-                if (time >= nextRepaint) { nextRepaint = time + 0.2; Refresh(); }
-                return;
-            }
+            // Until CreateGUI has run there is no flow; the form also refreshes every 0.2 s below,
+            // so it follows the Editor (Play mode, the privacy choice shared with "スマホに送る").
+            if (flow == null) return;
             if (!CloudTransferAvailability.Enabled) { StopAndClean(); return; }
             if (flow.View == AppTransferView.Exporting)
             {
@@ -328,8 +325,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var tree = Load<VisualTreeAsset>(LayoutGuid, ".uxml");
             var sheet = Load<StyleSheet>(StyleGuid, ".uss");
-            if (tree == null || sheet == null) return;
             var root = rootVisualElement;
+            if (tree == null || sheet == null)
+            {
+                // A package imported without these files would otherwise open an empty window.
+                root.Clear();
+                root.Add(new HelpBox(T(AppTransferText.LayoutMissing), HelpBoxMessageType.Error) { style = { marginTop = 8f, marginBottom = 8f, marginLeft = 8f, marginRight = 8f } });
+                Debug.LogError("VR Vlog: AppTransferWindow.uxml or AppTransferWindow.uss was not found next to AppTransferWindow.cs. Reimport the package.");
+                return;
+            }
             root.Clear();
             tree.CloneTree(root);
             root.styleSheets.Add(sheet);
@@ -389,7 +393,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon.sml").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
-            root.Q<IMGUIContainer>("scale-probe").onGUIHandler = ProbeScale;
+            var probe = root.Q<IMGUIContainer>("scale-probe");
+            probe.onGUIHandler = ProbeScale;
+            // Only measures the display scale: no Tab stop, no clicks.
+            probe.focusable = false;
+            probe.pickingMode = PickingMode.Ignore;
 
             avatarField.objectType = typeof(GameObject);
             avatarField.allowSceneObjects = true;
@@ -397,6 +405,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 var selected = changed.newValue as GameObject;
                 if (selected != avatar && (!Transferring || ConfirmEndingTransfer())) Select(selected, false);
+                // Kept from the IMGUI version: the form is hidden while transferring, but a declined change must not stay in the field.
+                avatarField.SetValueWithoutNotify(avatar);
                 Refresh();
             });
             nameField.RegisterValueChangedCallback(changed =>
