@@ -9,7 +9,7 @@
 
 lilToonのアバターを、iPhoneのVR Vlogで使う **VRM 1.0** に書き出す、MITライセンスのUnity用パッケージです。標準MToonによる互換表示と、VR Vlog向けのlilToon拡張を一つのVRMに保存します。
 
-[インストールページ](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/) · [最新安定版](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/latest) · [変更履歴](CHANGELOG.md) · [開発参加](CONTRIBUTING.md)
+[インストールページ](https://vrvlog.fun/exporter/) · [最新安定版](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/latest) · [変更履歴](CHANGELOG.md) · [開発参加](CONTRIBUTING.md)
 
 ## できること
 
@@ -42,15 +42,17 @@ Modular Avatarを使うアバターは、Modular Avatarとその依存パッケ�
 
 ## インストール
 
-1. [インストールページ](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/)で **VCC / ALCOMに追加** を押します。
+1. [インストールページ](https://vrvlog.fun/exporter/)で **VCC / ALCOMに追加** を押します。
 2. VCC・ALCOMで使いたいUnityプロジェクトのパッケージ管理画面を開きます。
 3. **VR Vlog lilToon VRM Exporter** をインストールします。
 
 ボタンで開かない場合は、リポジトリ追加画面に次のURLを貼り付けてください。
 
 ```text
-https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json
+https://vrvlog.fun/exporter/index.json
 ```
+
+既に個人側・組織側のURLをVCC／ALCOMへ登録している場合は、その登録を使い続けてください。新URLの追加、登録の削除、再インストールは不要です。各登録先の一覧は公開時に同期します。
 
 更新するときはUnityプロジェクトをバックアップし、パッケージ一覧を更新して最新版を適用します。変更を反映するには、元のアバターからVRMを書き出し直してください。
 
@@ -64,7 +66,7 @@ https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json
 
 ### ZIPで手動導入する
 
-1. [インストールページ](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/)の **ZIPで導入** から、エクスポーター・UniGLTF・VRMの3つのZIPをダウンロードします。
+1. [インストールページ](https://vrvlog.fun/exporter/)の **ZIPで導入** から、エクスポーター・UniGLTF・VRMの3つのZIPをダウンロードします。
 2. プロジェクトの `Packages` 内の別々のフォルダーへ展開し、それぞれの直下に `package.json` がある状態にします。
 3. Unityで読み込みが終わるのを待ちます。同じUniVRMパッケージを重複して導入しないでください。
 
