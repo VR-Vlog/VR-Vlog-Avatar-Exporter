@@ -32,6 +32,7 @@ class UnityResultTests(unittest.TestCase):
             'DependencyRoundTripTests': ('SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport', 2),
             'RendererSelectionTests': ('RendererCase', 4),
             'SkinnedMeshFallbackWeightTests': ('SkinCase', 12),
+            'LilToonStructureCheckTests': ('StructureCase', 11),
         }
         for suite, (method, count) in methods.items():
             name = 'VRVlog.LilToonExporter.Tests.' + suite
@@ -43,10 +44,10 @@ class UnityResultTests(unittest.TestCase):
         return unity_runner.validate_result(self.xml, True)
 
     def test_all_required_suites_pass(self):
-        self.assertEqual(len(self.check()), 20)
+        self.assertEqual(len(self.check()), 31)
 
     def test_no_suite_can_disappear_from_a_passing_result(self):
-        for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests']:
+        for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests']:
             with self.subTest(suite=name):
                 removed = [c for c in self.root if c.get('classname').endswith('.' + name)]
                 for case in removed: self.root.remove(case)
@@ -94,7 +95,7 @@ class ExporterProfileResultTests(unittest.TestCase):
         return removed
 
     def test_all_required_suites_pass(self):
-        expected = 20 + sum(sum(methods.values()) for methods in
+        expected = 31 + sum(sum(methods.values()) for methods in
                             [*unity_runner.BEHAVIOR_CASES.values(), *unity_runner.INTEGRATION_CASES.values()])
         self.assertEqual(len(self.check()), expected)
 
@@ -243,7 +244,7 @@ class UnityProfilePolicyTests(unittest.TestCase):
         self.assertEqual(unity_runner.profile_filters(True, 'compatibility'), [
             unity_runner.NAMESPACE + suite for suite in (
                 'DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests',
-                'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests')])
+                'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests')])
         self.assertEqual(len(unity_runner.profile_filters(False, 'compatibility')), 2)
 
     def test_missing_or_unsupported_dependencies_cannot_start_behavior_profiles(self):

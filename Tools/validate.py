@@ -188,7 +188,10 @@ assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalizatio
 assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'package.name, "jp.lilxyzw.liltoon"' in window
-assert "RequireSupportedLilToon()" in window
+assert "RequireSupportedLilToon(GameObject avatar)" in window
+# Both export entries compare the shaders the avatar uses with the catalogue.
+assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
+assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
 assert f'? info.version : "{package["version"]}"' in window
 assert "using UnityEditor.PackageManager;" not in window
@@ -303,7 +306,7 @@ assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_Outline
 assert 'private string author = "";' in window
 assert 'private string avatarName = "";' not in window
 assert 'UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,' in window
-assert 'PackageVersion(), RequireSupportedLilToon(), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,' in window
+assert 'PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,' in window
 assert 'var targetOutput = outputPath;' in window
 assert 'var targetExclusions = excludedObjects.ToArray();' in window
 assert 'ExportFailureWindow.Show(session, Completed)' in window
