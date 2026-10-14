@@ -1,7 +1,7 @@
 """Compare the E145 captures: A_<v> (lilToon v) vs B_<v> (same project upgraded to 2.3.4) vs A_234.
 
 Writes metrics.json and per-item comparison PNGs (A | B with red boxes around differing regions).
-usage: analyze.py <capture dir> <out dir>
+usage: compare.py <capture dir> <out dir>
 """
 import json
 import sys
@@ -96,7 +96,7 @@ for item in items:
             sheet.paste(p, (x, 0)); x += p.width + 8
         sheet.save(OUT / f'{tag}__{ver}__{item}.png')
     result['items'][item] = entry
-    if 'A2_200' and (SRC / f'A2_200__{item}.png').exists():
+    if (SRC / f'A2_200__{item}.png').exists():
         rep = load(SRC / f'A2_200__{item}.png')
         entry['repeat_2.0.0_max_abs'] = int(np.abs(rep - load(SRC / f'A_200__{item}.png')).max())
 (OUT / 'metrics.json').write_text(json.dumps(result, indent=1, ensure_ascii=False), encoding='utf-8')

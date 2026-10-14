@@ -23,11 +23,17 @@ Nothing is corrected; the differences below are lilToon's own changes.
   background. The scene is saved with the default skybox and its environment
   lighting is baked, as in a scene an author opens in the Editor.
 - Then the project's manifest is switched to lilToon 2.3.4 and the same saved
-  `.mat` assets are rendered again (`upgraded`). lilToon's migration is not
-  called (it only rewrites `_lilToonVersion`).
-- `compare.py` computes per-pixel differences. `metrics.json` lists every
-  synthetic material and condition: mean absolute difference over the object,
-  maximum, and the share of object pixels that changed by more than 8/255.
+  `.mat` assets are rendered again (`upgraded`). lilToon's material migration
+  did not run (no migration log in batch mode); for 2.x materials it only
+  rewrites `_lilToonVersion`.
+- `compare.py` computes per-pixel differences for every capture and draws the
+  regions that changed. `composite.py` builds `comparison.png` and
+  `metrics.json` from that output, keeping the synthetic materials only.
+  `metrics.json` lists every synthetic material and condition: mean absolute
+  difference over the object, maximum, the share of object pixels that changed
+  by more than 8/255, the difference between the upgraded image and a project
+  that started on 2.3.4, and for 2.0.0 the difference between two renders.
+  Both scripts need Python 3 with Pillow, NumPy and SciPy.
 
 Checks on the method itself:
 
@@ -63,8 +69,10 @@ published here.
 
 ### lilToon 2.0.0 without a valid environment
 
-In a scene without valid environment lighting (empty unsaved scene, zero
-ambient spherical harmonics), lilToon 2.0.0 draws the whole surface at the lit
+When the renderers receive zero ambient spherical harmonics (the light probe
+data of a scene without valid environment lighting; simulated here by handing
+each renderer a zero probe, and first seen in an empty unsaved scene), lilToon
+2.0.0 draws the whole surface at the lit
 color: no light/shadow gradation (fourth row of the image; 13% of the sphere,
 up to 38% of the avatar body and 58% of its face). 2.1.0 and later shade
 normally in the same scene. lilToon 2.1.0's change log lists "Shadows are not
@@ -78,9 +86,13 @@ scene; with valid environment lighting 2.0.0 matches the table above.
   2.3.4 rules, so it shows the right-hand column for each version; whether the
   exports themselves are identical is checked separately by the version parity
   harness (#149).
-- lilToon limits the light color to 1, so with a white light of intensity 1 the
-  environment-light blend of shadow color changed in 2.1.0 did not change any
-  pixel. Brighter or colored lighting was not tested.
+- 2.1.0 moved the environment-light blend of lilToonLite's shadow color before
+  the clamp to the lit color, and added a `saturate` to the same blend in
+  lilToon (which has no effect because the input is already 0-1). The two
+  orders give the same result when the light color is 1, which is the case
+  here (lilToon limits the light color to 1, and a white light of intensity 1
+  reaches that limit). A dimmer or colored main light can change lilToonLite
+  shadows; that was not rendered.
 - 2.1.10, 2.2.0, 2.3.0 and 2.3.3 were not rendered. Outline Lit uses per-pixel
   code from 2.1.10 (`outlineNdotL` in `lil_common_frag.hlsl`).
 - Shader Setting changes, encrypted materials and custom shaders were not
