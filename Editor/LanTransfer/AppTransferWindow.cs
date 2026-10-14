@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.UIElements;
 using VRVlog.LilToonExporter.Compatibility;
 
 namespace VRVlog.LilToonExporter.LanTransfer
@@ -9,20 +11,19 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // "アプリに転送": opened from the Hierarchy context menu of an avatar. One window takes the
     // name and the consent, exports, uploads the encrypted VRM and shows the QR of the
     // vrvlog://import#... link. AppTransferFlow decides what is shown and when; this class
-    // draws it and connects it to the Editor.
+    // builds the UI Toolkit view (AppTransferWindow.uxml/.uss) and connects it to the Editor.
     public sealed class AppTransferWindow : EditorWindow
     {
         internal const string MenuPath = "GameObject/VR Vlog/アプリに転送…";
         // The Hierarchy context menu lists the GameObject entries of the creation block,
         // which ends at priority 49. That value puts this entry last in it, above Properties.
         internal const int MenuPriority = 49;
-        private const float HeaderHeight = 60f, LabelWidth = 64f, Padding = 16f;
+        private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself.
-        private const float TransferChrome = 184f;
+        private const float TransferChrome = 206f;
         private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
-        // The one accent: the primary button and the remaining-time bar.
-        private static readonly Color Accent = new Color(0.24f, 0.49f, 0.85f);
-        private static readonly Color AccentTint = new Color(0.5f, 0.74f, 1f);
+        // The layout and styles next to this script, found by their asset GUIDs.
+        private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
 
         [SerializeField] private GameObject avatar;
         [SerializeField] private string avatarName = "";
@@ -42,10 +43,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private bool exportPainted;
         [NonSerialized] private double exportDeadline;
         [NonSerialized] private double nextRepaint;
-        [NonSerialized] private AppTransferView drawnView, polledView;
-        [NonSerialized] private Vector2 scroll;
-        [NonSerialized] private GUIStyle bodyStyle, footerStyle, headingStyle, subStyle, hintStyle, consentStyle, linkStyle, reasonStyle,
-            centerStyle, centerBoldStyle, statusStyle, remainingStyle, expiredStyle, noteStyle, primaryStyle;
+        [NonSerialized] private AppTransferView shownView, polledView;
+        // Device pixels per point of the panel, read where IMGUI knows it.
+        [NonSerialized] private float pixelsPerPoint;
+
+        [NonSerialized] private bool built;
+        [NonSerialized] private VisualElement content, form, formFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
+        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox;
+        [NonSerialized] private Button diagnosticsButton, createButton, messageButton, regenerateButton, closeButton;
+        [NonSerialized] private Label heading, subtitle, avatarLabel, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+            reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel;
+        [NonSerialized] private ObjectField avatarField;
+        [NonSerialized] private TextField nameField;
+        [NonSerialized] private Toggle consentToggle, privacyToggle;
+        [NonSerialized] private Image qrImage;
+        [NonSerialized] private IMGUIContainer uploadBar;
 
         [MenuItem(MenuPath, false, MenuPriority)]
         private static void OpenFromMenu(MenuCommand command)
@@ -125,6 +137,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameFits = null;
             Exporter?.SelectAvatar(target);
             minSize = FormMinimumSize;
+            Refresh();
         }
 
         private void OnEnable()
@@ -155,15 +168,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void ClearQr()
         {
+            if (qrImage != null) qrImage.image = null;
             if (qrTexture != null) DestroyImmediate(qrTexture);
             qrTexture = null;
         }
 
         private void Poll()
         {
-            if (flow == null) return;
-            if (!CloudTransferAvailability.Enabled) { StopAndClean(); return; }
             var time = EditorApplication.timeSinceStartup;
+            if (flow == null)
+            {
+                // Before the first transfer only the form follows the Editor (Play mode, the shared privacy choice).
+                if (time >= nextRepaint) { nextRepaint = time + 0.2; Refresh(); }
+                return;
+            }
+            if (!CloudTransferAvailability.Enabled) { StopAndClean(); return; }
             if (flow.View == AppTransferView.Exporting)
             {
                 // Exporting blocks the Editor: start once the window has painted that state.
@@ -176,10 +195,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
             else ClearQr();
             view = flow.View;
-            if (view == polledView && (view == AppTransferView.Form || time < nextRepaint)) return;
+            if (view == polledView && time < nextRepaint) return;
             polledView = view;
             nextRepaint = time + 0.2;
-            Repaint();
+            Refresh();
         }
 
         private void ShowQr()
@@ -207,7 +226,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Flow.BeginExport();
             ExpectExportPaint();
             FitTransferSize();
-            Repaint();
+            Refresh();
         }
 
         // A new QR uploads again from the exported copy. After a failed export there is none, so export again.
@@ -220,12 +239,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 flow.Stop();
                 minSize = FormMinimumSize;
-                Repaint();
+                Refresh();
                 return;
             }
             if (flow.CanRegenerate) flow.Regenerate();
             else if (Exporter != null && !EditorApplication.isPlayingOrWillChangePlaymode) { flow.BeginExport(); ExpectExportPaint(); }
-            Repaint();
+            Refresh();
         }
 
         private void ExpectExportPaint()
@@ -251,7 +270,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
-                Repaint();
+                Refresh();
             }
             string failure;
             try { failure = Exporter.Export(target, name, path, Saved); }
@@ -260,8 +279,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (saved || attempt != exportAttempt) return;
             if (failure == null) { flow.ExportCanceled(); minSize = FormMinimumSize; }
             else flow.ExportFailed(failure);
-            Repaint();
+            Refresh();
         }
+
+        private float ScaleFactor => pixelsPerPoint > 0f ? pixelsPerPoint : EditorGUIUtility.pixelsPerPoint;
 
         // The placeholder has the longest numbers a link can have, so the real QR is the same
         // version or one smaller. Reserve the larger of the two drawn sizes for whole-pixel modules.
@@ -270,7 +291,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             get
             {
                 var side = Mathf.Max(placeholderSide, 2 * TransferQrCode.QuietZone + 21);
-                var scale = EditorGUIUtility.pixelsPerPoint;
+                var scale = ScaleFactor;
                 var smaller = side - 4 >= 2 * TransferQrCode.QuietZone + 21 ? TransferQrCode.DisplaySide(side - 4, scale) : 0f;
                 return Mathf.Max(TransferQrCode.DisplaySide(side, scale), smaller);
             }
@@ -288,269 +309,302 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 position = new Rect(rect.x, rect.y, Mathf.Max(rect.width, size.x), Mathf.Max(rect.height, size.y));
         }
 
-        private void OnGUI()
+        private float Snap(float value)
         {
-            if (!CloudTransferAvailability.Enabled)
-            {
-                StopAndClean();
-                EditorGUILayout.HelpBox(T(CloudTransferAvailability.DisabledMessage), MessageType.Info);
-                return;
-            }
-            EnsureStyles();
-            var title = avatar != null ? string.Format(T(AppTransferText.TitleWithAvatar), avatar.name) : T(AppTransferText.Title);
-            if (titleContent.text != title || titleContent.image != Icon) titleContent = new GUIContent(title, Icon);
-            // The update callback can change the view between the layout and repaint passes of one frame.
-            if (Event.current.type == EventType.Layout) drawnView = Flow.View;
-            var view = drawnView;
-            DrawHeader(view != AppTransferView.Form);
-            if (view == AppTransferView.Form) DrawForm();
-            else DrawTransfer(view);
-            if (view == AppTransferView.Exporting && Event.current.type == EventType.Repaint) exportPainted = true;
-        }
-
-        private void EnsureStyles()
-        {
-            if (bodyStyle != null) return;
-            var grey = EditorStyles.centeredGreyMiniLabel.normal.textColor;
-            var error = EditorGUIUtility.isProSkin ? new Color(0.96f, 0.42f, 0.4f) : new Color(0.72f, 0.14f, 0.12f);
-            bodyStyle = new GUIStyle { padding = new RectOffset((int)Padding, (int)Padding, (int)Padding, (int)Padding) };
-            footerStyle = new GUIStyle { padding = new RectOffset((int)Padding, (int)Padding, 10, 10) };
-            headingStyle = new GUIStyle(EditorStyles.boldLabel) { fontSize = 14, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false };
-            subStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false, normal = { textColor = grey } };
-            hintStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = true, normal = { textColor = grey } };
-            consentStyle = new GUIStyle(EditorStyles.wordWrappedLabel);
-            linkStyle = new GUIStyle(EditorStyles.linkLabel) { alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false };
-            reasonStyle = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false };
-            centerStyle = new GUIStyle(EditorStyles.label) { alignment = TextAnchor.MiddleCenter, wordWrap = true };
-            centerBoldStyle = new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleCenter, wordWrap = true, fontSize = 13 };
-            statusStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false };
-            remainingStyle = new GUIStyle(EditorStyles.boldLabel) { alignment = TextAnchor.MiddleRight, clipping = TextClipping.Clip, wordWrap = false };
-            expiredStyle = new GUIStyle(remainingStyle) { normal = { textColor = error } };
-            noteStyle = new GUIStyle(EditorStyles.miniLabel) { alignment = TextAnchor.MiddleRight, clipping = TextClipping.Clip, wordWrap = false, normal = { textColor = grey } };
-            primaryStyle = new GUIStyle(GUI.skin.button) { fontStyle = FontStyle.Bold, fontSize = 12 };
-        }
-
-        private static Color Hairline => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.14f) : new Color(0f, 0f, 0f, 0.18f);
-        private static Color Neutral => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.06f) : new Color(0f, 0f, 0f, 0.07f);
-
-        private static void DrawHairline() => EditorGUI.DrawRect(GUILayoutUtility.GetRect(0f, 1f, GUILayout.ExpandWidth(true)), Hairline);
-
-        private void DrawHeader(bool sending)
-        {
-            var rect = GUILayoutUtility.GetRect(0f, HeaderHeight, GUILayout.ExpandWidth(true));
-            GUI.DrawTexture(new Rect(rect.x + Padding, rect.y + 12f, 36f, 36f), Icon, ScaleMode.ScaleToFit);
-            var text = new Rect(rect.x + Padding + 46f, rect.y, Mathf.Max(0f, rect.width - 2f * Padding - 46f), 22f);
-            text.y = rect.y + (sending ? 10f : 19f);
-            GUI.Label(text, T(AppTransferText.Heading), headingStyle);
-            if (sending) GUI.Label(new Rect(text.x, rect.y + 34f, text.width, 16f), string.Format(T(AppTransferText.Sending), avatarName.Trim()), subStyle);
-            DrawHairline();
-        }
-
-        // Label column and field column have fixed positions, whatever the label says.
-        private static Rect Field(Rect row) => new Rect(row.x + LabelWidth, row.y, Mathf.Max(0f, row.width - LabelWidth), row.height);
-        private static Rect Label(Rect row) => new Rect(row.x, row.y, LabelWidth - 4f, row.height);
-
-        private void DrawForm()
-        {
-            using (var scrolling = new EditorGUILayout.ScrollViewScope(scroll))
-            using (new EditorGUILayout.VerticalScope(bodyStyle))
-            {
-                scroll = scrolling.scrollPosition;
-                var playing = EditorApplication.isPlayingOrWillChangePlaymode;
-                var entry = Exporter;
-                if (entry == null)
-                {
-                    EditorGUILayout.HelpBox(T(exporterProblem), MessageType.Warning);
-                    if (GUILayout.Button(T("VR Vlog 動作環境"))) DependencyDiagnostics.OpenDiagnostics();
-                    EditorGUILayout.Space(8f);
-                }
-                if (playing) EditorGUILayout.HelpBox(T("Playモードを終了すると編集できます。"), MessageType.Info);
-                using (new EditorGUI.DisabledScope(playing || entry == null))
-                {
-                    var row = EditorGUILayout.GetControlRect(false, 22f);
-                    GUI.Label(Label(row), T("アバター"), EditorStyles.label);
-                    var selected = EditorGUI.ObjectField(Field(row), avatar, typeof(GameObject), true) as GameObject;
-                    if (selected != avatar && (!Transferring || ConfirmEndingTransfer())) Select(selected, false);
-
-                    EditorGUILayout.Space(6f);
-                    row = EditorGUILayout.GetControlRect(false, 22f);
-                    GUI.Label(Label(row), T(AppTransferText.Name), EditorStyles.boldLabel);
-                    EditorGUI.BeginChangeCheck();
-                    avatarName = EditorGUI.TextField(Field(row), avatarName);
-                    if (EditorGUI.EndChangeCheck()) nameFits = null;
-                    GUI.Label(Field(EditorGUILayout.GetControlRect(false, 16f)), T(AppTransferText.NameHint), subStyle);
-
-                    EditorGUILayout.Space(8f);
-                    DrawHairline();
-                    EditorGUILayout.Space(8f);
-                    row = EditorGUILayout.GetControlRect(false, 20f);
-                    GUI.Label(Label(row), T(AppTransferText.Terms), EditorStyles.boldLabel);
-                    var link = Field(row);
-                    link.width = Mathf.Min(link.width, linkStyle.CalcSize(new GUIContent(T(AppTransferText.ReadTerms))).x);
-                    EditorGUIUtility.AddCursorRect(link, MouseCursor.Link);
-                    if (GUI.Button(link, T(AppTransferText.ReadTerms), linkStyle)) Application.OpenURL(AppTransferFlow.TermsUrl);
-                    // The consent sentence wraps inside its own width and is never shortened.
-                    var consentHeight = Mathf.Max(EditorGUIUtility.singleLineHeight,
-                        consentStyle.CalcHeight(new GUIContent(AppTransferFlow.ConsentText), Mathf.Max(100f, EditorGUIUtility.currentViewWidth - 2f * Padding - 34f)));
-                    consented = EditorGUILayout.ToggleLeft(AppTransferFlow.ConsentText, consented, consentStyle, GUILayout.Height(consentHeight));
-                    // The same saved choice, link and wording as "スマホに送る".
-                    if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
-                    if (showPrivacy)
-                    {
-                        EditorGUILayout.Space(6f);
-                        var policy = Field(EditorGUILayout.GetControlRect(false, 20f));
-                        policy.width = Mathf.Min(policy.width, linkStyle.CalcSize(new GUIContent(T("プライバシーポリシーを開く"))).x);
-                        EditorGUIUtility.AddCursorRect(policy, MouseCursor.Link);
-                        if (GUI.Button(policy, T("プライバシーポリシーを開く"), linkStyle)) Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl);
-                        var privacy = T("プライバシーポリシーに同意する");
-                        var privacyHeight = Mathf.Max(EditorGUIUtility.singleLineHeight,
-                            consentStyle.CalcHeight(new GUIContent(privacy), Mathf.Max(100f, EditorGUIUtility.currentViewWidth - 2f * Padding - 34f)));
-                        var accepted = EditorGUILayout.ToggleLeft(privacy, CloudVrmTransferWindow.PrivacyConsentAccepted, consentStyle, GUILayout.Height(privacyHeight));
-                        if (accepted != CloudVrmTransferWindow.PrivacyConsentAccepted) CloudVrmTransferWindow.PrivacyConsentAccepted = accepted;
-                    }
-
-                    EditorGUILayout.Space(8f);
-                    entry?.DrawTerms();
-                    EditorGUILayout.Space(8f);
-                    DrawHairline();
-                    EditorGUILayout.Space(8f);
-                }
-                // One fixed line says why the button is disabled, so nothing below it moves.
-                var reason = entry == null ? null : Reason();
-                GUI.Label(EditorGUILayout.GetControlRect(false, 18f), reason == null ? "" : T(reason), reasonStyle);
-                using (new EditorGUI.DisabledScope(playing || entry == null || reason != null))
-                    if (PrimaryButton(EditorGUILayout.GetControlRect(false, 34f), T(AppTransferText.Create))) Begin();
-                EditorGUILayout.Space(6f);
-                GUILayout.Label(T(AppTransferText.CreateHint), hintStyle);
-            }
-        }
-
-        private bool PrimaryButton(Rect rect, string text)
-        {
-            var previous = GUI.backgroundColor;
-            if (GUI.enabled) GUI.backgroundColor = AccentTint;
-            var pressed = GUI.Button(rect, text, primaryStyle);
-            GUI.backgroundColor = previous;
-            return pressed;
-        }
-
-        private void DrawTransfer(AppTransferView view)
-        {
-            using (var scrolling = new EditorGUILayout.ScrollViewScope(scroll))
-            using (new EditorGUILayout.VerticalScope(bodyStyle))
-            {
-                scroll = scrolling.scrollPosition;
-                // The area keeps the size of the QR through every state, so the rows below never move.
-                var side = SlotSide;
-                var area = GUILayoutUtility.GetRect(side, side, GUILayout.ExpandWidth(true));
-                DrawSlot(new Rect(Snap(area.x + (area.width - side) / 2f), Snap(area.y), side, side), view);
-                EditorGUILayout.Space(8f);
-                GUI.Label(EditorGUILayout.GetControlRect(false, 18f), view == AppTransferView.Waiting ? T(AppTransferText.ScanWithCamera) : "", centerStyle);
-                EditorGUILayout.Space(12f);
-
-                var counting = view == AppTransferView.Waiting || view == AppTransferView.Expired;
-                var row = EditorGUILayout.GetControlRect(false, 18f);
-                var state = view == AppTransferView.Waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
-                GUI.Label(new Rect(row.x, row.y, Mathf.Max(0f, row.width - 120f), row.height), state, statusStyle);
-                if (counting)
-                {
-                    var seconds = view == AppTransferView.Waiting ? flow.Remaining : 0;
-                    GUI.Label(new Rect(row.xMax - 120f, row.y, 120f, row.height), string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60),
-                        view == AppTransferView.Expired ? expiredStyle : remainingStyle);
-                }
-                var bar = EditorGUILayout.GetControlRect(false, 4f);
-                EditorGUI.DrawRect(bar, Neutral);
-                // Filled from the left by what remains, so it shrinks toward the deadline.
-                if (view == AppTransferView.Waiting) EditorGUI.DrawRect(new Rect(bar.x, bar.y, Mathf.Round(bar.width * flow.RemainingFraction), bar.height), Accent);
-                GUI.Label(EditorGUILayout.GetControlRect(false, 16f), counting ? string.Format(T(AppTransferText.Lifetime), CloudTransferProtocol.LifetimeMinutes) : "", noteStyle);
-            }
-            DrawHairline();
-            using (new EditorGUILayout.HorizontalScope(footerStyle))
-            {
-                if (view == AppTransferView.Waiting && GUILayout.Button(T(AppTransferText.Regenerate), GUILayout.Width(140f), GUILayout.Height(24f))) Retry();
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button(T("閉じる"), GUILayout.Width(88f), GUILayout.Height(24f)))
-                {
-                    Close();
-                    GUIUtility.ExitGUI();
-                }
-            }
-        }
-
-        private static float Snap(float value)
-        {
-            var scale = EditorGUIUtility.pixelsPerPoint;
+            var scale = ScaleFactor;
             return Mathf.Round(value * scale) / scale;
         }
 
-        private void DrawSlot(Rect slot, AppTransferView view)
+        private TAsset Load<TAsset>(string guid, string extension) where TAsset : UnityEngine.Object
         {
-            if (view == AppTransferView.Waiting && qrTexture != null)
+            var asset = AssetDatabase.LoadAssetAtPath<TAsset>(AssetDatabase.GUIDToAssetPath(guid));
+            if (asset != null) return asset;
+            var script = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject(this));
+            return string.IsNullOrEmpty(script) ? null : AssetDatabase.LoadAssetAtPath<TAsset>(Path.ChangeExtension(script, extension));
+        }
+
+        // The UXML holds the structure only; every text is set in Refresh through T.
+        private void CreateGUI()
+        {
+            var tree = Load<VisualTreeAsset>(LayoutGuid, ".uxml");
+            var sheet = Load<StyleSheet>(StyleGuid, ".uss");
+            if (tree == null || sheet == null) return;
+            var root = rootVisualElement;
+            root.Clear();
+            tree.CloneTree(root);
+            root.styleSheets.Add(sheet);
+            root.AddToClassList("app-transfer");
+            root.AddToClassList(EditorGUIUtility.isProSkin ? "app-transfer--dark" : "app-transfer--light");
+
+            disabledBox = root.Q<HelpBox>("disabled");
+            content = root.Q("content");
+            heading = root.Q<Label>("heading");
+            subtitle = root.Q<Label>("subtitle");
+            form = root.Q("form");
+            problemBox = root.Q<HelpBox>("exporter-problem");
+            diagnosticsButton = root.Q<Button>("diagnostics");
+            playingBox = root.Q<HelpBox>("playing");
+            formFields = root.Q("form-fields");
+            avatarLabel = root.Q<Label>("avatar-label");
+            avatarField = root.Q<ObjectField>("avatar-field");
+            nameLabel = root.Q<Label>("name-label");
+            nameField = root.Q<TextField>("name-field");
+            nameHint = root.Q<Label>("name-hint");
+            termsLabel = root.Q<Label>("terms-label");
+            readTerms = root.Q<Label>("read-terms");
+            consentToggle = root.Q<Toggle>("consent-toggle");
+            consentText = root.Q<Label>("consent-text");
+            privacyRow = root.Q("privacy");
+            privacyLink = root.Q<Label>("privacy-link");
+            privacyToggle = root.Q<Toggle>("privacy-toggle");
+            privacyText = root.Q<Label>("privacy-text");
+            reasonLabel = root.Q<Label>("reason");
+            createButton = root.Q<Button>("create");
+            createHint = root.Q<Label>("create-hint");
+            transfer = root.Q("transfer");
+            slotRow = root.Q("slot-row");
+            slot = root.Q("slot");
+            qrImage = root.Q<Image>("qr");
+            slotMessage = root.Q("message");
+            messageTitle = root.Q<Label>("message-title");
+            messageBody = root.Q<Label>("message-body");
+            messageButton = root.Q<Button>("message-button");
+            slotUpload = root.Q("upload");
+            uploadTitle = root.Q<Label>("upload-title");
+            uploadBar = root.Q<IMGUIContainer>("upload-bar");
+            scanLabel = root.Q<Label>("scan");
+            warningRow = root.Q("warning");
+            warningText = root.Q<Label>("warning-text");
+            statusLabel = root.Q<Label>("status");
+            remainingLabel = root.Q<Label>("remaining");
+            barFill = root.Q("bar-fill");
+            lifetimeLabel = root.Q<Label>("lifetime");
+            regenerateButton = root.Q<Button>("regenerate");
+            closeButton = root.Q<Button>("close");
+
+            var headerIcon = root.Q<Image>("header-icon");
+            headerIcon.image = Icon;
+            headerIcon.scaleMode = ScaleMode.ScaleToFit;
+            var warningIcon = root.Q<Image>("warning-icon");
+            warningIcon.image = EditorGUIUtility.IconContent("console.warnicon.sml").image;
+            warningIcon.scaleMode = ScaleMode.ScaleToFit;
+            qrImage.scaleMode = ScaleMode.StretchToFill;
+            root.Q<IMGUIContainer>("scale-probe").onGUIHandler = ProbeScale;
+
+            avatarField.objectType = typeof(GameObject);
+            avatarField.allowSceneObjects = true;
+            avatarField.RegisterValueChangedCallback(changed =>
             {
-                EditorGUI.DrawRect(slot, Color.white);
-                DrawQr(slot);
+                var selected = changed.newValue as GameObject;
+                if (selected != avatar && (!Transferring || ConfirmEndingTransfer())) Select(selected, false);
+                Refresh();
+            });
+            nameField.RegisterValueChangedCallback(changed =>
+            {
+                avatarName = changed.newValue ?? "";
+                nameFits = null;
+                Refresh();
+            });
+            consentToggle.RegisterValueChangedCallback(changed => { consented = changed.newValue; Refresh(); });
+            consentText.RegisterCallback<ClickEvent>(_ => consentToggle.value = !consentToggle.value);
+            privacyToggle.RegisterValueChangedCallback(changed =>
+            {
+                // The same saved choice as "スマホに送る".
+                if (changed.newValue != CloudVrmTransferWindow.PrivacyConsentAccepted) CloudVrmTransferWindow.PrivacyConsentAccepted = changed.newValue;
+                Refresh();
+            });
+            privacyText.RegisterCallback<ClickEvent>(_ => privacyToggle.value = !privacyToggle.value);
+            readTerms.RegisterCallback<ClickEvent>(_ => Application.OpenURL(AppTransferFlow.TermsUrl));
+            privacyLink.RegisterCallback<ClickEvent>(_ => Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl));
+            // The VRM terms are the IMGUI section shared with the export window.
+            root.Q<IMGUIContainer>("terms").onGUIHandler = DrawTerms;
+            diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
+            createButton.clicked += Begin;
+            messageButton.clicked += Retry;
+            regenerateButton.clicked += Retry;
+            closeButton.clicked += Close;
+            uploadBar.onGUIHandler = DrawUploadBar;
+            // The export starts once the panel has drawn the Exporting state.
+            slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
+            slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
+            root.Q<ScrollView>("transfer-scroll").verticalScroller.valueChanged += _ => PlaceSlot();
+            built = true;
+            Refresh();
+        }
+
+        private void ProbeScale()
+        {
+            var scale = EditorGUIUtility.pixelsPerPoint;
+            if (Mathf.Approximately(scale, pixelsPerPoint)) return;
+            pixelsPerPoint = scale;
+            rootVisualElement.schedule.Execute(Refresh);
+        }
+
+        private void DrawTerms()
+        {
+            var entry = exporter;
+            if (entry == null) return;
+            EditorGUI.BeginChangeCheck();
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms();
+            // The author decides the reason line below.
+            if (EditorGUI.EndChangeCheck()) rootVisualElement.schedule.Execute(Refresh);
+        }
+
+        private void DrawUploadBar()
+        {
+            if (flow == null || flow.UploadSize <= 0) return;
+            EditorGUI.ProgressBar(GUILayoutUtility.GetRect(0f, 20f, GUILayout.ExpandWidth(true)), (float)flow.Transferred / flow.UploadSize,
+                string.Format(T("{0:N0} / {1:N0} バイト（暗号化済み）"), flow.Transferred, flow.UploadSize));
+        }
+
+        private static void Show(VisualElement element, bool visible) => element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+
+        // Hidden but still taking its height, so the rows below never move.
+        private static void Reserve(VisualElement element, bool visible) => element.style.visibility = visible ? Visibility.Visible : Visibility.Hidden;
+
+        private void Refresh()
+        {
+            if (!built || this == null) return;
+            var enabled = CloudTransferAvailability.Enabled;
+            disabledBox.text = enabled ? "" : T(CloudTransferAvailability.DisabledMessage);
+            Show(disabledBox, !enabled);
+            Show(content, enabled);
+            if (!enabled)
+            {
+                StopAndClean();
                 return;
             }
-            EditorGUI.DrawRect(slot, Neutral);
-            var inner = new Rect(slot.x + 20f, slot.y + 12f, slot.width - 40f, slot.height - 24f);
+            var title = avatar != null ? string.Format(T(AppTransferText.TitleWithAvatar), avatar.name) : T(AppTransferText.Title);
+            if (titleContent.text != title || titleContent.image != Icon) titleContent = new GUIContent(title, Icon);
+            var view = shownView = Flow.View;
+            var sending = view != AppTransferView.Form;
+            heading.text = T(AppTransferText.Heading);
+            subtitle.text = sending ? string.Format(T(AppTransferText.Sending), avatarName.Trim()) : "";
+            Show(subtitle, sending);
+            Show(form, !sending);
+            Show(transfer, sending);
+            if (sending) RefreshTransfer(view);
+            else RefreshForm();
+        }
+
+        private void RefreshForm()
+        {
+            var playing = EditorApplication.isPlayingOrWillChangePlaymode;
+            var entry = Exporter;
+            problemBox.text = entry == null ? T(exporterProblem) : "";
+            Show(problemBox, entry == null);
+            diagnosticsButton.text = T("VR Vlog 動作環境");
+            Show(diagnosticsButton, entry == null);
+            playingBox.text = T("Playモードを終了すると編集できます。");
+            Show(playingBox, playing);
+            formFields.SetEnabled(!playing && entry != null);
+
+            avatarLabel.text = T("アバター");
+            if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
+            nameLabel.text = T(AppTransferText.Name);
+            if (nameField.value != avatarName) nameField.SetValueWithoutNotify(avatarName);
+            nameHint.text = T(AppTransferText.NameHint);
+            termsLabel.text = T(AppTransferText.Terms);
+            readTerms.text = T(AppTransferText.ReadTerms);
+            consentText.text = AppTransferFlow.ConsentText;
+            consentToggle.SetValueWithoutNotify(consented);
+            // The same saved choice, link and wording as "スマホに送る".
+            if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
+            Show(privacyRow, showPrivacy);
+            privacyLink.text = T("プライバシーポリシーを開く");
+            privacyText.text = T("プライバシーポリシーに同意する");
+            privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
+
+            // One fixed line says why the button is disabled, so nothing below it moves.
+            var reason = entry == null ? null : Reason();
+            reasonLabel.text = reason == null ? "" : T(reason);
+            createButton.text = T(AppTransferText.Create);
+            createButton.SetEnabled(!playing && entry != null && reason == null);
+            createHint.text = T(AppTransferText.CreateHint);
+        }
+
+        private void RefreshTransfer(AppTransferView view)
+        {
+            // The area keeps the size of the QR through every state, so the rows below never move.
+            slotRow.style.height = SlotSide;
+            var showQr = view == AppTransferView.Waiting && qrTexture != null;
+            slot.EnableInClassList("slot--qr", showQr);
+            qrImage.image = showQr ? qrTexture : null;
+            Show(qrImage, showQr);
+
+            // A failure or an ended transfer says why in place, with the one thing to do next.
+            string title = null, body = null, button = null;
             switch (view)
             {
                 case AppTransferView.Exporting:
-                    DrawMessage(inner, T(AppTransferText.Exporting), null, null);
+                    title = T(AppTransferText.Exporting);
                     break;
                 case AppTransferView.Expired:
                     // The grey area keeps the QR's size; nothing readable is drawn after the deadline.
-                    DrawMessage(inner, T(AppTransferText.Expired), null, T(AppTransferText.Regenerate));
+                    title = T(AppTransferText.Expired); button = T(AppTransferText.Regenerate);
                     break;
                 case AppTransferView.Canceled:
-                    DrawMessage(inner, T("転送を中止しました"), null, T(AppTransferText.Regenerate));
+                    title = T("転送を中止しました"); button = T(AppTransferText.Regenerate);
                     break;
                 case AppTransferView.Completed:
-                    DrawMessage(inner, T(AppTransferText.Completed), null, null);
+                    title = T(AppTransferText.Completed);
                     break;
                 case AppTransferView.Failed:
-                    DrawMessage(inner, T(flow.ExportDidFail ? AppTransferText.ExportFailed : "転送できませんでした"), flow.FailureText(T), T(AppTransferText.Retry));
-                    break;
-                case AppTransferView.Uploading:
-                    DrawUpload(inner);
+                    title = T(flow.ExportDidFail ? AppTransferText.ExportFailed : "転送できませんでした");
+                    body = flow.FailureText(T); button = T(AppTransferText.Retry);
                     break;
             }
-        }
-
-        private void DrawQr(Rect slot)
-        {
-            var side = Mathf.Min(TransferQrCode.DisplaySide(qrTexture.width, EditorGUIUtility.pixelsPerPoint), slot.width);
-            var rect = new Rect(Snap(slot.x + (slot.width - side) / 2f), Snap(slot.y + (slot.height - side) / 2f), side, side);
-            GUI.DrawTexture(rect, qrTexture, ScaleMode.StretchToFill);
-        }
-
-        // A failure or an ended transfer says why in place, with the one thing to do next.
-        private void DrawMessage(Rect area, string title, string body, string button)
-        {
-            const float titleHeight = 22f, buttonHeight = 30f;
-            var hasBody = !string.IsNullOrEmpty(body);
-            var buttonBlock = button == null ? 0f : buttonHeight + 12f;
-            var bodyHeight = hasBody ? Mathf.Min(centerStyle.CalcHeight(new GUIContent(body), area.width), Mathf.Max(0f, area.height - titleHeight - buttonBlock - 8f)) : 0f;
-            var y = area.y + Mathf.Max(0f, (area.height - titleHeight - (hasBody ? bodyHeight + 8f : 0f) - buttonBlock) / 2f);
-            GUI.Label(new Rect(area.x, y, area.width, titleHeight), title, centerBoldStyle);
-            y += titleHeight;
-            if (hasBody)
+            Show(slotMessage, title != null);
+            messageTitle.text = title ?? "";
+            messageBody.text = body ?? "";
+            Show(messageBody, !string.IsNullOrEmpty(body));
+            messageButton.text = button ?? "";
+            Show(messageButton, button != null);
+            var uploading = view == AppTransferView.Uploading;
+            Show(slotUpload, uploading);
+            if (uploading)
             {
-                GUI.Label(new Rect(area.x, y + 8f, area.width, bodyHeight), body, centerStyle);
-                y += bodyHeight + 8f;
+                uploadTitle.text = T(flow.Encrypting ? "転送を準備しています" : "アップロード中");
+                Reserve(uploadBar, flow.UploadSize > 0);
+                uploadBar.MarkDirtyRepaint();
             }
-            if (button == null) return;
-            var width = Mathf.Min(160f, area.width);
-            if (PrimaryButton(new Rect(area.x + (area.width - width) / 2f, y + 12f, width, buttonHeight), button)) Retry();
+            if (view == AppTransferView.Exporting) slot.MarkDirtyRepaint();
+            PlaceSlot();
+
+            var waiting = view == AppTransferView.Waiting;
+            scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
+            warningText.text = T(AppTransferText.DoNotShare);
+            Reserve(warningRow, waiting);
+            var counting = waiting || view == AppTransferView.Expired;
+            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
+            var seconds = waiting ? flow.Remaining : 0;
+            remainingLabel.text = counting ? string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60) : "";
+            remainingLabel.EnableInClassList("expired", view == AppTransferView.Expired);
+            barFill.style.width = Length.Percent(waiting ? flow.RemainingFraction * 100f : 0f);
+            lifetimeLabel.text = counting ? string.Format(T(AppTransferText.Lifetime), CloudTransferProtocol.LifetimeMinutes) : "";
+            regenerateButton.text = T(AppTransferText.Regenerate);
+            Show(regenerateButton, waiting);
+            closeButton.text = T("閉じる");
         }
 
-        private void DrawUpload(Rect area)
+        // UI Toolkit can centre on half a device pixel; the QR's modules need whole ones.
+        private void PlaceSlot()
         {
-            var y = area.y + area.height / 2f - 28f;
-            GUI.Label(new Rect(area.x, y, area.width, 22f), T(flow.Encrypting ? "転送を準備しています" : "アップロード中"), centerBoldStyle);
-            if (flow.UploadSize <= 0) return;
-            EditorGUI.ProgressBar(new Rect(area.x, y + 32f, area.width, 20f), (float)flow.Transferred / flow.UploadSize,
-                string.Format(T("{0:N0} / {1:N0} バイト（暗号化済み）"), flow.Transferred, flow.UploadSize));
+            if (!built || shownView == AppTransferView.Form) return;
+            var side = SlotSide;
+            var row = slotRow.worldBound;
+            if (float.IsNaN(row.width) || row.width <= 0f) return;
+            slot.style.left = Snap(row.x + (row.width - side) / 2f) - row.x;
+            slot.style.top = Snap(row.y) - row.y;
+            slot.style.width = side;
+            slot.style.height = side;
+            if (qrTexture == null) return;
+            var qr = Mathf.Min(TransferQrCode.DisplaySide(qrTexture.width, ScaleFactor), side);
+            var offset = Snap((side - qr) / 2f);
+            qrImage.style.left = offset;
+            qrImage.style.top = offset;
+            qrImage.style.width = qr;
+            qrImage.style.height = qr;
         }
 
         private sealed class ExportEntry

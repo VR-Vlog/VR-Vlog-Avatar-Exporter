@@ -318,7 +318,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(28));
+            Assert.That(texts.Length, Is.EqualTo(29));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {

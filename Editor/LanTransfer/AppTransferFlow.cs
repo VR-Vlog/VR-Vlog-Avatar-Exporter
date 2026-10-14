@@ -34,6 +34,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
+        internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしない";
         internal const string Waiting = "読み取り待ち";
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
@@ -70,9 +71,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // it shows and when. The window draws View and forwards the buttons.
     internal sealed class AppTransferFlow : IDisposable
     {
-        // オーナーの確定待ち。法的な文言なので、確定するまで一字も変えず、翻訳もしない。
+        // 2026-10-14にオーナーの指示でモックの文言のまま採用した。法的な文言なので、オーナーの承認なしに一字も変えず、翻訳もしない。
         internal const string ConsentText = "このアバターを VR Vlog へ転送して利用することに同意します（利用規約）";
-        // オーナーの確定待ち。VR Vlogアプリが利用規約として開くページと同じ。
+        // 2026-10-14にオーナーの指示で採用した。VR Vlogアプリが利用規約として開くページと同じで、オーナーの承認なしに変えない。
         internal const string TermsUrl = "https://vrvlog.fun/terms/";
         internal const string Extension = ".vrm";
         private const int MaximumNameLength = 256;
