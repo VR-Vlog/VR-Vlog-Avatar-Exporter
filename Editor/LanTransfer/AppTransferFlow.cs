@@ -116,7 +116,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         // The link with the longest values a transfer can have and no secret.
-        // It sizes the QR area before the upload and stands in for an expired QR.
+        // It sizes the QR area before the upload; nothing draws it as a QR.
         internal static string PlaceholderLink(string transferName) => CloudTransferProtocol.ImportLink(new string('0', 32), new string('A', 43),
             transferName, CloudTransferProtocol.MaximumSize, new string('0', 64), 9999999999L, new string('A', 86));
 

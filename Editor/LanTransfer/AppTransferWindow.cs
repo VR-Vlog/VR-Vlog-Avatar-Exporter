@@ -36,7 +36,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private bool exporterResolved;
         [NonSerialized] private string exporterProblem;
         [NonSerialized] private Texture2D qrTexture, icon;
-        [NonSerialized] private bool qrIsPlaceholder;
         [NonSerialized] private string transferName;
         [NonSerialized] private int placeholderSide;
         [NonSerialized] private int exportAttempt;
@@ -158,7 +157,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (qrTexture != null) DestroyImmediate(qrTexture);
             qrTexture = null;
-            qrIsPlaceholder = false;
         }
 
         private void Poll()
@@ -175,8 +173,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             flow.Tick(time);
             var view = flow.View;
-            if (view == AppTransferView.Waiting) { if (qrTexture == null || qrIsPlaceholder) ShowQr(); }
-            else if (view == AppTransferView.Expired) { if (qrTexture == null || !qrIsPlaceholder) ShowExpiredQr(); }
+            if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
             else ClearQr();
             view = flow.View;
             if (view == polledView && (view == AppTransferView.Form || time < nextRepaint)) return;
@@ -193,14 +190,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ClearQr();
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
-        }
-
-        // An expired QR is replaced by one of the same size that holds no key or token.
-        private void ShowExpiredQr()
-        {
-            ClearQr();
-            try { qrTexture = CloudVrmTransferWindow.RenderQr(AppTransferFlow.PlaceholderLink(transferName)); qrIsPlaceholder = true; }
-            catch { qrTexture = null; }
         }
 
         private string Reason()
@@ -495,10 +484,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void DrawSlot(Rect slot, AppTransferView view)
         {
-            if (view == AppTransferView.Waiting && qrTexture != null && !qrIsPlaceholder)
+            if (view == AppTransferView.Waiting && qrTexture != null)
             {
                 EditorGUI.DrawRect(slot, Color.white);
-                DrawQr(slot, 1f);
+                DrawQr(slot);
                 return;
             }
             EditorGUI.DrawRect(slot, Neutral);
@@ -509,7 +498,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     DrawMessage(inner, T(AppTransferText.Exporting), null, null);
                     break;
                 case AppTransferView.Expired:
-                    if (qrTexture != null) DrawQr(slot, 0.16f);
+                    // The grey area keeps the QR's size; nothing readable is drawn after the deadline.
                     DrawMessage(inner, T(AppTransferText.Expired), null, T(AppTransferText.Regenerate));
                     break;
                 case AppTransferView.Canceled:
@@ -527,14 +516,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
         }
 
-        private void DrawQr(Rect slot, float alpha)
+        private void DrawQr(Rect slot)
         {
             var side = Mathf.Min(TransferQrCode.DisplaySide(qrTexture.width, EditorGUIUtility.pixelsPerPoint), slot.width);
             var rect = new Rect(Snap(slot.x + (slot.width - side) / 2f), Snap(slot.y + (slot.height - side) / 2f), side, side);
-            var previous = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, alpha);
             GUI.DrawTexture(rect, qrTexture, ScaleMode.StretchToFill);
-            GUI.color = previous;
         }
 
         // A failure or an ended transfer says why in place, with the one thing to do next.
