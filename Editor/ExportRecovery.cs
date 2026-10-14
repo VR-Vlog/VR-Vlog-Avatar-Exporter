@@ -53,6 +53,8 @@ namespace VRVlog.LilToonExporter
         internal string Stage = "環境確認";
         internal bool Succeeded;
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
+        // Features the export worked around instead of stopping. Read before saving.
+        internal readonly ExportFallbackReport Fallbacks = new ExportFallbackReport();
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         string errorType;
 
@@ -62,6 +64,7 @@ namespace VRVlog.LilToonExporter
             Succeeded = false;
             errorType = null;
             Diagnostics.Clear();
+            Fallbacks.Clear();
             originals.Clear();
         }
 

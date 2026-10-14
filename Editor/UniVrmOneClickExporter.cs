@@ -156,7 +156,11 @@ namespace VRVlog.LilToonExporter
                     AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights);
                     blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
                         suppressHdrTextureEmission: suppressHdrTextureEmission);
-                    if (blink.MissingAutomatic) warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
+                    if (blink.MissingAutomatic)
+                    {
+                        warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
+                        recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                    }
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     preparedMenuBindings.Capture(menu);
@@ -210,9 +214,9 @@ namespace VRVlog.LilToonExporter
                     warnings?.Add("本体のボーンと独立したパーツは現在の接続を保持しました: " +
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
-                var springs = PhysBoneSpringExport.Convert(source, clone, warnings);
+                var springs = PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks);
                 recoveryReport.Stage = "材質保存";
-                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon);
+                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks);
                 optimizerBindings.VerifyMaterialEvidence();
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -385,7 +389,7 @@ namespace VRVlog.LilToonExporter
             return meta;
         }
 
-        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false)
+        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -409,6 +413,7 @@ namespace VRVlog.LilToonExporter
                         if (!others.TryGetValue(source, out var plain)) others.Add(source, plain = CreateMToonDefault(source, created));
                         materials[i] = plain;
                         changed = true;
+                        fallbacks?.Add(ExportFallbackKind.NonLilToonMaterials, null, clone.transform, renderer.transform);
                         continue;
                     }
                     if (!converted.TryGetValue(source, out var fallback))
