@@ -19,8 +19,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // which ends at priority 49. That value puts this entry last in it, above Properties.
         internal const int MenuPriority = 49;
         private const float HeaderHeight = 60f, Padding = 16f;
-        // Everything of the QR screen except the header and the QR area itself.
-        private const float TransferChrome = 206f;
+        // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
+        // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
+        // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
+        private const float TransferChrome = 253f;
         private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
         // The layout and styles next to this script, found by their asset GUIDs.
         private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
@@ -390,7 +392,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             headerIcon.image = Icon;
             headerIcon.scaleMode = ScaleMode.ScaleToFit;
             var warningIcon = root.Q<Image>("warning-icon");
-            warningIcon.image = EditorGUIUtility.IconContent("console.warnicon.sml").image;
+            warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
             var probe = root.Q<IMGUIContainer>("scale-probe");
