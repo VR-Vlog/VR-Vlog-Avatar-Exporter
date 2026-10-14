@@ -50,7 +50,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         }
 
         [Test]
-        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneObject()
+        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot()
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
             var entry = (MenuItem)typeof(AppTransferWindow).GetMethod("OpenFromMenu", flags).GetCustomAttributes(typeof(MenuItem), false).Single();
@@ -61,18 +61,36 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var validation = typeof(AppTransferWindow).GetMethod("CanOpenFromMenu", flags);
             Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
             var selection = Selection.objects;
-            var first = new GameObject("vrvlog-app-transfer-first");
-            var second = new GameObject("vrvlog-app-transfer-second");
+            var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
+            var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
+            var plain = new GameObject("vrvlog-app-transfer-plain");
+            var nested = new GameObject("vrvlog-app-transfer-nested", typeof(Animator));
+            var group = new GameObject("vrvlog-app-transfer-group");
+            nested.transform.SetParent(first.transform);
+            second.transform.SetParent(group.transform);
             try
             {
+                // Versions that do not transfer never list the entry.
+                var enabled = CloudTransferAvailability.Enabled;
                 Selection.objects = Array.Empty<Object>();
                 Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
                 Selection.objects = new Object[] { first };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(true));
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
+                // A parent without an Animator does not make its child less of a root.
+                Selection.objects = new Object[] { second };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
                 Selection.objects = new Object[] { first, second };
                 Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { plain };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
+                Selection.objects = new Object[] { nested };
+                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
             }
-            finally { Selection.objects = selection; Object.DestroyImmediate(first); Object.DestroyImmediate(second); }
+            finally
+            {
+                Selection.objects = selection;
+                Object.DestroyImmediate(first); Object.DestroyImmediate(group); Object.DestroyImmediate(plain);
+            }
         }
 
         [Test]

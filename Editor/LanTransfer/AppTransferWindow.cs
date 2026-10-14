@@ -55,8 +55,19 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (selected != null) Open(selected);
         }
 
+        // Listed only in versions that transfer, and for one avatar root.
         [MenuItem(MenuPath, true)]
-        private static bool CanOpenFromMenu() => Selection.gameObjects.Length == 1;
+        private static bool CanOpenFromMenu() =>
+            CloudTransferAvailability.Enabled && Selection.gameObjects.Length == 1 && IsAvatarRoot(Selection.gameObjects[0]);
+
+        // The top of an avatar: it has an Animator and nothing above it has one.
+        internal static bool IsAvatarRoot(GameObject target)
+        {
+            if (target == null || target.GetComponent<Animator>() == null) return false;
+            for (var parent = target.transform.parent; parent != null; parent = parent.parent)
+                if (parent.GetComponent<Animator>() != null) return false;
+            return true;
+        }
 
         public static void Open(GameObject target)
         {
