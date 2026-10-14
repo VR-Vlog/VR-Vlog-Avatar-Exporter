@@ -133,6 +133,28 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("")]
         [TestCase("   ")]
+        public void AppTransferDoesNotExportWithoutAnAuthor(string author)
+        {
+            var transfer = new AppTransferExport();
+            typeof(AppTransferExport).GetField("author", Flags).SetValue(transfer, author);
+            var source = new GameObject("SampleAvatar");
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-author-transfer-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var saved = false;
+            try
+            {
+                Assert.That(transfer.Export(source, "SampleAvatar", path, () => saved = true), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [TestCase("")]
+        [TestCase("   ")]
         public void ExportWindowDoesNotStartSavingWithoutAnAuthor(string author)
         {
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();

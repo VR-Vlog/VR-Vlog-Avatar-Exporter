@@ -215,7 +215,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             ClearQr();
             // The privacy policy choice is shared with "スマホに送る" and can be withdrawn there.
-            if (!CloudVrmTransferWindow.PrivacyConsentAccepted)
+            // Exporting again needs an author; without one, return to the form where the field says so.
+            if (!CloudVrmTransferWindow.PrivacyConsentAccepted || !flow.CanRegenerate && Exporter != null && !Exporter.HasAuthor())
             {
                 flow.Stop();
                 minSize = FormMinimumSize;

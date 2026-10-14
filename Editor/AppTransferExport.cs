@@ -19,16 +19,17 @@ namespace VRVlog.LilToonExporter
         private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
         private GUIStyle summaryStyle;
 
-        // The avatar's remembered author comes first. Otherwise start from the
-        // author and license settings of an open export window; like those
-        // windows, another avatar starts from the default license.
+        // The author is the avatar's remembered one, else what this window
+        // already holds, else the author of an open export window. The license
+        // comes from an export window showing this avatar; like those windows,
+        // another avatar starts from the default license.
         public void SelectAvatar(GameObject avatar)
         {
             license = new AvatarLicenseOptions();
-            if (avatar != null) author = ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author);
+            if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
-                if (string.IsNullOrWhiteSpace(author)) author = window.Author ?? "";
+                if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
                 var shown = window.LicenseFor(avatar);
                 if (shown != null) license = shown;
             }
@@ -77,6 +78,9 @@ namespace VRVlog.LilToonExporter
         public string Export(GameObject avatar, string name, string destination, Action saved)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
+            // The window keeps its button disabled without an author; a retry or
+            // another caller stops here before any file or recovery session starts.
+            if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             var targetAuthor = author;
             var targetLicense = license.Copy();
             ExportAuthor.Remember(avatar, targetAuthor);
