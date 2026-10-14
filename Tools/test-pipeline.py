@@ -275,7 +275,7 @@ class ValidationReceiptTests(unittest.TestCase):
                     "test-listing.py", "check-public-content.py", "test-package.py",
                     "test-aao-vertex-buffer-patch.py", "generate-compatibility.py", "test-compatibility-tooling.py")
         added = {"test-vpm-mirrors.py", "test-exporter-publication.py",
-                 "test-runner-lifecycle.py", "check-liltoon-structure.py", "test-liltoon-catalogue.py",
+                 "check-liltoon-structure.py", "test-liltoon-catalogue.py",
                  "test-liltoon-version-parity.py", "test-liltoon-version-parity-runner.py"}
         self.assertEqual(existing, tuple(name for name in runner.PYTHON_CHECKS if name not in added))
         for name in added:

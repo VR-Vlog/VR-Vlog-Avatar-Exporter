@@ -18,6 +18,8 @@ workflowの編集では、構文チェックに加え、攻撃者のPRが書込�
 
 ## 実行経路と境界
 
+このリポジトリの全GitHub Actions jobは、GitHub標準ホステッドの `ubuntu-latest` で実行します。旧セルフホステッドランナーの実装・更新ツール・運用手順 (`Tools/ci/runners/`) と専用のライフサイクル検証を削除しました。`Tools/check-pipeline.py` は既存のworkflow・job一覧と `runs-on: ubuntu-latest` を検査し、セルフホステッドや大型ランナーへの変更を拒否します。
+
 | 経路 | 起動条件 | 公開権限 | 上限・保存 |
 | --- | --- | --- | --- |
 | Validate / `schema` | 全PR、mainへのpush | 読取りのみ | 30分。古い同一PRの検証は取消し |
