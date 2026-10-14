@@ -8,6 +8,8 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import unity_packages
+
 
 NAMESPACE = 'VRVlog.LilToonExporter.Tests.'
 PROFILES = ('compatibility', 'exporter-behavior', 'exporter-integration')
@@ -1119,12 +1121,32 @@ def source_identity(root):
     return identity
 
 
+def installed_liltoon(project, expected=None):
+    """Read the project's resolved lilToon and stop before Unity runs if it is not the expected release."""
+    if expected is not None:
+        try:
+            unity_packages.parse_version(expected)
+        except ValueError:
+            raise SystemExit('--expect-liltoon must be a release version such as 2.3.4: ' + repr(expected))
+    try:
+        installed = unity_packages.installed_package(project, unity_packages.LILTOON)
+    except (OSError, ValueError) as error:
+        if expected is None:
+            return {'expected': None, 'installed': None, 'source': None, 'unavailable': str(error)}
+        raise SystemExit('Cannot read the installed lilToon version: ' + str(error))
+    version = installed['version'] if installed else None
+    if expected is not None and version != expected:
+        raise SystemExit('Installed lilToon ' + str(version) + ' does not match --expect-liltoon ' + expected)
+    return {'expected': expected, 'installed': version, 'source': installed['source'] if installed else None}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unity', required=True, type=Path)
     parser.add_argument('--project', required=True, type=Path)
     parser.add_argument('--expect-univrm', required=True)
     parser.add_argument('--expect-unity', default='2022.3.62f3')
+    parser.add_argument('--expect-liltoon', help='Stop before running Unity unless the project resolved exactly this lilToon release')
     parser.add_argument('--output', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=900)
     parser.add_argument('--profile', choices=PROFILES, default='compatibility',
@@ -1135,6 +1157,7 @@ def main():
     supported = args.expect_univrm in config['uniVrm']['versions']
     filters = profile_filters(supported, args.profile)
     identity_before = source_identity(root)
+    liltoon_before = installed_liltoon(args.project, args.expect_liltoon)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Unique result names prevent an earlier successful XML from satisfying a failed run.
@@ -1155,8 +1178,12 @@ def main():
     identity_after = source_identity(root)
     if any(identity_before[key] != identity_after[key] for key in ('packageVersion', 'gitCommit')):
         raise SystemExit('Runner package version or Git commit changed during Unity validation')
+    # Unity may re-resolve packages while it runs; the receipt must name what was tested.
+    liltoon_after = installed_liltoon(args.project, args.expect_liltoon)
+    if liltoon_after['installed'] != liltoon_before['installed']:
+        raise SystemExit('Installed lilToon changed during Unity validation')
     report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
-              'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
+              'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}
     (output / (stamp + '.json')).write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
