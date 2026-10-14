@@ -131,6 +131,38 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void AppTransferAsksBeforeSavingAnExportWithFallbacks()
+        {
+            var transfer = new AppTransferExport();
+            typeof(AppTransferExport).GetField("author", Flags).SetValue(transfer, "SampleAuthor");
+            var source = new GameObject("SampleAvatar");
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-transfer-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var original = AppTransferExport.SaveNormally;
+            bool? interactive = null;
+            var saved = false;
+            try
+            {
+                // Declining the confirmation returns without a recovery session and without saving.
+                AppTransferExport.SaveNormally = (avatar, destination, create, completed, excluded, gimmicks, asks, openBlink) =>
+                {
+                    interactive = asks;
+                    Assert.That(avatar, Is.SameAs(source));
+                    Assert.That(destination, Is.EqualTo(path));
+                    return null;
+                };
+                Assert.That(transfer.Export(source, "SampleAvatar", path, () => saved = true), Is.Null);
+                Assert.That(interactive, Is.True, "The upload path asks about fallbacks like the export window.");
+                Assert.That(saved, Is.False, "Nothing is uploaded when the export was not saved.");
+            }
+            finally
+            {
+                AppTransferExport.SaveNormally = original;
+                Object.DestroyImmediate(source);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         [TestCase("")]
         [TestCase("   ")]
         public void AppTransferDoesNotExportWithoutAnAuthor(string author)
