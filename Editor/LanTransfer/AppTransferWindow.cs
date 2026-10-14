@@ -89,9 +89,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 if (exporterResolved) return exporter;
                 exporterResolved = true;
-                exporter = ExportEntry.Resolve();
+                // The exporter assembly also loads with an unsupported lilToon; like the
+                // export windows, do not export until the installed versions are supported.
+                var installed = DependencyDiagnostics.Installed();
+                exporter = DependencyDiagnostics.Error(installed) == null ? ExportEntry.Resolve() : null;
                 if (exporter != null) exporter.SelectAvatar(avatar);
-                else exporterProblem = DependencyDiagnostics.StartupError(DependencyDiagnostics.Installed())
+                else exporterProblem = DependencyDiagnostics.StartupError(installed)
                     ?? "書き出し処理の準備が完了していません。「再読み込み」を押してください。";
                 return exporter;
             }

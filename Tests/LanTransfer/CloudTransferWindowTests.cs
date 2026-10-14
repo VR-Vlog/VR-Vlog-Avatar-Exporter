@@ -385,6 +385,27 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             });
         }
 
+        [Test]
+        public void AppTransferExportsOnlyWithTheSupportedDependencyVersions()
+        {
+            var diagnostics = Type.GetType("VRVlog.LilToonExporter.Compatibility.DependencyDiagnostics, VRVlog.LilToonExporter.Compatibility", true);
+            var installed = diagnostics.GetMethod("Installed").Invoke(null, null);
+            var dependencyError = (string)diagnostics.GetMethod("Error").Invoke(null, new[] { installed });
+            var resolvable = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+                .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null) != null;
+            var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+            try
+            {
+                var exporter = typeof(AppTransferWindow).GetProperty("Exporter", Instance).GetValue(window);
+                // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
+                Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
+                var problem = (string)typeof(AppTransferWindow).GetField("exporterProblem", Instance).GetValue(window);
+                if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
+                if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
         private static void WithPrivacyPreference(Action test)
         {
             var exists = EditorPrefs.HasKey(CloudVrmTransferWindow.PrivacyConsentPreference);
