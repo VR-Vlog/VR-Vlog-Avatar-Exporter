@@ -278,7 +278,9 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Inject(byte[] bytes, string exporterVersion, string lilToonVersion)
         {
-            if (lilToonVersion != LilToon234Catalogue.Version) throw new NotSupportedException("lilToon 2.3.4が必要です。");
+            // The installed version is checked before export; this records the catalogue version.
+            if (lilToonVersion != LilToon234Catalogue.Version)
+                throw new NotSupportedException("sourceLilToonVersion must be the catalogue version " + LilToon234Catalogue.Version + ".");
             var glb = GlbDocument.Read(bytes);
             var views = List(glb.Json, "bufferViews");
             var chunks = new List<object>();
