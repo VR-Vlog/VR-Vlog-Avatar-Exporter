@@ -195,7 +195,9 @@ def main():
     logs = output / 'logs'
     logs.mkdir(parents=True, exist_ok=True)
     names = [unity_packages.LILTOON, *dependencies, EXPORTER]
-    summary = []
+    # Keep records of projects created by earlier runs into the same folder.
+    summary_path = output / 'projects.json'
+    summary = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.is_file() else []
     for version in versions:
         project = output / ('liltoon-' + version)
         archive, url = fetch_liltoon(version, cache)
@@ -220,9 +222,9 @@ def main():
                 raise SystemExit('Unity resolved different dependency versions in ' + project.name + ': ' + ', '.join(changed))
         (project / RECORD).write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
         summary.append(record)
+        summary_path.write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
         print(json.dumps({'project': project.name, 'lilToon': version,
                           'resolved': record['resolved']}), flush=True)
-    (output / 'projects.json').write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
 
 
 if __name__ == '__main__':
