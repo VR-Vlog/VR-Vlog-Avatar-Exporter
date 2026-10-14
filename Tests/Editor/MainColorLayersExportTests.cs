@@ -76,5 +76,37 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); Object.DestroyImmediate(texture); }
         }
 
+        [TestCase("2.0.0")] [TestCase("2.2.1")] [TestCase("2.3.4")]
+        public void ExportRecordsInstalledLilToonVersionAndKeepsCatalogueVersion(string installed)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            try
+            {
+                foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: installed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var glb = GlbDocument.Read(bytes);
+                var root = VRVlog.LilToon.LilToonFullContract.Root(glb.Json);
+                Assert.That(VRVlog.LilToon.LilToonFullContract.Text(root, "sourceLilToonVersion"), Is.EqualTo("2.3.4"));
+                var extras = VRVlog.LilToon.LilToonFullContract.Object(VRVlog.LilToon.LilToonFullContract.Object(glb.Json["asset"])["extras"]);
+                Assert.That(extras[LilToonFullSnapshot.InstalledLilToonVersionKey], Is.EqualTo(installed));
+                // The app's contract ignores the extra key.
+                Assert.DoesNotThrow(() => VRVlog.LilToon.LilToonFullContract.Validate(glb.Json, bytes.Length, glb.Binary.Length));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        [TestCase(null)] [TestCase("1.10.3")] [TestCase("2.3.5")] [TestCase("2.3.4-beta")]
+        public void ExportStopsForLilToonOutsideTheSupportedRange(string installed)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            try
+            {
+                foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
+                Assert.Throws<NotSupportedException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: installed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
     }
 }

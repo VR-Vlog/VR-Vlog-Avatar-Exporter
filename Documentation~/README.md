@@ -96,6 +96,10 @@ lilToon専用表示のレイヤー合成には、書き出し元のUnityプロ�
 
 対応するVR Vlogでは、Linearで作った2nd／3rdの重ね合わせをGammaのアプリでもLinearで計算します。出力元の情報がない旧VRMはVRChatのLinearワークフローを前提に読み込みます。旧ExporterでGammaプロジェクトから書き出したVRMは、対応版のExporterで書き出し直す必要があります。透明材質を背景に合成する工程や照明全体をLinearへ変更する修正ではありません。
 
+### 書き出し元のlilToonの版
+
+Exporterは書き出し元のプロジェクトに導入されていたlilToonの版を`asset.extras.VRVLOG_lilToonInstalledVersion`に保存します。`VRVLOG_materials_liltoon`の`sourceLilToonVersion`は、マテリアルが準拠するlilToonのカタログの版（2.3.4）のままです。lilToonのマテリアルが無いアバターの書き出しには保存しません。アプリの読み込みはこの値を使いません。
+
 ## 脆弱性の報告
 
 脆弱性は[セキュリティポリシー](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/security/policy)に従い、[GitHubの非公開報告](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/security/advisories/new)から管理者へ連絡してください（GitHubへのログインが必要です）。再現手順や悪用条件を公開Issue・PRへ投稿しないでください。
