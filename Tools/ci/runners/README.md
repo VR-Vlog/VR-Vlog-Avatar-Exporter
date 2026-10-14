@@ -24,6 +24,6 @@ The old updater was a stopped-service source migration tool: its `installed_stop
 
 ## Historical source and validation
 
-The runtime was extracted into this product repository from the former standalone CI implementation. The original source-only checkout was fetched from canonical `origin/main` at `98dfb7a8f602b941dbbba50715c070d38b495893`; it had no `AGENTS.md`. The original ProjectOrchestrator checkout, Unity Library and build caches were not copied or edited. VR Vlog/mobile/cohort/persistent policy was excluded from this Exporter package.
+The runtime was extracted into this product repository from the former standalone CI implementation. The original source-only checkout was fetched from canonical `origin/main` at `98dfb7a8f602b941dbbba50715c070d38b495893`; it had no `AGENTS.md`. The original ProjectOrchestrator checkout was not edited; Unity Library and build caches were not copied. VR Vlog/mobile/cohort/persistent policy was excluded from this Exporter package.
 
 The reviewed runtime source remains `ced515df7f8a58c7872cb4d72c7637614ad83f4d`. Existing hosted validation still checks the retained fixtures. Reuse observed results only for their recorded source and environment, and leave final mandatory verification with one owner. This README policy change does not modify runtime code or perform service, registration, workflow dispatch or publication operations.
