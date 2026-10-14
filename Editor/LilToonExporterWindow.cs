@@ -556,12 +556,14 @@ namespace VRVlog.LilToonExporter
         }
 
         // Stops before export when the installed lilToon is outside the
-        // supported range. Returns the catalogue version the export conforms to.
+        // supported range. Returns the installed version for asset.extras;
+        // sourceLilToonVersion is always the catalogue version.
         internal static string RequireSupportedLilToon()
         {
-            var error = Compatibility.DependencyPolicy.LilToonError(FindLilToonPackage()?.version, ExporterLocalization.T);
+            var version = FindLilToonPackage()?.version;
+            var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
-            return Compatibility.DependencyPolicy.LilToonVersion;
+            return version;
         }
 
         private static PackageManagerPackageInfo FindLilToonPackage()
