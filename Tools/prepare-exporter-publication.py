@@ -18,12 +18,16 @@ import stat
 import tempfile
 from urllib.parse import parse_qs, urlsplit
 
-CANONICAL_URL = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
+CANONICAL_URL = "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/index.json"
 OFFICIAL_BASE = "https://vrvlog.fun/exporter/"
 REPOSITORY_ID = "com.vrvlog.packages"
 PUBLICATION_RECEIPT = "publication.json"
-PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-Avatar-Exporter"
+LEGACY_PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_REPOSITORY_ID = "1355769104"
 PUBLISHER_WORKFLOW = ".github/workflows/build-listing.yml"
+ZIP_REPOSITORIES = (PUBLISHER_REPOSITORY, LEGACY_PUBLISHER_REPOSITORY,
+                    "mitsuya0077/VR-Vlog-lilToon-Exporter")
 PREFLIGHT_FILE = "vpm-mirror-preflight.json"
 REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter", "com.vrmc.gltf", "com.vrmc.vrm")
 MAX_FILE_BYTES = 4 * 1024 * 1024
@@ -65,10 +69,11 @@ def receipt_digest(payload):
     return hashlib.sha256(raw).hexdigest()
 
 
-def validate_publisher(publisher):
+def validate_publisher(publisher, *, allow_legacy=False):
+    repositories = (PUBLISHER_REPOSITORY, LEGACY_PUBLISHER_REPOSITORY) if allow_legacy else (PUBLISHER_REPOSITORY,)
     require(isinstance(publisher, dict) and set(publisher) ==
             {"repository", "workflow", "run_number", "run_id", "source_commit"}
-            and publisher.get("repository") == PUBLISHER_REPOSITORY
+            and publisher.get("repository") in repositories
             and publisher.get("workflow") == PUBLISHER_WORKFLOW,
             "Unexpected publication publisher identity")
     for key in ("run_number", "run_id"):
@@ -85,7 +90,8 @@ def publisher_from_environment(environment):
     workflow_ref = environment.get("GITHUB_WORKFLOW_REF")
     event = environment.get("GITHUB_EVENT_NAME")
     ref = environment.get("GITHUB_REF")
-    require(environment.get("GITHUB_ACTIONS") == "true" and repository == PUBLISHER_REPOSITORY and isinstance(workflow_ref, str)
+    require(environment.get("GITHUB_ACTIONS") == "true" and repository == PUBLISHER_REPOSITORY
+            and environment.get("GITHUB_REPOSITORY_ID") == PUBLISHER_REPOSITORY_ID and isinstance(workflow_ref, str)
             and isinstance(ref, str) and workflow_ref == f"{repository}/{PUBLISHER_WORKFLOW}@{ref}",
             "Publication requires the fixed publisher workflow context")
     require((event == "workflow_dispatch" and ref == "refs/heads/main")
@@ -113,7 +119,7 @@ def validate_preflight(preflight, publisher):
         return None
     require(isinstance(official, dict) and set(official) == {"publisher", "digest"},
             "Invalid observed official publication context")
-    previous = validate_publisher(official["publisher"])
+    previous = validate_publisher(official["publisher"], allow_legacy=True)
     require(isinstance(official["digest"], str) and re.fullmatch(r"[0-9a-f]{64}", official["digest"]),
             "Invalid observed official publication digest")
     require(publisher["run_number"] >= previous["run_number"],
@@ -165,7 +171,7 @@ def official_reader_from_environment(environment, publisher):
         require(mirror.publisher_from_environment(environment) == publisher,
                 "Publication publisher context changed after preflight")
         mirror.validate_checkout(publisher)
-        api = mirror.GitHubApi(environment.get(mirror.TOKEN_ENV), mirror.Budget())
+        api = mirror.GitHubApi.from_environment(environment, mirror.Budget(), require_org=False)
         return api.snapshot(mirror.OFFICIAL).receipt
     return read_official
 
@@ -216,7 +222,9 @@ def parse_publication_receipt(raw):
     require(isinstance(data, dict) and set(data) == {"schema", "id", "files", "publisher", "digest"}
             and type(data.get("schema")) is int and data["schema"] == 2 and data.get("id") == REPOSITORY_ID,
             "Unexpected publication receipt schema or identity")
-    validate_publisher(data["publisher"])
+    # Read receipts issued before this same repository was renamed without
+    # normalizing their publisher name: the digest binds the original identity.
+    validate_publisher(data["publisher"], allow_legacy=True)
     hashes = data["files"]
     require(isinstance(hashes, dict) and "index.html" in hashes and "index.json" in hashes
             and PUBLICATION_RECEIPT not in hashes and len(hashes) < MAX_FILES,
@@ -235,9 +243,15 @@ def parse_publication_receipt(raw):
 def validate_publication_receipt(files):
     require(PUBLICATION_RECEIPT in files, "Publication receipt is missing")
     receipt = parse_publication_receipt(files[PUBLICATION_RECEIPT])
-    expected = parse_publication_receipt(publication_receipt(
-        {path: raw for path, raw in files.items() if path != PUBLICATION_RECEIPT}, receipt["publisher"]))
-    require(receipt == expected, "Publication receipt differs from the complete snapshot")
+    require(len(files) <= MAX_FILES, "Publication receipt exceeds its file-count bound")
+    expected = {}
+    for relative, raw in files.items():
+        if relative == PUBLICATION_RECEIPT:
+            continue
+        safe_path(relative)
+        require(isinstance(raw, bytes), "Publication receipt requires file bytes")
+        expected[relative] = hashlib.sha256(raw).hexdigest()
+    require(receipt["files"] == expected, "Publication receipt differs from the complete snapshot")
     return receipt
 
 
@@ -279,9 +293,10 @@ def validate_listing(raw):
                 parsed = urlsplit(url)
             except ValueError as error:
                 raise PreparationError("Invalid listed ZIP URL") from error
-            prefix = "/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
+            prefix = next((f"/{repository}/releases/download/" for repository in ZIP_REPOSITORIES
+                           if parsed.path.startswith(f"/{repository}/releases/download/")), None)
             require(parsed.scheme == "https" and parsed.netloc == "github.com"
-                    and not parsed.query and not parsed.fragment and parsed.path.startswith(prefix),
+                    and not parsed.query and not parsed.fragment and prefix is not None,
                     "Unexpected listed ZIP origin")
             suffix = parsed.path[len(prefix):].split("/")
             require(len(suffix) == 2 and suffix[0] and suffix[1] == f"{name}-{version}.zip",

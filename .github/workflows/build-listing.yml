@@ -220,6 +220,7 @@ jobs:
         run: python3 Tools/sync-vpm-mirrors.py --preflight
         env:
           VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
+          VPM_ORG_MIRROR_TOKEN: ${{ secrets.VPM_ORG_MIRROR_TOKEN }}
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: vrchat-community/package-list-action
@@ -289,6 +290,7 @@ jobs:
         run: python3 Tools/sync-vpm-mirrors.py --verify-before-deployment "$RUNNER_TEMP/official-exporter-publication"
         env:
           VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
+          VPM_ORG_MIRROR_TOKEN: ${{ secrets.VPM_ORG_MIRROR_TOKEN }}
       - id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
       - name: Publish and verify official and legacy VPM mirrors
@@ -296,3 +298,4 @@ jobs:
         run: python3 Tools/sync-vpm-mirrors.py --publication-root "$RUNNER_TEMP/official-exporter-publication"
         env:
           VPM_MIRROR_TOKEN: ${{ secrets.VPM_MIRROR_TOKEN }}
+          VPM_ORG_MIRROR_TOKEN: ${{ secrets.VPM_ORG_MIRROR_TOKEN }}

@@ -45,6 +45,7 @@ def publisher(number=1, run_id=1001, commit="a" * 40):
 def ci_environment(context=None):
     context = context or publisher()
     return {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": sync.PUBLISHER_REPOSITORY,
+            "GITHUB_REPOSITORY_ID": sync.PUBLISHER_REPOSITORY_ID,
             "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
             "GITHUB_WORKFLOW_REF": f"{sync.PUBLISHER_REPOSITORY}/{sync.PUBLISHER_WORKFLOW}@refs/heads/main",
             "GITHUB_RUN_NUMBER": str(context["run_number"]), "GITHUB_RUN_ID": str(context["run_id"]),
@@ -59,7 +60,8 @@ def desired(source, context=None):
                 sync.OFFICIAL.prefix + "index.html": files["index.html"],
                 sync.OFFICIAL.prefix + "assets/image.png": files["assets/image.png"],
                 sync.OFFICIAL.prefix + sync.PUBLICATION_RECEIPT: receipt_bytes(files, context)},
-            sync.LEGACY.repository: {sync.LEGACY.listing_path: sync.render_listing(source, sync.LEGACY_URL)}}
+            **{target.repository: {target.listing_path: sync.render_listing(source, target.listing_url)}
+               for target in sync.TARGETS if target != sync.OFFICIAL}}
 
 
 def receipt_bytes(files, context=None):
@@ -204,7 +206,7 @@ class MirrorTests(unittest.TestCase):
     def test_render_changes_only_root_url_and_keeps_all_manifests(self):
         source = new_version(listing())
         before = copy.deepcopy(source)
-        for url in (sync.OFFICIAL_URL, sync.LEGACY_URL):
+        for url in (target.listing_url for target in sync.TARGETS):
             data = json.loads(sync.render_listing(source, url))
             self.assertEqual(data.pop("url"), url)
             self.assertEqual(data, {key: value for key, value in source.items() if key != "url"})
@@ -228,7 +230,8 @@ class MirrorTests(unittest.TestCase):
             self.assertIn(sync.urllib.parse.quote(sync.OFFICIAL_URL, safe="").encode(), official[sync.OFFICIAL.prefix + "index.html"])
             self.assertEqual(official[sync.OFFICIAL.prefix + "credit.txt"], b"Image credit: artist")
             self.assertEqual(official[sync.OFFICIAL.prefix + "image.png"], b"\xff\x00binary")
-            self.assertEqual(set(files[sync.LEGACY.repository]), {sync.LEGACY.listing_path})
+            for target in (sync.LEGACY, sync.ORGANIZATION):
+                self.assertEqual(set(files[target.repository]), {target.listing_path})
 
     def test_unbuilt_tokens_symlinks_and_size_bounds_are_rejected(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -405,7 +408,7 @@ class MirrorTests(unittest.TestCase):
             else:
                 with self.assertRaisesRegex(sync.SyncError, "Official full publication"):
                     self.run_sync(api=api, receipt=receipt)
-            self.assertEqual(len(api.commits), 2)
+            self.assertEqual(len(api.commits), len(sync.TARGETS))
 
     def test_final_same_catalog_receipt_advance_prevents_success(self):
         api = FakeApi(); receipt = FakeReceipt(listing())
@@ -418,18 +421,18 @@ class MirrorTests(unittest.TestCase):
             return value
         with self.assertRaisesRegex(sync.SyncError, "Canonical full publication changed"):
             self.run_sync(api=api, receipt=fetch_receipt)
-        self.assertEqual(len(api.commits), 2)
+        self.assertEqual(len(api.commits), len(sync.TARGETS))
 
     def test_changed_receipt_during_endpoint_polling_aborts_without_waiting_for_a_rewind(self):
         api = FakeApi(); public = FakePublic(listing(), api); receipt = FakeReceipt(listing())
         public.responses[sync.OFFICIAL_URL] = [sync.ApiError("Official JSON not ready")]
         newer = sync.parse_publication_receipt(receipt_bytes({"index.html": b"New page", "index.json": json.dumps(listing()).encode()}))
-        receipt.responses[sync.CANONICAL_RECEIPT_URL] = [receipt.current] * 4 + [newer]
+        receipt.responses[sync.CANONICAL_RECEIPT_URL] = [receipt.current] * (len(sync.TARGETS) + 2) + [newer]
         with self.assertRaisesRegex(sync.SyncError, "Canonical full publication changed"):
             self.run_sync(api=api, public=public, receipt=receipt)
         self.assertEqual(public.calls.count(sync.OFFICIAL_URL), 1)
-        self.assertEqual(receipt.calls.count(sync.CANONICAL_RECEIPT_URL), 5)
-        self.assertEqual(len(api.commits), 2)
+        self.assertEqual(receipt.calls.count(sync.CANONICAL_RECEIPT_URL), len(sync.TARGETS) + 3)
+        self.assertEqual(len(api.commits), len(sync.TARGETS))
 
     def test_replayed_old_entire_run_cannot_overwrite_a_newer_official_snapshot(self):
         source = listing(); api = FakeApi()
@@ -553,15 +556,16 @@ class MirrorTests(unittest.TestCase):
         with patch.object(sync, "MAX_LISTING_BYTES", 1), self.assertRaises(sync.SyncError):
             sync.parse_listing(json.dumps(listing()).encode(), sync.CANONICAL_URL)
 
-    def test_success_checks_all_three_endpoints_and_retry_is_noop(self):
+    def test_success_checks_all_four_endpoints_and_retry_is_noop(self):
         report, api, public = self.run_sync()
         self.assertEqual(report["status"], "passed")
-        self.assertEqual(len(api.commits), 2)
-        self.assertEqual(public.calls[-5:], [sync.OFFICIAL_URL, sync.LEGACY_URL, sync.CANONICAL_URL,
+        self.assertEqual(len(api.commits), len(sync.TARGETS))
+        self.assertEqual(public.calls[-6:], [sync.OFFICIAL_URL, sync.LEGACY_URL, sync.ORGANIZATION_URL, sync.CANONICAL_URL,
                                             sync.CANONICAL_URL, sync.CANONICAL_URL])
-        self.assertEqual(set(report["verifiedEndpoints"]), {sync.CANONICAL_URL, sync.OFFICIAL_URL, sync.LEGACY_URL})
+        self.assertEqual(set(report["verifiedEndpoints"]), {sync.CANONICAL_URL, sync.OFFICIAL_URL,
+                                                          sync.LEGACY_URL, sync.ORGANIZATION_URL})
         again, _, _ = self.run_sync(api=api)
-        self.assertEqual(len(api.commits), 2)
+        self.assertEqual(len(api.commits), len(sync.TARGETS))
         self.assertFalse(any(entry["changed"] for entry in again["repositories"]))
 
     def test_canonical_cdn_staleness_and_public_mirror_delay_are_polled(self):
@@ -609,10 +613,72 @@ class MirrorTests(unittest.TestCase):
         self.run_sync(api=api)
         self.assertEqual(api.files[sync.LEGACY][sync.LEGACY.listing_path], desired(listing())[sync.LEGACY.repository][sync.LEGACY.listing_path])
 
+    def test_renamed_release_aliases_migrate_each_mirror_without_changing_package_history(self):
+        source = listing(); api = FakeApi()
+        for target, old_path in zip(sync.TARGETS, (sync.PREVIOUS_RELEASE_PATH,
+                                                   sync.HISTORICAL_RELEASE_PATH, sync.PREVIOUS_RELEASE_PATH)):
+            previous = json.loads(sync.render_listing(source, target.listing_url))
+            for package in previous["packages"].values():
+                for manifest in package["versions"].values():
+                    manifest["url"] = manifest["url"].replace(sync.RELEASE_PATH, old_path)
+            api.files[target][target.listing_path] = json.dumps(previous).encode()
+        self.run_sync(source, api)
+        for target in sync.TARGETS:
+            self.assertEqual(api.files[target][target.listing_path], desired(source)[target.repository][target.listing_path])
+
+    def test_published_manifest_changes_beyond_release_aliases_abort_before_any_commit(self):
+        for target in sync.TARGETS:
+            for key, value in (("description", "rewritten history"), ("dependencies", {"new.package": "1.0.0"}),
+                               ("url", "https://github.com" + sync.RELEASE_PATH + "different-tag/com.vrmc.vrm-1.0.0.zip")):
+                api = FakeApi(); previous = listing()
+                previous["packages"]["com.vrmc.vrm"]["versions"]["1.0.0"][key] = value
+                api.files[target][target.listing_path] = sync.render_listing(previous, target.listing_url)
+                with self.subTest(target=target.repository, key=key), self.assertRaisesRegex(sync.SyncError, "published version"):
+                    self.run_sync(api=api)
+                self.assertEqual(api.commits, [])
+
+    def test_org_partial_failure_and_response_loss_recover_without_replaying_other_mirrors(self):
+        for ambiguous in (False, True):
+            api = FakeApi()
+            def fail(target, expected, changes):
+                if ambiguous:
+                    del api.hooks[target]
+                    api.files[target].update(changes.additions)
+                    api.heads[target] = "2" * 40
+                raise sync.CommitUncertain("Org commit response was not confirmed")
+            api.hooks[sync.ORGANIZATION] = fail
+            if ambiguous:
+                report, _, _ = self.run_sync(api=api)
+                self.assertIsNone(report["repositories"][-1]["changed"])
+            else:
+                with self.assertRaisesRegex(sync.SyncError, "retry bound"):
+                    self.run_sync(api=api)
+                before = {target: api.heads[target] for target in (sync.OFFICIAL, sync.LEGACY)}
+                del api.hooks[sync.ORGANIZATION]
+                self.run_sync(api=api)
+                self.assertEqual({target: api.heads[target] for target in before}, before)
+            for target in (sync.OFFICIAL, sync.LEGACY):
+                self.assertEqual(sum(item[0] == target for item in api.commits), 1)
+
+    def test_old_org_publication_must_propagate_before_four_endpoint_success(self):
+        for eventual in (False, True):
+            source = new_version(listing()); api = FakeApi(); public = FakePublic(source, api)
+            old = copy.deepcopy(listing()); old["url"] = sync.ORGANIZATION_URL
+            public.responses[sync.ORGANIZATION_URL] = [old] * (2 if eventual else sync.MAX_POLLS)
+            if eventual:
+                self.assertEqual(self.run_sync(source, api, public)[0]["status"], "passed")
+                self.assertEqual(public.calls.count(sync.ORGANIZATION_URL), 3)
+            else:
+                with self.assertRaisesRegex(sync.SyncError, "polling bound"):
+                    self.run_sync(source, api, public)
+                self.assertEqual(public.calls.count(sync.ORGANIZATION_URL), sync.MAX_POLLS)
+
     def test_target_changes_are_scoped_and_preserve_unrelated_site_content(self):
         api = FakeApi()
         outside = {sync.OFFICIAL: {"public/privacy.html": b"Privacy", "README.md": b"README"},
-                   sync.LEGACY: {sync.LEGACY.prefix + "index.html": b"Legacy landing", "vr-vlog/index.html": b"App"}}
+                   sync.LEGACY: {sync.LEGACY.prefix + "index.html": b"Legacy landing", "vr-vlog/index.html": b"App"},
+                   sync.ORGANIZATION: {"index.html": b"Org landing", "README.md": b"Org README",
+                                       sync.ORGANIZATION.prefix + "index.html": b"Org compatibility landing"}}
         for target in sync.TARGETS:
             api.files[target].update(outside[target])
         api.files[sync.OFFICIAL][sync.OFFICIAL.prefix + "obsolete.css"] = b"Obsolete"
@@ -656,7 +722,7 @@ class MirrorTests(unittest.TestCase):
             raise sync.CommitUncertain("Response lost")
         api.hooks[sync.OFFICIAL] = ambiguous
         report, _, _ = self.run_sync(api=api)
-        self.assertEqual(len(api.commits), 2)
+        self.assertEqual(len(api.commits), len(sync.TARGETS))
         self.assertEqual(report["repositories"][0]["commit"], "2" * 40)
 
     def test_partial_failure_retains_first_commit_and_retry_only_updates_second(self):
@@ -688,7 +754,7 @@ class MirrorTests(unittest.TestCase):
                 public.source = new_version(listing())
             return oid
         api.commit = commit
-        with self.assertRaisesRegex(sync.SyncError, "polling bound"):
+        with self.assertRaisesRegex(sync.SyncError, "Canonical publication changed"):
             self.run_sync(listing(), api, public)
         self.assertEqual(len(api.commits), 2)
 
@@ -698,14 +764,14 @@ class MirrorTests(unittest.TestCase):
             self.run_sync(listing(), api, public, seconds=15)
         clock = FakeClock(); opener = Opener([{}])
         client = sync.GitHubApi("local-test-token", sync.Budget(3, clock=clock), opener=opener)
-        client.request("/graphql")
+        client.request("/repos/" + sync.OFFICIAL.repository)
         self.assertEqual(opener.requests[0][1], 3)
 
 
 class ApiTests(unittest.TestCase):
     def api(self, responses):
         opener = Opener(responses)
-        return sync.GitHubApi("local-test-token", sync.Budget(), opener=opener), opener
+        return sync.GitHubApi("local-test-token", sync.Budget(), org_token="org-test-token", opener=opener), opener
 
     def preflight_api(self, receipt=None):
         responses = []
@@ -714,7 +780,8 @@ class ApiTests(unittest.TestCase):
             if target == sync.OFFICIAL and receipt is not None:
                 tree = [{"path": target.prefix + sync.PUBLICATION_RECEIPT, "type": "blob", "mode": "100644", "sha": sync.git_blob_oid(receipt)}]
             responses.extend([
-                {"full_name": target.repository, "default_branch": "main", "archived": False, "permissions": {"push": True}},
+                {"full_name": target.repository, "id": target.repository_id, "default_branch": "main",
+                 "archived": False, "permissions": {"push": True}},
                 {"object": {"sha": "1" * 40, "type": "commit"}},
                 {"tree": {"sha": "2" * 40}}, {"truncated": False, "tree": tree}])
             if target == sync.OFFICIAL and receipt is not None:
@@ -751,18 +818,19 @@ class ApiTests(unittest.TestCase):
             with self.subTest(tree=tree), self.assertRaises(sync.SyncError):
                 client.snapshot(sync.OFFICIAL)
 
-    def test_preflight_reads_only_the_two_approved_repositories_without_commits(self):
+    def test_preflight_reads_only_the_three_approved_repositories_without_commits(self):
         responses = []
         for target in sync.TARGETS:
             responses.extend([
-                {"full_name": target.repository, "default_branch": "main", "archived": False, "permissions": {"push": True}},
+                {"full_name": target.repository, "id": target.repository_id, "default_branch": "main",
+                 "archived": False, "permissions": {"push": True}},
                 {"object": {"sha": "1" * 40, "type": "commit"}},
                 {"tree": {"sha": "2" * 40}}, {"truncated": False, "tree": []}])
         client, opener = self.api(responses)
         report, evidence = client.preflight(publisher())
         self.assertEqual(report, {"status": "passed", "repositories": [target.repository for target in sync.TARGETS]})
         self.assertEqual(evidence, {"schema": 1, "publisher": publisher(), "official": None})
-        self.assertEqual(len(opener.requests), 8)
+        self.assertEqual(len(opener.requests), 4 * len(sync.TARGETS))
         for request, _ in opener.requests:
             self.assertEqual(request.get_method(), "GET")
             self.assertIsNone(request.data)
@@ -787,6 +855,60 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(report["status"], "passed")
             self.assertEqual(evidence, {"schema": 1, "publisher": incoming,
                 "official": {"publisher": previous, "digest": receipt["digest"]}})
+            self.assertEqual(len(opener.requests), 4 * len(sync.TARGETS) + 1)
+            self.assertTrue(all(request.get_method() == "GET" for request, _ in opener.requests))
+
+    def test_old_publisher_receipt_is_read_without_rehashing_but_never_a_writer(self):
+        previous = {**publisher(), "repository": sync.PREVIOUS_PUBLISHER_REPOSITORY}
+        raw = receipt_bytes({"index.html": b"Old page", "index.json": b"Old catalog"}, previous)
+        parsed = sync.parse_publication_receipt(raw)
+        self.assertEqual(parsed, json.loads(raw))
+        with self.assertRaises(sync.SyncError):
+            sync.validate_publisher(previous)
+        client, _ = self.preflight_api(raw)
+        _, evidence = client.preflight(publisher(2, 1002, "b" * 40))
+        self.assertEqual(evidence["official"], {"publisher": previous, "digest": parsed["digest"]})
+        for incoming in (publisher(), publisher(1, 9999), previous):
+            client, opener = self.preflight_api(raw)
+            with self.subTest(incoming=incoming), self.assertRaises(sync.SyncError):
+                client.preflight(incoming)
+            self.assertTrue(all(request.get_method() == "GET" for request, _ in opener.requests))
+        modified = json.loads(raw); modified["publisher"]["repository"] = sync.PUBLISHER_REPOSITORY
+        with self.assertRaisesRegex(sync.SyncError, "digest differs"):
+            sync.parse_publication_receipt(json.dumps(modified).encode())
+
+    def test_target_credentials_are_isolated_for_rest_and_graphql_without_fallback(self):
+        result = {"data": {"createCommitOnBranch": {"commit": {"oid": "2" * 40}}}}
+        client, opener = self.api([{}] * len(sync.TARGETS) + [result] * len(sync.TARGETS))
+        for target in sync.TARGETS:
+            client.request("/repos/" + target.repository)
+        for target in sync.TARGETS:
+            client.commit(target, "1" * 40, sync.Changes({target.listing_path: b"{}"}, ()))
+        for (request, _), target in zip(opener.requests, sync.TARGETS * 2):
+            token = "org-test-token" if target == sync.ORGANIZATION else "local-test-token"
+            self.assertEqual(request.get_header("Authorization"), "Bearer " + token)
+        restricted = sync.GitHubApi.from_environment({sync.TOKEN_ENV: "local-test-token",
+                                                     sync.ORG_TOKEN_ENV: "ignored-org-token"}, sync.Budget(),
+                                                    require_org=False, opener=Opener([]))
+        with self.assertRaisesRegex(sync.SyncError, "unavailable"):
+            restricted.request("/repos/" + sync.ORGANIZATION.repository)
+        self.assertEqual(restricted.opener.requests, [])
+        for environment in ({sync.TOKEN_ENV: "local-test-token"}, {sync.ORG_TOKEN_ENV: "org-test-token"},
+                            {sync.TOKEN_ENV: "local-test-token", sync.ORG_TOKEN_ENV: "bad\nmarker"}):
+            with self.assertRaises(sync.SyncError):
+                sync.GitHubApi.from_environment(environment, sync.Budget())
+        for target in sync.TARGETS:
+            with self.assertRaises(sync.SyncError):
+                client.request("/repos/" + target.repository, target=next(t for t in sync.TARGETS if t != target))
+        with self.assertRaises(sync.SyncError):
+            client.request("/graphql", {"query": "mutation { unexpected }", "variables": None}, target=sync.ORGANIZATION)
+
+    def test_organization_target_numeric_identity_is_checked_before_its_snapshot(self):
+        for value in (None, True, 1418361149):
+            client, opener = self.preflight_api()
+            opener.responses[8]["id"] = value
+            with self.subTest(value=value), self.assertRaisesRegex(sync.SyncError, "numeric identity"):
+                client.preflight(publisher())
             self.assertEqual(len(opener.requests), 9)
             self.assertTrue(all(request.get_method() == "GET" for request, _ in opener.requests))
 
@@ -829,6 +951,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(sync.publisher_from_environment(release), publisher())
         for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_EVENT_NAME", "pull_request"),
                            ("GITHUB_REF", "refs/heads/other"), ("GITHUB_REPOSITORY", "fork/repo"),
+                           ("GITHUB_REPOSITORY_ID", "999"), ("GITHUB_REPOSITORY_ID", None),
+                           ("GITHUB_REPOSITORY", sync.PREVIOUS_PUBLISHER_REPOSITORY),
                            ("GITHUB_WORKFLOW_REF", f"{sync.PUBLISHER_REPOSITORY}/.github/workflows/other.yml@refs/heads/main"),
                            ("GITHUB_RUN_NUMBER", "0"), ("GITHUB_RUN_ID", "01"), ("GITHUB_SHA", "bad")):
             with self.subTest(key=key), self.assertRaises(sync.SyncError):
@@ -857,7 +981,7 @@ class ApiTests(unittest.TestCase):
         output = io.StringIO()
         with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--preflight"]), \
              patch.dict(os.environ, {**ci_environment(), sync.TOKEN_ENV: "local-test-token"}, clear=True), \
-             patch.object(sync, "GitHubApi", return_value=fake), \
+             patch.object(sync.GitHubApi, "from_environment", return_value=fake), \
              patch.object(sync, "validate_checkout"), \
              patch.object(sync, "save_preflight_evidence") as save, \
              patch.object(sync, "read_publication", side_effect=AssertionError("Preflight must not need files")), \
@@ -872,7 +996,7 @@ class ApiTests(unittest.TestCase):
         fake = unittest.mock.Mock(); error_output = io.StringIO()
         with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--preflight"]), \
              patch.dict(os.environ, {sync.TOKEN_ENV: "sensitive-fake-marker"}, clear=True), \
-             patch.object(sync, "GitHubApi", return_value=fake) as construct, \
+             patch.object(sync.GitHubApi, "from_environment", return_value=fake) as construct, \
              patch.object(sys, "stderr", error_output):
             with self.assertRaises(SystemExit) as caught:
                 sync.main()
@@ -881,7 +1005,7 @@ class ApiTests(unittest.TestCase):
         self.assertNotIn("sensitive-fake-marker", error_output.getvalue())
         with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--publication-root", "unused-fixture"]), \
              patch.dict(os.environ, {**ci_environment(publisher(2, 1002, "b" * 40)), sync.TOKEN_ENV: "local-test-token"}, clear=True), \
-             patch.object(sync, "GitHubApi", return_value=fake), \
+             patch.object(sync.GitHubApi, "from_environment", return_value=fake), \
              patch.object(sync, "validate_checkout"), \
              patch.object(sync, "read_publication", return_value=(listing(), desired(listing()))), \
              patch.object(sys, "stderr", io.StringIO()) as output:
@@ -1027,7 +1151,7 @@ class BeforeDeploymentTests(unittest.TestCase):
         report = self.guard()
         self.assertEqual(report["status"], "verified-before-deployment")
         self.assertEqual(report["publicationDigest"], self.receipt["digest"])
-        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.reads, list(reversed(sync.TARGETS)))
         self.assertEqual(self.api.commits, [])
         self.assertEqual([entry["repository"] for entry in report["repositories"]], [target.repository for target in sync.TARGETS])
 
@@ -1037,7 +1161,7 @@ class BeforeDeploymentTests(unittest.TestCase):
         self.publish_receipt(publisher(3, 1003, "c" * 40))
         with self.assertRaisesRegex(sync.SyncError, "Older publication run"):
             self.guard()
-        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.reads, list(reversed(sync.TARGETS)))
         self.assertEqual(self.api.commits, [])
 
     def test_official_update_during_legacy_read_is_detected_by_the_last_git_observation(self):
@@ -1050,7 +1174,7 @@ class BeforeDeploymentTests(unittest.TestCase):
         self.api.snapshot = advance
         with self.assertRaisesRegex(sync.SyncError, "Older publication run"):
             self.guard()
-        self.assertEqual(self.reads, [sync.LEGACY, sync.OFFICIAL])
+        self.assertEqual(self.reads, list(reversed(sync.TARGETS)))
         self.assertEqual(self.api.commits, [])
 
     def test_equal_sequence_different_full_snapshot_run_or_source_is_rejected(self):
@@ -1137,7 +1261,7 @@ class BeforeDeploymentTests(unittest.TestCase):
         with patch.object(sys, "argv", ["sync-vpm-mirrors.py", "--verify-before-deployment", str(self.snapshot)]), \
              patch.dict(os.environ, {**ci_environment(self.publisher), sync.TOKEN_ENV: "local-test-token", "RUNNER_TEMP": str(self.root)}, clear=True), \
              patch.object(sync, "validate_checkout") as checkout, \
-             patch.object(sync, "GitHubApi", return_value=self.api), \
+             patch.object(sync.GitHubApi, "from_environment", return_value=self.api), \
              patch.object(sync, "synchronize", side_effect=AssertionError("Guard must not synchronize")), \
              patch.object(sync, "fetch_listing", side_effect=AssertionError("Guard must not poll public URLs")), \
              patch.object(sync, "fetch_publication_receipt", side_effect=AssertionError("Guard must not poll public receipts")), \
