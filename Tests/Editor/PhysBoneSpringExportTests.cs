@@ -150,15 +150,22 @@ namespace VRVlog.LilToonExporter.Tests
                 Child(root, "HairTip", Vector3.down * .1f);
                 var pb = PhysBone(root.gameObject);
                 Set(pb, "endpointPosition", Vector3.down * .1f);
-                var collider = source.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
-                collider.name = "Collider_plane";
+                var holder = Child(source.transform, "Collider_plane", Vector3.zero);
+                var collider = holder.gameObject.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
                 Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
                 References(pb, "colliders", collider);
                 copy = Object.Instantiate(source);
                 var warnings = new List<string>();
-                var report = PhysBoneSpringExport.Convert(source, copy, warnings);
+                var fallbacks = new ExportFallbackReport();
+                var report = PhysBoneSpringExport.Convert(source, copy, warnings, fallbacks);
                 var spring = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single();
                 Assert.That(spring.Joints, Is.Not.Empty);
+                // The same pass that warns also records what the confirmation dialog lists.
+                var fallback = fallbacks.Items.Single();
+                Assert.That(fallback.Kind, Is.EqualTo(shape == 2 ? ExportFallbackKind.PlaneInsideBounds : ExportFallbackKind.ColliderSkipped));
+                Assert.That(fallback.Names, Is.EqualTo(new[] { "Collider_plane" }));
+                Assert.That(fallback.Paths, Is.EqualTo(new[] { "Collider_plane" }));
+                Assert.That(ExportFallbackConfirmation.Targets(fallbacks, source), Is.EqualTo(new[] { holder.gameObject }));
                 if (shape == 2)
                 {
                     Assert.That(report.Colliders, Is.EqualTo(1));

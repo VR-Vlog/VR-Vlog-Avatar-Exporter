@@ -101,6 +101,17 @@ BEHAVIOR_CASES = {
         'UnifiedEyesOnDifferentRenderersFormOneBilateralClosure': 1,
         'UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing': 3,
     },
+    'ExportFallbackConfirmationTests': {
+        'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
+        'AnExportWithoutFallbacksNeverAsks': 1,
+        'BatchAndNonInteractiveCallersContinueWithoutADialog': 2,
+        'EveryShippedLocaleTranslatesTheDialog': 1,
+        'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
+        'OneFallbackAsksWithItsOwnSentence': 1,
+        'SeveralFallbacksShareOneDialogInAFixedOrder': 1,
+        'TargetsAreFoundAgainOnTheAvatarByPath': 1,
+        'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+    },
     'LegacyBlinkMenuRoundTripTests': {
         'SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport': 2,
     },

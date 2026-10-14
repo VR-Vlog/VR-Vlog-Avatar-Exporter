@@ -441,10 +441,10 @@ namespace VRVlog.LilToonExporter
         {
             var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", AvatarName() + "-expressions", "vrm");
             if (string.IsNullOrEmpty(path)) return;
-            SaveVrm(path);
+            SaveVrm(path, interactive: true);
         }
 
-        internal ExportRecoverySession SaveVrm(string path)
+        internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
         {
             RecordSelectedClips();
             var target = session;
@@ -469,7 +469,8 @@ namespace VRVlog.LilToonExporter
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses);
-            }, Completed, previewGimmicks: new ExportGimmickOptions());
+            }, Completed, previewGimmicks: new ExportGimmickOptions(), interactive: interactive,
+                openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
             if (recovery != null)
             {
                 recovery.RetainInput(target.RetainForRecovery());
