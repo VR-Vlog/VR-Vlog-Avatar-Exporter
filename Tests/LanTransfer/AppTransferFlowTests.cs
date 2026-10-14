@@ -323,7 +323,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             foreach (var text in texts)
             {
                 // One line, no punctuation, no request or ability phrasing, no exclamation.
-                Assert.That(Regex.IsMatch(text, "[。、！!\n]|ください|できます|しまいました"), Is.False);
+                // The QR notice alone asks politely, as the owner chose for that line.
+                var request = text == AppTransferText.DoNotShare ? "" : "|ください";
+                Assert.That(Regex.IsMatch(text, "[。、！!\n]" + request + "|できます|しまいました"), Is.False);
                 // This package writes Japanese and Latin text without a space between them.
                 Assert.That(Regex.IsMatch(text, "[ぁ-んァ-ヶ一-龠] [A-Za-z0-9]|[A-Za-z0-9] [ぁ-んァ-ヶ一-龠]"), Is.False);
             }
