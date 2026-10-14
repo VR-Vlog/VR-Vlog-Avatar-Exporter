@@ -124,6 +124,8 @@ class PackageTests(unittest.TestCase):
         excluded = package.TRANSFER_FILES | {name + ".meta" for name in package.TRANSFER_FILES} | package.TRANSFER_DLL_PATHS | {
             "Editor/LanTransfer/CloudVrmTransferWindow.cs", "Editor/LanTransfer/CloudVrmTransferWindow.cs.meta",
             "Editor/LanTransfer/VRVlog.LanTransfer.Editor.asmdef", "Editor/LanTransfer/VRVlog.LanTransfer.Editor.asmdef.meta",
+            "Editor/LanTransfer/AppTransferWindow.uxml", "Editor/LanTransfer/AppTransferWindow.uxml.meta",
+            "Editor/LanTransfer/AppTransferWindow.uss", "Editor/LanTransfer/AppTransferWindow.uss.meta",
         } | {name + ".meta" for name in package.TRANSFER_DLL_PATHS}
         for name in excluded - package.TRANSFER_DLL_PATHS:
             self.write(name, "#if VRVLOG_CLOUD_TRANSFER_DEVELOPMENT\nCloudVrmTransferSession\n#endif")
@@ -238,6 +240,8 @@ class PackageTests(unittest.TestCase):
             "Editor/LanTransfer/CloudVrmTransferWindow.cs.meta",
             "Editor/LanTransfer/VRVlog.LanTransfer.Editor.asmdef",
             "Editor/LanTransfer/VRVlog.LanTransfer.Editor.asmdef.meta",
+            "Editor/LanTransfer/AppTransferWindow.uxml", "Editor/LanTransfer/AppTransferWindow.uxml.meta",
+            "Editor/LanTransfer/AppTransferWindow.uss", "Editor/LanTransfer/AppTransferWindow.uss.meta",
             "Editor/LanTransfer.meta",
         } | package.TRANSFER_DLL_PATHS | {name + ".meta" for name in package.TRANSFER_DLL_PATHS}
         for name in inputs:
@@ -249,6 +253,15 @@ class PackageTests(unittest.TestCase):
         with zipfile.ZipFile(self.root / "cloud.zip") as built:
             for name in inputs:
                 self.assertEqual(built.read(name), (self.root / name).read_bytes())
+
+    def test_repository_window_layout_ships_only_with_transfer(self):
+        repository = Path(__file__).resolve().parents[1]
+        layout = {"Editor/LanTransfer/AppTransferWindow.uxml", "Editor/LanTransfer/AppTransferWindow.uxml.meta",
+                  "Editor/LanTransfer/AppTransferWindow.uss", "Editor/LanTransfer/AppTransferWindow.uss.meta"}
+        for name in layout:
+            self.assertTrue((repository / name).is_file(), name)
+            self.assertTrue(package.included(name, transfer=True), name)
+            self.assertFalse(package.included(name, transfer=False), name)
 
     def test_copied_and_arbitrary_dlls_cannot_be_distributed(self):
         excluded = {

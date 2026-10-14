@@ -192,6 +192,8 @@ assert "RequireSupportedLilToon(GameObject avatar)" in window
 # Both export entries compare the shaders the avatar uses with the catalogue.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
 assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
+# "アプリに転送" exports through the same check.
+assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
 assert f'? info.version : "{package["version"]}"' in window
 assert "using UnityEditor.PackageManager;" not in window
