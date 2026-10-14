@@ -106,7 +106,7 @@ namespace VRVlog.LilToonExporter
             {
                 if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
                 return UniVrmOneClickExporter.Export(avatar, name, targetAuthor, warnings,
-                    exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: Compatibility.DependencyPolicy.LilToonVersion,
+                    exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
                     poseOptions: new PoseExportOptions(), licenseOptions: targetLicense, disableAudioLink: true,
                     recoveryOptions: options, recoveryReport: report);
             }, Completed, null, new ExportGimmickOptions(), true, null);
