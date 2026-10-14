@@ -109,6 +109,7 @@ BEHAVIOR_CASES = {
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
+        'PlaneInsideBoundsAndUnknownShapesDoNotStopConversion': 2,
         'EmptyOrTruncatedSerializedSpringsPreventSaving': 1,
         'ExistingTerminalFieldsAndVerificationBaselinesAreProtected': 1,
         'ExistingVrmSettingsWinAndRemovedExplicitRootsDoNotAnimateTheBody': 1,

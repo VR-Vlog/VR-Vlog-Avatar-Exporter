@@ -299,7 +299,8 @@ namespace VRVlog.LilToonExporter
             {
                 if (!(item is Component collider) || collider == null) continue;
                 if (!Active(collider)) { warnings?.Add(source.name + ": 無効なPhysBoneコライダーを省略しました。"); continue; }
-                if (collider.GetType().FullName != ColliderType) throw Unsupported(source, "未対応のコライダー型");
+                if (collider.GetType().FullName != ColliderType)
+                { WarnOnce(warnings, source.name + ": 未対応の種類のコライダーを当たり判定から外しました（" + collider.name + "）"); continue; }
                 var colliderRoot = Root(collider); RequireLocal(copy, colliderRoot);
                 if (!colliderRoot.gameObject.activeInHierarchy)
                 { warnings?.Add(source.name + ": 非表示のRoot Transformを持つコライダーを省略しました。"); continue; }
@@ -308,7 +309,15 @@ namespace VRVlog.LilToonExporter
                     var root = colliderRoot;
                     var shape = EnumNumber(collider, "shapeType", 0);
                     var inside = Read(collider, "insideBounds", false);
-                    if (shape < 0 || shape > 2 || shape == 2 && inside) throw Unsupported(collider, "Collider Shape");
+                    // VRM has no inside plane. Export the plane itself and name the
+                    // collider whose Inside Bounds flag is not reproduced.
+                    if (shape == 2 && inside)
+                    {
+                        warnings?.Add(source.name + ": 平面コライダーのInside Boundsは再現せず通常の平面で書き出しました（" + collider.name + "）");
+                        inside = false;
+                    }
+                    if (shape < 0 || shape > 2)
+                    { WarnOnce(warnings, source.name + ": 形を変換できないコライダーを当たり判定から外しました（" + collider.name + "）"); continue; }
                     converted = root.gameObject.AddComponent<VRM10SpringBoneCollider>();
                     converted.ColliderType = shape == 0 ? (inside ? VRM10SpringBoneColliderTypes.SphereInside : VRM10SpringBoneColliderTypes.Sphere) :
                         shape == 1 ? (inside ? VRM10SpringBoneColliderTypes.CapsuleInside : VRM10SpringBoneColliderTypes.Capsule) : VRM10SpringBoneColliderTypes.Plane;
@@ -399,6 +408,11 @@ namespace VRVlog.LilToonExporter
         }
         static void Skip(Result result, ICollection<string> warnings, Component component, string reason)
         { result.Skipped++; warnings?.Add(component.name + ": PhysBoneを省略 — " + reason); }
+        // A skipped collider shared by several PhysBones is reported once per PhysBone name.
+        static void WarnOnce(ICollection<string> warnings, string message)
+        {
+            if (warnings != null && !warnings.Contains(message)) warnings.Add(message);
+        }
         static Exception Unsupported(Component component, string reason) => new InvalidOperationException(component.name + ": PhysBoneを変換できません: " + reason);
         static IEnumerable<object> Items(object value) => value is IEnumerable items ? items.Cast<object>() : Enumerable.Empty<object>();
         static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);

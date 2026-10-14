@@ -140,6 +140,42 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        [TestCase(2, true)][TestCase(7, false)]
+        public void PlaneInsideBoundsAndUnknownShapesDoNotStopConversion(int shape, bool inside)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                Set(pb, "endpointPosition", Vector3.down * .1f);
+                var collider = source.AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
+                collider.name = "Collider_plane";
+                Set(collider, "shapeType", shape); Set(collider, "insideBounds", inside);
+                References(pb, "colliders", collider);
+                copy = Object.Instantiate(source);
+                var warnings = new List<string>();
+                var report = PhysBoneSpringExport.Convert(source, copy, warnings);
+                var spring = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single();
+                Assert.That(spring.Joints, Is.Not.Empty);
+                if (shape == 2)
+                {
+                    Assert.That(report.Colliders, Is.EqualTo(1));
+                    Assert.That(spring.ColliderGroups.Single().Colliders.Single().ColliderType, Is.EqualTo(VRM10SpringBoneColliderTypes.Plane));
+                    Assert.That(warnings.Any(w => w.Contains("Inside Bounds") && w.Contains("Collider_plane")), Is.True);
+                }
+                else
+                {
+                    Assert.That(report.Colliders, Is.EqualTo(0));
+                    Assert.That(spring.ColliderGroups, Is.Empty);
+                    Assert.That(warnings.Any(w => w.Contains("当たり判定から外しました") && w.Contains("Collider_plane")), Is.True);
+                }
+                Assert.That(source.GetComponentsInChildren<VRM10SpringBoneCollider>(), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [Test]
         public void ExistingVrmSettingsWinAndRemovedExplicitRootsDoNotAnimateTheBody()
         {
