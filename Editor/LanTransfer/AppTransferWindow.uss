@@ -1,5 +1,6 @@
-/* "アプリに転送". Every row has a fixed height, so text never moves the rows below it.
-   Colours: neutral greys, the one accent (#3D7DD9), amber for why the button is disabled, red for an expired QR. */
+/* "アプリに転送". Every row has a fixed height, so text never moves the rows below it; the QR notice
+   wraps instead, and its height depends only on the window width and the language.
+   Colours: neutral greys, the one accent (#3D7DD9), amber for why the button is disabled, red for an expired QR and the QR notice. */
 
 .app-transfer {
     flex-grow: 1;
@@ -291,28 +292,30 @@
     overflow: hidden;
 }
 
+/* The notice is twice the default size and wraps, so a narrow window never cuts it short.
+   Its height follows the text; it is only hidden (never removed), so the rows below stay put. */
 .warning {
-    height: 18px;
+    min-height: 30px;
     flex-shrink: 0;
     margin-top: 4px;
     flex-direction: row;
     justify-content: center;
-    align-items: center;
+    align-items: flex-start;
 }
 
+/* Level with the first line of the text. */
 .warning-icon {
-    width: 16px;
-    height: 16px;
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
-    margin-right: 4px;
+    margin: 3px 6px 0 0;
 }
 
 .warning-text {
     flex-shrink: 1;
-    -unity-text-align: middle-left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 24px;
+    -unity-text-align: upper-center;
+    white-space: normal;
 }
 
 .status-row {
@@ -429,10 +432,12 @@
     color: rgb(150, 95, 0);
 }
 
-.app-transfer--dark .remaining.expired {
+.app-transfer--dark .remaining.expired,
+.app-transfer--dark .warning-text {
     color: rgb(245, 107, 102);
 }
 
-.app-transfer--light .remaining.expired {
+.app-transfer--light .remaining.expired,
+.app-transfer--light .warning-text {
     color: rgb(184, 36, 31);
 }
