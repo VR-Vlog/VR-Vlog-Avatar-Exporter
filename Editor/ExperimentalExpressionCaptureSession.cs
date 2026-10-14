@@ -487,7 +487,7 @@ namespace VRVlog.LilToonExporter
                 {
                     return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                         exporterVersion: LilToonExporterWindow.PackageVersion(),
-                        lilToonVersion: "2.3.4", blinkOptions: blinkOptions, poseOptions: poses,
+                        lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored));
