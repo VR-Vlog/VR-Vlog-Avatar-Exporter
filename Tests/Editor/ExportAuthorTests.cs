@@ -103,6 +103,34 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void AppTransferStartsFromTheAvatarsRememberedAuthor()
+        {
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            var scenePath = "Assets/ExportAuthorTransfer-" + Guid.NewGuid().ToString("N") + ".unity";
+            string identity = null;
+            try
+            {
+                var avatar = new GameObject("SampleAvatar");
+                Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                identity = ExportAuthor.Identity(avatar);
+                ExportAuthor.Remember(avatar, "SampleAuthor");
+                var transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                var author = typeof(AppTransferExport).GetField("author", Flags);
+                Assert.That(transfer.HasAuthor(), Is.True);
+                Assert.That(author.GetValue(transfer), Is.EqualTo("SampleAuthor"));
+                author.SetValue(transfer, "  ");
+                Assert.That(transfer.HasAuthor(), Is.False, "A blank author still blocks the transfer.");
+            }
+            finally
+            {
+                ExportAuthor.Forget(identity);
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
         [TestCase("")]
         [TestCase("   ")]
         public void ExportWindowDoesNotStartSavingWithoutAnAuthor(string author)

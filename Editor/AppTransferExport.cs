@@ -11,19 +11,21 @@ namespace VRVlog.LilToonExporter
     // exporter keeps compiling and working in packages without the module.
     internal sealed class AppTransferExport
     {
-        // Only the open/closed state of the section. No avatar data is stored.
+        // Only the open/closed state of the section. The author is remembered
+        // per avatar through ExportAuthor, like the export windows.
         private const string TermsFoldoutPreference = "VRVlog.AppTransfer.ShowVrmTerms";
         private string author = "";
         private AvatarLicenseOptions license = new AvatarLicenseOptions();
         private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
         private GUIStyle summaryStyle;
 
-        // The export windows keep the author and the license settings only in
-        // the open window. Start from them when one shows this avatar; like
-        // those windows, another avatar starts from the default license.
+        // The avatar's remembered author comes first. Otherwise start from the
+        // author and license settings of an open export window; like those
+        // windows, another avatar starts from the default license.
         public void SelectAvatar(GameObject avatar)
         {
             license = new AvatarLicenseOptions();
+            if (avatar != null) author = ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author);
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
                 if (string.IsNullOrWhiteSpace(author)) author = window.Author ?? "";
@@ -32,7 +34,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        public bool HasAuthor() => !string.IsNullOrWhiteSpace(author);
+        public bool HasAuthor() => ExportAuthor.IsValid(author);
 
         // The VRM meta fields of the export window, under this window's own foldout.
         public void DrawTerms()
@@ -62,6 +64,8 @@ namespace VRVlog.LilToonExporter
                 author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
             }
             finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
+            // The line is always reserved so typing does not move the rows below.
+            EditorGUILayout.LabelField(HasAuthor() ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
             AvatarLicenseSettingsUi.DrawFields(license);
         }
 
@@ -75,6 +79,7 @@ namespace VRVlog.LilToonExporter
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             var targetAuthor = author;
             var targetLicense = license.Copy();
+            ExportAuthor.Remember(avatar, targetAuthor);
             void Completed(byte[] bytes, IEnumerable<string> warnings)
             {
                 // Like the export windows, the details of this export go to the Console.
