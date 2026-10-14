@@ -39,25 +39,53 @@ namespace VRVlog.LilToonExporter.Tests
         public void ExportEntryChecksTheLilToonShadersTheAvatarUses()
         {
             var avatar = new GameObject("avatar");
+            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }, triangles = new[] { 0, 1, 2 } };
             var lilToon = new Material(Shader.Find("lilToon"));
             var other = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));
+            // Named like the official FakeShadow shader but without _Cull.
+            var brokenShader = ShaderUtil.CreateShaderAsset(Source("missing", Probe));
+            var broken = new Material(brokenShader);
             try
             {
-                var child = new GameObject("body");
-                child.transform.SetParent(avatar.transform);
-                child.AddComponent<MeshFilter>();
-                var renderer = child.AddComponent<MeshRenderer>();
-                renderer.sharedMaterials = new[] { other, null };
+                GameObject Child(string name, Mesh childMesh)
+                {
+                    var child = new GameObject(name);
+                    child.transform.SetParent(avatar.transform);
+                    child.AddComponent<MeshFilter>().sharedMesh = childMesh;
+                    child.AddComponent<MeshRenderer>();
+                    return child;
+                }
+                var body = Child("body", mesh).GetComponent<MeshRenderer>();
+                body.sharedMaterials = new[] { other, null };
                 Assert.That(Check.Check(avatar), Is.Empty);
-                renderer.sharedMaterials = new[] { other, lilToon };
+                body.sharedMaterials = new[] { other, lilToon };
                 Assert.That(Check.Check(avatar), Is.Empty);
                 Assert.DoesNotThrow(() => Check.Require(avatar, "2.3.4"));
+
+                // Renderers the snapshot does not record are not checked.
+                var hidden = Child("hidden", mesh);
+                hidden.GetComponent<MeshRenderer>().sharedMaterial = broken;
+                hidden.SetActive(false);
+                Child("empty", null).GetComponent<MeshRenderer>().sharedMaterial = broken;
+                Assert.That(Check.Check(avatar), Is.Empty);
+
+                body.sharedMaterials = new[] { lilToon, broken };
+                var differences = Check.Check(avatar);
+                Assert.That(differences.Count, Is.EqualTo(1), string.Join("; ", differences));
+                Assert.That(differences[0].Kind, Is.EqualTo(Check.Kind.MissingProperty));
+                Assert.That(differences[0].Name, Is.EqualTo("_Cull"));
+                var error = Assert.Throws<System.InvalidOperationException>(() => Check.Require(avatar, "2.3.4"));
+                StringAssert.Contains(Probe, error.Message);
+                StringAssert.Contains("_Cull", error.Message);
             }
             finally
             {
                 Object.DestroyImmediate(avatar);
+                Object.DestroyImmediate(mesh);
                 Object.DestroyImmediate(lilToon);
                 Object.DestroyImmediate(other);
+                Object.DestroyImmediate(broken);
+                Object.DestroyImmediate(brokenShader);
             }
         }
 
@@ -89,9 +117,9 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(shader); }
         }
 
-        static string Source(string change)
+        static string Source(string change, string shaderName = "Hidden/VRVlogTests/StructureProbe")
         {
-            var text = new StringBuilder("Shader \"Hidden/VRVlogTests/StructureProbe\"\n{\n    Properties\n    {\n");
+            var text = new StringBuilder("Shader \"" + shaderName + "\"\n{\n    Properties\n    {\n");
             foreach (var property in LilToon234Catalogue.RequiredProperties[Probe])
             {
                 if (change == "missing" && property == "_Cull") continue;

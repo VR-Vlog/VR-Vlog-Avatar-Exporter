@@ -17,20 +17,33 @@ namespace VRVlog.LilToonExporter
             if (differences.Count > 0) throw new InvalidOperationException(Message(differences, installedVersion, ExporterLocalization.T));
         }
 
-        // Checks the official shaders that the exported renderers use, and the
-        // baker when any of them is lilToon. An avatar without lilToon is not
-        // affected by the installed lilToon's structure.
+        // Checks the official shaders of the renderers the snapshot records, and
+        // lilToon's baker when one of their materials is baked with it. An
+        // avatar without lilToon is not affected by the installed structure.
         internal static List<Difference> Check(GameObject avatar)
         {
             var shaders = new List<Shader>();
+            var bakes = false;
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
+            {
+                // Same selection as LilToonFullSnapshot.Capture: UniVRM exports
+                // only mesh primitives with geometry.
+                var filter = renderer.GetComponent<MeshFilter>();
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
+                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 foreach (var material in renderer.sharedMaterials)
-                    if (material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) && !shaders.Contains(material.shader))
-                        shaders.Add(material.shader);
+                {
+                    if (material == null || material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)) continue;
+                    if (!shaders.Contains(material.shader)) shaders.Add(material.shader);
+                    // Export options can only turn layers off, so this is a
+                    // superset of the materials that reach lilToon's baker.
+                    bakes |= LilToonMainTextureBaker.NeedsBake(material);
+                }
+            }
             var differences = new List<Difference>();
-            if (shaders.Count == 0) return differences;
             foreach (var shader in shaders.OrderBy(s => s.name, StringComparer.Ordinal))
                 differences.AddRange(Compare(Read(shader), shader.name));
+            if (!bakes) return differences;
             var baker = Shader.Find(BakerShader);
             if (baker == null) differences.Add(new Difference(Kind.MissingShader, BakerShader));
             else differences.AddRange(Compare(Read(baker), BakerShader));

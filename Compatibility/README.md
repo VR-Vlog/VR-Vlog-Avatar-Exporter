@@ -61,7 +61,9 @@ A matching hash is not proof of visual equivalence.
    VRM10 packages from the same source commit, lilToon 2.3.4, this exporter as a
    local development package and Unity Test Framework 1.4.6. Include
    `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` in each manifest. Use
-   `com.unity.collections` 2.1.4 for the existing mesh tests. Never test by changing
+   `com.unity.collections` 2.1.4 for the existing mesh tests. Keep lilToon's Shader
+   Setting at its defaults: `LilToonStructureCheckTests` compares every installed
+   official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
 4. Run the focused test runner for every supported version:
 
