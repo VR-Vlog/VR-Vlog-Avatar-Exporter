@@ -29,12 +29,28 @@ upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
 
+## lilToon shader structure
+
+`Editor/LilToon234Catalogue.cs` is generated from the Built-in RP shader
+declarations of the lilToon 2.3.4 tag by `Tools/generate-liltoon-catalogue.py`
+(`catalogue --fetch 2.3.4 --check` confirms it byte for byte). The same tool
+hashes the shader structure of each lilToon tag into `liltoon-structure.json`
+(`structure --fetch --write`): shader names, property names, types, runtime
+texture dimensions, named passes and LightMode, without defaults or declaration
+order. `Tools/check-liltoon-structure.py` runs offline in the validation receipt
+and fails when the catalogue no longer matches the table or a tag in the
+supported lilToon range (default 2.0.0-2.3.4) has a different structure. The
+definition and the per-tag results are in
+[the decision record](../Documentation~/decisions/2026-10-14-liltoon-structure-hash.md).
+A matching hash is not proof of visual equivalence.
+
 ## Upgrade procedure
 
 1. Run `python3 Tools/check-upstream-dependencies.py --output upstream.json`
    or the manual **Check upstream dependency releases** Actions workflow. This only
    reports stable upstream releases; it neither changes dependencies nor starts
-   a Unity build. No scheduled CI or paid build was introduced.
+   a Unity build. For a newer lilToon release it also downloads that tag's
+   source and reports whether its shader structure matches the 2.3.4 catalogue. No scheduled CI or paid build was introduced.
 2. Review the official changes. Add a version and immutable source commit to the
    policy in a branch. For a different UniVRM API family, add a separately gated
    backend; keep third-party types out of the compatibility assembly. For a
@@ -45,7 +61,9 @@ claim that every avatar or every combination is verified.
    VRM10 packages from the same source commit, lilToon 2.3.4, this exporter as a
    local development package and Unity Test Framework 1.4.6. Include
    `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` in each manifest. Use
-   `com.unity.collections` 2.1.4 for the existing mesh tests. Never test by changing
+   `com.unity.collections` 2.1.4 for the existing mesh tests. Keep lilToon's Shader
+   Setting at its defaults: `LilToonStructureCheckTests` compares every installed
+   official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
 4. Run the focused test runner for every supported version:
 
@@ -79,7 +97,7 @@ run the generated-fixture behavior profile in a separate, explicitly pinned proj
 python3 Tools/run-unity-compatibility.py --profile exporter-behavior --unity UNITY_EXECUTABLE --project INTEGRATION_TEST_PROJECT --expect-univrm 0.131.0 --expect-unity 2022.3.22f1 --output TEST_RESULTS
 ```
 
-The default `compatibility` profile still requires the same 20 real-package cases
+The default `compatibility` profile requires 31 real-package cases
 in a supported environment, or two diagnostic cases in a missing/unsupported one.
 Both exporter profiles require a supported real UniVRM environment, the packages
 listed in step 3, and the actual VRChat SDK, Modular Avatar and NDMF. Use the

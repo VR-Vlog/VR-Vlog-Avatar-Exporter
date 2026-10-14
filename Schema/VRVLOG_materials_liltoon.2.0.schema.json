@@ -23,6 +23,7 @@
       "const": 0
     },
     "sourceLilToonVersion": {
+      "description": "Version of the lilToon catalogue the materials conform to, not the lilToon installed in the authoring project. The installed version is recorded in the glTF asset.extras.VRVLOG_lilToonInstalledVersion.",
       "const": "2.3.4"
     },
     "sourceCommit": {

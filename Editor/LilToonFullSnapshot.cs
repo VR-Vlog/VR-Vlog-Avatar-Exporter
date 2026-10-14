@@ -13,6 +13,9 @@ namespace VRVlog.LilToonExporter
     // the prepared authoring result, never to its MToon approximation.
     internal sealed class LilToonFullSnapshot
     {
+        // asset.extras key for the lilToon version installed in the authoring
+        // project. sourceLilToonVersion stays the catalogue version (2.3.4).
+        internal const string InstalledLilToonVersionKey = "VRVLOG_lilToonInstalledVersion";
         readonly Dictionary<Renderer, Material[]> sources = new Dictionary<Renderer, Material[]>();
         readonly Dictionary<Material, Dictionary<string, object>> records = new Dictionary<Material, Dictionary<string, object>>();
         internal bool IsEmpty => records.Count == 0;
@@ -276,9 +279,11 @@ namespace VRVlog.LilToonExporter
             var index = payloads.Count; payloads.Add(new DeflatePayload(bytes.ToArray())); return index;
         }
 
-        internal byte[] Inject(byte[] bytes, string exporterVersion, string lilToonVersion)
+        internal byte[] Inject(byte[] bytes, string exporterVersion, string installedLilToonVersion)
         {
-            if (lilToonVersion != LilToon234Catalogue.Version) throw new NotSupportedException("lilToon 2.3.4が必要です。");
+            // The window stops earlier with a localized message; this guards direct callers.
+            if (!Compatibility.DependencyPolicy.AcceptsLilToon(installedLilToonVersion))
+                throw new NotSupportedException(Compatibility.DependencyPolicy.LilToonError(installedLilToonVersion, ExporterLocalization.T));
             var glb = GlbDocument.Read(bytes);
             var views = List(glb.Json, "bufferViews");
             var chunks = new List<object>();
@@ -290,7 +295,7 @@ namespace VRVlog.LilToonExporter
                 views.Add(new Dictionary<string, object> { {"buffer", 0}, {"byteOffset", offsets[i]}, {"byteLength", payload.Encoded.Length} });
             }
             var extension = new Dictionary<string, object> {
-                {"schemaMajor", 2}, {"schemaMinor", 0}, {"sourceLilToonVersion", lilToonVersion}, {"sourceCommit", LilToon234Catalogue.Commit},
+                {"schemaMajor", 2}, {"schemaMinor", 0}, {"sourceLilToonVersion", LilToon234Catalogue.Version}, {"sourceCommit", LilToon234Catalogue.Commit},
                 {"exporterVersion", exporterVersion}, {"materials", indexedRecords.OrderBy(p => p.Key).Select(p => (object)p.Value).ToList()},
                 {"textures", textures}, {"bindings", bindings}, {"chunks", chunks}
             };
@@ -299,6 +304,7 @@ namespace VRVlog.LilToonExporter
             var asset = LilToonFullContract.Object(glb.Json["asset"]);
             if (!asset.TryGetValue("extras", out var extras)) asset["extras"] = extras = new Dictionary<string, object>();
             LilToonFullContract.Object(extras)[LilToonFullContract.SourceColorSpaceKey] = sourceColorSpace;
+            LilToonFullContract.Object(extras)[InstalledLilToonVersionKey] = installedLilToonVersion;
             var used = List(glb.Json, "extensionsUsed"); if (!used.Contains(LilToonMobileProfile.ExtensionName)) used.Add(LilToonMobileProfile.ExtensionName);
             GlbBinaryOptimizer.Compact(glb);
             if (System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(glb.Json)) > 8 * 1024 * 1024) throw new InvalidDataException("JSONが8MiB上限を超えています。");

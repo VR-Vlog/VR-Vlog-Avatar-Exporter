@@ -10,7 +10,6 @@ namespace VRVlog.LilToonExporter
 {
     public sealed class LilToonExporterWindow : EditorWindow
     {
-        private const string SupportedLilToonVersion = Compatibility.DependencyPolicy.LilToonVersion;
         private GameObject avatar;
         private string author = "";
         private string outputPath = "";
@@ -456,7 +455,7 @@ namespace VRVlog.LilToonExporter
                 {
                     if (targetAvatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
                     return UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,
-                        PackageVersion(), RequireSupportedLilToon(), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
+                        PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
                         recoveryOptions: options, recoveryReport: report, licenseOptions: targetLicense);
                 }, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
                 {
@@ -550,17 +549,23 @@ namespace VRVlog.LilToonExporter
         private static string InstalledLilToonStatus()
         {
             var package = FindLilToonPackage();
-            return package == null ? ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）") : package.version;
+            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）");
+            return Compatibility.DependencyPolicy.AcceptsLilToon(package.version) ? package.version : string.Format(
+                ExporterLocalization.T("{0}（対応範囲 {1}〜{2} の外）"), package.version,
+                Compatibility.DependencyPolicy.LilToonMinimum, Compatibility.DependencyPolicy.LilToonMaximum);
         }
 
-        private static string RequireSupportedLilToon()
+        // Stops before export when the installed lilToon is outside the
+        // supported range or its shaders used by the avatar differ from the
+        // catalogue. Returns the installed version for asset.extras;
+        // sourceLilToonVersion is always the catalogue version.
+        internal static string RequireSupportedLilToon(GameObject avatar)
         {
-            var package = FindLilToonPackage();
-            if (package == null || !string.Equals(package.version, SupportedLilToonVersion, StringComparison.Ordinal))
-                throw new InvalidOperationException(string.Format(
-                    ExporterLocalization.T("lilToon {0} が必要です。現在のバージョン：{1}"),
-                    SupportedLilToonVersion, package?.version ?? ExporterLocalization.T("不明")));
-            return package.version;
+            var version = FindLilToonPackage()?.version;
+            var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
+            if (error != null) throw new InvalidOperationException(error);
+            LilToonStructureCheck.Require(avatar, version);
+            return version;
         }
 
         private static PackageManagerPackageInfo FindLilToonPackage()

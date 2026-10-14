@@ -12,6 +12,9 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('upstream', Path(__file__).with_name('check-upstream-dependencies.py'))
 upstream = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(upstream)
+spec = importlib.util.spec_from_file_location('generator', Path(__file__).with_name('generate-compatibility.py'))
+generator = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(generator)
 spec = importlib.util.spec_from_file_location('unity_runner', Path(__file__).with_name('run-unity-compatibility.py'))
 unity_runner = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(unity_runner)
@@ -29,6 +32,7 @@ class UnityResultTests(unittest.TestCase):
             'DependencyRoundTripTests': ('SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport', 2),
             'RendererSelectionTests': ('RendererCase', 4),
             'SkinnedMeshFallbackWeightTests': ('SkinCase', 12),
+            'LilToonStructureCheckTests': ('StructureCase', 11),
         }
         for suite, (method, count) in methods.items():
             name = 'VRVlog.LilToonExporter.Tests.' + suite
@@ -40,10 +44,10 @@ class UnityResultTests(unittest.TestCase):
         return unity_runner.validate_result(self.xml, True)
 
     def test_all_required_suites_pass(self):
-        self.assertEqual(len(self.check()), 20)
+        self.assertEqual(len(self.check()), 31)
 
     def test_no_suite_can_disappear_from_a_passing_result(self):
-        for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests']:
+        for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests']:
             with self.subTest(suite=name):
                 removed = [c for c in self.root if c.get('classname').endswith('.' + name)]
                 for case in removed: self.root.remove(case)
@@ -91,7 +95,7 @@ class ExporterProfileResultTests(unittest.TestCase):
         return removed
 
     def test_all_required_suites_pass(self):
-        expected = 20 + sum(sum(methods.values()) for methods in
+        expected = 31 + sum(sum(methods.values()) for methods in
                             [*unity_runner.BEHAVIOR_CASES.values(), *unity_runner.INTEGRATION_CASES.values()])
         self.assertEqual(len(self.check()), expected)
 
@@ -240,7 +244,7 @@ class UnityProfilePolicyTests(unittest.TestCase):
         self.assertEqual(unity_runner.profile_filters(True, 'compatibility'), [
             unity_runner.NAMESPACE + suite for suite in (
                 'DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests',
-                'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests')])
+                'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests')])
         self.assertEqual(len(unity_runner.profile_filters(False, 'compatibility')), 2)
 
     def test_missing_or_unsupported_dependencies_cannot_start_behavior_profiles(self):
@@ -423,6 +427,42 @@ class UpstreamTests(unittest.TestCase):
         self.releases['lilToon']['draft'] = True
         with self.assertRaises(ValueError):
             upstream.compare(self.config, self.releases)
+
+
+class LilToonRangeGeneratorTests(unittest.TestCase):
+    FILES = ['Compatibility/dependencies.json', 'Editor/LilToon234Catalogue.cs', 'package.json',
+             'Editor/VRVlog.LilToonExporter.Editor.asmdef', 'Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef']
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        for name in self.FILES:
+            (self.root / name).parent.mkdir(parents=True, exist_ok=True)
+            (self.root / name).write_bytes((ROOT / name).read_bytes())
+
+    def generate(self, **supported):
+        path = self.root / 'Compatibility/dependencies.json'
+        config = json.loads(path.read_text(encoding='utf-8'))
+        config['lilToon']['supported'].update(supported)
+        path.write_text(json.dumps(config), encoding='utf-8')
+        return generator.outputs(self.root)['Editor/Compatibility/DependencyPolicy.Generated.cs']
+
+    def test_catalogue_version_and_supported_range_are_separate_constants(self):
+        text = self.generate()
+        self.assertIn('LilToonVersion = "2.3.4";', text)
+        self.assertIn('LilToonMinimum = "2.0.0";', text)
+        self.assertIn('LilToonMaximum = "2.3.4";', text)
+        self.assertIn('LilToonMaximum = "2.10.0";', self.generate(maximum='2.10.0'))
+
+    def test_range_must_contain_the_catalogue_and_use_plain_version_numbers(self):
+        for supported in [{'minimum': '2.3.5'}, {'maximum': '2.3.3'}, {'maximum': '2.3.4-beta'},
+                          {'minimum': '2.0'}, {'minimum': '02.0.0'}, {'minimum': 'v2.0.0'}]:
+            with self.subTest(supported=supported), self.assertRaises(AssertionError):
+                self.generate(**supported)
+
+    def test_version_order_is_numeric(self):
+        self.assertGreater(generator.version_tuple('2.10.0'), generator.version_tuple('2.3.4'))
 
 
 if __name__ == '__main__':

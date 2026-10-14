@@ -5,6 +5,8 @@ namespace VRVlog.LilToonExporter.Compatibility
     {
         public const string LilToonVersion = "2.3.4";
         public const string LilToonCommit = "252fd8cfc46106d4967e95b3f2c788418502f227";
+        public const string LilToonMinimum = "2.0.0";
+        public const string LilToonMaximum = "2.3.4";
         public const string UniVrmAdapter = "univrm-0.131";
         public const string UniVrmVersions = "0.131.0, 0.131.1, 0.131.2";
         public const string NdmfMinimum = "1.8.3";
