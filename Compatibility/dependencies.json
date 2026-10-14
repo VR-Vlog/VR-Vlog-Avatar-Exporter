@@ -5,7 +5,11 @@
     "version": "2.3.4",
     "commit": "252fd8cfc46106d4967e95b3f2c788418502f227",
     "schemaMajor": 2,
-    "schemaMinor": 0
+    "schemaMinor": 0,
+    "supported": {
+      "minimum": "2.0.0",
+      "maximum": "2.3.4"
+    }
   },
   "uniVrm": {
     "adapter": "univrm-0.131",

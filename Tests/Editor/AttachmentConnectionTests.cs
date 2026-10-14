@@ -636,6 +636,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
             public void Dispose()
             {
+                // Saving from the export window remembers the author for this avatar.
+                if (Source != null) ExportAuthor.Forget(ExportAuthor.Identity(Source));
                 Object.DestroyImmediate(Copy); Object.DestroyImmediate(Source);
                 foreach (var mesh in exportMeshes) Object.DestroyImmediate(mesh);
                 Object.DestroyImmediate(Mesh); Object.DestroyImmediate(material); Object.DestroyImmediate(avatar);

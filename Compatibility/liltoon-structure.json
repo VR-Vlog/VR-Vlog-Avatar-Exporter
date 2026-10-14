@@ -1,0 +1,131 @@
+{
+  "format": 1,
+  "definition": "Documentation~/decisions/2026-10-14-liltoon-structure-hash.md",
+  "reference": {
+    "tag": "2.3.4",
+    "commit": "252fd8cfc46106d4967e95b3f2c788418502f227",
+    "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57"
+  },
+  "tags": [
+    {
+      "tag": "1.10.3",
+      "commit": "efeba15cdcc35f87ef3a77997b7d4d6647df548b",
+      "structureHash": "1542a184f8cc4938c1b2854b121356625223e1324ab8099772aa6a8e4e9febb5",
+      "matchesReference": false
+    },
+    {
+      "tag": "2.0.0",
+      "commit": "4e3e6abdbdcb34b27574d9dbd1f77a526c80274b",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.0",
+      "commit": "73559ca4600445f747d633a6d46f76693101a223",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.1",
+      "commit": "0580e955961c17c960786f14d72e22bab08daced",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.2",
+      "commit": "9af9e02e28570be70342862758e59149fa1c5de3",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.3",
+      "commit": "c4a0009bde4f946f43b4134d2dc714f891136c14",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.4",
+      "commit": "1c758b0036d0e7dd7dd613c081396f56cd00f99e",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.5",
+      "commit": "712470e708779e524b4f701d7647ff24b7f36e4d",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.6",
+      "commit": "65409df257f7a1366b4a4cecfa9bd6e10500023d",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.7",
+      "commit": "748cdf78a7e260c466ce1d117e73dbf5616c55aa",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.8",
+      "commit": "9ac1ca51a137ad129f63047c1347acd01aee126e",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.9",
+      "commit": "f7bd2d8e4c43f8a4a832f85bb76f586cfafdf079",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.1.10",
+      "commit": "c6e376a14df53487184583022f7eed924d4f0eaa",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.2.0",
+      "commit": "4506df4740fcc07f3120a65d788001d9e6ecdcd2",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.2.1",
+      "commit": "dda4493635c138c48a1e481eed9699e240db6d05",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.3.0",
+      "commit": "474de3c7e34f48cdda548db7fcf4c940c2191685",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.3.1",
+      "commit": "c7544c9dbe88a9de2bc562bfde24a9159c6b9236",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.3.2",
+      "commit": "56d5095b02e795bc60b5f80f72558d7835c5c14e",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.3.3",
+      "commit": "6ef0cc43b7d56d27f516ea27717faf08486b2842",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.3.4",
+      "commit": "252fd8cfc46106d4967e95b3f2c788418502f227",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    }
+  ]
+}

@@ -184,7 +184,9 @@ assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
 assert "UniVrmOneClickExporter.Export" in window
-assert 'SupportedLilToonVersion = Compatibility.DependencyPolicy.LilToonVersion' in window
+assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
+assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
+assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'package.name, "jp.lilxyzw.liltoon"' in window
 assert "RequireSupportedLilToon()" in window
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window

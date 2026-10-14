@@ -7,6 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def version_tuple(version):
+    """Numeric X.Y.Z without leading zeros; pre-releases and build metadata are rejected."""
+    assert re.fullmatch(r'(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})', version), version
+    return tuple(map(int, version.split('.')))
+
+
 def outputs(root=ROOT):
     data = json.loads((root / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
     assert data['format'] == 1
@@ -18,8 +24,14 @@ def outputs(root=ROOT):
         assert re.fullmatch(r'[a-f0-9]{40}', commit)
     assert vrm['releaseVersion'] in versions
     lil = data['lilToon']
-    # The on-disk format and renderer stay unchanged in this compatibility update.
+    # `version` is the catalogue every export conforms to; `supported` is the
+    # installed lilToon range whose migration alone reaches that catalogue.
     assert lil['version'] == '2.3.4' and (lil['schemaMajor'], lil['schemaMinor']) == (2, 0)
+    supported = lil['supported']
+    assert set(supported) == {'minimum', 'maximum'}
+    minimum, maximum, catalogue_version = (version_tuple(supported['minimum']), version_tuple(supported['maximum']),
+                                           version_tuple(lil['version']))
+    assert minimum <= catalogue_version <= maximum
     assert re.fullmatch(r'[a-f0-9]{40}', lil['commit'])
     catalogue = (root / 'Editor/LilToon234Catalogue.cs').read_text(encoding='utf-8')
     assert 'Version = "' + lil['version'] + '"' in catalogue
@@ -27,6 +39,7 @@ def outputs(root=ROOT):
     authoring = data['authoring']
     values = {
         'LilToonVersion': lil['version'], 'LilToonCommit': lil['commit'],
+        'LilToonMinimum': supported['minimum'], 'LilToonMaximum': supported['maximum'],
         'UniVrmAdapter': vrm['adapter'], 'UniVrmVersions': ', '.join(versions),
         'NdmfMinimum': authoring['ndmfMinimum'], 'NdmfReference': authoring['ndmfReference'],
         'ModularAvatarReference': authoring['modularAvatarReference'],
