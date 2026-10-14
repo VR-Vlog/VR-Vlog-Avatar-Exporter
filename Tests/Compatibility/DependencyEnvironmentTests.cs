@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(DependencyPolicy.UniVrmError(vrm, gltf) == null, Is.EqualTo(supported));
                 if (supported)
                 {
-                    Assert.That(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon"), Is.EqualTo(DependencyPolicy.LilToonVersion));
+                    Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon")), Is.Null);
                     Assert.That(DependencyDiagnostics.Error(packages), Is.Null);
                 }
             }
