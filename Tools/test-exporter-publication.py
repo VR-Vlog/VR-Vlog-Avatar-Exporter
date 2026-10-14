@@ -45,7 +45,7 @@ class PublicationTests(unittest.TestCase):
         for name in publication.REQUIRED_PACKAGES:
             version = "0.11.14" if name == publication.REQUIRED_PACKAGES[0] else "0.131.0"
             manifest = {"name": name, "version": version, "zipSHA256": "a" * 64,
-                        "url": f"https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/v{version}/{name}-{version}.zip"}
+                        "url": f"https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/download/v{version}/{name}-{version}.zip"}
             self.listing["packages"][name] = {"versions": {version: manifest}}
         self.write_listing()
         self.html = f'''<!doctype html><html><head><link rel="canonical" href="{publication.OFFICIAL_BASE}"></head>
@@ -65,6 +65,7 @@ class PublicationTests(unittest.TestCase):
 
     def ci_environment(self):
         return {"GITHUB_ACTIONS": "true", "GITHUB_REPOSITORY": publication.PUBLISHER_REPOSITORY,
+                "GITHUB_REPOSITORY_ID": publication.PUBLISHER_REPOSITORY_ID,
                 "GITHUB_WORKFLOW_REF": publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@refs/heads/main",
                 "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
                 "GITHUB_RUN_NUMBER": str(self.publisher["run_number"]), "GITHUB_RUN_ID": str(self.publisher["run_id"]),
@@ -73,6 +74,13 @@ class PublicationTests(unittest.TestCase):
     def observed(self, publisher, digest):
         return {"schema": 1, "publisher": self.publisher,
                 "official": {"publisher": publisher, "digest": digest}}
+
+    def historical_receipt(self, **publisher_fields):
+        # A stored fixture, not a call to the new receipt writer with an alias.
+        receipt = json.loads(publication.publication_receipt(contents(self.source), self.publisher))
+        receipt["publisher"].update(repository=publication.LEGACY_PUBLISHER_REPOSITORY, **publisher_fields)
+        receipt["digest"] = publication.receipt_digest({key: receipt[key] for key in ("schema", "id", "files", "publisher")})
+        return (json.dumps(receipt, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
     def write_listing(self):
         (self.source / "index.json").write_text(json.dumps(self.listing, indent=2) + "\n", encoding="utf-8")
@@ -196,6 +204,27 @@ class PublicationTests(unittest.TestCase):
         for raw in ('{"id":"com.vrvlog.packages","id":"other"}', '{"id": NaN}', '{"id": 1e9999}'):
             (self.source / "index.json").write_text(raw, encoding="utf-8")
             self.assert_rejected_unchanged("duplicate|non-finite")
+
+    def test_zip_urls_accept_only_new_org_old_org_and_old_personal_repositories(self):
+        name = publication.REQUIRED_PACKAGES[0]
+        versions = self.listing["packages"][name]["versions"]
+        version, manifest = next(iter(versions.items()))
+        for repository in ("VR-Vlog/VR-Vlog-Avatar-Exporter", "VR-Vlog/VR-Vlog-lilToon-Exporter",
+                           "mitsuya0077/VR-Vlog-lilToon-Exporter"):
+            with self.subTest(repository=repository):
+                manifest["url"] = f"https://github.com/{repository}/releases/download/v{version}/{name}-{version}.zip"
+                raw = json.dumps(self.listing).encode("utf-8")
+                self.assertEqual(self.listing, publication.validate_listing(raw))
+        for base in ("https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter-evil",
+                     "https://github.com/other/VR-Vlog-Avatar-Exporter",
+                     "https://github.com/mitsuya0077/VR-Vlog-Avatar-Exporter",
+                     "https://github.com.evil.example/VR-Vlog/VR-Vlog-Avatar-Exporter",
+                     "https://github.com:443/VR-Vlog/VR-Vlog-Avatar-Exporter",
+                     "https://github.com@evil.example/VR-Vlog/VR-Vlog-Avatar-Exporter"):
+            with self.subTest(base=base):
+                manifest["url"] = f"{base}/releases/download/v{version}/{name}-{version}.zip"
+                with self.assertRaisesRegex(publication.PreparationError, "ZIP origin"):
+                    publication.validate_listing(json.dumps(self.listing).encode("utf-8"))
 
     def test_symlink_file_directory_and_root_are_rejected(self):
         target = self.root / "outside.bin"
@@ -479,13 +508,58 @@ class PublicationTests(unittest.TestCase):
             with self.subTest(key=key, value=value), self.assertRaises(publication.PreparationError):
                 publication.publication_receipt(contents(self.source), bad)
 
+    def test_historical_publisher_receipt_is_read_without_normalizing_its_digest(self):
+        raw = self.historical_receipt(run_number=41, run_id=38434276595)
+        stored = json.loads(raw)
+        parsed = publication.parse_publication_receipt(raw)
+        self.assertEqual(stored, parsed)
+        self.assertEqual(publication.LEGACY_PUBLISHER_REPOSITORY, parsed["publisher"]["repository"])
+        files = dict(contents(self.source), **{publication.PUBLICATION_RECEIPT: raw})
+        self.assertEqual(parsed, publication.validate_publication_receipt(files))
+        with self.assertRaisesRegex(publication.PreparationError, "publisher identity"):
+            publication.publication_receipt(contents(self.source), parsed["publisher"])
+        stored["publisher"]["repository"] = publication.PUBLISHER_REPOSITORY
+        with self.assertRaisesRegex(publication.PreparationError, "digest differs"):
+            publication.parse_publication_receipt(json.dumps(stored).encode("utf-8"))
+
+    def test_new_publisher_preparation_upgrades_an_older_historical_receipt(self):
+        raw = self.historical_receipt(run_number=41, run_id=38434276595)
+        old = publication.parse_publication_receipt(raw)
+        self.preflight = self.observed(old["publisher"], old["digest"])
+        self.fresh_official_reader = lambda: raw
+        (self.source / publication.PUBLICATION_RECEIPT).write_bytes(raw)
+        before = original_files(contents(self.source))
+        self.prepare(self.source, self.official)
+        saved = contents(self.official)
+        self.assertEqual(before, original_files(saved))
+        self.assertEqual(self.publisher, publication.validate_publication_receipt(saved)["publisher"])
+        self.assertEqual(old, publication.parse_publication_receipt(raw))
+
+    def test_historical_alias_does_not_weaken_sequence_or_incoming_proof_checks(self):
+        for changes, pattern in (({}, "Equal publisher sequence"),
+                                 ({"run_number": 43, "run_id": 38434276597}, "older publisher run"),
+                                 ({"run_number": 41}, "newer publisher sequence.*reuse")):
+            raw = self.historical_receipt(**changes)
+            previous = publication.parse_publication_receipt(raw)
+            self.preflight = self.observed(previous["publisher"], previous["digest"])
+            with self.subTest(changes=changes), mock.patch.object(publication.os, "replace") as replacement:
+                self.assert_rejected_unchanged(pattern)
+                replacement.assert_not_called()
+        old = publication.parse_publication_receipt(self.historical_receipt())["publisher"]
+        proof = {"schema": 1, "publisher": old, "official": None}
+        with self.assertRaisesRegex(publication.PreparationError, "publisher identity"):
+            publication.validate_preflight(proof, self.publisher)
+
     def test_ci_context_requires_fixed_workflow_main_dispatch_or_matching_release_tag(self):
         environment = self.ci_environment()
         self.assertEqual(self.publisher, publication.publisher_from_environment(environment))
         release = dict(environment, GITHUB_EVENT_NAME="release", GITHUB_REF="refs/tags/v0.11.14-beta.1",
                        GITHUB_WORKFLOW_REF=publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@refs/tags/v0.11.14-beta.1")
         self.assertEqual(self.publisher, publication.publisher_from_environment(release))
-        for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_REPOSITORY", "fork/repository"), ("GITHUB_EVENT_NAME", "pull_request"),
+        for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_REPOSITORY", "fork/repository"),
+                           ("GITHUB_REPOSITORY", publication.LEGACY_PUBLISHER_REPOSITORY),
+                           ("GITHUB_REPOSITORY_ID", "1355769105"), ("GITHUB_REPOSITORY_ID", "01355769104"),
+                           ("GITHUB_REPOSITORY_ID", 1355769104), ("GITHUB_EVENT_NAME", "pull_request"),
                            ("GITHUB_REF", "refs/heads/feature"), ("GITHUB_WORKFLOW_REF", "foreign/workflow@refs/heads/main"),
                            ("GITHUB_RUN_NUMBER", "042"), ("GITHUB_RUN_NUMBER", "0"),
                            ("GITHUB_RUN_ID", "1e10"), ("GITHUB_SHA", "c" * 39)):
@@ -626,17 +700,18 @@ class PublicationTests(unittest.TestCase):
     def test_cli_reader_reuses_fixed_mirror_api_context_checkout_and_official_target(self):
         target = object()
         api = types.SimpleNamespace(snapshot=mock.Mock(return_value=types.SimpleNamespace(receipt=None)))
+        api_factory = types.SimpleNamespace(from_environment=mock.Mock(return_value=api))
         mirror = types.SimpleNamespace(publisher_from_environment=mock.Mock(return_value=self.publisher),
-                                       validate_checkout=mock.Mock(), GitHubApi=mock.Mock(return_value=api),
+                                       validate_checkout=mock.Mock(), GitHubApi=api_factory,
                                        Budget=mock.Mock(return_value="bounded-budget"), TOKEN_ENV="VPM_MIRROR_TOKEN", OFFICIAL=target)
         environment = dict(self.ci_environment(), VPM_MIRROR_TOKEN="fixture")
         with mock.patch.object(publication, "load_mirror_tools", return_value=mirror):
             reader = publication.official_reader_from_environment(environment, self.publisher)
-            mirror.GitHubApi.assert_not_called()
+            mirror.GitHubApi.from_environment.assert_not_called()
             self.assertIsNone(reader())
         mirror.publisher_from_environment.assert_called_once_with(environment)
         mirror.validate_checkout.assert_called_once_with(self.publisher)
-        mirror.GitHubApi.assert_called_once_with("fixture", "bounded-budget")
+        mirror.GitHubApi.from_environment.assert_called_once_with(environment, "bounded-budget", require_org=False)
         api.snapshot.assert_called_once_with(target)
 
 

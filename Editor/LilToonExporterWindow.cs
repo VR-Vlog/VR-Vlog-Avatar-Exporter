@@ -454,7 +454,13 @@ namespace VRVlog.LilToonExporter
                     return UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,
                         PackageVersion(), RequireSupportedLilToon(), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
                         recoveryOptions: options, recoveryReport: report, licenseOptions: targetLicense);
-                }, ExportCompleted, targetExclusions, targetGimmicks);
+                }, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
+                {
+                    // The blink choices live in this window; open their section.
+                    if (this == null) return;
+                    showAppearanceOptions = true; showBlink = true;
+                    Focus(); Repaint();
+                });
                 if (session != null) ExportFailureWindow.Show(session, Completed);
             }
             catch (Exception exception) { ExportFailureWindow.Show(exception); }
@@ -466,7 +472,8 @@ namespace VRVlog.LilToonExporter
         internal static ExportRecoverySession ExportAndSaveNormally(GameObject source, string destination,
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
             Action<byte[], IEnumerable<string>> completed = null,
-            IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null)
+            IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null,
+            bool interactive = false, Action openBlinkSettings = null)
         {
             if (create == null) throw new ArgumentNullException(nameof(create));
             var warnings = new List<string>();
@@ -479,6 +486,9 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
+            // The export already worked around what it could not set up. Ask once,
+            // before anything is written, whether to save that result.
+            if (!ExportFallbackConfirmation.Confirm(report.Fallbacks, source, interactive, openBlinkSettings)) return null;
             ExportOutputWriter.Write(destination, bytes);
             completed?.Invoke(bytes, warnings);
             return null;

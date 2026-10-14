@@ -15,6 +15,7 @@ namespace VRVlog.LilToonExporter
     {
         readonly Dictionary<Renderer, Material[]> sources = new Dictionary<Renderer, Material[]>();
         readonly Dictionary<Material, Dictionary<string, object>> records = new Dictionary<Material, Dictionary<string, object>>();
+        internal bool IsEmpty => records.Count == 0;
         readonly List<object> textures = new List<object>();
         readonly Dictionary<(Texture, bool), int> textureIds = new Dictionary<(Texture, bool), int>();
         readonly List<DeflatePayload> payloads = new List<DeflatePayload>();
@@ -46,7 +47,8 @@ namespace VRVlog.LilToonExporter
                     if (material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) && !result.records.ContainsKey(material))
                         result.records.Add(material, result.ReadMaterial(material));
             }
-            if (result.records.Count == 0) throw new InvalidOperationException("公式lilToon材質が見つかりません。");
+            // An avatar without lilToon still exports: its materials become MToon
+            // defaults and the extension carries no lilToon records.
             return result;
         }
 

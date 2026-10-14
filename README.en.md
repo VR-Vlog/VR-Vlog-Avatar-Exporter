@@ -5,11 +5,11 @@
 [日本語](README.md) · [English](README.en.md)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Validate](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml)
+[![Validate](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/workflows/validate.yml)
 
 Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity package saves a standard MToon fallback and a validated lilToon extension in the same file, using temporary copies to preserve the source avatar.
 
-[Install](https://vrvlog.fun/exporter/) · [Latest stable release](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+[Install](https://vrvlog.fun/exporter/) · [Latest stable release](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/latest) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
 
 ## Features
 
@@ -92,7 +92,7 @@ Report vulnerabilities using the [private reporting instructions](SECURITY.md). 
 
 Use **VR Vlog → VRMを書き出す** to inspect installed package versions. Export details explain unsupported items and possible next steps.
 
-[Report a bug or propose an improvement](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose) with the relevant versions, reproduction steps and a short sanitized error excerpt. Please keep private avatar assets, credentials and full logs out of public reports. Documentation fixes and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
+[Report a bug or propose an improvement](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose) with the relevant versions, reproduction steps and a short sanitized error excerpt. Please keep private avatar assets, credentials and full logs out of public reports. Documentation fixes and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

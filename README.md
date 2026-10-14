@@ -3,13 +3,13 @@
 [日本語](README.md) · [English](README.en.md)
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Validate](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/actions/workflows/validate.yml)
+[![Validate](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/workflows/validate.yml/badge.svg?branch=main)](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/workflows/validate.yml)
 
 **お気に入りのアバターをVR Vlogで使う。**
 
 lilToonのアバターを、iPhoneのVR Vlogで使う **VRM 1.0** に書き出す、MITライセンスのUnity用パッケージです。標準MToonによる互換表示と、VR Vlog向けのlilToon拡張を一つのVRMに保存します。
 
-[インストールページ](https://vrvlog.fun/exporter/) · [最新安定版](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/latest) · [変更履歴](CHANGELOG.md) · [開発参加](CONTRIBUTING.md)
+[インストールページ](https://vrvlog.fun/exporter/) · [最新安定版](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/latest) · [変更履歴](CHANGELOG.md) · [開発参加](CONTRIBUTING.md)
 
 ## できること
 
@@ -143,7 +143,7 @@ PhysBoneの重複、左右別メッシュの瞬き、描画が空になったメ
 未対応版の場合は書き出しを停止し、対処方法を表示します。パッケージを自動で変更することはありません。
 今後の更新への対応手順は [互換性の管理](Compatibility/README.md) を参照してください。
 
-書き出し結果の **書き出しの詳細** で対象と対処方法を確認してください。解決しない場合は、バージョン・再現手順・該当エラーを添えて [Issues](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose) へ報告できます。
+書き出し結果の **書き出しの詳細** で対象と対処方法を確認してください。解決しない場合は、バージョン・再現手順・該当エラーを添えて [Issues](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose) へ報告できます。
 
 ### コピーで対策を試す
 
@@ -166,7 +166,7 @@ VR Vlogアプリ内の問い合わせからもご連絡いただけます。
 
 脆弱性は[非公開の報告窓口](SECURITY.md)へ連絡してください。再現手順や悪用条件を公開Issue・PRへ投稿しないでください。
 
-不具合報告・改善提案・文書の修正・Pull Requestを受け付けています。[投稿フォーム](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose)から、使用環境・再現手順、または解決したいことを記載してください。変更の進め方と検証方法は[CONTRIBUTING.md](CONTRIBUTING.md)にまとめています。
+不具合報告・改善提案・文書の修正・Pull Requestを受け付けています。[投稿フォーム](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose)から、使用環境・再現手順、または解決したいことを記載してください。変更の進め方と検証方法は[CONTRIBUTING.md](CONTRIBUTING.md)にまとめています。
 
 | ディレクトリ | 内容 |
 | --- | --- |
