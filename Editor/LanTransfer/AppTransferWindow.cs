@@ -130,7 +130,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             flow?.Stop();
             ClearQr();
             // A name left over from an avatar that no longer exists is not the user's choice for this one.
-            var untouched = opened || avatar == null || string.IsNullOrWhiteSpace(avatarName) || avatarName == avatar.name;
+            var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name;
             avatar = target;
             if (untouched) avatarName = target != null ? target.name : "";
             consented = false;
