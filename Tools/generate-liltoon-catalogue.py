@@ -44,7 +44,8 @@ def command_catalogue(args):
     if args.output:
         args.output.write_bytes(rendered)
     if args.check:
-        current = (ROOT / lc.CATALOGUE_PATH).read_bytes()
+        # The catalogue is committed with LF; a CRLF checkout is compared as LF.
+        current = (ROOT / lc.CATALOGUE_PATH).read_bytes().replace(b"\r\n", b"\n")
         if current != rendered:
             committed = lc.parse_catalogue(current.decode("ascii"))
             for line in lc.structure_difference(committed, catalogue)[:50]:

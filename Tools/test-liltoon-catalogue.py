@@ -190,6 +190,24 @@ class SyntheticSourceTests(unittest.TestCase):
             with self.assertRaises(lc.CatalogueError):
                 lc.load_source(write_source(temp, {'lts.shader': MAIN.replace('/SHADOW_CASTER"', '/META"')}))
 
+    def test_unreadable_declarations_and_unexpected_passes_stop_parsing(self):
+        multi_line = MAIN.replace('[lilVec3]       _LightDirectionOverride',
+                                  '[Enum(A, 0,\n            B, 1)] _LightDirectionOverride')
+        self.assertIn('_LightDirectionOverride', [p[0] for p in lc.parse_shader(multi_line)['properties']])
+        broken = {
+            'missing default': MAIN.replace('("Color", Color) = (1,1,1,1)', '("Color", Color)'),
+            'unknown syntax': MAIN.replace('[MainTexture]   _MainTex', '[MainTexture]   _MainTex Texture'),
+            'second SubShader': MAIN.replace('    Fallback "Unlit/Texture"', '    SubShader { Pass { Name "X" } }\n    Fallback "Unlit/Texture"'),
+        }
+        for label, text in broken.items():
+            with self.subTest(case=label), self.assertRaises(lc.CatalogueError):
+                lc.parse_shader(text)
+        unnamed = MAIN.replace('Tags { "LightMode" = "Never" }', 'Tags { "LightMode" = "ShadowCaster" }')
+        with tempfile.TemporaryDirectory() as temp:
+            source = lc.load_source(write_source(temp, {'lts.shader': unnamed}))
+        with self.assertRaises(lc.CatalogueError):
+            lc.build_catalogue(source, 'a' * 40)
+
     def test_each_structural_change_changes_the_hash_and_values_do_not(self):
         base = lc.structure_hash(self.catalogue)
         changes = {
@@ -244,10 +262,8 @@ class CommittedCatalogueTests(unittest.TestCase):
         for label, (old, new) in edits.items():
             with self.subTest(edit=label):
                 self.assertEqual(1, self.text.count(old))
-                try:
-                    changed = lc.parse_catalogue(self.text.replace(old, new))
-                except lc.CatalogueError:
-                    continue
+                # Each edit still reads as a catalogue, so only the structure hash can catch it.
+                changed = lc.parse_catalogue(self.text.replace(old, new))
                 self.assertNotEqual([], lc.check_structure_table(self.table, changed, lc.DEFAULT_SUPPORTED_RANGE))
 
     def test_inconsistent_pass_sections_cannot_be_read(self):
@@ -360,6 +376,10 @@ class FetchTests(unittest.TestCase):
                     lc.fetch_tag_source('9.9.9', temp)
             with self.assertRaises(lc.CatalogueError):
                 lc.fetch_tag_source('../9.9.9', temp)
+            large = tar_gz({'lilToon-9.9.9/a.txt': 'x' * 64})
+            with mock.patch.object(lc.urllib.request, 'urlopen', return_value=self.response(large)), \
+                    mock.patch.object(lc, 'MAX_EXTRACTED_BYTES', 32), self.assertRaises(lc.CatalogueError):
+                lc.fetch_tag_source('9.9.9', temp)
 
 
 class UpstreamTests(unittest.TestCase):

@@ -110,9 +110,10 @@ def _block(text, start):
     raise CatalogueError("Unbalanced braces")
 
 
+# One complete declaration: attributes (may span lines), name, display name, type and default.
 _PROPERTY = re.compile(
-    r'^\s*(?:\[[^\]\n]*\]\s*)*(?P<name>[A-Za-z_]\w*)\s*\(\s*"(?:[^"\\\n]|\\.)*"\s*,\s*(?P<type>[A-Za-z0-9]+)',
-    re.MULTILINE)
+    r'(?:\[[^\]]*\]\s*)*(?P<name>[A-Za-z_]\w*)\s*\(\s*"(?:[^"\\\n]|\\.)*"\s*,\s*(?P<type>[A-Za-z0-9]+)'
+    r'\s*(?:\([^()]*\))?\s*\)\s*=\s*(?:"[^"\n]*"\s*\{[^{}]*\}|\([^()]*\)|[-+0-9.eE]+)')
 _SHADER = re.compile(r'^\s*Shader\s+"(?P<name>[^"]+)"')
 _KEYWORD = re.compile(r'\b(?P<word>Properties|SubShader|Pass|UsePass|GrabPass|HLSLPROGRAM|CGPROGRAM|HLSLINCLUDE|CGINCLUDE)\b')
 _PROGRAM_END = {"HLSLPROGRAM": "ENDHLSL", "CGPROGRAM": "ENDCG", "HLSLINCLUDE": "ENDHLSL", "CGINCLUDE": "ENDCG"}
@@ -127,7 +128,7 @@ def _skip_program(text, word, start):
 
 def parse_shader(text):
     """Parse one Built-in RP .shader file into name, properties and passes."""
-    text = strip_comments(text.lstrip("﻿"))
+    text = strip_comments(text.lstrip("\ufeff"))
     match = _SHADER.search(text)
     if not match:
         raise CatalogueError("No Shader declaration")
@@ -136,6 +137,7 @@ def parse_shader(text):
     properties = []
     seen = set()
     passes = []
+    subshaders = 0
     i = 0
     while True:
         keyword = _KEYWORD.search(body, i)
@@ -146,6 +148,10 @@ def parse_shader(text):
             i = _skip_program(body, word, keyword.end())
         elif word == "Properties":
             block, i = _block(body, keyword.end())
+            # Fail instead of silently skipping a declaration the pattern cannot read.
+            unread = _PROPERTY.sub("", block).strip()
+            if unread:
+                raise CatalogueError("Unreadable property declaration in %s: %s" % (name, unread[:80]))
             for prop in _PROPERTY.finditer(block):
                 kind = prop.group("type").lower()
                 if kind not in PROPERTY_TYPES:
@@ -156,6 +162,10 @@ def parse_shader(text):
                 seen.add(prop.group("name"))
                 properties.append((prop.group("name"),) + PROPERTY_TYPES[kind])
         elif word == "SubShader":
+            # Built-in RP lilToon shaders have one SubShader; a second would mix fallback passes in.
+            subshaders += 1
+            if subshaders > 1:
+                raise CatalogueError("More than one SubShader in " + name)
             i = keyword.end()
         elif word == "UsePass":
             ref = re.compile(r'\s*"([^"]+)"').match(body, keyword.end())
@@ -259,6 +269,11 @@ def build_catalogue(source, commit):
     shaders = []
     for shader in material_shaders(source):
         named = [p for p in shader["passes"] if p.get("name")]
+        # Unnamed passes are left out of the catalogue. lilToon only has GrabPass and a fake
+        # pass with LightMode "Never" next to UsePass; any other unnamed pass must be reviewed.
+        for unnamed in (p for p in shader["passes"] if not p.get("name") and not p.get("grab")):
+            if unnamed.get("lightMode") != "Never":
+                raise CatalogueError("Unnamed pass with LightMode %r in %s" % (unnamed.get("lightMode"), shader["name"]))
         shaders.append({
             "name": shader["name"], "file": shader["file"],
             "required": [n for n, _, _ in shader["properties"] if n != "_DummyProperty" and property_role(n) == "runtime"],
@@ -484,6 +499,7 @@ def git_tag_source(repository, tag, destination):
 
 
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 1024 * 1024 * 1024
 
 
 def fetch_tag_source(tag, destination, repository=LILTOON_REPOSITORY):
@@ -525,8 +541,12 @@ def remote_tags(repository=LILTOON_REPOSITORY, pages=10):
 def _extract_tar(stream, destination, strip_top=False):
     destination.mkdir(parents=True, exist_ok=True)
     root = destination.resolve()
+    extracted = 0
     with tarfile.open(fileobj=stream, mode="r:*") as archive:
         for member in archive:
+            extracted += max(member.size, 0)
+            if extracted > MAX_EXTRACTED_BYTES:
+                raise CatalogueError("Archive contents exceed limit")
             parts = Path(member.name).parts
             if strip_top:
                 parts = parts[1:]

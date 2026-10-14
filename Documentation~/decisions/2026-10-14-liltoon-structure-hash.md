@@ -18,6 +18,7 @@
   - `Properties` は全 65 ファイルの宣言を初出順に並べたもの（`ltspass_*`・`Hidden/ltsother_baker` も含む。`_DummyProperty` は除く）。型は `Float`・`Int`・`Range` を `float`、`Color` を `color`、`Vector` を `vector`、`2D`・`3D`・`Cube` を `texture` にする。
   - 同じ名前が複数回宣言されたら最初の宣言を使う（Unity と同じ）。シェーダーによって型が違う名前があれば生成を止める。
   - `UsePass "Hidden/ltspass_xxx/NAME"` は参照先のパスの名前と LightMode に置き換える。名前の無いパス（`LightMode = Never` の偽のパス）と `GrabPass` はカタログに入れない。
+- 読めないものは黙って飛ばさず生成を止める: Properties の中に宣言として読めない部分が残ったとき、マテリアル用のシェーダーに LightMode が `Never` 以外の名前の無いパスがあったとき、SubShader が 2 つ以上あったとき。新しい版でこれらが出たら、パーサーを直すか構成の差として扱うかを人が決める。
   - `RequiredProperties` は各シェーダーが宣言する runtime のプロパティを宣言順に並べたもの。`Passes` はパス名を ordinal で並べたもの、`PassLightModes` は宣言順。`TextureFaces` は runtime のテクスチャで、2D を 1、Cube を 6 にする。
 - プロパティの役割（runtime／editor／external）は lilToon のソースからは決まらない Exporter 側の方針なので、`Tools/liltoon_catalogue.py` の `EDITOR_PROPERTIES`・`EXTERNAL_PROPERTIES` に表として持つ。表に無い名前は runtime になる。新しい版で追加されたプロパティは runtime として必須プロパティに入り、構成ハッシュが変わる。
 - ソースは、手元のフォルダ（`--source`）、手元のクローンのタグ（`--git`）、GitHub のタグのアーカイブ（`--fetch`）のどれからでも読める。アーカイブは一時フォルダに展開し、リポジトリには置かない。commit はアーカイブの pax ヘッダーから読む。
@@ -33,13 +34,14 @@
 ```
 
 - 含めるもの: マテリアルに使うシェーダー（`ltspass_` 以外）の名前とファイル名、全ファイルで宣言されたプロパティの名前・型・役割、runtime のテクスチャの次元、シェーダーごとの runtime のプロパティ、名前付きのパスと LightMode。
-- 含めないもの: 版・commit、宣言の順、既定値（`_EnvRimBorder` の 0.85／3.0 など）、表示名、属性（`[lilToggle]` など）、名前の無いパス・`GrabPass`、`ltspass_*` のパス用シェーダー自体のプロパティの所属。
+- 含めないもの: 版・commit、宣言の順、既定値（`_EnvRimBorder` の 0.85／3.0 など）、表示名、属性（`[lilToggle]` など）、名前の無いパス・`GrabPass`、`ltspass_*` のパス用シェーダー自体のプロパティの所属、シェーダーキーワード（`#pragma shader_feature` など）とレンダーステート。
 - 同じ値をソースからも `LilToon234Catalogue.cs` からも計算できる形にした。カタログが持っていない情報（editor／external のプロパティがどのシェーダーにあるか、editor のテクスチャの次元）は含めていない。
 
 ### 照合
 
 - `Compatibility/liltoon-structure.json` に、lilToon 2.0.0〜2.3.4 の全タグ（19 個）と比較用の 1.10.3 の commit・構成ハッシュ・2.3.4 と一致するかを置く。
 - `Tools/check-liltoon-structure.py`（`Tools/run-validation.py` から呼ぶ・ネットワーク不要）が、表の 2.3.4 のハッシュと `LilToon234Catalogue.cs` から計算したハッシュの一致、対応範囲の全タグが 2.3.4 と一致すること、表の形を確かめる。
+- 範囲内のタグが表から抜けていないことは、オフラインの検査では範囲の両端だけを確かめる（タグの一覧はネットワークが無いと分からない）。2.0.0〜2.3.4 の 19 タグが揃っていることは `Tools/test-liltoon-catalogue.py` で確かめ、表を作り直すときは `structure --fetch` が GitHub のタグ一覧から範囲内の全タグを取る。
 - 対応範囲は `Compatibility/dependencies.json` の `lilToon.supportedRange`（`minimum`・`maximum`）から読み、無ければ 2.0.0〜2.3.4 とする。範囲を dependencies.json に入れる変更が入ったら、`supported_range` の 1 か所を合わせる。
 - `Tools/check-upstream-dependencies.py`（手動実行）は、lilToon の新しいリリースがあるときだけそのタグを取得して構成ハッシュを計算し、2.3.4 と一致するかと差の一覧を出力に足す。パッケージや対応範囲は変えない。
 
