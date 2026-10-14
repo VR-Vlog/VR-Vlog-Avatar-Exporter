@@ -33,9 +33,11 @@ claim that every avatar or every combination is verified.
 
 The exporter accepts lilToon 2.0.0-2.3.4 (`lilToon.supported` in
 `dependencies.json`). This is the range where lilToon's own material migration
-alone gives the 2.3.4 structure: on Unity 2022.3.22f1 (Built-in RP), the
+alone gives the 2.3.4 structure. On Unity 2022.3.22f1 (Built-in RP), the
 migrated shader properties, types, dimensions, pass names and LightMode of
-2.0.0-2.3.3 matched 2.3.4 exactly. 1.x keeps 35 properties that 2.3.4 does not
+2.0.0, 2.1.0, 2.1.10, 2.2.0, 2.2.1, 2.3.0 and 2.3.3 matched 2.3.4 exactly, and
+the structure hash of every tag from 2.0.0 to 2.3.4 matches (see
+[lilToon shader structure](#liltoon-shader-structure)). 1.x keeps 35 properties that 2.3.4 does not
 have and lacks 3 that it has. Shader Setting changes, encrypted materials and
 custom shaders were not measured.
 
@@ -66,10 +68,12 @@ the version the material was made in:
   `_BacklightColor` and `_BacklightColorTex`. Before 2.3.0 the alpha was
   ignored, so a material with alpha below 1 becomes darker.
 - 2.1.0 changed the environment light blend of shadow color (visible only under
-  strong ambient light) and computes Outline Lit per pixel.
-- `_EnvRimBorder` defaults to 0.85 in 2.0.0-2.1.9 and 3.0 from 2.1.10.
-  Migration keeps stored values, so a material created with the old default
-  exports 0.85.
+  strong ambient light) and clamps the UV1 used by `_MatCapBlendUV1` to 0-1.
+- Outline Lit is computed per vertex in 2.1.0 and per pixel in 2.1.10.
+
+`_EnvRimBorder` (the VRC Light Volumes rim) defaults to 0.85 in 2.0.0-2.1.9
+and 3.0 from 2.1.10, and migration keeps the stored value. The exporter does
+not write this property, so the difference does not reach the exported file.
 
 These are lilToon's own changes. Correcting them in the exporter would add
 per-version conversions that this project does not maintain.
