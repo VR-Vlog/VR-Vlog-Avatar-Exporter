@@ -14,6 +14,12 @@ namespace VRVlog.LilToonExporter
             ("EyeBlinkLeft", "EyeBlinkRight"), ("Fcl_EYE_Close_L", "Fcl_EYE_Close_R"),
             ("eye_blink_1_L", "eye_blink_1_R"), ("eye_blink_2_L", "eye_blink_2_R")
         };
+        // Consulted only when no name above and no Unified Expressions closure
+        // matched, so avatars that already resolved keep their exact choice.
+        static readonly string[] LateBoth = { "eyelid_Blink" };
+        static readonly (string Left, string Right)[] LatePairs = {
+            ("eyelid_Blink.L", "eyelid_Blink.R"), ("vrc.blink_left", "vrc.blink_right")
+        };
 
         internal static int PartialFamily(string shape, bool left)
         {
@@ -46,6 +52,17 @@ namespace VRVlog.LilToonExporter
             var unified = UnifiedCandidates(names, null);
             foreach (var canonical in new[] { "EyeClosed", "EyeClosedLeft", "EyeClosedRight" })
                 if (unified.TryGetValue(canonical, out var index) && seen.Add(index)) yield return index;
+            foreach (var name in LateBoth)
+            {
+                var index = Unique(names, name);
+                if (index >= 0 && seen.Add(index)) yield return index;
+            }
+            foreach (var pair in LatePairs)
+                foreach (var name in new[] { pair.Left, pair.Right })
+                {
+                    var index = Unique(names, name);
+                    if (index >= 0 && seen.Add(index)) yield return index;
+                }
         }
 
         internal static int Unique(IReadOnlyList<string> names, string name, StringComparison comparison = StringComparison.OrdinalIgnoreCase)
@@ -140,6 +157,21 @@ namespace VRVlog.LilToonExporter
                     // the other eye. Complete legacy pairs still win above.
                     if (allowPartial && (hasLeft || hasRight))
                     { partialLeft = hasLeft ? left : -1; partialRight = hasRight ? right : -1; }
+                }
+            }
+            if (!partial && result[0] < 0 && result[1] < 0 && result[2] < 0)
+            {
+                foreach (var name in LateBoth)
+                {
+                    var index = Unique(names, name);
+                    if (index == -2) return new[] { -2, -2, -2 };
+                    if (index >= 0) { result[0] = index; break; }
+                }
+                foreach (var pair in LatePairs)
+                {
+                    var left = Unique(names, pair.Left); var right = Unique(names, pair.Right);
+                    if (left == -2 || right == -2) return new[] { -2, -2, -2 };
+                    if (left >= 0 && right >= 0) { result[1] = left; result[2] = right; break; }
                 }
             }
             if (allowPartial && result[1] < 0 && result[2] < 0) { result[1] = partialLeft; result[2] = partialRight; }

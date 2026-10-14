@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+REPOSITORY = "VR-Vlog/VR-Vlog-Avatar-Exporter"
 MAX_PACKAGE_BYTES = 20 * 1024 * 1024
 
 

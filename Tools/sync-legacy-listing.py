@@ -8,14 +8,17 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import urllib.parse
 import urllib.request
 
-SOURCE_URL = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
+SOURCE_URL = "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/index.json"
 LEGACY_URL = "https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/index.json"
 REPOSITORY_ID = "com.vrvlog.packages"
 EXPORTER = "com.vrvlog.liltoon-vrm-exporter"
-RELEASE_PREFIX = "https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
+RELEASE_PREFIX = "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/download/"
+PREVIOUS_RELEASE_PREFIX = "https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
 HISTORICAL_RELEASE_PREFIX = "https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/releases/download/"
+RELEASE_PREFIXES = (RELEASE_PREFIX, PREVIOUS_RELEASE_PREFIX, HISTORICAL_RELEASE_PREFIX)
 MAX_BYTES = 4 * 1024 * 1024
 
 
@@ -29,9 +32,12 @@ def unique_object(pairs):
 
 
 def parse_listing(raw, expected_url, *, allow_historical_urls=False):
+    # Retain keyword compatibility; fixed transfer/rename aliases are valid on
+    # every endpoint because preserved versions can carry their original URLs.
     if len(raw) > MAX_BYTES:
         raise ValueError("Listing exceeds the size limit")
-    data = json.loads(raw, object_pairs_hook=unique_object)
+    data = json.loads(raw, object_pairs_hook=unique_object,
+                      parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Non-finite JSON number")))
     if not isinstance(data, dict) or data.get("id") != REPOSITORY_ID:
         raise ValueError("Unexpected repository identity")
     if data.get("url") != expected_url:
@@ -42,18 +48,30 @@ def parse_listing(raw, expected_url, *, allow_historical_urls=False):
     ):
         raise ValueError("Exporter or required dependencies are missing")
     for name, package in packages.items():
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name):
+            raise ValueError("Invalid package name")
         versions = package.get("versions") if isinstance(package, dict) else None
         if not isinstance(versions, dict) or not versions:
             raise ValueError(f"Missing versions: {name}")
         for version, manifest in versions.items():
+            if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+-]*", version):
+                raise ValueError("Invalid package version")
             if not isinstance(manifest, dict) or manifest.get("name") != name or manifest.get("version") != version:
                 raise ValueError(f"Package identity mismatch: {name} {version}")
-            if not re.fullmatch(r"[0-9a-f]{64}", str(manifest.get("zipSHA256", ""))):
+            if not isinstance(manifest.get("zipSHA256"), str) or not re.fullmatch(r"[0-9a-f]{64}", manifest["zipSHA256"]):
                 raise ValueError(f"Missing ZIP checksum: {name} {version}")
             url = manifest.get("url")
-            prefixes = (RELEASE_PREFIX, HISTORICAL_RELEASE_PREFIX) if allow_historical_urls else (RELEASE_PREFIX,)
-            if not isinstance(url, str) or not url.startswith(prefixes):
+            if not isinstance(url, str):
                 raise ValueError(f"Unexpected ZIP origin: {name} {version}")
+            parsed = urllib.parse.urlsplit(url)
+            prefix = next((prefix for prefix in RELEASE_PREFIXES if url.startswith(prefix)), None)
+            if parsed.scheme != "https" or parsed.netloc != "github.com" or parsed.query or parsed.fragment or prefix is None:
+                raise ValueError(f"Unexpected ZIP origin: {name} {version}")
+            suffix = url[len(prefix):].split("/")
+            if len(suffix) != 2 or not suffix[0] or suffix[1] != f"{name}-{version}.zip":
+                raise ValueError(f"Unexpected ZIP asset path: {name} {version}")
+            if name == EXPORTER and suffix[0] != f"v{version}":
+                raise ValueError("Exporter release tag differs from its version")
     return data
 
 
@@ -83,20 +101,32 @@ def publication_lock(path):
 
 
 def make_legacy(source, previous=None):
+    parse_listing(json.dumps(source, allow_nan=False).encode(), SOURCE_URL)
     if previous is not None:
+        parse_listing(json.dumps(previous, allow_nan=False).encode(), LEGACY_URL)
         for name, package in previous["packages"].items():
             for version, old in package["versions"].items():
                 current = source["packages"].get(name, {}).get("versions", {}).get(version)
-                if current is None or current["zipSHA256"] != old["zipSHA256"]:
-                    raise ValueError(f"Published version removed or ZIP changed: {name} {version}")
+                def comparable(manifest):
+                    result = copy.deepcopy(manifest)
+                    prefix = next(prefix for prefix in RELEASE_PREFIXES if result["url"].startswith(prefix))
+                    result["url"] = result["url"][len(prefix):]
+                    return result
+                if current is None or comparable(current) != comparable(old):
+                    raise ValueError(f"Published version removed or manifest changed: {name} {version}")
     legacy = copy.deepcopy(source)
     legacy["url"] = LEGACY_URL
     return (json.dumps(legacy, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def download_listing():
     request = urllib.request.Request(SOURCE_URL, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
         if response.status != 200 or response.url != SOURCE_URL:
             raise ValueError("Unexpected source response or redirect")
         if response.headers.get_content_type() != "application/json":

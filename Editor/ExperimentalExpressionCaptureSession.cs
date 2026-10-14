@@ -156,7 +156,7 @@ namespace VRVlog.LilToonExporter
                 });
                 if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))
-                    if (!NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
+                    if (behaviour != null && !NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
                 foreach (var skin in Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 { skin.updateWhenOffscreen = true; skin.forceMatrixRecalculationPerRender = true; }
                 foreach (var renderer in ExportRendererSelection.Enumerate(Copy).OfType<SkinnedMeshRenderer>())

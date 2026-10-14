@@ -253,6 +253,21 @@ class WorkflowTrustTests(unittest.TestCase):
             with self.subTest(change=change), self.assertRaises(ValueError):
                 policy.check("build-listing.yml", data)
 
+    def test_organization_credential_stays_out_of_preparation_and_untrusted_steps(self):
+        for target in ("prepare-publication", "checkout", "pr-validation"):
+            data = self.workflow("validate.yml" if target == "pr-validation" else "build-listing.yml")
+            job = data["jobs"]["schema" if target == "pr-validation" else "build-listing"]
+            step = next(s for s in job["steps"] if s.get("id") == target) if target == "prepare-publication" else job["steps"][0]
+            step.setdefault("env", {})["VPM_ORG_MIRROR_TOKEN"] = "${{ secrets.VPM_ORG_MIRROR_TOKEN }}"
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                policy.check("validate.yml" if target == "pr-validation" else "build-listing.yml", data)
+        for identity in ("mirror-preflight", "mirror-deploy-guard", "mirrors"):
+            data = self.workflow("build-listing.yml")
+            step = next(s for s in data["jobs"]["build-listing"]["steps"] if s.get("id") == identity)
+            step["env"].pop("VPM_ORG_MIRROR_TOKEN")
+            with self.subTest(identity=identity), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+
 
 class ValidationReceiptTests(unittest.TestCase):
     def test_mirror_and_publication_regressions_join_every_complete_host_plan(self):
@@ -360,7 +375,7 @@ class ValidationReceiptTests(unittest.TestCase):
 
 class PublicationReceiptTests(unittest.TestCase):
     def run_fixture(self):
-        return {"repository": {"full_name": release.REPOSITORY}, "workflow_id": 123,
+        return {"repository": {"full_name": release.REPOSITORY, "id": release.REPOSITORY_GITHUB_ID}, "workflow_id": 123,
                 "path": release.WORKFLOW, "head_sha": SHA, "head_branch": "main",
                 "event": "workflow_dispatch", "status": "completed", "conclusion": "success"}
 
@@ -404,6 +419,20 @@ class PublicationReceiptTests(unittest.TestCase):
         release.verify_archive(data, SHA, "1.2.3", digest, 42)
         with self.assertRaises(ValueError):
             release.verify_archive(data, SHA, "1.2.3", digest, 43)
+
+    def test_pre_rename_receipt_retains_exact_run_and_package_binding(self):
+        data, digest = self.archive({"repository": release.PRE_RENAME_REPOSITORY})
+        release.verify_run(self.run_fixture(), 123, SHA)
+        release.verify_archive(data, SHA, "1.2.3", digest, 42)
+        with self.assertRaises(ValueError):
+            release.verify_archive(data, "b" * 40, "1.2.3", digest, 42)
+
+    def test_repository_name_alone_cannot_authenticate_a_candidate(self):
+        for identity in (None, 1, True, str(release.REPOSITORY_GITHUB_ID)):
+            run = self.run_fixture()
+            run["repository"]["id"] = identity
+            with self.subTest(identity=identity), self.assertRaises(ValueError):
+                release.verify_run(run, 123, SHA)
 
     def test_duplicate_expired_and_oversize_artifacts_fail(self):
         row = {"name": "release-candidate-" + SHA, "expired": False, "size_in_bytes": 100}

@@ -242,10 +242,10 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var nativePoses = NativePoses(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(), 2, authoredWeight * 100);
                 // A disabled authored route reserves both meshes without
-                // establishing UE support. Verify the automatic safeguard,
+                // establishing UE support. Verify the automatic no-blink fallback,
                 // then opt out of blink for this authored-preservation probe.
                 var noBlink = authoredWeight == 0 && !otherMeshUncovered;
-                if (noBlink) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Authored UE coverage", "Tests"));
+                if (noBlink) AssertExportsWithoutBlink(fixture.Source, "Authored UE coverage");
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored UE coverage", "Tests",
                     blinkOptions: noBlink ? new BlinkExportOptions { Mode = BlinkExportMode.None } : null);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -653,10 +653,9 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 else
                 {
-                    var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source,
-                        "Missing blink safeguard", "Tests", exporterVersion: fullLilToon ? "0.11.5" : null,
-                        lilToonVersion: fullLilToon ? "2.3.4" : null));
-                    Assert.That(error.Message, Does.Contain("閉眼"));
+                    // An unusable route still never waives the blink silently:
+                    // the export falls back to no blink with a warning.
+                    AssertExportsWithoutBlink(fixture.Source, "Missing blink safeguard", fullLilToon);
                 }
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(skin => skin.sharedMesh == fixture.Mesh), Is.True);
                 Assert.That(fixture.Mesh.GetBlendShapeIndex("JawOpen"), Is.EqualTo(1));
@@ -822,8 +821,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var nativePoses = NativePoses(skins, 1, bindingWeight * 100);
                 var usable = nativePoses.Values.Any(value => Vector3.Distance(value.Neutral, value.Endpoint) > .000001f);
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(usable));
-                if (!usable) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source,
-                    "Authored residual safeguard", "Tests", exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!usable) AssertExportsWithoutBlink(fixture.Source, "Authored residual safeguard", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Actual authored residual", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: usable ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1143,8 +1141,7 @@ namespace VRVlog.LilToonExporter.Tests
                 vrm.Expression.CustomClips.Add(clip); fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 var nativePoses = NativePoses(new[] { fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>() }, 1, positiveFirst ? 60 : 0);
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(positiveFirst));
-                if (!positiveFirst) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Disabled first authored target", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!positiveFirst) AssertExportsWithoutBlink(fixture.Source, "Disabled first authored target", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Pinned duplicate target semantics", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: positiveFirst ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1182,8 +1179,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in sourceSkins) { skin.SetBlendShapeWeight(1, rest); skin.sharedMaterial.shader = Shader.Find("lilToon"); }
                 var usable = rest < 200;
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(usable));
-                if (!usable) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Fully resting extended UE target", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!usable) AssertExportsWithoutBlink(fixture.Source, "Fully resting extended UE target", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Extended raw UE frames", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: usable ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1257,12 +1253,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var nativePoses = NativePoses(sourceSkins, 1, authored ? 60 : 100);
                 var usable = nativePoses.Values.Any(value => Vector3.Distance(value.Neutral, value.Endpoint) > .000001f);
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(usable));
-                if (!usable)
-                {
-                    var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Negative curve fully resting safeguard", "Tests",
-                        exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
-                    Assert.That(error.Message, Does.Contain("閉眼"));
-                }
+                if (!usable) AssertExportsWithoutBlink(fixture.Source, "Negative curve fully resting safeguard", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Negative intermediate UE curve", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: usable ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1333,12 +1324,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 var usable = nativeRest.Any(value => Vector3.Distance(value.Value, nativeEnd[value.Key]) > .000001f);
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(usable));
-                if (!usable)
-                {
-                    var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Native negative bracket safeguard", "Tests",
-                        exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
-                    Assert.That(error.Message, Does.Contain("閉眼"));
-                }
+                if (!usable) AssertExportsWithoutBlink(fixture.Source, "Native negative bracket safeguard", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Native negative bracket", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: usable ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1368,6 +1354,19 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Mesh.vertices[0], Is.EqualTo(new Vector3(-.1f, 1.7f, .08f)));
             }
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(baked); Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
+        }
+
+        // Blink fallback (2026-10-13 decision record): a missing blink without a
+        // usable tracking route no longer stops the export. Where this safeguard
+        // used to throw, the export now continues without blink and warns.
+        private static void AssertExportsWithoutBlink(GameObject source, string avatarName, bool fullLilToon = false,
+            bool suppressSharedTextureEmission = false, bool suppressHdrTextureEmission = false)
+        {
+            var warnings = new List<string>();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(source, avatarName, "Tests", warnings,
+                suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission,
+                exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+            Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));
         }
 
         private static void AddTrackingDelta(Mesh mesh, string name, float amount = .02f) =>
@@ -1600,8 +1599,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var originalColor = sourceMaterial.GetColor("_Color"); var originalScale = sourceMaterial.mainTextureScale; var originalOffset = sourceMaterial.mainTextureOffset;
                 vrm.Expression.CustomClips.Add(clip); fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(moving));
-                if (!moving) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Inert material safeguard", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!moving) AssertExportsWithoutBlink(fixture.Source, "Inert material safeguard", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Material endpoint proxy", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: moving ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1701,8 +1699,7 @@ namespace VRVlog.LilToonExporter.Tests
                     MaterialName = material.name, BindType = MaterialColorType.emissionColor, TargetValue = target } };
                 vrm.Expression.CustomClips.Add(clip); fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(moving));
-                if (!moving) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Inert Standard emission", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!moving) AssertExportsWithoutBlink(fixture.Source, "Inert Standard emission", fullLilToon);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Standard emission gamma", "Tests",
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
                     blinkOptions: moving ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
@@ -1759,9 +1756,8 @@ namespace VRVlog.LilToonExporter.Tests
                 vrm.Expression.CustomClips.Add(clip); fixture.Source.AddComponent<Vrm10Instance>().Vrm = vrm;
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source,
                     suppressSharedTextureEmission: sharedSuppressed, suppressHdrTextureEmission: hdrSuppressed), Is.EqualTo(suppressed));
-                if (!suppressed) Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Unsuppressed inert emission safeguard", "Tests",
-                    suppressSharedTextureEmission: sharedSuppressed, suppressHdrTextureEmission: hdrSuppressed,
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
+                if (!suppressed) AssertExportsWithoutBlink(fixture.Source, "Unsuppressed inert emission safeguard", fullLilToon,
+                    sharedSuppressed, hdrSuppressed);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Emission suppression endpoint", "Tests",
                     suppressSharedTextureEmission: sharedSuppressed, suppressHdrTextureEmission: hdrSuppressed,
                     exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,

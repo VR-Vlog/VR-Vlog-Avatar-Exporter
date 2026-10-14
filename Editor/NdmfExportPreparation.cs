@@ -102,10 +102,10 @@ namespace VRVlog.LilToonExporter
 
         // The host protocol shim cannot clone Unity hierarchies; native tests
         // exercise staging, callback suppression and authored enabled states.
-        internal static bool PreservesExportBehaviour(Behaviour behaviour) =>
+        internal static bool PreservesExportBehaviour(Behaviour behaviour) => behaviour != null && (
             behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint") ||
             behaviour.GetType().FullName == PhysBoneSpringExport.PhysBoneType ||
-            behaviour.GetType().FullName == "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider";
+            behaviour.GetType().FullName == "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
 
         internal static GameObject InstantiateOwnedCopy(GameObject source)
         {
@@ -121,6 +121,10 @@ namespace VRVlog.LilToonExporter
                 // A preview scene provides isolation without invalidating the
                 // scene captured by NDMF diagnostics.
                 copy.name = source.name; copy.hideFlags = HideFlags.None;
+                // A Missing Script has no type and appears as a null component.
+                // Remove it from the owned copy only; the source keeps it.
+                foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
+                    UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
                 foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
                 {
                     if (behaviour == null) continue;

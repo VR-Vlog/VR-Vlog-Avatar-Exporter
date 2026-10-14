@@ -2,9 +2,9 @@
 
 ## 脆弱性の非公開報告
 
-このエクスポーターの脆弱性は、[GitHubの非公開脆弱性報告](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/security/advisories/new)から管理者へ報告してください。GitHubアカウントでのログインが必要です。リポジトリの **Security → Advisories → Report a vulnerability** からも開けます。
+このエクスポーターの脆弱性は、[GitHubの非公開脆弱性報告](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/security/advisories/new)から管理者へ報告してください。GitHubアカウントでのログインが必要です。リポジトリの **Security → Advisories → Report a vulnerability** からも開けます。
 
-脆弱性の再現手順や悪用条件を、公開Issue・Pull Request・公開コメントへ投稿しないでください。通常の不具合・改善提案は[公開Issue](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose)で受け付けています。
+脆弱性の再現手順や悪用条件を、公開Issue・Pull Request・公開コメントへ投稿しないでください。通常の不具合・改善提案は[公開Issue](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose)で受け付けています。
 
 可能な範囲で、次の情報を記載してください。
 
@@ -16,13 +16,13 @@
 
 ## 対象バージョン
 
-まず[最新の安定版](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/)で発生するか確認できると調査に役立ちます。旧版・ベータ版で見つかった問題も、該当バージョンを明記して報告できます。修正の対象バージョンと提供方法は、報告の内容に応じて判断します。
+まず[最新の安定版](https://vrvlog.fun/exporter/)で発生するか確認できると調査に役立ちます。旧版・ベータ版で見つかった問題も、該当バージョンを明記して報告できます。修正の対象バージョンと提供方法は、報告の内容に応じて判断します。
 
 ## Private vulnerability reports
 
-Report vulnerabilities in this exporter through [GitHub private vulnerability reporting](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/security/advisories/new). Sign in with a GitHub account. The form is also available under **Security → Advisories → Report a vulnerability** in this repository.
+Report vulnerabilities in this exporter through [GitHub private vulnerability reporting](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/security/advisories/new). Sign in with a GitHub account. The form is also available under **Security → Advisories → Report a vulnerability** in this repository.
 
-Do not post vulnerability reproduction details or exploit conditions in public issues, pull requests or comments. Use [public issues](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues/new/choose) for ordinary bugs and improvement proposals.
+Do not post vulnerability reproduction details or exploit conditions in public issues, pull requests or comments. Use [public issues](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose) for ordinary bugs and improvement proposals.
 
 Where possible, include:
 
@@ -34,7 +34,7 @@ Even in a private report, do not send credentials, private keys, purchased avata
 
 ## Versions
 
-Checking the [latest stable release](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/) can help investigation. Reports about older or beta versions are also welcome; specify the affected version. The version and delivery method of a fix will be determined based on the report.
+Checking the [latest stable release](https://vrvlog.fun/exporter/) can help investigation. Reports about older or beta versions are also welcome; specify the affected version. The version and delivery method of a fix will be determined based on the report.
 
 ## 管理者の通知 / Maintainer notifications
 
