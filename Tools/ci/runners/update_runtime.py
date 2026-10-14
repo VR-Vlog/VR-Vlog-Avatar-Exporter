@@ -50,22 +50,24 @@ def sha(value):
     return hashlib.sha256(value).hexdigest()
 
 
-def read(path, owner=0, staging=False):
+def read(path, owner=0, staging=False, limit=1024 * 1024):
     path = Path(path)
     if not staging:
         supervisor.protected(path)
     before = path.lstat()
     need(stat.S_ISREG(before.st_mode) and before.st_uid == owner and before.st_nlink == 1
-         and not before.st_mode & 0o022 and before.st_size <= 1024 * 1024, 'REGULAR_FILE_REQUIRED')
+         and not before.st_mode & 0o022 and before.st_size <= limit, 'REGULAR_FILE_REQUIRED')
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         opened = os.fstat(fd)
-        need((opened.st_dev, opened.st_ino) == (before.st_dev, before.st_ino), 'FILE_CHANGED')
-        with os.fdopen(fd, 'rb', closefd=False) as stream:
-            raw = stream.read(1024 * 1024 + 1)
-        after = os.fstat(fd)
         fields = ('st_dev', 'st_ino', 'st_mode', 'st_nlink', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns')
-        need(len(raw) == before.st_size and all(getattr(after, key) == getattr(opened, key) for key in fields), 'FILE_CHANGED')
+        need(all(getattr(opened, key) == getattr(before, key) for key in fields), 'FILE_CHANGED')
+        with os.fdopen(fd, 'rb', closefd=False) as stream:
+            raw = stream.read(limit + 1)
+        after = os.fstat(fd)
+        path_after = path.lstat()
+        need(len(raw) == before.st_size and all(getattr(after, key) == getattr(opened, key)
+             == getattr(path_after, key) for key in fields), 'FILE_CHANGED')
         return raw
     finally:
         os.close(fd)
@@ -112,6 +114,26 @@ def existing_seat(configuration):
     return expected
 
 
+def canonical_registry(configuration, registry):
+    policy.validate_registry(registry, allow_legacy=True)
+    requested = {configuration['seat']['repository'], registry['repository'], policy.REPOSITORY}
+    need(requested <= policy.LEGACY_REPOSITORIES | {policy.REPOSITORY}, 'REPOSITORY_ALIAS_SCOPE')
+    proof = {}
+    for repository in sorted(requested):
+        controller = dict(configuration, seat=dict(configuration['seat'], repository=repository),
+                          controller_gh=str(supervisor.CONTROLLER_GH))
+        metadata = supervisor.api(controller, 'repos/' + repository, 'GET')
+        need(isinstance(metadata, dict) and type(metadata.get('id')) is int
+             and metadata['id'] == policy.REPOSITORY_ID and metadata.get('full_name') == policy.REPOSITORY,
+             'NATIVE_REPOSITORY_RENAME_PROOF')
+        proof[repository] = {'id': metadata['id'], 'full_name': metadata['full_name']}
+    # This single field is the entire migration. Source SHA, approval input and
+    # every historical registration ID/name/group/label stay exactly unchanged.
+    canonical_value = dict(registry, repository=policy.REPOSITORY)
+    policy.validate_registry(canonical_value)
+    return canonical_value, proof
+
+
 def snapshot():
     unloaded()
     ci_processes.verify_uid_idle(UID)
@@ -126,7 +148,11 @@ def snapshot():
          and arguments and arguments[0] == str(PYTHON)
          and arguments[-2:] == ['--seat', 'exporter'], 'EXISTING_EXPORTER_SERVICE')
     supervisor.protected(PYTHON)
-    preserved = {str(REGISTRY): sha(read(REGISTRY)), str(ROOT / 'approvals.json'): sha(read(ROOT / 'approvals.json'))}
+    registry_raw = read(REGISTRY, limit=4 * 1024 * 1024)
+    registry = json.loads(registry_raw)
+    updated_registry, repository_proof = canonical_registry(configuration, registry)
+    preserved = {'registry_history_sha256': sha(canonical({key: value for key, value in registry.items() if key != 'repository'})),
+                 str(ROOT / 'approvals.json'): sha(read(ROOT / 'approvals.json'))}
     if os.path.lexists(CURRENT):
         raw = read(CURRENT); current = json.loads(raw)
         need(current.get('seat_id') == 'exporter' and current.get('uid') == UID
@@ -146,7 +172,8 @@ def snapshot():
          and info.st_uid == OWNER and stat.S_IMODE(info.st_mode) == 0o700, 'RESERVATION_DIRECTORY')
     need(not any(p.name.startswith('general-exporter-') for p in pending.iterdir()), 'EXPORTER_ACTIVE_RESERVATION')
     return {'configuration': configuration, 'definition': definition,
-            'baseline_sha256': {str(p): sha(read(p)) for p in (CONFIG, PLIST, HOOK)},
+            'baseline_sha256': dict({str(p): sha(read(p)) for p in (CONFIG, PLIST, HOOK)}, **{str(REGISTRY): sha(registry_raw)}),
+            'registry': registry, 'canonical_registry': updated_registry, 'repository_proof': repository_proof,
             'preserved': preserved,
             'executables': {str(path): [getattr(info, field) for field in
                 ('st_dev', 'st_ino', 'st_mode', 'st_uid', 'st_gid', 'st_size', 'st_mtime_ns', 'st_ctime_ns')]
@@ -163,7 +190,8 @@ def create(path, value, mode):
             stream.write(value); stream.flush(); os.fsync(fd)
     finally:
         os.close(fd)
-    need(read(path) == value, 'CREATED_BYTE_READBACK')
+    need(len(value) <= 12 * 1024 * 1024 and read(path, limit=max(len(value), 1024 * 1024)) == value,
+         'CREATED_BYTE_READBACK')
     sync_directory(path.parent)
 
 
@@ -189,7 +217,7 @@ def replace(path, value):
     create(temporary, value, stat.S_IMODE(before.st_mode))
     os.replace(temporary, path)
     sync_directory(path.parent)
-    need(read(path) == value, 'REPLACED_BYTE_READBACK')
+    need(read(path, limit=max(len(value), 1024 * 1024)) == value, 'REPLACED_BYTE_READBACK')
 
 
 def run(stage, manifest_pin, plan_pin=None):
@@ -227,13 +255,17 @@ def run(stage, manifest_pin, plan_pin=None):
         for name, value in payload.items():
             create(code / name, value, 0o644)
         need(snapshot() == before, 'STATE_CHANGED_BEFORE_SWITCH')
+        if before['registry'] != before['canonical_registry']:
+            replace(REGISTRY, canonical(before['canonical_registry']))
         replace(CONFIG, canonical(configuration))
         replace(HOOK, hook)
         replace(PLIST, plistlib.dumps(definition))
         after = snapshot()
-        need(after['preserved'] == before['preserved'], 'PRESERVED_STATE_CHANGED')
+        need(after['preserved'] == before['preserved'] and after['registry'] == before['canonical_registry'],
+             'PRESERVED_STATE_CHANGED')
         result = {'status': 'installed_stopped', 'source_sha': manifest['source_sha'],
-                  'registration_mutated': False, 'credentials_read': False,
+                  'registration_mutated': False, 'registry_repository_changed': before['registry'] != before['canonical_registry'],
+                  'credentials_read': False,
                   'services_started': False, 'online_proven': False, 'journal': str(journal)}
         create(ROOT / ('exporter-runtime-update-' + manifest['source_sha'] + '-completed.json'), canonical(result), 0o600)
         return result

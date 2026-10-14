@@ -1,8 +1,8 @@
-import importlib.util
 import json
 from pathlib import Path
 import signal
 import sys
+import os
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -105,6 +105,100 @@ class PolicyTests(unittest.TestCase):
                         dict(approval, approval_input_id='freeform')):
             with self.assertRaises(ValueError):
                 policy.authorize(policy.SEATS['exporter'], run, environment, pr, [changed])
+
+
+def registry(repository=policy.REPOSITORY):
+    return {'schema': 1, 'repository': repository, 'source_sha': 'c' * 40,
+            'approval_input_id': 'discord-input-abc123', 'registrations': [
+                {'id': 21, 'name': 'exporter-general-mac-mini-' + 'd' * 32,
+                 'labels': ['exporter-general-mac-arm64'], 'group_id': 1, 'group_name': 'Default'}]}
+
+
+class RegistryTests(unittest.TestCase):
+    def test_rename_requires_native_same_repository_id_and_preserves_all_history(self):
+        old = 'mitsuya0077/VR-Vlog-lilToon-Exporter'
+        before = registry(old)
+        configuration = {'seat': {'repository': old}}
+        with mock.patch.object(supervisor, 'api', return_value={'id': policy.REPOSITORY_ID, 'full_name': policy.REPOSITORY}) as api:
+            after, proof = updater.canonical_registry(configuration, before)
+        self.assertEqual(set(proof), {old, policy.REPOSITORY})
+        self.assertEqual(api.call_count, 2)
+        self.assertEqual(after, dict(before, repository=policy.REPOSITORY))
+        self.assertEqual(before, registry(old))
+        self.assertEqual(after['registrations'], before['registrations'])
+        self.assertEqual((after['source_sha'], after['approval_input_id']),
+                         (before['source_sha'], before['approval_input_id']))
+        policy.validate_registry(after)
+        with self.assertRaises(ValueError):
+            policy.validate_registry(before)
+
+    def test_foreign_repo_or_incomplete_history_cannot_migrate(self):
+        configuration = {'seat': {'repository': 'mitsuya0077/VR-Vlog-lilToon-Exporter'}}
+        for metadata in ({'id': 123, 'full_name': policy.REPOSITORY},
+                         {'id': policy.REPOSITORY_ID, 'full_name': 'outside/fork'},
+                         {'id': True, 'full_name': policy.REPOSITORY}, {}):
+            with mock.patch.object(supervisor, 'api', return_value=metadata), self.assertRaises(ValueError):
+                updater.canonical_registry(configuration, registry(configuration['seat']['repository']))
+        for field in ('source_sha', 'approval_input_id', 'schema'):
+            malformed = registry(); malformed.pop(field)
+            with mock.patch.object(supervisor, 'api') as api, self.assertRaises(ValueError):
+                updater.canonical_registry(configuration, malformed)
+            api.assert_not_called()
+        for change in ({'labels': ['self-hosted']}, {'id': True}, {'group_id': -1}, {'name': 'foreign-runner'}):
+            malformed = registry(); malformed['registrations'][0].update(change)
+            with self.assertRaises(ValueError):
+                policy.validate_registry(malformed)
+
+
+class FileBoundaryTests(unittest.TestCase):
+    def file(self, directory):
+        path = Path(directory) / 'input.py'
+        path.write_bytes(b'pass\n'); path.chmod(0o600)
+        return path
+
+    def test_stable_owned_file_is_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.file(directory)
+            self.assertEqual(updater.read(path, os.getuid(), staging=True), b'pass\n')
+
+    def test_permission_change_between_lstat_and_open_is_rejected(self):
+        real_open = updater.os.open
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.file(directory)
+            def changed_open(name, flags):
+                path.chmod(0o666)
+                return real_open(name, flags)
+            with mock.patch.object(updater.os, 'open', side_effect=changed_open), self.assertRaisesRegex(ValueError, 'FILE_CHANGED'):
+                updater.read(path, os.getuid(), staging=True)
+
+    def test_path_replacement_after_read_is_rejected(self):
+        real_fstat = updater.os.fstat
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.file(directory); calls = 0
+            def changed_after(fd):
+                nonlocal calls
+                calls += 1
+                info = real_fstat(fd)
+                if calls == 2:
+                    replacement = Path(directory) / 'replacement'
+                    replacement.write_bytes(b'pass\n'); replacement.chmod(0o600)
+                    replacement.replace(path)
+                return info
+            with mock.patch.object(updater.os, 'fstat', side_effect=changed_after), self.assertRaisesRegex(ValueError, 'FILE_CHANGED'):
+                updater.read(path, os.getuid(), staging=True)
+
+    def test_descriptor_metadata_change_during_read_is_rejected(self):
+        real_fstat = updater.os.fstat
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.file(directory); calls = 0
+            def changed_after(fd):
+                nonlocal calls
+                calls += 1
+                if calls == 2:
+                    path.chmod(0o644)
+                return real_fstat(fd)
+            with mock.patch.object(updater.os, 'fstat', side_effect=changed_after), self.assertRaisesRegex(ValueError, 'FILE_CHANGED'):
+                updater.read(path, os.getuid(), staging=True)
 
 
 class MigrationTests(unittest.TestCase):

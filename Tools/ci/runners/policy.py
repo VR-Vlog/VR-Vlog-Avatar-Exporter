@@ -2,6 +2,7 @@
 import re
 
 REPOSITORY = 'VR-Vlog/VR-Vlog-Avatar-Exporter'
+REPOSITORY_ID = 1355769104
 LEGACY_REPOSITORIES = frozenset(('mitsuya0077/VR-Vlog-lilToon-Exporter', 'VR-Vlog/VR-Vlog-lilToon-Exporter'))
 ACTORS = frozenset(('mitsuya0077', 'mkc1370', 'mirukudasi'))
 SEATS = {
@@ -63,3 +64,32 @@ def authorize(seat, run, environment, pr=None, approvals=()):
         raise ValueError('Checkout revision differs from the run')
     return {'repository': repository, 'run_id': run['id'], 'run_attempt': run['run_attempt'],
             'head_sha': run['head_sha'], 'checkout_sha': environment['GITHUB_SHA'], 'workflow': path}
+
+
+def validate_registry(registry, *, allow_legacy=False):
+    """Require complete root-written registration history; never accept labels alone."""
+    repositories = LEGACY_REPOSITORIES | {REPOSITORY} if allow_legacy else {REPOSITORY}
+    if (not isinstance(registry, dict)
+            or set(registry) != {'schema', 'repository', 'source_sha', 'approval_input_id', 'registrations'}
+            or type(registry.get('schema')) is not int or registry['schema'] != 1
+            or registry.get('repository') not in repositories
+            or not isinstance(registry.get('source_sha'), str)
+            or not re.fullmatch('[0-9a-f]{40}', registry['source_sha'])
+            or not isinstance(registry.get('approval_input_id'), str)
+            or not re.fullmatch('discord-input-[0-9a-f]+', registry['approval_input_id'])
+            or not isinstance(registry.get('registrations'), list)
+            or not 0 <= len(registry['registrations']) <= 10000):
+        raise ValueError('Exporter registry provenance is incomplete')
+    for record in registry['registrations']:
+        if (not isinstance(record, dict) or set(record) != {'id', 'name', 'labels', 'group_id', 'group_name'}
+                or not positive(record.get('id')) or not positive(record.get('group_id'))
+                or not isinstance(record.get('name'), str)
+                or not re.fullmatch('exporter-general-mac-mini-[0-9a-f]{32}', record['name'])
+                or record.get('labels') != ['exporter-general-mac-arm64']
+                or not isinstance(record.get('group_name'), str)
+                or not record['group_name'].strip() or record['group_name'] != record['group_name'].strip()
+                or len(record['group_name']) > 512 or any(ord(c) < 32 for c in record['group_name'])):
+            raise ValueError('Exporter registration history is not authentic')
+    if len({record['id'] for record in registry['registrations']}) != len(registry['registrations']):
+        raise ValueError('Exporter registration history is ambiguous')
+    return registry

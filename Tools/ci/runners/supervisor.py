@@ -24,7 +24,7 @@ import time
 import uuid
 
 import ci_processes
-from policy import SEATS, authorize, positive
+from policy import SEATS, authorize, positive, validate_registry
 from resources import collect_metrics
 
 ROOT = Path('/Library/Application Support/mySI-CI')
@@ -96,7 +96,8 @@ def write_json(path, value):
     os.replace(temporary, path)
 
 def api(config, endpoint, method='GET', allow_missing=False):
-    if not endpoint.startswith('repos/' + config['seat']['repository'] + '/'):
+    repository_endpoint = 'repos/' + config['seat']['repository']
+    if endpoint != repository_endpoint and not endpoint.startswith(repository_endpoint + '/'):
         raise ValueError('Controller API outside the selected repository')
     # A system LaunchDaemon has no owner's GUI bootstrap/keychain session.
     # Use that existing session only for the controller API process; CI jobs
@@ -492,6 +493,7 @@ def cleanup_dotnet_group(state):
 
 def prepare_runner(config, account):
     seat = config['seat']
+    validate_registry(json.loads(protected(ROOT / 'registries/exporter.json').read_text()))
     archive_path = protected(ROOT / 'runner.tar.gz')
     handles = allocation_reservation(config, archive_path)
     try:
@@ -572,9 +574,10 @@ def prepare_runner(config, account):
         record = {'id': runner_id, 'name': runner_name, 'labels': current['runner_labels'],
                   'group_id': marker['poolId'], 'group_name': marker['poolName']}
         registry_path = ROOT / 'registries' / 'exporter.json'
-        registry = json.loads(protected(registry_path).read_text())
+        registry = validate_registry(json.loads(protected(registry_path).read_text()))
         registry['registrations'].append(record)
         registry['registrations'] = registry['registrations'][-10000:]
+        validate_registry(registry)
         write_json(registry_path, registry)
         return generation, application, current, environment, record
     finally:
