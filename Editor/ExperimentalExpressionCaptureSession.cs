@@ -37,6 +37,8 @@ namespace VRVlog.LilToonExporter
             public List<PoseReference> ManualPoses = new List<PoseReference>();
             public string[] ExcludedPoses;
             public List<PoseNameReference> PoseNames;
+            // Absent in records saved before emotion presets: no assignment.
+            public List<PresetAssignment> Presets;
         }
 
         internal sealed class Channel
@@ -413,7 +415,8 @@ namespace VRVlog.LilToonExporter
             return JsonUtility.ToJson(new Settings { MeshHashes = Channels.Select(channel => channel.MeshHash).ToArray(),
                 Baseline = ClonePose(Baseline), Expressions = Expressions.Select(ClonePose).ToList(),
                 ManualPoses = PoseOptions.Manual.Select(SavePoseReference).ToList(), ExcludedPoses = PoseOptions.Excluded.ToArray(),
-                PoseNames = PoseOptions.Names.Select(pair => new PoseNameReference { Id = pair.Key, Name = pair.Value }).ToList() }, true);
+                PoseNames = PoseOptions.Names.Select(pair => new PoseNameReference { Id = pair.Key, Name = pair.Value }).ToList(),
+                Presets = SavePresets() }, true);
         }
 
         internal void LoadSettings(string json)
@@ -442,6 +445,7 @@ namespace VRVlog.LilToonExporter
                 if (reference == null || string.IsNullOrEmpty(reference.Id) || poseNames.ContainsKey(reference.Id))
                     throw new InvalidOperationException(ExporterLocalization.T("ポーズの表示名設定が不正です。"));
                 else poseNames.Add(reference.Id, ValidateName(reference.Name));
+            var presets = LoadPresets(settings.Presets);
             // Publish only after validating every row and expression.
             Baseline = ClonePose(settings.Baseline);
             Expressions.Clear(); Expressions.AddRange(settings.Expressions.Select(ClonePose));
@@ -449,24 +453,45 @@ namespace VRVlog.LilToonExporter
             PoseOptions.Excluded.Clear(); PoseOptions.Names.Clear();
             PoseOptions.Excluded.UnionWith(settings.ExcludedPoses ?? Array.Empty<string>());
             foreach (var pair in poseNames) PoseOptions.Names.Add(pair.Key, pair.Value);
+            Presets.Clear();
+            foreach (var assignment in presets) Presets.Add(ParsePreset(assignment.Preset), assignment);
             ApplyUnchecked(Baseline);
         }
 
         internal byte[] Export(string avatarName, string author, ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
-            AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null)
+            AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
+            IEnumerable<PresetAssignment> presets = null)
         {
             RequireValid();
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
+            var presetFaces = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray())
+                .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment))).ToArray();
             // Without explicit faces, retain the ordinary exporter's VRChat
             // menu/FX, authored expressions, metadata and preparation route.
-            if (expressions.Length == 0)
+            if (expressions.Length == 0 && presetFaces.Length == 0)
                 return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: "2.3.4", blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport);
+            // Emotion presets alone keep that ordinary route. They enter its copy
+            // as authored VRM clips, so menu faces and authored presets remain.
+            if (expressions.Length == 0)
+            {
+                var authored = new List<Object>();
+                try
+                {
+                    return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
+                        exporterVersion: LilToonExporterWindow.PackageVersion(),
+                        lilToonVersion: "2.3.4", blinkOptions: blinkOptions, poseOptions: poses,
+                        licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
+                        recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
+                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored));
+                }
+                finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
+            }
             foreach (var pose in expressions)
             {
                 ValidatePose(pose);
@@ -575,6 +600,27 @@ namespace VRVlog.LilToonExporter
                     }
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
+                }
+                // Emotion presets are separate clips. Recorded custom faces keep
+                // their names, so app-side animation references stay valid.
+                foreach (var face in presetFaces)
+                {
+                    var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
+                    var bindings = new List<MorphTargetBinding>();
+                    for (var i = 0; i < Channels.Count; i++)
+                    {
+                        if (Baseline.Rows[i].Weights.SequenceEqual(face.Pose.Rows[i].Weights)) continue;
+                        var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
+                        var target = targetPrefix + serial++;
+                        addedBytes += Channels[i].Mesh.vertexCount * 36L;
+                        if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
+                        AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
+                            Baseline.Rows[i].Weights, face.Pose.Rows[i].Weights, PlayerSettings.legacyClampBlendShapeWeights);
+                        renderer.SetBlendShapeWeight(renderer.sharedMesh.blendShapeCount - 1, 0);
+                        bindings.Add(new MorphTargetBinding(Channels[i].Path, renderer.sharedMesh.blendShapeCount - 1, 1f));
+                    }
+                    expression.MorphTargetBindings = bindings.ToArray();
+                    settings.Expression.AddClip(face.Preset, expression);
                 }
                 // Only exporter-owned isolation records establish material provenance.
                 // Unknown materials generated by plugins never acquire a guessed remedy.

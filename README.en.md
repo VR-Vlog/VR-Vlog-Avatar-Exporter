@@ -63,7 +63,8 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 2. Select **VR Vlog → VRMを書き出す**.
 3. Assign the avatar's root object from the Hierarchy and select **書き出しを準備**.
 4. Select and add expression files, or drop multiple .anim files from Project. Click a name or **確認** to preview. Expressions are optional; model-only export is supported.
-5. Add optional body poses, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**.
+5. Optionally, under **標準の表情（喜怒哀楽）**, choose the faces for the VRM happy, angry, sad, relaxed and surprised presets from added expressions, FaceEmo or controller clips, or a BlendShape. Suggestions from names are marked **自動** and can be cleared with ×. Unassigned presets stay empty.
+6. Add optional body poses, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**.
 
 See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. In 0.11.15, select **QRコードでスマホに送る** in the result section, read the linked privacy policy, check consent, then press **アップロードしてQRを表示**. Scan the QR in a compatible iPhone version of VR Vlog using **モデルを変更 → PCから受け取る**. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
 
