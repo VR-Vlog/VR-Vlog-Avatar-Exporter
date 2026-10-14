@@ -343,6 +343,40 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+#if !VRVLOG_LAN_TRANSFER_CLI
+        [Test]
+        public void OpeningTheSameAvatarDuringATransferOnlyFocusesTheWindow()
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            using (var run = new FlowRun())
+            {
+                // Until a tick sees the upload end, the flow stays in Uploading.
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                var avatar = new UnityEngine.GameObject("vrvlog-app-transfer-reopen", typeof(UnityEngine.Animator));
+                var window = UnityEditor.EditorWindow.GetWindow<AppTransferWindow>(false);
+                try
+                {
+                    typeof(AppTransferWindow).GetField("avatar", field).SetValue(window, avatar);
+                    typeof(AppTransferWindow).GetField("avatarName", field).SetValue(window, "SampleAvatar");
+                    typeof(AppTransferWindow).GetField("flow", field).SetValue(window, run.Flow);
+                    AppTransferWindow.Open(avatar);
+                    Assert.That(UnityEngine.Resources.FindObjectsOfTypeAll<AppTransferWindow>().Length, Is.EqualTo(1));
+                    Assert.That(typeof(AppTransferWindow).GetField("flow", field).GetValue(window), Is.SameAs(run.Flow));
+                    Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                    Assert.That(typeof(AppTransferWindow).GetField("avatarName", field).GetValue(window), Is.EqualTo("SampleAvatar"));
+                    Assert.That(File.Exists(run.Path), Is.True);
+                }
+                finally
+                {
+                    typeof(AppTransferWindow).GetField("flow", field).SetValue(window, null);
+                    window.Close();
+                    UnityEngine.Object.DestroyImmediate(avatar);
+                }
+            }
+        }
+#endif
+
         // One exported snapshot and the flow that adopts it, against the fake service.
         private sealed class FlowRun : IDisposable
         {

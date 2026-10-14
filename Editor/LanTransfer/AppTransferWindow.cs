@@ -71,11 +71,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         public static void Open(GameObject target)
         {
+            foreach (var open in Resources.FindObjectsOfTypeAll<AppTransferWindow>())
+            {
+                if (!open.Transferring) continue;
+                // The same avatar keeps its transfer; only the window comes forward.
+                if (open.avatar == target || !ConfirmEndingTransfer()) { open.Focus(); return; }
+            }
             var window = GetWindow<AppTransferWindow>(false);
             window.Select(target, true);
             window.minSize = FormMinimumSize;
             window.Show();
         }
+
+        private bool Transferring => flow != null && (flow.View == AppTransferView.Uploading || flow.View == AppTransferView.Waiting);
+
+        // Another avatar cancels the upload or the QR on screen, so it is asked first.
+        private static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
+            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
 
         private static string T(string source) => ExporterLocalization.T(source);
         private Texture2D Icon => icon != null ? icon : icon = AppTransferIcon.Create();
@@ -368,7 +380,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     var row = EditorGUILayout.GetControlRect(false, 22f);
                     GUI.Label(Label(row), T("アバター"), EditorStyles.label);
                     var selected = EditorGUI.ObjectField(Field(row), avatar, typeof(GameObject), true) as GameObject;
-                    if (selected != avatar) Select(selected, false);
+                    if (selected != avatar && (!Transferring || ConfirmEndingTransfer())) Select(selected, false);
 
                     EditorGUILayout.Space(6f);
                     row = EditorGUILayout.GetControlRect(false, 22f);
