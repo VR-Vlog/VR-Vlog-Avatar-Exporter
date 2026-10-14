@@ -6,7 +6,7 @@ Bug reports, improvement proposals, documentation fixes and pull requests are we
 
 ## Reports and proposals
 
-Search [existing issues](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/issues) and [pull requests](https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter/pulls) before opening a new report.
+Search [existing issues](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues) and [pull requests](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/pulls) before opening a new report.
 
 For bugs, include the exporter, Unity, lilToon and UniVRM versions, relevant optional plugin versions, reproduction steps, expected behavior and actual behavior. For proposals, describe the problem you want to solve and a concrete example. Discuss changes to dependency support or export formats in an issue before implementing them.
 
@@ -19,8 +19,8 @@ Ordinary bug reports and proposals are public. Do not attach purchased or privat
 1. Fork the repository, then clone with LF line endings and create a branch for your change. For a fork, replace the URL below with your fork URL:
 
    ```sh
-   git -c core.autocrlf=false clone https://github.com/VR-Vlog/VR-Vlog-lilToon-Exporter.git
-   cd VR-Vlog-lilToon-Exporter
+   git -c core.autocrlf=false clone https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter.git
+   cd VR-Vlog-Avatar-Exporter
    git config core.autocrlf false
    git switch -c your-change
    ```
@@ -77,7 +77,7 @@ python3 Tools/build-package.py --output ../exporter-0.11.14.zip
 python3 -c "import hashlib; from pathlib import Path; print(hashlib.sha256(Path('../exporter-0.11.14.zip').read_bytes()).hexdigest())"
 ```
 
-Replace the tag, version and output filename together for another release. Compare the SHA-256 with that version's [VPM listing](https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json). The comparison is valid for the exact tagged source with unchanged checkout bytes; a different commit or edited documentation can change the ZIP. The release workflow's `expected_package_sha256` check uses this same byte equality.
+Replace the tag, version and output filename together for another release. Compare the SHA-256 with that version's [VPM listing](https://vrvlog.fun/exporter/index.json). The comparison is valid for the exact tagged source with unchanged checkout bytes; a different commit or edited documentation can change the ZIP. The release workflow's `expected_package_sha256` check uses this same byte equality.
 
 ## Pull requests
 

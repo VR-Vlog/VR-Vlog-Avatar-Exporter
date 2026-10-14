@@ -26,13 +26,14 @@ WRITE_JOBS = {
     ("build-listing.yml", "build-listing"): {"contents": "read", "pages": "write", "id-token": "write"},
 }
 MIRROR_ENV = {"VPM_MIRROR_TOKEN": "${{ secrets.VPM_MIRROR_TOKEN }}"}
+MIRROR_ORG_ENV = dict(MIRROR_ENV, VPM_ORG_MIRROR_TOKEN="${{ secrets.VPM_ORG_MIRROR_TOKEN }}")
 PUBLICATION_RUNS = {
     "mirror-preflight": "python3 Tools/sync-vpm-mirrors.py --preflight",
     "prepare-publication": 'python3 Tools/prepare-exporter-publication.py --publication-root Website --official-root "$RUNNER_TEMP/official-exporter-publication"',
     "mirror-deploy-guard": 'python3 Tools/sync-vpm-mirrors.py --verify-before-deployment "$RUNNER_TEMP/official-exporter-publication"',
     "mirrors": 'python3 Tools/sync-vpm-mirrors.py --publication-root "$RUNNER_TEMP/official-exporter-publication"',
 }
-PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "sync-vpm-mirrors.py", "prepare-exporter-publication.py")
+PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "VPM_ORG_MIRROR_TOKEN", "sync-vpm-mirrors.py", "prepare-exporter-publication.py")
 DEPLOYMENT = {"id": "deployment", "uses": "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e"}
 
 
@@ -76,6 +77,12 @@ def contains_secret_reference(value):
     return re.search(r"\bsecrets\s*[.\[]", json.dumps(value)) is not None
 
 
+def publication_environment(identity):
+    # Preparation reads only the personal-owner official site; other mirror
+    # commands also access the separately scoped organization compatibility site.
+    return MIRROR_ENV if identity == "prepare-publication" else MIRROR_ORG_ENV
+
+
 def check_publication_step(name, job_name, step):
     """Only the reviewed publication commands may handle the mirror credential."""
     identity = step.get("id")
@@ -87,7 +94,7 @@ def check_publication_step(name, job_name, step):
     require(identity in PUBLICATION_RUNS and step.get("run") == PUBLICATION_RUNS[identity],
             "Unreviewed mirror command or destination override")
     allowed = {"id", "name", "run", "env"}
-    require(step.get("env") == MIRROR_ENV, "Mirror credential must use only the dedicated step environment")
+    require(step.get("env") == publication_environment(identity), "Mirror credential must use only the dedicated step environment")
     require(set(step) <= allowed, "Publication steps must use default success, shell and working directory")
 
 
@@ -97,7 +104,7 @@ def check_step_secrets(name, job_name, step):
     require((name, job_name) == ("build-listing.yml", "build-listing"),
             "Only the existing Pages publication job may reference secrets")
     if step.get("id") in PUBLICATION_RUNS:
-        require(step.get("env") == MIRROR_ENV, "Mirror credential environment is not approved")
+        require(step.get("env") == publication_environment(step["id"]), "Mirror credential environment is not approved")
     else:
         require(step.get("name") == "Generate VPM listing"
                 and step.get("env") == {"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"},

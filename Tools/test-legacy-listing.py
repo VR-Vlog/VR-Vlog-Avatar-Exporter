@@ -20,7 +20,7 @@ def listing():
     return {"name": "VR Vlog Packages", "author": "VR Vlog", "id": sync.REPOSITORY_ID,
             "url": sync.SOURCE_URL, "packages": {
                 name: {"versions": {"1.0.0": {"name": name, "version": "1.0.0",
-                    "zipSHA256": "a" * 64, "url": sync.RELEASE_PREFIX + "v1.0.0/" + name + ".zip"}}}
+                    "zipSHA256": "a" * 64, "url": sync.RELEASE_PREFIX + "v1.0.0/" + name + "-1.0.0.zip"}}}
                 for name in (sync.EXPORTER, "com.vrmc.gltf", "com.vrmc.vrm")}}
 
 
@@ -38,7 +38,8 @@ class LegacyListingTests(unittest.TestCase):
         source = listing()
         previous = json.loads(sync.make_legacy(source))
         new = copy.deepcopy(source["packages"][sync.EXPORTER]["versions"]["1.0.0"])
-        new.update(version="1.1.0", zipSHA256="b" * 64)
+        new.update(version="1.1.0", zipSHA256="b" * 64,
+                   url=sync.RELEASE_PREFIX + "v1.1.0/" + sync.EXPORTER + "-1.1.0.zip")
         source["packages"][sync.EXPORTER]["versions"]["1.1.0"] = new
         self.assertIn("1.1.0", json.loads(sync.make_legacy(source, previous))["packages"][sync.EXPORTER]["versions"])
 
@@ -71,7 +72,7 @@ class LegacyListingTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 sync.parse_listing(raw, sync.SOURCE_URL)
 
-    def test_historical_release_urls_are_accepted_only_for_previous_listing(self):
+    def test_repository_transfer_and_rename_release_aliases_preserve_history(self):
         source = listing()
         historical = json.loads(sync.make_legacy(source))
         for package in historical["packages"].values():
@@ -81,8 +82,30 @@ class LegacyListingTests(unittest.TestCase):
         previous = sync.parse_listing(raw, sync.LEGACY_URL, allow_historical_urls=True)
         self.assertEqual(json.loads(sync.make_legacy(source, previous))["packages"], source["packages"])
         historical["url"] = sync.SOURCE_URL
-        with self.assertRaises(ValueError):
-            sync.parse_listing(json.dumps(historical).encode(), sync.SOURCE_URL)
+        self.assertEqual(sync.parse_listing(json.dumps(historical).encode(), sync.SOURCE_URL), historical)
+        for package in historical["packages"].values():
+            for manifest in package["versions"].values():
+                manifest["url"] = manifest["url"].replace(sync.HISTORICAL_RELEASE_PREFIX, sync.PREVIOUS_RELEASE_PREFIX)
+        historical["url"] = sync.LEGACY_URL
+        previous = sync.parse_listing(json.dumps(historical).encode(), sync.LEGACY_URL)
+        self.assertEqual(json.loads(sync.make_legacy(source, previous))["packages"], source["packages"])
+
+    def test_immutable_manifest_tag_filename_hash_and_exact_origins(self):
+        source = listing()
+        for key, value in (("description", "altered"), ("dependencies", {"other.package": "1.0.0"}),
+                           ("zipSHA256", "b" * 64),
+                           ("url", sync.PREVIOUS_RELEASE_PREFIX + "other-tag/com.vrmc.vrm-1.0.0.zip")):
+            previous = json.loads(sync.make_legacy(source))
+            previous["packages"]["com.vrmc.vrm"]["versions"]["1.0.0"][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                sync.make_legacy(source, previous)
+        valid_url = source["packages"][sync.EXPORTER]["versions"]["1.0.0"]["url"]
+        for url in (valid_url.replace("github.com", "github.com.evil.test"), valid_url + "?token=marker",
+                    valid_url + "#fragment", valid_url.replace("v1.0.0/", "v2.0.0/"),
+                    valid_url.replace("-1.0.0.zip", ".zip"), valid_url.replace("https://", "http://")):
+            bad = copy.deepcopy(source); bad["packages"][sync.EXPORTER]["versions"]["1.0.0"]["url"] = url
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                sync.parse_listing(json.dumps(bad).encode(), sync.SOURCE_URL)
 
     def test_failed_replace_preserves_previous_file_and_cleans_own_temporary_files(self):
         with tempfile.TemporaryDirectory() as folder:
