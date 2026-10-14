@@ -99,7 +99,9 @@ supported version and, for the exporter profiles, the VRChat SDK, NDMF and
 Modular Avatar packages. The script embeds the official lilToon VPM release ZIP
 (default 2.0.0, 2.1.0, 2.1.10, 2.2.1, 2.3.0 and 2.3.4; `--versions` selects others),
 references this checkout with `file:` and `testables`, and records each ZIP's
-source URL and SHA-256. With `--unity`, it opens every project once in batch mode
+source URL and SHA-256 after checking it against the reviewed SHA-256 listed in
+the script (`--sha256 VERSION=SHA256` for an unlisted release). With `--unity`,
+it opens every project once in batch mode
 and records the Unity, lilToon and dependency versions Unity actually resolved in
 `liltoon-version-project.json`; a compile error or a different resolved version
 stops it. Existing folders are never reused. lilToon is not committed here.

@@ -20,7 +20,7 @@
 `Tools/create-liltoon-version-projects.py` で、lilToon の版ごとに空の Unity プロジェクトを 1 つずつ作る。既定の版は 2.0.0／2.1.0／2.1.10／2.2.1／2.3.0／2.3.4。
 
 - Unity 2022.3・Built-in RP の空のプロジェクトに、`Compatibility/README.md` の手順 3 と同じ固定の版（Test Framework 1.4.6・Collections 2.1.4）を入れ、`testables` に Exporter を足す。Exporter は `--exporter` のチェックアウト（既定はこのリポジトリ）を `file:` で参照する。
-- lilToon は GitHub の公式リリースの VPM 用 ZIP（`jp.lilxyzw.liltoon-<版>.zip`）を取得し、`Packages/jp.lilxyzw.liltoon` に埋め込む。取得元の URL と ZIP の SHA-256 をプロジェクトごとの記録（`liltoon-version-project.json`）に残す。ZIP の中の `package.json` の名前と版が指定と違えば止める。ZIP をキャッシュのフォルダに先に置いておけば取得しない。
+- lilToon は GitHub の公式リリースの VPM 用 ZIP（`jp.lilxyzw.liltoon-<版>.zip`）を取得し、`Packages/jp.lilxyzw.liltoon` に埋め込む。ZIP の SHA-256 はスクリプトに版ごとの値（既定の 6 版。2026-10-14 に取得して確かめた値）を持ち、一致しなければ止める。載っていない版は、リリースを確かめたうえで `--sha256 <版>=<値>` で渡す。取得元の URL と SHA-256 はプロジェクトごとの記録（`liltoon-version-project.json`）に残す。ZIP の中の `package.json` の名前と版は展開する前に確かめ、指定と違えば何も書かずに止める。ZIP をキャッシュのフォルダに先に置いておけば取得しない。
 - UniVRM（UniGLTF・VRM）と、`exporter-behavior` に要る VRChat SDK・NDMF・Modular Avatar は、呼び出す側が公式の配布物を展開したフォルダ（`--dependencies`）から各プロジェクトへ埋め込みでコピーする。UniGLTF と VRM が同じ版で、`Compatibility/dependencies.json` の対応版に入っていなければ止める。lilToon と Exporter がこのフォルダに入っていても止める。
 - `--unity` を渡すと、作ったプロジェクトを batch mode で 1 回開いてパッケージを解決・インポートさせ、実際に入った版（`packages-lock.json` と各パッケージの `package.json`、`ProjectVersion.txt`）を記録に書く。指定と違う版が入ったら止める。コンパイルエラーで Unity が 0 以外で終わったプロジェクトは記録しない。
 - 既にあるフォルダには作らない（作り直すときは消してから回す）。
@@ -32,7 +32,7 @@
 - Unity を起動する前に、プロジェクトの `packages-lock.json` から lilToon の入り方（埋め込み・`file:`・registry・git）を読み、そのパッケージの `package.json` の版を期待と比べる。違えば Unity を起動せずに止める。packages-lock が無い、パッケージのフォルダが別の名前を持つ、git のパッケージが `Library/PackageCache` に無い、のいずれも止める。
 - 期待版はリリースの版（`2.3.4` の形）だけを受け付ける。プレリリースや `v2.3.4` は受け付けない。
 - 結果の JSON に `lilToon`（期待版・実際の版・入り方）を書く。`--expect-liltoon` を付けない場合も、読めれば実際の版を書く（読めなければ `installed: null` と理由）。
-- Unity の実行後にもう一度読み、実行中に lilToon が入れ替わっていたら失敗にする。
+- Unity の実行後にもう一度読み、実行中に lilToon が入れ替わっていたら失敗にする。Unity で一度も開いていないプロジェクト（実行前に packages-lock が無い）は比べようがないので、実行後の版を記録するだけにする。
 
 版を読む処理は `Tools/unity_packages.py` に置き、作成スクリプトと runner の両方から使う。
 

@@ -2,7 +2,6 @@
 import json
 import re
 from pathlib import Path
-from urllib.parse import unquote
 
 LILTOON = 'jp.lilxyzw.liltoon'
 VERSION = re.compile(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
@@ -24,8 +23,9 @@ def _package_json(folder):
 
 
 def _local_path(project, reference):
-    # Unity writes "file:<path>" relative to Packages/ or absolute, with forward slashes.
-    path = Path(unquote(reference[len('file:'):]))
+    # Unity writes "file:<path>" relative to Packages/ or absolute, with forward
+    # slashes and without percent-encoding.
+    path = Path(reference[len('file:'):])
     return path if path.is_absolute() else project / 'Packages' / path
 
 
@@ -40,10 +40,15 @@ def installed_package(project, name):
     lock_path = project / 'Packages' / 'packages-lock.json'
     if not lock_path.is_file():
         raise ValueError('packages-lock.json is missing; open the project in Unity once to resolve packages')
-    lock = json.loads(lock_path.read_text(encoding='utf-8-sig')).get('dependencies', {})
-    entry = lock.get(name)
+    lock = json.loads(lock_path.read_text(encoding='utf-8-sig'))
+    dependencies = lock.get('dependencies') if isinstance(lock, dict) else None
+    if not isinstance(dependencies, dict):
+        raise ValueError('packages-lock.json has no dependencies object')
+    entry = dependencies.get(name)
     if entry is None:
         return None
+    if not isinstance(entry, dict):
+        raise ValueError('packages-lock.json entry for ' + name + ' is not an object')
     source = entry.get('source')
     reference = entry.get('version', '')
     if source == 'embedded':
@@ -53,7 +58,8 @@ def installed_package(project, name):
     elif source in ('registry', 'builtin'):
         folder = None
     elif source == 'git':
-        # Git packages are copied to the cache under name@hash; the lock holds the URL.
+        # Unity 2022.3 caches a git package as Library/PackageCache/<name>@<first
+        # 10 hash digits>; the lock holds only the URL. An unexpected layout fails.
         commit = entry.get('hash', '')
         matches = sorted((project / 'Library' / 'PackageCache').glob(name + '@' + commit[:10] + '*')) if commit else []
         if len(matches) != 1:

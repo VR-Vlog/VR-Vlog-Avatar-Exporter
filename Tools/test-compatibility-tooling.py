@@ -24,6 +24,7 @@ spec.loader.exec_module(unity_runner)
 spec = importlib.util.spec_from_file_location('version_projects', Path(__file__).with_name('create-liltoon-version-projects.py'))
 version_projects = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version_projects)
+REVIEWED_LILTOON_SHA256 = dict(version_projects.RELEASE_SHA256)
 
 
 class UnityResultTests(unittest.TestCase):
@@ -533,6 +534,24 @@ class LilToonExpectationTests(unittest.TestCase):
             self.run_main(None, unity_changes_to='2.3.4')
         self.assertEqual(list((Path(self.temp.name) / 'out').glob('*.json')), [])
 
+    def test_project_first_resolved_during_the_run_keeps_the_existing_flow(self):
+        # A project Unity has never opened has no lock; Unity writes it while running.
+        (self.project / 'Packages').mkdir(parents=True)
+        reports = self.run_main(None, unity_changes_to='2.3.4')
+        self.assertEqual(reports[0]['lilToon'], {'expected': None, 'installed': '2.3.4', 'source': 'embedded'})
+        with self.assertRaisesRegex(SystemExit, 'Cannot read'):
+            unity_runner.installed_liltoon(Path(self.temp.name) / 'unopened', '2.3.4')
+
+    def test_malformed_lock_is_unreadable_not_a_crash(self):
+        packages = self.project / 'Packages'
+        packages.mkdir(parents=True)
+        for text in ('[]', '{"dependencies": []}', '{"dependencies": {"jp.lilxyzw.liltoon": "2.3.4"}}', '{'):
+            with self.subTest(text=text):
+                (packages / 'packages-lock.json').write_text(text, encoding='utf-8')
+                self.assertIn('unavailable', unity_runner.installed_liltoon(self.project))
+                with self.assertRaisesRegex(SystemExit, 'Cannot read'):
+                    unity_runner.installed_liltoon(self.project, '2.3.4')
+
 
 class VersionProjectTests(unittest.TestCase):
     # Synthetic packages and archives test the project layout, not real UniVRM or lilToon.
@@ -544,6 +563,10 @@ class VersionProjectTests(unittest.TestCase):
         self.cache = self.base / 'cache'
         self.cache.mkdir()
         self.deps = self.dependencies('deps')
+        # Synthetic archives replace the reviewed release hashes for these tests only.
+        patcher = mock.patch.dict(version_projects.RELEASE_SHA256, clear=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def package(self, folder, name, version):
         folder.mkdir(parents=True, exist_ok=True)
@@ -565,6 +588,7 @@ class VersionProjectTests(unittest.TestCase):
             bundle.writestr('package.json', json.dumps({'name': name, 'version': version}))
             for member in members or ['Shader/lts.shader']:
                 bundle.writestr(member, 'shader')
+        version_projects.RELEASE_SHA256[version] = hashlib.sha256(path.read_bytes()).hexdigest()
         return path
 
     def run_script(self, *args):
@@ -610,6 +634,30 @@ class VersionProjectTests(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, message):
                     version_projects.extract_package(archive, self.base / ('extract' + str(index)) / 'pkg', '2.1.0')
                 self.assertFalse((self.base / ('extract' + str(index)) / 'escape.txt').exists())
+                self.assertFalse((self.base / ('extract' + str(index))).exists(), 'Nothing is extracted from a rejected archive')
+
+    def test_archive_must_match_the_reviewed_hash(self):
+        archive = self.archive('2.3.4')
+        version_projects.RELEASE_SHA256['2.3.4'] = '0' * 64
+        args = ['--output', str(self.base / 'out'), '--dependencies', str(self.deps), '--versions', '2.3.4',
+                '--liltoon-cache', str(self.cache)]
+        with self.assertRaisesRegex(SystemExit, 'SHA-256 is'):
+            self.run_script(*args)
+        self.assertFalse((self.base / 'out' / 'liltoon-2.3.4').exists())
+        del version_projects.RELEASE_SHA256['2.3.4']
+        with self.assertRaisesRegex(SystemExit, 'No reviewed SHA-256'):
+            self.run_script(*args)
+        digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+        for bad in ('2.3.0=' + digest, '2.3.4=' + digest.upper(), '2.3.4=' + digest[:-1]):
+            with self.subTest(sha256=bad), self.assertRaisesRegex(SystemExit, '--sha256 must be'):
+                self.run_script(*args, '--sha256', bad)
+        self.run_script(*args, '--sha256', '2.3.4=' + digest)
+        record = json.loads((self.base / 'out' / 'liltoon-2.3.4' / version_projects.RECORD).read_text())
+        self.assertEqual(record['lilToon']['sha256'], digest)
+
+    def test_reviewed_hashes_cover_the_default_versions(self):
+        for version in version_projects.DEFAULT_VERSIONS:
+            self.assertRegex(REVIEWED_LILTOON_SHA256.get(version, ''), r'\A[0-9a-f]{64}\Z')
 
     def test_projects_embed_each_release_and_record_its_source_and_hash(self):
         for version in ('2.0.0', '2.3.4'):
@@ -635,7 +683,7 @@ class VersionProjectTests(unittest.TestCase):
             self.assertEqual(json.loads((project / 'Packages/manifest.json').read_text())['testables'],
                              ['com.vrvlog.liltoon-vrm-exporter'])
             self.assertTrue((project / 'Assets').is_dir())
-        with self.assertRaisesRegex(SystemExit, 'non-empty'):
+        with self.assertRaisesRegex(SystemExit, 'existing project path'):
             self.run_script(*args)
 
     def test_recorded_versions_come_from_what_unity_resolved(self):

@@ -1130,7 +1130,7 @@ def installed_liltoon(project, expected=None):
             raise SystemExit('--expect-liltoon must be a release version such as 2.3.4: ' + repr(expected))
     try:
         installed = unity_packages.installed_package(project, unity_packages.LILTOON)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError) as error:  # json.JSONDecodeError is a ValueError
         if expected is None:
             return {'expected': None, 'installed': None, 'source': None, 'unavailable': str(error)}
         raise SystemExit('Cannot read the installed lilToon version: ' + str(error))
@@ -1180,7 +1180,9 @@ def main():
         raise SystemExit('Runner package version or Git commit changed during Unity validation')
     # Unity may re-resolve packages while it runs; the receipt must name what was tested.
     liltoon_after = installed_liltoon(args.project, args.expect_liltoon)
-    if liltoon_after['installed'] != liltoon_before['installed']:
+    # A project that Unity has never opened has no lock before the run; only a
+    # version that was readable beforehand can be compared.
+    if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
     report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
               'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,

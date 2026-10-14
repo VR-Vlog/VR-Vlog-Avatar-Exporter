@@ -4,8 +4,9 @@ Each project is Unity 2022.3 with the Built-in render pipeline. It embeds the
 official lilToon VPM release ZIP for that version, copies the pinned UniVRM
 (and optional VRChat SDK / NDMF / Modular Avatar) packages supplied by the
 caller, and references this exporter checkout with `file:` and `testables`.
-lilToon is downloaded from its GitHub release (or a pre-filled cache) and its
-SHA-256 is recorded; nothing is committed or installed into this repository.
+lilToon is downloaded from its GitHub release (or a pre-filled cache); the ZIP
+must match the SHA-256 listed below (or one given with --sha256) and is
+recorded. Nothing is committed or installed into this repository.
 
 With --unity the script opens each new project once in batch mode so Unity
 resolves and imports the packages, then records the versions Unity actually
@@ -14,6 +15,7 @@ resolved (packages-lock.json, the package folders and ProjectVersion.txt).
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -27,6 +29,15 @@ import unity_packages
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VERSIONS = ('2.0.0', '2.1.0', '2.1.10', '2.2.1', '2.3.0', '2.3.4')
 RELEASE_URL = 'https://github.com/lilxyzw/lilToon/releases/download/{0}/jp.lilxyzw.liltoon-{0}.zip'
+# SHA-256 of the official release ZIPs, reviewed when each version was added.
+RELEASE_SHA256 = {
+    '2.0.0': 'a45b411d9c433732d92c332114c3709e83161e4f9ec1bbe23725531337810004',
+    '2.1.0': '3c18da9be8dce0b921459fddbbbae928c558f2b1888f588f26c173a1ac8ec836',
+    '2.1.10': '975cb1e06597f3ce7405cff67073627ca88e8097fb49d1dae88a8141fdfabbd9',
+    '2.2.1': '2aab5ddd64ba6aaed0278301c425bb3188ee8542251d38d9f18a12ff6f10f7b9',
+    '2.3.0': '211c4e5c0168dfa58701b30e13660b4917b409484c910a6d2121e9f783297945',
+    '2.3.4': '34d172761c51aa9469a904704109086aafa6125a4fa0e058766e2ddc73d3b303',
+}
 EXPORTER = 'com.vrvlog.liltoon-vrm-exporter'
 UNIVRM = ('com.vrmc.gltf', 'com.vrmc.vrm')
 # Optional authoring packages needed by the exporter-behavior/integration profiles.
@@ -60,6 +71,8 @@ def read_package(folder):
 
 def dependency_packages(folder, policy):
     """Return {name: (path, version)} for the caller's pinned dependency packages."""
+    if not Path(folder).is_dir():
+        raise SystemExit('--dependencies is not a folder: ' + str(folder))
     found = {}
     for child in sorted(Path(folder).iterdir()):
         if not (child / 'package.json').is_file():
@@ -102,10 +115,23 @@ def fetch_liltoon(version, cache):
     if not target.is_file():
         cache.mkdir(parents=True, exist_ok=True)
         partial = target.with_suffix('.zip.partial')
-        with urllib.request.urlopen(url, timeout=120) as response, open(partial, 'wb') as stream:
-            shutil.copyfileobj(response, stream)
+        try:
+            with urllib.request.urlopen(url, timeout=120) as response, open(partial, 'wb') as stream:
+                shutil.copyfileobj(response, stream)
+        except OSError as error:
+            partial.unlink(missing_ok=True)
+            raise SystemExit('Could not download lilToon ' + version + ' from ' + url + ': ' + str(error))
         partial.replace(target)
     return target, url
+
+
+def verify_archive(archive, version, expected):
+    actual = sha256(archive)
+    if expected is None:
+        raise SystemExit('No reviewed SHA-256 for lilToon ' + version + '; review the release and pass --sha256 ' + version + '=' + actual)
+    if actual != expected:
+        raise SystemExit('lilToon ' + version + ' archive SHA-256 is ' + actual + ', expected ' + expected + ': ' + str(archive))
+    return actual
 
 
 def extract_package(archive, destination, version):
@@ -114,10 +140,15 @@ def extract_package(archive, destination, version):
             path = PurePosixPath(member)
             if path.is_absolute() or '..' in path.parts or ':' in member or '\\' in member:
                 raise SystemExit('Unsafe path in lilToon archive: ' + member)
+        # Check the package identity before writing anything into the project.
+        try:
+            data = json.loads(bundle.read('package.json').decode('utf-8-sig'))
+        except (KeyError, ValueError):
+            raise SystemExit('lilToon archive has no readable package.json at its root: ' + str(archive))
+        if not isinstance(data, dict) or data.get('name') != unity_packages.LILTOON or data.get('version') != version:
+            found = (data.get('name'), data.get('version')) if isinstance(data, dict) else data
+            raise SystemExit('lilToon archive contains ' + repr(found) + ', expected ' + version)
         bundle.extractall(destination)
-    data = read_package(destination)
-    if data['name'] != unity_packages.LILTOON or data['version'] != version:
-        raise SystemExit('lilToon archive contains ' + data['name'] + ' ' + data['version'] + ', expected ' + version)
 
 
 def exporter_identity(exporter):
@@ -134,14 +165,15 @@ def exporter_identity(exporter):
 
 
 def create_project(project, version, archive, dependencies, exporter):
-    if project.exists() and any(project.iterdir()):
-        raise SystemExit('Refusing to reuse a non-empty project folder: ' + str(project))
+    if project.exists() and (not project.is_dir() or any(project.iterdir())):
+        raise SystemExit('Refusing to reuse an existing project path: ' + str(project))
     packages = project / 'Packages'
     (project / 'Assets').mkdir(parents=True)
     packages.mkdir()
     extract_package(archive, packages / unity_packages.LILTOON, version)
     for name, (source, _) in dependencies.items():
-        shutil.copytree(source, packages / name)
+        # Copy the package only, not a checkout's history or Unity caches.
+        shutil.copytree(source, packages / name, ignore=shutil.ignore_patterns('.git', 'Library', 'Temp', 'Logs'))
     (packages / 'manifest.json').write_text(json.dumps(manifest(exporter), indent=2) + '\n', encoding='utf-8')
 
 
@@ -175,6 +207,8 @@ def main():
     parser.add_argument('--liltoon-cache', type=Path, help='Folder of jp.lilxyzw.liltoon-<version>.zip (default: OUTPUT/_liltoon)')
     parser.add_argument('--unity', type=Path, help='Unity 2022.3 executable; open each project once and record resolved versions')
     parser.add_argument('--timeout', type=int, default=3600, help='Seconds per Unity import')
+    parser.add_argument('--sha256', action='append', default=[], metavar='VERSION=SHA256',
+                        help='Reviewed SHA-256 of a requested lilToon release ZIP that this script does not list')
     args = parser.parse_args()
 
     versions = [v.strip() for v in args.versions.split(',') if v.strip()]
@@ -185,6 +219,12 @@ def main():
             raise SystemExit('lilToon versions must be releases such as 2.3.4: ' + repr(version))
     if len(set(versions)) != len(versions):
         raise SystemExit('Duplicate lilToon version')
+    pinned = dict(RELEASE_SHA256)
+    for item in args.sha256:
+        version, _, digest = item.partition('=')
+        if version not in versions or not re.fullmatch(r'[0-9a-f]{64}', digest):
+            raise SystemExit('--sha256 must be VERSION=<64 lowercase hex digits> for a requested version: ' + item)
+        pinned[version] = digest
     policy = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
     dependencies = dependency_packages(args.dependencies, policy)
     exporter = args.exporter.resolve()
@@ -201,11 +241,12 @@ def main():
     for version in versions:
         project = output / ('liltoon-' + version)
         archive, url = fetch_liltoon(version, cache)
+        digest = verify_archive(archive, version, pinned.get(version))
         create_project(project, version, archive, dependencies, exporter)
         record = {
             'schema': 1,
             'project': project.name,
-            'lilToon': {'version': version, 'source': url, 'sha256': sha256(archive)},
+            'lilToon': {'version': version, 'source': url, 'sha256': digest},
             'requested': {name: pinned for name, (_, pinned) in dependencies.items()},
             'exporter': exporter_identity(exporter),
             'resolved': None,
