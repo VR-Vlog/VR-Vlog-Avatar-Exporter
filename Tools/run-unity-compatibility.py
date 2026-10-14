@@ -1014,7 +1014,7 @@ INTEGRATION_VARIANTS = {
 def compatibility_counts(supported):
     counts = {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1}
     if supported:
-        counts.update(DependencyRoundTripTests=2, RendererSelectionTests=4, SkinnedMeshFallbackWeightTests=12)
+        counts.update(DependencyRoundTripTests=2, RendererSelectionTests=4, SkinnedMeshFallbackWeightTests=12, LilToonStructureCheckTests=11)
     return counts
 
 

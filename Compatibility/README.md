@@ -95,7 +95,7 @@ run the generated-fixture behavior profile in a separate, explicitly pinned proj
 python3 Tools/run-unity-compatibility.py --profile exporter-behavior --unity UNITY_EXECUTABLE --project INTEGRATION_TEST_PROJECT --expect-univrm 0.131.0 --expect-unity 2022.3.22f1 --output TEST_RESULTS
 ```
 
-The default `compatibility` profile still requires the same 20 real-package cases
+The default `compatibility` profile requires 31 real-package cases
 in a supported environment, or two diagnostic cases in a missing/unsupported one.
 Both exporter profiles require a supported real UniVRM environment, the packages
 listed in step 3, and the actual VRChat SDK, Modular Avatar and NDMF. Use the
