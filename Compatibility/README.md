@@ -85,6 +85,30 @@ A matching hash is not proof of visual equivalence.
 6. Record exact versions, editor, source commits, results and remaining limits.
    Review the PR and required checks before changing the supported matrix.
 
+## lilToon version projects
+
+To repeat the focused tests for each lilToon release, create one empty project
+per version:
+
+```text
+python3 Tools/create-liltoon-version-projects.py --output VERSION_PROJECTS --dependencies PINNED_PACKAGES --unity UNITY_EXECUTABLE
+```
+
+`PINNED_PACKAGES` contains the unpacked official UniGLTF and VRM packages of one
+supported version and, for the exporter profiles, the VRChat SDK, NDMF and
+Modular Avatar packages. The script embeds the official lilToon VPM release ZIP
+(default 2.0.0, 2.1.0, 2.1.10, 2.2.1, 2.3.0 and 2.3.4; `--versions` selects others),
+references this checkout with `file:` and `testables`, and records each ZIP's
+source URL and SHA-256. With `--unity`, it opens every project once in batch mode
+and records the Unity, lilToon and dependency versions Unity actually resolved in
+`liltoon-version-project.json`; a compile error or a different resolved version
+stops it. Existing folders are never reused. lilToon is not committed here.
+
+Pass `--expect-liltoon VERSION` to the runner. It reads the project's
+`packages-lock.json` and the installed lilToon `package.json` before launching
+Unity and stops on a different, missing or unreadable version. The JSON receipt
+records the expected and installed lilToon version, with or without this option.
+
 ## Exporter behavior and integration regression profiles
 
 Dependency compatibility alone does not prove the one-click export pipeline.
