@@ -104,6 +104,11 @@ BEHAVIOR_CASES = {
     'LegacyBlinkMenuRoundTripTests': {
         'SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport': 2,
     },
+    'NonLilToonExportTests': {
+        'AMissingBehaviourIsNeverTreatedAsAnExportComponent': 1,
+        'AvatarWithoutLilToonStillProducesASnapshot': 1,
+        'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
+    },
     'PhysBoneSpringExportTests': {
         'AParentTailCannotShareTheChildOwnersFirstJoint': 1,
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
@@ -112,6 +117,7 @@ BEHAVIOR_CASES = {
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
+        'PlaneInsideBoundsAndUnknownShapesDoNotStopConversion': 2,
         'EmptyOrTruncatedSerializedSpringsPreventSaving': 1,
         'ExistingTerminalFieldsAndVerificationBaselinesAreProtected': 1,
         'ExistingVrmSettingsWinAndRemovedExplicitRootsDoNotAnimateTheBody': 1,

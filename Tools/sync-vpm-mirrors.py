@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the built VPM snapshot to the two approved mirrors, then read it back.
+"""Publish the built VPM snapshot to the three approved mirrors, then read it back.
 
 The canonical Pages deployment must already have succeeded. Its publication.json
 receipt binds the original rendered page, catalog and every asset; changing that
@@ -11,7 +11,7 @@ before canonical deployment. The CLI requires the approved GitHub Actions run.
 This tool creates
 ordinary commits using GitHub's expectedHeadOid compare-and-swap mutation; it
 does not force push, configure hosting, create releases, or bypass branch rules.
-The token is read from VPM_MIRROR_TOKEN and is used only at api.github.com.
+Credentials are selected per target and used only at api.github.com.
 """
 import argparse
 import base64
@@ -32,15 +32,18 @@ import urllib.parse
 import urllib.request
 import uuid
 
-CANONICAL_BASE = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/"
+CANONICAL_BASE = "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/"
 CANONICAL_URL = CANONICAL_BASE + "index.json"
+ORGANIZATION_URL = "https://vr-vlog.github.io/VR-Vlog-lilToon-Exporter/index.json"
 OFFICIAL_BASE = "https://vrvlog.fun/exporter/"
 OFFICIAL_URL = OFFICIAL_BASE + "index.json"
 LEGACY_URL = "https://mitsuya0077.github.io/VR-Vlog-lilToon-Exporter/index.json"
 REPOSITORY_ID = "com.vrvlog.packages"
 EXPORTER = "com.vrvlog.liltoon-vrm-exporter"
-RELEASE_PATH = "/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
+RELEASE_PATH = "/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/download/"
+PREVIOUS_RELEASE_PATH = "/VR-Vlog/VR-Vlog-lilToon-Exporter/releases/download/"
 HISTORICAL_RELEASE_PATH = "/mitsuya0077/VR-Vlog-lilToon-Exporter/releases/download/"
+RELEASE_PATHS = (RELEASE_PATH, PREVIOUS_RELEASE_PATH, HISTORICAL_RELEASE_PATH)
 MAX_LISTING_BYTES = 4 * 1024 * 1024
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
@@ -51,12 +54,16 @@ MAX_CAS_ATTEMPTS = 4
 MAX_POLLS = 30
 POLL_DELAY = 10
 TOKEN_ENV = "VPM_MIRROR_TOKEN"
+ORG_TOKEN_ENV = "VPM_ORG_MIRROR_TOKEN"
 PUBLICATION_RECEIPT = "publication.json"
 CANONICAL_RECEIPT_URL = CANONICAL_BASE + PUBLICATION_RECEIPT
 OFFICIAL_RECEIPT_URL = OFFICIAL_BASE + PUBLICATION_RECEIPT
-PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-Avatar-Exporter"
+PREVIOUS_PUBLISHER_REPOSITORY = "VR-Vlog/VR-Vlog-lilToon-Exporter"
+PUBLISHER_REPOSITORY_ID = "1355769104"
 PUBLISHER_WORKFLOW = ".github/workflows/build-listing.yml"
 PREFLIGHT_FILENAME = "vpm-mirror-preflight.json"
+COMMIT_QUERY = "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -77,6 +84,7 @@ class Target(NamedTuple):
     prefix: str
     listing_url: str
     branch: str = "main"
+    repository_id: Optional[int] = None
 
     @property
     def listing_path(self):
@@ -85,7 +93,9 @@ class Target(NamedTuple):
 
 OFFICIAL = Target("mitsuya0077/vr-vlog-website", "public/exporter/", OFFICIAL_URL)
 LEGACY = Target("mitsuya0077/mitsuya0077.github.io", "VR-Vlog-lilToon-Exporter/", LEGACY_URL)
-TARGETS = (OFFICIAL, LEGACY)
+ORGANIZATION = Target("VR-Vlog/vr-vlog.github.io", "VR-Vlog-lilToon-Exporter/", ORGANIZATION_URL,
+                      repository_id=1418361148)
+TARGETS = (OFFICIAL, LEGACY, ORGANIZATION)
 
 
 class Entry(NamedTuple):
@@ -140,6 +150,8 @@ def parse_json(raw, limit):
 
 
 def parse_listing(raw, expected_url, *, allow_historical_urls=False):
+    # Keep the old keyword callable; these fixed transfer/rename aliases are
+    # now valid historical releases in every catalog, including the source.
     data = parse_json(raw, MAX_LISTING_BYTES)
     require(isinstance(data, dict) and data.get("id") == REPOSITORY_ID, "Unexpected repository identity")
     require(data.get("url") == expected_url, "Unexpected listing root URL")
@@ -162,8 +174,7 @@ def parse_listing(raw, expected_url, *, allow_historical_urls=False):
                 parsed = urllib.parse.urlsplit(url)
             except ValueError as error:
                 raise SyncError("Invalid package ZIP URL") from error
-            paths = (RELEASE_PATH, HISTORICAL_RELEASE_PATH) if allow_historical_urls else (RELEASE_PATH,)
-            prefix = next((path for path in paths if parsed.path.startswith(path)), None)
+            prefix = next((path for path in RELEASE_PATHS if parsed.path.startswith(path)), None)
             require(parsed.scheme == "https" and parsed.netloc == "github.com" and not parsed.query
                     and not parsed.fragment and prefix is not None, "Unexpected ZIP origin")
             suffix = parsed.path[len(prefix):].split("/")
@@ -179,12 +190,24 @@ def preserve_history(source, previous):
     for name, package in previous["packages"].items():
         for version, old in package["versions"].items():
             current = source["packages"].get(name, {}).get("versions", {}).get(version)
-            require(current is not None and current["zipSHA256"] == old["zipSHA256"],
-                    "A published version would be removed or its ZIP checksum changed")
+            require(current is not None, "A published version would be removed")
+            # Repository transfer/rename aliases identify the same release.
+            # Compare full manifests, normalizing only that approved URL prefix.
+            def historical_manifest(manifest):
+                result = copy.deepcopy(manifest)
+                url = result.get("url")
+                require(isinstance(url, str), "Missing historical ZIP URL")
+                prefix = next(("https://github.com" + path for path in RELEASE_PATHS
+                               if url.startswith("https://github.com" + path)), None)
+                require(prefix is not None, "Unexpected historical ZIP origin")
+                result["url"] = url[len(prefix):]
+                return result
+            require(historical_manifest(current) == historical_manifest(old),
+                    "A published version manifest or ZIP checksum would change")
 
 
 def render_listing(source, listing_url):
-    require(listing_url in (OFFICIAL_URL, LEGACY_URL), "Unapproved mirror listing URL")
+    require(listing_url in tuple(target.listing_url for target in TARGETS), "Unapproved mirror listing URL")
     data = copy.deepcopy(source)
     data["url"] = listing_url
     try:
@@ -219,10 +242,11 @@ def official_asset(path, raw):
     return text.encode("utf-8")
 
 
-def validate_publisher(publisher):
+def validate_publisher(publisher, *, allow_legacy=False):
     require(isinstance(publisher, dict) and set(publisher) ==
             {"repository", "workflow", "run_number", "run_id", "source_commit"}, "Invalid publication publisher context")
-    require(publisher["repository"] == PUBLISHER_REPOSITORY and publisher["workflow"] == PUBLISHER_WORKFLOW,
+    repositories = (PUBLISHER_REPOSITORY, PREVIOUS_PUBLISHER_REPOSITORY) if allow_legacy else (PUBLISHER_REPOSITORY,)
+    require(publisher["repository"] in repositories and publisher["workflow"] == PUBLISHER_WORKFLOW,
             "Unexpected publication publisher identity")
     for key in ("run_number", "run_id"):
         require(type(publisher[key]) is int and 0 < publisher[key] < 2 ** 63, "Invalid publication run identity")
@@ -233,7 +257,8 @@ def validate_publisher(publisher):
 
 def publisher_from_environment(environment=None):
     environment = os.environ if environment is None else environment
-    require(environment.get("GITHUB_ACTIONS") == "true" and environment.get("GITHUB_REPOSITORY") == PUBLISHER_REPOSITORY,
+    require(environment.get("GITHUB_ACTIONS") == "true" and environment.get("GITHUB_REPOSITORY") == PUBLISHER_REPOSITORY
+            and environment.get("GITHUB_REPOSITORY_ID") == PUBLISHER_REPOSITORY_ID,
             "Mirror publication requires the approved GitHub Actions repository context")
     event = environment.get("GITHUB_EVENT_NAME")
     ref = environment.get("GITHUB_REF")
@@ -263,7 +288,7 @@ def preserve_publisher_order(candidate, previous):
     validate_publisher(candidate)
     if previous is None:
         return
-    validate_publisher(previous)
+    validate_publisher(previous, allow_legacy=True)
     require(candidate["run_number"] >= previous["run_number"], "Older publication run cannot replace the official site")
     if candidate["run_number"] == previous["run_number"]:
         require(candidate == previous, "Equal publication sequence has a different run identity or source commit")
@@ -331,7 +356,7 @@ def parse_publication_receipt(raw):
     require(isinstance(receipt, dict) and set(receipt) == {"schema", "id", "publisher", "files", "digest"}
             and type(receipt.get("schema")) is int and receipt["schema"] == 2
             and receipt.get("id") == REPOSITORY_ID, "Unexpected publication receipt identity or schema")
-    validate_publisher(receipt["publisher"])
+    validate_publisher(receipt["publisher"], allow_legacy=True)
     files = receipt.get("files")
     require(isinstance(files, dict) and len(files) < MAX_FILES
             and all(path in files for path in ("index.html", "index.json"))
@@ -397,8 +422,10 @@ def read_publication(root):
     assets = {path: official_asset(path, raw) for path, raw in files.items() if path != "index.json"}
     official = {OFFICIAL.prefix + path: raw for path, raw in assets.items()}
     official[OFFICIAL.listing_path] = render_listing(source, OFFICIAL_URL)
-    legacy = {LEGACY.listing_path: render_listing(source, LEGACY_URL)}
-    return source, {OFFICIAL.repository: official, LEGACY.repository: legacy}
+    desired = {target.repository: {target.listing_path: render_listing(source, target.listing_url)}
+               for target in TARGETS if target != OFFICIAL}
+    desired[OFFICIAL.repository] = official
+    return source, desired
 
 
 def git_blob_oid(raw):
@@ -406,7 +433,7 @@ def git_blob_oid(raw):
 
 
 def in_scope(target, path):
-    return path.startswith(OFFICIAL.prefix) if target == OFFICIAL else path == LEGACY.listing_path
+    return path.startswith(OFFICIAL.prefix) if target == OFFICIAL else path == target.listing_path
 
 
 def plan_changes(target, snapshot, desired, source):
@@ -432,8 +459,7 @@ def plan_changes(target, snapshot, desired, source):
     for path, entry in snapshot.entries.items():
         safe_path(path)
         require(in_scope(target, path) and entry.mode in ("100644", "100755"), "Unexpected mirror tree entry")
-    previous = None if snapshot.listing is None else parse_listing(
-        snapshot.listing, target.listing_url, allow_historical_urls=target == LEGACY)
+    previous = None if snapshot.listing is None else parse_listing(snapshot.listing, target.listing_url)
     preserve_history(source, previous)
     additions = {path: raw for path, raw in desired.items()
                  if path not in snapshot.entries or snapshot.entries[path].oid != git_blob_oid(raw)}
@@ -475,7 +501,7 @@ def read_response(request, limit, budget, *, opener=None):
 
 
 def fetch_listing(url, budget):
-    require(url in (CANONICAL_URL, OFFICIAL_URL, LEGACY_URL), "Unapproved public endpoint")
+    require(url in (CANONICAL_URL,) + tuple(target.listing_url for target in TARGETS), "Unapproved public endpoint")
     request = urllib.request.Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache",
                                                   "User-Agent": "VRVlog-VPM-mirror-sync"})
     raw, headers = read_response(request, MAX_LISTING_BYTES, budget)
@@ -561,24 +587,48 @@ def wait_for_official_receipt(source, expected_receipt, fetch, receipt_fetch, bu
 
 
 class GitHubApi:
-    def __init__(self, token, budget, *, opener=None):
+    def __init__(self, token, budget, *, org_token=None, opener=None):
         require(isinstance(token, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", token), "Missing or invalid mirror credential")
+        require(org_token is None or isinstance(org_token, str) and re.fullmatch(r"[A-Za-z0-9_.-]+", org_token),
+                "Missing or invalid organization mirror credential")
         self.token = token
+        self.org_token = org_token
         self.budget = budget
         self.opener = opener
 
-    def request(self, path, body=None):
-        allowed = path == "/graphql"
+    @classmethod
+    def from_environment(cls, environment, budget, *, require_org=True, opener=None):
+        org_token = environment.get(ORG_TOKEN_ENV) if require_org else None
+        require(not require_org or isinstance(org_token, str) and org_token,
+                "Missing or invalid organization mirror credential")
+        return cls(environment.get(TOKEN_ENV), budget, org_token=org_token, opener=opener)
+
+    def request(self, path, body=None, *, target=None):
+        route_target = None
         if isinstance(path, str):
-            for target in TARGETS:
-                base = "/repos/" + target.repository
-                allowed |= path in (base, base + "/git/ref/heads/main") or bool(re.fullmatch(
+            for approved in TARGETS:
+                base = "/repos/" + approved.repository
+                allowed = path in (base, base + "/git/ref/heads/main") or bool(re.fullmatch(
                     re.escape(base) + r"/git/(?:commits|blobs)/[0-9a-f]{40}", path)) or bool(re.fullmatch(
                     re.escape(base) + r"/git/trees/[0-9a-f]{40}\?recursive=1", path))
-        require(allowed and (path == "/graphql" or body is None), "Unapproved GitHub API route")
+                if allowed:
+                    route_target = approved
+        if path == "/graphql":
+            variables = body.get("variables") if isinstance(body, dict) else None
+            mutation = variables.get("input") if isinstance(variables, dict) else None
+            branch = mutation.get("branch") if isinstance(mutation, dict) else None
+            require(target in TARGETS and isinstance(body, dict) and body.get("query") == COMMIT_QUERY
+                    and branch == {"repositoryNameWithOwner": target.repository,
+                    "branchName": target.branch}, "Unapproved GitHub mutation target")
+            route_target = target
+        else:
+            require(route_target is not None and body is None and (target is None or target == route_target),
+                    "Unapproved GitHub API route")
+        token = self.org_token if route_target == ORGANIZATION else self.token
+        require(token is not None, "Organization mirror credential is unavailable for its fixed target")
         request = urllib.request.Request("https://api.github.com" + path,
             data=None if body is None else json.dumps(body).encode("utf-8"),
-            headers={"Accept": "application/vnd.github+json", "Authorization": "Bearer " + self.token,
+            headers={"Accept": "application/vnd.github+json", "Authorization": "Bearer " + token,
                      "Content-Type": "application/json", "X-GitHub-Api-Version": "2022-11-28",
                      "User-Agent": "VRVlog-VPM-mirror-sync"})
         raw, _ = read_response(request, MAX_API_BYTES, self.budget, opener=self.opener)
@@ -593,6 +643,8 @@ class GitHubApi:
             require(isinstance(name, str) and name.lower() == target.repository.lower()
                     and metadata.get("default_branch") == target.branch and metadata.get("archived") is False,
                     "Mirror repository is unavailable or its default branch changed")
+            require(target.repository_id is None or type(metadata.get("id")) is int
+                    and metadata["id"] == target.repository_id, "Mirror repository numeric identity differs")
             permissions = metadata.get("permissions")
             require(isinstance(permissions, dict) and permissions.get("push") is True,
                     "Mirror credential does not have repository write access")
@@ -669,7 +721,7 @@ class GitHubApi:
         for path in (*changes.additions, *changes.deletions):
             safe_path(path)
             require(in_scope(target, path), "Commit exceeds the approved mirror path")
-        body = {"query": "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }",
+        body = {"query": COMMIT_QUERY,
                 "variables": {"input": {
                     "branch": {"repositoryNameWithOwner": target.repository, "branchName": target.branch},
                     "expectedHeadOid": expected_head,
@@ -679,7 +731,7 @@ class GitHubApi:
                                       for path, raw in sorted(changes.additions.items())],
                         "deletions": [{"path": path} for path in changes.deletions]}}}}
         try:
-            response = self.request("/graphql", body)
+            response = self.request("/graphql", body, target=target)
             if not isinstance(response, dict) or response.get("errors"):
                 raise CommitUncertain("GitHub rejected the mirror commit; re-reading its branch before retry")
             data = response.get("data")
@@ -705,8 +757,9 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
     receipt_path = OFFICIAL.prefix + PUBLICATION_RECEIPT
     require(receipt_path in desired[OFFICIAL.repository], "Official publication receipt is absent")
     expected_receipt = parse_publication_receipt(desired[OFFICIAL.repository][receipt_path])
+    validate_publisher(expected_receipt["publisher"])
     wait_for_initial_source(source, expected_receipt, fetch, receipt_fetch, budget, sleep=sleep)
-    # Preflight both repositories before the first mutation. Partial failures can
+    # Preflight all repositories before the first mutation. Partial failures can
     # still occur after that point; a retry compares trees and skips applied work.
     initial = {target: api.snapshot(target) for target in TARGETS}
     for target in TARGETS:
@@ -734,7 +787,7 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
         for attempt in range(MAX_CAS_ATTEMPTS):
             budget.remaining()
             require_current_source(source, expected_receipt, fetch, receipt_fetch, budget)
-            if target == LEGACY:
+            if target != OFFICIAL:
                 require_official_order()
             changes = plan_changes(target, snapshot, desired[target.repository], source)
             if not changes.additions and not changes.deletions:
@@ -755,14 +808,14 @@ def synchronize(source, desired, api, fetch, budget, *, sleep=time.sleep, progre
                 continue
             record(oid, True)
             break
-    # Canonical is last so its final observation is newer than both mirror reads.
-    wait_for_endpoints(source, (OFFICIAL_URL, LEGACY_URL, CANONICAL_URL), fetch, budget, sleep=sleep,
+    # Canonical is last so its final observation is newer than all mirror reads.
+    wait_for_endpoints(source, tuple(target.listing_url for target in TARGETS) + (CANONICAL_URL,), fetch, budget, sleep=sleep,
                        freshness=lambda: require_current_receipt(expected_receipt, receipt_fetch, budget))
     wait_for_official_receipt(source, expected_receipt, fetch, receipt_fetch, budget, sleep=sleep)
     require_current_source(source, expected_receipt, fetch, receipt_fetch, budget)
     require_official_order()
     return {"status": "passed", "repositoryId": REPOSITORY_ID, "repositories": reports,
-            "verifiedEndpoints": [CANONICAL_URL, OFFICIAL_URL, LEGACY_URL],
+            "verifiedEndpoints": [CANONICAL_URL] + [target.listing_url for target in TARGETS],
             "publicationDigest": expected_receipt["digest"],
             "verifiedPublicationReceipts": [CANONICAL_RECEIPT_URL, OFFICIAL_RECEIPT_URL]}
 
@@ -779,7 +832,7 @@ def verify_before_deployment(root, publisher, api, preflight):
         raise SyncError("Publication preflight evidence does not match this run") from None
     if cached is not None and cached["publisher"]["run_number"] == publisher["run_number"]:
         require(receipt["digest"] == cached["digest"], "Equal publication sequence differs from its preflight snapshot")
-    # The proof is an observation from before building. Read both repositories
+    # The proof is an observation from before building. Read all repositories
     # again here, immediately before deploy-pages, instead of reusing that state.
     # Official is read last, keeping the deployment anchor newer than the
     # legacy-history observation without claiming an atomic cross-repo read.
@@ -809,7 +862,7 @@ def main():
         publisher = publisher_from_environment()
         validate_checkout(publisher)
         budget = Budget()
-        api = GitHubApi(os.environ.get(TOKEN_ENV), budget)
+        api = GitHubApi.from_environment(os.environ, budget)
         if args.preflight:
             report, evidence = api.preflight(publisher)
             save_preflight_evidence(evidence)
