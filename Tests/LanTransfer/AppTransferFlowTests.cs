@@ -15,6 +15,17 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(false, "SampleAvatar", true, true, true, true, AppTransferText.NeedsAvatar)]
         [TestCase(true, "", true, true, true, true, AppTransferText.NeedsName)]
         [TestCase(true, "   ", true, true, false, false, AppTransferText.NeedsName)]
+        // Names the phone would list as empty once the extension and invisible characters go.
+        [TestCase(true, ".vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, " .VRM ", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u200B", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u200B.vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, " \u200B .vrm", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\u202E\u0000", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "\uDB40\uDC41", true, true, true, true, AppTransferText.NeedsName)]
+        [TestCase(true, "a.vrm", true, true, true, true, null)]
+        [TestCase(true, "\u200Bavatar", true, true, true, true, null)]
+        [TestCase(true, "😀", true, true, true, true, null)]
         [TestCase(true, "SampleAvatar", false, true, true, true, AppTransferText.NeedsShorterName)]
         [TestCase(true, "SampleAvatar", true, false, true, true, AppTransferText.NeedsAuthor)]
         [TestCase(true, "SampleAvatar", true, true, false, true, AppTransferText.NeedsConsent)]
@@ -23,6 +34,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase(true, "SampleAvatar", true, true, true, true, null)]
         public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
             Assert.That(AppTransferFlow.BlockReason(hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
+
+        // Attribute arguments cannot carry a lone surrogate, so this case lives here.
+        [Test]
+        public void LoneSurrogateIsNotAName() =>
+            Assert.That(AppTransferFlow.BlockReason(true, "\uD800", true, true, true, true), Is.EqualTo(AppTransferText.NeedsName));
 
         [TestCase("SampleAvatar_v1.2", "SampleAvatar_v1.2.vrm")]
         [TestCase("  サンプル v1.2+α  ", "サンプル v1.2+α.vrm")]
