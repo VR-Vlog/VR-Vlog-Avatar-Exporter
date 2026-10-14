@@ -296,11 +296,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
         }
 
-        // The window is at least as large as the QR it is about to show.
+        // The window is at least as large as the QR it is about to show. On a short screen (1080p at 150%)
+        // it is no taller than the Unity window, so the buttons stay on screen and the body scrolls instead.
         private void FitTransferSize()
         {
             var side = SlotSide;
-            var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), HeaderHeight + side + TransferChrome);
+            var height = HeaderHeight + side + TransferChrome;
+            var screen = EditorGUIUtility.GetMainWindowPosition().height;
+            if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
+            var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);
             minSize = size;
             if (docked) return;
             var rect = position;
