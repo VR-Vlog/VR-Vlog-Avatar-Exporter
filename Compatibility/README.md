@@ -29,6 +29,59 @@ upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
 
+## Supported lilToon versions
+
+The exporter accepts lilToon 2.0.0-2.3.4 (`lilToon.supported` in
+`dependencies.json`). This is the range where lilToon's own material migration
+alone gives the 2.3.4 structure. On Unity 2022.3.22f1 (Built-in RP), the
+migrated shader properties, types, dimensions, pass names and LightMode of
+2.0.0, 2.1.0, 2.1.10, 2.2.0, 2.2.1, 2.3.0 and 2.3.3 matched 2.3.4 exactly, and
+the structure hash of every tag from 2.0.0 to 2.3.4 matches (see
+[lilToon shader structure](#liltoon-shader-structure)). 1.x keeps 35 properties that 2.3.4 does not
+have and lacks 3 that it has. Shader Setting changes, encrypted materials and
+custom shaders were not measured.
+
+Before exporting, these versions stop with the reason and the next step:
+
+| Installed lilToon | What to do |
+| --- | --- |
+| Not installed | Add lilToon 2.0.0-2.3.4 in VCC / ALCOM |
+| 1.x or older | Update to 2.0.0-2.3.4; lilToon migrates materials |
+| Newer than 2.3.4 | Return to 2.3.4 or wait for a supporting exporter |
+| Pre-release or unreadable | Select a stable 2.0.0-2.3.4 release |
+
+Within the range, the exporter also checks before each export that the
+installed lilToon shaders have the same structure as 2.3.4 and stops if they
+differ, for example when a pass was removed in lilToon's Shader Setting.
+
+Exported files keep `sourceLilToonVersion` at `2.3.4`, meaning the lilToon
+catalogue that the materials follow, so existing VR Vlog versions read them
+unchanged. The version installed in the source project is written to
+`asset.extras.VRVLOG_lilToonInstalledVersion`; the app does not use it.
+
+The exporter does not convert values per lilToon version. The app renders
+materials with 2.3.4 rules, so a material made in an older version looks the
+same as after updating that project to lilToon 2.3.4. Known differences from
+the version the material was made in:
+
+- 2.3.0 and later multiply backlight strength by the alpha of
+  `_BacklightColor` and `_BacklightColorTex`. Before 2.3.0 the alpha was
+  ignored, so a material with alpha below 1 becomes darker.
+- 2.1.0 clamps the UV1 used by `_MatCapBlendUV1` to 0-1. In lilToonLite it
+  also changed how shadow color mixes with environment light; this shows only
+  when the main light color is below 1.
+- Outline Lit is computed per vertex up to 2.1.9 and per pixel from 2.1.10.
+
+Rendered comparisons of these cases are in
+[Evidence/LilToonVersionVisual](Evidence/LilToonVersionVisual/README.md).
+
+`_EnvRimBorder` (the VRC Light Volumes rim) defaults to 0.85 in 2.0.0-2.1.9
+and 3.0 from 2.1.10, and migration keeps the stored value. The exporter does
+not write this property, so the difference does not reach the exported file.
+
+These are lilToon's own changes. Correcting them in the exporter would add
+per-version conversions that this project does not maintain.
+
 ## lilToon shader structure
 
 `Editor/LilToon234Catalogue.cs` is generated from the Built-in RP shader
