@@ -16,6 +16,7 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 - Export lilToon material settings and textures for VR Vlog's dedicated renderer, with a standard MToon fallback for other VRM viewers.
 - Preserve supported expressions, blinking, tracking morphs and appearance prepared by Modular Avatar / NDMF.
 - Convert supported PhysBones to VRM SpringBones, with diagnostics for approximations and unsupported settings.
+- Set a bone-type VRM 1.0 look-at from the midpoint of the eyes when both eye bones exist. Its range comes from the Avatar Descriptor's Eye Look poses when they can be measured; otherwise UniVRM's default range is used. A VRM 1.0 look-at already edited in the avatar's Vrm10Instance settings is kept.
 - Inspect export failures and try supported recovery options on a fresh copy of the avatar.
 
 The exporter does not reproduce every shader effect, Animator behavior or VRChat gimmick. See the [detailed scope and limitations in Japanese](README.md#対応範囲と制限).
@@ -67,7 +68,8 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 2. Select **VR Vlog → VRMを書き出す**.
 3. Assign the avatar's root object from the Hierarchy and select **書き出しを準備**.
 4. Select and add expression files, or drop multiple .anim files from Project. Click a name or **確認** to preview. Expressions are optional; model-only export is supported.
-5. Add optional body poses, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**.
+5. Optionally, under **標準の表情（喜怒哀楽）**, choose the faces for the VRM happy, angry, sad, relaxed and surprised presets from added expressions, FaceEmo or controller clips, or a BlendShape. Suggestions from names are marked **自動** and can be cleared with ×. Unassigned presets stay empty.
+6. Add optional body poses, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**.
 
 The author is a required VRM field. While it is empty or only spaces, **VRMを保存** stays disabled and the line under the field reads "VRMには作者名が必要です". The author used for a save is remembered per avatar in this PC's Unity Editor preferences and filled in the next time you choose the same avatar. For an avatar without a remembered author, the field keeps what you typed. Only the author name is stored, and nothing is written to the avatar, the project or the VRM. Avatars in an unsaved scene are not remembered.
 

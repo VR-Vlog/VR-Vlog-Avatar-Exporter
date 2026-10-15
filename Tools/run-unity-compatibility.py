@@ -143,6 +143,15 @@ BEHAVIOR_CASES = {
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
+    'VrmLookAtExportTests': {
+        'EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange': 1,
+        'ExistingVrmLookAtWinsOverEyesAndEyeLook': 1,
+        'MeasuredEyeLookPosesBecomeOneToOneRangeMaps': 1,
+        'RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm': 1,
+        'UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns': 1,
+        'UntouchedVrmLookAtDefaultsAreReplacedByTheEyeMidpoint': 1,
+        'WithoutEyeBonesTheExportStillHasNoLookAt': 1,
+    },
     'SourceFingerprintCacheTests': {
         'ColdClipEditorCacheDoesNotInvalidateButNativeCurveEditsDo': 1,
         'MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes': 3,

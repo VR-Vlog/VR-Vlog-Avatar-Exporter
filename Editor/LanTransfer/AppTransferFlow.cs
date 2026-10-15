@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using ZXing;
@@ -34,7 +35,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
-        internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしない";
+        internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしないでください";
         internal const string Waiting = "読み取り待ち";
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
@@ -100,7 +101,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // privacyAccepted is the saved privacy policy choice shared with "スマホに送る".
         internal static string BlockReason(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
             !hasAvatar ? AppTransferText.NeedsAvatar
-            : string.IsNullOrWhiteSpace(name) ? AppTransferText.NeedsName
+            : !HasListedName(name) ? AppTransferText.NeedsName
             : !nameFits ? AppTransferText.NeedsShorterName
             : !hasAuthor ? AppTransferText.NeedsAuthor
             : !consented ? AppTransferText.NeedsConsent
@@ -115,6 +116,34 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var limit = MaximumNameLength - Extension.Length;
             if (text.Length > limit) text = text.Substring(0, char.IsHighSurrogate(text[limit - 1]) ? limit - 1 : limit);
             return text + Extension;
+        }
+
+        // Whether the phone lists a visible name. TransferName removes control and
+        // format characters and the extension, so ".vrm" or a zero width space before ".vrm" leaves
+        // nothing, and a name it empties entirely falls back to "avatar".
+        internal static bool HasListedName(string name)
+        {
+            var text = name ?? "";
+            var visible = false;
+            for (var i = 0; i < text.Length && !visible; i++)
+            {
+                if (char.IsLowSurrogate(text[i])) continue;
+                switch (CharUnicodeInfo.GetUnicodeCategory(text, i))
+                {
+                    case UnicodeCategory.Control:
+                    case UnicodeCategory.Format:
+                    case UnicodeCategory.Surrogate:
+                    case UnicodeCategory.SpaceSeparator:
+                    case UnicodeCategory.LineSeparator:
+                    case UnicodeCategory.ParagraphSeparator:
+                        continue;
+                    default:
+                        visible = true;
+                        break;
+                }
+            }
+            var listed = TransferName(name);
+            return visible && !string.IsNullOrWhiteSpace(listed.Substring(0, listed.Length - Extension.Length));
         }
 
         // The link with the longest values a transfer can have and no secret.

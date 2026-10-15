@@ -41,6 +41,9 @@ namespace VRVlog.LilToonExporter
             new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>();
         System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation> recommendations;
         [SerializeField] AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
+        string presetKey;
+        int presetSkipped;
+        readonly System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string>();
 
         // The "アプリに転送" window starts from what this window shows: these
         // values live only in the open window and are not stored anywhere else.
@@ -91,8 +94,11 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
                 var inputs = clipInputs.ToArray(); var selection = selectedClips.ToArray();
                 var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var previousSaved = saved;
+                var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
                 Prepare();
                 clipInputs.AddRange(inputs); selectedClips.UnionWith(selection);
+                session.Presets.Clear();
+                foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
                 session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
                 foreach (var pair in poses.Names) session.PoseOptions.Names.Add(pair.Key, pair.Value);
                 configuredBlink = blink; saved = previousSaved;
@@ -112,6 +118,8 @@ namespace VRVlog.LilToonExporter
                 input.Time = DefaultTime(input.Clip); input.Error = reason;
             }
             selectedClips.RemoveWhere(clip => clip == null || !clipErrors.TryGetValue(clip, out var reason) || reason != null);
+            // An automatic value that stopped working is replaced, not left blocking the save.
+            ApplyAutomaticPresets();
             Repaint();
         }
 
@@ -147,6 +155,8 @@ namespace VRVlog.LilToonExporter
                         EditorGUILayout.Space(12);
                         pageScroll = EditorGUILayout.BeginScrollView(pageScroll);
                         DrawClipInputs();
+                        EditorGUILayout.Space(12);
+                        DrawPresetInputs();
                         EditorGUILayout.Space(12);
                         DrawPoseInputs();
                         EditorGUILayout.Space(16);
@@ -197,6 +207,7 @@ namespace VRVlog.LilToonExporter
                 status = null;
                 saved = null;
                 candidateValidationPending = false;
+                LoadPresetChoices();
             }
             catch { Cleanup(); throw; }
         }
@@ -245,7 +256,11 @@ namespace VRVlog.LilToonExporter
                 if (GUILayout.Button(ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) Queue(ShowBlinkConfiguration);
             }
             EditorGUILayout.Space(8);
-            using (new EditorGUI.DisabledScope(!ExportAuthor.IsValid(author) || chosen.Any(input => input.Error != null)))
+            var blockedPresets = ExperimentalExpressionCaptureSession.EmotionPresets.Where(preset => presetErrors.TryGetValue(preset, out var reason) && reason != null)
+                .Select(preset => ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset))).ToArray();
+            if (blockedPresets.Length > 0)
+                EditorGUILayout.LabelField(ExporterLocalization.T("保存できない標準の表情があります: ") + string.Join("・", blockedPresets), EditorStyles.wordWrappedMiniLabel);
+            using (new EditorGUI.DisabledScope(!ExportAuthor.IsValid(author) || chosen.Any(input => input.Error != null) || presetErrors.Values.Any(value => value != null)))
                 if (GUILayout.Button(ExporterLocalization.T("VRMを保存"), GUILayout.Height(38))) Queue(Export);
             EditorGUILayout.Space(8);
             DrawSavedResult();
@@ -357,7 +372,7 @@ namespace VRVlog.LilToonExporter
                         Queue(() => PreviewClipInput(input));
                     if (GUILayout.Button(new GUIContent("×", ExporterLocalization.T("一覧から削除")), GUILayout.Width(26))) Queue(() => {
                         if (fileRecords.TryGetValue(input, out var old)) session.Expressions.Remove(old);
-                        fileRecords.Remove(input); clipInputs.Remove(input);
+                        fileRecords.Remove(input); clipInputs.Remove(input); ApplyAutomaticPresets();
                     });
                 }
             }
@@ -388,11 +403,14 @@ namespace VRVlog.LilToonExporter
             var additions = clips.Where(clip => clip != null && !clipInputs.Any(input => input.Clip == clip)).Distinct().ToArray();
             if (clipInputs.Count + additions.Length > ExperimentalExpressionCaptureSession.MaximumExpressions)
                 throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。選択を減らして追加してください。"));
-            foreach (var clip in additions) AddClip(clip);
+            foreach (var clip in additions) AddClipCore(clip, false);
             if (additions.Length > 0) status = additions.Length + ExporterLocalization.T("件を追加しました。確認してVRMを保存してください。");
+            ApplyAutomaticPresets();
         }
 
-        void AddClip(AnimationClip clip)
+        void AddClip(AnimationClip clip) => AddClipCore(clip, true);
+
+        void AddClipCore(AnimationClip clip, bool suggest)
         {
             if (clip == null || clipInputs.Any(input => input.Clip == clip)) return;
             if (clipInputs.Count >= ExperimentalExpressionCaptureSession.MaximumExpressions)
@@ -402,6 +420,7 @@ namespace VRVlog.LilToonExporter
             clipInputs.Add(input);
             if (input.Error == null) { session.PreviewClip(clip, input.Time); ShowFace(input.Name); }
             status = input.Error == null ? ExporterLocalization.T("追加しました。顔を確認して保存してください。") : ExporterLocalization.T("対応外のファイルです。「理由」で確認できます。");
+            if (suggest) ApplyAutomaticPresets();
         }
 
         void DropClips(string label, Action<AnimationClip[]> accept, bool expression = false)
@@ -417,6 +436,128 @@ namespace VRVlog.LilToonExporter
             DragAndDrop.visualMode = valid ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
             if (valid && current.type == EventType.DragPerform) { DragAndDrop.AcceptDrag(); Queue(() => accept(clips)); }
             current.Use();
+        }
+
+        void LoadPresetChoices()
+        {
+            presetKey = ExpressionPresetStore.KeyFor(source);
+            session.PresetShapeOptions(); // Build the BlendShape list once, outside OnGUI.
+            session.Presets.Clear();
+            foreach (var assignment in ExpressionPresetStore.Load(presetKey, out presetSkipped))
+                session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(assignment.Preset), assignment);
+            ApplyAutomaticPresets();
+        }
+
+        // Clips the user added come first, then the avatar's registered clips.
+        System.Collections.Generic.IEnumerable<AnimationClip> PresetCandidateClips() =>
+            clipInputs.Where(input => input.Clip != null && input.Error == null).Select(input => input.Clip)
+                .Concat((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
+                    .Where(item => !clipErrors.TryGetValue(item.Clip, out var reason) || reason == null).Select(item => item.Clip)).Distinct();
+
+        // Suggestions follow the current candidates and are recomputed when they
+        // change. The user's own choices, including "none", are never replaced.
+        void ApplyAutomaticPresets()
+        {
+            if (session == null) return;
+            var open = ExperimentalExpressionCaptureSession.EmotionPresets.Where(preset =>
+                !session.Presets.TryGetValue(preset, out var current) || current.Automatic).ToArray();
+            if (open.Length > 0)
+            {
+                var suggested = session.SuggestPresets(PresetCandidateClips());
+                foreach (var preset in open)
+                    session.SetPreset(preset, suggested.TryGetValue(preset, out var value) ? value : null);
+            }
+            RefreshPresetErrors();
+        }
+
+        void RefreshPresetErrors()
+        {
+            presetErrors.Clear();
+            if (session == null) return;
+            foreach (var pair in session.Presets) presetErrors[pair.Key] = session.PresetError(pair.Key, pair.Value);
+        }
+
+        void ChoosePreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        {
+            session.SetPreset(preset, assignment);
+            ExpressionPresetStore.Save(presetKey, session.Presets.Values);
+            presetErrors[preset] = session.PresetError(preset, assignment);
+            if (assignment.IsNone) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); return; }
+            if (presetErrors[preset] != null) throw new InvalidOperationException(presetErrors[preset]);
+            session.PreviewPreset(preset, assignment);
+            ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
+        }
+
+        void ShowPresetMenu(UniVRM10.ExpressionPreset preset, Rect rect)
+        {
+            var menu = new GenericMenu();
+            session.Presets.TryGetValue(preset, out var current);
+            string Item(string value) => value.Replace("/", "／");
+            void Add(string label, ExperimentalExpressionCaptureSession.PresetAssignment assignment, bool on) =>
+                menu.AddItem(new GUIContent(label), on, () => Queue(() => ChoosePreset(preset, assignment)));
+            Add(ExporterLocalization.T(session.HasAuthoredPreset(preset) ? "元のVRM設定" : "なし"), ExperimentalExpressionCaptureSession.PresetAssignment.None(preset), current == null || current.IsNone);
+            if (current != null && !current.Automatic)
+                menu.AddItem(new GUIContent(ExporterLocalization.T("自動の候補に戻す")), false, () => Queue(() => {
+                    session.SetPreset(preset, null); ExpressionPresetStore.Save(presetKey, session.Presets.Values); ApplyAutomaticPresets();
+                }));
+            menu.AddSeparator("");
+            var listed = new System.Collections.Generic.HashSet<AnimationClip>();
+            foreach (var input in clipInputs.Where(input => input.Clip != null && input.Error == null))
+                if (listed.Add(input.Clip))
+                    Add(ExporterLocalization.T("追加した表情") + "/" + Item(input.Clip.name), ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(preset, input.Clip),
+                        current?.Clip == input.Clip);
+            foreach (var item in recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
+                if ((!clipErrors.TryGetValue(item.Clip, out var reason) || reason == null) && listed.Add(item.Clip))
+                    Add((item.Source == "FaceEmoの登録" ? "FaceEmo" : ExporterLocalization.T("アバターのController")) + "/" + Item(item.Clip.name),
+                        ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(preset, item.Clip), current?.Clip == item.Clip);
+            System.Collections.Generic.IReadOnlyList<(string Path, string Shape)> options;
+            try { options = session.PresetShapeOptions(); }
+            catch (InvalidOperationException exception) { error = exception.Message; options = Array.Empty<(string, string)>(); }
+            foreach (var option in options)
+                Add("BlendShape/" + Item(string.IsNullOrEmpty(option.Path) ? "(root)" : option.Path) + "/" + Item(option.Shape),
+                    ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(preset, option.Path, option.Shape),
+                    current != null && current.IsShape && current.Path == option.Path && current.Shape == option.Shape);
+            menu.DropDown(rect);
+        }
+
+        void DrawPresetInputs()
+        {
+            EditorGUILayout.LabelField(ExporterLocalization.T("標準の表情（喜怒哀楽）"), EditorStyles.boldLabel);
+            EditorGUILayout.Space(6);
+            EditorGUILayout.LabelField(ExporterLocalization.T("未指定の表情は空のまま保存します"), EditorStyles.wordWrappedMiniLabel);
+            if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
+            else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
+            foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
+            {
+                session.Presets.TryGetValue(preset, out var assignment);
+                presetErrors.TryGetValue(preset, out var reason);
+                var none = assignment == null || assignment.IsNone;
+                using (new EditorGUILayout.HorizontalScope(GUILayout.Height(24)))
+                {
+                    GUILayout.Label(new GUIContent(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)), "VRM: " + preset), GUILayout.Width(72), GUILayout.Height(20));
+                    var label = new GUIContent(ExperimentalExpressionCaptureSession.PresetDisplayName(assignment, session.HasAuthoredPreset(preset)), reason ??
+                        (assignment?.Clip != null ? AssetDatabase.GetAssetPath(assignment.Clip) : null));
+                    // The row width never follows the chosen name; long names are clipped.
+                    var rect = GUILayoutUtility.GetRect(GUIContent.none, EditorStyles.popup, GUILayout.MinWidth(80), GUILayout.ExpandWidth(true), GUILayout.Height(20));
+                    if (EditorGUI.DropdownButton(rect, label, FocusType.Keyboard, EditorStyles.popup)) ShowPresetMenu(preset, rect);
+                    GUILayout.Label(assignment?.Automatic == true ? new GUIContent(ExporterLocalization.T("自動"), ExporterLocalization.T("名前から選んだ候補")) : GUIContent.none,
+                        EditorStyles.miniLabel, GUILayout.Width(36), GUILayout.Height(20));
+                    using (new EditorGUI.DisabledScope(none))
+                    {
+                        if (GUILayout.Button(new GUIContent(reason == null ? ExporterLocalization.T("確認") : ExporterLocalization.T("理由"), reason), GUILayout.Width(50), GUILayout.Height(20)))
+                        {
+                            var chosen = assignment;
+                            Queue(() => {
+                                var current = session.PresetError(preset, chosen); presetErrors[preset] = current;
+                                if (current != null) throw new InvalidOperationException(current);
+                                session.PreviewPreset(preset, chosen); ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
+                            });
+                        }
+                        if (GUILayout.Button(new GUIContent("×", ExporterLocalization.T("指定を外す")), GUILayout.Width(26), GUILayout.Height(20)))
+                            Queue(() => ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)));
+                    }
+                }
+            }
         }
 
         void DrawPoseInputs()
@@ -469,6 +610,7 @@ namespace VRVlog.LilToonExporter
             var license = licenseOptions.Copy();
             var expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
             var poses = target.PoseOptions.Copy();
+            var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
             var expressionCount = expressions.Length;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
@@ -484,7 +626,8 @@ namespace VRVlog.LilToonExporter
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 foreach (var warning in target.Warnings) warnings.Add(warning);
-                return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses);
+                return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
+                    presets.Select(value => value.Copy()).ToArray());
             }, Completed, previewGimmicks: new ExportGimmickOptions(), interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
             if (recovery != null)
@@ -555,6 +698,7 @@ namespace VRVlog.LilToonExporter
             session?.Dispose(); session = null;
             poseReview?.Close(); poseReview = null;
             selectedClips.Clear(); clipErrors.Clear(); candidateRects.Clear(); candidateToggleRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
+            presetErrors.Clear(); presetKey = null; presetSkipped = 0;
         }
     }
 #if UNITY_5_3_OR_NEWER
