@@ -23,7 +23,7 @@
   - `Step`: 書き出し用コピーを書き換える段階。途中まで書き換わったコピーは信用できないので、`ExportStageFailure` を投げて `Retry` が新しいコピーから書き出しをやり直し、その段階だけを省く。
   - `Watch`: `Step` と同じだが、省略したあとも本体を呼ぶ。前の段階の代わりの値（何もしないセッションなど）で、本体が無害になっているものに使う。
 - やり直しは、省略する段階が増えるたびに 1 回ずつ行う。最大で段階の数までなので、無限には回らない。やり直す前に、前の試行の警告と記録を捨てる。
-- NDMF は callback の中の例外を自分の例外で包んで投げ直すので、`InnerException` と `AggregateException` をたどって `ExportStageFailure` を探す。NDMF のビルド自体が失敗したときは、次の試行で NDMF の処理を飛ばし、Modular Avatar の処理を通さないコピーから書き出す。
+- NDMF は callback の中の例外を自分の例外で包んで投げ直すので、`InnerException` と `AggregateException` をたどって `ExportStageFailure` を探す。NDMF のビルド自体が失敗したときは、次の試行で NDMF の処理を飛ばし、Modular Avatar の処理を通さないコピーから書き出す。NDMF や最適化ツールの処理でヒューマノイドのルートの Animator や必須のボーンが失われたとき（`ValidatePreparedHumanoid`）も同じ段階の失敗として扱う。処理を通さないコピーでも欠けているなら、元のアバターに原因があるので止める。
 - 取り消し（`OperationCanceledException`）は省略せず、そのまま止める。
 - 上限の扱い:
   - 同梱ポーズは先頭の 128 件を残し、残りを省略する。警告と「上限を超えた項目」の記録を残し、件数を記録する。
