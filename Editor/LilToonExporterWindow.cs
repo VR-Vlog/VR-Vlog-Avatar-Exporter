@@ -316,7 +316,9 @@ namespace VRVlog.LilToonExporter
             if (avatar == null) return;
             blinkStatus.Refresh(EditorApplication.timeSinceStartup, ResolveBlink);
             var resolved = blinkStatus.Resolved;
-            var error = blinkStatus.Error;
+            // An automatic setup that fell back to no blink keeps the old error
+            // visible, so the manual choice is still one click away.
+            var error = blinkStatus.Error ?? (resolved?.UnresolvedAutomatic == true ? resolved.UnresolvedReason : null);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(ExporterLocalization.T("瞬き"), ExporterLocalization.T(resolved?.Description) ?? ExporterLocalization.T("設定が必要です"));
             if (GUILayout.Button(showBlink ? ExporterLocalization.T("設定を閉じる") : ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) showBlink = !showBlink;
