@@ -129,7 +129,19 @@ namespace VRVlog.LilToonExporter
 
         internal void Watch(ExportStage stage, Action body) => Watch(stage, () => { body(); return true; });
 
-        bool CanOmit(Exception error) => ContinueOnFailure && !(error is OperationCanceledException);
+        bool CanOmit(Exception error) => ContinueOnFailure && !IsCancellation(error);
+
+        // A cancellation wrapped by a build tool still cancels the export.
+        internal static bool IsCancellation(Exception error)
+        {
+            for (var depth = 0; error != null && depth < 16; depth++)
+            {
+                if (error is OperationCanceledException) return true;
+                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(IsCancellation)) return true;
+                error = error.InnerException;
+            }
+            return false;
+        }
 
         void Omit(ExportStage stage, Exception error)
         {
@@ -148,7 +160,7 @@ namespace VRVlog.LilToonExporter
             while (true)
             {
                 try { return attempt(); }
-                catch (Exception error) when (ContinueOnFailure && ExportStageFailure.Find(error) is ExportStageFailure failure &&
+                catch (Exception error) when (ContinueOnFailure && !IsCancellation(error) && ExportStageFailure.Find(error) is ExportStageFailure failure &&
                                               !omitted.Contains(failure.Stage))
                 {
                     Omit(failure.Stage, failure.InnerException ?? failure);

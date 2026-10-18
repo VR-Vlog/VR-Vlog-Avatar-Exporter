@@ -81,6 +81,7 @@ namespace VRVlog.LilToonExporter
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
                 report.Stage = "完了";
                 report.Succeeded = true;
+                report.ClearError();
                 return bytes;
             }
             catch (Exception error)
@@ -106,6 +107,30 @@ namespace VRVlog.LilToonExporter
             report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
             var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
             entry.Count = trimmed;
+        }
+
+        internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
+        internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
+        internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
+
+        // A file without the lilToon extension is not checked against the app's
+        // limits at save time, so say so when the standard VRM is still over them.
+        static void RecordStandardOverLimit(byte[] bytes, ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            var (materials, textures) = LilToonGlbExtension.StandardCounts(bytes);
+            var category = ExporterLocalization.T("上限を超えた項目");
+            if (materials > LilToonMobileProfile.MaximumMaterials)
+            {
+                var reason = string.Format(ExporterLocalization.T(StandardMaterialLimitWarning), materials, LilToonMobileProfile.MaximumMaterials);
+                warnings?.Add(reason);
+                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMの材質"), reason, materials);
+            }
+            if (textures > LilToonMobileProfile.MaximumTextures)
+            {
+                var reason = string.Format(ExporterLocalization.T(StandardTextureLimitWarning), textures, LilToonMobileProfile.MaximumTextures);
+                warnings?.Add(reason);
+                report.Fallbacks.Record(ExportOutcome.Kept, category, ExporterLocalization.T("標準VRMの画像"), reason, textures);
+            }
         }
 
         internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
@@ -316,6 +341,14 @@ namespace VRVlog.LilToonExporter
                 if (withoutLilToon && !guard.ContinueOnFailure &&
                     ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
+                if (withoutLilToon && guard.ContinueOnFailure)
+                    foreach (var material in ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
+                                 .Where(material => material != null && LilToonMaterialReader.IsLilToon(material)).Distinct())
+                    {
+                        var reason = ExporterLocalization.T(UnofficialLilToonReason);
+                        warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
+                        recoveryReport.Fallbacks.Add(ExportFallbackKind.MaterialApproximated, material.name, reason: reason);
+                    }
                 if (withoutLilToon) { fullSnapshot = null; fallbackWarnings = warnings; }
                 guard.Step(ExportStage.TextureBake, () =>
                 {
@@ -369,13 +402,21 @@ namespace VRVlog.LilToonExporter
                         throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
                     return tracked;
                 }, () => exported);
+                var marked = false;
                 if (fullSnapshot != null)
                 {
                     // The dedicated snapshot predates fallback baking. Its binary
                     // payloads no longer depend on mutable Unity texture objects.
                     // Over the app's material or texture limit the file keeps
                     // only the standard VRM materials.
-                    var injected = guard.Run(ExportStage.LilToonExtension, () => fullSnapshot.Inject(exported, exporterVersion, lilToonVersion), () => null);
+                    var injected = guard.Run(ExportStage.LilToonExtension, () =>
+                    {
+                        var withExtension = fullSnapshot.Inject(exported, exporterVersion, lilToonVersion);
+                        // The save check would reject this file; a lenient export drops the extension instead.
+                        if (guard.ContinueOnFailure) LilToonGlbExtension.RequireWithinLimits(withExtension);
+                        return withExtension;
+                    }, () => null);
+                    marked = injected == null;
                     if (injected != null)
                     {
                         exported = injected;
@@ -388,7 +429,8 @@ namespace VRVlog.LilToonExporter
                         foreach(var warning in fallbackWarnings)warnings?.Add(warning);
                     }
                 }
-                else if (withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
+                else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
+                if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 return guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
             }

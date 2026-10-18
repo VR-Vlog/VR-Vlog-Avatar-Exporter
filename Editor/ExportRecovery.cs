@@ -71,6 +71,10 @@ namespace VRVlog.LilToonExporter
             originals.Clear();
         }
 
+        // A lenient export that left stages out still succeeded; keep the
+        // support text from naming the error of a left-out stage.
+        internal void ClearError() => errorType = null;
+
         internal void Track(Material copy, Material original)
         {
             originals[copy] = originals.TryGetValue(original, out var source) ? source : original;

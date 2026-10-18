@@ -45,6 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(extensions.ContainsKey("VRMC_vrm"), Is.True, "The file must stay a VRM.");
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes), "The save check must accept the file.");
                 Assert.That(report.Succeeded, Is.True);
+                Assert.That(report.BuildSupportText(), Does.Contain("Error: none"), "A left-out stage must not show up as the export's error.");
                 var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
                 Assert.That(entry.Stage, Is.EqualTo(stage));
                 Assert.That(entry.Reason, Is.EqualTo("injected " + stage));
@@ -101,6 +102,41 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Throws<OperationCanceledException>(() => Export(fixture.Source, report, null));
             }
             finally { Object.DestroyImmediate(material); }
+        }
+
+        [Test]
+        public void ACancellationWrappedByAnotherToolIsNeverLeftOut()
+        {
+            var guard = new ExportStageGuard(true);
+            var attempts = 0;
+            var error = Assert.Throws<InvalidOperationException>(() => guard.Retry(() =>
+            {
+                attempts++;
+                guard.Watch(ExportStage.BuildProcess, () =>
+                {
+                    try { guard.Step(ExportStage.Expressions, () => throw new InvalidOperationException("inner")); }
+                    catch (Exception inner) { throw new InvalidOperationException("build failed", new AggregateException(new OperationCanceledException(), inner)); }
+                });
+                return true;
+            }, null));
+            Assert.That(error.Message, Is.EqualTo("build failed"));
+            Assert.That(attempts, Is.EqualTo(1));
+            Assert.That(guard.Omissions, Is.Empty);
+        }
+
+        [Test]
+        public void TheStandardVrmIsCheckedAgainstTheAppLimits()
+        {
+            static byte[] Glb(int materials, int textures) => GlbDocument.Create(new Dictionary<string, object>
+            {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+                ["materials"] = Enumerable.Range(0, materials).Select(i => (object)new Dictionary<string, object>()).ToList(),
+                ["textures"] = Enumerable.Range(0, textures).Select(i => (object)new Dictionary<string, object> { ["source"] = (long)i }).ToList(),
+            }, new byte[0]).Write();
+            Assert.That(LilToonGlbExtension.StandardCounts(Glb(3, 5)), Is.EqualTo((3, 5)));
+            Assert.DoesNotThrow(() => LilToonGlbExtension.RequireWithinLimits(Glb(LilToonMobileProfile.MaximumMaterials, LilToonMobileProfile.MaximumTextures)));
+            Assert.Throws<InvalidOperationException>(() => LilToonGlbExtension.RequireWithinLimits(Glb(LilToonMobileProfile.MaximumMaterials + 1, 0)));
+            Assert.Throws<InvalidOperationException>(() => LilToonGlbExtension.RequireWithinLimits(Glb(0, LilToonMobileProfile.MaximumTextures + 1)));
         }
 
         [Test]
