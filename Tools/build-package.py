@@ -24,6 +24,9 @@ LOCALE_ASSETS = {
     for locale in ("en", "ko", "zh-Hans", "zh-Hant")
 }
 LOCALE_FILES = LOCALE_ASSETS | {name + ".meta" for name in LOCALE_ASSETS}
+# Formats/ is the shared format package. The exporter ships its sources, but
+# not its nested manifest: a VPM install keeps exactly one package.json.
+FORMATS_EXCLUDED = {"Formats/package.json", "Formats/package.json.meta"}
 TRANSFER_DLLS = {"bouncycastle.cryptography.dll", "zxing.dll"}
 TRANSFER_DLL_HASHES = {
     "Editor/LanTransfer/Dependencies/BouncyCastle.Cryptography.dll": "d61c1f2ba929a230a58e101ccd850e21f2675fa6b9814ec279633e8a089c3495",
@@ -66,7 +69,9 @@ def included(name, transfer=False):
         return transfer and name.removesuffix(".meta") in TRANSFER_DLL_PATHS
     return (name in ROOT_FILES or transfer and name == "Documentation~/CloudTransfer.md"
             or name in LOCALE_FILES or name in DEPENDENCY_PATCH_FILES
-            or name == "Runtime.meta"
+            or name in {"Runtime.meta", "Formats.meta"}
+            or (path.parts[0] == "Formats" and name not in FORMATS_EXCLUDED
+                and (path.suffix in PACKAGE_SUFFIXES or path.name == "README.md"))
             or (path.parts[0] in {"Editor", "Runtime"} and path.suffix in PACKAGE_SUFFIXES)
             or (path.parts[0] == "ThirdPartyNotices" and path.suffix in {".md", ".txt"}))
 

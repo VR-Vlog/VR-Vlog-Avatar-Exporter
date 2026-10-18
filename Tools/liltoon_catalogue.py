@@ -1,6 +1,6 @@
 """Read lilToon shader declarations, render the 2.3.4 catalogue and hash the shader structure.
 
-The catalogue in Editor/LilToon234Catalogue.cs is generated from the Built-in RP shaders in
+The catalogue in Formats/Runtime/LilToon234Catalogue.cs is generated from the Built-in RP shaders in
 `Assets/lilToon/Shader/*.shader` of a lilToon tag. Only the standard library is used so the
 validation workflow can run this without installing packages.
 """
@@ -16,7 +16,7 @@ import urllib.request
 from pathlib import Path
 
 LILTOON_REPOSITORY = "lilxyzw/lilToon"
-CATALOGUE_PATH = "Editor/LilToon234Catalogue.cs"
+CATALOGUE_PATH = "Formats/Runtime/LilToon234Catalogue.cs"
 STRUCTURE_PATH = "Compatibility/liltoon-structure.json"
 STRUCTURE_SCHEMA = 1
 REFERENCE_VERSION = "2.3.4"
@@ -287,7 +287,7 @@ def build_catalogue(source, commit):
 
 
 def render_catalogue(catalogue):
-    """Render Editor/LilToon234Catalogue.cs exactly as committed."""
+    """Render Formats/Runtime/LilToon234Catalogue.cs exactly as committed."""
     version = catalogue["version"]
     o = []
     w = o.append
@@ -296,11 +296,11 @@ def render_catalogue(catalogue):
     w("using System.Collections.Generic;")
     w("namespace VRVlog.LilToon")
     w("{")
-    w("    internal static class LilToon%sCatalogue" % version.replace(".", ""))
+    w("    public static class LilToon%sCatalogue" % version.replace(".", ""))
     w("    {")
-    w('        internal const string Commit = "%s";' % catalogue["commit"])
-    w('        internal const string Version = "%s";' % version)
-    head = "        internal static readonly Dictionary<string, %s> %s = new Dictionary<string, %s>(StringComparer.Ordinal)"
+    w('        public const string Commit = "%s";' % catalogue["commit"])
+    w('        public const string Version = "%s";' % version)
+    head = "        public static readonly Dictionary<string, %s> %s = new Dictionary<string, %s>(StringComparer.Ordinal)"
 
     def section(value_type, title, rows):
         w(head % (value_type, title, value_type))
@@ -342,7 +342,7 @@ def _unique(pairs):
 
 _CS_HEADER = re.compile(r'^// Generated from the official lilToon (?P<version>\S+) shader declarations\.$', re.MULTILINE)
 _CS_SECTION = re.compile(
-    r'internal static readonly Dictionary<string, [^=]+> (?P<title>\w+) = new [^\n]+\n\s*\{\n(?P<rows>.*?)\n\s*\};',
+    r'public static readonly Dictionary<string, [^=]+> (?P<title>\w+) = new [^\n]+\n\s*\{\n(?P<rows>.*?)\n\s*\};',
     re.DOTALL)
 _CS_PAIR = re.compile(r'\{"([^"]*)", "([^"]*)"\}')
 
@@ -350,8 +350,8 @@ _CS_PAIR = re.compile(r'\{"([^"]*)", "([^"]*)"\}')
 def parse_catalogue(text):
     """Read the committed C# catalogue back into the model used by build_catalogue."""
     header = _CS_HEADER.search(text)
-    commit = re.search(r'internal const string Commit = "([0-9a-f]{40})";', text)
-    version = re.search(r'internal const string Version = "([^"]+)";', text)
+    commit = re.search(r'public const string Commit = "([0-9a-f]{40})";', text)
+    version = re.search(r'public const string Version = "([^"]+)";', text)
     if not header or not commit or not version or header.group("version") != version.group(1):
         raise CatalogueError("Catalogue header, Commit or Version is missing or inconsistent")
     sections = {m.group("title"): m.group("rows").split("\n") for m in _CS_SECTION.finditer(text)}

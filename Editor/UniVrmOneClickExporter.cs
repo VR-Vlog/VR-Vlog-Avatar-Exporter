@@ -321,6 +321,11 @@ namespace VRVlog.LilToonExporter
                         warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
                         recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
                     }
+                    if (blink.UnresolvedAutomatic)
+                    {
+                        warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
+                        recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                    }
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
