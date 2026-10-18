@@ -460,7 +460,7 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Export(string avatarName, string author, ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
-            IEnumerable<PresetAssignment> presets = null)
+            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false)
         {
             RequireValid();
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
@@ -472,7 +472,9 @@ namespace VRVlog.LilToonExporter
                 .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment))).ToArray();
             // Without explicit faces, retain the ordinary exporter's VRChat
             // menu/FX, authored expressions, metadata and preparation route.
-            if (expressions.Length == 0 && presetFaces.Length == 0)
+            // replaceCustomFaces asks for exactly the recorded custom faces, even
+            // none, so both shortcuts that keep the menu faces are skipped.
+            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
                 return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
@@ -480,7 +482,7 @@ namespace VRVlog.LilToonExporter
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false);
             // Emotion presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
-            if (expressions.Length == 0)
+            if (!replaceCustomFaces && expressions.Length == 0)
             {
                 var authored = new List<Object>();
                 try
@@ -549,7 +551,7 @@ namespace VRVlog.LilToonExporter
                 settings.Prefab = null;
                 // Replace selectable custom faces, retaining authored functional
                 // and standard presets (mouth, gaze, blink, neutral and emotions).
-                if (expressions.Length > 0 || settings.Expression == null)
+                if (expressions.Length > 0 || replaceCustomFaces || settings.Expression == null)
                 {
                     var previous = settings.Expression;
                     settings.Expression = new VRM10ObjectExpression();

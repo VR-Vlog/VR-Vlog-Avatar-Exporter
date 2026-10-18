@@ -18,6 +18,16 @@ namespace VRVlog.LilToonExporter
         {
             public string Avatar;
             public List<PresetAssignment> Presets = new List<PresetAssignment>();
+            // Faces the user chose not to export. Older files have no such
+            // field and read as an empty list.
+            public List<ClipReference> Excluded = new List<ClipReference>();
+        }
+
+        [Serializable]
+        sealed class ClipReference
+        {
+            public string Guid;
+            public long LocalId;
         }
 
         [Serializable]
@@ -62,21 +72,52 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        internal static void Save(string key, IEnumerable<PresetAssignment> assignments)
+        // Clips that are no longer in the project are skipped the same way.
+        internal static List<AnimationClip> LoadExcluded(string key, out int skipped)
+        {
+            skipped = 0;
+            var result = new List<AnimationClip>();
+            if (string.IsNullOrEmpty(key)) return result;
+            var entry = (Read(out _) ?? new Store()).Avatars.FirstOrDefault(item => item != null && item.Avatar == key);
+            foreach (var reference in entry?.Excluded ?? new List<ClipReference>())
+            {
+                var clip = reference == null || string.IsNullOrEmpty(reference.Guid) ? null
+                    : AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(reference.Guid)).OfType<AnimationClip>().FirstOrDefault(candidate =>
+                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(candidate, out string guid, out long id) && id == reference.LocalId);
+                if (clip == null) skipped++;
+                else if (!result.Contains(clip)) result.Add(clip);
+            }
+            return result;
+        }
+
+        // Without an excluded list the stored exclusions are kept as they are.
+        internal static void Save(string key, IEnumerable<PresetAssignment> assignments, IEnumerable<AnimationClip> excluded = null)
         {
             if (string.IsNullOrEmpty(key)) return;
             // A file from another format version is left untouched.
             var store = Read(out var foreign);
             if (foreign) return;
             store = store ?? new Store();
+            var previous = store.Avatars.LastOrDefault(item => item != null && item.Avatar == key)?.Excluded ?? new List<ClipReference>();
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
             var saved = (assignments ?? Array.Empty<PresetAssignment>()).Where(value => value != null && !value.Automatic)
                 .Select(value => value.ForSaving()).Where(value => value != null).ToList();
-            if (saved.Count > 0) store.Avatars.Add(new AvatarEntry { Avatar = key, Presets = saved });
+            var references = excluded == null ? previous.Where(item => item != null).ToList() : References(excluded);
+            if (saved.Count > 0 || references.Count > 0) store.Avatars.Add(new AvatarEntry { Avatar = key, Presets = saved, Excluded = references });
             if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
             var path = FilePath;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+        }
+
+        // Persisted form references the clip asset, never an instance ID.
+        static List<ClipReference> References(IEnumerable<AnimationClip> clips)
+        {
+            var result = new List<ClipReference>();
+            foreach (var clip in clips.Where(clip => clip != null).Distinct())
+                if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(clip, out string guid, out long id) && !string.IsNullOrEmpty(guid))
+                    result.Add(new ClipReference { Guid = guid, LocalId = id });
+            return result;
         }
 
         static Store Read(out bool foreign)
