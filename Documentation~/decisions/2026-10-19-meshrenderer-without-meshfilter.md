@@ -1,7 +1,7 @@
 # MeshFilter のない Mesh Renderer で書き出しを止めない
 
 - 日付: 2026-10-19
-- 対象: `Editor/ExportGimmickDetection.cs`・`Editor/AlphaMaskBaker.cs`・`Editor/LilToonMainTextureBaker.cs`、`Vrm10Instance` を `GetComponent` で取っていた 8 ファイル、`Tests/Editor/ExportGimmickTests.cs`・`Tests/Editor/ExportFidelityTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/ExportGimmickDetection.cs`・`Editor/AlphaMaskBaker.cs`・`Editor/LilToonMainTextureBaker.cs`、`Vrm10Instance` を `GetComponent` で取っていた 8 ファイル、`Tests/Editor/ExportGimmickTests.cs`・`Tools/BakeTestShim.cs`・`Tests/Editor/ExportFidelityTests.cs`・`CHANGELOG.md`
 
 ## 背景
 
@@ -14,10 +14,12 @@
 ## 決定
 
 - `GetComponent<T>()?.` を `TryGetComponent<T>(out var c) ? c.… : null` に置き換える。`TryGetComponent` は付いていなければ false を返し、偽の null を作らない。
+- 直すのは `GetComponent<T>()?.` を 1 行で書いた所だけにする。`GetComponent<T>() ?? AddComponent<T>()` の形と、取得と `?.` を 2 行に分けた形は、総当たりの書き出しで失敗が出ておらず、別に確かめてから扱う。
 - MeshFilter のない Mesh Renderer は「メッシュがない」と同じに扱う。ギミック判定では既存の「メッシュまたは材質が不足しているため自動判定できません。」の確認行になり、撫でシステムの判定ではシステム全体を残す。焼き込みでは UV の範囲を調べられないものとして扱う（警告が 1 件出る）。
 
 ## 確認したこと
 
 - `ExportGimmickTests.MeshRendererWithoutMeshFilterIsReviewedAsMissingMesh`: MeshFilter のない Mesh Renderer で `Analyze` が例外を投げず、確認行になる。変更前のコードでは `MissingComponentException` で失敗する。
-- `ExportFidelityTests.BakersTreatMeshRendererWithoutMeshFilterAsMissingMesh`: 焼き込みの検査 2 つが同じ構成で例外を投げない。
+- `ExportFidelityTests.BakersTreatMeshRendererWithoutMeshFilterAsMissingMesh`: 焼き込みの検査 2 つが同じ構成で例外を投げない。変更前のコードでは 2 件とも `MissingComponentException` で失敗し、変更後は `ExportGimmickTests`・`ExportFidelityTests` の 54 件が全件合格した（Unity 2022.3.22f1）。
+- Unity なしで焼き込みを検査するテスト（`Tools/run-bake-tests.ps1`）の代用の `Component` に `TryGetComponent` を足した。
 - 総当たりで止まった 1 件を、この変更を入れたパッケージで書き出し直して通ることを確かめた（結果は PR に書く）。

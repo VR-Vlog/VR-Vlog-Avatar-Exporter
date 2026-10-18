@@ -21,6 +21,7 @@ namespace UnityEngine
         public GameObject gameObject;
         public Transform transform => gameObject.transform;
         public T GetComponent<T>() where T : Component => gameObject.GetComponent<T>();
+        public bool TryGetComponent<T>(out T component) where T : Component => (component = GetComponent<T>()) != null;
     }
 
     public sealed class Transform : Component
