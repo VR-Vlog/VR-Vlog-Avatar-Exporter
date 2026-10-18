@@ -237,6 +237,8 @@ namespace VRVlog.LilToonExporter
                     if (sendSavedVrm != null && GUILayout.Button(ExporterLocalization.T("スマホに送る")))
                     {
                         try { sendSavedVrm.Invoke(null, new object[] { lastSavedPath }); }
+                        catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException?.Data["VRVlog.ShowMessageAsIs"] is bool asIs && asIs)
+                        { EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T(exception.InnerException.Message), ExporterLocalization.T("閉じる")); }
                         catch { EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T("転送用のコピーを準備できません"), ExporterLocalization.T("閉じる")); }
                     }
                     if (GUILayout.Button(ExporterLocalization.T("保存先を開く"))) EditorUtility.RevealInFinder(lastSavedPath);
@@ -315,7 +317,9 @@ namespace VRVlog.LilToonExporter
             if (avatar == null) return;
             blinkStatus.Refresh(EditorApplication.timeSinceStartup, ResolveBlink);
             var resolved = blinkStatus.Resolved;
-            var error = blinkStatus.Error;
+            // An automatic setup that fell back to no blink keeps the old error
+            // visible, so the manual choice is still one click away.
+            var error = blinkStatus.Error ?? (resolved?.UnresolvedAutomatic == true ? resolved.UnresolvedReason : null);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(ExporterLocalization.T("瞬き"), ExporterLocalization.T(resolved?.Description) ?? ExporterLocalization.T("設定が必要です"));
             if (GUILayout.Button(showBlink ? ExporterLocalization.T("設定を閉じる") : ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) showBlink = !showBlink;

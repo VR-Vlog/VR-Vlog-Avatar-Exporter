@@ -38,7 +38,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var original = Skin("UE/EyeClosedLeft", "UE/EyeClosedRight");
             original.SetBlendShapeWeight(0, 100); original.SetBlendShapeWeight(1, 100);
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(source));
+            // Without the FX opening the closed rest cannot close further: the
+            // plain resolve falls back to no blink instead of guessing.
+            using (var plain = BlinkExportSession.Resolve(source)) Assert.That(plain.Disabled && plain.UnresolvedAutomatic, Is.True);
             using var captured = BlinkExportSession.CaptureForExport(source);
             prepared = Object.Instantiate(source);
             using var blink = captured.ForClone(source, prepared);
