@@ -151,7 +151,7 @@ namespace VRVlog.LilToonExporter
         // the export lost nothing the avatar shows in VRM.
         internal static void RecordOmittedGimmick(GameObject source, ExportGimmickFinding finding, ICollection<string> warnings, ExportRecoveryReport report)
         {
-            warnings?.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
+            // The result line is the record; a warning would repeat it as a notice.
             var path = ExportFallbackReport.RelativePath(source.transform, finding.Target.transform);
             var entry = report.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T(OmittedGimmickCategory),
                 string.IsNullOrEmpty(path) ? source.name : path, ExporterLocalization.T(finding.Reason));
