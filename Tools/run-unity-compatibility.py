@@ -111,12 +111,12 @@ BEHAVIOR_CASES = {
     'ExportFallbackConfirmationTests': {
         'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
-        'BatchAndNonInteractiveCallersContinueWithoutADialog': 2,
-        'EveryShippedLocaleTranslatesTheDialog': 1,
+        'BatchAndNonInteractiveCallersSaveWithoutTheList': 2,
+        'EveryShippedLocaleTranslatesTheResultWords': 1,
+        'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
-        'OneFallbackAsksWithItsOwnSentence': 1,
-        'SeveralFallbacksShareOneDialogInAFixedOrder': 1,
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
+        'TheListShowsEveryFallbackWithItsTargets': 1,
         'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
     },
     'LegacyBlinkMenuRoundTripTests': {
