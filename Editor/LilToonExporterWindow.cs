@@ -244,7 +244,7 @@ namespace VRVlog.LilToonExporter
                     if ((lastSavedWarnings.Length > 0 || lastSavedResult != null && !lastSavedResult.IsEmpty) &&
                         GUILayout.Button(ExporterLocalization.T("書き出しの詳細")))
                         ExportResultWindow.ShowSaved(lastSavedResult ?? ExportResultList.Build(null, lastSavedWarnings, lastSavedPath), avatar, OpenBlinkSettings);
-                    if (AppPreviewEntry.Open != null && GUILayout.Button(ExporterLocalization.T("アプリでの見え方を確認"))) OpenAppPreview(lastSavedPath);
+                    if (AppPreviewEntry.Backend != null && GUILayout.Button(ExporterLocalization.T("アプリでの見え方を確認"))) OpenAppPreview(lastSavedPath);
                 }
             }
 
@@ -620,7 +620,7 @@ namespace VRVlog.LilToonExporter
                 EditorUtility.DisplayDialog(ExporterLocalization.T("アプリでの見え方を確認"), ExporterLocalization.T("ファイルを読めません"), ExporterLocalization.T("閉じる"));
                 return;
             }
-            AppPreviewEntry.Open?.Invoke(bytes, Path.GetFileName(path));
+            AppPreviewWindow.Open(bytes, Path.GetFileName(path));
         }
 
         private static string InstalledLilToonStatus()

@@ -3,7 +3,6 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using FaceMaskVTuber.UniVrmRuntime;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,10 +10,13 @@ namespace VRVlog.LilToonExporter
 {
     // Shows an exported VRM through the VR Vlog app's own reader package, with
     // the official lilToon Built-in shaders standing in for the app's URP ones.
+    // The package is reached only through AppPreviewEntry.Backend; without it
+    // the window says so and opens nothing.
     // Every row has a fixed height and the left pane a fixed width, so a longer
     // translation or a larger font clips text instead of moving the panes.
     internal sealed class AppPreviewWindow : EditorWindow
     {
+        const string MenuPath = "VR Vlog/アプリでの見え方を確認";
         const float PaneWidth = 280, MaxStep = 1f / 15;
         const int ExpressionRows = 6, AnimationRows = 4;
         const string StateKey = "VRVlog.LilToonExporter.AppPreview.";
@@ -24,15 +26,12 @@ namespace VRVlog.LilToonExporter
         // A blink test signal for this window only; the app does not use it.
         const float BlinkInterval = 4, BlinkClose = .1f, BlinkHold = .05f, BlinkOpen = .15f;
 
-        // The reader package swaps a global shader hook while it loads, so two
-        // loads, even from two windows, must never overlap.
-        static Task pendingLoad = Task.CompletedTask;
         static string exporterVersion;
         static GUIStyle clipped, centered, right, heading, foldout, radio, warning;
 
-        AvatarPreviewLoad load;
+        IAppPreviewSession load;
         PreviewRenderUtility preview;
-        AvatarPreviewMaterialMode loadedMode;
+        bool loadedStandardMToon;
         byte[] bytes;
         string fileName, lilToonVersion;
         int revision;
@@ -45,18 +44,19 @@ namespace VRVlog.LilToonExporter
         float distance = 1, zoom = 1, yaw, paneHeight = 1000;
         Vector2 paneScroll, expressionScroll, animationScroll;
 
-        internal AvatarPreviewLoad Load => load;
+        internal IAppPreviewSession Load => load;
         internal string Error => errorText;
         internal Task LastLoad { get; private set; } = Task.CompletedTask;
 
         static string T(string source) => ExporterLocalization.T(source);
 
-        [InitializeOnLoadMethod]
-        static void Register() => AppPreviewEntry.Open = (data, name) => Open(data, name);
+        [MenuItem(MenuPath, true)]
+        internal static bool CanOpen() => AppPreviewEntry.Backend != null;
 
-        [MenuItem("VR Vlog/アプリでの見え方を確認")]
+        [MenuItem(MenuPath)]
         static void OpenFromMenu()
         {
+            if (!CanOpen()) return;
             var path = EditorUtility.OpenFilePanel(T("VRM ファイルを開く"), "", "vrm");
             if (!string.IsNullOrEmpty(path)) Window().LoadFile(path);
         }
@@ -77,10 +77,11 @@ namespace VRVlog.LilToonExporter
             return window;
         }
 
-        static AvatarPreviewMaterialMode Mode
+        // False shows the app's materials, true only the VRM's MToon.
+        static bool StandardMToon
         {
-            get => SessionState.GetInt(StateKey + "MaterialMode", 0) == 1 ? AvatarPreviewMaterialMode.StandardMToon : AvatarPreviewMaterialMode.App;
-            set => SessionState.SetInt(StateKey + "MaterialMode", value == AvatarPreviewMaterialMode.StandardMToon ? 1 : 0);
+            get => SessionState.GetInt(StateKey + "MaterialMode", 0) == 1;
+            set => SessionState.SetInt(StateKey + "MaterialMode", value ? 1 : 0);
         }
 
         void LoadFile(string path)
@@ -103,18 +104,27 @@ namespace VRVlog.LilToonExporter
         {
             Release();
             var mine = revision;
-            cancel = new CancellationTokenSource();
             bytes = data; fileName = name;
             errorText = errorDetail = null;
+            var backend = AppPreviewEntry.Backend;
+            if (backend == null)
+            {
+                errorText = T("VR Vlog アプリの読み込みパッケージがありません");
+                Repaint();
+                return;
+            }
+            cancel = new CancellationTokenSource();
             loading = true; loadStarted = EditorApplication.timeSinceStartup;
-            loadedMode = Mode;
+            loadedStandardMToon = StandardMToon;
             lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
-            var started = Start(pendingLoad, data, name, new AvatarPreviewOptions { materialMode = loadedMode }, cancel.Token);
-            pendingLoad = started;
-            Repaint();
-            AvatarPreviewLoad result = null;
+            IAppPreviewSession result = null;
             string failure = null, detail = null;
-            try { result = await started; }
+            try
+            {
+                var started = backend.LoadAsync(data, name, loadedStandardMToon, cancel.Token);
+                Repaint();
+                result = await started;
+            }
             catch (Exception exception) { failure = T("VRM として読み込めません"); detail = exception.Message; }
             // Closed, cancelled or replaced while loading: release what arrived late.
             if (this == null || mine != revision) { result?.Dispose(); return; }
@@ -140,14 +150,7 @@ namespace VRVlog.LilToonExporter
             Repaint();
         }
 
-        static async Task<AvatarPreviewLoad> Start(Task previous, byte[] data, string name, AvatarPreviewOptions options, CancellationToken token)
-        {
-            // The owner of the previous load handles its result and its failure.
-            try { await previous; } catch (Exception) { }
-            return await AvatarRuntimePreview.LoadAsync(data, name, options, token);
-        }
-
-        void Attach(AvatarPreviewLoad result)
+        void Attach(IAppPreviewSession result)
         {
             load = result;
             var root = result.Root;
@@ -164,8 +167,8 @@ namespace VRVlog.LilToonExporter
             distance = Mathf.Max(.5f, bounds.size.magnitude * 1.8f);
             preview = ExportRecoveryComparisonWindow.CreateRenderer(root);
             lastTick = 0; blinkClock = 0; stepFailed = false;
-            AvatarRuntimePreview.SetSpringBonesEnabled(load, springsEnabled);
-            if (!autoBlink && blinkAmount > 0) AvatarRuntimePreview.SetEyeBlink(load, blinkAmount, blinkAmount);
+            load.SetSpringBonesEnabled(springsEnabled);
+            if (!autoBlink && blinkAmount > 0) load.SetEyeBlink(blinkAmount, blinkAmount);
         }
 
         void Cancel()
@@ -254,11 +257,11 @@ namespace VRVlog.LilToonExporter
             {
                 blinkClock = (blinkClock + deltaTime) % BlinkInterval;
                 var closure = BlinkClosure(blinkClock);
-                AvatarRuntimePreview.SetEyeBlink(load, closure, closure);
+                load.SetEyeBlink(closure, closure);
             }
             // Expressions and their animations advance every frame; spring bones
             // only move while enabled (SetSpringBonesEnabled). A zero step is never sent.
-            AvatarRuntimePreview.Tick(load, deltaTime);
+            load.Tick(deltaTime);
         }
 
         internal static float BlinkClosure(float time)
@@ -275,19 +278,19 @@ namespace VRVlog.LilToonExporter
             swayTime = -1;
             if (load?.Root == null) return;
             load.Root.transform.position = origin;
-            AvatarRuntimePreview.ResetSpringBones(load);
+            load.ResetSpringBones();
         }
 
         void SelectExpression(string name)
         {
-            AvatarRuntimePreview.ClearExpressions(load);
-            if (name != null) AvatarRuntimePreview.SetExpression(load, name, 1);
+            load.ClearExpressions();
+            if (name != null) load.SetExpression(name, 1);
             expression = name;
         }
 
         void PlayAnimation(string name)
         {
-            AvatarRuntimePreview.PlayExpressionAnimation(load, name);
+            load.PlayExpressionAnimation(name);
             playingAnimation = name;
         }
 
@@ -360,19 +363,18 @@ namespace VRVlog.LilToonExporter
             {
                 using (new EditorGUI.DisabledScope(loading))
                 {
-                    var mode = Mode;
-                    var app = GUI.Toggle(Row(), mode == AvatarPreviewMaterialMode.App, T("アプリと同じ"), radio);
-                    var mtoon = GUI.Toggle(Row(), mode == AvatarPreviewMaterialMode.StandardMToon, T("MToon のみ"), radio);
-                    var selected = app && mode != AvatarPreviewMaterialMode.App ? AvatarPreviewMaterialMode.App
-                        : mtoon && mode != AvatarPreviewMaterialMode.StandardMToon ? AvatarPreviewMaterialMode.StandardMToon : mode;
-                    if (selected != mode)
+                    var mtoonOnly = StandardMToon;
+                    var app = GUI.Toggle(Row(), !mtoonOnly, T("アプリと同じ"), radio);
+                    var mtoon = GUI.Toggle(Row(), mtoonOnly, T("MToon のみ"), radio);
+                    var selected = app && mtoonOnly ? false : mtoon && !mtoonOnly ? true : mtoonOnly;
+                    if (selected != mtoonOnly)
                     {
-                        Mode = selected;
+                        StandardMToon = selected;
                         if (bytes != null) LastLoad = LoadAsync(bytes, fileName);
                     }
                 }
                 var status = Row();
-                if (load != null) GUI.Label(status, new GUIContent(MaterialDetail(load.MaterialStatus, loadedMode), load.MaterialStatus), clipped);
+                if (load != null) GUI.Label(status, new GUIContent(MaterialDetail(load.MaterialStatus, loadedStandardMToon), load.MaterialStatus), clipped);
                 GUI.Label(Row(), lilToonVersion == null ? T("lilToon がありません") : "lilToon " + lilToonVersion, clipped);
                 var mismatch = Row();
                 if (lilToonVersion != null && lilToonVersion != PinnedLilToon) GUI.Label(mismatch, T("lilToon 2.3.4 と版が違います"), warning);
@@ -431,7 +433,7 @@ namespace VRVlog.LilToonExporter
                     if (automatic != autoBlink)
                     {
                         autoBlink = automatic; blinkClock = 0;
-                        if (!automatic) AvatarRuntimePreview.SetEyeBlink(load, blinkAmount, blinkAmount);
+                        if (!automatic) load.SetEyeBlink(blinkAmount, blinkAmount);
                     }
                     using (new EditorGUI.DisabledScope(autoBlink))
                     {
@@ -442,7 +444,7 @@ namespace VRVlog.LilToonExporter
                         if (!Mathf.Approximately(amount, blinkAmount))
                         {
                             blinkAmount = amount;
-                            AvatarRuntimePreview.SetEyeBlink(load, amount, amount);
+                            load.SetEyeBlink(amount, amount);
                         }
                     }
                 }
@@ -458,7 +460,7 @@ namespace VRVlog.LilToonExporter
                     if (enabled != springsEnabled)
                     {
                         springsEnabled = enabled;
-                        AvatarRuntimePreview.SetSpringBonesEnabled(load, enabled);
+                        load.SetSpringBonesEnabled(enabled);
                         lastTick = 0;
                         if (!enabled) ReturnToOrigin();
                     }
@@ -493,6 +495,11 @@ namespace VRVlog.LilToonExporter
                 var elapsed = (int)(EditorApplication.timeSinceStartup - loadStarted);
                 GUI.Label(new Rect(x, middle - line / 2, labelWidth, line), string.Format(T("読み込み中 {0} 秒"), elapsed), centered);
                 if (GUI.Button(new Rect(x + labelWidth + 8, middle - line / 2, buttonWidth, line), T("中止"))) Cancel();
+                return;
+            }
+            if (AppPreviewEntry.Backend == null)
+            {
+                GUI.Label(new Rect(rect.x + 20, middle - line / 2, rect.width - 40, line), T("VR Vlog アプリの読み込みパッケージがありません"), centered);
                 return;
             }
             if (errorText != null)
@@ -570,7 +577,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // The left pane's line; the raw code is the tooltip.
-        internal static string MaterialDetail(string status, AvatarPreviewMaterialMode mode)
+        internal static string MaterialDetail(string status, bool standardMToon)
         {
             status = status ?? "";
             if (IsFullLilToon(status))
@@ -582,7 +589,7 @@ namespace VRVlog.LilToonExporter
             if (status == "failed-memory") return T("メモリが足りず読み込めません");
             if (status.Contains("low-power")) return T("省電力モードのため MToon で表示しています");
             if (status == "standard-mtoon")
-                return mode == AvatarPreviewMaterialMode.StandardMToon ? T("VRM の MToon で表示しています") : T("lilToon の追加データがありません");
+                return standardMToon ? T("VRM の MToon で表示しています") : T("lilToon の追加データがありません");
             if (status.Contains("vrm0")) return T("VRM 0.x のため MToon で表示しています");
             if (status.StartsWith("fallback", StringComparison.Ordinal)) return T("lilToon を適用できず MToon で表示しています");
             return status.Length == 0 || status == "detecting-materials" || status == "enabled-pending" ? T("材質を判定できません") : status;

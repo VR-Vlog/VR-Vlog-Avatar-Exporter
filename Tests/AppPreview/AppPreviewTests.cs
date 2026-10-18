@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using FaceMaskVTuber.UniVrmRuntime;
 using NUnit.Framework;
 using UniVRM10;
 using UnityEngine;
@@ -11,7 +11,7 @@ using Fixture = VRVlog.LilToonExporter.Tests.AttachmentConnectionTests.Fixture;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // Loads a small exported VRM through the app's reader package, the same way
+    // Loads a small exported VRM through the registered backend, the same way
     // the preview window does.
     public sealed class AppPreviewTests
     {
@@ -21,8 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task AppModeShowsTheExportedLilToonMaterials()
         {
             var bytes = ExportFixture();
-            using var load = await AvatarRuntimePreview.LoadAsync(bytes, "app-preview.vrm",
-                new AvatarPreviewOptions { materialMode = AvatarPreviewMaterialMode.App });
+            using var load = await Load(bytes, false);
             Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
             Assert.That(load.MaterialStatus, Does.StartWith("full-liltoon:"));
             Assert.That(AppPreviewWindow.MaterialSummary(load.MaterialStatus), Is.EqualTo(ExporterLocalization.T("lilToon で表示")));
@@ -32,8 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task MToonModeIgnoresTheLilToonData()
         {
             var bytes = ExportFixture();
-            using var load = await AvatarRuntimePreview.LoadAsync(bytes, "app-preview.vrm",
-                new AvatarPreviewOptions { materialMode = AvatarPreviewMaterialMode.StandardMToon });
+            using var load = await Load(bytes, true);
             Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
             Assert.That(load.MaterialStatus, Is.EqualTo("standard-mtoon"));
         }
@@ -42,23 +40,23 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task ExpressionAndBlinkChangeBlendShapeWeights()
         {
             var bytes = ExportFixture();
-            using var load = await AvatarRuntimePreview.LoadAsync(bytes, "app-preview.vrm", new AvatarPreviewOptions());
+            using var load = await Load(bytes, false);
             Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
             Assert.That(load.Expressions, Is.Not.Empty);
             var name = load.Expressions.FirstOrDefault(e => e.IndexOf("happy", StringComparison.OrdinalIgnoreCase) >= 0) ?? load.Expressions[0];
 
-            AvatarRuntimePreview.Tick(load, Step);
+            load.Tick(Step);
             var before = Weights(load.Root);
-            AvatarRuntimePreview.ClearExpressions(load);
-            AvatarRuntimePreview.SetExpression(load, name, 1);
-            AvatarRuntimePreview.Tick(load, Step);
+            load.ClearExpressions();
+            load.SetExpression(name, 1);
+            load.Tick(Step);
             Assert.That(Changed(before, Weights(load.Root)), Is.True, "The expression " + name + " moves no blend shape.");
 
-            AvatarRuntimePreview.ClearExpressions(load);
-            AvatarRuntimePreview.Tick(load, Step);
+            load.ClearExpressions();
+            load.Tick(Step);
             before = Weights(load.Root);
-            AvatarRuntimePreview.SetEyeBlink(load, 1, 1);
-            AvatarRuntimePreview.Tick(load, Step);
+            load.SetEyeBlink(1, 1);
+            load.Tick(Step);
             Assert.That(Changed(before, Weights(load.Root)), Is.True, "Closing both eyes moves no blend shape.");
         }
 
@@ -66,15 +64,16 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task TickMovesASpringJointRelativeToTheRoot()
         {
             var bytes = ExportFixture();
-            using var load = await AvatarRuntimePreview.LoadAsync(bytes, "app-preview.vrm", new AvatarPreviewOptions());
+            using var load = await Load(bytes, false);
             Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
             if (!load.HasSpringBones) Assert.Ignore("The exported fixture has no spring bones.");
             var tip = load.Root.GetComponentsInChildren<Transform>(true).Single(t => t.name == "Authored tip");
             var root = load.Root.transform;
-            for (var i = 0; i < 3; i++) AvatarRuntimePreview.Tick(load, Step);
+            load.SetSpringBonesEnabled(true);
+            for (var i = 0; i < 3; i++) load.Tick(Step);
             var rest = root.InverseTransformPoint(tip.position);
             root.position += Vector3.right * .25f;
-            for (var i = 0; i < 3; i++) AvatarRuntimePreview.Tick(load, Step);
+            for (var i = 0; i < 3; i++) load.Tick(Step);
             Assert.That(Vector3.Distance(rest, root.InverseTransformPoint(tip.position)), Is.GreaterThan(1e-4f));
         }
 
@@ -89,6 +88,14 @@ namespace VRVlog.LilToonExporter.Tests
             var window = await OpenAndClose(bytes);
             Assert.That(window == null, Is.True);
             Assert.That(HiddenObjects(), Is.EqualTo(before));
+        }
+
+        static async Task<IAppPreviewSession> Load(byte[] bytes, bool standardMToon)
+        {
+            Assert.That(AppPreviewEntry.Backend, Is.InstanceOf<AvatarRuntimeBackend>());
+            var load = await AppPreviewEntry.Backend.LoadAsync(bytes, "app-preview.vrm", standardMToon, CancellationToken.None);
+            Assert.That(load, Is.Not.Null);
+            return load;
         }
 
         static async Task<AppPreviewWindow> OpenAndClose(byte[] bytes)
