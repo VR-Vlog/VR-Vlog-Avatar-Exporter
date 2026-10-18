@@ -23,6 +23,18 @@ namespace VRVlog.LilToonExporter.Compatibility
             return null;
         }
 
+        // VRChat SDK Base/Avatars in which VRCAnimatorPlayAudio may be omitted from
+        // an expression capture copy: the same release, VrchatSdkMinimum <= v < VrchatSdkBelow.
+        public static bool SupportsVrchatSdkAudio(string avatars, string sdkBase)
+        {
+            var parsed = avatars == null ? null : ParseRelease(avatars);
+            return parsed != null && string.Equals(avatars, sdkBase, StringComparison.Ordinal) &&
+                CompareRelease(parsed, VrchatSdkLow) >= 0 && CompareRelease(parsed, VrchatSdkHigh) < 0;
+        }
+
+        static readonly int[] VrchatSdkLow = ParseRelease(VrchatSdkMinimum) ?? throw new InvalidOperationException("Invalid VrchatSdkMinimum.");
+        static readonly int[] VrchatSdkHigh = ParseRelease(VrchatSdkBelow) ?? throw new InvalidOperationException("Invalid VrchatSdkBelow.");
+
         public enum LilToonSupport { Supported, Missing, Unreadable, Older, Newer }
 
         // Versions above LilToonMaximum are unverified. Setting this to true

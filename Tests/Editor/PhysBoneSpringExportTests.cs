@@ -38,7 +38,10 @@ namespace VRVlog.LilToonExporter.Tests
         static void Set(Component component, string name, object value)
         {
             using var data = new SerializedObject(component);
-            var p = data.FindProperty(name); Assert.That(p, Is.Not.Null, name);
+            var p = data.FindProperty(name);
+            // VRChat SDK 3.7.x has no such field and always behaves as true, the exporter's fallback.
+            if (p == null && name == "ignoreOtherPhysBones") Assert.Ignore("ignoreOtherPhysBones needs VRChat SDK 3.8.0 or later.");
+            Assert.That(p, Is.Not.Null, name);
             if (value is Vector3 v) p.vector3Value = v;
             else if (value is float f) p.floatValue = f;
             else if (value is bool b) p.boolValue = b;

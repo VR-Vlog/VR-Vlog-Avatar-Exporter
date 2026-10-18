@@ -26,6 +26,8 @@
     "ndmfMinimum": "1.8.3",
     "ndmfMajor": 1,
     "ndmfReference": "1.14.8",
-    "modularAvatarReference": "1.18.7"
+    "modularAvatarReference": "1.18.7",
+    "vrchatSdkMinimum": "3.5.2",
+    "vrchatSdkBelow": "3.11.0"
   }
 }

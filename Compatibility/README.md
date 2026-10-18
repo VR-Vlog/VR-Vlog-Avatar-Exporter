@@ -57,6 +57,14 @@ Diagnostics never install, upgrade or downgrade packages. MA and NDMF remain opt
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
 
+The VRChat SDK is optional as well. It matters only when an expression file uses
+VRC Animator Play Audio: the capture copy omits that behaviour, and the exporter
+accepts it when VRChat SDK Base and Avatars are the same release with
+`vrchatSdkMinimum <= version < vrchatSdkBelow` (3.5.2 to below 3.11.0). 3.5.2 is
+the first stable release with `VRCAnimatorPlayAudio`; its fields and members are
+identical through 3.10.5. Results:
+[Evidence/VrchatSdkRange](Evidence/VrchatSdkRange/README.md).
+
 ## Supported lilToon versions
 
 The exporter accepts lilToon 2.0.0-2.3.4 (`lilToon.supported` in
