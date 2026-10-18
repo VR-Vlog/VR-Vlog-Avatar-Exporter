@@ -16,6 +16,7 @@ namespace VRVlog.LilToonExporter.Tests
         private string folder;
         private AnimatorController fx;
         private StateMachineBehaviour driver;
+        private AnimatorOverrideController overrides;
 
         [SetUp]
         public void SetUp()
@@ -48,6 +49,28 @@ namespace VRVlog.LilToonExporter.Tests
             var again = second.AddState("Again"); again.motion = face;
             var empty = second.AddState("Empty"); empty.motion = Clip("Empty", _ => { });
             again.AddTransition(empty).AddCondition(AnimatorConditionMode.Greater, .5f, "Axis");
+            // Layer weight commands, an unknown callback and an empty state
+            // exercise the copied control objects and the replayed messages.
+            Control(empty, "VRCAnimatorLayerControl", "playable", .1f);
+            Control(empty, "VRCPlayableLayerControl", "layer", 0);
+            again.AddStateMachineBehaviour<UnknownStateCallbackProbe>();
+            var idle = second.AddState("Idle");
+            empty.AddTransition(idle).AddCondition(AnimatorConditionMode.Less, .5f, "Axis");
+            overrides = new AnimatorOverrideController(fx) { name = "Overrides" };
+            AssetDatabase.CreateAsset(overrides, folder + "/Overrides.overrideController");
+            overrides[smile] = Clip("Wink", clip => AnimationUtility.SetEditorCurve(clip, Morph("Body", "Wink"), AnimationCurve.Constant(0, 1, 100)));
+        }
+
+        private static void Control(AnimatorState state, string type, string target, float duration)
+        {
+            var sdk = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components." + type)).First(t => t != null);
+            using var data = new SerializedObject(state.AddStateMachineBehaviour(sdk));
+            var property = data.FindProperty(target);
+            property.enumValueIndex = Array.IndexOf(property.enumNames, "FX");
+            if (target == "playable") data.FindProperty("layer").intValue = 0;
+            data.FindProperty("goalWeight").floatValue = duration > 0 ? 0 : 1;
+            data.FindProperty("blendDuration").floatValue = duration;
+            data.ApplyModifiedPropertiesWithoutUndo();
         }
 
         [TearDown]
@@ -76,7 +99,7 @@ namespace VRVlog.LilToonExporter.Tests
             (path => path == "Prop", new Dictionary<string, float>(StringComparer.Ordinal) { ["Menu"] = 1 }),
         };
 
-        private string Run(RuntimeAnimatorController runtime, int index, out ExpressionDependencies.Layer[] layers,
+        private static string Run(RuntimeAnimatorController runtime, int index, out ExpressionDependencies.Layer[] layers,
             out Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers)
         {
             drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
@@ -97,6 +120,31 @@ namespace VRVlog.LilToonExporter.Tests
             // Path exclusion is replayed; only the three neutral inputs walk the graph.
             Assert.That(cache.Misses, Is.EqualTo(3));
             Assert.That(cache.Hits, Is.EqualTo(Cases.Length * 2 - 3));
+        }
+
+        [Test]
+        public void OverrideControllersAreCachedSeparatelyFromTheirBase()
+        {
+            var expected = Run(overrides, 0, out var fresh, out _);
+            Assert.That(fresh[0].Clips.Select(clip => clip.name), Does.Contain("Wink").And.Not.Contain("Smile"));
+            var original = Run(fx, 0, out _, out _);
+            using var cache = ExpressionInspectCache.Begin();
+            Assert.That(Run(fx, 0, out _, out _), Is.EqualTo(original));
+            Assert.That(Run(overrides, 0, out _, out _), Is.EqualTo(expected));
+            Assert.That(Run(overrides, 0, out _, out _), Is.EqualTo(expected));
+            Assert.That(Run(fx, 0, out _, out _), Is.EqualTo(original));
+            Assert.That(cache.Misses, Is.EqualTo(2));
+            Assert.That(cache.Hits, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void FixtureReachesTheCopiedControlObjects()
+        {
+            Run(fx, 0, out var layers, out _);
+            var unknown = new List<string>();
+            ExpressionDependencies.Inspect(fx, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+            Assert.That(layers[1].WeightControls.Count + layers[1].FxCommands.Count, Is.GreaterThan(0));
+            Assert.That(unknown, Has.Some.Contains(nameof(UnknownStateCallbackProbe)));
         }
 
         [Test]
