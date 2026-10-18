@@ -15,7 +15,10 @@ namespace VRVlog.LilToonExporter
         // per avatar through ExportAuthor, like the export windows.
         private const string TermsFoldoutPreference = "VRVlog.AppTransfer.ShowVrmTerms";
         private string author = "";
-        private AvatarLicenseOptions license = new AvatarLicenseOptions();
+        // The avatar's remembered export settings, the same ones the export
+        // window shows and saves. Only the license is edited here.
+        private ExportSettings settings = new ExportSettings();
+        private AvatarLicenseOptions license { get => settings.License; set => settings.License = value; }
         private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
         private GUIStyle summaryStyle;
 
@@ -29,11 +32,11 @@ namespace VRVlog.LilToonExporter
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
-        // comes from an export window showing this avatar; like those windows,
-        // another avatar starts from the default license.
+        // comes from an export window showing this avatar, else the avatar's
+        // remembered settings; an avatar without any starts from the default.
         public void SelectAvatar(GameObject avatar)
         {
-            license = new AvatarLicenseOptions();
+            settings = ExportSettingsStore.Load(avatar);
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
@@ -79,7 +82,8 @@ namespace VRVlog.LilToonExporter
         }
 
         // Writes the VRM to destination through the entry the export windows use,
-        // with the settings an export window has before anything is adjusted.
+        // with the avatar's remembered export settings (exclusions, gimmicks,
+        // blink, poses) and the license shown here.
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
@@ -90,8 +94,12 @@ namespace VRVlog.LilToonExporter
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             var targetAuthor = author;
-            var targetLicense = license.Copy();
             ExportAuthor.Remember(avatar, targetAuthor);
+            // Choices saved by the export window since this avatar was selected
+            // apply too; the license edited here is remembered for the next export.
+            var targetSettings = ExportSettingsStore.Load(avatar);
+            targetSettings.License = (license ?? new AvatarLicenseOptions()).Copy();
+            ExportSettingsStore.Save(avatar, targetSettings);
             void Completed(byte[] bytes, IEnumerable<string> warnings)
             {
                 // Like the export windows, the details of this export go to the Console.
@@ -102,15 +110,8 @@ namespace VRVlog.LilToonExporter
             // Interactive like the export window: an export that had to work around
             // something asks before it is saved, so nothing degraded is uploaded unasked.
             // "設定を変更する" selects the objects concerned and cancels this transfer.
-            var recovery = SaveNormally(avatar, destination, (options, report, warnings) =>
-            {
-                if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
-                if (report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
-                return UniVrmOneClickExporter.Export(avatar, name, targetAuthor, warnings,
-                    exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
-                    poseOptions: new PoseExportOptions(), licenseOptions: targetLicense, disableAudioLink: true,
-                    recoveryOptions: options, recoveryReport: report);
-            }, Completed, null, new ExportGimmickOptions(), true, null);
+            var recovery = SaveNormally(avatar, destination, targetSettings.Creator(avatar, name, targetAuthor), Completed,
+                targetSettings.Exclusions(), targetSettings.Gimmicks(), true, null);
             if (recovery == null) return null;
             ExportFailureWindow.Show(recovery, () => Completed(recovery.LastSuccess.Bytes, recovery.LastSuccess.Warnings));
             return recovery.Failure?.Message ?? "";
