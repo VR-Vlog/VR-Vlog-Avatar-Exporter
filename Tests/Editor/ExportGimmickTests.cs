@@ -357,6 +357,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(disabled.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
         }
 
+        [Test] public void SettingsComponentIsFoundWhenTheCopyDroppedAnEarlierComponent()
+        {
+            // The export copy drops missing scripts and edit-mode behaviours,
+            // which moves every later component up by one.
+            avatar.AddComponent<BoxCollider>();
+            avatar.AddComponent<GimmickSettingsProbe>();
+            var findings = Matched(AnchorRule());
+            var clone = Own(Object.Instantiate(avatar));
+            Object.DestroyImmediate(clone.GetComponent<BoxCollider>());
+            using (var session = new ExportGimmickSession(avatar, clone, null, findings)) session.Apply(null, null, null);
+            Assert.That(clone.GetComponent<GimmickSettingsProbe>(), Is.Null);
+            Assert.That(avatar.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
+        }
+
         [Test] public void LinkedGimmickObjectsLeaveTogetherAndAvatarPartsStay()
         {
             var probe = Child("settings").AddComponent<GimmickSettingsProbe>();
@@ -414,6 +428,26 @@ namespace VRVlog.LilToonExporter.Tests
             var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
             Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
             Assert.That(finding.Target, Is.SameAs(lens));
+        }
+
+        [Test] public void GroupAroundAGimmickIsNotTakenForIt()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var outfit = Child("outfit"); outfit.AddComponent<Animator>(); Render("dress", normal, outfit.transform);
+            var lens = RenderTextureLens(outfit.transform);
+            // A rig without its own entry: only the outfit carries the structure.
+            Object.DestroyImmediate(lens.GetComponent<Animator>());
+            var settings = Child("settings"); settings.AddComponent<BoxCollider>();
+            settings.AddComponent<GimmickSettingsProbe>().Linked = lens;
+            // The rig is claimed by its settings; the outfit around it stays.
+            var findings = Matched(AnchorRule("Linked"), rule);
+            Assert.That(findings.Select(f => f.Target), Is.EquivalentTo(new[] { settings, lens }));
+            Assert.That(findings.All(f => f.RuleId == "test-anchor"), Is.True);
+            Object.DestroyImmediate(settings);
+            lens.AddComponent<Animator>();
+            // A camera and a display under different entries are not one loop.
+            lens.GetComponentInChildren<MeshRenderer>().transform.SetParent(outfit.transform, false);
+            Assert.That(Matched(rule), Is.Empty);
         }
 
         [Test] public void UnpackedPettingSystemIsFoundByItsContacts()
