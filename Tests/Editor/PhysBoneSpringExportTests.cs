@@ -137,6 +137,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(error.Message, Does.Contain("元のアバターは変更していません"));
         }
 
+        [Test]
+        public void NonHumanoidSourceStopsBeforeExportAndNamesMissingBones()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            var animator = fixture.Source.GetComponent<Animator>();
+            Object.DestroyImmediate(animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg).gameObject);
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceMissingHumanBones + "LeftUpperLeg, LeftLowerLeg, LeftFoot"));
+            var avatar = animator.avatar;
+            animator.avatar = null;
+            error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceNotHumanoid));
+            animator.avatar = avatar;
+            Object.DestroyImmediate(animator);
+            error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceNotHumanoid));
+        }
+
         // A generic AAO avatar uses its root Animator controller, unlike a
         // VRChat descriptor or authored Vrm10Instance. Give the synthetic
         // generic fixture a real idle controller without altering AAO settings.
