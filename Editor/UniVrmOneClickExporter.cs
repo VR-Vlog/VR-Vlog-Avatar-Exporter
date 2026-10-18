@@ -347,9 +347,14 @@ namespace VRVlog.LilToonExporter
                         exported = injected;
                         foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
                     }
-                    else foreach(var warning in fallbackWarnings)warnings?.Add(warning);
+                    else
+                    {
+                        // The save check accepts a file without the extension only when marked.
+                        exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
+                        foreach(var warning in fallbackWarnings)warnings?.Add(warning);
+                    }
                 }
-                else if (withoutLilToon) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
+                else if (withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 return guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
             }

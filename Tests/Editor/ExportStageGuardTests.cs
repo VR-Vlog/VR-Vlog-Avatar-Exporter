@@ -43,6 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty);
                 var extensions = (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 Assert.That(extensions.ContainsKey("VRMC_vrm"), Is.True, "The file must stay a VRM.");
+                Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes), "The save check must accept the file.");
                 Assert.That(report.Succeeded, Is.True);
                 var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
                 Assert.That(entry.Stage, Is.EqualTo(stage));
