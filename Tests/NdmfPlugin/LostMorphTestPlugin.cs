@@ -11,14 +11,18 @@ namespace VRVlog.LilToonExporter.Tests
 {
     // A test-only build pass that runs after Modular Avatar in Transforming,
     // like a generic mesh tool would. It acts only on avatars that carry a
-    // child named Marker + mode, and removes that child.
+    // child named Marker + mode, and removes that child. It does nothing until
+    // a test sets Armed, so a project that only installs the package is safe.
     //   strip  : rebuild "Front" without "Unused" and generated shapes
     //   rename : rename "Front" and replace its SkinnedMeshRenderer
     //   merge  : append "Front" into "Back" and remove "Front"
+    //   twin   : remove "Face blink" from "Front" and replace the
+    //            SkinnedMeshRenderer of "Back", which has its own "Face blink"
     public sealed class LostMorphTestPlugin : Plugin<LostMorphTestPlugin>
     {
         internal const string Marker = "__VRVlogLostMorphTest_";
         internal const string RenamedFront = "Face renamed";
+        public static bool Armed;
 
         protected override void Configure()
         {
@@ -28,6 +32,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void Apply(GameObject root)
         {
+            if (!Armed) return;
             var marker = root.transform.Cast<Transform>().FirstOrDefault(child => child.name.StartsWith(Marker, StringComparison.Ordinal));
             if (marker == null) return;
             var mode = marker.name.Substring(Marker.Length);
@@ -36,14 +41,18 @@ namespace VRVlog.LilToonExporter.Tests
             if (front == null) throw new InvalidOperationException("The lost morph test needs a Front renderer.");
             switch (mode)
             {
-                case "strip": front.sharedMesh = Strip(front.sharedMesh); break;
-                case "rename": Replace(front); break;
-                case "merge": Merge(front, root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back")); break;
+                case "strip": front.sharedMesh = Strip(front.sharedMesh, name => name == "Unused" || name.StartsWith("__VRVlog_", StringComparison.Ordinal)); break;
+                case "rename": Replace(front, RenamedFront); break;
+                case "merge": Merge(front, Back(root)); break;
+                case "twin": front.sharedMesh = Strip(front.sharedMesh, name => name == "Face blink"); Replace(Back(root), null); break;
                 default: throw new InvalidOperationException("Unknown lost morph test mode: " + mode);
             }
         }
 
-        static Mesh Strip(Mesh mesh)
+        static SkinnedMeshRenderer Back(GameObject root) =>
+            root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back");
+
+        static Mesh Strip(Mesh mesh, Func<string, bool> removed)
         {
             var result = Object.Instantiate(mesh); result.name = mesh.name;
             result.ClearBlendShapes();
@@ -51,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
             for (var index = 0; index < mesh.blendShapeCount; index++)
             {
                 var name = mesh.GetBlendShapeName(index);
-                if (name == "Unused" || name.StartsWith("__VRVlog_", StringComparison.Ordinal)) continue;
+                if (removed(name)) continue;
                 for (var frame = 0; frame < mesh.GetBlendShapeFrameCount(index); frame++)
                 {
                     var vertices = new Vector3[count]; var normals = new Vector3[count]; var tangents = new Vector3[count];
@@ -62,14 +71,14 @@ namespace VRVlog.LilToonExporter.Tests
             return result;
         }
 
-        static void Replace(SkinnedMeshRenderer front)
+        static void Replace(SkinnedMeshRenderer front, string name)
         {
             var target = front.gameObject;
             var mesh = front.sharedMesh; var materials = front.sharedMaterials;
             var bones = front.bones; var rootBone = front.rootBone;
             var weights = Enumerable.Range(0, mesh.blendShapeCount).Select(front.GetBlendShapeWeight).ToArray();
             Object.DestroyImmediate(front);
-            target.name = RenamedFront;
+            if (name != null) target.name = name;
             var next = target.AddComponent<SkinnedMeshRenderer>();
             next.sharedMesh = mesh; next.sharedMaterials = materials; next.bones = bones; next.rootBone = rootBone;
             for (var index = 0; index < weights.Length; index++) next.SetBlendShapeWeight(index, weights[index]);
