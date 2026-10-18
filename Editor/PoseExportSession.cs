@@ -157,7 +157,9 @@ namespace VRVlog.LilToonExporter
                         }
                     }
                     catch (Exception error) { row.Error = error.Message; }
-                if (row.Error != null) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error);
+                // Clothing / face toggles that cannot reach a body layer would
+                // otherwise bury the real pose warnings.
+                if (row.Error != null) { if (!row.NotBodyPose) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error); }
                 else if (!string.IsNullOrEmpty(row.Note)) warnings?.Add("ポーズ: " + row.Name + " — " + row.Note);
                 yield return row;
             }

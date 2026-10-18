@@ -383,5 +383,121 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DiscardedMenuAnimationDoesNotRejectStaticBody() =>
             SubmenuAndMaGeneratedGestureMenuResolveOnlySelectedStaticPose(false, false, false, discardedMotion: true);
+
+        // A hand gesture layer holds a Tracking Control left in Tracking mode.
+        // A clothing toggle that never reaches a body layer must not report it
+        // as an unsupported pose; a menu that reaches one keeps the diagnosis.
+        [TestCase("Clothing", TestName = "ClothingToggleIsNotReportedAsUnsupportedPose")]
+        [TestCase("Body", TestName = "BodyMenuStillReportsUnrelatedTrackingControl")]
+        [TestCase("Driver", TestName = "DriverForwardedMenuStillReportsUnrelatedTrackingControl")]
+        public void MenuThatCannotReachABodyLayerIsNotAnUnsupportedPose(string scenario)
+        {
+            using var f = new AttachmentConnectionTests.Fixture(); var descriptor = Descriptor(f.Source);
+            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var menu = ScriptableObject.CreateInstance(menuType);
+            var parameters = ScriptableObject.CreateInstance(Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+            var parameterField = parameters.GetType().GetField("parameters"); var parameterType = parameterField.FieldType.GetElementType();
+            var parameterArray = Array.CreateInstance(parameterType, 1); var parameterRow = Activator.CreateInstance(parameterType);
+            Set(parameterRow, "name", "Toggle_A"); Set(parameterRow, "valueType", "Bool"); parameterArray.SetValue(parameterRow, 0);
+            parameterField.SetValue(parameters, parameterArray); Set(descriptor, "expressionParameters", parameters);
+            var name = scenario == "Clothing" ? "Sweater_OFF" : "Toggle_" + scenario;
+            var toggle = Add((IList)PoseMenuResolver.Member(menu, "controls")); Set(toggle, "name", name); Set(toggle, "type", "Toggle"); Set(toggle, "value", 1f);
+            var parameter = Activator.CreateInstance(toggle.GetType().GetField("parameter").FieldType); Set(parameter, "name", "Toggle_A"); Set(toggle, "parameter", parameter);
+            Set(descriptor, "expressionsMenu", menu);
+            new GameObject("Sweater").transform.SetParent(f.Source.transform, false);
+            var skinPath = AnimationUtility.CalculateTransformPath(f.Skins[0].transform, f.Source.transform);
+            var hand = HumanoidPoseTests.Clip(f.Source, 10); var body = HumanoidPoseTests.Clip(f.Source, -60);
+            var on = new AnimationClip { name = "Sweater on" }; var off = new AnimationClip { name = "Sweater off" };
+            AnimationUtility.SetEditorCurve(on, EditorCurveBinding.FloatCurve("Sweater", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
+            AnimationUtility.SetEditorCurve(off, EditorCurveBinding.FloatCurve("Sweater", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+            AnimationUtility.SetEditorCurve(off, EditorCurveBinding.FloatCurve(skinPath, typeof(SkinnedMeshRenderer), "blendShape." + f.Mesh.GetBlendShapeName(0)), AnimationCurve.Constant(0, 1, 100));
+            var gesture = new AnimatorController(); var fx = new AnimatorController();
+            var owned = new List<Object> { gesture, fx, hand, body, on, off };
+            var folderPath = "Assets/PoseRegistrationTest-" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderPath.Substring("Assets/".Length));
+            GameObject clone = null;
+            AnimatorStateTransition Edge(AnimatorStateMachine machine, AnimatorState target)
+            { var t = machine.AddAnyStateTransition(target); t.canTransitionToSelf = false; t.hasExitTime = false; t.duration = 0; return t; }
+            try
+            {
+                // The usual hand gesture layer: built-in input, no menu input.
+                gesture.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                var handMachine = new AnimatorStateMachine(); owned.Add(handMachine);
+                var idle = handMachine.AddState("Idle"); idle.writeDefaultValues = false;
+                var fist = handMachine.AddState("Fist"); fist.writeDefaultValues = false; fist.motion = hand;
+                var tracking = fist.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl"));
+                SetBodyAnimation(tracking); Set(tracking, "trackingLeftHand", "Tracking");
+                Edge(handMachine, fist).AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
+                var gestureLayers = new List<AnimatorControllerLayer> { new AnimatorControllerLayer { name = "Left Hand", defaultWeight = 1, stateMachine = handMachine } };
+                if (scenario != "Clothing")
+                {
+                    var input = scenario == "Body" ? "Toggle_A" : "Pose_B";
+                    gesture.AddParameter(input, AnimatorControllerParameterType.Bool);
+                    var bodyMachine = new AnimatorStateMachine(); owned.Add(bodyMachine);
+                    var rest = bodyMachine.AddState("Rest"); rest.writeDefaultValues = false;
+                    var pose = bodyMachine.AddState("Pose"); pose.writeDefaultValues = false; pose.motion = body; AnimateBody(pose);
+                    Edge(bodyMachine, pose).AddCondition(AnimatorConditionMode.If, 0, input);
+                    Edge(bodyMachine, rest).AddCondition(AnimatorConditionMode.IfNot, 0, input);
+                    gestureLayers.Add(new AnimatorControllerLayer { name = "Body", defaultWeight = 1, stateMachine = bodyMachine });
+                }
+                gesture.layers = gestureLayers.ToArray();
+                // The clothing toggle only animates object activity and a BlendShape.
+                fx.AddParameter("Toggle_A", AnimatorControllerParameterType.Bool);
+                var fxMachine = new AnimatorStateMachine(); owned.Add(fxMachine);
+                var shown = fxMachine.AddState("On"); shown.writeDefaultValues = false; shown.motion = on;
+                var hidden = fxMachine.AddState("Off"); hidden.writeDefaultValues = false; hidden.motion = off;
+                Edge(fxMachine, hidden).AddCondition(AnimatorConditionMode.If, 0, "Toggle_A");
+                Edge(fxMachine, shown).AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle_A");
+                fx.layers = new[] { new AnimatorControllerLayer { name = "Sweater", defaultWeight = 1, stateMachine = fxMachine } };
+                if (scenario == "Driver")
+                {
+                    // An unconditional layer copies the menu input to the body
+                    // layer's input; the menu reaches the body only through it.
+                    fx.AddParameter("Pose_B", AnimatorControllerParameterType.Bool);
+                    var forwardMachine = new AnimatorStateMachine(); owned.Add(forwardMachine);
+                    var always = forwardMachine.AddState("Always"); always.writeDefaultValues = false;
+                    var driver = always.AddStateMachineBehaviour(Find("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver"));
+                    var write = Add((IList)PoseMenuResolver.Member(driver, "parameters"));
+                    Set(write, "name", "Pose_B"); Set(write, "type", "Copy"); Set(write, "source", "Toggle_A");
+                    fx.layers = fx.layers.Concat(new[] { new AnimatorControllerLayer { name = "Forward", defaultWeight = 1, stateMachine = forwardMachine } }).ToArray();
+                }
+                var field = descriptor.GetType().GetField("baseAnimationLayers"); var array = (Array)field.GetValue(descriptor);
+                foreach (var (index, controller) in new[] { (2, gesture), (4, fx) })
+                { var layer = array.GetValue(index); Set(layer, "isDefault", false); Set(layer, "animatorController", controller); array.SetValue(layer, index); }
+                field.SetValue(descriptor, array);
+                var assets = new Object[] { gesture, fx, menu, parameters };
+                var counter = 0;
+                foreach (var asset in assets) AssetDatabase.CreateAsset(asset, folderPath + "/asset" + counter++ + ".asset");
+                foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { gesture, fx }))
+                    if (dependency != null && !EditorUtility.IsPersistent(dependency)) AssetDatabase.AddObjectToAsset(dependency, gesture);
+                AssetDatabase.SaveAssets();
+                foreach (var dependency in EditorUtility.CollectDependencies(new Object[] { f.Source }))
+                    if (dependency != null && !(dependency is GameObject) && !(dependency is Component) && !EditorUtility.IsPersistent(dependency))
+                        AssetDatabase.CreateAsset(dependency, folderPath + "/source" + counter++ + ".asset");
+                AssetDatabase.SaveAssets();
+                clone = Object.Instantiate(f.Source);
+                using var preparation = NdmfExportPreparation.Prepare(f.Source, clone);
+                var result = PoseMenuResolver.Read(clone);
+                Assert.That(result.Count, Is.EqualTo(1));
+                var warnings = new List<string>();
+                using (var session = new PoseExportSession(f.Source, null)) session.CollectPrepared(clone, warnings);
+                if (scenario == "Clothing")
+                {
+                    Assert.That(result[0].NotBodyPose, Is.True, result[0].Error);
+                    Assert.That(result[0].Error, Is.EqualTo(PoseMenuResolver.NotBodyPoseMessage));
+                    Assert.That(warnings.Where(w => w.StartsWith("ポーズ未対応", StringComparison.Ordinal)), Is.Empty);
+                    return;
+                }
+                // The existing proof still runs and still rejects the pose.
+                Assert.That(result[0].NotBodyPose, Is.False);
+                Assert.That(result[0].Error, Does.Contain("Tracking Control").And.Contain("trackingLeftHand"));
+                Assert.That(warnings, Has.Some.StartsWith("ポーズ未対応: " + name + " — "));
+            }
+            finally
+            {
+                if (clone != null) Object.DestroyImmediate(clone); AssetDatabase.DeleteAsset(folderPath);
+                foreach (var item in owned.Concat(new Object[] { menu, parameters })) if (item != null && !EditorUtility.IsPersistent(item)) Object.DestroyImmediate(item);
+            }
+        }
     }
 }
