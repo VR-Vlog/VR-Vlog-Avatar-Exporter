@@ -84,6 +84,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportGimmickDetection.Inspect(renderer).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
         }
 
+        [Test] public void MeshRendererWithoutMeshFilterIsReviewedAsMissingMesh()
+        {
+            // In the Editor, GetComponent returns a fake null for the absent
+            // MeshFilter; ?. on it threw MissingComponentException.
+            var renderer = Child("MeshRendererOnly").AddComponent<MeshRenderer>(); renderer.sharedMaterial = hidden;
+            List<ExportGimmickFinding> findings = null;
+            Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
+            var finding = findings.Single(f => f.Renderer == renderer);
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.EqualTo("メッシュまたは材質が不足しているため自動判定できません。"));
+            Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
+                Is.EqualTo("メッシュまたは材質が不足しているため、システム全体は残します。"));
+        }
+
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()
         {
             var renderer = Render("effect", hidden); renderer.enabled = false;

@@ -148,7 +148,7 @@ namespace VRVlog.LilToonExporter
         internal void CaptureAuthoredExpressions()
         {
             authoredClips.Clear();
-            var vrm = root.GetComponent<Vrm10Instance>()?.Vrm;
+            var vrm = root.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null;
             if (vrm?.Expression == null) return;
             foreach (var clip in vrm.Expression.Clips.Select(value => value.Clip).Where(value => value != null).Distinct())
             {

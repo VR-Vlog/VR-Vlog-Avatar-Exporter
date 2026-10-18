@@ -158,7 +158,7 @@ namespace VRVlog.LilToonExporter
         private Dictionary<string, string> BindingPaths(Transform root, Transform target)
         {
             var result = new Dictionary<string, string>(StringComparer.Ordinal);
-            var settings = Copy.GetComponent<Vrm10Instance>()?.Vrm;
+            var settings = Copy.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null;
             if (settings == null) return result;
             var bound = new HashSet<string>(StringComparer.Ordinal);
             if (settings.Expression != null)

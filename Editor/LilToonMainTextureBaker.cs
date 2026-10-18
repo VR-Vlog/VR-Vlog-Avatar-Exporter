@@ -57,7 +57,7 @@ namespace VRVlog.LilToonExporter
 
         private static bool HasSingleUvTile(Renderer renderer, int slot, Material material = null)
         {
-            var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.GetComponent<MeshFilter>()?.sharedMesh;
+            var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
             if (mesh == null || mesh.subMeshCount == 0) return false;
             try
             {
