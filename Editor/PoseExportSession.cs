@@ -37,10 +37,12 @@ namespace VRVlog.LilToonExporter
             this.source = source;
             this.collect = collect;
             if (!collect) return;
-            foreach (var component in source.GetComponentsInChildren<Component>(false))
+            // Activity is judged inside the avatar so a hidden avatar keeps its poses.
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
             {
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
-                if (component.GetComponentInParent<Animator>() != source.GetComponent<Animator>()) continue;
+                if (!ExportRendererSelection.ActiveUnder(component.gameObject, source.transform)) continue;
+                if (component.GetComponentInParent<Animator>(true) != source.GetComponent<Animator>()) continue;
                 var data = PoseMenuResolver.Member(component, "data");
                 foreach (var category in PoseMenuResolver.Items(PoseMenuResolver.Member(data, "categories")))
                     foreach (var pose in PoseMenuResolver.Items(PoseMenuResolver.Member(category, "poses")))

@@ -135,6 +135,15 @@ namespace VRVlog.LilToonExporter
 
         internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
 
+        internal const string HiddenRootWarning = "アバター本体または親が非表示だったため、書き出し用のコピーだけ表示にして書き出しました。シーンのアバターは変更していません。";
+
+        static void RecordHiddenRoot(GameObject source, ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            var reason = ExporterLocalization.T(HiddenRootWarning);
+            warnings?.Add(reason);
+            report.Fallbacks.Record(ExportOutcome.Kept, ExporterLocalization.T("非表示のアバター"), source.name, reason);
+        }
+
         static void CopyWarnings(List<string> attempt, ICollection<string> warnings)
         {
             if (attempt == null || warnings == null) return;
@@ -160,13 +169,14 @@ namespace VRVlog.LilToonExporter
             Action<GameObject> authorCopyExpressions, ExportStageGuard guard)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            // Cloning detaches the avatar from its parents. Reject an inactive
-            // source before the clone can accidentally become active.
-            ExportRendererSelection.RequireActiveRoot(source);
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
             if (string.IsNullOrWhiteSpace(author)) throw new InvalidOperationException("作者名を入力してください。");
 
             EnsureUniVrmVersion();
+            // A hidden avatar or hidden parent does not stop the export. Only the
+            // owned copy's root is shown; the scene object is never changed, and
+            // the avatar's own inactive children stay out as usual.
+            if (ExportRendererSelection.HiddenInScene(source)) RecordHiddenRoot(source, warnings, recoveryReport);
             recoveryReport.Stage = "原本検査";
             var trackingProfile = source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile;
             var manualObjects = (excludedObjects ?? Array.Empty<GameObject>()).ToArray();

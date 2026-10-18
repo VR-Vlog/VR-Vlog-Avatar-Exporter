@@ -332,7 +332,7 @@ namespace VRVlog.LilToonExporter
             var renderer = VrChatExpressionMenu.Member(settings, "eyelidsSkinnedMesh") as SkinnedMeshRenderer;
             var indices = VrChatExpressionMenu.Member(settings, "eyelidsBlendshapes") as int[];
             if (renderer == null || renderer.sharedMesh == null || indices == null || indices.Length == 0 ||
-                !renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                !renderer.enabled || !ExportRendererSelection.ActiveUnder(renderer.gameObject, source.transform) ||
                 !renderer.transform.IsChildOf(source.transform) || excluded?.Invoke(renderer.transform) == true) return false;
             var index = indices[0];
             if (index < 0 || index >= renderer.sharedMesh.blendShapeCount) return false;
@@ -350,7 +350,7 @@ namespace VRVlog.LilToonExporter
                 {
                     var renderer = binding.Renderer;
                     if (renderer == null || !renderer.transform.IsChildOf(root.transform) || !renderer.enabled ||
-                        !renderer.gameObject.activeInHierarchy || renderer.sharedMesh == null || excluded?.Invoke(renderer.transform) == true)
+                        !ExportRendererSelection.ActiveUnder(renderer.gameObject, root.transform) || renderer.sharedMesh == null || excluded?.Invoke(renderer.transform) == true)
                         throw new InvalidOperationException("瞬きの対象が書き出しに含まれていません。「確認・調整」で指定し直してください。");
                     var names = Enumerable.Range(0, renderer.sharedMesh.blendShapeCount).Select(renderer.sharedMesh.GetBlendShapeName).ToArray();
                     // A selected binding identifies the exact mesh channel. The

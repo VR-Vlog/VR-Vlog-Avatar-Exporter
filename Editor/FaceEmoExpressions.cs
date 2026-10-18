@@ -527,7 +527,9 @@ namespace VRVlog.LilToonExporter
         private static void ReadRepositories(GameObject authored, VrChatExpressionMenu.Source source, Action<object> readRegistered)
         {
             var repositories = new HashSet<Component>();
-            foreach (var repository in authored.GetComponentsInChildren<Component>().Where(IsRepository))
+            // Activity is judged inside the avatar so a hidden avatar keeps its expressions.
+            foreach (var repository in authored.GetComponentsInChildren<Component>(true)
+                .Where(component => IsRepository(component) && ExportRendererSelection.ActiveUnder(component.gameObject, authored.transform)))
             {
                 var launcher = repository.GetComponents<Component>().FirstOrDefault(IsLauncher);
                 // A pet or another embedded avatar may have its own FaceEmo
