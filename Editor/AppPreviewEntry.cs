@@ -39,6 +39,7 @@ namespace VRVlog.LilToonExporter
         // animations advance here; spring bones move only while enabled.
         void Tick(float deltaTime);
         void SetExpression(string name, float weight);
+        // Also stops the playing expression animation.
         void ClearExpressions();
         // Null stops the playing animation.
         void PlayExpressionAnimation(string name);

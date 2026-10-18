@@ -32,13 +32,17 @@ namespace VRVlog.LilToonExporter
         IAppPreviewSession load;
         PreviewRenderUtility preview;
         bool loadedStandardMToon;
-        byte[] bytes;
-        string fileName, lilToonVersion;
+        // The VRM stays in memory only. A script reload drops it and keeps the
+        // file's name, path and error line, so OnEnable can offer to load again.
+        [NonSerialized] byte[] bytes;
+        [SerializeField] string fileName, filePath;
+        [SerializeField] string errorText, errorDetail;
+        string lilToonVersion;
         int revision;
         bool loading, visible = true, autoBlink, springsEnabled = true, stepFailed;
         double loadStarted, lastTick, lastLoadingRepaint;
         CancellationTokenSource cancel;
-        string errorText, errorDetail, expression, playingAnimation;
+        string expression, playingAnimation;
         float blinkAmount, blinkClock, swayTime = -1;
         Vector3 origin, center;
         float distance = 1, zoom = 1, yaw, paneHeight = 1000;
@@ -61,10 +65,11 @@ namespace VRVlog.LilToonExporter
             if (!string.IsNullOrEmpty(path)) Window().LoadFile(path);
         }
 
-        internal static AppPreviewWindow Open(byte[] data, string name)
+        // The path, when known, lets the window read the file again after a script reload.
+        internal static AppPreviewWindow Open(byte[] data, string name, string path = null)
         {
             var window = Window();
-            window.LastLoad = window.LoadAsync(data, name);
+            window.LastLoad = window.LoadAsync(data, name, path);
             return window;
         }
 
@@ -91,20 +96,29 @@ namespace VRVlog.LilToonExporter
             catch (Exception exception)
             {
                 Release();
-                bytes = null; fileName = Path.GetFileName(path);
+                bytes = null; fileName = Path.GetFileName(path); filePath = null;
                 errorText = T("ファイルを読めません"); errorDetail = exception.Message;
                 Repaint();
                 return;
             }
-            LastLoad = LoadAsync(data, Path.GetFileName(path));
+            LastLoad = LoadAsync(data, Path.GetFileName(path), path);
+        }
+
+        internal bool CanReload => bytes != null || filePath != null;
+
+        // The bytes in memory, or the file again after a script reload dropped them.
+        internal void Reload()
+        {
+            if (bytes != null) LastLoad = LoadAsync(bytes, fileName, filePath);
+            else if (filePath != null) LoadFile(filePath);
         }
 
         // Never throws: a failure becomes the error state.
-        internal async Task LoadAsync(byte[] data, string name)
+        internal async Task LoadAsync(byte[] data, string name, string path = null)
         {
             Release();
             var mine = revision;
-            bytes = data; fileName = name;
+            bytes = data; fileName = name; filePath = path;
             errorText = errorDetail = null;
             var backend = AppPreviewEntry.Backend;
             if (backend == null)
@@ -195,6 +209,12 @@ namespace VRVlog.LilToonExporter
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
+            // After a script reload OnDisable has released the load; say so
+            // instead of showing only the open button.
+            if (fileName != null && load == null && !loading && errorText == null)
+            {
+                errorText = T("読み込んでいません"); errorDetail = null;
+            }
         }
 
         void OnDisable()
@@ -281,11 +301,22 @@ namespace VRVlog.LilToonExporter
             load.ResetSpringBones();
         }
 
-        void SelectExpression(string name)
+        internal void SelectExpression(string name)
         {
             load.ClearExpressions();
             if (name != null) load.SetExpression(name, 1);
             expression = name;
+            // Clearing also stops the expression animation.
+            playingAnimation = null;
+            // In VRM 1.0 the blink is an expression too, so clearing can open
+            // eyes the slider still shows closed. Auto blink sets it every frame.
+            if (!autoBlink) load.SetEyeBlink(blinkAmount, blinkAmount);
+        }
+
+        internal void SetBlinkAmount(float amount)
+        {
+            blinkAmount = amount;
+            load.SetEyeBlink(amount, amount);
         }
 
         void PlayAnimation(string name)
@@ -370,7 +401,7 @@ namespace VRVlog.LilToonExporter
                     if (selected != mtoonOnly)
                     {
                         StandardMToon = selected;
-                        if (bytes != null) LastLoad = LoadAsync(bytes, fileName);
+                        if (CanReload) Reload();
                     }
                 }
                 var status = Row();
@@ -441,11 +472,7 @@ namespace VRVlog.LilToonExporter
                         EditorGUIUtility.labelWidth = 110;
                         var amount = EditorGUI.Slider(Row(), T("目の閉じ具合"), blinkAmount, 0, 1);
                         EditorGUIUtility.labelWidth = labelWidth;
-                        if (!Mathf.Approximately(amount, blinkAmount))
-                        {
-                            blinkAmount = amount;
-                            load.SetEyeBlink(amount, amount);
-                        }
+                        if (!Mathf.Approximately(amount, blinkAmount)) SetBlinkAmount(amount);
                     }
                 }
             }
@@ -506,7 +533,7 @@ namespace VRVlog.LilToonExporter
             {
                 GUI.Label(new Rect(rect.x + 20, middle - line - 4, rect.width - 40, line), new GUIContent(errorText, errorDetail), centered);
                 var button = new Rect(rect.center.x - 100, middle + 4, 200, line);
-                if (bytes != null) { if (GUI.Button(button, T("もう一度読み込む"))) LastLoad = LoadAsync(bytes, fileName); }
+                if (CanReload) { if (GUI.Button(button, T("もう一度読み込む"))) Reload(); }
                 else if (GUI.Button(button, T("VRM ファイルを開く"))) OpenFromMenu();
                 return;
             }

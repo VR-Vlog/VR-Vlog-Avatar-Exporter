@@ -15,7 +15,8 @@ namespace VRVlog.LilToonExporter
     internal sealed class AvatarRuntimeBackend : IAppPreviewBackend
     {
         // The reader package swaps a global shader hook while it loads, so two
-        // loads, even from two windows, must never overlap.
+        // loads, even from two windows, must never overlap. The package also
+        // queues its loads; this queue stays so the order never depends on it.
         static Task pendingLoad = Task.CompletedTask;
 
         [InitializeOnLoadMethod]
@@ -27,15 +28,25 @@ namespace VRVlog.LilToonExporter
             {
                 materialMode = standardMToon ? AvatarPreviewMaterialMode.StandardMToon : AvatarPreviewMaterialMode.App,
             };
-            var started = Start(pendingLoad, bytes, name, options, token);
-            pendingLoad = started;
+            var previous = pendingLoad;
+            var started = Start(previous, bytes, name, options, token);
+            // A load cancelled while waiting returns early, so the next one also
+            // waits for the load that was still running.
+            pendingLoad = previous.IsCompleted ? started : Task.WhenAll(previous, started);
             return started;
         }
 
         static async Task<IAppPreviewSession> Start(Task previous, byte[] bytes, string name, AvatarPreviewOptions options, CancellationToken token)
         {
             // The owner of the previous load handles its result and its failure.
-            try { await previous; } catch (Exception) { }
+            // Cancelling while waiting returns at once without loading.
+            if (!previous.IsCompleted)
+            {
+                var cancelled = new TaskCompletionSource<bool>();
+                using (token.Register(() => cancelled.TrySetResult(true)))
+                    await Task.WhenAny(previous, cancelled.Task);
+            }
+            token.ThrowIfCancellationRequested();
             var load = await AvatarRuntimePreview.LoadAsync(bytes, name, options, token);
             return load == null ? null : new Session(load);
         }

@@ -16,9 +16,12 @@
   - 「MToon のみ」(`AvatarPreviewMaterialMode.StandardMToon`): lilToon の材質情報を使わず、標準の VRM の MToon で描く。lilToon 専用表示をオフにしたアプリと同じ見え方になる。
   - 切り替えたら読み込み直す。パッケージが返す材質の結果 (`MaterialStatus`) は短い日本語にして表示し、元の値はツールチップに置く。lilToon の版が 2.3.4 でなければ警告色で知らせる。
 - 読み込みはパッケージが読み込みのあいだだけ全体のシェーダーの差し替えを行うので、ウィンドウが複数あっても 1 件ずつ順に行う。中止したときやウィンドウを閉じたあとに届いた結果は、その場で破棄する。
+  - 順番を待っているあいだに中止されたら、読み込まずに `OperationCanceledException` で返し、次の読み込みは実行中の読み込みが終わるまで待つ。パッケージ側も読み込みを 1 件ずつ順に行うが、拡張機能側の順番待ちも残す。
 - 自動のまばたき（4 秒ごとに 0.1 秒で閉じ、0.05 秒止めて 0.15 秒で開く）は、この画面だけの確認用の信号で、アプリのまばたきとは関係ない。`SetEyeBlink` で両目に同じ値を渡す。
+  - VRM 1.0 ではまばたきも表情なので、表情を選び直すと目が開くことがある。自動のまばたきがオフのときは、表情を選んだあとに「目の閉じ具合」の値を `SetEyeBlink` で当て直す。
 - 表情・表情アニメーション・揺れものは Play モードを使わず、`EditorApplication.update` からエディタの経過時間で毎フレーム `Tick` を呼んで進める。経過時間は 1/15 秒で頭打ちにし、0 秒では呼ばない。ウィンドウが見えないあいだは止める。「揺れものを動かす」をオフにすると `SetSpringBonesEnabled(false)` で揺れものだけを止め、1 回だけ初期状態に戻す。表情は `Tick` で動き続ける。
 - 読み込んだアバターと描画用の `PreviewRenderUtility` は、読み込み直し・ウィンドウを閉じたとき・ドメインの再読み込み・Play モードの切り替えで破棄する。アバターは読み込み結果（`IAppPreviewSession`）が持つので、先に読み込み結果を破棄してから `PreviewRenderUtility` を片付ける。
+  - VRM のバイト列はメモリにだけ置き、ドメインの再読み込みでは持ち越さない（`[NonSerialized]`）。ファイル名・ファイルの場所・エラー表示は持ち越し、再読み込みのあとは「読み込んでいません」と「もう一度読み込む」を出して、ファイルから読み直す。
 - 読み込みパッケージは任意の依存にする。このパッケージは一般には配布していない。
   - パッケージとの境界は 1 か所に置く。パッケージを参照するソースは `Editor/AppPreview/AvatarRuntimeBackend.cs` だけで、`VRVlog.LilToonExporter.AppPreview` アセンブリに入る。このアセンブリは `versionDefines` の `VRVLOG_AVATAR_RUNTIME` が無ければコンパイルしない。
   - 画面（`Editor/AppPreviewWindow.cs`）は常にコンパイルされる Editor アセンブリに置き、`Editor/AppPreviewEntry.cs` の `IAppPreviewBackend`・`IAppPreviewSession` だけを使う。`AvatarRuntimeBackend` は `[InitializeOnLoadMethod]` で `AppPreviewEntry.Backend` に自分を登録する。読み込みを 1 件ずつ順に行う処理と、材質の表示 2 通りをパッケージの `AvatarPreviewMaterialMode` へ対応づける処理もこのファイルに置く。
@@ -31,6 +34,7 @@
   - `MaterialStatus` とエラーコードから表示する文言への対応、自動のまばたきの閉じ具合。
   - `AppPreviewEntry.Backend` が null のとき、メニューの項目が選べず、画面は何も読み込まない。
   - 読み込んだ結果を画面がつなぎ、揺れものを有効にし、閉じたときに破棄する。閉じたあとに届いた結果も破棄する。読み込みの失敗と例外はエラー表示になる。
+  - 自動のまばたきがオフのとき、表情を選ぶと目の閉じ具合を当て直す。ドメインの再読み込みのあと「読み込んでいません」を出し、ファイルから読み直せる。
 - `Tests/AppPreview/AppPreviewTests.cs`（EditMode、パッケージがあるときだけコンパイル）で、登録された `AvatarRuntimeBackend` を通して、lilToon の材質・表情・手動のまばたき・揺れものを持つ小さなアバターを書き出し、パッケージで読み込んで次を確かめる。
   - 「アプリと同じ」で `MaterialStatus` が `full-liltoon:` で始まり、「MToon のみ」で `standard-mtoon` になる。
   - `SetExpression` と `SetEyeBlink(1, 1)` で BlendShape の値が変わる。

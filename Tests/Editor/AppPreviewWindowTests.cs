@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -172,6 +175,59 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(window.Error, Is.EqualTo(T("VRM として読み込めません")));
         }
 
+        [Test]
+        public async Task SelectingAnExpressionKeepsTheManualEyeClosure()
+        {
+            AppPreviewEntry.Backend = new FakeBackend(this);
+            var window = AppPreviewWindow.Open(new byte[] { 1 }, "fake.vrm");
+            await window.LastLoad;
+            var session = sessions[0];
+            window.SetBlinkAmount(.8f);
+            session.Calls.Clear();
+
+            // In VRM 1.0 clearing the expressions can also open the eyes.
+            window.SelectExpression("happy");
+            Assert.That(session.Calls, Is.EqualTo(new[] { "ClearExpressions", "SetExpression happy 1", "SetEyeBlink 0.8 0.8" }));
+            session.Calls.Clear();
+            window.SelectExpression(null);
+            Assert.That(session.Calls, Is.EqualTo(new[] { "ClearExpressions", "SetEyeBlink 0.8 0.8" }));
+        }
+
+        [Test]
+        public async Task AfterAScriptReloadTheWindowOffersToLoadTheFileAgain()
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            Assert.That(typeof(AppPreviewWindow).GetField("bytes", flags).IsNotSerialized, Is.True,
+                "The VRM bytes stay out of the reload state.");
+            var path = Path.Combine(Path.GetTempPath(), "AppPreviewWindowTests-" + Guid.NewGuid().ToString("N") + ".vrm");
+            File.WriteAllBytes(path, new byte[] { 1, 2 });
+            try
+            {
+                var backend = new FakeBackend(this);
+                AppPreviewEntry.Backend = backend;
+                var window = AppPreviewWindow.Open(File.ReadAllBytes(path), "fake.vrm", path);
+                await window.LastLoad;
+                var first = sessions[0];
+
+                // What a script reload does: OnDisable, the non-serialized fields
+                // reset, OnEnable.
+                typeof(AppPreviewWindow).GetMethod("OnDisable", flags).Invoke(window, null);
+                typeof(AppPreviewWindow).GetField("bytes", flags).SetValue(window, null);
+                typeof(AppPreviewWindow).GetMethod("OnEnable", flags).Invoke(window, null);
+                Assert.That(first.Disposed, Is.True);
+                Assert.That(window.Load, Is.Null);
+                Assert.That(window.Error, Is.EqualTo(T("読み込んでいません")));
+                Assert.That(window.CanReload, Is.True);
+
+                window.Reload();
+                await window.LastLoad;
+                Assert.That(window.Error, Is.Null);
+                Assert.That(window.Load, Is.SameAs(sessions[1]));
+                Assert.That(backend.LastBytes, Is.EqualTo(new byte[] { 1, 2 }), "The file is read again.");
+            }
+            finally { File.Delete(path); }
+        }
+
         static TaskCompletionSource<IAppPreviewSession> Completed(IAppPreviewSession session)
         {
             var value = new TaskCompletionSource<IAppPreviewSession>();
@@ -185,13 +241,14 @@ namespace VRVlog.LilToonExporter.Tests
             internal TaskCompletionSource<IAppPreviewSession> Pending;
             internal bool LastStandardMToon;
             internal string LastName;
+            internal byte[] LastBytes;
             internal CancellationToken LastToken;
 
             internal FakeBackend(AppPreviewWindowTests owner) => this.owner = owner;
 
             public Task<IAppPreviewSession> LoadAsync(byte[] bytes, string name, bool standardMToon, CancellationToken token)
             {
-                LastStandardMToon = standardMToon; LastName = name; LastToken = token;
+                LastStandardMToon = standardMToon; LastName = name; LastToken = token; LastBytes = bytes;
                 if (Pending != null) return Pending.Task;
                 var session = new FakeSession(true);
                 owner.sessions.Add(session);
@@ -202,6 +259,9 @@ namespace VRVlog.LilToonExporter.Tests
         sealed class FakeSession : IAppPreviewSession
         {
             internal bool Disposed, SpringsEnabled;
+            internal readonly List<string> Calls = new List<string>();
+
+            static string Number(float value) => value.ToString("0.##", CultureInfo.InvariantCulture);
 
             // A cube gives the window a bounds and something to render.
             internal FakeSession(bool withRoot)
@@ -220,10 +280,10 @@ namespace VRVlog.LilToonExporter.Tests
             public bool HasSpringBones => true;
 
             public void Tick(float deltaTime) { }
-            public void SetExpression(string name, float weight) { }
-            public void ClearExpressions() { }
-            public void PlayExpressionAnimation(string name) { }
-            public void SetEyeBlink(float left, float right) { }
+            public void SetExpression(string name, float weight) => Calls.Add("SetExpression " + name + " " + Number(weight));
+            public void ClearExpressions() => Calls.Add("ClearExpressions");
+            public void PlayExpressionAnimation(string name) => Calls.Add("PlayExpressionAnimation " + name);
+            public void SetEyeBlink(float left, float right) => Calls.Add("SetEyeBlink " + Number(left) + " " + Number(right));
             public void SetSpringBonesEnabled(bool enabled) => SpringsEnabled = enabled;
             public void ResetSpringBones() { }
 

@@ -620,7 +620,7 @@ namespace VRVlog.LilToonExporter
                 EditorUtility.DisplayDialog(ExporterLocalization.T("アプリでの見え方を確認"), ExporterLocalization.T("ファイルを読めません"), ExporterLocalization.T("閉じる"));
                 return;
             }
-            AppPreviewWindow.Open(bytes, Path.GetFileName(path));
+            AppPreviewWindow.Open(bytes, Path.GetFileName(path), path);
         }
 
         private static string InstalledLilToonStatus()
