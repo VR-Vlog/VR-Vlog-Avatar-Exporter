@@ -1005,6 +1005,7 @@ INTEGRATION_CASES = {
     },
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
+        'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real

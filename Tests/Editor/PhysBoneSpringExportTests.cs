@@ -601,7 +601,27 @@ namespace VRVlog.LilToonExporter.Tests
             await ExportImportsSpringsAndMovesHair(full, false, false, true);
         }
 
-        async Task ExportImportsSpringsAndMovesHair(bool full, bool modularAvatar, bool rootCollider, bool avatarOptimizer, bool nestedPhysBones = false)
+        [Test]
+        public async Task InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
+                value.name == "com.anatawa12.avatar-optimizer");
+            // Keep the async wrapper for the UTF 1.4.6 IgnoreException caveat above.
+            if (package == null) Assert.Ignore("Optional AAO integration requires the real registered Avatar Optimizer package.");
+            Assert.That(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"), Is.Not.Null, "The installed AAO package must load its real component assembly.");
+            Assert.That(Sdk("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
+            Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
+                "The installed AAO compatibility adapter must compile and register.");
+            Assert.That(Version.TryParse(package.version.Split('-', '+')[0], out var version), Is.True, "AAO must report a numeric package version.");
+            // Without a descriptor NDMF selects its generic platform. AAO 1.9+
+            // runs there and removes the root Animator; older AAO skips its
+            // passes, so the optimized expression mapping is never applied.
+            await ExportImportsSpringsAndMovesHair(false, false, false, true, expectedFailure: version >= new Version(1, 9)
+                ? UniVrmOneClickExporter.LostHumanoidAnimator : "最適化後の表情の移動情報を取得できませんでした。");
+        }
+
+        async Task ExportImportsSpringsAndMovesHair(bool full, bool modularAvatar, bool rootCollider, bool avatarOptimizer, bool nestedPhysBones = false,
+            string expectedFailure = null)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var controller = avatarOptimizer ? new StaticAnimatorController(fixture.Source.GetComponent<Animator>()) : null;
@@ -637,6 +657,15 @@ namespace VRVlog.LilToonExporter.Tests
             Component duplicateCollider = null;
             if (avatarOptimizer)
             {
+                if (expectedFailure == null)
+                {
+                    // Real VRChat avatars select NDMF's VRChat platform. On the
+                    // generic platform AAO < 1.9 skips its passes and 1.9 can
+                    // remove the root Animator before UniVRM reads the humanoid.
+                    var descriptor = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+                    Assert.That(descriptor, Is.Not.Null, "The AAO VRChat avatar fixture requires the installed VRChat SDK descriptor.");
+                    fixture.Source.AddComponent(descriptor);
+                }
                 duplicateCollider = head.gameObject.AddComponent(collider.GetType());
                 Set(duplicateCollider, "radius", .025f); Set(duplicateCollider, "position", Vector3.left);
                 fixture.Source.AddComponent(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
@@ -673,6 +702,23 @@ namespace VRVlog.LilToonExporter.Tests
             var sourceCollider = EditorJsonUtility.ToJson(collider);
             var sourceDuplicate = duplicateCollider != null ? EditorJsonUtility.ToJson(duplicateCollider) : null;
             var warnings = new List<string>(); Vrm10Instance imported = null;
+            if (expectedFailure != null)
+            {
+                string[] ExportFolders() => AssetDatabase.GetSubFolders("Assets")
+                    .Where(path => path.StartsWith("Assets/VRVlogExportTemp-", StringComparison.Ordinal)).ToArray();
+                var temporaryFolders = ExportFolders();
+                byte[] failed = null;
+                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                    exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+                Assert.That(failed, Is.Null, "An optimization that loses the humanoid must never produce an apparently usable VRM.");
+                Assert.That(error.Message, Is.EqualTo(expectedFailure));
+                Assert.That(fixture.Source.GetComponent<Animator>().runtimeAnimatorController, Is.SameAs(controller.Controller));
+                Assert.That(EditorJsonUtility.ToJson(pb), Is.EqualTo(sourcePhysBone));
+                Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
+                Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders), "A stopped export must release every exporter temporary asset folder.");
+                return;
+            }
             try
             {
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,

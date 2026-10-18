@@ -36,6 +36,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Ignore("This fixture requires the AAO 1.8+ merge configuration API.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True);
             source = Own(new GameObject("blink preparation source"));
+            // Real VRChat avatars select NDMF's VRChat platform; AAO < 1.9
+            // does not run its passes on the generic platform.
+            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            Assert.That(descriptor, Is.Not.Null, "The AAO VRChat avatar fixture requires the installed VRChat SDK descriptor.");
+            source.AddComponent(descriptor);
             var material = Own(new Material(Shader.Find("Unlit/Color")));
             SkinnedMeshRenderer Skin(string name)
             {

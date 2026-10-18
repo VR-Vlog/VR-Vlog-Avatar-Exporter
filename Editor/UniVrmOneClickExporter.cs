@@ -12,6 +12,13 @@ namespace VRVlog.LilToonExporter
 {
     internal static class UniVrmOneClickExporter
     {
+        internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われました。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
+
+        static bool HasHumanoidAnimator(GameObject root)
+        {
+            var animator = root.GetComponent<Animator>();
+            return animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
+        }
 
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
@@ -181,6 +188,9 @@ namespace VRVlog.LilToonExporter
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
                 });
+                // AAO on NDMF's generic platform can remove the root Animator;
+                // UniVRM would then save a VRM without humanoid bones silently.
+                if (HasHumanoidAnimator(source) && !HasHumanoidAnimator(clone)) throw new InvalidOperationException(LostHumanoidAnimator);
                 optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;
