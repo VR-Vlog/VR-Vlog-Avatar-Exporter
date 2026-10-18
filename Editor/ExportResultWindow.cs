@@ -106,6 +106,12 @@ namespace VRVlog.LilToonExporter
             back?.Invoke();
         }
 
+        // Closing with the title bar answers neither; say so instead of dropping the export silently.
+        void OnDestroy()
+        {
+            if (IsPending && save != null) Debug.LogWarning(ExporterLocalization.T(ReloadedPending));
+        }
+
         static HashSet<string> Collapsed() => new HashSet<string>(SessionState.GetString(CollapsedKey, "")
             .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
 

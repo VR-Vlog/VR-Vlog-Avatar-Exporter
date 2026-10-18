@@ -109,10 +109,13 @@ namespace VRVlog.LilToonExporter
             var rows = new List<ExportResultRow>();
             foreach (var entry in entries)
             {
+                // Default reasons are recorded as Japanese source text; T returns other text unchanged.
+                var reason = ExporterLocalization.T(entry.Reason);
                 known.Add(entry.Reason);
+                known.Add(reason);
                 if (entry.Stage != null) known.Add(StageWarning(entry));
                 var group = ExporterLocalization.T(entry.Category);
-                var content = entry.Stage == null ? WithoutName(entry.Reason, entry.Name)
+                var content = entry.Stage == null ? WithoutName(reason, entry.Name)
                     : ExporterLocalization.T(entry.Outcome == ExportOutcome.Omitted ? StageOmittedContent : StageApproximatedContent);
                 var row = rows.FirstOrDefault(existing => existing.Stage == entry.Stage && existing.Outcome == entry.Outcome &&
                     existing.Group == group && existing.Content == content);
@@ -122,8 +125,10 @@ namespace VRVlog.LilToonExporter
                     if (entry.Stage != null) row.Reason = entry.Reason;
                 }
                 row.Count += entry.Count;
-                if (!string.IsNullOrEmpty(entry.Name) && !row.Targets.Any(target => target.Name == entry.Name && target.Path == entry.Path))
-                    row.Targets.Add(new ExportResultTarget { Name = entry.Name, Path = entry.Path });
+                // Entries recorded without a name use the path as the name; show only its last part there.
+                var targetName = entry.Name == entry.Path && entry.Path != null ? entry.Path.Substring(entry.Path.LastIndexOf('/') + 1) : entry.Name;
+                if (!string.IsNullOrEmpty(targetName) && !row.Targets.Any(target => target.Name == targetName && target.Path == entry.Path))
+                    row.Targets.Add(new ExportResultTarget { Name = targetName, Path = entry.Path });
                 row.Diagnostics.AddRange(entry.Diagnostics);
                 if (entry.Stage == ExportStage.BlinkCapture || entry.Stage == ExportStage.BlinkOutput ||
                     entry.Stage == null && entry.Category == ExportFallbackConfirmation.Feature(ExportFallbackKind.Blink))

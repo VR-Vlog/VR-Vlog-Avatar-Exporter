@@ -66,7 +66,12 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void EveryShippedLocaleTranslatesTheResultWords()
         {
             var sources = new[] { ExportResultWindow.WindowTitle, ExportResultWindow.PendingTitle, ExportResultWindow.SavedTitle,
-                    ExportResultWindow.SaveButton, ExportResultWindow.ChangeSettingsButton, ExportResultWindow.AllTab }
+                    ExportResultWindow.SaveButton, ExportResultWindow.ChangeSettingsButton, ExportResultWindow.AllTab,
+                    ExportResultWindow.CloseButton, ExportResultWindow.SearchPlaceholder, ExportResultWindow.EmptyList,
+                    ExportResultWindow.NoMatch, ExportResultWindow.ReloadedList, ExportResultWindow.ReloadedPending,
+                    ExportResultWindow.SelectButton, ExportResultWindow.MissingTarget, ExportResultWindow.BlinkButton,
+                    ExportResultList.CountFormat, ExportResultList.NoticeGroup,
+                    ExportResultList.StageOmittedContent, ExportResultList.StageApproximatedContent }
                 .Concat(ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome)))
                 .Concat(((ExportFallbackKind[])Enum.GetValues(typeof(ExportFallbackKind))).SelectMany(kind =>
                     new[] { ExportFallbackConfirmation.Failure(kind), ExportFallbackConfirmation.Feature(kind) })).Distinct().ToArray();
@@ -113,6 +118,19 @@ namespace VRVlog.LilToonExporter.Tests
                 "All five names are kept; nothing is cut at two.");
             Assert.That(collider.TargetLabel, Is.EqualTo("5件"));
             Assert.That(list.Rows.Single(row => row.Outcome == null).Content, Is.EqualTo("別の知らせ"));
+
+            // Default reasons are stored as Japanese source text and must follow the Editor language.
+            var messages = typeof(ExporterLocalization).GetField("_messages",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            try
+            {
+                LocaleField.SetValue(null, "en");
+                messages.SetValue(null, null);
+                var english = ExportResultList.Build(report, null).Rows.Select(row => row.Content).ToArray();
+                Assert.That(english, Has.No.Member("PhysBoneコライダーを変換できませんでした"));
+                Assert.That(english, Has.Member(ExporterLocalization.T("PhysBoneコライダーを変換できませんでした")));
+            }
+            finally { messages.SetValue(null, null); }
         }
 
         [Test] public void KeptItemsAreListedOnceWithoutAsking()
