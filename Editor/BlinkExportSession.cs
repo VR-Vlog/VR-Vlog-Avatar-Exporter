@@ -338,7 +338,9 @@ namespace VRVlog.LilToonExporter
                 VerifyPreparedIdentity(prepared);
                 return true;
             }
-            catch (InvalidOperationException e)
+            // Any failure here (a lost shape, a missing manual renderer) exports
+            // without blink; only a cancellation still stops the export.
+            catch (Exception e) when (!ExportStageGuard.IsCancellation(e))
             {
                 reason = e.Message;
                 moved = false;

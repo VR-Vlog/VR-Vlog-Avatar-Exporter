@@ -116,13 +116,22 @@ namespace VRVlog.LilToonExporter
         internal const string LostBlinkWarning ="ビルド処理で閉眼用の変形を追えなくなったため、瞬きなしで書き出しました。";
         internal const string LostTrackingWarning = "ビルド処理で表情トラッキング用の変形を追えなくなったため、元の変形との照合を省略しました。";
 
+        // The technical reason behind a lost-shape warning. Other languages show
+        // it only when it has a translation, never as raw Japanese.
+        static string LostDetail(string headline, string detail)
+        {
+            if (string.IsNullOrEmpty(detail)) return "";
+            var shown = ExporterLocalization.T(detail);
+            return ExporterLocalization.T(headline) == headline || shown != detail ? " (" + shown + ")" : "";
+        }
+
         // Authored VRM clips and generated shapes that the build passes moved
         // or removed (lenient exports only).
         static void RecordLostMorphs(NdmfExportPreparation transformed, List<PreparedExpressionBindings.LostAuthoredMorph> lost,
             ICollection<string> warnings, ExportRecoveryReport report)
         {
             foreach (var shape in transformed.LostMorphs)
-                report.Fallbacks.Record(ExportOutcome.Omitted, "表情", shape, NdmfExportPreparation.LostGeneratedMorphs + shape);
+                report.Fallbacks.Record(ExportOutcome.Omitted, "表情", shape, ExporterLocalization.T(NdmfExportPreparation.LostGeneratedMorphs) + shape);
             foreach (var clip in lost.GroupBy(item => item.Clip))
             {
                 if (clip.Any(item => item.ClipEmptied))
@@ -320,7 +329,7 @@ namespace VRVlog.LilToonExporter
                         if (!blink.FollowPrepared(clone, transformed.FollowShape, out var blinkMoved, out var blinkReason))
                         {
                             var reason = ExporterLocalization.T(LostBlinkWarning);
-                            warnings?.Add(reason + " (" + blinkReason + ")");
+                            warnings?.Add(reason + LostDetail(LostBlinkWarning, blinkReason));
                             recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink, reason: reason);
                         }
                         else if (blinkMoved)
@@ -335,13 +344,13 @@ namespace VRVlog.LilToonExporter
                             unified?.RebindPrepared(old => transformed.FollowShapes(old, unified.ShapesOf(old)));
                             unified?.VerifyIdentityAndDeformation();
                         }
-                        catch (InvalidOperationException error)
+                        catch (Exception error) when (!(error is ExportStageFailure) && !ExportStageGuard.IsCancellation(error))
                         {
                             // Tracking is captured again from the baked copy below;
                             // only the check against the original routes is lost.
                             unifiedPreparation = null;
                             var reason = ExporterLocalization.T(LostTrackingWarning);
-                            warnings?.Add(reason + " (" + error.Message + ")");
+                            warnings?.Add(reason + LostDetail(LostTrackingWarning, error.Message));
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
                         }
                     }
