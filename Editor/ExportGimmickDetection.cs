@@ -253,6 +253,10 @@ namespace VRVlog.LilToonExporter
                     Evidence = evidence,
                     Group = candidate.gameObject
                 });
+                // A settings object kept for review still loses its settings:
+                // removing only the component keeps what refers to the object.
+                if (reason != null && root == candidate && rule.Anchored)
+                    removed.AddRange(candidate.GetComponents<Component>().Where(c => IsType(c, rule.AnchorTypes)));
             }
             if (removed.Count > 0)
                 findings.Add(new ExportGimmickFinding

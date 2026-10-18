@@ -225,6 +225,8 @@ namespace VRVlog.LilToonExporter
             var entry = report.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T(OmittedGimmickCategory),
                 string.IsNullOrEmpty(path) ? source.name : path, ExporterLocalization.T(finding.Reason));
             entry.RuleId = finding.RuleId;
+            // The result list selects the object from its path, "" for the root.
+            entry.Path = path ?? "";
         }
 
         internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
