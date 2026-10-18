@@ -260,6 +260,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void FilledEmotionsAreKeptLinesOfTheResultList()
+        {
+            var report = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔"), ("angry", "Fcl_ALL_Angry") }, report);
+            var results = report.Fallbacks.Results;
+            Assert.That(results.Select(result => result.Name), Is.EqualTo(new[] { "happy", "angry" }));
+            Assert.That(results.All(result => result.Outcome == ExportOutcome.Kept && result.Stage == null), Is.True);
+            Assert.That(results.Select(result => result.Category).Distinct(),
+                Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredEmotionCategory) }));
+            Assert.That(results[0].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "happy", "笑顔")));
+            Assert.That(report.Fallbacks.Summary()[ExportOutcome.Kept], Is.EqualTo(2));
+            Assert.That(report.Fallbacks.Count, Is.Zero, "Nothing is asked before saving.");
+        }
+
+        [Test]
         public void DisabledInferenceFillsNothing()
         {
             var bytes = Glb(null, Obj("VRChat / 笑顔", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Angry", "composite")));

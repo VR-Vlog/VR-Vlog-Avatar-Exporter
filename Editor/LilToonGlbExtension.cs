@@ -213,6 +213,21 @@ namespace VRVlog.LilToonExporter
         private static readonly HashSet<string> BonesRequiringDirectParent=new HashSet<string>(StringComparer.Ordinal){"upperChest","leftThumbProximal","leftThumbDistal","leftIndexIntermediate","leftIndexDistal","leftMiddleIntermediate","leftMiddleDistal","leftRingIntermediate","leftRingDistal","leftLittleIntermediate","leftLittleDistal","rightThumbProximal","rightThumbDistal","rightIndexIntermediate","rightIndexDistal","rightMiddleIntermediate","rightMiddleDistal","rightRingIntermediate","rightRingDistal","rightLittleIntermediate","rightLittleDistal"};
         internal const string WithoutLilToonKey = "vrvlogWithoutLilToonMaterials";
 
+        // The standard VRM's material and texture counts, compared with the app's
+        // limits that the save check applies to files with the extension.
+        internal static (int Materials, int Textures) StandardCounts(byte[] bytes)
+        {
+            var glb = GlbDocument.Read(bytes);
+            return ((Array(glb.Json, "materials", false) ?? new List<object>()).Count, TextureSources(glb.Json).Count);
+        }
+
+        internal static void RequireWithinLimits(byte[] bytes)
+        {
+            var (materials, textures) = StandardCounts(bytes);
+            if (materials > LilToonMobileProfile.MaximumMaterials) throw new InvalidOperationException("Fallback VRM exceeds the mobile material limit.");
+            if (textures > LilToonMobileProfile.MaximumTextures) throw new InvalidOperationException("Fallback VRM exceeds the mobile texture limit.");
+        }
+
         // Marks an export whose avatar had no lilToon material, so the save-time
         // round-trip check accepts the absent extension for this file only.
         internal static byte[] MarkWithoutLilToon(byte[] bytes)

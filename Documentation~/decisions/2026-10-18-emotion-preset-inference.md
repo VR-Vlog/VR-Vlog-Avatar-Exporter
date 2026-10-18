@@ -1,7 +1,7 @@
 # 通常の書き出しで空の喜怒哀楽を名前から埋める
 
 - 日付: 2026-10-18
-- 対象: `Editor/ExpressionNameInference.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/ExportRecovery.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`
+- 対象: `Editor/ExpressionNameInference.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/ExportRecovery.cs`・`Editor/ExportStageGuard.cs`（書き出し結果の一覧）・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`
 
 ## 背景
 
@@ -22,6 +22,7 @@
   2. メッシュの BlendShape（glTF の `extras.targetNames`）: `MatchEmotion(name, latinOnly: true)` で英語の語だけで判定する。表情ごとに、段の小さいもの → ノードと BlendShape の並び順で候補を選び、その名前を持つすべてのノードに重み1で bind する。`overrideBlink` は `block`、`overrideMouth`・`overrideLookAt` は付けない（`none`）。1つのメッシュに同じ名前が2つあると、どちらか決められないので警告を出し、その名前をほかのメッシュにも使わずに次の候補へ進む。
 - 「空」は、表情が無いか、bind が1つも無い表情を指す。作者が設定した bind のある喜怒哀楽は置き換えない。
 - 埋めた表情ごとに「`<表情>: 名前から自動で設定しました（<元の名前>）。動作を確認してください。`」の警告を出す。警告は書き出しの詳細（`LilToonExporterWindow` の「書き出しの詳細」と、Console の「VR Vlog 書き出し詳細」。**アプリに転送** は Console だけ）に出る。文言は `ExporterLocalization.T` で訳した書式に値を `string.Format` で入れる。
+- 埋めた表情は、書き出し結果の一覧（`ExportFallbackReport.Results`、2026-10-18 の段階ガードの決定 `2026-10-18-stage-guard.md`）にも表情ごとに1件記録する。結果は **保持**（`ExportOutcome.Kept`）、分類は「名前から自動で設定」、名前は表情（`happy` など）、理由は上の警告と同じ文。出力に残した表情なので要確認の件数（`Count`）には数えない。埋める処理は表情出力の段階（`guard.Run(ExportStage.ExpressionOutput, …)`）の中で行い、失敗したら埋める前の出力に戻す。
 - 表情・ポーズ指定UIの書き出し（`ExperimentalExpressionCaptureSession` からの3つの呼び出し）は `inferEmotionPresets: false` にした。メニューの「VR Vlog → VRMを書き出す」はこの画面を開くので、メニューからの書き出しの出力は変わらない。名前からの推定が入るのは **アプリに転送**（`AppTransferExport`）と `LilToonExporterWindow` の書き出し。
 
 ## 検討した代替案と不採用理由
@@ -34,13 +35,14 @@
 - 同名が複数あるメッシュだけを外し、ほかのメッシュの同じ名前で埋める: 顔のメッシュが外れて体や髪のメッシュだけが動き、顔の一部しか動かない表情になる。その名前ごと使わない。
 - メニュー表情をサブメニューを含む全体の名前で判定する: `喜怒哀楽` のように複数の感情を含むサブメニューや、`Eye` のような除外語のサブメニューの中にある表情が、葉のラベルだけなら判定できるのにすべて「該当なし」になる。逆に、親の名前が葉の判定を上書きすることも避けたい。
 - BlendShape から埋めた表情の override を付けない（`none`）: 顔全体の BlendShape（`Fcl_ALL_*` など）は目の形も含むので、自動瞬きが重なると瞼が二重に動く。VRoid 系の VRM の喜怒哀楽の既定と同じく `overrideBlink: block` にした。口と視線は、顔全体の表情でもリップシンク・視線を止める理由が VRM 1.0 の仕様に無いので `none` のまま。メニュー表情は元の override をそのままコピーする。
-- 埋めた表情の一覧を `ExportRecoveryReport` に別に持ち、書き出し結果に専用の欄で出す: 成功時の表示（「書き出しの詳細」と Console）は警告の一覧をそのまま出す作りで、報告の構造体を受け取らない。完了処理を複数の画面で変える必要があるうえ、警告にすでに表情と元の名前が出るので、一覧は持たないことにした。
+- 埋めた表情の一覧を `ExportRecoveryReport` に専用の欄として持つ: 段階ガードで書き出し結果の一覧（`ExportFallbackReport.Results`）ができたので、別の欄を作らずそこへ **保持** として入れた。結果の一覧を表示する画面はまだ無いので、利用者に見えるのは引き続き警告。
+- 埋めた表情を **近似** として記録する: 近似は元の見た目を別の形で再現したもので、要確認の件数に入る。名前からの推定は作者の表情・BlendShape をそのまま使っており、出力に残すので **保持** にした。
 
 ## 影響
 
 - 名前から判断できるメニュー表情か英語名の BlendShape があるアバターでは、**アプリに転送** と `LilToonExporterWindow` の出力に喜怒哀楽の標準表情が増える。カスタム表情はそのまま残るので、アプリの表情一覧に `happy` と `VRChat / <名前>` が両方並ぶことがある（2026-10-14 の決定と同じ）。
 - 判断できる名前が無いアバター・作者が喜怒哀楽を設定済みのアバターの出力は従来と同じ（`ExpressionNameInferenceTests` で、推定を無効にした場合と既定の場合、作者設定が残る場合を確認）。
-- 推定した表情は警告として書き出し結果に出るので、保存後に確認できる。
+- 推定した表情は警告として書き出し結果に出るので、保存後に確認できる。書き出し結果の一覧には **保持** の「名前から自動で設定」として表情ごとに残る（`ExpressionNameInferenceTests` で確認）。
 
 ## 未決
 

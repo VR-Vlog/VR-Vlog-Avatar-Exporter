@@ -366,11 +366,11 @@ assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.
 assert 'LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);' in one_click
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
 assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
-assert 'fullSnapshot?.Bind(converter, model, storage);' in one_click
-assert 'blink.Bind(converter, model, storage);' in one_click
+assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
+assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
 assert 'var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);' in one_click
-assert 'var menu = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
+assert 'var read = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
 assert 'bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);' in one_click
 assert 'new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding)' in one_click
 assert 'VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,' in one_click
