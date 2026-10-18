@@ -198,7 +198,7 @@ namespace VRVlog.LilToonExporter
             {
                 EditorGUILayout.Space(4f);
                 EditorGUILayout.LabelField("lilToon", ExporterLocalization.T(InstalledLilToonStatus()));
-                EditorGUILayout.LabelField("UniVRM", Compatibility.DependencyPolicy.UniVrmVersions);
+                EditorGUILayout.LabelField("UniVRM", Compatibility.DependencyPolicy.UniVrmRange);
             }
         }
 

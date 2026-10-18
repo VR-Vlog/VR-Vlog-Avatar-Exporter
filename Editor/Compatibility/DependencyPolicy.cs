@@ -5,10 +5,18 @@ namespace VRVlog.LilToonExporter.Compatibility
     // No UniVRM/MA/lilToon types: diagnostics survive an unavailable backend.
     public static partial class DependencyPolicy
     {
+        // Every release of the UniVrmMajor.UniVrmMinor patch line (UniVrmRange).
+        // UniVrmVersions lists the patches verified with real packages.
+        public static bool SupportsUniVrm(string version)
+        {
+            var parsed = version == null ? null : ParseRelease(version);
+            return parsed != null && parsed[0] == UniVrmMajor && parsed[1] == UniVrmMinor;
+        }
+
         public static string UniVrmError(string vrm, string gltf)
         {
             if (!SupportsUniVrm(vrm) || !SupportsUniVrm(gltf))
-                return "UniVRM / UniGLTF の対応版: " + UniVrmVersions +
+                return "UniVRM / UniGLTF の対応版: " + UniVrmRange +
                     "。現在: " + Display(vrm) + " / " + Display(gltf) + "。";
             if (!string.Equals(vrm, gltf, StringComparison.Ordinal))
                 return "UniVRM と UniGLTF のバージョンが異なります（" + vrm + " / " + gltf + "）。同じ版を選んでください。";

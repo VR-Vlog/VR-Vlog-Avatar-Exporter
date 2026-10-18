@@ -17,11 +17,17 @@ def outputs(root=ROOT):
     data = json.loads((root / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
     assert data['format'] == 1
     vrm = data['uniVrm']
+    # vpmRange (X.Y.x) is the accepted patch line: every X.Y.Z release exports.
+    # `versions` lists the patches verified with real packages (their source commits).
+    line = re.fullmatch(r'(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.x', vrm['vpmRange'])
+    assert line, vrm['vpmRange']
+    vrm_major, vrm_minor = int(line.group(1)), int(line.group(2))
     versions = list(vrm['versions'])
     assert versions and len(versions) == len(set(versions))
     for version, commit in vrm['versions'].items():
-        assert re.fullmatch(r'0\.131\.\d+', version)
+        assert version_tuple(version)[:2] == (vrm_major, vrm_minor), version
         assert re.fullmatch(r'[a-f0-9]{40}', commit)
+    assert versions == sorted(versions, key=version_tuple)
     assert vrm['releaseVersion'] in versions
     lil = data['lilToon']
     # `version` is the catalogue every export conforms to; `supported` is the
@@ -40,7 +46,7 @@ def outputs(root=ROOT):
     values = {
         'LilToonVersion': lil['version'], 'LilToonCommit': lil['commit'],
         'LilToonMinimum': supported['minimum'], 'LilToonMaximum': supported['maximum'],
-        'UniVrmAdapter': vrm['adapter'], 'UniVrmVersions': ', '.join(versions),
+        'UniVrmAdapter': vrm['adapter'], 'UniVrmRange': vrm['vpmRange'], 'UniVrmVersions': ', '.join(versions),
         'NdmfMinimum': authoring['ndmfMinimum'], 'NdmfReference': authoring['ndmfReference'],
         'ModularAvatarReference': authoring['modularAvatarReference'],
     }
@@ -49,19 +55,19 @@ def outputs(root=ROOT):
     for key, value in values.items():
         text += '        public const string ' + key + ' = ' + json.dumps(value) + ';\n'
     text += '        public const int NdmfMajor = ' + str(authoring['ndmfMajor']) + ';\n'
-    text += '        public static bool SupportsUniVrm(string version) =>\n            '
-    text += ' || '.join('version == ' + json.dumps(v) for v in versions) + ';\n'
+    text += '        public const int UniVrmMajor = ' + str(vrm_major) + ';\n'
+    text += '        public const int UniVrmMinor = ' + str(vrm_minor) + ';\n'
     text += '    }\n}\n'
     result = {'Editor/Compatibility/DependencyPolicy.Generated.cs': text}
     definitions = []
     constraints = []
+    # One half-open range per package: the whole X.Y patch line compiles; the
+    # next minor and every other line leave the backend assemblies out.
+    expression = '[{0}.{1}.0,{0}.{2}.0)'.format(vrm_major, vrm_minor, vrm_minor + 1)
     for package, prefix in [('com.vrmc.vrm', 'VRVLOG_VRM'), ('com.vrmc.gltf', 'VRVLOG_GLTF')]:
-        symbols = []
-        for version in versions:
-            symbol = prefix + '_' + version.replace('.', '_')
-            symbols.append(symbol)
-            definitions.append({'name': package, 'expression': '[' + version + ']', 'define': symbol})
-        constraints.append(' || '.join(symbols))
+        symbol = '{0}_{1}_{2}'.format(prefix, vrm_major, vrm_minor)
+        definitions.append({'name': package, 'expression': expression, 'define': symbol})
+        constraints.append(symbol)
     for name in ['Editor/VRVlog.LilToonExporter.Editor.asmdef', 'Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef']:
         asm = json.loads((root / name).read_text(encoding='utf-8'))
         asm['defineConstraints'] = constraints
