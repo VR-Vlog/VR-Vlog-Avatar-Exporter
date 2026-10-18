@@ -30,6 +30,7 @@ The exporter does not reproduce every shader effect, Animator behavior or VRChat
 | UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; 3.5.2 or later and below 3.11.0 when an expression file uses VRC Animator Play Audio |
+| Modular Avatar | Optional; 1.18.0 or later and below 1.19.0 when the avatar uses Shape Changer, Object Toggle, Material Setter, Material Swap or Mesh Cutter. Other avatars export with any version |
 
 Install Modular Avatar and its dependencies beforehand if your avatar uses them. The [dependency policy](Compatibility/dependencies.json) records supported versions; the exporter reports missing or unsupported packages without automatically changing them.
 
