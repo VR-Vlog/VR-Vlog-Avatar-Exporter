@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using FaceMaskVTuber.UniVrmRuntime;
 using UnityEditor;
@@ -37,6 +38,7 @@ namespace VRVlog.LilToonExporter
         int revision;
         bool loading, visible = true, autoBlink, springsEnabled = true, stepFailed;
         double loadStarted, lastTick, lastLoadingRepaint;
+        CancellationTokenSource cancel;
         string errorText, errorDetail, expression, playingAnimation;
         float blinkAmount, blinkClock, swayTime = -1;
         Vector3 origin, center;
@@ -101,12 +103,13 @@ namespace VRVlog.LilToonExporter
         {
             Release();
             var mine = revision;
+            cancel = new CancellationTokenSource();
             bytes = data; fileName = name;
             errorText = errorDetail = null;
             loading = true; loadStarted = EditorApplication.timeSinceStartup;
             loadedMode = Mode;
             lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
-            var started = Start(pendingLoad, data, name, new AvatarPreviewOptions { materialMode = loadedMode });
+            var started = Start(pendingLoad, data, name, new AvatarPreviewOptions { materialMode = loadedMode }, cancel.Token);
             pendingLoad = started;
             Repaint();
             AvatarPreviewLoad result = null;
@@ -137,11 +140,11 @@ namespace VRVlog.LilToonExporter
             Repaint();
         }
 
-        static async Task<AvatarPreviewLoad> Start(Task previous, byte[] data, string name, AvatarPreviewOptions options)
+        static async Task<AvatarPreviewLoad> Start(Task previous, byte[] data, string name, AvatarPreviewOptions options, CancellationToken token)
         {
             // The owner of the previous load handles its result and its failure.
             try { await previous; } catch (Exception) { }
-            return await AvatarRuntimePreview.LoadAsync(data, name, options);
+            return await AvatarRuntimePreview.LoadAsync(data, name, options, token);
         }
 
         void Attach(AvatarPreviewLoad result)
@@ -161,6 +164,7 @@ namespace VRVlog.LilToonExporter
             distance = Mathf.Max(.5f, bounds.size.magnitude * 1.8f);
             preview = ExportRecoveryComparisonWindow.CreateRenderer(root);
             lastTick = 0; blinkClock = 0; stepFailed = false;
+            AvatarRuntimePreview.SetSpringBonesEnabled(load, springsEnabled);
             if (!autoBlink && blinkAmount > 0) AvatarRuntimePreview.SetEyeBlink(load, blinkAmount, blinkAmount);
         }
 
@@ -174,6 +178,7 @@ namespace VRVlog.LilToonExporter
         {
             revision++;
             loading = false;
+            cancel?.Cancel(); cancel?.Dispose(); cancel = null;
             // The load owns Root. PreviewRenderUtility.Cleanup closes the preview
             // scene, which would destroy Root before the load releases the rest.
             load?.Dispose(); load = null;
@@ -251,8 +256,9 @@ namespace VRVlog.LilToonExporter
                 var closure = BlinkClosure(blinkClock);
                 AvatarRuntimePreview.SetEyeBlink(load, closure, closure);
             }
-            // Off means no app frame at all; a zero step is never sent.
-            if (springsEnabled) AvatarRuntimePreview.Tick(load, deltaTime);
+            // Expressions and their animations advance every frame; spring bones
+            // only move while enabled (SetSpringBonesEnabled). A zero step is never sent.
+            AvatarRuntimePreview.Tick(load, deltaTime);
         }
 
         internal static float BlinkClosure(float time)
@@ -452,6 +458,7 @@ namespace VRVlog.LilToonExporter
                     if (enabled != springsEnabled)
                     {
                         springsEnabled = enabled;
+                        AvatarRuntimePreview.SetSpringBonesEnabled(load, enabled);
                         lastTick = 0;
                         if (!enabled) ReturnToOrigin();
                     }
@@ -538,7 +545,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static bool IsFullLilToon(string status) =>
-            status.StartsWith("full-liltoon:", StringComparison.Ordinal) || status == "liltoon-full-applied";
+            status.StartsWith("full-liltoon:", StringComparison.Ordinal);
 
         static int Count(string status, string key)
         {
