@@ -145,6 +145,52 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.HasProperty("_DerivedOnly"), Is.False);
         }
 
+        // lilToon 2.3.4 RenderingMode: 5 is fur, 6 fur cutout; refraction (3, 4),
+        // fur two-pass (7) and gem (8) become plain transparent.
+        [TestCase(5, "Hidden/lilToonTransparent")]
+        [TestCase(6, "Hidden/lilToonCutout")]
+        [TestCase(3, "Hidden/lilToonTransparent")]
+        [TestCase(8, "Hidden/lilToonTransparent")]
+        public void DerivedRenderingModesChooseTheNearestOfficialShader(int declared, string expected)
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/lilToonDerivedProbe")) { name = "Derived" });
+            source.SetFloat("_TransparentMode", declared);
+            Assert.That(Substitute(source).shader.name, Is.EqualTo(expected));
+        }
+
+        [Test] public void ADynamicMainImageIsLeftOutSoTheSnapshotCanSaveTheSubstitute()
+        {
+            var screen = Own(new RenderTexture(4, 4, 0) { name = "screen" });
+            var source = Own(new Material(Shader.Find("Unlit/Texture")) { name = "Screen" });
+            source.SetTexture("_MainTex", screen);
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("lilToon"));
+            Assert.That(output.GetTexture("_MainTex"), Is.Null, "A render texture cannot be saved in the file.");
+
+            var (avatar, renderers) = Build(source);
+            Own(avatar);
+            var created = new List<Material>();
+            UnsupportedShaderSubstitution.Apply(avatar, created, new List<string>(), new ExportFallbackReport(), null);
+            owned.AddRange(created);
+            Assert.That(renderers[0].sharedMaterial, Is.SameAs(created.Single()));
+            Assert.DoesNotThrow(() => LilToonFullSnapshot.Capture(avatar, warnings: new List<string>()));
+        }
+
+        [Test] public void RenderersWithoutAnExportedMeshAreNotSubstituted()
+        {
+            var plain = Standard("Sparks");
+            var avatar = Own(new GameObject("avatar"));
+            var sparks = new GameObject("sparks"); sparks.transform.SetParent(avatar.transform, false);
+            sparks.AddComponent<ParticleSystem>();
+            var renderer = sparks.GetComponent<ParticleSystemRenderer>(); renderer.sharedMaterial = plain;
+            var created = new List<Material>(); var warnings = new List<string>(); var fallbacks = new ExportFallbackReport();
+            UnsupportedShaderSubstitution.Apply(avatar, created, warnings, fallbacks, null);
+            Assert.That(created, Is.Empty);
+            Assert.That(renderer.sharedMaterial, Is.SameAs(plain));
+            Assert.That(fallbacks.Count, Is.Zero, "Materials absent from the file are not listed.");
+            Assert.That(warnings, Is.Empty);
+        }
+
         [Test] public void AMaterialWhoseShaderIsMissingIsReadFromItsSavedValues()
         {
             var main = Texture("main");
@@ -255,6 +301,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UnsupportedShaderSubstitution.Warning), StringComparison.Ordinal)), Is.True);
             Assert.That(plain.shader.name, Is.EqualTo("Standard"));
             Assert.That(skins[1].sharedMaterial, Is.SameAs(plain), "The source avatar keeps its own material.");
+        }
+
+        [Test] public void AMixedAvatarWithARenderTextureScreenStillExports()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
+            var screen = Own(new Material(Shader.Find("Unlit/Texture")) { name = "Screen" });
+            screen.SetTexture("_MainTex", Own(new RenderTexture(4, 4, 0) { name = "camera" }));
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+            skins[0].sharedMaterial = official;
+            foreach (var skin in skins.Skip(1)) skin.sharedMaterial = screen;
+            var report = new ExportRecoveryReport();
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", new List<string>(),
+                exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+            var glb = GlbDocument.Read(bytes);
+            LilToonFullContract.Validate(glb.Json, bytes.Length, glb.Binary.Length);
+            var records = LilToonFullContract.List(LilToonFullContract.Root(glb.Json), "materials").Select(LilToonFullContract.Object).ToArray();
+            Assert.That(records.Select(record => LilToonFullContract.Text(record, "name")), Is.EquivalentTo(new[] { "Official", "Screen" }));
+            Assert.That(report.Fallbacks.Items.Select(item => item.Kind), Is.EqualTo(new[] { ExportFallbackKind.ShaderSubstituted }),
+                "No stage is left out because of the render texture.");
         }
     }
 }

@@ -47,6 +47,11 @@ namespace VRVlog.LilToonExporter
             var failed = new List<string>();
             foreach (var renderer in ExportRendererSelection.Enumerate(copy))
             {
+                // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
+                // Particle and trail materials are not exported and are not listed.
+                var filter = renderer.GetComponent<MeshFilter>();
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
+                if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 var slots = renderer.sharedMaterials;
                 var changed = false;
                 for (var i = 0; i < slots.Length; i++)
@@ -129,8 +134,10 @@ namespace VRVlog.LilToonExporter
         // official shader also declares with the same kind.
         static Material FromDerived(Material source, SourceValues values)
         {
+            // lilToon 2.3.4 RenderingMode: 0 Opaque, 1 Cutout, 2 Transparent,
+            // 3 Refraction, 4 RefractionBlur, 5 Fur, 6 FurCutout, 7 FurTwoPass, 8 Gem.
             var declared = values.Float("_TransparentMode", 0);
-            var mode = declared == 1 || declared == 5 ? Mode.Cutout : declared == 0 ? Mode.Opaque : Mode.Transparent;
+            var mode = declared == 1 || declared == 6 ? Mode.Cutout : declared == 0 ? Mode.Opaque : Mode.Transparent;
             var coerced = declared != 0 && declared != 1 && declared != 2;
             var outline = source.shader != null && source.shader.name.IndexOf("Outline", StringComparison.OrdinalIgnoreCase) >= 0;
             var material = New(source, mode, outline);
@@ -380,7 +387,9 @@ namespace VRVlog.LilToonExporter
 
             internal bool Texture(string name, out Texture texture, out Vector2 scale, out Vector2 offset)
             {
-                if (textures.TryGetValue(name, out var value))
+                // Render textures and other dynamic images cannot be saved in the
+                // file; such a slot is treated as empty.
+                if (textures.TryGetValue(name, out var value) && (value.Texture == null || value.Texture is Texture2D || value.Texture is Cubemap))
                 {
                     texture = value.Texture; scale = value.Scale; offset = value.Offset;
                     return Finite(scale.x) && Finite(scale.y) && Finite(offset.x) && Finite(offset.y);
