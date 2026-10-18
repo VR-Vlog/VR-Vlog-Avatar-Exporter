@@ -1,0 +1,10 @@
+{
+  "name": "com.vrvlog.avatar-formats",
+  "version": "1.0.0",
+  "displayName": "VR Vlog Avatar Formats",
+  "description": "Readers, writers and validators for the VR Vlog custom VRM extensions (expression animations and the lilToon material contract). Depends only on System; no Unity Engine or Editor API.",
+  "unity": "2022.3",
+  "author": {
+    "name": "VR Vlog"
+  }
+}

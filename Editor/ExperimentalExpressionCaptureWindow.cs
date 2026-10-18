@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using Place = VRVlog.LilToonExporter.ExpressionBoard.Place;
+using PlaceKind = VRVlog.LilToonExporter.ExpressionBoard.PlaceKind;
 
 namespace VRVlog.LilToonExporter
 {
@@ -15,6 +17,7 @@ namespace VRVlog.LilToonExporter
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
         ExperimentalExpressionCaptureSession session;
+        ExpressionBoard board;
         PreviewRenderUtility preview;
         Action pending;
         bool candidateValidationPending;
@@ -26,14 +29,12 @@ namespace VRVlog.LilToonExporter
         BlinkExportOptions configuredBlink;
         BlinkConfigurationWindow blinkConfiguration;
         bool showLicenseSettings;
-        readonly System.Collections.Generic.HashSet<AnimationClip> selectedClips = new System.Collections.Generic.HashSet<AnimationClip>();
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
+        // Window-relative card rectangles, kept for tests that click a card.
         readonly System.Collections.Generic.Dictionary<AnimationClip, Rect> candidateRects = new System.Collections.Generic.Dictionary<AnimationClip, Rect>();
-        readonly System.Collections.Generic.Dictionary<AnimationClip, Rect> candidateToggleRects = new System.Collections.Generic.Dictionary<AnimationClip, Rect>();
-        Rect addSelectedRect;
         // AssetDatabase-backed localization must run after ScriptableObject construction.
-        string previewName = "基準の顔", clipFilter = "";
-        Vector2 clipScroll, recommendationScroll;
+        string previewName = "基準の顔";
+        Vector2 otherScroll, excludedScroll;
         AnimationClip clipToAdd;
         PoseReviewWindow poseReview;
         Rect expressionDropRect;
@@ -44,6 +45,25 @@ namespace VRVlog.LilToonExporter
         string presetKey;
         int presetSkipped;
         readonly System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string>();
+
+        // Board drag state. Cards carry the clip under a private key, so a
+        // drag from the Project window is never mistaken for a card.
+        const string DragKey = "VRVlog.LilToonExporter.ExpressionBoardCard";
+        Vector2 pressStart;
+        Place? dropHover, dropHoverNext;
+        Vector2? dragMouse;
+
+        // Fixed sizes: the board never follows the font size or the names.
+        const float Gap = 6, SlotHeader = 22, SlotBody = 44, SlotFooter = 20, CardWidth = 150, CardHeight = 36,
+            PanelHeight = 300, PanelHeader = 26, PanelFooter = 20, ScrollbarWidth = 14;
+        static readonly Color LineColor = Hex(0x242424), PanelColor = Hex(0x2e2e2e), CardColor = Hex(0x383838), CardDisabledColor = Hex(0x313131),
+            CardBorderColor = Hex(0x585858), DashColor = Hex(0x9a9a9a), TextColor = Hex(0xd2d2d2), DimColor = Hex(0x9a9a9a),
+            AccentColor = Hex(0x7fa6c9), AccentButtonColor = Hex(0x2c5d87), ErrorColor = Hex(0xe0675f);
+        GUIStyle cardText, cardTextDisabled, dimText, dimMini, errorMini, boldText, badgeText, closeText, accentButton, centeredDim;
+        Texture2D accentNormal, accentHover, accentActive;
+        Texture gridIcon, hiddenIcon;
+        bool iconsLooked;
+        readonly System.Collections.Generic.Dictionary<(string, GUIStyle, int), string> fitted = new System.Collections.Generic.Dictionary<(string, GUIStyle, int), string>();
 
         // The "アプリに転送" window starts from what this window shows: these
         // values live only in the open window and are not stored anywhere else.
@@ -58,7 +78,7 @@ namespace VRVlog.LilToonExporter
         }
 
         void OnEnable() { EditorApplication.update += Advance; EditorApplication.projectChanged += CandidateAssetsChanged; }
-        void OnDisable() { EditorApplication.update -= Advance; EditorApplication.projectChanged -= CandidateAssetsChanged; pending = null; Cleanup(); }
+        void OnDisable() { EditorApplication.update -= Advance; EditorApplication.projectChanged -= CandidateAssetsChanged; pending = null; Cleanup(); ReleaseStyles(); }
 
         void Advance()
         {
@@ -92,11 +112,12 @@ namespace VRVlog.LilToonExporter
                 // Retain the user's explicit files and settings; save rebuilds their records.
                 if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                     throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-                var inputs = clipInputs.ToArray(); var selection = selectedClips.ToArray();
+                var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
                 var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var previousSaved = saved;
                 var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
                 Prepare();
-                clipInputs.AddRange(inputs); selectedClips.UnionWith(selection);
+                clipInputs.AddRange(inputs);
+                board.Excluded.Clear(); board.Excluded.UnionWith(excluded);
                 session.Presets.Clear();
                 foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
                 session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
@@ -108,16 +129,9 @@ namespace VRVlog.LilToonExporter
                 .Select(item => item.Clip).Concat(clipInputs.Select(input => input.Clip)))) clipErrors[pair.Key] = pair.Value;
             foreach (var input in clipInputs)
             {
-                var reason = input.Clip == null ? ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。") : clipErrors[input.Clip];
-                if (reason != null)
-                {
-                    if (input.Error == null) input.SelectionBeforeError = input.Selected;
-                    input.Selected = false;
-                }
-                else if (input.Error != null) input.Selected = input.SelectionBeforeError;
-                input.Time = DefaultTime(input.Clip); input.Error = reason;
+                input.Time = DefaultTime(input.Clip);
+                input.Error = input.Clip == null ? ExporterLocalization.T("AnimationClipが指定されていません") : clipErrors[input.Clip];
             }
-            selectedClips.RemoveWhere(clip => clip == null || !clipErrors.TryGetValue(clip, out var reason) || reason != null);
             // An automatic value that stopped working is replaced, not left blocking the save.
             ApplyAutomaticPresets();
             Repaint();
@@ -125,6 +139,13 @@ namespace VRVlog.LilToonExporter
 
         void OnGUI()
         {
+            EnsureStyles();
+            var current = Event.current;
+            var dragUpdate = current.type == EventType.DragUpdated;
+            var dragMousePosition = current.mousePosition;
+            if (dragUpdate) dropHoverNext = null;
+            if (current.type == EventType.DragExited || current.type == EventType.DragPerform || current.type == EventType.MouseUp)
+            { dropHover = null; dragMouse = null; }
             using (new EditorGUILayout.VerticalScope(new GUIStyle { padding = new RectOffset(16, 16, 12, 12) }))
             {
                 EditorGUILayout.LabelField(ExporterLocalization.T("VRMを書き出す"), EditorStyles.boldLabel);
@@ -152,22 +173,35 @@ namespace VRVlog.LilToonExporter
                     {
                         EditorGUILayout.Space(8);
                         DrawPreview();
-                        EditorGUILayout.Space(12);
+                        EditorGUILayout.Space(8);
+                        if (current.type == EventType.Layout) RebuildBoard();
                         pageScroll = EditorGUILayout.BeginScrollView(pageScroll);
-                        DrawClipInputs();
-                        EditorGUILayout.Space(12);
-                        DrawPresetInputs();
+                        DrawNextStep();
+                        DrawSlots();
+                        EditorGUILayout.Space(8);
+                        DrawPanels();
+                        EditorGUILayout.Space(6);
+                        DrawAddRow();
                         EditorGUILayout.Space(12);
                         DrawPoseInputs();
                         EditorGUILayout.Space(16);
                         DrawSave();
                         DrawFeedback();
                         EditorGUILayout.EndScrollView();
+                        DrawBottomBar();
                     }
                 }
                 if (pending != null) EditorGUILayout.LabelField(ExporterLocalization.T("処理しています…"), EditorStyles.miniLabel);
                 if (session == null) DrawFeedback();
             }
+            if (dragUpdate)
+            {
+                if (!Nullable.Equals(dropHover, dropHoverNext)) { dropHover = dropHoverNext; Repaint(); }
+                var dragging = DragAndDrop.GetGenericData(DragKey) is AnimationClip;
+                dragMouse = dragging ? dragMousePosition : (Vector2?)null;
+                if (dragging) Repaint();
+            }
+            DrawDraggedName();
         }
 
         void DrawFeedback()
@@ -182,6 +216,8 @@ namespace VRVlog.LilToonExporter
             try
             {
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false);
+                var target = session;
+                board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips), target.HasAuthoredPreset);
                 recommendations = session.RecommendClips();
                 foreach (var item in session.ClipErrors(recommendations.Select(item => item.Clip))) clipErrors[item.Key] = item.Value;
                 preview = new PreviewRenderUtility();
@@ -238,13 +274,501 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // ---- Expression board ----
+
+        void RebuildBoard()
+        {
+            if (board == null) return;
+            board.SetItems(clipInputs.Select(input => new ExpressionBoard.Item { Clip = input.Clip, Error = input.Error, Source = ExporterLocalization.T("追加した表情") }),
+                (recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>()).Select(item => new ExpressionBoard.Item
+                    { Clip = item.Clip, Error = clipErrors.TryGetValue(item.Clip, out var reason) ? reason : null, Source = item.Source }));
+        }
+
+        bool CanSave => ExportAuthor.IsValid(author) && !presetErrors.Values.Any(value => value != null) && board != null && !board.ExceedsLimit && !board.HasDuplicateNames;
+
+        // Exactly one next step, derived from the current state.
+        string NextStep()
+        {
+            foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
+                if (presetErrors.TryGetValue(preset, out var reason) && reason != null)
+                    return string.Format(ExporterLocalization.T("{0}の割り当てを直す"), ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
+            if (board.ExceedsLimit) return string.Format(ExporterLocalization.T("その他の表情から{0}件を書き出さないへ移す"), board.OverLimitBy);
+            if (board.HasDuplicateNames) return DuplicateNamesText(ExporterLocalization.T("同じ名前の表情{0}組の片方を書き出さないへ移す"));
+            if (board.Items.Count == 0) return ExporterLocalization.T("表情の.animを追加する");
+            if (board.AutomaticCount > 0) return string.Format(ExporterLocalization.T("名前で自動割り当てした{0}件を確認する"), board.AutomaticCount);
+            if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T("作者名を入力する");
+            return ExporterLocalization.T("この割り当てでVRMを保存する");
+        }
+
+        void DrawNextStep()
+        {
+            var row = GUILayoutUtility.GetRect(100, 24, GUILayout.ExpandWidth(true));
+            var automatic = board.AutomaticCount;
+            var buttonWidth = Mathf.Min(180, row.width * .32f);
+            var buttonRect = new Rect(row.xMax - buttonWidth, row.y + 1, buttonWidth, 22);
+            var prefix = ExporterLocalization.T("次にやること:");
+            var prefixWidth = Mathf.Min(row.width * .25f, dimText.CalcSize(new GUIContent(prefix)).x);
+            GUI.Label(new Rect(row.x, row.y, prefixWidth, row.height), Fit(prefix, dimText, prefixWidth), dimText);
+            var stepRect = new Rect(row.x + prefixWidth + 4, row.y, buttonRect.x - 8 - (row.x + prefixWidth + 4), row.height);
+            var step = NextStep();
+            GUI.Label(stepRect, new GUIContent(Fit(step, boldText, stepRect.width), step), boldText);
+            if (automatic > 0)
+            {
+                var label = string.Format(ExporterLocalization.T("自動の{0}件をすべて確定"), automatic);
+                if (GUI.Button(buttonRect, new GUIContent(Fit(label, EditorStyles.miniButton, buttonRect.width - 8), label), EditorStyles.miniButton)) Queue(ConfirmAutomatic);
+            }
+            var line = GUILayoutUtility.GetRect(100, 9, GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint) EditorGUI.DrawRect(new Rect(line.x, line.y + 4, line.width, 1), LineColor);
+        }
+
+        void DrawSlots()
+        {
+            var caption = GUILayoutUtility.GetRect(100, 18, GUILayout.ExpandWidth(true));
+            GUI.Label(caption, Fit(string.Format(ExporterLocalization.T("VRMの表情 {0}/5・ドロップで入れ替え"), board.SlotCount), dimMini, caption.width), dimMini);
+            var row = GUILayoutUtility.GetRect(100, SlotHeader + SlotBody + SlotFooter, GUILayout.ExpandWidth(true));
+            var presets = ExperimentalExpressionCaptureSession.EmotionPresets;
+            var width = (row.width - Gap * (presets.Length - 1)) / presets.Length;
+            for (var index = 0; index < presets.Length; index++)
+                DrawSlot(presets[index], new Rect(row.x + index * (width + Gap), row.y, width, row.height));
+        }
+
+        void DrawSlot(UniVRM10.ExpressionPreset preset, Rect rect)
+        {
+            session.Presets.TryGetValue(preset, out var assignment);
+            presetErrors.TryGetValue(preset, out var reason);
+            var target = Place.Slot(preset);
+            var repaint = Event.current.type == EventType.Repaint;
+            if (repaint)
+            {
+                EditorGUI.DrawRect(rect, PanelColor);
+                Outline(rect, Nullable.Equals(dropHover, target) ? AccentColor : LineColor);
+                EditorGUI.DrawRect(new Rect(rect.x, rect.y + SlotHeader, rect.width, 1), LineColor);
+                EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - SlotFooter, rect.width, 1), LineColor);
+            }
+            var header = new Rect(rect.x, rect.y, rect.width, SlotHeader);
+            var key = preset.ToString();
+            var keyWidth = Mathf.Min(rect.width * .45f, dimMini.CalcSize(new GUIContent(key)).x);
+            GUI.Label(new Rect(header.xMax - 6 - keyWidth, header.y + 2, keyWidth, header.height - 2), Fit(key, dimMini, keyWidth), dimMini);
+            var labelRect = new Rect(header.x + 6, header.y, header.width - 16 - keyWidth, header.height);
+            GUI.Label(labelRect, Fit(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)), cardText, labelRect.width), cardText);
+            if (GUI.Button(header, new GUIContent("", ExporterLocalization.T("一覧から選ぶ")), GUIStyle.none)) ShowPresetMenu(preset, header);
+
+            var card = new Rect(rect.x + 6, rect.y + SlotHeader + (SlotBody - CardHeight) / 2, rect.width - 12, CardHeight);
+            var clip = assignment != null && !assignment.IsNone && !assignment.IsShape ? assignment.ResolveClip() : null;
+            var item = board.Find(clip);
+            if (item != null)
+                DrawCard(card, clip.name, clip, true, assignment.Automatic, false, assignment.Automatic ? "自動" : null,
+                    reason ?? AssetDatabase.GetAssetPath(clip), "その他の表情へ戻す", () => MoveTo(clip, Place.Other));
+            else if (assignment != null && !assignment.IsNone)
+                // A BlendShape, or a file no longer on the board: it can only be cleared.
+                DrawCard(card, ExperimentalExpressionCaptureSession.PresetDisplayName(assignment), null, false, assignment.Automatic, false,
+                    assignment.Automatic ? "自動" : null, reason, "指定を外す", () => ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)));
+
+            var footer = new Rect(rect.x + 6, rect.yMax - SlotFooter + 1, rect.width - 12, SlotFooter - 1);
+            var none = assignment == null || assignment.IsNone;
+            var text = reason ?? ExporterLocalization.T(none ? session.HasAuthoredPreset(preset) ? "元のVRM設定" : "空のまま保存" : assignment.Automatic ? "自動の候補" : "手で割り当て");
+            var style = reason != null ? errorMini : dimMini;
+            GUI.Label(footer, new GUIContent(Fit(text, style, footer.width), reason), style);
+            HandleDrop(rect, target);
+        }
+
+        void DrawPanels()
+        {
+            var area = GUILayoutUtility.GetRect(100, PanelHeight, GUILayout.ExpandWidth(true));
+            var rightWidth = Mathf.Round(area.width * .25f);
+            var left = new Rect(area.x, area.y, area.width - rightWidth - 8, area.height);
+            var right = new Rect(left.xMax + 8, area.y, rightWidth, area.height);
+            DrawOtherPanel(left);
+            DrawExcludedPanel(right);
+            if (Event.current.type == EventType.Repaint) expressionDropRect = ScreenRect(left);
+        }
+
+        Rect DrawPanelFrame(Rect rect, Place target, bool grid, string title, string caption, string footer)
+        {
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(rect, PanelColor);
+                Outline(rect, Nullable.Equals(dropHover, target) ? AccentColor : LineColor);
+                EditorGUI.DrawRect(new Rect(rect.x, rect.y + PanelHeader, rect.width, 1), LineColor);
+                EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - PanelFooter, rect.width, 1), LineColor);
+            }
+            var header = new Rect(rect.x + 8, rect.y, rect.width - 16, PanelHeader);
+            DrawIcon(new Rect(header.x, header.y + (PanelHeader - 16) / 2, 16, 16), grid);
+            var titleWidth = Mathf.Min(header.width - 20, cardText.CalcSize(new GUIContent(title)).x);
+            GUI.Label(new Rect(header.x + 20, header.y, titleWidth, header.height), Fit(title, cardText, titleWidth), cardText);
+            if (caption != null)
+            {
+                var captionRect = new Rect(header.x + 28 + titleWidth, header.y, header.xMax - (header.x + 28 + titleWidth), header.height);
+                var fittedCaption = Fit(caption, dimMini, captionRect.width);
+                var captionWidth = dimMini.CalcSize(new GUIContent(fittedCaption)).x;
+                GUI.Label(new Rect(captionRect.xMax - captionWidth, captionRect.y + 1, captionWidth, captionRect.height), new GUIContent(fittedCaption, caption), dimMini);
+            }
+            var footerRect = new Rect(rect.x + 8, rect.yMax - PanelFooter + 1, rect.width - 16, PanelFooter - 1);
+            GUI.Label(footerRect, new GUIContent(Fit(footer, dimMini, footerRect.width), footer), dimMini);
+            return new Rect(rect.x + 1, rect.y + PanelHeader + 1, rect.width - 2, rect.height - PanelHeader - PanelFooter - 2);
+        }
+
+        void DrawOtherPanel(Rect rect)
+        {
+            var body = DrawPanelFrame(rect, Place.Other, true, string.Format(ExporterLocalization.T("その他の表情 {0}件"), board.OtherCount),
+                board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"),
+                ExporterLocalization.T("見つかった表情は最初すべてここに入ります"));
+            var items = board.ItemsIn(PlaceKind.Other).ToArray();
+            var inner = body.width - ScrollbarWidth - Gap * 2;
+            var columns = Mathf.Max(1, Mathf.FloorToInt((inner + Gap) / (CardWidth + Gap)));
+            var rows = (items.Length + columns - 1) / columns;
+            var view = new Rect(0, 0, body.width - ScrollbarWidth, Mathf.Max(body.height, Gap + rows * (CardHeight + Gap)));
+            otherScroll = GUI.BeginScrollView(body, otherScroll, view, false, true);
+            for (var index = 0; index < items.Length; index++)
+            {
+                var item = items[index]; var clip = item.Clip; var usable = ExpressionBoard.Usable(item);
+                var card = new Rect(Gap + index % columns * (CardWidth + Gap), Gap + index / columns * (CardHeight + Gap), CardWidth, CardHeight);
+                DrawCard(card, clip.name, clip, true, false, !usable, usable ? null : "対応外",
+                    usable ? ItemTooltip(item) : item.Error, "書き出さないへ移す", () => MoveTo(clip, Place.Excluded));
+            }
+            if (items.Length == 0)
+                GUI.Label(new Rect(Gap, Gap, view.width - Gap * 2, body.height - Gap * 2),
+                    Fit(ExporterLocalization.T("Projectから表情の.animをドロップ（複数可）"), centeredDim, view.width - Gap * 2), centeredDim);
+            GUI.EndScrollView();
+            HandleDrop(rect, Place.Other, project: true);
+        }
+
+        void DrawExcludedPanel(Rect rect)
+        {
+            var body = DrawPanelFrame(rect, Place.Excluded, false, string.Format(ExporterLocalization.T("書き出さない {0}件"), board.ExcludedCount),
+                null, ExporterLocalization.T("VRMに含めません"));
+            var items = board.ItemsIn(PlaceKind.Excluded).ToArray();
+            var width = body.width - ScrollbarWidth - Gap * 2;
+            var listed = Gap + items.Length * (CardHeight + Gap);
+            var zoneHeight = Mathf.Max(64, body.height - listed - Gap);
+            var view = new Rect(0, 0, body.width - ScrollbarWidth, listed + zoneHeight + Gap);
+            excludedScroll = GUI.BeginScrollView(body, excludedScroll, view, false, true);
+            for (var index = 0; index < items.Length; index++)
+            {
+                var item = items[index]; var usable = ExpressionBoard.Usable(item);
+                DrawCard(new Rect(Gap, Gap + index * (CardHeight + Gap), width, CardHeight), item.Clip.name, item.Clip, true, false, !usable,
+                    usable ? null : "対応外", usable ? ItemTooltip(item) : item.Error, null, null);
+            }
+            var zone = new Rect(Gap, listed, width, zoneHeight);
+            if (Event.current.type == EventType.Repaint) Dashed(zone, CardBorderColor);
+            DrawIcon(new Rect(zone.center.x - 8, zone.center.y - 18, 16, 16), false);
+            GUI.Label(new Rect(zone.x, zone.center.y, zone.width, 18), Fit(ExporterLocalization.T("ここへドロップ"), centeredDim, zone.width), centeredDim);
+            GUI.EndScrollView();
+            HandleDrop(rect, Place.Excluded);
+        }
+
+        static string ItemTooltip(ExpressionBoard.Item item) =>
+            (item.Added ? item.Source : ExporterLocalization.T(item.Source ?? "")) + "\n" + AssetDatabase.GetAssetPath(item.Clip);
+
+        // One card. A card with a clip can be clicked to preview, right-clicked
+        // for the move menu and, when draggable, dragged onto another place.
+        void DrawCard(Rect rect, string name, AnimationClip clip, bool draggable, bool automatic, bool unusable, string badge, string tooltip,
+            string closeTooltip, Action close)
+        {
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(rect, unusable ? CardDisabledColor : CardColor);
+                if (automatic) Dashed(rect, DashColor); else Outline(rect, CardBorderColor);
+            }
+            var closeRect = close != null ? new Rect(rect.xMax - 18, rect.y + 2, 16, 16) : Rect.zero;
+            var right = close != null ? 20 : 6;
+            const float badgeWidth = 44;
+            // A narrow card (a slot in a narrow window) puts the badge under the name.
+            var stacked = badge != null && rect.width < 140;
+            var badgeRect = stacked ? new Rect(rect.x + 8, rect.yMax - 16, badgeWidth, 13)
+                : new Rect(rect.xMax - right - badgeWidth, rect.center.y - 8, badgeWidth, 16);
+            var nameRect = stacked ? new Rect(rect.x + 8, rect.y + 2, rect.width - 8 - right, 18)
+                : new Rect(rect.x + 8, rect.y, rect.width - 8 - right - (badge != null ? badgeWidth + 4 : 0), rect.height);
+            var style = unusable ? cardTextDisabled : cardText;
+            GUI.Label(nameRect, new GUIContent(Fit(name, style, nameRect.width), tooltip), style);
+            if (badge != null)
+            {
+                if (Event.current.type == EventType.Repaint) Outline(badgeRect, DimColor);
+                GUI.Label(badgeRect, new GUIContent(Fit(ExporterLocalization.T(badge), badgeText, badgeRect.width), tooltip), badgeText);
+            }
+            if (close != null && GUI.Button(closeRect, new GUIContent("×", ExporterLocalization.T(closeTooltip)), closeText)) Queue(close);
+            if (clip == null) return;
+            if (Event.current.type == EventType.Repaint) candidateRects[clip] = ScreenRect(rect);
+            var id = GUIUtility.GetControlID(FocusType.Passive);
+            var current = Event.current;
+            switch (current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown:
+                    if (!rect.Contains(current.mousePosition)) break;
+                    if (current.button == 0) { GUIUtility.hotControl = id; pressStart = current.mousePosition; current.Use(); }
+                    else if (current.button == 1) { ShowMoveMenu(clip); current.Use(); }
+                    break;
+                case EventType.MouseDrag:
+                    if (GUIUtility.hotControl != id) break;
+                    if (draggable && (current.mousePosition - pressStart).sqrMagnitude > 16)
+                    {
+                        GUIUtility.hotControl = 0;
+                        DragAndDrop.PrepareStartDrag();
+                        DragAndDrop.objectReferences = Array.Empty<UnityEngine.Object>();
+                        DragAndDrop.SetGenericData(DragKey, clip);
+                        DragAndDrop.StartDrag(clip.name);
+                    }
+                    current.Use();
+                    break;
+                case EventType.MouseUp:
+                    if (GUIUtility.hotControl != id) break;
+                    GUIUtility.hotControl = 0;
+                    if (rect.Contains(current.mousePosition)) PreviewBoardClip(clip);
+                    current.Use();
+                    break;
+            }
+        }
+
+        void HandleDrop(Rect rect, Place target, bool project = false)
+        {
+            var current = Event.current;
+            if (current.type != EventType.DragUpdated && current.type != EventType.DragPerform || !rect.Contains(current.mousePosition)) return;
+            if (DragAndDrop.GetGenericData(DragKey) is AnimationClip clip)
+            {
+                var valid = GUI.enabled && board != null && board.CanMove(clip, target);
+                DragAndDrop.visualMode = valid ? DragAndDropVisualMode.Move : DragAndDropVisualMode.Rejected;
+                if (valid) dropHoverNext = target;
+                if (valid && current.type == EventType.DragPerform)
+                {
+                    DragAndDrop.AcceptDrag(); DragAndDrop.SetGenericData(DragKey, null);
+                    Queue(() => MoveTo(clip, target));
+                }
+                current.Use();
+                return;
+            }
+            if (!project) return;
+            // Files dropped from the Project window join the board as added files.
+            var clips = DragAndDrop.objectReferences.OfType<AnimationClip>().Where(item => item != null).Distinct().ToArray();
+            var files = GUI.enabled && clips.Length > 0 && DragAndDrop.objectReferences.All(item => item is AnimationClip);
+            DragAndDrop.visualMode = files ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            if (files) dropHoverNext = target;
+            if (files && current.type == EventType.DragPerform) { DragAndDrop.AcceptDrag(); Queue(() => AddClips(clips)); }
+            current.Use();
+        }
+
+        void DrawDraggedName()
+        {
+            if (Event.current.type != EventType.Repaint || dragMouse == null || !(DragAndDrop.GetGenericData(DragKey) is AnimationClip clip)) return;
+            var text = Fit(clip.name, cardText, 200);
+            var rect = new Rect(dragMouse.Value.x + 14, dragMouse.Value.y + 6, Mathf.Min(216, cardText.CalcSize(new GUIContent(text)).x + 16), 22);
+            EditorGUI.DrawRect(rect, CardColor); Outline(rect, AccentColor);
+            GUI.Label(new Rect(rect.x + 8, rect.y, rect.width - 12, rect.height), text, cardText);
+        }
+
+        void ShowMoveMenu(AnimationClip clip)
+        {
+            var menu = new GenericMenu();
+            var place = board.PlaceOf(clip);
+            void Add(string label, Place target)
+            {
+                if (place.Equals(target)) menu.AddDisabledItem(new GUIContent(label), true);
+                else if (board.CanMove(clip, target)) menu.AddItem(new GUIContent(label), false, () => Queue(() => MoveTo(clip, target)));
+                else menu.AddDisabledItem(new GUIContent(label), false);
+            }
+            foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
+                Add(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)), Place.Slot(preset));
+            menu.AddSeparator("");
+            Add(ExporterLocalization.T("その他の表情"), Place.Other);
+            Add(ExporterLocalization.T("書き出さない"), Place.Excluded);
+            menu.ShowAsContext();
+        }
+
+        void PreviewBoardClip(AnimationClip clip) => Queue(() => {
+            RefreshCandidateValidation(); var currentReason = session.ClipError(clip, DefaultTime(clip));
+            if (currentReason != null) throw new InvalidOperationException(currentReason);
+            session.PreviewClip(clip, DefaultTime(clip)); ShowFace(clip.name);
+        });
+
+        void MoveTo(AnimationClip clip, Place target)
+        {
+            RebuildBoard();
+            if (!board.Move(clip, target)) return;
+            ApplyAutomaticPresets();
+            SaveChoices();
+            if (target.Kind != PlaceKind.Slot) return;
+            var preset = target.Preset;
+            if (presetErrors.TryGetValue(preset, out var reason) && reason != null) return;
+            session.PreviewPreset(preset, session.Presets[preset]);
+            ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
+        }
+
+        void ConfirmAutomatic()
+        {
+            RebuildBoard();
+            board.ConfirmAutomatic();
+            SaveChoices();
+            RefreshPresetErrors();
+        }
+
+        void ResetBoard()
+        {
+            RebuildBoard();
+            board.Reset();
+            SaveChoices();
+            RefreshPresetErrors();
+            session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔"));
+        }
+
+        void SaveChoices() => ExpressionPresetStore.Save(presetKey, session.Presets.Values, board?.Excluded);
+
+        void DrawAddRow()
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                clipToAdd = (AnimationClip)EditorGUILayout.ObjectField(ExporterLocalization.T("表情の.animを追加"), clipToAdd, typeof(AnimationClip), false);
+                using (new EditorGUI.DisabledScope(clipToAdd == null))
+                    if (GUILayout.Button(ExporterLocalization.T("追加"), GUILayout.Width(60))) { var clip = clipToAdd; Queue(() => AddClip(clip)); }
+            }
+            if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
+            else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
+        }
+
+        void DrawBottomBar()
+        {
+            EditorGUILayout.Space(6);
+            // A narrow window puts the summary on its own row above the buttons.
+            var stacked = position.width < 760;
+            var bar = GUILayoutUtility.GetRect(100, stacked ? 60 : 38, GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint) EditorGUI.DrawRect(new Rect(bar.x, bar.y, bar.width, 1), LineColor);
+            var saveWidth = Mathf.Min(220, bar.width * .4f); var resetWidth = Mathf.Min(140, bar.width * .28f);
+            var buttons = stacked ? bar.y + 29 : bar.y + 7;
+            var saveRect = new Rect(bar.xMax - saveWidth, buttons, saveWidth, 28);
+            var resetRect = new Rect(saveRect.x - 8 - resetWidth, buttons + 3, resetWidth, 22);
+            var summaryRect = stacked ? new Rect(bar.x, bar.y + 5, bar.width, 20) : new Rect(bar.x, bar.y + 7, resetRect.x - 8 - bar.x, 28);
+            var summary = string.Format(ExporterLocalization.T("VRMの表情 {0}/5・その他の表情 {1}・書き出さない {2}"), board.SlotCount, board.OtherCount, board.ExcludedCount);
+            GUI.Label(summaryRect, new GUIContent(Fit(summary, dimText, summaryRect.width), summary), dimText);
+            var reset = ExporterLocalization.T("割り当てをリセット");
+            if (GUI.Button(resetRect, new GUIContent(Fit(reset, EditorStyles.miniButton, resetRect.width - 8), reset), EditorStyles.miniButton) &&
+                EditorUtility.DisplayDialog(reset, ExporterLocalization.T("手で割り当てた表情と書き出さない指定を消して名前から割り当て直します"),
+                    ExporterLocalization.T("リセット"), ExporterLocalization.T("戻る")))
+                Queue(ResetBoard);
+            var save = ExporterLocalization.T("この割り当てでVRMを保存");
+            using (new EditorGUI.DisabledScope(!CanSave))
+                if (GUI.Button(saveRect, new GUIContent(Fit(save, accentButton, saveRect.width - 12), save), accentButton)) Queue(Export);
+        }
+
+        // ---- Drawing helpers ----
+
+        static Color Hex(int value) => new Color32((byte)(value >> 16), (byte)(value >> 8), (byte)value, 255);
+
+        static void Outline(Rect rect, Color color)
+        {
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, 1), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1, rect.width, 1), color);
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 1, rect.height), color);
+            EditorGUI.DrawRect(new Rect(rect.xMax - 1, rect.y, 1, rect.height), color);
+        }
+
+        static void Dashed(Rect rect, Color color)
+        {
+            for (var x = rect.x; x < rect.xMax; x += 6)
+            {
+                var length = Mathf.Min(3, rect.xMax - x);
+                EditorGUI.DrawRect(new Rect(x, rect.y, length, 1), color);
+                EditorGUI.DrawRect(new Rect(x, rect.yMax - 1, length, 1), color);
+            }
+            for (var y = rect.y; y < rect.yMax; y += 6)
+            {
+                var length = Mathf.Min(3, rect.yMax - y);
+                EditorGUI.DrawRect(new Rect(rect.x, y, 1, length), color);
+                EditorGUI.DrawRect(new Rect(rect.xMax - 1, y, 1, length), color);
+            }
+        }
+
+        // Built-in icons when the editor has them, otherwise a plain glyph.
+        void DrawIcon(Rect rect, bool grid)
+        {
+            if (!iconsLooked)
+            {
+                iconsLooked = true;
+                gridIcon = EditorGUIUtility.FindTexture("GridLayoutGroup Icon");
+                hiddenIcon = EditorGUIUtility.FindTexture("scenevis_hidden") ?? EditorGUIUtility.FindTexture("animationvisibilitytoggleoff");
+            }
+            if (Event.current.type != EventType.Repaint) return;
+            var icon = grid ? gridIcon : hiddenIcon;
+            if (icon != null) { GUI.DrawTexture(rect, icon, ScaleMode.ScaleToFit); return; }
+            if (grid)
+            {
+                for (var x = 0; x < 2; x++)
+                    for (var y = 0; y < 2; y++) Outline(new Rect(rect.x + 2 + x * 7, rect.y + 2 + y * 7, 5, 5), DimColor);
+                return;
+            }
+            Outline(new Rect(rect.x + 1, rect.y + 4, 14, 8), DimColor);
+            for (var step = 0; step < 12; step++) EditorGUI.DrawRect(new Rect(rect.x + 2 + step, rect.y + 13 - step, 1, 1), DimColor);
+        }
+
+        // Text is clipped with an ellipsis so long names never widen a row.
+        string Fit(string text, GUIStyle style, float width)
+        {
+            if (string.IsNullOrEmpty(text) || width <= 0) return "";
+            var key = (text, style, Mathf.FloorToInt(width));
+            if (fitted.TryGetValue(key, out var value)) return value;
+            if (style.CalcSize(new GUIContent(text)).x <= width) value = text;
+            else
+            {
+                int low = 0, high = text.Length;
+                while (low < high)
+                {
+                    var middle = (low + high + 1) / 2;
+                    if (style.CalcSize(new GUIContent(text.Substring(0, middle) + "…")).x <= width) low = middle; else high = middle - 1;
+                }
+                value = low > 0 ? text.Substring(0, low) + "…" : "…";
+            }
+            if (fitted.Count > 4096) fitted.Clear();
+            fitted[key] = value;
+            return value;
+        }
+
+        void EnsureStyles()
+        {
+            if (cardText != null && accentNormal != null) return;
+            GUIStyle Label(GUIStyle basis, Color color, TextAnchor anchor = TextAnchor.MiddleLeft)
+            {
+                var style = new GUIStyle(basis) { alignment = anchor, clipping = TextClipping.Clip, wordWrap = false, padding = new RectOffset(0, 0, 0, 0), margin = new RectOffset(0, 0, 0, 0) };
+                style.normal.textColor = style.hover.textColor = style.active.textColor = style.focused.textColor = color;
+                return style;
+            }
+            cardText = Label(EditorStyles.label, TextColor);
+            cardTextDisabled = Label(EditorStyles.label, Hex(0x6e6e6e));
+            dimText = Label(EditorStyles.label, DimColor);
+            boldText = Label(EditorStyles.boldLabel, TextColor);
+            dimMini = Label(EditorStyles.miniLabel, DimColor);
+            errorMini = Label(EditorStyles.miniLabel, ErrorColor);
+            badgeText = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleCenter);
+            closeText = Label(EditorStyles.label, DimColor, TextAnchor.MiddleCenter);
+            closeText.hover.textColor = TextColor;
+            centeredDim = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleCenter);
+            Texture2D Solid(Color color)
+            {
+                var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
+                texture.SetPixel(0, 0, color); texture.Apply();
+                return texture;
+            }
+            ReleaseTextures();
+            accentNormal = Solid(AccentButtonColor); accentHover = Solid(Hex(0x3569a0)); accentActive = Solid(Hex(0x24507a));
+            accentButton = new GUIStyle(GUI.skin.button) { border = new RectOffset(0, 0, 0, 0), alignment = TextAnchor.MiddleCenter, clipping = TextClipping.Clip, wordWrap = false };
+            void State(GUIStyleState state, Texture2D background)
+            {
+                state.background = background; state.scaledBackgrounds = Array.Empty<Texture2D>(); state.textColor = Color.white;
+            }
+            State(accentButton.normal, accentNormal); State(accentButton.hover, accentHover); State(accentButton.active, accentActive); State(accentButton.focused, accentNormal);
+            fitted.Clear();
+        }
+
+        void ReleaseTextures()
+        {
+            foreach (var texture in new[] { accentNormal, accentHover, accentActive }) if (texture != null) DestroyImmediate(texture);
+            accentNormal = accentHover = accentActive = null;
+        }
+
+        void ReleaseStyles() { ReleaseTextures(); cardText = null; fitted.Clear(); }
+
+        // ---- Save ----
+
         void DrawSave()
         {
             EditorGUILayout.LabelField(ExporterLocalization.T("保存"), EditorStyles.boldLabel);
             EditorGUILayout.Space(6);
-            var chosen = clipInputs.Where(input => input.Selected).ToArray();
-            var remaining = session.Expressions.Count(pose => !fileRecords.Values.Contains(pose));
-            EditorGUILayout.LabelField(ExporterLocalization.T("表情 ") + (remaining + chosen.Length) + ExporterLocalization.T("件　・　ポーズ ") + session.PoseOptions.Manual.Count + ExporterLocalization.T("件"), EditorStyles.miniLabel);
             author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
             // The line is always reserved so typing does not move the rows below.
             EditorGUILayout.LabelField(ExportAuthor.IsValid(author) ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
@@ -256,26 +780,26 @@ namespace VRVlog.LilToonExporter
                 if (GUILayout.Button(ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) Queue(ShowBlinkConfiguration);
             }
             EditorGUILayout.Space(8);
-            var blockedPresets = ExperimentalExpressionCaptureSession.EmotionPresets.Where(preset => presetErrors.TryGetValue(preset, out var reason) && reason != null)
-                .Select(preset => ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset))).ToArray();
-            if (blockedPresets.Length > 0)
-                EditorGUILayout.LabelField(ExporterLocalization.T("保存できない標準の表情があります: ") + string.Join("・", blockedPresets), EditorStyles.wordWrappedMiniLabel);
-            using (new EditorGUI.DisabledScope(!ExportAuthor.IsValid(author) || chosen.Any(input => input.Error != null) || presetErrors.Values.Any(value => value != null)))
-                if (GUILayout.Button(ExporterLocalization.T("VRMを保存"), GUILayout.Height(38))) Queue(Export);
-            EditorGUILayout.Space(8);
             DrawSavedResult();
         }
 
         void ShowFace(string name) { previewName = name; Repaint(); }
 
-        void RecordSelectedClips()
+        // Without exclusions or added files nothing is recorded and the
+        // ordinary export keeps the avatar's own faces. Otherwise exactly the
+        // usable faces of the custom list are recorded under their file names.
+        void RecordBoardClips()
         {
-            var selected = clipInputs.Where(input => input.Selected).ToArray();
-            foreach (var input in selected) input.Time = DefaultTime(input.Clip);
-            var poses = session.ReplaceClipRecords(selected, fileRecords.Values);
+            RebuildBoard();
+            var exported = board.UsesRecordRoute ? board.ExportedCustom() : new System.Collections.Generic.List<AnimationClip>();
+            foreach (var input in clipInputs) input.Time = DefaultTime(input.Clip);
+            var inputs = exported.Select(clip => clipInputs.FirstOrDefault(input => input.Clip == clip) is var added && added != null
+                ? added : new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Time = DefaultTime(clip) }).ToArray();
+            foreach (var input in inputs) input.Name = input.Clip.name;
+            var poses = session.ReplaceClipRecords(inputs, fileRecords.Values);
             fileRecords.Clear();
-            for (var index = 0; index < selected.Length; index++) fileRecords.Add(selected[index], poses[index]);
-            status = ExporterLocalization.T("表情を記録・更新しました: ") + poses.Length + ExporterLocalization.T("件");
+            for (var index = 0; index < inputs.Length; index++) fileRecords.Add(inputs[index], poses[index]);
+            if (poses.Length > 0) status = ExporterLocalization.T("表情を記録・更新しました: ") + poses.Length + ExporterLocalization.T("件");
         }
 
         void DrawSavedResult()
@@ -300,85 +824,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        void DrawClipInputs()
-        {
-            EditorGUILayout.LabelField(ExporterLocalization.T("候補ファイル"), EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
-            EditorGUILayout.LabelField(ExporterLocalization.T("名前を押すと顔を確認できます。複数選んでまとめて追加できます。"), EditorStyles.wordWrappedMiniLabel);
-            if (recommendations != null && recommendations.Count > 0)
-            {
-                clipFilter = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("検索")), clipFilter);
-                var visible = recommendations.Where(item => string.IsNullOrEmpty(clipFilter) || item.Clip.name.IndexOf(clipFilter, StringComparison.OrdinalIgnoreCase) >= 0).ToArray();
-                using (new EditorGUILayout.HorizontalScope())
-                {
-                    if (GUILayout.Button(ExporterLocalization.T("表示中を選択"), EditorStyles.miniButton, GUILayout.Width(100)))
-                        foreach (var item in visible) if (clipErrors[item.Clip] == null && !clipInputs.Any(input => input.Clip == item.Clip)) selectedClips.Add(item.Clip);
-                    if (GUILayout.Button(ExporterLocalization.T("選択を解除"), EditorStyles.miniButton, GUILayout.Width(90))) selectedClips.Clear();
-                    GUILayout.FlexibleSpace();
-                }
-                recommendationScroll = EditorGUILayout.BeginScrollView(recommendationScroll, GUILayout.Height(Mathf.Min(155, Mathf.Max(35, visible.Length * 28))));
-                foreach (var item in visible)
-                {
-                    var added = clipInputs.Any(input => input.Clip == item.Clip);
-                    var reason = clipErrors[item.Clip];
-                    using (new EditorGUILayout.HorizontalScope(GUILayout.Height(26)))
-                    {
-                        using (new EditorGUI.DisabledScope(added || reason != null))
-                        {
-                            var next = EditorGUILayout.Toggle(added || selectedClips.Contains(item.Clip), GUILayout.Width(20));
-                            if (Event.current.type == EventType.Repaint) candidateToggleRects[item.Clip] = ScreenRect(GUILayoutUtility.GetLastRect());
-                            if (!added && reason == null) { if (next) selectedClips.Add(item.Clip); else selectedClips.Remove(item.Clip); }
-                        }
-                        // Unsupported names remain clickable so the reason is visible.
-                        if (GUILayout.Button(new GUIContent(item.Clip.name, reason ?? ExporterLocalization.T(item.Source) + "\n" + AssetDatabase.GetAssetPath(item.Clip)), EditorStyles.label, GUILayout.Height(24)))
-                        {
-                            var clip = item.Clip;
-                            Queue(() => { RefreshCandidateValidation(); var currentReason = session.ClipError(clip, DefaultTime(clip));
-                                if (currentReason != null) throw new InvalidOperationException(currentReason);
-                                session.PreviewClip(clip, DefaultTime(clip)); ShowFace(clip.name); });
-                        }
-                        var nameRect = GUILayoutUtility.GetLastRect();
-                        if (Event.current.type == EventType.Repaint) candidateRects[item.Clip] = ScreenRect(nameRect);
-                        GUILayout.Label(added ? ExporterLocalization.T("追加済み") : reason != null ? ExporterLocalization.T("対応外") : "", EditorStyles.miniLabel, GUILayout.Width(60));
-                    }
-                }
-                EditorGUILayout.EndScrollView();
-                var count = selectedClips.Count(clip => !clipInputs.Any(input => input.Clip == clip));
-                using (new EditorGUI.DisabledScope(count == 0))
-                    if (GUILayout.Button(ExporterLocalization.T("選んだ ") + count + ExporterLocalization.T("件を追加"), GUILayout.Height(30))) Queue(AddSelectedClips);
-                if (Event.current.type == EventType.Repaint) addSelectedRect = ScreenRect(GUILayoutUtility.GetLastRect());
-            }
-            else EditorGUILayout.LabelField(ExporterLocalization.T("候補がありません。Projectから.animを追加できます。"), EditorStyles.wordWrappedMiniLabel);
-            EditorGUILayout.Space(8);
-            DropClips(ExporterLocalization.T("Projectから表情の.animをドロップ（複数可）"), AddClips, true);
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                clipToAdd = (AnimationClip)EditorGUILayout.ObjectField(clipToAdd, typeof(AnimationClip), false);
-                using (new EditorGUI.DisabledScope(clipToAdd == null))
-                    if (GUILayout.Button(ExporterLocalization.T("追加"), GUILayout.Width(60))) { var clip = clipToAdd; Queue(() => AddClip(clip)); }
-            }
-            if (clipInputs.Count == 0) return;
-            EditorGUILayout.Space(12);
-            EditorGUILayout.LabelField(ExporterLocalization.T("追加した表情（保存対象にチェック）"), EditorStyles.boldLabel);
-            clipScroll = EditorGUILayout.BeginScrollView(clipScroll, GUILayout.Height(Mathf.Min(160, clipInputs.Count * 32 + 8)));
-            foreach (var input in clipInputs.ToArray())
-            {
-                using (new EditorGUILayout.HorizontalScope(GUILayout.Height(28)))
-                {
-                    using (new EditorGUI.DisabledScope(input.Error != null))
-                        input.Selected = EditorGUILayout.Toggle(new GUIContent("", input.Error ?? ExporterLocalization.T("この表情を保存")), input.Selected, GUILayout.Width(20));
-                    input.Name = EditorGUILayout.TextField(input.Name);
-                    if (GUILayout.Button(new GUIContent(input.Error == null ? ExporterLocalization.T("確認") : ExporterLocalization.T("理由"), input.Error ?? input.Clip.name), GUILayout.Width(50)))
-                        Queue(() => PreviewClipInput(input));
-                    if (GUILayout.Button(new GUIContent("×", ExporterLocalization.T("一覧から削除")), GUILayout.Width(26))) Queue(() => {
-                        if (fileRecords.TryGetValue(input, out var old)) session.Expressions.Remove(old);
-                        fileRecords.Remove(input); clipInputs.Remove(input); ApplyAutomaticPresets();
-                    });
-                }
-            }
-            EditorGUILayout.EndScrollView();
-        }
-
         Rect ScreenRect(Rect rect) => new Rect(GUIUtility.GUIToScreenPoint(rect.position) - position.position, rect.size);
         internal static float DefaultTime(AnimationClip clip) => clip == null ? 0 : clip.length;
 
@@ -391,20 +836,13 @@ namespace VRVlog.LilToonExporter
             ShowFace(input.Name);
         }
 
-        void AddSelectedClips()
-        {
-            // Follow the visible source ordering; a HashSet alone would choose an arbitrary preview.
-            AddClips(recommendations.Where(item => selectedClips.Contains(item.Clip)).Select(item => item.Clip).ToArray());
-            selectedClips.Clear();
-        }
-
         void AddClips(AnimationClip[] clips)
         {
             var additions = clips.Where(clip => clip != null && !clipInputs.Any(input => input.Clip == clip)).Distinct().ToArray();
             if (clipInputs.Count + additions.Length > ExperimentalExpressionCaptureSession.MaximumExpressions)
                 throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。選択を減らして追加してください。"));
             foreach (var clip in additions) AddClipCore(clip, false);
-            if (additions.Length > 0) status = additions.Length + ExporterLocalization.T("件を追加しました。確認してVRMを保存してください。");
+            if (additions.Length > 0) status = string.Format(ExporterLocalization.T("{0}件の表情を追加しました"), additions.Length);
             ApplyAutomaticPresets();
         }
 
@@ -416,18 +854,16 @@ namespace VRVlog.LilToonExporter
             if (clipInputs.Count >= ExperimentalExpressionCaptureSession.MaximumExpressions)
                 throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。"));
             var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = DefaultTime(clip) };
-            input.Error = session.ClipError(clip, input.Time); input.Selected = input.Error == null;
+            input.Error = session.ClipError(clip, input.Time);
             clipInputs.Add(input);
             if (input.Error == null) { session.PreviewClip(clip, input.Time); ShowFace(input.Name); }
-            status = input.Error == null ? ExporterLocalization.T("追加しました。顔を確認して保存してください。") : ExporterLocalization.T("対応外のファイルです。「理由」で確認できます。");
+            status = input.Error == null ? ExporterLocalization.T("表情を追加しました") : ExporterLocalization.T("対応外のファイルはその他の表情に灰色で表示します");
             if (suggest) ApplyAutomaticPresets();
         }
 
-        void DropClips(string label, Action<AnimationClip[]> accept, bool expression = false)
+        void DropClips(string label, Action<AnimationClip[]> accept)
         {
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
-            if (Event.current.type == EventType.Repaint && expression)
-                expressionDropRect = new Rect(GUIUtility.GUIToScreenPoint(area.position) - position.position, area.size);
             GUI.Box(area, label);
             var current = Event.current;
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
@@ -445,28 +881,19 @@ namespace VRVlog.LilToonExporter
             session.Presets.Clear();
             foreach (var assignment in ExpressionPresetStore.Load(presetKey, out presetSkipped))
                 session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(assignment.Preset), assignment);
+            board.Excluded.Clear();
+            board.Excluded.UnionWith(ExpressionPresetStore.LoadExcluded(presetKey, out var skippedExclusions));
+            presetSkipped += skippedExclusions;
             ApplyAutomaticPresets();
         }
 
-        // Clips the user added come first, then the avatar's registered clips.
-        System.Collections.Generic.IEnumerable<AnimationClip> PresetCandidateClips() =>
-            clipInputs.Where(input => input.Clip != null && input.Error == null).Select(input => input.Clip)
-                .Concat((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
-                    .Where(item => !clipErrors.TryGetValue(item.Clip, out var reason) || reason == null).Select(item => item.Clip)).Distinct();
-
-        // Suggestions follow the current candidates and are recomputed when they
+        // Suggestions follow the current faces and are recomputed when they
         // change. The user's own choices, including "none", are never replaced.
         void ApplyAutomaticPresets()
         {
             if (session == null) return;
-            var open = ExperimentalExpressionCaptureSession.EmotionPresets.Where(preset =>
-                !session.Presets.TryGetValue(preset, out var current) || current.Automatic).ToArray();
-            if (open.Length > 0)
-            {
-                var suggested = session.SuggestPresets(PresetCandidateClips());
-                foreach (var preset in open)
-                    session.SetPreset(preset, suggested.TryGetValue(preset, out var value) ? value : null);
-            }
+            RebuildBoard();
+            board.ApplyAutomatic();
             RefreshPresetErrors();
         }
 
@@ -480,7 +907,7 @@ namespace VRVlog.LilToonExporter
         void ChoosePreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             session.SetPreset(preset, assignment);
-            ExpressionPresetStore.Save(presetKey, session.Presets.Values);
+            SaveChoices();
             presetErrors[preset] = session.PresetError(preset, assignment);
             if (assignment.IsNone) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); return; }
             if (presetErrors[preset] != null) throw new InvalidOperationException(presetErrors[preset]);
@@ -488,6 +915,8 @@ namespace VRVlog.LilToonExporter
             ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
         }
 
+        // Faces on the board move through the board, so the face leaves its
+        // previous place; BlendShapes and "none" are set on the slot directly.
         void ShowPresetMenu(UniVRM10.ExpressionPreset preset, Rect rect)
         {
             var menu = new GenericMenu();
@@ -498,18 +927,15 @@ namespace VRVlog.LilToonExporter
             Add(ExporterLocalization.T(session.HasAuthoredPreset(preset) ? "元のVRM設定" : "なし"), ExperimentalExpressionCaptureSession.PresetAssignment.None(preset), current == null || current.IsNone);
             if (current != null && !current.Automatic)
                 menu.AddItem(new GUIContent(ExporterLocalization.T("自動の候補に戻す")), false, () => Queue(() => {
-                    session.SetPreset(preset, null); ExpressionPresetStore.Save(presetKey, session.Presets.Values); ApplyAutomaticPresets();
+                    session.SetPreset(preset, null); SaveChoices(); ApplyAutomaticPresets();
                 }));
             menu.AddSeparator("");
-            var listed = new System.Collections.Generic.HashSet<AnimationClip>();
-            foreach (var input in clipInputs.Where(input => input.Clip != null && input.Error == null))
-                if (listed.Add(input.Clip))
-                    Add(ExporterLocalization.T("追加した表情") + "/" + Item(input.Clip.name), ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(preset, input.Clip),
-                        current?.Clip == input.Clip);
-            foreach (var item in recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
-                if ((!clipErrors.TryGetValue(item.Clip, out var reason) || reason == null) && listed.Add(item.Clip))
-                    Add((item.Source == "FaceEmoの登録" ? "FaceEmo" : ExporterLocalization.T("アバターのController")) + "/" + Item(item.Clip.name),
-                        ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(preset, item.Clip), current?.Clip == item.Clip);
+            foreach (var item in board.Items.Where(ExpressionBoard.Usable))
+            {
+                var clip = item.Clip;
+                var group = item.Added ? ExporterLocalization.T("追加した表情") : item.Source == "FaceEmoの登録" ? "FaceEmo" : ExporterLocalization.T("アバターのController");
+                menu.AddItem(new GUIContent(group + "/" + Item(clip.name)), current?.ResolveClip() == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
+            }
             System.Collections.Generic.IReadOnlyList<(string Path, string Shape)> options;
             try { options = session.PresetShapeOptions(); }
             catch (InvalidOperationException exception) { error = exception.Message; options = Array.Empty<(string, string)>(); }
@@ -518,46 +944,6 @@ namespace VRVlog.LilToonExporter
                     ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(preset, option.Path, option.Shape),
                     current != null && current.IsShape && current.Path == option.Path && current.Shape == option.Shape);
             menu.DropDown(rect);
-        }
-
-        void DrawPresetInputs()
-        {
-            EditorGUILayout.LabelField(ExporterLocalization.T("標準の表情（喜怒哀楽）"), EditorStyles.boldLabel);
-            EditorGUILayout.Space(6);
-            EditorGUILayout.LabelField(ExporterLocalization.T("未指定の表情は空のまま保存します"), EditorStyles.wordWrappedMiniLabel);
-            if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
-            else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
-            foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
-            {
-                session.Presets.TryGetValue(preset, out var assignment);
-                presetErrors.TryGetValue(preset, out var reason);
-                var none = assignment == null || assignment.IsNone;
-                using (new EditorGUILayout.HorizontalScope(GUILayout.Height(24)))
-                {
-                    GUILayout.Label(new GUIContent(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)), "VRM: " + preset), GUILayout.Width(72), GUILayout.Height(20));
-                    var label = new GUIContent(ExperimentalExpressionCaptureSession.PresetDisplayName(assignment, session.HasAuthoredPreset(preset)), reason ??
-                        (assignment?.Clip != null ? AssetDatabase.GetAssetPath(assignment.Clip) : null));
-                    // The row width never follows the chosen name; long names are clipped.
-                    var rect = GUILayoutUtility.GetRect(GUIContent.none, EditorStyles.popup, GUILayout.MinWidth(80), GUILayout.ExpandWidth(true), GUILayout.Height(20));
-                    if (EditorGUI.DropdownButton(rect, label, FocusType.Keyboard, EditorStyles.popup)) ShowPresetMenu(preset, rect);
-                    GUILayout.Label(assignment?.Automatic == true ? new GUIContent(ExporterLocalization.T("自動"), ExporterLocalization.T("名前から選んだ候補")) : GUIContent.none,
-                        EditorStyles.miniLabel, GUILayout.Width(36), GUILayout.Height(20));
-                    using (new EditorGUI.DisabledScope(none))
-                    {
-                        if (GUILayout.Button(new GUIContent(reason == null ? ExporterLocalization.T("確認") : ExporterLocalization.T("理由"), reason), GUILayout.Width(50), GUILayout.Height(20)))
-                        {
-                            var chosen = assignment;
-                            Queue(() => {
-                                var current = session.PresetError(preset, chosen); presetErrors[preset] = current;
-                                if (current != null) throw new InvalidOperationException(current);
-                                session.PreviewPreset(preset, chosen); ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
-                            });
-                        }
-                        if (GUILayout.Button(new GUIContent("×", ExporterLocalization.T("指定を外す")), GUILayout.Width(26), GUILayout.Height(20)))
-                            Queue(() => ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)));
-                    }
-                }
-            }
         }
 
         void DrawPoseInputs()
@@ -587,6 +973,7 @@ namespace VRVlog.LilToonExporter
         void Export()
         {
             RequireAuthor();
+            RequireWithinLimit();
             var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", AvatarName() + "-expressions", "vrm");
             if (string.IsNullOrEmpty(path)) return;
             SaveVrm(path, interactive: true);
@@ -599,10 +986,26 @@ namespace VRVlog.LilToonExporter
             if (!ExportAuthor.IsValid(author)) throw new InvalidOperationException(ExporterLocalization.T(ExportAuthor.Required));
         }
 
+        void RequireWithinLimit()
+        {
+            RebuildBoard();
+            if (board != null && board.ExceedsLimit)
+                throw new InvalidOperationException(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません"), board.OverLimitBy));
+            if (board != null && board.HasDuplicateNames)
+                throw new InvalidOperationException(DuplicateNamesText(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません")));
+        }
+
+        string DuplicateNamesText(string format)
+        {
+            var names = board.DuplicateNames();
+            return string.Format(format, names.Length) + ": " + string.Join(" / ", names);
+        }
+
         internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
         {
             RequireAuthor();
-            RecordSelectedClips();
+            RequireWithinLimit();
+            RecordBoardClips();
             var target = session;
             var name = AvatarName(); var targetAuthor = author;
             ExportAuthor.Remember(target.Source, targetAuthor);
@@ -612,6 +1015,8 @@ namespace VRVlog.LilToonExporter
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
             var expressionCount = expressions.Length;
+            // The record route replaces the menu faces even when nothing is left to record.
+            var replaceCustomFaces = board.UsesRecordRoute;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
                 if (this == null || !ReferenceEquals(session, target)) return;
@@ -627,7 +1032,7 @@ namespace VRVlog.LilToonExporter
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
-                    presets.Select(value => value.Copy()).ToArray());
+                    presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
             }, Completed, previewGimmicks: new ExportGimmickOptions(), interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
             if (recovery != null)
@@ -645,6 +1050,8 @@ namespace VRVlog.LilToonExporter
             var entry = LilToonExporterWindow.SavedVrmTransferMethod();
             if (entry == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
             try { entry.Invoke(null, new object[] { saved.VerifiedPath() }); }
+            catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException?.Data["VRVlog.ShowMessageAsIs"] is bool asIs && asIs)
+            { throw new InvalidOperationException(ExporterLocalization.T(exception.InnerException.Message)); }
             catch (System.Reflection.TargetInvocationException)
             { throw new InvalidOperationException(ExporterLocalization.T("転送用のコピーを準備できませんでした。256 MiB以下の保存済みVRMを指定してください。")); }
         }
@@ -695,10 +1102,11 @@ namespace VRVlog.LilToonExporter
             // The utility owns its lights/camera; session owns the avatar and assets.
             if (session?.RetainPreviewForRecovery(preview) == true) preview = null;
             preview?.Cleanup(); preview = null;
-            session?.Dispose(); session = null;
+            session?.Dispose(); session = null; board = null;
             poseReview?.Close(); poseReview = null;
-            selectedClips.Clear(); clipErrors.Clear(); candidateRects.Clear(); candidateToggleRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
+            clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); presetKey = null; presetSkipped = 0;
+            dropHover = dropHoverNext = null; dragMouse = null;
         }
     }
 #if UNITY_5_3_OR_NEWER

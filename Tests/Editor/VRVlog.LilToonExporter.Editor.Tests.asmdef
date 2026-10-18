@@ -11,7 +11,8 @@
     "SpringBoneJobs",
     "UniGLTF",
     "UniGLTF.Utils",
-    "VrmLib"
+    "VrmLib",
+    "VRVlog.AvatarFormats"
   ],
   "includePlatforms": [
     "Editor"
