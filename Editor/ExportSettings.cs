@@ -99,6 +99,7 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport)
         {
             if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
+            UniVrmOneClickExporter.ValidateSourceHumanoid(avatar);
             if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
             return UniVrmOneClickExporter.Export(avatar, name, author, warnings,
                 exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
