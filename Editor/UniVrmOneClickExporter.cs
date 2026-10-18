@@ -245,7 +245,7 @@ namespace VRVlog.LilToonExporter
                     AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
                     authoredEndpoints.Bake(temporaryMeshes);
                     expressions = guard.Step(ExportStage.Expressions,
-                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => null);
+                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => new List<VrmMenuExpressions.Expression>());
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
