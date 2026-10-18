@@ -33,6 +33,9 @@ namespace VRVlog.LilToonExporter
         internal string Id, Name, Category = "", Source, Error, Note = "", Conditions = "";
         internal bool SampledMotion;
         internal bool IsAnimation;
+        // A menu entry that provably cannot select a body pose. It stays in
+        // the review list but is not an export warning.
+        internal bool NotBodyPose;
         internal readonly List<PoseLayer> Layers = new List<PoseLayer>();
         internal HumanoidPoseData Data;
         internal HumanoidAnimationData Animation;
