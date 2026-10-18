@@ -58,7 +58,7 @@ namespace VRVlog.LilToonExporter
             Find(original.layers[layer].stateMachine, original.layers[layer].name);
             if (paths.Count != 1) throw new InvalidOperationException("BlendTreeの元の状態を一意に特定できません。");
             var types = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-            foreach (var parameter in original.parameters)
+            foreach (var parameter in ExpressionDependencies.UniqueParameters(original))
             {
                 if (parameter == null || string.IsNullOrEmpty(parameter.name) || types.ContainsKey(parameter.name) ||
                     parameter.type != AnimatorControllerParameterType.Bool && parameter.type != AnimatorControllerParameterType.Int &&
@@ -92,7 +92,7 @@ namespace VRVlog.LilToonExporter
                     (pair.Key == "GestureLeft" || pair.Key == "GestureRight") && (pair.Value < 0 || pair.Value > 7) ||
                     (pair.Key == "GestureLeftWeight" || pair.Key == "GestureRightWeight") && (pair.Value < 0 || pair.Value > 1))
                     throw new InvalidOperationException("BlendTree arrival input is invalid: " + pair.Key);
-                var declaration = original.parameters.Single(parameter => parameter.name == pair.Key);
+                var declaration = ExpressionDependencies.UniqueParameters(original).Single(parameter => parameter.name == pair.Key);
                 var normal = defaults.TryGetValue(pair.Key, out var value) ? value : type == AnimatorControllerParameterType.Bool ?
                     (declaration.defaultBool ? 1 : 0) : type == AnimatorControllerParameterType.Int ? declaration.defaultInt : declaration.defaultFloat;
                 var final = inputs.TryGetValue(pair.Key, out value) ? value : normal;

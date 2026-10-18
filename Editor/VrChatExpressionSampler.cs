@@ -135,7 +135,7 @@ namespace VRVlog.LilToonExporter
             void SelectedInputs(FixedExpressionContext context)
             {
                 if (nativeInputs == null) return;
-                var groups = ExpressionDependencies.Controller(runtime).parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal).ToArray();
+                var groups = ExpressionDependencies.UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal).ToArray();
                 if (groups.Any(group => group.Count() != 1))
                     throw new InvalidOperationException("合成表情のネイティブ入力宣言が重複しています。");
                 var declared = groups.ToDictionary(group => group.Key, group => group.Single(), StringComparer.Ordinal);
@@ -388,7 +388,7 @@ namespace VRVlog.LilToonExporter
                         AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape),
                             AnimationCurve.Constant(0, 1, input));
                     var controller = new AnimatorController { name = "VRVlog expression override probe", hideFlags = HideFlags.HideAndDontSave }; owned.Add(controller);
-                    controller.parameters = originalController.parameters.Select(parameter => new AnimatorControllerParameter
+                    controller.parameters = ExpressionDependencies.UniqueParameters(originalController).Select(parameter => new AnimatorControllerParameter
                     {
                         name = parameter.name, type = parameter.type, defaultBool = parameter.defaultBool,
                         defaultInt = parameter.defaultInt, defaultFloat = parameter.defaultFloat
@@ -946,7 +946,7 @@ namespace VRVlog.LilToonExporter
                     var original = ExpressionDependencies.Controller(runtime);
                     var controller = new AnimatorController { name = original.name, hideFlags = HideFlags.HideAndDontSave };
                     probe.owned.Add(controller);
-                    controller.parameters = original.parameters.Select(parameter => new AnimatorControllerParameter
+                    controller.parameters = ExpressionDependencies.UniqueParameters(original).Select(parameter => new AnimatorControllerParameter
                     {
                         name = parameter.name, type = parameter.type, defaultBool = parameter.defaultBool,
                         defaultInt = parameter.defaultInt, defaultFloat = parameter.defaultFloat
@@ -1732,7 +1732,7 @@ namespace VRVlog.LilToonExporter
             foreach (var runtime in new[] { original }.Concat(metadata?.OtherControllers.Where(value => value != null) ??
                 Enumerable.Empty<RuntimeAnimatorController>()))
             {
-                foreach (var parameter in ExpressionDependencies.Controller(runtime).parameters)
+                foreach (var parameter in ExpressionDependencies.UniqueParameters(runtime))
                 {
                     if (!types.TryGetValue(parameter.name, out var declarations))
                         types.Add(parameter.name, declarations = new HashSet<AnimatorControllerParameterType>());

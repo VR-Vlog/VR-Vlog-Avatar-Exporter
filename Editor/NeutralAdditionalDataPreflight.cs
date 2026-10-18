@@ -32,7 +32,7 @@ namespace VRVlog.LilToonExporter
             void CheckPrograms(string context, RuntimeAnimatorController current, IEnumerable<ExpressionDependencies.Layer> layers)
             {
                 var types = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-                foreach (var parameter in ExpressionDependencies.Controller(current).parameters)
+                foreach (var parameter in ExpressionDependencies.UniqueParameters(current))
                 {
                     if (parameter == null || string.IsNullOrEmpty(parameter.name) || types.ContainsKey(parameter.name) ||
                         parameter.type != AnimatorControllerParameterType.Bool && parameter.type != AnimatorControllerParameterType.Int &&

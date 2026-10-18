@@ -90,7 +90,7 @@ namespace VRVlog.LilToonExporter
                 var reachable = ExpressionDependencies.Inspect(metadata.Controller, excludedPath,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues);
                 var needed = new HashSet<string>(reachable.SelectMany(layer => layer.Reads), StringComparer.Ordinal);
-                var types = ExpressionDependencies.Controller(metadata.Controller).parameters
+                var types = ExpressionDependencies.UniqueParameters(metadata.Controller)
                     .ToDictionary(parameter => parameter.name, parameter => parameter.type, StringComparer.Ordinal);
                 foreach (var program in reachable.SelectMany(layer => layer.DriverPrograms).Distinct())
                 {

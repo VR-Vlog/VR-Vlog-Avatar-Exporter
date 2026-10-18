@@ -34,7 +34,7 @@ namespace VRVlog.LilToonExporter
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
                     typedConditions: true, fxLayerCount: layers.Length));
             if (unknown.Count != 0) return result;
-            var types = ExpressionDependencies.Controller(runtime).parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var types = ExpressionDependencies.UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
             var unitFxCommands = HasOnlyUnchangedUnitFxCommands(runtime, source, layers, others, context, selectedInputs);
             // An empty output plan asks only whether the existing strict rest
@@ -86,7 +86,7 @@ namespace VRVlog.LilToonExporter
             var declarations = new Dictionary<string, List<AnimatorControllerParameter>>(StringComparer.Ordinal);
             foreach (var current in new[] { runtime }.Concat(source.OtherControllers.Where(value => value != null)))
             {
-                var parameters = ExpressionDependencies.Controller(current).parameters;
+                var parameters = ExpressionDependencies.UniqueParameters(current);
                 foreach (var name in gates.Concat(new[] { "IsLocal" }).Distinct(StringComparer.Ordinal))
                 {
                     var matches = parameters.Where(parameter => parameter.name == name).ToArray();
@@ -157,10 +157,10 @@ namespace VRVlog.LilToonExporter
                     fixedValues.Remove(name);
             foreach (var other in source.OtherControllers.Where(value => value != null))
             {
-                var declared = ExpressionDependencies.Controller(other).parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal);
+                var declared = ExpressionDependencies.UniqueParameters(other).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
                 foreach (var group in declared.Where(group => fixedValues.ContainsKey(group.Key)))
                 {
-                    var original = controller.parameters.Where(parameter => parameter.name == group.Key).ToArray();
+                    var original = ExpressionDependencies.UniqueParameters(controller).Where(parameter => parameter.name == group.Key).ToArray();
                     if (group.Count() != 1 || original.Length != 1 || group.Single().type != original[0].type) fixedValues.Remove(group.Key);
                 }
             }
@@ -169,7 +169,7 @@ namespace VRVlog.LilToonExporter
                 if (!layers[index].FxControl) continue;
                 if (controller.layers[index].syncedLayerIndex >= 0 || layers[index].FxCommands.Count == 0 ||
                     !FixedExpressionContext.TryReachableFxCommands(controller.layers[index].stateMachine, fixedValues,
-                        controller.parameters, out var reached)) return false;
+                        ExpressionDependencies.UniqueParameters(controller), out var reached)) return false;
                 if (layers[index].FxCommands.Any(pair => reached.Contains(pair.Key) && pair.Value.FxWeight != 1)) return false;
             }
             // All commands remain in the native graph. This proof only says
@@ -376,7 +376,7 @@ namespace VRVlog.LilToonExporter
             var initial = new Dictionary<string, float>(StringComparer.Ordinal);
             foreach (var name in gates)
             {
-                var declarations = ExpressionDependencies.Controller(runtime).parameters.Where(parameter => parameter.name == name).ToArray();
+                var declarations = ExpressionDependencies.UniqueParameters(runtime).Where(parameter => parameter.name == name).ToArray();
                 if (declarations.Length != 1 || !types.TryGetValue(name, out var type)) return false;
                 var parameter = declarations[0];
                 var value = type == AnimatorControllerParameterType.Bool ? (parameter.defaultBool ? 1f : 0f) :
@@ -532,7 +532,7 @@ namespace VRVlog.LilToonExporter
             // The ordinary sampler retains its location-rich unknown callback
             // diagnostic. Never suspend a component when its effect is unknown.
             if (unknown.Count != 0) return result;
-            var types = controller.parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var types = ExpressionDependencies.UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
             var compatible = new HashSet<int>(); var seeds = new HashSet<int>();
             bool ClipOnly(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> visited)
