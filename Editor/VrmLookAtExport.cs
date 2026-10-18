@@ -106,8 +106,8 @@ namespace VRVlog.LilToonExporter
             // VRM rotates the humanoid eyes. Poses of other transforms do not
             // describe how those eyes turn.
             if (leftEye == null || rightEye == null || animator == null || !animator.isHuman ||
-                animator.GetBoneTransform(HumanBodyBones.LeftEye) != leftEye ||
-                animator.GetBoneTransform(HumanBodyBones.RightEye) != rightEye) return false;
+                HumanoidBones.Resolve(animator, HumanBodyBones.LeftEye) != leftEye ||
+                HumanoidBones.Resolve(animator, HumanBodyBones.RightEye) != rightEye) return false;
             var poses = new[] { "eyesLookingStraight", "eyesLookingUp", "eyesLookingDown", "eyesLookingLeft", "eyesLookingRight" }
                 .Select(name => VrChatExpressionMenu.Member(settings, name)).ToArray();
             if (!TryEye(source.transform, leftEye, poses, true, out var leftRange) ||

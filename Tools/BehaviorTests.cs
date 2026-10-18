@@ -188,9 +188,7 @@ public static class ExporterBehaviorTests
         hidden.sharedMaterials = new[] { body };
         Check(injectCount(source) == 1, "Shared visible material is injected only once.");
         root.activeInHierarchy = false;
-        threw = false;
-        try { injectCount(source); } catch (InvalidOperationException) { threw = true; }
-        Check(threw, "An inactive avatar root is rejected rather than changing visibility.");
+        Check(injectCount(source) == 1, "An inactive avatar root exports what is shown inside it.");
     }
 
     // The private fixture is supplied locally; it is never checked in or copied

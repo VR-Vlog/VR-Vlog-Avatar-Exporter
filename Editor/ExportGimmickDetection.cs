@@ -42,9 +42,10 @@ namespace VRVlog.LilToonExporter
         internal static bool HiddenFallback(Material material) => material != null && material.shader != null &&
             !Portable(material) && string.Equals(material.GetTag("VRCFallback", true, "").Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
 
-        internal static ExportGimmickFinding Inspect(Renderer renderer)
+        // avatarRoot: activity is judged inside the avatar (see ExportRendererSelection.ActiveUnder).
+        internal static ExportGimmickFinding Inspect(Renderer renderer, Transform avatarRoot = null)
         {
-            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) return null;
+            if (renderer == null || !renderer.enabled || !ExportRendererSelection.ActiveUnder(renderer.gameObject, avatarRoot)) return null;
             // Other renderer types have their own export semantics.
             var skin = renderer as SkinnedMeshRenderer;
             if (skin == null && !(renderer is MeshRenderer)) return null;
@@ -74,12 +75,12 @@ namespace VRVlog.LilToonExporter
             foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
             {
                 if (Excluded(renderer.transform)) continue;
-                var finding = Inspect(renderer);
+                var finding = Inspect(renderer, source.transform);
                 if (finding != null) result.Add(finding);
             }
             foreach (var transform in source.GetComponentsInChildren<Transform>(true))
             {
-                if (transform == source.transform || !transform.gameObject.activeInHierarchy || Excluded(transform) || !KnownNadeRoot(transform.gameObject)) continue;
+                if (transform == source.transform || !ExportRendererSelection.ActiveUnder(transform.gameObject, source.transform) || Excluded(transform) || !KnownNadeRoot(transform.gameObject)) continue;
                 var reason = UnsafeRootReason(source, transform, Excluded);
                 result.Insert(0, new ExportGimmickFinding
                 {
@@ -170,7 +171,7 @@ namespace VRVlog.LilToonExporter
             foreach (var animator in source.GetComponentsInChildren<Animator>(true))
                 if (animator.isHuman)
                     for (var i = 0; i < (int)HumanBodyBones.LastBone; i++)
-                        if (Within(animator.GetBoneTransform((HumanBodyBones)i)))
+                        if (Within(HumanoidBones.Resolve(animator, (HumanBodyBones)i)))
                             return "Humanoidの骨を含むため、システム全体は残します。";
             // Transform parent/children references express hierarchy ownership;
             // all other incoming component references must survive the export.

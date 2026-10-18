@@ -60,19 +60,5 @@ namespace VRVlog.LilToonExporter.Tests
                 UnityEngine.Object.DestroyImmediate(outfit);
             }
         }
-
-        [Test]
-        public void InactiveAncestorIsRejectedBeforeCreatingAnActiveClone()
-        {
-            var parent = new GameObject("inactive parent");
-            try
-            {
-                var avatar = new GameObject("avatar");
-                avatar.transform.SetParent(parent.transform);
-                parent.SetActive(false);
-                Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(avatar, "avatar", "Tests"));
-            }
-            finally { UnityEngine.Object.DestroyImmediate(parent); }
-        }
     }
 }

@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter
             Source = source;
             try
             {
-                ExportRendererSelection.RequireActiveRoot(source);
+                if (source == null) throw new ArgumentNullException(nameof(source));
                 CaptureClipRoots();
                 Copy = NdmfExportPreparation.InstantiateOwnedCopy(source);
                 Copy.name = source.name;
