@@ -29,6 +29,16 @@ public static class DependencyCompatibilityTests
             catch (InvalidOperationException) { rejected = true; }
             Check(rejected, "Direct export also fails before conversion");
         }
+        Check(DependencyPolicy.VrchatSdkMinimum == "3.7.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
+        foreach (var version in new[] { "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6" })
+        {
+            Check(DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio omission " + version);
+            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.6.0"), "Base must be the same release " + version);
+        }
+        foreach (var version in new[] { null, "", "3.6.0", "3.6.9", "3.5.2", "3.11.0", "4.0.0", "3.10.5-beta.1", "3.10", "3.10.5.0", " 3.10.5", "03.10.5" })
+            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio stops " + (version ?? "null"));
+        Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
+        Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
         Check(DependencyPolicy.LilToonVersion == "2.3.4", "Exports conform to the 2.3.4 catalogue");
         Check(DependencyPolicy.LilToonMinimum == "2.0.0" && DependencyPolicy.LilToonMaximum == "2.3.4", "Supported lilToon range");
         foreach (var version in new[] { "2.0.0", "2.1.0", "2.1.10", "2.2.1", "2.3.0", "2.3.3", "2.3.4" })
