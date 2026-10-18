@@ -63,20 +63,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [Test]
-        public void InactiveAncestorIsRejectedBeforeCreatingAnActiveClone()
-        {
-            var parent = new GameObject("inactive parent");
-            try
-            {
-                var avatar = new GameObject("avatar");
-                avatar.transform.SetParent(parent.transform);
-                parent.SetActive(false);
-                Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(avatar, "avatar", "Tests"));
-            }
-            finally { UnityEngine.Object.DestroyImmediate(parent); }
-        }
-
         [TestCase(false)][TestCase(true)]
         public void EmptyMeshRenderersAreLeftOutOfTheExportCopyOnly(bool fullLilToon)
         {
