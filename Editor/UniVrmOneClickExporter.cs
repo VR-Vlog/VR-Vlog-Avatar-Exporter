@@ -341,15 +341,23 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 recoveryReport.Stage = "材質保存";
+                // Unsupported shaders become official lilToon approximations so
+                // they follow the ordinary lilToon route instead of stopping.
+                if (exporterVersion != null) guard.Step(ExportStage.LilToonSnapshot, () => UnsupportedShaderSubstitution.Apply(clone, temporaryMaterials, warnings, recoveryReport.Fallbacks, (copy, original) =>
+                {
+                    recoveryReport.Track(copy, original);
+                    recovery?.Track(copy, original);
+                }));
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
-                // A lilToon-named shader outside the official 2.3.4 set is not "no lilToon".
-                // Strict exports stop there; otherwise each such material becomes
-                // color-and-image MToon and is listed as approximated.
+                // Derived lilToon builds were approximated above. One still left here
+                // could not be, and is not "no lilToon": strict exports stop there;
+                // otherwise each such material becomes color-and-image MToon and is
+                // listed as approximated.
                 if (withoutLilToon && !guard.ContinueOnFailure &&
                     ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
@@ -610,8 +618,9 @@ namespace VRVlog.LilToonExporter
                     if (source == null) continue;
                     if (!LilToonMaterialReader.IsLilToon(source))
                     {
-                        // Mixed avatars keep UniVRM's own export of other shaders. Only an
-                        // avatar without any lilToon material gets color-and-image MToon.
+                        // Other shaders left after the substitution (expression targets,
+                        // failed approximations, the legacy route) keep UniVRM's own export.
+                        // Only an avatar without any lilToon material gets color-and-image MToon.
                         if (!convertOthers) continue;
                         if (source.shader != null && source.shader.name == MToon10Meta.UnityShaderName) continue;
                         if (!others.TryGetValue(source, out var plain)) others.Add(source, plain = CreateMToonDefault(source, created));
