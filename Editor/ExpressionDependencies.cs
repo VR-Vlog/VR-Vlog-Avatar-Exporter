@@ -1200,6 +1200,27 @@ namespace VRVlog.LilToonExporter
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls = false,
             IDictionary<string, float> neutralFixed = null, bool typedConditions = false, int? fxLayerCount = null)
         {
+            var cache = ExpressionInspectCache.Current;
+            var key = cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount);
+            if (key != null && cache.TryReplay(key, excludedPath, neutralFixed != null, drivers, unknown, out var cached)) return cached;
+            var trace = key == null ? null : cache.Record(Controller(runtime).layers.Length);
+            var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, cache, trace);
+            if (trace != null) cache.Store(key, trace, result);
+            return result;
+        }
+
+        private static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
+            Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls,
+            IDictionary<string, float> neutralFixed, bool typedConditions, int? fxLayerCount,
+            ExpressionInspectCache cache, ExpressionInspectCache.Trace trace)
+        {
+            void Driver(StateMachineBehaviour behaviour, VrChatParameterDriver.Program program)
+            {
+                trace?.Drivers.Add(new KeyValuePair<StateMachineBehaviour, VrChatParameterDriver.Program>(behaviour, program));
+                if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, program);
+            }
+            void Unknown(string text) { trace?.Unknown.Add(text); unknown.Add(text); }
+            var excludedPaths = excludedPath == null ? null : new Dictionary<string, bool>(StringComparer.Ordinal);
             var controller = Controller(runtime);
             var replacements = Overrides(runtime);
             var layers = controller.layers;
@@ -1244,7 +1265,7 @@ namespace VRVlog.LilToonExporter
                             {
                                 info.FxControl = true;
                                 if (!info.FxCommands.ContainsKey(behaviour)) info.FxCommands.Add(behaviour, control);
-                                if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, control);
+                                Driver(behaviour, control);
                             }
                             else if (!info.WeightControls.ContainsKey(behaviour)) info.WeightControls.Add(behaviour, sdkWeight);
                             continue;
@@ -1253,13 +1274,13 @@ namespace VRVlog.LilToonExporter
                             VrChatParameterDriver.IsTemporaryPoseSpace(behaviour) || VrChatParameterDriver.IsLocomotionControl(behaviour)) continue;
                         if (!VrChatParameterDriver.IsDriver(behaviour))
                         {
-                            unknown.Add(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
+                            Unknown(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
                             continue;
                         }
                         var program = VrChatParameterDriver.Read(behaviour, path);
                         info.DriverPrograms.Add(program);
-                        if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, program);
-                        if (program.Error != null) { unknown.Add(path + " / Parameter Driver: " + program.Error); continue; }
+                        Driver(behaviour, program);
+                        if (program.Error != null) { Unknown(path + " / Parameter Driver: " + program.Error); continue; }
                         foreach (var op in program.Operations)
                         {
                             info.Writes.Add(op.Destination);
@@ -1296,30 +1317,8 @@ namespace VRVlog.LilToonExporter
                         if (!(motion is AnimationClip clip)) return;
                         if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
                         info.Clips.Add(clip);
-                        var bindings = AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
-                        if (bindings.Length == 0) info.EmptyMotion = true;
-                        foreach (var binding in bindings)
-                        {
-                            // Animator parameters are global even if a caller
-                            // happens to exclude the animator's transform path.
-                            if (binding.type == typeof(Animator)) { info.Writes.Add(binding.propertyName); info.CurveWrites.Add(binding.propertyName); info.HasBindings = true; continue; }
-                            if (excludedPath?.Invoke(binding.path) == true) continue;
-                            info.HasBindings = true;
-                            if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
-                            {
-                                info.Morphs.Add(binding);
-                                if (neutralFixed != null)
-                                {
-                                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                                    if (curve != null)
-                                    {
-                                        VrChatGestureExpressions.ReadCurve(curve).Range(out var minimum, out var maximum);
-                                        info.DynamicMorph |= minimum != maximum;
-                                    }
-                                }
-                            }
-                            else info.NonMorphBindings = true;
-                        }
+                        trace?.Clips[index].Add(clip);
+                        InspectClipBindings(info, clip, excludedPath, excludedPaths, neutralFixed != null, cache);
                     }
                     finally { motions.Remove(motion); }
                 }
@@ -1360,6 +1359,45 @@ namespace VRVlog.LilToonExporter
                 Visit(layers[sourceIndex].stateMachine, layers[index].name);
             }
             return result;
+        }
+
+        // excludedPaths remembers the caller's answer per path for one call;
+        // large FX graphs repeat the same few renderer paths in every clip.
+        internal static void InspectClipBindings(Layer info, AnimationClip clip, Func<string, bool> excludedPath,
+            Dictionary<string, bool> excludedPaths, bool readRanges, ExpressionInspectCache cache)
+        {
+            var bindings = cache?.Bindings(clip) ?? ReadBindings(clip);
+            if (bindings.Length == 0) info.EmptyMotion = true;
+            foreach (var binding in bindings)
+            {
+                // Animator parameters are global even if a caller
+                // happens to exclude the animator's transform path.
+                if (binding.type == typeof(Animator)) { info.Writes.Add(binding.propertyName); info.CurveWrites.Add(binding.propertyName); info.HasBindings = true; continue; }
+                if (excludedPath != null)
+                {
+                    if (!excludedPaths.TryGetValue(binding.path, out var excluded))
+                        excludedPaths.Add(binding.path, excluded = excludedPath(binding.path));
+                    if (excluded) continue;
+                }
+                info.HasBindings = true;
+                if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                {
+                    info.Morphs.Add(binding);
+                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;
+                }
+                else info.NonMorphBindings = true;
+            }
+        }
+
+        internal static EditorCurveBinding[] ReadBindings(AnimationClip clip) =>
+            AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
+
+        internal static bool? ReadDynamic(AnimationClip clip, EditorCurveBinding binding)
+        {
+            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+            if (curve == null) return null;
+            VrChatGestureExpressions.ReadCurve(curve).Range(out var minimum, out var maximum);
+            return minimum != maximum;
         }
     }
 }
