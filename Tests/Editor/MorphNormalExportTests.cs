@@ -168,30 +168,38 @@ namespace VRVlog.LilToonExporter.Tests
                 f.Mesh.AddBlendShapeFrame(names[shape], 100,
                     Enumerable.Range(0, 4).Select(i => new Vector3(0, .01f * (shape + 1), 0)).ToArray(), NormalDelta(shape), null);
             f.Mesh.RecalculateBounds();
-            foreach (var skin in f.Copy.GetComponentsInChildren<SkinnedMeshRenderer>())
+            // Each renderer needs its own mesh, as in an ordinary one-click export.
+            var second = Object.Instantiate(f.Mesh); second.name = f.Mesh.name;
+            try
             {
-                skin.sharedMesh = f.Mesh;
-                for (var shape = 0; shape < names.Length; shape++) skin.SetBlendShapeWeight(shape, 0);
-            }
-            var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(),
-                f.Copy, new BuiltInVrm10MaterialExporter(), new MobileTextureSerializer(null),
-                new VRM10ObjectMeta { Name = "Several morph normals", Version = "1", Authors = new List<string> { "Tests" } });
-            using var data = new GlbBinaryParser(bytes, "several morph normals").Parse();
-            Assert.That(data.GLTF.meshes, Is.Not.Empty);
-            foreach (var mesh in data.GLTF.meshes)
-            {
-                var primitive = mesh.primitives.Single();
-                Assert.That(primitive.targets.Count, Is.EqualTo(names.Length));
-                for (var shape = 0; shape < names.Length; shape++)
+                var skins = f.Copy.GetComponentsInChildren<SkinnedMeshRenderer>();
+                Assert.That(skins.Length, Is.EqualTo(2));
+                for (var i = 0; i < skins.Length; i++)
                 {
-                    Assert.That(primitive.targets[shape].NORMAL, Is.GreaterThanOrEqualTo(0), names[shape]);
-                    var normals = data.GetArrayFromAccessor<Vector3>(primitive.targets[shape].NORMAL);
-                    var delta = NormalDelta(shape);
-                    Assert.That(normals.Length, Is.EqualTo(delta.Length));
-                    for (var vertex = 0; vertex < delta.Length; vertex++)
-                        AssertVector(new Vector3(-delta[vertex].x, delta[vertex].y, delta[vertex].z), normals[vertex]);
+                    skins[i].sharedMesh = i == 0 ? f.Mesh : second;
+                    for (var shape = 0; shape < names.Length; shape++) skins[i].SetBlendShapeWeight(shape, 0);
+                }
+                var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(),
+                    f.Copy, new BuiltInVrm10MaterialExporter(), new MobileTextureSerializer(null),
+                    new VRM10ObjectMeta { Name = "Several morph normals", Version = "1", Authors = new List<string> { "Tests" } });
+                using var data = new GlbBinaryParser(bytes, "several morph normals").Parse();
+                Assert.That(data.GLTF.meshes.Count, Is.EqualTo(2));
+                foreach (var mesh in data.GLTF.meshes)
+                {
+                    var primitive = mesh.primitives.Single();
+                    Assert.That(primitive.targets.Count, Is.EqualTo(names.Length));
+                    for (var shape = 0; shape < names.Length; shape++)
+                    {
+                        Assert.That(primitive.targets[shape].NORMAL, Is.GreaterThanOrEqualTo(0), names[shape]);
+                        var normals = data.GetArrayFromAccessor<Vector3>(primitive.targets[shape].NORMAL);
+                        var delta = NormalDelta(shape);
+                        Assert.That(normals.Length, Is.EqualTo(delta.Length));
+                        for (var vertex = 0; vertex < delta.Length; vertex++)
+                            AssertVector(new Vector3(-delta[vertex].x, delta[vertex].y, delta[vertex].z), normals[vertex]);
+                    }
                 }
             }
+            finally { Object.DestroyImmediate(second); }
         }
 
         static (Vector3[] Vertices, Vector3[] Normals) Measure(SkinnedMeshRenderer skin, float weight)
