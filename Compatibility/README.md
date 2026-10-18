@@ -27,14 +27,32 @@ creator project. Every release of that patch line can export when UniGLTF and
 VRM have the same version (`[0.131.0,0.131.999999999]` version defines; prereleases,
 build metadata and other minor lines stop). `uniVrm.versions` lists the patches
 actually verified with their official source commit; a new 0.131 patch is
-accepted before it is listed. A later patch that changes the signatures the
-exporter calls makes the backend fail to compile, which diagnostics report; a
-behavior change behind an unchanged signature is only found when that patch is
-verified. 0.131.3 is such a case: `NativeArrayManager.CreateNativeArray(T[])`
-wraps the managed array instead of copying it, so each morph's normal array must
-be a separate allocation. Run `exporter-behavior` with a new patch before adding
-it to `uniVrm.versions` (evidence: `Evidence/UniVrm0131x/README.md`). A new
-minor line (0.132 and later) still requires review and a new adapter.
+accepted before it is listed, and VCC / ALCOM can install it into a creator
+project without anyone touching the exporter.
+
+Accepting unverified patches has a cost. When the version defines named each
+verified patch, an unlisted patch only left the backend out and diagnostics
+explained why. Now the backend compiles against every 0.131.Z. If a later patch
+changes the signature of a UniVRM API the exporter calls, the result is a
+compile error inside this package in the creator's project, not a diagnostics
+message: in an open editor the script reload stops, on the next project open
+Unity offers Safe Mode, and the VRChat SDK refuses to build while compile errors
+exist. Patches in this line do change public API: 0.131.2 to 0.131.3 changed
+the type of `GlbChunk.Bytes` from `ArraySegment` to `ReadOnlyMemory`, which the
+exporter does not use. A behavior change behind an unchanged signature compiles
+and is only found when that patch is verified. 0.131.3 is such a case:
+`NativeArrayManager.CreateNativeArray(T[])` wraps the managed array instead of
+copying it, so each morph's normal array must be a separate allocation.
+
+The mitigation is to verify each new 0.131 patch promptly, before or as soon as
+creators can install it: run the `compatibility`, `exporter-behavior` and
+`exporter-integration` profiles below with that patch (the runner accepts an
+unlisted 0.131 release), then add it to `uniVrm.versions` with its source
+commit (evidence: `Evidence/UniVrm0131x/README.md`). If it breaks, ship an
+exporter fix, or an exporter release whose accepted range excludes that patch.
+`Tools/check-upstream-dependencies.py` reports an upstream UniVRM release newer
+than the newest listed patch. A new minor line (0.132 and later) still requires
+review and a new adapter.
 Diagnostics never install, upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
