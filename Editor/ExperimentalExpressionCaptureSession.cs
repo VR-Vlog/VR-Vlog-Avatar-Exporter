@@ -398,7 +398,7 @@ namespace VRVlog.LilToonExporter
                 var mesh = Object.Instantiate(Channels[i].Mesh);
                 try
                 {
-                    AvatarBaseShape.AppendExpression(Channels[i].Mesh, mesh, "__CaptureProbe_" + Guid.NewGuid().ToString("N"),
+                    AvatarBaseShape.AppendExpression(Channels[i].Mesh, mesh, "__CaptureProbe_" + DeterministicNames.Hash("CaptureProbe", Channels[i].Path),
                         Baseline.Rows[i].Weights, pose.Rows[i].Weights, clamp);
                     if (AvatarBaseShape.HasUsableMorphEndpoint(mesh, mesh.blendShapeCount - 1, 0, 100)) return true;
                 }
@@ -558,8 +558,6 @@ namespace VRVlog.LilToonExporter
                             if (preset != ExpressionPreset.custom) settings.Expression.AddClip(preset, clip);
                 }
                 instance.Vrm = settings;
-                var targetPrefix = "__VRVlog_Capture_" + Guid.NewGuid().ToString("N") + "_";
-                var serial = 0;
                 long addedBytes = 0;
                 for (var i = 0; i < Channels.Count; i++)
                 {
@@ -568,6 +566,9 @@ namespace VRVlog.LilToonExporter
                     for (var shape = 0; shape < Baseline.Rows[i].Weights.Length; shape++)
                         renderer.SetBlendShapeWeight(shape, Baseline.Rows[i].Weights[shape]);
                 }
+                // Recorded names and presets identify each target; _2, _3
+                // settle repeated renderer paths.
+                var usedNames = DeterministicNames.BlendShapeNames(exportCopy);
                 foreach (var pose in expressions)
                 {
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
@@ -579,7 +580,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) continue;
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[i].Path, pose.Name), usedNames);
                         addedBytes += Channels[i].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
@@ -593,7 +594,7 @@ namespace VRVlog.LilToonExporter
                         // target also keeps existing VRM/app morph-based catalogs
                         // aware of the entry and its override/reset semantics.
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[0].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[0].Path, pose.Name), usedNames);
                         addedBytes += Channels[0].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[0].Mesh, renderer.sharedMesh, target,
@@ -614,7 +615,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(face.Pose.Rows[i].Weights)) continue;
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("CapturePreset", Channels[i].Path, face.Preset.ToString()), usedNames);
                         addedBytes += Channels[i].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,

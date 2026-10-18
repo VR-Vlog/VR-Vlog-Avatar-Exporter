@@ -117,6 +117,7 @@ namespace VRVlog.LilToonExporter
                     if (!copies.TryGetValue(original, out var copy))
                     {
                         copy = new Material(original) { name = original.name };
+                        var origin = AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) + "#" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
                         materials.Add(copy);
                         copies.Add(original, copy);
                         foreach (var layer in new[] { "2nd", "3rd" })
@@ -136,14 +137,14 @@ namespace VRVlog.LilToonExporter
                         }
                         if (NeedsBake(copy))
                         {
-                            try { Bake(copy, textures, warnings); }
+                            try { Bake(copy, textures, warnings, origin); }
                             catch (MaterialBakeException) when (approximationOnly)
                             {
                                 copy.SetFloat("_UseMain2ndTex", 0); copy.SetFloat("_UseMain3rdTex", 0);
                                 warnings?.Add(original.name + ": 動的レイヤーは専用表示へ保存しました。標準MToonでは省略します。");
                             }
                         }
-                        AlphaMaskBaker.Bake(copy, textures, warnings);
+                        AlphaMaskBaker.Bake(copy, textures, warnings, origin);
                     }
                     slots[i] = copy;
                 }
@@ -151,7 +152,9 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal static void Bake(Material material, List<Texture2D> textures, ICollection<string> warnings)
+        // origin identifies the material's first use (renderer path and slot)
+        // so the baked texture name is the same on every export.
+        internal static void Bake(Material material, List<Texture2D> textures, ICollection<string> warnings, string origin = null)
         {
             if (textures == null) throw new ArgumentNullException(nameof(textures));
             var issues = new[] { "2nd", "3rd" }.Where(layer => Enabled(material, "_UseMain" + layer + "Tex"))
@@ -226,7 +229,8 @@ namespace VRVlog.LilToonExporter
                 RenderTexture.active = target;
                 result = new Texture2D(width, height, TextureFormat.RGBA32, false, false)
                 {
-                    name = material.name + "__VRVlog_Main_" + Guid.NewGuid().ToString("N"),
+                    name = DeterministicNames.Unique(material.name + "__VRVlog_Main_" + DeterministicNames.Hash("Main", origin, material.name),
+                        candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
                     wrapModeU = material.GetTexture("_MainTex")?.wrapModeU ?? TextureWrapMode.Repeat,
                     wrapModeV = material.GetTexture("_MainTex")?.wrapModeV ?? TextureWrapMode.Repeat,
                     filterMode = material.GetTexture("_MainTex")?.filterMode ?? FilterMode.Bilinear

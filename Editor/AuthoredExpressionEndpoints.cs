@@ -34,8 +34,7 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<VRM10Expression, MorphTargetBinding[]> inertBindings = new Dictionary<VRM10Expression, MorphTargetBinding[]>();
         readonly List<List<Endpoint>> tracking = new List<List<Endpoint>>();
         readonly List<Object> owned = new List<Object>();
-        readonly string prefix = "__VRVlog_Endpoint_" + Guid.NewGuid().ToString("N") + "_";
-        int serial;
+        readonly HashSet<string> usedNames;
         bool baked;
         long generatedBytes;
         internal VrmTrackingProfile TrackingProfile { get; private set; }
@@ -45,6 +44,7 @@ namespace VRVlog.LilToonExporter
             this.avatar = avatar;
             this.neutral = neutral;
             sourceProfile = profile;
+            usedNames = DeterministicNames.BlendShapeNames(avatar);
         }
 
         internal static AuthoredExpressionEndpoints Capture(GameObject prepared, NeutralShapeSnapshot neutral,
@@ -79,7 +79,7 @@ namespace VRVlog.LilToonExporter
                             var index = state.OriginalMesh.GetBlendShapeIndex(morph.shape);
                             if (index < 0) continue;
                             found = true;
-                            session.SetEndpoint(endpoints, declared, state, index, morph.weight * 100f);
+                            session.SetEndpoint(endpoints, declared, state, index, morph.weight * 100f, "Tracking", entry.name);
                         }
                         if (!found) throw new InvalidOperationException("追跡表情の元BlendShapeがありません: " + morph.shape + " (" + entry.name + ")");
                     }
@@ -125,7 +125,7 @@ namespace VRVlog.LilToonExporter
                     result.Retained.Add(binding);
                     continue;
                 }
-                SetEndpoint(endpoints, declared, state, binding.Index, binding.Weight * 100f);
+                SetEndpoint(endpoints, declared, state, binding.Index, binding.Weight * 100f, "Clip", clip.name);
             }
             result.Endpoints.AddRange(endpoints.Values);
             if (result.Endpoints.Count > 0) clips.Add(result);
@@ -133,7 +133,7 @@ namespace VRVlog.LilToonExporter
 
         void SetEndpoint(Dictionary<NeutralShapeSnapshot.RendererState, Endpoint> endpoints,
             Dictionary<(NeutralShapeSnapshot.RendererState, int), float> declared,
-            NeutralShapeSnapshot.RendererState state, int shape, float weight)
+            NeutralShapeSnapshot.RendererState state, int shape, float weight, string kind, string owner)
         {
             var key = (state, shape);
             // VRM1 keeps the first binding to a renderer/channel, including in
@@ -141,7 +141,9 @@ namespace VRVlog.LilToonExporter
             if (declared.ContainsKey(key)) return;
             if (!endpoints.TryGetValue(state, out var endpoint))
             {
-                endpoint = new Endpoint { State = state, Pose = (float[])state.Weights.Clone(), Name = prefix + serial++ };
+                // One endpoint per renderer and declaring clip or tracking entry.
+                var name = DeterministicNames.Unique("__VRVlog_Endpoint_" + DeterministicNames.Hash("Endpoint", kind, owner, state.Path), usedNames);
+                endpoint = new Endpoint { State = state, Pose = (float[])state.Weights.Clone(), Name = name };
                 endpoints.Add(state, endpoint);
             }
             if (!NeutralShapeSnapshot.Finite(weight)) throw new InvalidOperationException("表情のBlendShape値が不正です。");
