@@ -199,7 +199,7 @@ namespace VRVlog.LilToonExporter
             }
             // No closing name anywhere: export without blink instead of stopping.
             if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
-                !result.allowMissingAutomaticBlink && !namedClosure && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+                !result.allowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
             {
                 result.Disabled = true;
                 result.MissingAutomatic = true;
