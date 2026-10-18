@@ -38,6 +38,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             CloudTransferAvailability.RequireEnabled();
             var selected = EditorUtility.OpenFilePanel(ExporterLocalization.T("書き出し済みVRMを選択"), "", "vrm");
             try { OpenSavedVrmForDevelopment(selected); }
+            catch (InvalidOperationException exception) when (exception.Data[TransferTempDirectory.ShownAsIs] is bool asIs && asIs)
+            {
+                EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T(exception.Message), ExporterLocalization.T("閉じる"));
+            }
             catch
             {
                 // File/provider exceptions can include private paths or values.

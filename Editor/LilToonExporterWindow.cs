@@ -236,6 +236,8 @@ namespace VRVlog.LilToonExporter
                     if (sendSavedVrm != null && GUILayout.Button(ExporterLocalization.T("スマホに送る")))
                     {
                         try { sendSavedVrm.Invoke(null, new object[] { lastSavedPath }); }
+                        catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException?.Data["VRVlog.ShowMessageAsIs"] is bool asIs && asIs)
+                        { EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T(exception.InnerException.Message), ExporterLocalization.T("閉じる")); }
                         catch { EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T("転送用のコピーを準備できません"), ExporterLocalization.T("閉じる")); }
                     }
                     if (GUILayout.Button(ExporterLocalization.T("保存先を開く"))) EditorUtility.RevealInFinder(lastSavedPath);
