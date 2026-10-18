@@ -28,6 +28,8 @@
 
 対照（2.3.4 のまま開き直す）で、同じ版の 2 回の書き出しの間にも JSON が 1 か所違った。Exporter が瞬き用の空のターゲットを書き出しのたびに `__VRVlog_BlinkNone_<GUID>` という名前で作るため（`BlinkExportSession`。`ExportOptimizationBindings` の `__VRVlog_Empty_<GUID>` も同じ）。lilToon とは関係が無い。比較ツールは、この形の名前（接頭辞と小文字 32 桁の GUID）だけを出現順の番号に置き換えてから比べる。番号に置き換えるので、片方で 2 つの名前がもう片方で 1 つになっているような構造の違いは差として残る。
 
+2026-10-18 からは、これらの名前は書き出しのたびには変わらない（`2026-10-18-deterministic-generated-names.md`）。番号への置き換えは、それより前の Exporter で書き出したファイルを比べるために残している。
+
 ### 1-7: 起動直後のメニューのテスト
 
 `MenuResolvesBackendWithoutInitializationRegistration` は、Unity がインポートかコンパイルをしている間にメニューを実行すると、仕様どおり診断画面（`DependencyDiagnosticsWindow`）を開く（`DependencyDiagnostics.StartupError` が `IsBusy` を返す）。Exporter を入れ替えた直後の 1 回目の実行では、テストが始まった時点でまだ取り込みが続いていることがあり、書き出し画面が開かずに落ちていた。テストを `[UnityTest]` にし、`DependencyDiagnostics.IsBusy` が下りるまで（最大 300 秒）待ってからメニューを実行する。失敗したときは `DependencyDiagnostics.CreateReport()` をメッセージに出す。ケース数は 1 のまま。

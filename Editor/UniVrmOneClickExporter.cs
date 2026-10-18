@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter
         internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
         internal const string EmptyMeshRenderersOmitted = "メッシュが空のRendererを書き出しから外しました: ";
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
+        internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
+        internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
 
         // Unity's AvatarBuilder rejects a humanoid without any of these, so a
         // VRM missing one cannot be imported again as a humanoid.
@@ -29,6 +31,21 @@ namespace VRVlog.LilToonExporter
         {
             var animator = root.GetComponent<Animator>();
             return animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
+        }
+
+        // VRM 1.0 requires a humanoid. Without one every stage would run and the
+        // saved file would then fail validation naming only a glTF bone key.
+        internal static void ValidateSourceHumanoid(GameObject source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            if (!HasHumanoidAnimator(source)) throw new InvalidOperationException(SourceNotHumanoid);
+            // An inactive root has no bound skeleton yet; RequireActiveRoot stops it later.
+            // A disabled Animator may not resolve its bones either; the check on the
+            // prepared copy (ValidatePreparedHumanoid) still covers both cases.
+            var animator = source.GetComponent<Animator>();
+            if (!source.activeInHierarchy || !animator.enabled) return;
+            var missing = RequiredHumanBones.Where(bone => animator.GetBoneTransform(bone) == null).ToArray();
+            if (missing.Length > 0) throw new InvalidOperationException(SourceMissingHumanBones + string.Join(", ", missing));
         }
 
         // NDMF / optimizer passes may remove the root Animator or required

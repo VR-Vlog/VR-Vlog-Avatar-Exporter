@@ -159,7 +159,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             catch (WriterException) { return false; }
         }
 
-        internal static string NewSnapshotPath() => Path.Combine(Path.GetTempPath(), "VRVlogCloudTransfers", Guid.NewGuid().ToString("N") + Extension);
+        internal static string NewSnapshotPath() => TransferTempDirectory.NewFile("VRVlogCloudTransfers", Extension);
         internal static void Discard(string snapshotPath) => LanVrmTransferServer.TryDelete(snapshotPath);
 
         internal AppTransferView View

@@ -287,7 +287,7 @@ namespace VRVlog.LilToonExporter
     internal static class AlphaMaskBaker
     {
         internal static void CheckUvRange(UnityEngine.Renderer renderer, int slot, UnityEngine.Material material, ICollection<string> warnings) { }
-        internal static void Bake(UnityEngine.Material material, List<UnityEngine.Texture2D> owned, ICollection<string> warnings)
+        internal static void Bake(UnityEngine.Material material, List<UnityEngine.Texture2D> owned, ICollection<string> warnings, string origin = null)
         {
             if (material.HasProperty("_AlphaMaskMode") && material.GetFloat("_AlphaMaskMode") != 0)
                 UnityEngine.GpuForbidden.Fail("AlphaMaskBaker");
