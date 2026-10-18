@@ -97,7 +97,9 @@ namespace VRVlog.LilToonExporter
             foreach (var rule in rules)
                 foreach (var candidate in Candidates(source, rule, Excluded))
                 {
-                    if (Claimed(candidate)) continue;
+                    // A structure around a claimed gimmick is that gimmick's
+                    // container (an outfit or prop group), not a second gimmick.
+                    if (Claimed(candidate) || !rule.Anchored && claimed.Any(root => root.IsChildOf(candidate))) continue;
                     var findings = Findings(source, rule, candidate, Excluded, Claimed);
                     claimed.AddRange(findings.Where(f => f.Unit != GimmickExclusionUnit.Component).Select(f => f.Target.transform));
                     matched.AddRange(findings);
@@ -165,7 +167,20 @@ namespace VRVlog.LilToonExporter
             if (!rule.RequiredValues.All(value => HasValue(target.Find(value.Path), value))) return false;
             if (rule.ShaderNames.Length > 0 && !target.GetComponentsInChildren<Renderer>(true).Any(renderer =>
                 renderer.sharedMaterials.Any(m => m != null && m.shader != null && rule.ShaderNames.Contains(m.shader.name)))) return false;
-            return !rule.RenderTextureLoop || HasRenderTextureLoop(target);
+            if (!rule.RenderTextureLoop) return true;
+            // The camera and its display belong to the nearest entry above them,
+            // so a group holding an entried gimmick is not that gimmick.
+            if (rule.EntryTypes.Length == 0) return HasRenderTextureLoop(target);
+            bool Owned(Transform t)
+            {
+                for (var at = t; at != null; at = at.parent)
+                {
+                    if (at.GetComponents<Component>().Any(c => IsType(c, rule.EntryTypes))) return at == target;
+                    if (at == target) return false;
+                }
+                return false;
+            }
+            return HasRenderTextureLoop(target, Owned);
         }
 
         static bool HasValue(Transform target, ExportGimmickValue value)
@@ -181,12 +196,12 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        internal static bool HasRenderTextureLoop(Transform root)
+        internal static bool HasRenderTextureLoop(Transform root, Func<Transform, bool> owned = null)
         {
             var rendered = new HashSet<Texture>(root.GetComponentsInChildren<Camera>(true)
-                .Where(camera => camera.targetTexture != null).Select(camera => (Texture)camera.targetTexture));
+                .Where(camera => camera.targetTexture != null && owned?.Invoke(camera.transform) != false).Select(camera => (Texture)camera.targetTexture));
             if (rendered.Count == 0) return false;
-            return root.GetComponentsInChildren<Renderer>(true).Any(renderer => renderer.sharedMaterials.Any(material =>
+            return root.GetComponentsInChildren<Renderer>(true).Where(renderer => owned?.Invoke(renderer.transform) != false).Any(renderer => renderer.sharedMaterials.Any(material =>
                 material != null && material.GetTexturePropertyNameIDs().Any(id => rendered.Contains(material.GetTexture(id)))));
         }
 

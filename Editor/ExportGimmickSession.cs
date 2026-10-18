@@ -49,15 +49,18 @@ namespace VRVlog.LilToonExporter
             }
             Map(source.transform, clone.transform);
             if (findings == null) return;
-            // The copy keeps the source's component order, so a component is
-            // found again by its index and type, never by a name.
+            // The copy keeps the order of components of one type, so a component
+            // is found again by its position among that type, never by a name.
+            // Positions among all components shift: the copy drops missing
+            // scripts and edit-mode behaviours.
             foreach (var component in ExportGimmickDetection.AutomaticComponents(findings, options).SelectMany(f => f.Components))
             {
                 if (component == null || !copies.TryGetValue(component.transform, out var copy)) continue;
-                var index = Array.IndexOf(component.GetComponents<Component>(), component);
-                var candidates = copy.GetComponents<Component>();
-                if (index >= 0 && index < candidates.Length && candidates[index] != null && candidates[index].GetType() == component.GetType())
-                    removedComponents.Add(candidates[index]);
+                var type = component.GetType();
+                Component[] OfType(Transform owner) => owner.GetComponents(type).Where(c => c != null && c.GetType() == type).ToArray();
+                var index = Array.IndexOf(OfType(component.transform), component);
+                var candidates = OfType(copy);
+                if (index >= 0 && index < candidates.Length) removedComponents.Add(candidates[index]);
             }
         }
 
