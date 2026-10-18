@@ -123,7 +123,7 @@ TLS接続ではQRに含まれる証明書フィンガープリントを確認し
 | 検証 | 結果と証拠の範囲 |
 | --- | --- |
 | `pwsh -File Tools/run-lan-transfer-tests.ps1` | WindowsとLinux CIでそれぞれ19/19合格。合成ファイルを実際のTLS loopback接続で送り、認証、別証明書、不正要求、通信断・再試行、取消し・期限切れ、ファイル一致などを検証。別端末、Windows Firewall、iPhoneとの接続は対象外。 |
-| Exporter [schema run 37097031136](https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/actions/runs/37097031136) | 対象headのCI成功。Linuxでの実TLS loopback 19/19を含む。 |
+| Exporter [schema run 37097031136](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/runs/37097031136) | 対象headのCI成功。Linuxでの実TLS loopback 19/19を含む。 |
 | Windows package検査 | パッケージ検査合格。Windowsのsymlinkケースは権限不足のためskipped。実機転送の合格とは別の証拠。 |
 | Unityの参照DLLを使用したMonoソースコンパイル | ホストコンパイル成功。Unity Editorでの全体コンパイル、Console、実行確認の代わりにはしない。 |
 | App `Tools/run-ios-preflight-behavior-tests.ps1` | Windowsで44個のproductionチェック／120 assertion合格。ソース契約の検査であり、iOS SDKコンパイルや権限プロンプトの実機確認ではない。 |
@@ -131,6 +131,6 @@ TLS接続ではQRに含まれる証明書フィンガープリントを確認し
 | App `Tools/run-lan-vrm-privacy-tests.ps1` | productionのmerge／検証をXML Plist/PBX host adapterで実行し、20 assertion合格。既存宣言の保持・再実行・欠落拒否・DiskSpace／E174.1の対応を検査。本物のUnity Xcode Plist DLLとは別の証拠。 |
 | App native helper／iOS SDK | macOSでQR parser、書込み／hash、容量判定／エラー分類、proxy設定、証明書trustのproduction helper動作試験が合格。Xcode 16.4 SDKのiOS 17 simulator／arm64 syntax検査も合格。iPhoneの受信画面・権限、IL2CPP／リンク・archiveとは別。 |
 | App `Tools/test-lan-vrm-localization.py` | native文言38個／Unity文言7個／四言語の翻訳契約が合格。実機画面・言語選択は未確認。 |
-| App [Security preflight run 37098886489](https://github.com/mitsuya0077/FaceMaskVTuber/actions/runs/37098886489) | 対象headに紐づくLinux／Appleの全job成功。development checks、Apple helper、iOS SDK syntax検査を含む。 |
+| App側のCI Security preflight（非公開リポジトリ） | 対象headに紐づくLinux／Appleの全job成功。development checks、Apple helper、iOS SDK syntax検査を含む。 |
 
 この記録時点では新AppへUnity MCPが接続済みですが、最新ソースのEditorコンパイル／Console・Unityテスト・画面は結果待ちです。IL2CPP/Xcode archive、本物のUnity Xcode Plist DLLによるmerge実行、iPhoneでの一連の転送は未実施です。PC有線＋iPhone Wi-Fiの転送、権限拒否、バックアップ除外などの実機合格はまだ記録していません。
