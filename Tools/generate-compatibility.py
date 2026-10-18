@@ -42,7 +42,7 @@ def outputs(root=ROOT):
                                            version_tuple(lil['version']))
     assert minimum <= catalogue_version <= maximum
     assert re.fullmatch(r'[a-f0-9]{40}', lil['commit'])
-    catalogue = (root / 'Editor/LilToon234Catalogue.cs').read_text(encoding='utf-8')
+    catalogue = (root / 'Formats/Runtime/LilToon234Catalogue.cs').read_text(encoding='utf-8')
     assert 'Version = "' + lil['version'] + '"' in catalogue
     assert 'Commit = "' + lil['commit'] + '"' in catalogue
     authoring = data['authoring']

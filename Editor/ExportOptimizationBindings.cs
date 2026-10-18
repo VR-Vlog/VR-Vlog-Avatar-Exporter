@@ -341,7 +341,11 @@ namespace VRVlog.LilToonExporter
                 skin = ExportRendererSelection.Enumerate(avatar).OfType<SkinnedMeshRenderer>().FirstOrDefault(candidate => candidate.sharedMesh != null && candidate.sharedMesh.vertexCount > 0);
             if (skin == null) throw new InvalidOperationException("変形しない表情の出力先メッシュがありません: " + route.Label);
             var mesh = Object.Instantiate(skin.sharedMesh); owned.Add(mesh); skin.sharedMesh = mesh;
-            var name = (route.SourceShape.StartsWith("__VRVlog_BlinkNone_", StringComparison.Ordinal) ? "__VRVlog_BlinkNone_" : "__VRVlog_Empty_") + Guid.NewGuid().ToString("N");
+            var blinkNone = route.SourceShape.StartsWith("__VRVlog_BlinkNone_", StringComparison.Ordinal);
+            // The label is the captured source path and shape; the new mesh
+            // location after optimization does not identify the route.
+            var name = DeterministicNames.Unique((blinkNone ? "__VRVlog_BlinkNone_" : "__VRVlog_Empty_") +
+                DeterministicNames.Hash(blinkNone ? "BlinkNone" : "Empty", route.Label), DeterministicNames.BlendShapeNames(avatar));
             var zeros = new Vector3[mesh.vertexCount]; mesh.AddBlendShapeFrame(name, 100, zeros, zeros, zeros);
             route.Renderer = skin; route.Shape = name; route.Removed = false;
         }
@@ -401,6 +405,8 @@ namespace VRVlog.LilToonExporter
             var settings = Object.Instantiate(instance.Vrm); settings.name = instance.Vrm.name; owned.Add(settings);
             var replacements = new Dictionary<VRM10Expression, VRM10Expression>();
             var materialNames = new Dictionary<OptimizationMaterialRoute, string>();
+            var usedMaterialNames = new HashSet<string>(avatar.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials)
+                .Where(material => material != null).Select(material => material.name), StringComparer.Ordinal);
             foreach (var route in materials.Values)
             {
                 var material = route.Renderer.sharedMaterials[route.Slot];
@@ -408,7 +414,10 @@ namespace VRVlog.LilToonExporter
                     .Where(candidate => candidate != null && string.Equals(candidate.name, material.name, StringComparison.Ordinal)).Distinct().ToArray();
                 if (sameName.Length > 1)
                 {
-                    var copy = Object.Instantiate(material); copy.name = material.name + "__VRVlog_Expression_" + Guid.NewGuid().ToString("N"); owned.Add(copy);
+                    var copy = Object.Instantiate(material); owned.Add(copy);
+                    copy.name = DeterministicNames.Unique(material.name + "__VRVlog_Expression_" + DeterministicNames.Hash("Expression",
+                        AnimationUtility.CalculateTransformPath(route.Renderer.transform, avatar.transform),
+                        route.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture), material.name), usedMaterialNames);
                     assetCopyObserver?.Invoke(copy, material);
                     foreach (var renderer in avatar.GetComponentsInChildren<Renderer>(true))
                     {

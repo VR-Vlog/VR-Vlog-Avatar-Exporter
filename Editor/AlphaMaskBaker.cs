@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter
                 ": 主画像の1枚分を超えるアルファマスクを近似しました。繰り返し部分の透明度に差が残る場合があります。");
         }
 
-        internal static void Bake(Material material, List<Texture2D> owned, ICollection<string> warnings)
+        internal static void Bake(Material material, List<Texture2D> owned, ICollection<string> warnings, string origin = null)
         {
             if (!NeedsBake(material)) return;
             var mode = material.GetFloat("_AlphaMaskMode");
@@ -70,7 +70,8 @@ namespace VRVlog.LilToonExporter
                 RenderTexture.active = target;
                 result = new Texture2D(size.Item1, size.Item2, TextureFormat.RGBA32, false, false)
                 {
-                    name = material.name + "__VRVlog_Alpha_" + Guid.NewGuid().ToString("N"),
+                    name = DeterministicNames.Unique(material.name + "__VRVlog_Alpha_" + DeterministicNames.Hash("Alpha", origin, material.name),
+                        candidate => owned.Exists(texture => texture != null && texture.name == candidate)),
                     wrapModeU = source.wrapModeU, wrapModeV = source.wrapModeV, filterMode = source.filterMode
                 };
                 result.ReadPixels(new Rect(0, 0, size.Item1, size.Item2), 0, 0, false);
