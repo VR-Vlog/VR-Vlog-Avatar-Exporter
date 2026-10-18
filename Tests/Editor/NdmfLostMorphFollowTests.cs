@@ -71,7 +71,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Back = source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
                 Front.sharedMesh = ShapedMesh(Fixture.Mesh, ("Face blink", new Vector3(0, -.04f, 0)), ("Face smile", new Vector3(0, 0, .05f)),
                     ("Unused", new Vector3(.03f, 0, 0)), (OldGenerated, new Vector3(-.03f, 0, 0)));
-                Back.sharedMesh = ShapedMesh(Fixture.Mesh, ("Back detail", new Vector3(.02f, .01f, 0)));
+                // In "twin" Back has its own shape with the face blink name.
+                Back.sharedMesh = mode == "twin"
+                    ? ShapedMesh(Fixture.Mesh, ("Back detail", new Vector3(.02f, .01f, 0)), ("Face blink", new Vector3(0, -.04f, 0)))
+                    : ShapedMesh(Fixture.Mesh, ("Back detail", new Vector3(.02f, .01f, 0)));
                 Owned.Add(Front.sharedMesh); Owned.Add(Back.sharedMesh);
                 foreach (var skin in new[] { Front, Back })
                 {
@@ -112,6 +115,15 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.DeleteAsset(Folder);
             }
         }
+
+        // The test pass stays inert outside these tests.
+        static void Arm(bool armed) => InstalledType(PluginType)?.GetField("Armed")?.SetValue(null, armed);
+
+        [SetUp]
+        public void SetUp() => Arm(true);
+
+        [TearDown]
+        public void TearDown() => Arm(false);
 
         static (Type Descriptor, Type Proxy) RequireInstalled()
         {
@@ -229,6 +241,38 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(results.Any(result => result.Outcome == ExportOutcome.Approximated && result.Category == "瞬き"), Is.True, log);
                     Assert.That(results.Any(result => result.Outcome == ExportOutcome.Omitted), Is.False, log);
                 }
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
+        // Front loses its blink shape while Back, whose renderer is replaced,
+        // has a shape of the same name. Back does not carry Front's other
+        // shapes, so blink is left out instead of moving to Back.
+        [Test]
+        public async Task LenientExportDoesNotFollowAShapeIntoAnotherMeshWithTheSameName()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene("twin", installed.Descriptor, installed.Proxy);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                AssertBuildKept(report, warnings, imported);
+                var log = string.Join("\n", warnings);
+                Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.LostBlinkWarning), StringComparison.Ordinal)), Is.True, log);
+                Assert.That(report.Fallbacks.Results.Any(result => result.Outcome == ExportOutcome.Omitted && result.Category == "瞬き"), Is.True, log);
+                Assert.That(Combined(imported, imported.Vrm.Expression.Blink.MorphTargetBindings).All(delta => delta.magnitude <= 1e-4f), Is.True, log);
+                var smile = Clip(imported, "Smile");
+                Assert.That(smile.Length, Is.EqualTo(1), log);
+                Assert.That(smile[0].RelativePath, Is.EqualTo(PathOf(imported, "Front")), log);
+                AssertShape(imported, smile[0], 2, "Smile stays on the face");
             }
             finally
             {

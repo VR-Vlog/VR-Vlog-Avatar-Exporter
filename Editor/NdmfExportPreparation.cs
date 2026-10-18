@@ -179,7 +179,9 @@ namespace VRVlog.LilToonExporter
         // name: first on the renderer itself (or its registered replacement),
         // then on the one renderer that gained all of them, such as the mesh a
         // pass merged it into. Renderers that already had a shape of that name
-        // never count, so a lost shape cannot land on an unrelated same-named one.
+        // never count, and the one that gained them must also carry every other
+        // authored shape of the original, so a lost shape cannot land on an
+        // unrelated mesh that happens to use the same name.
         internal SkinnedMeshRenderer FollowShapes(SkinnedMeshRenderer original, IEnumerable<string> shapes)
         {
             if (ReferenceEquals(original, null)) return null;
@@ -191,15 +193,19 @@ namespace VRVlog.LilToonExporter
                 names.All(name => Enumerable.Range(0, skin.sharedMesh.blendShapeCount)
                     .Count(index => string.Equals(skin.sharedMesh.GetBlendShapeName(index), name, StringComparison.Ordinal)) == 1);
             bool Shown(SkinnedMeshRenderer skin) => skin.enabled && skin.gameObject.activeInHierarchy;
-            if (Holds(direct) && Shown(direct)) return direct;
-            if (preparedRoot != null)
+            // A renderer that kept its shapes is still the authored one, even hidden.
+            if (Holds(direct)) return direct;
+            if (preparedRoot == null) return null;
+            var authored = shapesBeforeProcessing.TryGetValue(original, out var originalShapes)
+                ? originalShapes.Where(name => !name.StartsWith("__VRVlog_", StringComparison.Ordinal)).ToArray() : new string[0];
+            bool CarriesAuthored(SkinnedMeshRenderer skin)
             {
-                var gained = preparedRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin != direct && Holds(skin) && Shown(skin) &&
-                    !(shapesBeforeProcessing.TryGetValue(skin, out var before) && names.Any(before.Contains))).ToArray();
-                if (gained.Length == 1) return gained[0];
+                var present = new HashSet<string>(Enumerable.Range(0, skin.sharedMesh.blendShapeCount).Select(skin.sharedMesh.GetBlendShapeName), StringComparer.Ordinal);
+                return authored.All(present.Contains);
             }
-            // A hidden renderer that kept its shapes is still the authored one.
-            return Holds(direct) ? direct : null;
+            var gained = preparedRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin != direct && Holds(skin) && Shown(skin) &&
+                !(shapesBeforeProcessing.TryGetValue(skin, out var before) && names.Any(before.Contains)) && CarriesAuthored(skin)).ToArray();
+            return gained.Length == 1 ? gained[0] : null;
         }
 
         internal SkinnedMeshRenderer FollowShape(SkinnedMeshRenderer original, string shape) => FollowShapes(original, new[] { shape });
@@ -223,7 +229,7 @@ namespace VRVlog.LilToonExporter
             if (!tolerate)
                 throw new InvalidOperationException("Modular Avatar / NDMF の処理で書き出し用の表情が失われました。メッシュや BlendShape を変更する追加ツールの設定を確認してください。");
             LostMorphs.AddRange(lost);
-            warnings?.Add(LostGeneratedMorphs + string.Join(", ", lost));
+            warnings?.Add(ExporterLocalization.T(LostGeneratedMorphs) + string.Join(", ", lost));
         }
 
         // NDMF's registry records provenance for diagnostic references. Read its
