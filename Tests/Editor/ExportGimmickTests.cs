@@ -445,6 +445,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Name, Is.EqualTo("accessories/settings"));
             // Not a confirmation item: the dialog is for features that failed.
             Assert.That(report.Fallbacks.Count, Is.Zero);
+            Assert.That(warnings, Is.Empty);
+            var list = ExportResultList.Build(report.Fallbacks, warnings);
+            Assert.That(list.Rows.Single().Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(list.NoticeCount, Is.Zero);
         }
 
         [Test] public void MeshReferencePruningKeepsBoneSpringAndOriginalVrmSettings()
