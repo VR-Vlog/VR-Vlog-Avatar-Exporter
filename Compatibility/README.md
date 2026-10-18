@@ -27,12 +27,15 @@ creator project. Every release of that patch line can export when UniGLTF and
 VRM have the same version (`[0.131.0,0.132.0)` version defines; prereleases,
 build metadata and other minor lines stop). `uniVrm.versions` lists the patches
 actually verified with their official source commit; a new 0.131 patch is
-accepted before it is listed. The UniVRM APIs the exporter calls did not change
-from 0.131.0 to 0.131.3. A later patch that changes their signatures makes the
-backend fail to compile, which diagnostics report; a behavior change behind an
-unchanged signature is only found when that patch is verified. A new minor line (0.132 and later) still requires review and a new
-adapter. Diagnostics never install,
-upgrade or downgrade packages. MA and NDMF remain optional; existing component,
+accepted before it is listed. A later patch that changes the signatures the
+exporter calls makes the backend fail to compile, which diagnostics report; a
+behavior change behind an unchanged signature is only found when that patch is
+verified. 0.131.3 is such a case: `NativeArrayManager.CreateNativeArray(T[])`
+wraps the managed array instead of copying it, so each morph's normal array must
+be a separate allocation. Run `exporter-behavior` with a new patch before adding
+it to `uniVrm.versions` (evidence: `Evidence/UniVrm0131x/README.md`). A new
+minor line (0.132 and later) still requires review and a new adapter.
+Diagnostics never install, upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
 
