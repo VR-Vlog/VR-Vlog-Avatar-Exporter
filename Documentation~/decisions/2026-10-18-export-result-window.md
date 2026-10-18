@@ -29,11 +29,13 @@
 - 瞬きの行には「瞬きを設定」を置き、既存の瞬きの設定画面を開く。
 - 「全文をコピー」と「テキスト保存」は残す。問い合わせに貼る文章が変わらないようにするため。
 - 見出しは一般語にそろえる（マテリアル・揺れ物のコライダー・瞬きなど）。行の内容が対象名で始まるときは、対象の列と重なるので名前を除く。
+- 既定の理由は日本語の原文で記録されているので、行を作るときに表示言語へ訳す。
+- 保存前のウィンドウをタイトルバーで閉じたときは保存しない。保存していないことを Console に警告として残す。
 - 古い確認ダイアログと文章だけのウィンドウ（`ExportAppearanceReport` の表示部分）は削除する。
 
 ## 確認したこと
 
-- 別の PC の Unity 2022.3.22f1 で EditMode テストを実行し、175 件成功・失敗 0・スキップ 3（`ExportFallbackConfirmationTests`・`ExportStageGuardTests`・`ExportFlowTests`・`ExportRecoveryComparisonTests`・`PhysBoneSpringExportTests`・`ExpressionNameInferenceTests`）。
+- 別の PC の Unity 2022.3.22f1 で EditMode テストを実行し、200 件成功・失敗 0・スキップ 3（`ExportFallbackConfirmationTests`・`ExportStageGuardTests`・`ExportFlowTests`・`ExportRecoveryComparisonTests`・`PhysBoneSpringExportTests`・`ExpressionNameInferenceTests`・`UnsupportedShaderSubstitutionTests`・`ExportSettingsTests`）。
 - ウィンドウをオフスクリーンで描いて、次の状態を 3 倍の解像度で目視した。保存前・行を開いた状態・幅 560・保存後・絞り込み・検索・該当なし・大量の対象・長い名前・結果が空・ウィンドウを開き直した状態。どの状態でも行高と列の位置が変わらず、文字が枠からはみ出さないことを確認した。
 - 古いダイアログの文章を同じ条件で出力し、対象が多いと「ほか51件」と省かれることを確認した。
 
