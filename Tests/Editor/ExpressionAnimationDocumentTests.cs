@@ -189,6 +189,17 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void SchemaOneWriteRejectsMorphReferences()
+        {
+            // The first point equals the curve at t=0, so writing it as null would pass Read.
+            var animation = Animation("Smile", Channel((0, Morph(4, 0)), (1, null)));
+            animation.Channels[0].Points[1].Target = ExpressionAnimationData.TargetPrefix + "Smile_1";
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.Write(new[] { animation }));
+            animation.Channels[0].Points[0].Morph = null;
+            Assert.That(ExpressionAnimationData.Write(new[] { animation }), Is.Not.Null);
+        }
+
+        [Test]
         public void AppVersionsCompareNumerically()
         {
             Assert.That(AvatarFormatVersions.Compare("1.0.5", "1.0.10"), Is.LessThan(0));

@@ -139,7 +139,7 @@ namespace VRVlog.Expressions
             var result = new Dictionary<string, object>
             {
                 ["schemaVersion"] = 1L,
-                ["animations"] = WriteAnimations(animations, p => p.Target)
+                ["animations"] = WriteAnimations(animations, WriteName)
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
@@ -174,6 +174,13 @@ namespace VRVlog.Expressions
                         { ["value"] = p.Value, ["target"] = target(p) }).ToList()
                 }).ToList()
             }).ToList();
+
+        static object WriteName(Point point)
+        {
+            // Schema 1 has no node/index references; dropping one would leave the morph unmoved.
+            if (point.Morph != null) Bad();
+            return point.Target;
+        }
 
         static object WriteMorph(Point point)
         {
