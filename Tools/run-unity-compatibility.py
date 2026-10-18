@@ -37,6 +37,7 @@ BEHAVIOR_CASES = {
         'NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip': 12,
         'SharedStaticMeshRepairsEveryExportedMeshGroupWithoutSplittingSourceIdentity': 1,
         'SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings': 2,
+        'ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions': 1,
     },
     'MorphNormalExportTests': {
         'AuthoredNormalTargetsKeepSourceIdentityAndSubmeshVertexOrder': 2,

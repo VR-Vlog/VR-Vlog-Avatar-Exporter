@@ -58,6 +58,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Targets.Select(target => target.GetComponent<MeshFilter>().sharedMesh).Distinct().Count(), Is.EqualTo(1));
         }
 
+        [Test]
+        public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions()
+        {
+            using var fixture = new Fixture(false, false, false);
+            var branch = new GameObject("Zero scale branch").transform;
+            branch.SetParent(fixture.Root.transform, false);
+            branch.localPosition = new Vector3(.4f, .5f, .6f);
+            branch.localScale = Vector3.zero;
+            var inner = new GameObject("Inside zero scale").transform;
+            inner.SetParent(branch, false);
+            inner.localPosition = new Vector3(.1f, .2f, .3f);
+            inner.localScale = new Vector3(2, 3, 4);
+            var bytes = fixture.ExportDirect();
+            UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
+            var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            float[] Values(string name, string key) =>
+                ((List<object>)nodes.Single(node => (string)node["name"] == name)[key]).Select(value => Convert.ToSingle(value)).ToArray();
+            Assert.That(Values("Zero scale branch", "scale"), Is.EqualTo(new[] { 0f, 0f, 0f }));
+            Assert.That(Values("Zero scale branch", "translation"), Is.EqualTo(new[] { -.4f, .5f, .6f }).Within(1e-5f));
+            Assert.That(Values("Inside zero scale", "translation"), Is.EqualTo(new[] { -.1f, .2f, .3f }).Within(1e-5f));
+            Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 3f, 4f }).Within(1e-5f));
+        }
+
         [TestCase(false, false)] [TestCase(true, false)]
         [TestCase(false, true)] [TestCase(true, true)]
         public async Task AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback(bool normals, bool fullExporter)
