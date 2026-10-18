@@ -153,6 +153,20 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo("Hips/Spine/Chest/Neck/Head"), "The MA Bone Proxy must still be applied.");
         }
 
+        // The summed motion of the binds; generated endpoints may combine them into one shape.
+        static Vector3[] Combined(Vrm10Instance imported, IEnumerable<MorphTargetBinding> binds)
+        {
+            Vector3[] sum = null;
+            foreach (var bind in binds)
+            {
+                var mesh = imported.transform.Find(bind.RelativePath).GetComponent<SkinnedMeshRenderer>().sharedMesh;
+                var deltas = new Vector3[mesh.vertexCount];
+                mesh.GetBlendShapeFrameVertices(bind.Index, mesh.GetBlendShapeFrameCount(bind.Index) - 1, deltas, null, null);
+                sum = sum == null ? deltas.Select(delta => delta * bind.Weight).ToArray() : sum.Zip(deltas, (a, b) => a + b * bind.Weight).ToArray();
+            }
+            return sum ?? Array.Empty<Vector3>();
+        }
+
         static MorphTargetBinding[] Clip(Vrm10Instance imported, string name) =>
             imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name).MorphTargetBindings;
 
@@ -203,7 +217,10 @@ namespace VRVlog.LilToonExporter.Tests
                 else
                 {
                     // Nothing is lost; each moved bind is listed as approximated.
-                    Assert.That(mixed.Length, Is.EqualTo(2), log);
+                    // Mixed still moves both the smile (z) and the unused shape (x).
+                    var motion = Combined(imported, mixed).Where(delta => delta.magnitude > 1e-4f).ToArray();
+                    Assert.That(motion.Length, Is.EqualTo(3), log);
+                    Assert.That(motion.All(delta => Mathf.Abs(delta.x) > .01f && Mathf.Abs(delta.z) > .01f), Is.True, log);
                     foreach (var name in new[] { "Smile", "Mixed", "Unused only" })
                     {
                         Assert.That(results.Any(result => result.Outcome == ExportOutcome.Approximated && result.Category == "表情" && result.Name == name), Is.True, name + "\n" + log);
