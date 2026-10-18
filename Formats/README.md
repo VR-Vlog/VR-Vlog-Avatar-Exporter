@@ -23,3 +23,5 @@ The exporter package (`com.vrvlog.liltoon-vrm-exporter`) already contains this f
 ## Changing the format
 
 The exporter and the app must accept the same data. A change here takes effect in the app only after the app updates the pinned commit, so open the app change together with the exporter change.
+
+The app pins this package by commit, not by version. The `version` in `package.json` stays `1.0.0` and does not identify a format revision; the pinned commit does.
