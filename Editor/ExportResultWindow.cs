@@ -211,12 +211,16 @@ namespace VRVlog.LilToonExporter
         {
             var height = 6f;
             if (!string.IsNullOrEmpty(row.Reason)) height += ReasonHeight(row.Reason, width);
-            if (row.Outcome == null) height += ReasonHeight(row.Content, width);
+            if (ShowsFullText(row, width)) height += ReasonHeight(row.Content, width);
             foreach (var issue in row.Diagnostics) if (issue != null) height += LineHeight * 2f;
             height += row.Targets.Count * LineHeight;
             if (row.Blink && openBlinkSettings != null) height += LineHeight + 4f;
             return height + 6f;
         }
+
+        // Notices always repeat their sentence; other rows only when the line cuts it off.
+        bool ShowsFullText(ExportResultRow row, float width) =>
+            row.Outcome == null || cellStyle.CalcSize(new GUIContent(row.Content)).x > ContentWidth(width) - 8f;
 
         float ReasonHeight(string text, float width) =>
             Mathf.Max(LineHeight, wrappedStyle.CalcHeight(new GUIContent(text), Mathf.Max(60f, width - Indent - OutcomeWidth - LabelWidth - 16f)));
@@ -300,7 +304,7 @@ namespace VRVlog.LilToonExporter
                 GUI.Label(new Rect(x + LabelWidth, y, width - LabelWidth, height), new GUIContent(text, text), wrap ? wrappedStyle : cellStyle);
                 y += height;
             }
-            if (row.Outcome == null) Labelled("全文", row.Content, true);
+            if (ShowsFullText(row, area.width)) Labelled("全文", row.Content, true);
             if (!string.IsNullOrEmpty(row.Reason)) Labelled("理由", row.Reason, true);
             foreach (var issue in row.Diagnostics)
             {
@@ -311,11 +315,13 @@ namespace VRVlog.LilToonExporter
             foreach (var target in row.Targets)
             {
                 var found = Find(target);
-                var nameWidth = Mathf.Min(220f, (width - 64f) * 0.45f);
+                // Without a path the name has the whole line.
+                var nameWidth = target.Path == null ? width : Mathf.Min(220f, (width - 64f) * 0.45f);
                 GUI.Label(new Rect(x, y, nameWidth, LineHeight), new GUIContent(target.Name, target.Name), cellStyle);
-                GUI.Label(new Rect(x + nameWidth + 8f, y, width - nameWidth - 72f, LineHeight),
-                    new GUIContent(target.Path ?? "", target.Path), mutedStyle);
                 if (target.Path != null)
+                {
+                    GUI.Label(new Rect(x + nameWidth + 8f, y, width - nameWidth - 72f, LineHeight),
+                        new GUIContent(target.Path, target.Path), mutedStyle);
                     using (new EditorGUI.DisabledScope(found == null))
                         if (GUI.Button(new Rect(x + width - 56f, y + 1f, 56f, LineHeight - 2f),
                                 new GUIContent(ExporterLocalization.T(SelectButton), found == null ? ExporterLocalization.T(MissingTarget) : target.Path), EditorStyles.miniButton))
@@ -323,6 +329,7 @@ namespace VRVlog.LilToonExporter
                             Selection.activeGameObject = found;
                             EditorGUIUtility.PingObject(found);
                         }
+                }
                 y += LineHeight;
             }
             if (row.Blink && openBlinkSettings != null)

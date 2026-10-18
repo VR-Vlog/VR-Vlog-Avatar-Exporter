@@ -96,6 +96,10 @@ namespace VRVlog.LilToonExporter
             ExporterLocalization.T(ExportFallbackConfirmation.Failure(ExportFallbackKind.StageOmitted)) + ": " +
             ExporterLocalization.T(entry.Category) + " — " + entry.Reason;
 
+        // "happy: ..." already shows "happy" in the target column.
+        static string WithoutName(string reason, string name) =>
+            !string.IsNullOrEmpty(name) && reason.StartsWith(name + ": ", StringComparison.Ordinal) ? reason.Substring(name.Length + 2) : reason;
+
         internal static ExportResultList Build(ExportFallbackReport report, IEnumerable<string> warnings, string destination = null)
         {
             var list = new ExportResultList { Destination = destination ?? "" };
@@ -108,7 +112,7 @@ namespace VRVlog.LilToonExporter
                 known.Add(entry.Reason);
                 if (entry.Stage != null) known.Add(StageWarning(entry));
                 var group = ExporterLocalization.T(entry.Category);
-                var content = entry.Stage == null ? entry.Reason
+                var content = entry.Stage == null ? WithoutName(entry.Reason, entry.Name)
                     : ExporterLocalization.T(entry.Outcome == ExportOutcome.Omitted ? StageOmittedContent : StageApproximatedContent);
                 var row = rows.FirstOrDefault(existing => existing.Stage == entry.Stage && existing.Outcome == entry.Outcome &&
                     existing.Group == group && existing.Content == content);

@@ -173,12 +173,12 @@ namespace VRVlog.LilToonExporter
             switch (kind)
             {
                 case ExportFallbackKind.Blink: return "瞬き";
-                case ExportFallbackKind.PlaneInsideBounds: return "Inside Bounds";
-                case ExportFallbackKind.ColliderSkipped: return "この衝突";
+                case ExportFallbackKind.PlaneInsideBounds: return "揺れ物のコライダー";
+                case ExportFallbackKind.ColliderSkipped: return "揺れ物のコライダー";
                 case ExportFallbackKind.StageOmitted: return "省略した機能";
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた項目";
-                case ExportFallbackKind.MaterialApproximated: return "その材質の表現";
-                default: return "lilToonの表現";
+                case ExportFallbackKind.MaterialApproximated: return "マテリアル";
+                default: return "マテリアル";
             }
         }
 
