@@ -14,7 +14,7 @@ namespace VRVlog.LilToonExporter
     {
         internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
         internal const string EmptyMeshRenderersOmitted = "メッシュが空のRendererを書き出しから外しました: ";
-        internal const string LostRequiredHumanBones ="NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
+        internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
 
         // Unity's AvatarBuilder rejects a humanoid without any of these, so a
         // VRM missing one cannot be imported again as a humanoid.
