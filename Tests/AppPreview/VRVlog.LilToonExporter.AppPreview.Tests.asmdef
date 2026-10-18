@@ -4,6 +4,7 @@
   "references": [
     "VRVlog.LilToonExporter.AppPreview",
     "VRVlog.LilToonExporter.Editor",
+    "VRVlog.LilToonExporter.Compatibility",
     "VRVlog.LilToonExporter.Editor.Tests",
     "FaceMaskVTuber.UniVrmRuntime",
     "VRM10",

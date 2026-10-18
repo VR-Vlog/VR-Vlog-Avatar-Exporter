@@ -3,6 +3,7 @@
   "rootNamespace": "VRVlog.LilToonExporter",
   "references": [
     "VRVlog.LilToonExporter.Editor",
+    "VRVlog.LilToonExporter.Compatibility",
     "FaceMaskVTuber.UniVrmRuntime",
     "VRM10",
     "UniGLTF"
