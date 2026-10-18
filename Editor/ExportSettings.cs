@@ -108,11 +108,14 @@ namespace VRVlog.LilToonExporter
         {
             if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
             UniVrmOneClickExporter.ValidateSourceHumanoid(avatar);
+            UniVrmOneClickExporter.ValidateSourceHasMesh(avatar);
             if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
-            return UniVrmOneClickExporter.Export(avatar, name, author, warnings,
+            var vrm = UniVrmOneClickExporter.Export(avatar, name, author, warnings,
                 exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
                 excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses,
                 recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, licenseOptions: License, disableAudioLink: true);
+            UniVrmOneClickExporter.ValidateOutputHasMesh(vrm);
+            return vrm;
         }
 
         // The create step of LilToonExporterWindow.ExportAndSaveNormally. It
