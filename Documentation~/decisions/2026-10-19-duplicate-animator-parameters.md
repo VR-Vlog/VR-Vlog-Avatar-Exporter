@@ -7,7 +7,7 @@
 
 FXのAnimator Controllerに同じ名前のパラメーターが3回宣言されているアバターがある。アセットのYAMLでは、`m_AnimatorParameters` に `m_Name: TrackingType`・`m_Type: 3`（Int）・同じ初期値の要素が3つ並んでいる。UnityのAnimatorはパラメーターを名前のハッシュで引くので、同じ名前の宣言は1つのパラメーターとして動く。VRChatでもこのアバターは問題なく動く。
 
-書き出しでは、表情の読み込みが `ExpressionDependencies.FixedNeutralValues` の `initial.Add(parameter.name, value)` で `ArgumentException: An item with the same key has already been added. Key: TrackingType` を投げ、ステージの保護処理がメニュー由来の表情をすべて省いていた。アバターと衣装の組み合わせをすべて書き出した検証では、499件中31件がこれに当たった。
+書き出しでは、表情の読み込みが `ExpressionDependencies.FixedNeutralValues` の `initial.Add(parameter.name, value)` で `ArgumentException: An item with the same key has already been added. Key: TrackingType` を投げ、ステージの保護処理がメニュー由来の表情をすべて省いていた。アバターと衣装の組み合わせをすべて書き出した検証では、499件中39件がこれに当たった。
 
 `controller.parameters` を名前で引く辞書に入れている箇所はほかにもあり（`ExpressionEvaluationSession` の型の表、`VrChatFxExpressions.Discover`、`NeutralShapeSampler` の型の表、`NativeTreeTrajectory`・`VrChatAuthoredFaces`・`NeutralAdditionalDataPreflight` の宣言の検査など）、`FixedNeutralValues` を直すだけでは次の箇所で同じように止まる。重複を見つけると証明をあきらめる箇所（`FixedExpressionContext.TryReachableFxCommands` に渡す配列、`GroupBy` で1件の名前だけを残す型の表、`Where(...).Length != 1` の検査など）もあり、こちらは例外にはならないが、表情や固定値の証明が通らなくなる。
 
