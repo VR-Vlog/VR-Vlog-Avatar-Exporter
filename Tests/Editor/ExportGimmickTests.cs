@@ -426,6 +426,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(rule), Is.Empty);
         }
 
+        [Test] public void TableFindsAModularAvatarRenderTextureCamera()
+        {
+            var merge = FindType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            if (merge == null) Assert.Ignore("Installed MA is required for the table rule.");
+            var lens = RenderTextureLens(); Object.DestroyImmediate(lens.GetComponent<Animator>()); lens.AddComponent(merge);
+            var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
+            Assert.That(finding.Target, Is.SameAs(lens));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
         [Test] public void InactiveAvatarRootStillHasItsGimmicksFound()
         {
             var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
