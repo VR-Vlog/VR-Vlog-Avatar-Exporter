@@ -61,17 +61,27 @@ namespace VRVlog.LilToonExporter.Tests
         // Gimmicks hide parts with a zero or subnormal scale (float.Epsilon is
         // what such prefabs serialize as 1e-45). LogAssert does not fail on
         // Unity's native Assertion failed, so collect the log directly.
-        [TestCase(0f)] [TestCase(float.Epsilon)]
-        public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions(float hiddenScale)
+        [TestCase(0f, 0f, 0f, false)] [TestCase(float.Epsilon, float.Epsilon, float.Epsilon, false)]
+        [TestCase(1f, 0f, 1f, false)] [TestCase(0f, 0f, 0f, true)]
+        public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions(float x, float y, float z, bool nested)
         {
             using var fixture = new Fixture(false, false, false);
+            var hidden = new Vector3(x, y, z);
             var branch = new GameObject("Zero scale branch").transform;
             branch.SetParent(fixture.Root.transform, false);
             branch.localPosition = new Vector3(.4f, .5f, .6f);
             branch.localRotation = Quaternion.Euler(10, 20, 30);
-            branch.localScale = Vector3.one * hiddenScale;
+            branch.localScale = hidden;
+            var parent = branch;
+            if (nested)
+            {
+                parent = new GameObject("Nested zero scale").transform;
+                parent.SetParent(branch, false);
+                parent.localPosition = new Vector3(.05f, .06f, .07f);
+                parent.localScale = Vector3.zero;
+            }
             var inner = new GameObject("Inside zero scale").transform;
-            inner.SetParent(branch, false);
+            inner.SetParent(parent, false);
             inner.localPosition = new Vector3(.1f, .2f, .3f);
             inner.localScale = Vector3.one * 2;
             var logged = new List<string>();
@@ -87,12 +97,20 @@ namespace VRVlog.LilToonExporter.Tests
             var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
             float[] Values(string name, string key) =>
                 ((List<object>)nodes.Single(node => (string)node["name"] == name)[key]).Select(value => Convert.ToSingle(value)).ToArray();
-            Assert.That(Values("Zero scale branch", "scale"), Has.All.EqualTo(hiddenScale));
+            var scale = Values("Zero scale branch", "scale");
+            for (var axis = 0; axis < 3; axis++)
+                // Hidden axes keep their exact authored value; the others go through UniVRM.
+                Assert.That(scale[axis], hidden[axis] < 1e-6f ? Is.EqualTo(hidden[axis]) : Is.EqualTo(hidden[axis]).Within(1e-5f));
             Assert.That(Values("Zero scale branch", "translation"), Is.EqualTo(new[] { -.4f, .5f, .6f }).Within(1e-5f));
             var rotation = Values("Zero scale branch", "rotation");
             var expected = Quaternion.Euler(10, 20, 30);
             Assert.That(Mathf.Abs(Quaternion.Dot(new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]),
                 new Quaternion(expected.x, -expected.y, -expected.z, expected.w))), Is.GreaterThan(.9999f));
+            if (nested)
+            {
+                Assert.That(Values("Nested zero scale", "scale"), Is.EqualTo(new[] { 0f, 0f, 0f }));
+                Assert.That(Values("Nested zero scale", "translation"), Is.EqualTo(new[] { -.05f, .06f, .07f }).Within(1e-5f));
+            }
             Assert.That(Values("Inside zero scale", "translation"), Is.EqualTo(new[] { -.1f, .2f, .3f }).Within(1e-5f));
             Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 2f, 2f }).Within(1e-5f));
         }

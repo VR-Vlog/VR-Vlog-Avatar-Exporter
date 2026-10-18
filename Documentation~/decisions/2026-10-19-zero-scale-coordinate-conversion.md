@@ -14,7 +14,7 @@
 - `Vrm10AppearanceExporter.ConvertCoordinateKeepingZeroScale` を足し、`ConvertCoordinate` の呼び出しをこれに替える。
   - 変換の前に、Scale のどれかの軸の絶対値が 1e-6 より小さいノード（0 と 1e-45 の両方）を集め、その軸だけを 1 にしてワールド行列を計算し直す。
   - `ConvertCoordinate` を呼ぶ。行列はすべて分解できるので、エラーは出ない。
-  - 集めたノードの Scale を元の値に戻し、ワールド行列を計算し直す。X 軸の反転は Scale を変えないので、戻した値がそのまま VRM 1.0 の座標系での値になる。
+  - 集めたノードの、0 に近かった軸だけを元の値に戻し、ワールド行列を計算し直す。ほかの軸は UniVRM が変換した値を使う。UniVRM は行列の列の長さから Scale を正の値として取り出し、鏡映は回転の側に入れるので、Scale が負の軸を元の値に戻すと符号が 2 回効く（レビューの指摘で直した）。
 - 書き出した VRM では、サイズ 0 のノードは元どおり Scale 0 になり、その下のノードは元のローカルの位置・回転・Scale を保つ。これまでは位置と Scale が 0 になっていた。
 - Unity のオブジェクト（元のアバター・書き出し用の複製）は変えない。変えるのは UniVRM の書き出し用のモデルだけ。
 
@@ -24,6 +24,7 @@
 - サイズ 0 の部分をノードごと書き出しから外す: そこにボーンやコンストレイントの参照先があると壊れる。何を外すかはギミックの除外の判断で、座標変換の層で決めることではない。
 - コンソールへの出力を抑える: エラーは Unity の内部から出るので、Exporter の側からは選んで抑えられない。抑えたとしても、下のノードの配置が失われる問題は残る。
 - 回転と Scale が混ざって行列が分解できない場合（親の不均一な Scale の下の回転）は今回は扱わない。今回の総当たりの書き出しでは出ていない。
+- 1e-4 のような値を何段も重ねて、どのノードのローカルの値も 1e-6 以上なのにワールドでは 0 に近くなる場合も扱わない。判定をワールドの行列にすると、どのノードの軸を 1 にするかを決め直す必要があり、今回見つかったギミックはどれもローカルの値で隠している。
 
 ## 影響
 
@@ -32,4 +33,4 @@
 
 ## 検証
 
-- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0 と 1e-45 の親（位置と回転を持つ）とその子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の Scale が元の値・親の位置と回転が X を反転した値・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。変更前のコードでは 2 件とも「Assertion failed on expression: 'ValidTRS()'」で失敗し、変更後は合格した。
+- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0・1e-45・1 軸だけ 0 の親（位置と回転を持つ）と、0 の親の中にもう 1 つ 0 のノードがある場合について、その下の子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の 0 に近い軸の Scale が元の値と一致すること、親の位置と回転・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。変更前のコードでは 2 件とも「Assertion failed on expression: 'ValidTRS()'」で失敗し、変更後は合格した。
