@@ -57,6 +57,7 @@ namespace VRVlog.LilToonExporter
     {
         internal const string PettingSystem = "petting-system";
         internal const string LightLimitSettings = "light-limit-settings";
+        internal const string CameraGimmick = "camera-gimmick";
 
         const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
         const string MenuInstaller = "nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller";
@@ -74,6 +75,20 @@ namespace VRVlog.LilToonExporter
                 Reason = "ライトの明るさを制限する設定です。書き出す材質に効果が残らないよう、書き出し用のコピーから外します。",
                 AnchorTypes = new[] { "LightLimitChangerSettings" },
                 DedicatedTypes = new[] { MenuInstaller },
+            },
+            new ExportGimmickRule
+            {
+                Id = CameraGimmick,
+                Reason = "撮影用カメラのギミックです。カメラ本体と設定をまとめて省略します。",
+                AnchorTypes = new[] { "VirtualLens2.VirtualLensSettings" },
+                DedicatedTypes = new[] { MenuInstaller },
+                // Hidden and optional objects are the user's own avatar parts.
+                LinkedObjectProperties = new[]
+                {
+                    "cameraObject", "cameraDroppable", "droneController", "repositionOrigin",
+                    "selfieMarkerLeft", "selfieMarkerRight", "screenTouchers", "stabilizerTarget"
+                },
+                GeneratedRootChildren = new[] { "_VirtualLens_Root" },
             },
             new ExportGimmickRule
             {
