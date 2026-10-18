@@ -65,6 +65,17 @@ the first stable release with `VRCAnimatorPlayAudio`; its fields and members are
 identical through 3.10.5. Results:
 [Evidence/VrchatSdkRange](Evidence/VrchatSdkRange/README.md).
 
+Modular Avatar has its own range only for the appearance freeze, which runs
+when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
+to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
+`IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
+`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
+versions stop before that API is touched, naming the installed version and the
+range. Avatars without those components export with any MA version. MA 1.18.x
+itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
+`ndmfMinimum` (1.8.3).
+
 ## Supported lilToon versions
 
 The exporter accepts lilToon 2.0.0-2.3.4 (`lilToon.supported` in
