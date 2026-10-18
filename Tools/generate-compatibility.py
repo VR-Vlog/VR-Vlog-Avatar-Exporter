@@ -5,6 +5,9 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+# Largest patch number in the asmdef version-define range: the 9-digit limit of
+# version_tuple, well inside the 32-bit integers Unity parses version parts into.
+UNIVRM_PATCH_CEILING = 999999999
 
 
 def version_tuple(version):
@@ -61,9 +64,11 @@ def outputs(root=ROOT):
     result = {'Editor/Compatibility/DependencyPolicy.Generated.cs': text}
     definitions = []
     constraints = []
-    # One half-open range per package: the whole X.Y patch line compiles; the
-    # next minor and every other line leave the backend assemblies out.
-    expression = '[{0}.{1}.0,{0}.{2}.0)'.format(vrm_major, vrm_minor, vrm_minor + 1)
+    # One inclusive range per package: the whole X.Y patch line compiles; every
+    # other line leaves the backend assemblies out. The upper bound stays inside
+    # X.Y because a half-open `X.(Y+1).0)` bound would admit `X.(Y+1).0-preview`,
+    # which semantic versioning orders below the release.
+    expression = '[{0}.{1}.0,{0}.{1}.{2}]'.format(vrm_major, vrm_minor, UNIVRM_PATCH_CEILING)
     for package, prefix in [('com.vrmc.vrm', 'VRVLOG_VRM'), ('com.vrmc.gltf', 'VRVLOG_GLTF')]:
         symbol = '{0}_{1}_{2}'.format(prefix, vrm_major, vrm_minor)
         definitions.append({'name': package, 'expression': expression, 'define': symbol})

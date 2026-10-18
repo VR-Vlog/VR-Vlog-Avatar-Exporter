@@ -24,7 +24,7 @@ of a compile error in another tool.
 
 The VPM requirement stays at `0.131.x` to avoid forcing changes to an existing
 creator project. Every release of that patch line can export when UniGLTF and
-VRM have the same version (`[0.131.0,0.132.0)` version defines; prereleases,
+VRM have the same version (`[0.131.0,0.131.999999999]` version defines; prereleases,
 build metadata and other minor lines stop). `uniVrm.versions` lists the patches
 actually verified with their official source commit; a new 0.131 patch is
 accepted before it is listed. A later patch that changes the signatures the

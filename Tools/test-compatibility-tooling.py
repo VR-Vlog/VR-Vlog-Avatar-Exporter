@@ -787,6 +787,16 @@ class LilToonRangeGeneratorTests(unittest.TestCase):
     def test_version_order_is_numeric(self):
         self.assertGreater(generator.version_tuple('2.10.0'), generator.version_tuple('2.3.4'))
 
+    def test_univrm_version_defines_stay_inside_the_patch_line(self):
+        # A half-open bound at the next minor would admit its prereleases.
+        outputs = generator.outputs(self.root)
+        for name in self.FILES[3:]:
+            with self.subTest(name=name):
+                asm = json.loads(outputs[name])
+                self.assertEqual({item['expression'] for item in asm['versionDefines']},
+                                 {'[0.131.0,0.131.' + str(generator.UNIVRM_PATCH_CEILING) + ']'})
+                self.assertEqual(asm['defineConstraints'], ['VRVLOG_VRM_0_131', 'VRVLOG_GLTF_0_131'])
+
 
 if __name__ == '__main__':
     unittest.main()

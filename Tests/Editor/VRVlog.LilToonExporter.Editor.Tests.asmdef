@@ -27,12 +27,12 @@
   "versionDefines": [
     {
       "name": "com.vrmc.vrm",
-      "expression": "[0.131.0,0.132.0)",
+      "expression": "[0.131.0,0.131.999999999]",
       "define": "VRVLOG_VRM_0_131"
     },
     {
       "name": "com.vrmc.gltf",
-      "expression": "[0.131.0,0.132.0)",
+      "expression": "[0.131.0,0.131.999999999]",
       "define": "VRVLOG_GLTF_0_131"
     }
   ]
