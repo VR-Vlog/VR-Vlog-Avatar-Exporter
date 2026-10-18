@@ -26,6 +26,9 @@ runner = tool("run-validation")
 candidate = tool("build-release-candidate")
 release = tool("verify-release-candidate")
 lint = tool("run-actionlint")
+gitflow = tool("check-gitflow")
+staging = tool("resolve-staging-beta")
+publication_policy = tool("release_policy")
 SHA = "a" * 40
 
 
@@ -94,6 +97,107 @@ class WorkflowTrustTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 policy.check(name, data)
 
+    def test_branch_validation_and_staging_events_cannot_be_broadened_or_skipped(self):
+        for branches in (["main"], ["develop", "main"], ["*"]):
+            data = self.workflow()
+            data["on"]["push"]["branches"] = branches
+            with self.subTest(branches=branches), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        for change in ({"branches": ["develop"]}, {"types": ["opened", "synchronize", "reopened"]}):
+            data = self.workflow()
+            data["on"]["pull_request"] = change
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        for change in ({"if": "false"}, {"if": "github.base_ref == 'main'"}, {"continue-on-error": True},
+                       {"env": {"GITHUB_EVENT_PATH": "fake.json"}}):
+            data = self.workflow()
+            guard = next(step for step in data["jobs"]["schema"]["steps"] if step.get("name") == "Check Gitflow pull request target")
+            guard.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        data = self.workflow("release-candidate.yml")
+        data["on"]["push"]["branches"] = ["develop"]
+        with self.assertRaises(ValueError):
+            policy.check("release-candidate.yml", data)
+        for name in ("release-vpm.yml", "build-listing.yml"):
+            data = self.workflow(name)
+            data["on"]["push"] = {"branches": ["main"]}
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                policy.check(name, data)
+
+    def test_staging_candidate_cannot_substitute_an_untrusted_commit_source(self):
+        for name in ("Require exact main source", "Build and inspect the candidate"):
+            for source in ("${{ inputs.expected_commit }}", "${{ github.sha }}",
+                           "${{ github.event.pull_request.head.sha }}", "${{ github.event.after }}"):
+                data = self.workflow("release-candidate.yml")
+                step = next(step for step in data["jobs"]["candidate"]["steps"] if step.get("name") == name)
+                step["env"]["EXPECTED_COMMIT"] = source
+                with self.subTest(name=name, source=source), self.assertRaises(ValueError):
+                    policy.check("release-candidate.yml", data)
+        data = self.workflow("release-candidate.yml")
+        source = next(step for step in data["jobs"]["candidate"]["steps"] if step.get("name") == "Require exact main source")
+        source["if"] = "github.event_name == 'workflow_dispatch'"
+        with self.assertRaises(ValueError):
+            policy.check("release-candidate.yml", data)
+
+    def test_automatic_beta_publication_keeps_authenticated_inputs_and_a_narrow_trigger(self):
+        mutations = (
+            lambda w: w["on"]["workflow_run"].update({"types": ["requested"]}),
+            lambda w: w["on"]["workflow_run"].update({"workflows": ["Validate"]}),
+            lambda w: w["on"]["workflow_run"].update({"branches": ["develop", "main"]}),
+            lambda w: w["jobs"]["resolve-candidate"].update({"if": "github.event_name == 'workflow_run'"}),
+            lambda w: w["jobs"]["resolve-candidate"].update({"permissions": {"contents": "write", "actions": "read"}}),
+            lambda w: w["jobs"]["resolve-candidate"]["steps"][0]["with"].update({"ref": "${{ github.sha }}"}),
+            lambda w: w["jobs"]["resolve-candidate"]["steps"][0]["with"].update({"fetch-depth": 1}),
+            lambda w: w["jobs"]["resolve-candidate"]["steps"][-1].update({"if": "false"}),
+            lambda w: w["jobs"]["resolve-candidate"]["outputs"].update({"expected_commit": "${{ github.sha }}"}),
+            lambda w: w["jobs"]["release"].update({"if": "always()"}),
+            lambda w: w["jobs"]["release"]["steps"][0]["with"].update({"ref": "${{ github.sha }}"}),
+        )
+        for mutation in mutations:
+            data = self.workflow("release-vpm.yml")
+            mutation(data)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                policy.check("release-vpm.yml", data)
+        for channel in ("${{ inputs.channel }}", "${{ needs.resolve-candidate.outputs.channel }}", "stable"):
+            data = self.workflow("release-vpm.yml")
+            version = next(step for step in data["jobs"]["release"]["steps"] if step.get("name") == "Verify versions")
+            version["env"]["RELEASE_CHANNEL"] = channel
+            with self.subTest(channel=channel), self.assertRaises(ValueError):
+                policy.check("release-vpm.yml", data)
+        data = self.workflow("release-vpm.yml")
+        publish = next(step for step in data["jobs"]["release"]["steps"] if step.get("name") == "Publish release")
+        publish["run"] = publish["run"].replace('--target "${EXPECTED_COMMIT}"', '--target "${GITHUB_SHA}"')
+        with self.assertRaises(ValueError):
+            policy.check("release-vpm.yml", data)
+        data = self.workflow("release-vpm.yml")
+        dispatch = data["jobs"]["dispatch-listing"]["steps"][0]
+        dispatch["run"] = dispatch["run"].replace('listing_ref="v${VERSION}"', "listing_ref=main")
+        with self.assertRaises(ValueError):
+            policy.check("release-vpm.yml", data)
+
+    def test_beta_tag_authentication_cannot_be_skipped_or_moved_after_secrets(self):
+        for mutation in ("remove", "skip", "move", "source"):
+            data = self.workflow("build-listing.yml")
+            steps = data["jobs"]["build-listing"]["steps"]
+            if mutation == "remove":
+                steps.pop(1)
+            elif mutation == "skip":
+                steps[1]["if"] = "false"
+            elif mutation == "move":
+                steps.insert(3, steps.pop(1))
+            else:
+                steps[0]["with"]["ref"] = "main"
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                policy.check("build-listing.yml", data)
+
+    def test_cancelled_publication_cannot_continue_releasing_or_dispatching(self):
+        for job in ("release", "dispatch-listing"):
+            data = self.workflow("release-vpm.yml")
+            data["jobs"][job]["if"] = data["jobs"][job]["if"].replace("!cancelled() && ", "")
+            with self.subTest(job=job), self.assertRaises(ValueError):
+                policy.check("release-vpm.yml", data)
+
     def test_main_publication_gates_cannot_be_bypassed(self):
         for name, job in (("release-vpm.yml", "release"), ("release-candidate.yml", "candidate"), ("build-listing.yml", "build-listing")):
             data = self.workflow(name)
@@ -153,6 +257,8 @@ class WorkflowTrustTests(unittest.TestCase):
         mutations = (
             lambda w: w["on"].update({"schedule": []}),
             lambda w: w["on"]["release"].update({"types": ["created"]}),
+            lambda w: w["on"]["pull_request"].update({"types": ["opened", "synchronize", "reopened"]}),
+            lambda w: w["on"]["pull_request"].update({"branches": ["develop"]}),
             lambda w: w["concurrency"].update({"cancel-in-progress": True}),
             lambda w: w["jobs"]["changes"].update({"if": "false"}),
             lambda w: w["jobs"]["check-listing-builder"].update({"if": "false"}),
@@ -269,6 +375,91 @@ class WorkflowTrustTests(unittest.TestCase):
                 policy.check("build-listing.yml", data)
 
 
+class GitflowTests(unittest.TestCase):
+    def event(self, base="main", head="release/1.2.3"):
+        repository = {"id": 123, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"}
+        return {"pull_request": {"base": {"ref": base, "repo": dict(repository)},
+                                 "head": {"ref": head, "repo": dict(repository)}}}
+
+    def test_release_hotfix_and_non_main_targets_pass(self):
+        for base, head in (("main", "release/0.0.0"), ("main", "release/1.23.456"),
+                           ("main", "hotfix/save-error"), ("main", "hotfix/1.2.3"),
+                           ("develop", "feature/change"), ("develop", "main"),
+                           ("release/1.2.3", "fix/release-error")):
+            with self.subTest(base=base, head=head):
+                gitflow.validate(self.event(base, head), "pull_request")
+        event = self.event("develop", "feature/external")
+        event["pull_request"]["head"]["repo"] = {"id": 456, "full_name": "contributor/fork"}
+        gitflow.validate(event, "pull_request")
+
+    def test_main_versions_advance_without_reusing_tags_and_stable_requires_its_release_branch(self):
+        for version, base, head in (("1.2.3-beta.2", "1.2.3-beta.1", "release/1.2.3"),
+                                    ("1.2.4-beta.1", "1.2.3", "hotfix/save-error"),
+                                    ("1.2.3", "1.2.3-beta.2", "release/1.2.3")):
+            with self.subTest(version=version, base=base, head=head):
+                gitflow.validate_version(version, base, head, False)
+        for version, base, head, exists in (("1.2.3-beta.1", "1.2.3-beta.1", "release/1.2.3", False),
+                                            ("1.2.3-beta.2", "1.2.3", "release/1.2.3", False),
+                                            ("1.2.2-beta.9", "1.2.3-beta.1", "release/1.2.2", False),
+                                            ("1.2.3-beta.2", "1.2.3-beta.1", "release/1.2.3", True),
+                                            ("1.2.3", "1.2.3-beta.2", "hotfix/save-error", False),
+                                            ("1.2.3", "1.2.3-beta.2", "release/1.2.4", False),
+                                            ("1.2.3-beta.01", "1.2.3-beta.1", "release/1.2.3", False)):
+            with self.subTest(version=version, base=base, head=head, exists=exists), self.assertRaises(ValueError):
+                gitflow.validate_version(version, base, head, exists)
+
+    def test_main_rejects_direct_development_and_invalid_release_or_hotfix_names(self):
+        for head in ("develop", "feature/change", "release/1.2", "release/01.2.3", "release/1.02.3",
+                     "release/1.2.03", "release/1.2.3-beta.1", "release/1.2.3/extra", "release/",
+                     "hotfix/", "hotfix/nested/fix", "hotfix/.hidden", "hotfix/fix..name",
+                     "hotfix/fix.lock", "hotfix/fix.", "hotfix/fix name"):
+            with self.subTest(head=head), self.assertRaises(ValueError):
+                gitflow.validate(self.event(head=head), "pull_request")
+
+    def test_fork_and_incomplete_repository_identity_cannot_promote_to_main(self):
+        for repository in ({"id": 456, "full_name": "contributor/fork"},
+                           {"id": 456, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 123, "full_name": "contributor/fork"},
+                           {"id": True, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": "123", "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 0, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 123, "full_name": ""}, {"id": 123, "full_name": " "}, {}, None):
+            for side in ("head", "base"):
+                event = self.event()
+                event["pull_request"][side]["repo"] = repository
+                with self.subTest(side=side, repository=repository), self.assertRaises(ValueError):
+                    gitflow.validate(event, "pull_request")
+
+    def test_missing_malformed_or_wrong_event_payload_fails_closed(self):
+        for event_name in (None, "push", "pull_request_target", "workflow_dispatch"):
+            with self.subTest(event_name=event_name), self.assertRaises(ValueError):
+                gitflow.validate(self.event(), event_name)
+        for event in (None, [], {}, {"pull_request": None}, {"pull_request": {}},
+                      {"pull_request": {"base": "main", "head": "release/1.2.3"}}):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                gitflow.validate(event, "pull_request")
+        for side in ("base", "head"):
+            for ref in (None, "", 123, "bad..branch", "trailing/", "has space", ".hidden", "fix.lock"):
+                event = self.event("develop", "feature/change")
+                event["pull_request"][side]["ref"] = ref
+                with self.subTest(side=side, ref=ref), self.assertRaises(ValueError):
+                    gitflow.validate(event, "pull_request")
+
+    def test_command_reads_the_event_file_instead_of_branch_environment_hints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "event.json"
+            environment = {"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": "pull_request",
+                           "GITHUB_BASE_REF": "develop", "GITHUB_HEAD_REF": "release/1.2.3"}
+            path.write_text(json.dumps(self.event("main", "feature/unapproved")), encoding="utf-8")
+            with mock.patch.dict(gitflow.os.environ, environment), self.assertRaises(ValueError):
+                gitflow.main()
+            path.write_text(json.dumps(self.event("develop", "main")), encoding="utf-8")
+            environment["GITHUB_BASE_REF"] = "main"
+            environment["GITHUB_HEAD_REF"] = "feature/unapproved"
+            with mock.patch.dict(gitflow.os.environ, environment), mock.patch("sys.stdout", new=io.StringIO()):
+                gitflow.main()
+
+
 class ValidationReceiptTests(unittest.TestCase):
     def test_mirror_and_publication_regressions_join_every_complete_host_plan(self):
         existing = ("check-pipeline.py", "test-pipeline.py", "validate.py", "test-release-policy.py",
@@ -381,12 +572,12 @@ class PublicationReceiptTests(unittest.TestCase):
                 "path": release.WORKFLOW, "head_sha": SHA, "head_branch": "main",
                 "event": "workflow_dispatch", "status": "completed", "conclusion": "success"}
 
-    def archive(self, metadata_changes=None, extra=None, report=None):
-        package = "com.vrvlog.liltoon-vrm-exporter-1.2.3.zip"
+    def archive(self, metadata_changes=None, extra=None, report=None, version="1.2.3"):
+        package = "com.vrvlog.liltoon-vrm-exporter-" + version + ".zip"
         payload = b"immutable reviewed package"
         digest = hashlib.sha256(payload).hexdigest()
         meta = {"schema": 1, "repository": release.REPOSITORY, "commit": SHA, "run_id": 42,
-                "version": "1.2.3", "package": package, "package_sha256": digest, "validation_scope": "host-only"}
+                "version": version, "package": package, "package_sha256": digest, "validation_scope": "host-only"}
         meta.update(metadata_changes or {})
         out = io.BytesIO()
         with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_DEFLATED) as archive:
@@ -398,7 +589,10 @@ class PublicationReceiptTests(unittest.TestCase):
         return out.getvalue(), digest
 
     def test_success_receipt_is_bound_to_run_commit_version_and_bytes(self):
-        release.verify_run(self.run_fixture(), 123, SHA)
+        for event in ("workflow_dispatch", "push"):
+            run = self.run_fixture()
+            run["event"] = event
+            release.verify_run(run, 123, SHA)
         data, digest = self.archive()
         release.verify_archive(data, SHA, "1.2.3", digest, 42)
         with self.assertRaises(ValueError):
@@ -407,7 +601,8 @@ class PublicationReceiptTests(unittest.TestCase):
     def test_fork_pr_wrong_workflow_failed_and_in_progress_runs_fail(self):
         changes = ({"repository": {"full_name": "attacker/fork"}}, {"head_sha": "b" * 40},
                    {"workflow_id": 456}, {"path": ".github/workflows/fake.yml"},
-                   {"event": "pull_request"}, {"head_branch": "feature"},
+                   {"event": "pull_request"}, {"event": "pull_request_target"}, {"event": "workflow_run"},
+                   {"event": "release"}, {"event": None}, {"head_branch": "develop"}, {"head_branch": "feature"},
                    {"status": "in_progress"}, {"conclusion": "failure"}, {"conclusion": "cancelled"})
         for change in changes:
             run = self.run_fixture()
@@ -465,6 +660,162 @@ class PublicationReceiptTests(unittest.TestCase):
                 archive.writestr(name, b"x" * (129 * 1024) if name == "candidate.json" else source.read(name))
         with self.assertRaises(ValueError):
             release.verify_archive(out.getvalue(), SHA, "1.2.3", digest, 42)
+
+
+class StagingBetaTests(unittest.TestCase):
+    def run_fixture(self):
+        run = PublicationReceiptTests().run_fixture()
+        run.update({"id": 42, "run_attempt": 1, "event": "push",
+                    "head_repository": {"id": release.REPOSITORY_GITHUB_ID, "full_name": release.REPOSITORY}})
+        return run
+
+    def event_fixture(self):
+        return {"action": "completed", "repository": {"id": release.REPOSITORY_GITHUB_ID,
+                                                       "full_name": release.REPOSITORY},
+                "workflow_run": self.run_fixture()}
+
+    def source(self, root, version="1.2.3-beta.1"):
+        (root / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+        (root / "Compatibility").mkdir()
+        (root / "Compatibility/dependencies.json").write_text(
+            json.dumps({"uniVrm": {"releaseVersion": "0.131.0"}}), encoding="utf-8")
+
+    def resolve_fixture(self, root, *, version="1.2.3-beta.1", metadata=None, after=None):
+        self.source(root, version)
+        data, digest = PublicationReceiptTests().archive(metadata_changes=metadata, version=version)
+        artifact = {"id": 99, "name": "release-candidate-" + SHA, "expired": False, "size_in_bytes": len(data)}
+        api = mock.Mock(side_effect=[{"id": 123, "path": release.WORKFLOW}, self.run_fixture(),
+                                     {"total_count": 1, "artifacts": [artifact]}, data,
+                                     {"id": 123, "path": release.WORKFLOW}, after or self.run_fixture()])
+        with mock.patch.object(staging, "verify_checkout", return_value=SHA):
+            result = staging.resolve(self.event_fixture(), "workflow_run", root, api)
+        return result, digest, api
+
+    def test_completed_main_candidate_resolves_exact_beta_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, digest, api = self.resolve_fixture(Path(directory))
+        self.assertEqual({"publish": "true", "version": "1.2.3-beta.1", "channel": "beta",
+                          "expected_commit": SHA, "package_sha256": digest,
+                          "candidate_run_id": "42", "univrm_version": "0.131.0"}, result)
+        self.assertEqual(mock.call(staging.PREFIX + "/actions/artifacts/99/zip", binary=True), api.call_args_list[3])
+
+    def test_stable_candidate_requires_manual_publication_and_other_prereleases_fail(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result, _, _ = self.resolve_fixture(Path(directory), version="1.2.3")
+        self.assertEqual({"publish": "false"}, result)
+        for version in ("1.2.3-alpha.1", "1.2.3-beta.01", "01.2.3-beta.1", "1.2.3-beta.1+build"):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(version=version), self.assertRaises(ValueError):
+                self.resolve_fixture(Path(directory), version=version)
+
+    def test_event_identity_and_privileged_trigger_must_match_the_real_main_candidate(self):
+        mutations = (
+            lambda e: e.update({"action": "requested"}),
+            lambda e: e.update({"repository": {"id": 1, "full_name": release.REPOSITORY}}),
+            lambda e: e["workflow_run"].update({"event": "pull_request"}),
+            lambda e: e["workflow_run"].update({"event": "workflow_dispatch"}),
+            lambda e: e["workflow_run"].update({"head_branch": "develop"}),
+            lambda e: e["workflow_run"].update({"head_sha": "not-a-sha"}),
+            lambda e: e["workflow_run"].update({"id": True}),
+            lambda e: e["workflow_run"].update({"run_attempt": 0}),
+            lambda e: e["workflow_run"].update({"path": ".github/workflows/attacker.yml"}),
+            lambda e: e["workflow_run"].update({"conclusion": "failure"}),
+            lambda e: e["workflow_run"].update({"status": "in_progress"}),
+            lambda e: e["workflow_run"].update({"head_repository": {"id": 1, "full_name": release.REPOSITORY}}),
+            lambda e: e["workflow_run"].update({"head_repository": {"id": release.REPOSITORY_GITHUB_ID, "full_name": "attacker/fork"}}),
+        )
+        for mutation in mutations:
+            event = self.event_fixture()
+            mutation(event)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                staging.event_candidate(event, "workflow_run")
+        for event_name in ("push", "workflow_dispatch", "pull_request_target", None):
+            with self.subTest(event_name=event_name), self.assertRaises(ValueError):
+                staging.event_candidate(self.event_fixture(), event_name)
+
+    def test_candidate_api_must_confirm_workflow_event_commit_and_attempt(self):
+        for change in ({"id": 43}, {"workflow_id": 456}, {"head_sha": "b" * 40}, {"run_attempt": 2},
+                       {"head_repository": {"id": 1, "full_name": "attacker/fork"}}):
+            run = dict(self.run_fixture(), **change)
+            api = mock.Mock(side_effect=[{"id": 123, "path": release.WORKFLOW}, run])
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                staging.authenticate_candidate(self.event_fixture(), "workflow_run", api)
+        api = mock.Mock(return_value={"id": 123, "path": ".github/workflows/attacker.yml"})
+        with self.assertRaises(ValueError):
+            staging.authenticate_candidate(self.event_fixture(), "workflow_run", api)
+
+    def test_checkout_must_equal_the_candidate_and_belong_to_main(self):
+        with mock.patch.object(staging.subprocess, "check_output", return_value="b" * 40):
+            with self.assertRaises(ValueError):
+                staging.verify_checkout(SHA)
+        for code in (1, 128):
+            with mock.patch.object(staging.subprocess, "check_output", return_value=SHA), \
+                    mock.patch.object(staging.subprocess, "run", return_value=subprocess.CompletedProcess([], code)), \
+                    self.subTest(code=code), self.assertRaises(ValueError):
+                staging.verify_checkout(SHA)
+        with mock.patch.object(staging.subprocess, "check_output", return_value=SHA), \
+                mock.patch.object(staging.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as execute:
+            self.assertEqual(SHA, staging.verify_checkout(SHA))
+        self.assertEqual(["git", "merge-base", "--is-ancestor", SHA, "origin/main"], execute.call_args.args[0])
+
+    def test_modified_receipts_package_hash_and_rerun_are_rejected(self):
+        for metadata in ({"package_sha256": "b" * 64}, {"version": "1.2.3-beta.2"},
+                         {"run_id": 43}, {"commit": "b" * 40}):
+            with tempfile.TemporaryDirectory() as directory, self.subTest(metadata=metadata), self.assertRaises(ValueError):
+                self.resolve_fixture(Path(directory), metadata=metadata)
+        after = dict(self.run_fixture(), run_attempt=2)
+        with tempfile.TemporaryDirectory() as directory, self.assertRaises(ValueError):
+            self.resolve_fixture(Path(directory), after=after)
+
+    def test_automatic_release_context_uses_candidate_commit_and_forces_beta(self):
+        for sha, channel in (("b" * 40, "beta"), (SHA, "stable")):
+            api = mock.Mock(side_effect=[{"id": 123, "path": release.WORKFLOW}, self.run_fixture()])
+            with mock.patch.object(staging, "verify_checkout", return_value=SHA), \
+                    self.subTest(sha=sha, channel=channel), self.assertRaises(ValueError):
+                staging.release_context(self.event_fixture(), "workflow_run", sha, channel, api=api)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "event.json"
+            path.write_text(json.dumps(self.event_fixture()), encoding="utf-8")
+            environment = {"GITHUB_EVENT_NAME": "workflow_run", "GITHUB_EVENT_PATH": str(path),
+                           "GITHUB_REF": "refs/heads/develop", "GITHUB_SHA": "b" * 40,
+                           "EXPECTED_COMMIT": SHA, "RELEASE_CHANNEL": "beta"}
+            api = mock.Mock(side_effect=[{"id": 123, "path": release.WORKFLOW}, self.run_fixture()])
+            with mock.patch.object(publication_policy, "staging_tool", return_value=staging), \
+                    mock.patch.object(staging.verifier, "gh_api", api), \
+                    mock.patch.object(staging, "verify_checkout", return_value=SHA):
+                self.assertEqual(("refs/heads/main", SHA), publication_policy.publication_context(environment, root))
+
+    def tag_environment(self):
+        ref = "refs/tags/v1.2.3-beta.1"
+        return {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": ref, "GITHUB_SHA": SHA,
+                "GITHUB_WORKFLOW_REF": release.REPOSITORY + "/.github/workflows/build-listing.yml@" + ref}
+
+    def published_release(self):
+        return {"tag_name": "v1.2.3-beta.1", "draft": False, "prerelease": True,
+                "assets": [{"name": "com.vrvlog.liltoon-vrm-exporter-1.2.3-beta.1.zip", "state": "uploaded", "size": 100}]}
+
+    def verify_tag(self, environment=None, release_data=None, tag_sha=SHA):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.source(root)
+            with mock.patch.object(staging, "verify_checkout", return_value=SHA), \
+                    mock.patch.object(staging.subprocess, "check_output", return_value=tag_sha):
+                staging.verify_published_tag(environment or self.tag_environment(), root,
+                                             mock.Mock(return_value=release_data or self.published_release()))
+
+    def test_listing_accepts_only_an_existing_published_beta_tag_at_its_exact_commit(self):
+        self.verify_tag()
+        for change in ({"GITHUB_EVENT_NAME": "push"}, {"GITHUB_REF": "refs/heads/main"},
+                       {"GITHUB_REF": "refs/tags/v1.2.3"},
+                       {"GITHUB_WORKFLOW_REF": release.REPOSITORY + "/.github/workflows/build-listing.yml@refs/heads/main"}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.verify_tag(environment=dict(self.tag_environment(), **change))
+        for change in ({"tag_name": "v1.2.3-beta.2"}, {"draft": True}, {"prerelease": False}, {"assets": []},
+                       {"assets": [{"name": "wrong.zip", "state": "uploaded", "size": 100}]}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                self.verify_tag(release_data=dict(self.published_release(), **change))
+        with self.assertRaises(ValueError):
+            self.verify_tag(tag_sha="b" * 40)
 
 
 if __name__ == "__main__":

@@ -949,6 +949,15 @@ class ApiTests(unittest.TestCase):
         release = {**valid, "GITHUB_EVENT_NAME": "release", "GITHUB_REF": "refs/tags/v1.0.0"}
         release["GITHUB_WORKFLOW_REF"] = f"{sync.PUBLISHER_REPOSITORY}/{sync.PUBLISHER_WORKFLOW}@refs/tags/v1.0.0"
         self.assertEqual(sync.publisher_from_environment(release), publisher())
+        beta_ref = "refs/tags/v1.0.1-beta.1"
+        beta = {**valid, "GITHUB_REF": beta_ref,
+                "GITHUB_WORKFLOW_REF": f"{sync.PUBLISHER_REPOSITORY}/{sync.PUBLISHER_WORKFLOW}@{beta_ref}"}
+        self.assertEqual(sync.publisher_from_environment(beta), publisher())
+        for ref in ("refs/tags/v1.0.1", "refs/tags/v1.0.1-beta.01", "refs/tags/v1.0.1-rc.1"):
+            invalid = {**beta, "GITHUB_REF": ref,
+                       "GITHUB_WORKFLOW_REF": f"{sync.PUBLISHER_REPOSITORY}/{sync.PUBLISHER_WORKFLOW}@{ref}"}
+            with self.subTest(ref=ref), self.assertRaises(sync.SyncError):
+                sync.publisher_from_environment(invalid)
         for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_EVENT_NAME", "pull_request"),
                            ("GITHUB_REF", "refs/heads/other"), ("GITHUB_REPOSITORY", "fork/repo"),
                            ("GITHUB_REPOSITORY_ID", "999"), ("GITHUB_REPOSITORY_ID", None),

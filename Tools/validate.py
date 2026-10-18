@@ -26,7 +26,8 @@ listing = json.loads((root / "source.json").read_text(encoding="utf-8"))
 
 assert package["name"] == "com.vrvlog.liltoon-vrm-exporter"
 assert package["unity"] == "2022.3"
-assert package["version"] == "0.11.15"
+number = r"(?:0|[1-9][0-9]*)"
+assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-beta\.{number})?", package["version"])
 assert one_click.index("AvatarBaseShape.Preserve(clone, clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
 assert "foreach (var mesh in temporaryMeshes) UnityEngine.Object.DestroyImmediate(mesh);" in one_click
 assert package["vpmDependencies"] == {
@@ -238,7 +239,7 @@ assert "--disable-build-servers" in listing_workflow
 assert "--maxcpucount:1" in listing_workflow
 assert "${{ env.pathToCi }}/.nuke/temp" not in listing_workflow
 assert "pull_request:" in listing_workflow
-assert "  pull_request:\n  release:" in listing_workflow
+# Trigger contracts are parsed and regression-tested by check-pipeline.py and test-pipeline.py.
 for listing_path in (".github/workflows/build-listing.yml", "package.json", "source.json",
                      "Tools/check-listing.py", "Tools/test-listing.py"):
     assert f'"{listing_path}"' in listing_workflow
@@ -261,18 +262,15 @@ assert 'Compatibility/dependencies.json' in release_workflow
 # The existing workflow may retain a historical stable UI default. Publication
 # uses the explicit input and release_policy rejects any manifest mismatch.
 assert re.search(r"version:\n\s+description: Exporter version without the v prefix\n\s+required: true\n\s+default: \d+\.\d+\.\d+\n", release_workflow)
-assert 'EXPORTER_VERSION: ${{ inputs.version }}' in release_workflow
-assert '--target "${GITHUB_SHA}"' in release_workflow
+# Event-specific version, commit, hash and channel inputs are checked by check-pipeline.py.
+assert '--target "${EXPECTED_COMMIT}"' in release_workflow
 release_policy = (root / "Tools/release_policy.py").read_text(encoding="utf-8")
 assert '"refs/heads/main"' in release_policy
 assert 'sha != expected_sha' in release_policy
 assert 'version != package["version"]' in release_policy
 assert 'compatibility["uniVrm"]["releaseVersion"]' in release_policy
 assert '["--prerelease", "--latest=false"]' in release_policy
-assert 'EXPECTED_COMMIT: ${{ inputs.expected_commit }}' in release_workflow
-assert 'EXPECTED_PACKAGE_SHA256: ${{ inputs.expected_package_sha256 }}' in release_workflow
 assert 'Built ZIP differs from the validated release candidate' in release_workflow
-assert 'RELEASE_CHANNEL: ${{ inputs.channel }}' in release_workflow
 assert 'python3 Tools/release_policy.py > release-flags.txt' in release_workflow
 assert '"${release_flags[@]}"' in release_workflow
 import importlib.util
@@ -285,7 +283,7 @@ for workflow_name in ("validate.yml", "release-vpm.yml", "release-candidate.yml"
     assert 'python3 Tools/run-validation.py --report work/validation.json' in (root / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
 assert 'tag v${VERSION} already exists' in release_workflow
 assert 'git ls-remote --exit-code --tags origin' in release_workflow
-assert 'gh workflow run build-listing.yml --repo "$GITHUB_REPOSITORY" --ref main' in release_workflow
+# Listing dispatch pins beta to its published tag; check-pipeline.py checks the complete script.
 assert '"com.vrmc.vrmshaders" not in gltf.get("dependencies", {})' in release_workflow
 assert (root / "ThirdPartyNotices/UniVRM.md").is_file()
 assert (root / "LICENSE").is_file()

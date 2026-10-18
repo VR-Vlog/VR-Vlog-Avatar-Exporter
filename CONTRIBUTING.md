@@ -22,7 +22,8 @@ Ordinary bug reports and proposals are public. Do not attach purchased or privat
    git -c core.autocrlf=false clone https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter.git
    cd VR-Vlog-Avatar-Exporter
    git config core.autocrlf false
-   git switch -c your-change
+   git switch develop
+   git switch -c feature/your-change
    ```
 
    The clone option controls the initial checkout; the local setting keeps later checkouts from converting LF to CRLF. If an existing checkout already has CRLF conversion, use a separate fresh clone with these settings and preserve your local work.
@@ -88,7 +89,11 @@ Replace the tag, version and output filename together for another release. Compa
 - Describe what you actually verified, including commands, results and remaining limitations.
 - Preserve dependency version gates, published tags and release channel policy. Do not combine unrelated version bumps or release operations with a documentation PR.
 
-The current `main` ruleset requires a pull request and successful `schema` and `listing-validation` checks against an up-to-date branch. Address review findings before integration. Passing CI does not replace required Unity or visual checks for changes that need them.
+通常の変更は `develop` から `feature/<slug>` / `fix/<slug>` を作り、`develop` 向けPRで統合します。`develop` が既定の開発ブランチ、`main` がステージングです。`develop` の昇格は `release/X.Y.Z` を作って `main` 向けPRを開き、Merge commitで統合します。緊急修正は `main` から `hotfix/<slug>` を作ります。`main` 向けPRでは、同じリポジトリのrelease/hotfixブランチだけを許可します。昇格ごとにpackage.jsonの版を増やし、未公開の `X.Y.Z-beta.N` と同じ版の変更履歴を用意します。stable化は対応する `release/X.Y.Z` の版更新PRとして準備し、自動公開しません。
+
+`main` へのマージで検証用ZIPと候補の証跡を自動生成します。候補が成功すると、未公開の `X.Y.Z-beta.N` はGitHubのプレリリースとして自動公開し、VPM一覧も同じタグから更新します。stableの公開だけは別途承認後の手動操作です。`main` 更新後は `main` → `develop` のPRをMerge commitで戻し、緊急修正と昇格履歴を次の開発へ反映します。詳しい手順は[開発・検証・配布の運用](Documentation~/DevelopmentPipeline.md#ブランチとステージング)を参照してください。
+
+Both `develop` and `main` require a pull request and successful `schema` and `listing-validation` checks against an up-to-date branch. Use Squash for ordinary changes into `develop`, and Merge commit for promotion to `main` and back-merges into `develop`. Address review findings before integration. Passing CI does not replace required Unity or visual checks for changes that need them.
 
 ## Licenses and attribution
 
