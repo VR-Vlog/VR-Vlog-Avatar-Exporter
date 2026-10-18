@@ -1,0 +1,49 @@
+{
+  "unity": "2022.3.22f1",
+  "filterFocused": [
+    "PhysBoneSpringExportTests",
+    "NdmfBlinkPreparationTests",
+    "InstalledAaoNeutralEndpointExportTests",
+    "AvatarOptimizerBoxIntegrationTests"
+  ],
+  "sets": {
+    "E1": {"aao": "1.7.13", "ndmf": "1.8.3", "modularAvatar": null, "vrchatSdk": "3.7.0", "uniVrm": "0.131.0", "lilToon": "2.0.0"},
+    "E2": {"aao": "1.8.15", "ndmf": "1.8.3", "modularAvatar": "1.13.4", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4"},
+    "U2": {"aao": "1.9.20", "ndmf": "1.14.8", "modularAvatar": "1.18.7", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4"}
+  },
+  "runs": [
+    {
+      "set": "E1",
+      "commit": "8e85963",
+      "counts": {"total": 54, "passed": 27, "failed": 0, "skipped": 27},
+      "fixtures": {
+        "PhysBoneSpringExportTests": {"total": 34, "passed": 27, "failed": 0, "skipped": 7},
+        "NdmfBlinkPreparationTests": {"total": 2, "passed": 0, "failed": 0, "skipped": 2},
+        "InstalledAaoNeutralEndpointExportTests": {"total": 3, "passed": 0, "failed": 0, "skipped": 3},
+        "AvatarOptimizerBoxIntegrationTests": {"total": 15, "passed": 0, "failed": 0, "skipped": 15}
+      }
+    },
+    {
+      "set": "E2",
+      "commit": "8e85963",
+      "counts": {"total": 54, "passed": 36, "failed": 0, "skipped": 18},
+      "fixtures": {
+        "PhysBoneSpringExportTests": {"total": 34, "passed": 34, "failed": 0, "skipped": 0},
+        "NdmfBlinkPreparationTests": {"total": 2, "passed": 2, "failed": 0, "skipped": 0},
+        "InstalledAaoNeutralEndpointExportTests": {"total": 3, "passed": 0, "failed": 0, "skipped": 3},
+        "AvatarOptimizerBoxIntegrationTests": {"total": 15, "passed": 0, "failed": 0, "skipped": 15}
+      }
+    },
+    {
+      "set": "U2",
+      "commit": "8e85963",
+      "counts": {"total": 54, "passed": 54, "failed": 0, "skipped": 0},
+      "fixtures": {
+        "PhysBoneSpringExportTests": {"total": 34, "passed": 34, "failed": 0, "skipped": 0},
+        "NdmfBlinkPreparationTests": {"total": 2, "passed": 2, "failed": 0, "skipped": 0},
+        "InstalledAaoNeutralEndpointExportTests": {"total": 3, "passed": 3, "failed": 0, "skipped": 0},
+        "AvatarOptimizerBoxIntegrationTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0}
+      }
+    }
+  ]
+}
