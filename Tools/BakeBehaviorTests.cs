@@ -171,7 +171,11 @@ public static class ExporterBakeBehaviorTests
         Equal(error.Issues.Count, 1, "Disabled filter does not suppress active body");
         Equal(error.Issues[0].RendererPath, "Body", "Retained renderer path");
         avatar.activeSelf = false;
-        Throws<InvalidOperationException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar), "Inactive avatar rejected");
+        // The export shows only its own copy's root, so an inactive root is
+        // validated by what is shown inside it.
+        error = Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar, excluded), "Inactive avatar root validates its shown contents");
+        Equal(error.Issues.Count, 1, "Inactive root keeps the same retained renderers");
+        Equal(error.Issues[0].RendererPath, "Body", "Inactive root renderer path");
         Throws<ArgumentNullException>(() => LilToonMainTextureBaker.ValidateAvatar(null), "Null avatar rejected");
     }
 

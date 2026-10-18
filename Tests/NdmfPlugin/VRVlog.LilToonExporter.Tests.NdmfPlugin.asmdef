@@ -1,0 +1,16 @@
+{
+  "name": "VRVlog.LilToonExporter.Tests.NdmfPlugin",
+  "rootNamespace": "VRVlog.LilToonExporter.Tests",
+  "references": ["nadena.dev.ndmf"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false,
+  "defineConstraints": ["VRVLOG_TEST_NDMF"],
+  "versionDefines": [
+    {
+      "name": "nadena.dev.ndmf",
+      "expression": "",
+      "define": "VRVLOG_TEST_NDMF"
+    }
+  ]
+}

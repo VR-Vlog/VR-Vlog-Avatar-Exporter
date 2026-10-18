@@ -81,7 +81,9 @@ assert "must be an array" in injector and "must be an object" in injector
 assert "Validate(output, extension.materials.Count)" in injector
 assert "ExportRendererSelection.Enumerate(avatar)" in injector
 assert "ExportRendererSelection.Enumerate(clone)" in one_click
-assert one_click.index("ExportRendererSelection.RequireActiveRoot(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
+assert "ExportRendererSelection.RequireActiveRoot(source)" not in one_click
+assert one_click.index("ExportRendererSelection.HiddenInScene(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
+assert "if (!copy.activeSelf) copy.SetActive(true);" in (root / "Editor/NdmfExportPreparation.cs").read_text(encoding="utf-8")
 assert "_MainTex" in reader and "_UseShadow" in reader and "_UseOutline" in reader
 assert "特殊シェーダーは標準lilToonとして近似しました" in reader
 assert 'const string optionalPrefix = "[Optional]";' in reader
@@ -334,7 +336,7 @@ assert 'ExportRecoverySourceStamp' not in normal_export
 assert (root / 'Tests/Editor/ExportFlowTests.cs').is_file()
 assert 'ExportAndSaveNormally(' in (root / 'Tests/Editor/ExportFlowTests.cs').read_text(encoding='utf-8')
 assert 'recoveryOptions: recoveryOptions, recoveryReport: recoveryReport' in export_settings
-assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer)?.Unit' in recovery
+assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit' in recovery
 assert 'code == "audio-link"' in recovery and 'Official(audio)' in recovery
 # Recovery compares partial solver output with the original capture separately
 # from the exact authored-input hash; it must not replace that baseline.
