@@ -60,6 +60,7 @@ BEHAVIOR_CASES = {
         'ACompleteUnifiedPairIncludesCompatibleOneSidedEyelashes': 4,
         'APartialEyelashPairCannotBeHiddenByAnotherRenderersBlink': 2,
         'AUnifiedPartialKeepsPriorityOverMultipleLegacyPartialFamilies': 1,
+        'ActualExportContinuesWithoutBlinkWhenTheClosingShapeIsAmbiguous': 2,
         'ActualExportPreservesAuthoredClipsIncludingExplicitEmpty': 2,
         'ActualUniVrmExportBindsGeneratedTargetsToTheirFinalNodes': 2,
         'AllBlinkRenderersMustSupportTheIndividualPair': 1,
