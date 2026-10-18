@@ -21,9 +21,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (string.IsNullOrEmpty(savedVrmPath) || !string.Equals(Path.GetExtension(savedVrmPath), ".vrm", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("書き出し済みのVRMファイルを選択してください。");
-            var directory = Path.Combine(Path.GetTempPath(), "VRVlogCloudTransfers");
-            Directory.CreateDirectory(directory);
-            var snapshot = new CloudDevelopmentSnapshot(Path.Combine(directory, Guid.NewGuid().ToString("N") + ".vrm"), Path.GetFileName(savedVrmPath));
+            var snapshot = new CloudDevelopmentSnapshot(TransferTempDirectory.NewFile("VRVlogCloudTransfers", ".vrm"), Path.GetFileName(savedVrmPath));
             try
             {
                 using (var input = testReader != null ? testReader() : new FileStream(savedVrmPath, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan))
