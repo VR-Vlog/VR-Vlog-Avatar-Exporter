@@ -207,7 +207,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The source check counts the hidden mesh, but the export leaves it out,
-        // so the saved file would be empty.
+        // so the file it writes has no mesh and the output check rejects it.
         [Test]
         public void MeshOnlyOnInactiveChildStopsAfterExport()
         {
@@ -215,7 +215,10 @@ namespace VRVlog.LilToonExporter.Tests
             var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             Object.DestroyImmediate(skins[1]);
             skins[0].gameObject.SetActive(false);
-            var error = Assert.Throws<InvalidOperationException>(() => new ExportSettings().Export(fixture.Source, "Hidden", "Tests", new List<string>(), null, null));
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Hidden", "Tests", new List<string>(), exporterVersion: "0.9.0", lilToonVersion: "2.3.4",
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateOutputHasMesh(bytes));
             Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.OutputHasNoMesh));
         }
 
