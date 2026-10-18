@@ -183,7 +183,7 @@ assert 'Guid.NewGuid().ToString("N")' in recovery_session
 assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
-assert "UniVrmOneClickExporter.Export" in window
+assert "UniVrmOneClickExporter.Export" not in window and "settings.Creator(targetAvatar, AvatarName(), targetAuthor)" in window
 assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
 assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
@@ -192,8 +192,15 @@ assert "RequireSupportedLilToon(GameObject avatar)" in window
 # Both export entries compare the shaders the avatar uses with the catalogue.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
 assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-# "アプリに転送" exports through the same check.
-assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+# The export window, "アプリに転送" and batch callers export through ExportSettings,
+# which runs the same check.
+export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
+assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in export_settings
+assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
+assert "licenseOptions: License, disableAudioLink: true" in export_settings
+assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
+assert "targetSettings.Creator(avatar, name, targetAuthor)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+assert "UniVrmOneClickExporter.Export" not in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
 assert f'? info.version : "{package["version"]}"' in window
 assert "using UnityEditor.PackageManager;" not in window
@@ -307,10 +314,8 @@ assert "HasPortableOutline(source)" in one_click
 assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_OutlineTex")' not in one_click
 assert 'private string author = "";' in window
 assert 'private string avatarName = "";' not in window
-assert 'UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,' in window
-assert 'PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,' in window
 assert 'var targetOutput = outputPath;' in window
-assert 'var targetExclusions = excludedObjects.ToArray();' in window
+assert 'var targetExclusions = settings.Exclusions();' in window
 assert 'ExportFailureWindow.Show(session, Completed)' in window
 assert 'session = ExportAndSaveNormally(targetAvatar, targetOutput,' in window
 normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
