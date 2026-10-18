@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using UnityEngine;
 using VRVlog.Expressions;
@@ -149,8 +150,11 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(string.Join(", ", group.Select(d => d.Name).Distinct()) + ": " + group.Key);
             // Unique internal names survive UniVRM's renderer/node reordering.
             // Bind against the actual exported names, never guessed mesh indices.
-            var prefix = "__VRVlog_Menu_" + Guid.NewGuid().ToString("N") + "_";
-            var serial = 0;
+            // Names hash the renderer, entry and source channels, so the same
+            // avatar exports the same names; _2, _3 settle repeated inputs.
+            var usedNames = DeterministicNames.BlendShapeNames(clone);
+            string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
+            string Number(double value) => value.ToString("R", CultureInfo.InvariantCulture);
             var clampToSourceRange = UnityEditor.PlayerSettings.legacyClampBlendShapeWeights;
             long generatedBytes = 0;
             var basis = new Dictionary<(Mesh mesh, int shape, double initial, double value), string>();
@@ -232,7 +236,9 @@ namespace VRVlog.LilToonExporter
                     if (!zero || !zeroScalarTargets.TryGetValue(copy.sharedMesh, out var name))
                     {
                         Reserve(originalMesh);
-                        name = prefix + serial++;
+                        var parts = new List<string> { "Menu", PathOf(copy), entry.Name };
+                        foreach (var value in group.Channels) { parts.Add(value.Path); parts.Add(value.Shape); parts.Add(Number(value.Weight)); }
+                        name = DeterministicNames.Unique("__VRVlog_Menu_" + DeterministicNames.Hash(parts.ToArray()), usedNames);
                         copy.sharedMesh.AddBlendShapeFrame(name, 100f, delta.Vertices, delta.Normals, delta.Tangents);
                         if (zero) zeroScalarTargets.Add(copy.sharedMesh, name);
                     }
@@ -283,7 +289,8 @@ namespace VRVlog.LilToonExporter
                                 if (target == null)
                                 {
                                     Reserve(original);
-                                    target = ExpressionAnimationData.TargetPrefix + prefix + serial++;
+                                    target = DeterministicNames.Unique(ExpressionAnimationData.TargetPrefix + "__VRVlog_Menu_" + DeterministicNames.Hash("MenuAnimation",
+                                        PathOf(animated.Renderer), entry.Name, animated.Path, animated.Shape, Number(initial), Number(weight)), usedNames);
                                     copy.AddBlendShapeFrame(target, 100f, delta.Vertices, delta.Normals, delta.Tangents);
                                     if (!geometry.TryGetValue((copy, hash), out var names)) geometry.Add((copy, hash), names = new List<string>());
                                     names.Add(target);

@@ -437,6 +437,8 @@ namespace VRVlog.LilToonExporter
         {
             if (deferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
             Validate(clone);
+            var used = DeterministicNames.BlendShapeNames(clone);
+            string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
             if (Disabled)
             {
                 // A no-op standard binding prevents a viewer's raw-name blink
@@ -445,21 +447,24 @@ namespace VRVlog.LilToonExporter
                     .FirstOrDefault(r => ExportRendererSelection.HasGeometry(r.sharedMesh));
                 if (renderer == null) return;
                 var mesh = Object.Instantiate(renderer.sharedMesh); owned.Add(mesh); renderer.sharedMesh = mesh;
-                var name = "__VRVlog_BlinkNone_" + Guid.NewGuid().ToString("N");
+                var name = DeterministicNames.Unique("__VRVlog_BlinkNone_" + DeterministicNames.Hash("BlinkNone", PathOf(renderer)), used);
                 var zeros = new Vector3[mesh.vertexCount]; mesh.AddBlendShapeFrame(name, 100f, zeros, zeros, zeros);
                 foreach (var slot in Slots) slot.Add(new BlinkShapeBinding { Renderer = renderer, Shape = name });
                 return;
             }
-            foreach (var group in Slots.SelectMany(s => s).GroupBy(b => b.Renderer))
+            foreach (var group in Slots.SelectMany((s, slot) => s.Select(binding => (binding, slot))).GroupBy(item => item.binding.Renderer))
             {
                 var renderer = group.Key;
                 var original = renderer.sharedMesh;
                 var generated = Object.Instantiate(original); owned.Add(generated);
-                foreach (var binding in group)
+                foreach (var (binding, slot) in group)
                 {
                     var index = BlinkShapeNames.Unique(Enumerable.Range(0, original.blendShapeCount)
                         .Select(original.GetBlendShapeName).ToArray(), binding.Shape, StringComparison.Ordinal);
-                    var name = "__VRVlog_Blink_" + Guid.NewGuid().ToString("N");
+                    // A shape bound to both blink and one side gets one channel
+                    // per slot, so the slot is part of the name.
+                    var name = DeterministicNames.Unique("__VRVlog_Blink_" + DeterministicNames.Hash("Blink",
+                        PathOf(renderer), binding.Shape, BlinkShapeNames.Presets[slot]), used);
                     AvatarBaseShape.AppendAnimatedShape(original, generated, name, index,
                         renderer.GetBlendShapeWeight(index), Endpoint(binding));
                     binding.Shape = name;
