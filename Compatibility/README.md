@@ -128,7 +128,8 @@ A matching hash is not proof of visual equivalence.
    Setting at its defaults: `LilToonStructureCheckTests` compares every installed
    official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
-4. Run the focused test runner for every supported version:
+4. Run the focused test runner for every version in `uniVrm.versions`, and for
+   a new 0.131 patch before it is listed:
 
    ```text
    python3 Tools/run-unity-compatibility.py --unity UNITY_EXECUTABLE --project TEST_PROJECT --expect-univrm 0.131.1 --expect-unity 2022.3.22f1 --output TEST_RESULTS
@@ -140,6 +141,10 @@ A matching hash is not proof of visual equivalence.
    rejects missing/old results, skipped required tests and unexpected installed
    versions. It tests ordinary and full-lilToon export/reimport, meshes, morphs,
    material bindings, source preservation, renderer selection and skin weights.
+   Like the exporter, the runner treats every release of `uniVrm.vpmRange`
+   (0.131.x without prerelease or build labels) as supported, listed or not; its
+   JSON receipt records `uniVrmSupported` and `uniVrmListed`.
+   `create-liltoon-version-projects.py` accepts the same range.
 5. Repeat with no UniVRM (`--expect-univrm missing`) and an unsupported-package
    fixture to verify the independent diagnostics. A synthetic unsupported
    fixture proves exclusion/diagnostics only, never future API compatibility.

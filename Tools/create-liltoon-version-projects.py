@@ -88,8 +88,10 @@ def dependency_packages(folder, policy):
     if missing:
         raise SystemExit('--dependencies is missing ' + ', '.join(missing))
     versions = {found[name][1] for name in UNIVRM}
-    if len(versions) != 1 or not versions <= set(policy['uniVrm']['versions']):
-        raise SystemExit('UniGLTF and VRM must be one supported UniVRM version from Compatibility/dependencies.json')
+    # Any release of the accepted patch line, listed in uniVrm.versions or not,
+    # so a new patch can be verified before it is listed.
+    if len(versions) != 1 or not unity_packages.univrm_support(policy, next(iter(versions)))['supported']:
+        raise SystemExit('UniGLTF and VRM must be one supported UniVRM version (a release of uniVrm.vpmRange in Compatibility/dependencies.json)')
     return found
 
 
