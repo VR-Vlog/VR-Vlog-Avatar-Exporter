@@ -40,6 +40,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             if (Installed("Anatawa12.AvatarOptimizer.RemoveMeshInBox") == null || Installed("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF for the real box-removal integration tests.");
+            // These fixtures are generic-platform avatars (no VRChat descriptor)
+            // by design. AAO declares non-VRChat platform support from 1.9.0;
+            // older AAO skips its passes there, so the oracle cannot run.
+            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
+                value.name == "com.anatawa12.avatar-optimizer");
+            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 9))
+                Assert.Ignore("The generic-platform box-removal fixtures require Avatar Optimizer 1.9.0 or later (installed " + package.version + ").");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
                 "The optional AAO integration assembly must compile and register when supported AAO is installed.");
         }

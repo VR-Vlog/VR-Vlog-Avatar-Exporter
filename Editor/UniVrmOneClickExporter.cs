@@ -12,12 +12,34 @@ namespace VRVlog.LilToonExporter
 {
     internal static class UniVrmOneClickExporter
     {
-        internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われました。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
+        internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
+        internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
+
+        // Unity's AvatarBuilder rejects a humanoid without any of these, so a
+        // VRM missing one cannot be imported again as a humanoid.
+        internal static readonly HumanBodyBones[] RequiredHumanBones = {
+            HumanBodyBones.Hips, HumanBodyBones.Spine, HumanBodyBones.Head,
+            HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg,
+            HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot, HumanBodyBones.LeftUpperArm, HumanBodyBones.RightUpperArm,
+            HumanBodyBones.LeftLowerArm, HumanBodyBones.RightLowerArm, HumanBodyBones.LeftHand, HumanBodyBones.RightHand
+        };
 
         static bool HasHumanoidAnimator(GameObject root)
         {
             var animator = root.GetComponent<Animator>();
             return animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
+        }
+
+        // NDMF / optimizer passes may remove the root Animator or required
+        // humanoid bones from the owned copy. Stop before UniVRM saves a VRM
+        // that cannot be imported as a humanoid; the source is never touched.
+        internal static void ValidatePreparedHumanoid(GameObject source, GameObject clone)
+        {
+            if (!HasHumanoidAnimator(source)) return;
+            if (!HasHumanoidAnimator(clone)) throw new InvalidOperationException(LostHumanoidAnimator);
+            var animator = clone.GetComponent<Animator>();
+            var missing = RequiredHumanBones.Where(bone => animator.GetBoneTransform(bone) == null).ToArray();
+            if (missing.Length > 0) throw new InvalidOperationException(LostRequiredHumanBones + string.Join(", ", missing));
         }
 
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
@@ -188,9 +210,9 @@ namespace VRVlog.LilToonExporter
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
                 });
-                // AAO on NDMF's generic platform can remove the root Animator;
-                // UniVRM would then save a VRM without humanoid bones silently.
-                if (HasHumanoidAnimator(source) && !HasHumanoidAnimator(clone)) throw new InvalidOperationException(LostHumanoidAnimator);
+                // AAO can remove the root Animator (generic platform) or
+                // required humanoid bones; UniVRM would then save silently.
+                ValidatePreparedHumanoid(source, clone);
                 optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;

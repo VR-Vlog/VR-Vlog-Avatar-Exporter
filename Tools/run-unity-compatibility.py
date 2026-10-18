@@ -144,6 +144,7 @@ BEHAVIOR_CASES = {
         'MalformedPhysBoneDataStillStopsConversion': 3,
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,
+        'PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem': 1,
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
