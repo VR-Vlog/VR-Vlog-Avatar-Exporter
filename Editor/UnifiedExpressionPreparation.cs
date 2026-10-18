@@ -309,6 +309,21 @@ namespace VRVlog.LilToonExporter
         // against the captured reference, then assess output usability anew.
         internal void VerifyIdentityAndDeformation() => Verify(false, true);
 
+        // Every shape name this preparation relies on for one renderer, used
+        // to follow the renderer after a build pass moved or merged it.
+        internal IEnumerable<string> ShapesOf(SkinnedMeshRenderer renderer)
+        {
+            var shapes = new HashSet<string>(StringComparer.Ordinal);
+            if (renderer == null) return shapes;
+            if (required.TryGetValue(renderer, out var values)) shapes.UnionWith(values);
+            if (effectiveRaw.TryGetValue(renderer, out values)) shapes.UnionWith(values);
+            if (selectedRawRoutes.TryGetValue(renderer, out var routes)) shapes.UnionWith(routes.Values);
+            shapes.UnionWith(capturedWeights.Keys.Where(key => key.Renderer == renderer).Select(key => key.Shape));
+            shapes.UnionWith(effectiveAuthoredRoutes.Where(route => route.Renderer == renderer).Select(route => route.Shape));
+            shapes.Remove(null);
+            return shapes;
+        }
+
         internal void RebindPrepared(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> replacement)
         {
             if (replacement == null) throw new ArgumentNullException(nameof(replacement));

@@ -439,7 +439,7 @@ namespace VRVlog.LilToonExporter
             if (action.Kind == ExportRecoveryActionKind.ExcludeHiddenRenderer)
             {
                 if (action.Renderer == null || !renderers.ContainsKey(action.Renderer) ||
-                    ExportGimmickDetection.Inspect(action.Renderer)?.Unit != GimmickExclusionUnit.Renderer)
+                    ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit != GimmickExclusionUnit.Renderer)
                     throw new InvalidOperationException("このRendererを安全な補助表示として確認できません。再検査してください。");
                 return;
             }
@@ -476,7 +476,6 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, MaterialBakeOptions bakeOptions = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            ExportRendererSelection.RequireActiveRoot(source);
             var preview = new ExportRecoveryPreview();
             try
             {
@@ -503,6 +502,8 @@ namespace VRVlog.LilToonExporter
                 session.Apply();
                 foreach (var behaviour in preview.Copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 foreach (var transform in preview.Copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
+                // Like the export copy, show only the display copy's own root.
+                if (!preview.Copy.activeSelf) preview.Copy.SetActive(true);
                 preview.Copy.transform.SetParent(null, false);
                 Object.DestroyImmediate(preview.inactiveHost);
                 preview.inactiveHost = null;

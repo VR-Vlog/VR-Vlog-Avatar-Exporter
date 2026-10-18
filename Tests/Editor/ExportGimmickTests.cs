@@ -320,6 +320,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
             Assert.That(finding.Target, Is.SameAs(settings));
             Assert.That(finding.RuleId, Is.EqualTo("test-anchor"));
+            // Kept for review, the object still loses its settings component.
+            var skin = Skin("body", normal); skin.bones = new[] { settings.transform };
+            var kept = Matched(AnchorRule());
+            Assert.That(kept.Select(f => f.Unit), Is.EquivalentTo(new[] { GimmickExclusionUnit.Review, GimmickExclusionUnit.Component }));
+            Assert.That(kept.Single(f => f.Unit == GimmickExclusionUnit.Component).Components, Is.EqualTo(new Component[] { probe }));
+            Object.DestroyImmediate(skin.gameObject);
             Child("part", settings.transform);
             finding = Matched(AnchorRule()).Single();
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Component));
@@ -428,6 +434,18 @@ namespace VRVlog.LilToonExporter.Tests
             var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
             Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
             Assert.That(finding.Target, Is.SameAs(lens));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
+        [Test] public void InactiveAvatarRootStillHasItsGimmicksFound()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var lens = RenderTextureLens(avatar.transform);
+            avatar.SetActive(false);
+            Assert.That(Matched(rule).Single().Target, Is.SameAs(lens));
+            avatar.SetActive(true);
+            lens.SetActive(false);
+            Assert.That(Matched(rule), Is.Empty);
         }
 
         [Test] public void GroupAroundAGimmickIsNotTakenForIt()
@@ -487,6 +505,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Outcome, Is.EqualTo(ExportOutcome.Omitted));
             Assert.That(entry.RuleId, Is.EqualTo("test-anchor"));
             Assert.That(entry.Name, Is.EqualTo("accessories/settings"));
+            Assert.That(entry.Path, Is.EqualTo("accessories/settings"));
             // Not a confirmation item: the dialog is for features that failed.
             Assert.That(report.Fallbacks.Count, Is.Zero);
             Assert.That(warnings, Is.Empty);

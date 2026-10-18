@@ -39,7 +39,23 @@ namespace VRVlog.LilToonExporter
         {
             internal MorphTargetBinding Value;
             internal Binding Renderer;
+            // The copy's renderer at capture, kept for following a lost shape.
+            internal SkinnedMeshRenderer Original;
             internal string Shape;
+        }
+
+        internal const string LostAfterPreparation = "衣装・体形の処理後に表情の対象が残っていないため、この表情を省略しました: ";
+
+        // An authored expression bind that a build pass broke, and what was done.
+        internal sealed class LostAuthoredMorph
+        {
+            internal string Clip;
+            internal string Path;
+            internal string Shape;
+            // True when the shape was found again on another renderer.
+            internal bool Followed;
+            // True when the clip has no usable bind left.
+            internal bool ClipEmptied;
         }
 
         internal PreparedExpressionBindings(GameObject clone, VrChatExpressionMenu.Source menu, GameObject source = null,
@@ -146,6 +162,7 @@ namespace VRVlog.LilToonExporter
                     return new AuthoredMorph {
                         Value = value,
                         Renderer = target,
+                        Original = target?.Renderer,
                         Shape = mesh != null && value.Index >= 0 && value.Index < mesh.blendShapeCount
                             ? mesh.GetBlendShapeName(value.Index) : null
                     };
@@ -154,7 +171,11 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal void RebindAuthoredExpressions(Func<Object, Object> isolatedCopy)
+        // Strict callers pass no lost list and stop on the first broken bind.
+        // Lenient callers follow a lost shape by its name to the renderer that
+        // now holds it, and leave out only the binds that cannot be found.
+        internal void RebindAuthoredExpressions(Func<Object, Object> isolatedCopy,
+            Func<SkinnedMeshRenderer, string, SkinnedMeshRenderer> followShape = null, List<LostAuthoredMorph> lost = null)
         {
             if (isolatedCopy == null) throw new ArgumentNullException(nameof(isolatedCopy));
             var instance = root.GetComponent<Vrm10Instance>();
@@ -171,12 +192,17 @@ namespace VRVlog.LilToonExporter
                 // Only unchanged, identity-correlated authoring binds are ours.
                 if (values.Length != captured.Morphs.Length) continue;
                 var result = values.ToArray();
+                var dropped = new bool[values.Length];
+                var lostHere = new List<LostAuthoredMorph>();
                 var changed = false;
                 for (var i = 0; i < values.Length; i++)
                 {
                     var old = captured.Morphs[i]; var value = values[i];
                     if (value.RelativePath != old.Value.RelativePath || value.Index != old.Value.Index ||
                         !value.Weight.Equals(old.Value.Weight)) continue;
+                    var inert = value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1;
+                    LostAuthoredMorph Lost(bool followed) => new LostAuthoredMorph {
+                        Clip = current.name, Path = old.Value.RelativePath, Shape = old.Shape, Followed = followed };
                     if (old.Shape == null)
                     {
                         // Appended/generated channels must not make an invalid
@@ -190,11 +216,22 @@ namespace VRVlog.LilToonExporter
                     var target = old.Renderer?.Renderer;
                     var mesh = target == null ? null : target.sharedMesh;
                     var index = mesh == null ? -1 : mesh.GetBlendShapeIndex(old.Shape);
+                    var followed = false;
+                    if ((target == null || index < 0) && !inert && lost != null && followShape != null)
+                    {
+                        var found = followShape(old.Original, old.Shape);
+                        if (found != null)
+                        {
+                            target = found; mesh = found.sharedMesh;
+                            index = mesh.GetBlendShapeIndex(old.Shape); followed = index >= 0;
+                        }
+                    }
                     if (target == null || index < 0)
                     {
                         // Preserve disabled/invalid author binds without turning
                         // them into a new usable endpoint or inventing a channel.
-                        if (value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1) continue;
+                        if (inert) continue;
+                        if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation + " (" +
                             old.Value.RelativePath + " / " + old.Shape + ")");
                     }
@@ -204,11 +241,23 @@ namespace VRVlog.LilToonExporter
                     catch (InvalidOperationException) { unique = false; }
                     if (!unique)
                     {
-                        if (value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1) continue;
+                        if (inert) continue;
+                        if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException("処理後の表情のRendererパスを一意に確定できません: " + path);
                     }
+                    if (followed) lostHere.Add(Lost(true));
                     if (path == value.RelativePath && index == value.Index) continue;
                     result[i] = new MorphTargetBinding(path, index, value.Weight); changed = true;
+                }
+                if (lostHere.Count > 0)
+                {
+                    var kept = result.Where((_, i) => !dropped[i]).ToArray();
+                    var emptied = !kept.Any(value => value.Weight > 0 && value.Weight <= 1 && NeutralShapeSnapshot.Finite(value.Weight) &&
+                            value.Index >= 0 && value.Index != int.MaxValue) &&
+                        (current.MaterialColorBindings?.Length ?? 0) == 0 && (current.MaterialUVBindings?.Length ?? 0) == 0;
+                    foreach (var item in lostHere) item.ClipEmptied = emptied;
+                    lost.AddRange(lostHere);
+                    result = kept;
                 }
                 if (!changed) continue;
                 var copy = Object.Instantiate(current); ownedAssets.Add(copy); copy.name = current.name;
@@ -244,7 +293,7 @@ namespace VRVlog.LilToonExporter
                     if (!bindings.TryGetValue(value.Path, out var binding) || binding.Mesh == null ||
                         binding.OriginalShapes.Contains(value.Shape) && binding.Mesh.GetBlendShapeIndex(value.Shape) < 0)
                     {
-                        entry.Error = "衣装・体形の処理後に表情の対象が残っていないため、この表情を省略しました: " + value.Path + " / " + value.Shape;
+                        entry.Error = LostAfterPreparation + value.Path + " / " + value.Shape;
                         break;
                     }
                     if (binding.Mesh.GetBlendShapeIndex(value.Shape) < 0) missing.Add(value);

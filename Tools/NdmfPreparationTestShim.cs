@@ -253,4 +253,10 @@ public static class NdmfPreparationHostTests
         Console.WriteLine($"NDMF preparation host checks passed: {passed} cases / {NUnit.Framework.Assert.Assertions} assertions; {skipped} installed-package Unity tests skipped. Asset graph adapter, not Unity/MA validation.");
     }
 }
+
+namespace VRVlog.LilToonExporter
+{
+    // Warnings keep their Japanese source text; translation is not tested here.
+    public static class ExporterLocalization { public static string T(string source) => source; }
+}
 #endif
