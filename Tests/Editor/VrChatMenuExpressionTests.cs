@@ -121,6 +121,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1)));
         }
 
+        [Test]
+        public void RepeatedFxParameterDeclarationsKeepMenuExpressions()
+        {
+            // Unity binds every repeated name to one parameter. AddParameter
+            // renames duplicates, so assign the serialized array directly.
+            DiscreteController();
+            controller.parameters = controller.parameters.Concat(Enumerable.Range(0, 3).Select(_ => new AnimatorControllerParameter
+                { name = "TrackingType", type = AnimatorControllerParameterType.Int })).ToArray();
+            Assert.That(controller.parameters.Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(3));
+            var sourceJson = EditorJsonUtility.ToJson(controller);
+            var metadata = new VrChatExpressionMenu.Source { Controller = controller };
+            metadata.Defaults["Face"] = 0;
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            var layers = ExpressionDependencies.Inspect(controller, null,
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true);
+            Dictionary<string, float> fixedValues = null;
+            Assert.DoesNotThrow(() => fixedValues = ExpressionDependencies.FixedNeutralValues(controller, metadata, layers, null, context));
+            Assert.That(fixedValues["TrackingType"], Is.EqualTo(6));
+            var values = VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, Params("Face", 1), null, metadata, fixedContext: context);
+            Assert.That(values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(sourceJson), "The source controller keeps its repeated declarations.");
+        }
+
         private (float Face, float Blink, AnimatorStateInfo State) OriginalNativeSelectedPose(RuntimeAnimatorController runtime)
         {
             // Independent original-controller witness: no exporter dependency,

@@ -97,6 +97,13 @@ namespace VRVlog.LilToonExporter
             return runtime as AnimatorController ?? throw new InvalidOperationException("FX Animator Controllerを取得できません。");
         }
 
+        // Unity resolves a repeated parameter name to one parameter; keep the first declaration only.
+        internal static AnimatorControllerParameter[] UniqueParameters(RuntimeAnimatorController runtime)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            return Controller(runtime).parameters.Where(parameter => parameter == null || names.Add(parameter.name)).ToArray();
+        }
+
         internal static Dictionary<AnimationClip, AnimationClip> Overrides(RuntimeAnimatorController runtime)
         {
             var result = new Dictionary<AnimationClip, AnimationClip>();
@@ -201,7 +208,7 @@ namespace VRVlog.LilToonExporter
             foreach (var controller in new[] { runtime }.Concat(source?.OtherControllers.Where(value => value != null) ??
                 Enumerable.Empty<RuntimeAnimatorController>()))
             {
-                foreach (var parameter in Controller(controller).parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     if (!declarations.TryGetValue(parameter.name, out var values))
                         declarations.Add(parameter.name, values = new List<AnimatorControllerParameter>());
@@ -232,7 +239,7 @@ namespace VRVlog.LilToonExporter
                         (selection == null || !selection.TryGetValue("IsLocal", out var selectedLocal) || selectedLocal == 1) &&
                         (fixedContext.Values.TryGetValue("IsLocal", out var local) ? local == 1 :
                             source.Defaults.TryGetValue("IsLocal", out local) && local == 1);
-                    foreach (var parameter in Controller(runtime).parameters)
+                    foreach (var parameter in UniqueParameters(runtime))
                     {
                         var name = parameter.name;
                         // Only a signal with actual cross-playable producers
@@ -335,7 +342,7 @@ namespace VRVlog.LilToonExporter
                     .SelectMany(layer => layer.Writes), StringComparer.Ordinal);
                 written.ExceptWith(preservedParameterWrites.Keys);
                 var invariant = new Dictionary<string, float>(StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     var name = parameter.name;
                     if (written.Contains(name) || parameter.type == AnimatorControllerParameterType.Trigger ||
@@ -379,7 +386,7 @@ namespace VRVlog.LilToonExporter
                 if (otherControllers.All(other => other.Unknown.Count == 0)) writers.ExceptWith(preservedParameterWrites.Keys);
                 var fixedValues = new Dictionary<string, float>(StringComparer.Ordinal);
                 if (defaults != null && selection != null)
-                    foreach (var parameter in controller.parameters)
+                    foreach (var parameter in UniqueParameters(controller))
                     {
                         var suppliedInput = fixedContext?.Values.ContainsKey(parameter.name) == true;
                         if (writers.Contains(parameter.name) || parameter.type == AnimatorControllerParameterType.Trigger ||
@@ -399,10 +406,10 @@ namespace VRVlog.LilToonExporter
                     {
                         HashSet<StateMachineBehaviour> reachedCommands = null;
                         if (fixedContext != null && controller.layers[index].syncedLayerIndex < 0 &&
-                            FixedExpressionContext.TryReachableFxCommands(controller.layers[index].stateMachine, fixedValues, controller.parameters, out var fixedReached))
+                            FixedExpressionContext.TryReachableFxCommands(controller.layers[index].stateMachine, fixedValues, UniqueParameters(controller), out var fixedReached))
                             reachedCommands = fixedReached;
                         else if (controller.layers[index].syncedLayerIndex < 0 &&
-                            TryFixedGateReads(controller.layers[index].stateMachine, controller.parameters, fixedValues, out var reads, out var reached))
+                            TryFixedGateReads(controller.layers[index].stateMachine, UniqueParameters(controller), fixedValues, out var reads, out var reached))
                         {
                             info[index].Reads.IntersectWith(reads);
                             reachedCommands = reached;
@@ -682,7 +689,7 @@ namespace VRVlog.LilToonExporter
             if (signals.Count == 0) return false;
             foreach (var signal in signals)
             {
-                var declarations = controller.parameters.Where(parameter => parameter.name == signal).ToArray();
+                var declarations = UniqueParameters(controller).Where(parameter => parameter.name == signal).ToArray();
                 if (declarations.Length != 1 || declarations[0].type != AnimatorControllerParameterType.Float ||
                     !NeutralShapeSnapshot.Finite(declarations[0].defaultFloat) || VrChatParameterDriver.BuiltIn.Contains(signal) ||
                     source?.ExternalParameters.Contains(signal) == true || source?.MenuInputs.Contains(signal) == true ||
@@ -865,7 +872,7 @@ namespace VRVlog.LilToonExporter
             otherWritten.ExceptWith(preservedWrites.Keys);
             var result = new Dictionary<string, float>(StringComparer.Ordinal);
             var initial = new Dictionary<string, float>(StringComparer.Ordinal);
-            foreach (var parameter in controller.parameters)
+            foreach (var parameter in UniqueParameters(controller))
             {
                 var suppliedInput = fixedContext?.Values.ContainsKey(parameter.name) == true;
                 if (otherWritten.Contains(parameter.name) || !suppliedInput && source?.ExternalParameters.Contains(parameter.name) == true ||
@@ -894,7 +901,7 @@ namespace VRVlog.LilToonExporter
                 var programs = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
                 var reachable = Inspect(runtime, excludedPath, programs, new List<string>(), true, result);
                 var curveWrites = new HashSet<string>(reachable.SelectMany(layer => layer.CurveWrites), StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters.Where(parameter => initial.ContainsKey(parameter.name) && !result.ContainsKey(parameter.name)))
+                foreach (var parameter in UniqueParameters(controller).Where(parameter => initial.ContainsKey(parameter.name) && !result.ContainsKey(parameter.name)))
                 {
                     if (curveWrites.Contains(parameter.name)) continue;
                     var operations = programs.Values.SelectMany(program => program.Operations).Where(operation => operation.Destination == parameter.name).ToArray();
@@ -953,7 +960,7 @@ namespace VRVlog.LilToonExporter
             var written = new HashSet<string>(fx.SelectMany(layer => layer.Writes)
                 .Concat(result.SelectMany(item => item.Layers).SelectMany(layer => layer.Writes)), StringComparer.Ordinal);
             var declarations = new[] { runtime }.Concat(result.Select(item => item.Runtime))
-                .SelectMany(value => Controller(value).parameters).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
+                .SelectMany(value => UniqueParameters(value)).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
             var incompatible = new HashSet<string>(declarations.Where(group => group.Select(parameter => parameter.type).Distinct().Count() != 1)
                 .Select(group => group.Key), StringComparer.Ordinal);
             var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection);
@@ -962,7 +969,7 @@ namespace VRVlog.LilToonExporter
                 var controller = Controller(item.Runtime);
                 var inputs = FixedExpressionContext.Create(item.Runtime, defaults ?? source.Defaults, source);
                 var invariant = new Dictionary<string, float>(StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     if (written.Contains(parameter.name) || incompatible.Contains(parameter.name) ||
                         parameter.type != AnimatorControllerParameterType.Bool && parameter.type != AnimatorControllerParameterType.Int &&
@@ -1225,7 +1232,7 @@ namespace VRVlog.LilToonExporter
             var replacements = Overrides(runtime);
             var layers = controller.layers;
             var result = new Layer[layers.Length];
-            var conditionTypes = !typedConditions && neutralFixed == null ? null : controller.parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var conditionTypes = !typedConditions && neutralFixed == null ? null : UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
             for (var index = 0; index < layers.Length; index++)
             {

@@ -103,12 +103,12 @@ namespace VRVlog.LilToonExporter
                             foreach (var b in behaviours)
                                 if (b == null || !Tracking(b) && b.GetType().Name != "VRCPlayableLayerControl")
                                     throw new InvalidOperationException("外部操作・パラメーター変更を伴うBehaviourは未対応です: " + (b == null ? "missing" : b.GetType().Name));
-                            var state = Resolve(layer.stateMachine, entry.Parameters, menu.ExternalParameters, parameters: controller.parameters);
+                            var state = Resolve(layer.stateMachine, entry.Parameters, menu.ExternalParameters, parameters: ExpressionDependencies.UniqueParameters(controller));
                             if (state == null) continue;
                             if (entry.ControlType == "Button")
                             {
                                 var released = new Dictionary<string, float>(entry.Parameters) { [entry.ControlParameter] = 0 };
-                                if (Resolve(layer.stateMachine, released, menu.ExternalParameters, parameters: controller.parameters, startingState: state) != state)
+                                if (Resolve(layer.stateMachine, released, menu.ExternalParameters, parameters: ExpressionDependencies.UniqueParameters(controller), startingState: state) != state)
                                     throw new InvalidOperationException("Button解除後にAnimator状態が変わるため、静止姿勢の持続を確定できません。");
                                 row.Note = "Button解除後も同じ静止状態が維持される登録です。";
                             }
@@ -125,7 +125,7 @@ namespace VRVlog.LilToonExporter
                                 // If removing the matched menu edges still
                                 // converges to the same pose, the menu did not
                                 // select that pose (e.g. an unconditional path).
-                                try { selectedByMenu = Resolve(layer.stateMachine, entry.Parameters, menu.ExternalParameters, true, controller.parameters) != state; }
+                                try { selectedByMenu = Resolve(layer.stateMachine, entry.Parameters, menu.ExternalParameters, true, ExpressionDependencies.UniqueParameters(controller)) != state; }
                                 catch (InvalidOperationException) { selectedByMenu = true; }
                             }
                             foreach (var b in state.behaviours.Where(b => !Tracking(b)))

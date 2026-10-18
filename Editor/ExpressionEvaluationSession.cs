@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
             // Every potentially reachable non-unit command is still rejected.
             neutralFxObserved = fixedContext != null;
             var original = ExpressionDependencies.Controller(runtime);
-            types = original.parameters.ToDictionary(p => p.name, p => p.type, StringComparer.Ordinal);
+            types = ExpressionDependencies.UniqueParameters(original).ToDictionary(p => p.name, p => p.type, StringComparer.Ordinal);
             id = ++nextId;
             Sessions.Add(id, this);
             try { Controller = CopyController(original, ExpressionDependencies.Overrides(runtime)); }
@@ -56,7 +56,7 @@ namespace VRVlog.LilToonExporter
             // generic serialized-object copying can duplicate these incorrectly.
             // Rebuild through the supported Animator graph APIs instead.
             var root = (AnimatorController)Own(new AnimatorController { name = original.name });
-            root.parameters = original.parameters.Select(p => new AnimatorControllerParameter
+            root.parameters = ExpressionDependencies.UniqueParameters(original).Select(p => new AnimatorControllerParameter
             {
                 name = p.name, type = p.type, defaultBool = p.defaultBool, defaultFloat = p.defaultFloat, defaultInt = p.defaultInt
             }).ToArray();
