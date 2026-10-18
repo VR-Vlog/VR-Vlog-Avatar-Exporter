@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter
             foreach (var current in runtimes)
             {
                 var names = new HashSet<string>(StringComparer.Ordinal);
-                foreach (var parameter in ExpressionDependencies.Controller(current).parameters)
+                foreach (var parameter in ExpressionDependencies.UniqueParameters(current))
                 {
                     if (parameter == null || string.IsNullOrEmpty(parameter.name) || !names.Add(parameter.name)) return result;
                     if (!declarations.TryGetValue(parameter.name, out var values))

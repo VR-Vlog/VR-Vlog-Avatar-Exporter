@@ -85,6 +85,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void RepeatedFxParameterDeclarationsStillDiscoverFaces()
+        {
+            // AddParameter renames duplicates; Unity still binds the repeated
+            // serialized name to one parameter.
+            controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Int);
+            controller.parameters = controller.parameters.Concat(Enumerable.Range(0, 3).Select(_ => new AnimatorControllerParameter
+                { name = "TrackingType", type = AnimatorControllerParameterType.Int })).ToArray();
+            var selected = State(controller.layers[0].stateMachine, "Authored smile", Clip("Smile", 75));
+            Transition(neutral, selected, "FaceChoice", 2);
+            var entry = Read().Entries.Single();
+            Assert.That(entry.Error, Is.Null); Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
+            Assert.That(controller.parameters.Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(3));
+        }
+
+        [Test]
         public void DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone()
         {
             var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
