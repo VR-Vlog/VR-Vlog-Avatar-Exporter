@@ -58,9 +58,11 @@ namespace VRVlog.LilToonExporter
         internal const string PettingSystem = "petting-system";
         internal const string LightLimitSettings = "light-limit-settings";
         internal const string CameraGimmick = "camera-gimmick";
+        internal const string RenderTextureCamera = "render-texture-camera";
 
         const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
         const string MenuInstaller = "nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller";
+        const string MergeAnimator = "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator";
 
         static ExportGimmickValue Contact(string path, string parameter) =>
             new ExportGimmickValue { Path = path, Type = ContactReceiver, Property = "parameter", Value = parameter };
@@ -103,6 +105,13 @@ namespace VRVlog.LilToonExporter
                 },
                 PrefabGuids = new[] { "491c3f399da5d064d9966982ddf0d191" },
                 UnsafeReason = ExportGimmickDetection.PettingSystemUnsafeReason,
+            },
+            new ExportGimmickRule
+            {
+                Id = RenderTextureCamera,
+                Reason = "カメラの映像を自身のメッシュに映すギミックです。カメラと表示用のメッシュをまとめて省略します。",
+                EntryTypes = new[] { MergeAnimator, MenuInstaller },
+                RenderTextureLoop = true,
             },
         };
     }

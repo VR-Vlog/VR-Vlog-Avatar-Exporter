@@ -406,6 +406,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(rule), Is.Empty);
         }
 
+        [Test] public void TableFindsAModularAvatarRenderTextureCamera()
+        {
+            var merge = FindType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            if (merge == null) Assert.Ignore("Installed MA is required for the table rule.");
+            var lens = RenderTextureLens(); Object.DestroyImmediate(lens.GetComponent<Animator>()); lens.AddComponent(merge);
+            var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
+            Assert.That(finding.Target, Is.SameAs(lens));
+        }
+
         [Test] public void UnpackedPettingSystemIsFoundByItsContacts()
         {
             var receiver = FindType("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver");
