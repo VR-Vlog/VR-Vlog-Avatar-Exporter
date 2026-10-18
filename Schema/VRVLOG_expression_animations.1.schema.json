@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/VRVLOG_expression_animations/1/schema.json",
+  "title": "VRVLOG_expression_animations 1",
+  "description": "Expression animations that drive dedicated __VRVlog_Anim_ morph targets by name. Rules that span items are validated by the shared reader (ExpressionAnimationData.Read): expression names are unique (ordinal); the whole extension has at most 1024 channels, 16384 keys and 4096 points; key times strictly increase; the curve range including Bezier handles stays within -10000..10000; point values strictly increase and cover that range; a target name appears at most once per animation; a point with a null target has the value the curve has at time 0.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "animations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "animations": {
+      "maxItems": 512,
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/animation"
+      }
+    }
+  },
+  "$defs": {
+    "key": {
+      "description": "[time, value, inTangent, outTangent, inWeight, outWeight]. A null tangent is stepped.",
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "minimum": -3600,
+          "type": "number",
+          "maximum": 3600
+        },
+        {
+          "minimum": -10000,
+          "type": "number",
+          "maximum": 10000
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        }
+      ],
+      "items": false
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "target"
+      ],
+      "properties": {
+        "value": {
+          "minimum": -10000,
+          "type": "number",
+          "maximum": 10000
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "maxLength": 1024,
+              "pattern": "^__VRVlog_Anim_",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preWrap",
+        "postWrap",
+        "keys",
+        "points"
+      ],
+      "properties": {
+        "preWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "postWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "keys": {
+          "maxItems": 16384,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        },
+        "points": {
+          "maxItems": 4096,
+          "minItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression",
+        "duration",
+        "loop",
+        "channels"
+      ],
+      "properties": {
+        "expression": {
+          "maxLength": 1024,
+          "type": "string",
+          "minLength": 1
+        },
+        "duration": {
+          "exclusiveMinimum": 0,
+          "type": "number",
+          "maximum": 600
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "channels": {
+          "maxItems": 1024,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/channel"
+          }
+        }
+      }
+    }
+  }
+}
