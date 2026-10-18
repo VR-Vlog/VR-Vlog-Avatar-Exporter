@@ -476,7 +476,44 @@ namespace VRVlog.LilToonExporter.Tests
                 var result = PhysBoneSpringExport.Convert(source, copy, new List<string>());
                 Assert.That(result.Converted, Is.EqualTo(1)); Assert.That(result.Skipped, Is.EqualTo(1));
                 Assert.That(result.Joints, Is.EqualTo(2)); AssertUniqueJoints(copy);
-                Assert.That(copy.GetComponentsInChildren<Transform>().Count(t => t.name == "VRVlog Spring Endpoint"), Is.EqualTo(1));
+                Assert.That(copy.GetComponentsInChildren<Transform>().Count(t => t.name.EndsWith(PhysBoneSpringExport.EndpointName)), Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
+        public void GeneratedEndpointsGetUniqueDeterministicNamesWithoutRenamingTheAvatar()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var preferred = "Tip-" + PhysBoneSpringExport.EndpointName;
+                // Same-named leaves and an authored node that already holds the preferred name.
+                Child(source.transform, preferred, Vector3.zero);
+                var skirt = Child(source.transform, "Skirt.L", Vector3.up);
+                Child(Child(skirt, "Skirt_A.L", new Vector3(-.1f, -.1f, 0)), "Tip", Vector3.down * .1f);
+                Child(Child(skirt, "Skirt_B.L", new Vector3(.1f, -.1f, 0)), "Tip", Vector3.down * .1f);
+                var hair = Child(source.transform, "Hair_01", Vector3.up * 1.5f);
+                Set(PhysBone(skirt.gameObject), "endpointPosition", Vector3.down * .1f);
+                Set(PhysBone(hair.gameObject), "endpointPosition", Vector3.down * .1f);
+                copy = Object.Instantiate(source);
+                var authored = copy.GetComponentsInChildren<Transform>(true).Select(t => t.name).ToArray();
+                var result = PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                Assert.That(result.Chains, Is.EqualTo(3)); AssertUniqueJoints(copy);
+                var tails = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Select(s => s.Joints.Last().transform).ToArray();
+                Assert.That(tails.Select(t => t.name), Is.EqualTo(new[] { preferred + " 2", preferred + " 3", "Hair_01-" + PhysBoneSpringExport.EndpointName }));
+                var names = copy.GetComponentsInChildren<Transform>(true).Select(t => t.name).ToArray();
+                Assert.That(names.Except(authored), Is.EquivalentTo(tails.Select(t => t.name)), "Only generated endpoints are new.");
+                Assert.That(names.Count(n => n.Contains(PhysBoneSpringExport.EndpointName)), Is.EqualTo(names.Where(n => n.Contains(PhysBoneSpringExport.EndpointName)).Distinct().Count()));
+                Assert.That(copy.transform.Find(preferred).GetComponent<VRM10SpringBoneJoint>(), Is.Null);
+                var again = Object.Instantiate(source);
+                try
+                {
+                    PhysBoneSpringExport.Convert(source, again, new List<string>());
+                    Assert.That(again.GetComponent<Vrm10Instance>().SpringBone.Springs.Select(s => s.Joints.Last().transform.name),
+                        Is.EqualTo(tails.Select(t => t.name)), "A second export names the endpoints the same way.");
+                }
+                finally { Object.DestroyImmediate(again); }
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }

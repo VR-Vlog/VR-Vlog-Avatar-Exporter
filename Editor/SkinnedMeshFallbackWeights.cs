@@ -13,23 +13,29 @@ namespace VRVlog.LilToonExporter
             ICollection<Transform> fixedRootJoints = null)
         {
             if (ownedMeshes == null) throw new ArgumentNullException(nameof(ownedMeshes));
+            // UniVRM renames duplicate node names with one warning each; one
+            // root joint is created per skin that references the avatar root.
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var t in clone.GetComponentsInChildren<Transform>(true)) names.Add(t.name);
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
                 if (renderer is SkinnedMeshRenderer skin && skin.sharedMesh != null)
                 {
-                    RemapOmittedRootJoint(clone.transform, skin, warnings, fixedRootJoints);
+                    RemapOmittedRootJoint(clone.transform, skin, warnings, fixedRootJoints, names);
                     Preserve(clone.transform, skin, ownedMeshes, warnings, fixedRootJoints);
                 }
         }
 
         private static void RemapOmittedRootJoint(Transform root, SkinnedMeshRenderer skin, ICollection<string> warnings,
-            ICollection<Transform> fixedRootJoints)
+            ICollection<Transform> fixedRootJoints, HashSet<string> names)
         {
             var bones = skin.bones;
             if (skin.sharedMesh.vertexCount == 0 || bones == null || Array.IndexOf(bones, root) < 0) return;
             if (skin.sharedMesh.bindposes.Length != bones.Length)
                 throw Failure(skin, "ボーンとバインドポーズの数が一致しません。メッシュのスキニング設定を確認してください。");
             RequireInvertible(skin, root.localToWorldMatrix);
-            var joint = new GameObject("VR Vlog exported root joint");
+            var name = "VR Vlog exported root joint";
+            for (var i = 2; !names.Add(name); i++) name = "VR Vlog exported root joint " + i;
+            var joint = new GameObject(name);
             var before = new Mesh();
             var after = new Mesh();
             var bounds = skin.localBounds;
@@ -53,6 +59,7 @@ namespace VRVlog.LilToonExporter
                 {
                     skin.bones = bones;
                     UnityEngine.Object.DestroyImmediate(joint);
+                    names.Remove(name);
                 }
                 skin.localBounds = bounds;
                 UnityEngine.Object.DestroyImmediate(before);

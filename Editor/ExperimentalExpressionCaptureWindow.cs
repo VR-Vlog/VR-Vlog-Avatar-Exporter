@@ -1050,6 +1050,8 @@ namespace VRVlog.LilToonExporter
             var entry = LilToonExporterWindow.SavedVrmTransferMethod();
             if (entry == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
             try { entry.Invoke(null, new object[] { saved.VerifiedPath() }); }
+            catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException?.Data["VRVlog.ShowMessageAsIs"] is bool asIs && asIs)
+            { throw new InvalidOperationException(ExporterLocalization.T(exception.InnerException.Message)); }
             catch (System.Reflection.TargetInvocationException)
             { throw new InvalidOperationException(ExporterLocalization.T("転送用のコピーを準備できませんでした。256 MiB以下の保存済みVRMを指定してください。")); }
         }

@@ -182,6 +182,19 @@ class PackageTests(unittest.TestCase):
         package.build(self.root, second)
         self.assertEqual(archive.read_bytes(), second.read_bytes())
 
+    def test_formats_sources_ship_without_their_nested_manifest(self):
+        shipped = ["Formats.meta", "Formats/README.md", "Formats/README.md.meta", "Formats/Runtime.meta",
+                   "Formats/Runtime/Format.cs", "Formats/Runtime/Format.cs.meta",
+                   "Formats/Runtime/Formats.asmdef", "Formats/Runtime/Formats.asmdef.meta"]
+        excluded = ["Formats/package.json", "Formats/package.json.meta", "Formats/Tools/debug.py", "Formats/notes.txt"]
+        for name in shipped + excluded:
+            self.write(name, name)
+        self.git("add", ".")
+        names = package.build(self.root, self.root / "package.zip")
+        self.assertTrue(set(shipped) <= set(names))
+        self.assertFalse(set(excluded) & set(names))
+        self.assertEqual([name for name in names if name.endswith("package.json")], ["package.json"])
+
     def test_missing_required_file_fails(self):
         self.git("rm", "--cached", "LICENSE")
         with self.assertRaisesRegex(ValueError, "Required package files"):
