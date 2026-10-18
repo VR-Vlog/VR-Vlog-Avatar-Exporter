@@ -15,11 +15,13 @@ WORKFLOWS = {"validate.yml", "build-listing.yml", "release-vpm.yml",
              "release-candidate.yml", "check-upstream.yml"}
 JOBS = {
     "validate.yml": {"schema"}, "release-candidate.yml": {"candidate"},
-    "release-vpm.yml": {"release", "dispatch-listing"},
+    "release-vpm.yml": {"resolve-candidate", "release", "dispatch-listing"},
     "check-upstream.yml": {"inspect"},
     "build-listing.yml": {"changes", "check-listing-builder", "listing-validation", "build-listing"},
 }
-PAGES_GATE = "(github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'release' && github.event.release.draft == false)"
+PAGES_GATE = ("(github.event_name == 'workflow_dispatch' && (github.ref == 'refs/heads/main' "
+              "|| startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'release' "
+              "&& github.event.release.draft == false)")
 WRITE_JOBS = {
     ("release-vpm.yml", "release"): {"contents": "write", "actions": "read"},
     ("release-vpm.yml", "dispatch-listing"): {"contents": "read", "actions": "write"},
@@ -37,8 +39,35 @@ PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "VPM_ORG_MIRROR_TOKEN", "sync-vpm-mir
 DEPLOYMENT = {"id": "deployment", "uses": "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e"}
 PR_EVENTS = {"types": ["opened", "synchronize", "reopened", "edited"]}
 CANDIDATE_COMMIT = "${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}"
+RESOLVE_GATE = ("github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' "
+                "&& github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' "
+                "&& github.event.workflow_run.head_repository.full_name == github.repository")
+RELEASE_GATE = ("always() && !cancelled() && ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') "
+                "|| (github.event_name == 'workflow_run' && needs.resolve-candidate.result == 'success' "
+                "&& needs.resolve-candidate.outputs.publish == 'true'))")
+RELEASE_SOURCE = "${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.expected_commit || github.sha }}"
+CHECKOUT = "actions/checkout@11d5960a326750d5838078e36cf38b85af677262"
+PYTHON = "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065"
+TAG_GATE = "github.event_name == 'workflow_dispatch' && startsWith(github.ref, 'refs/tags/v')"
+TAG_AUTHENTICATION = {"name": "Authenticate published beta tag", "if": TAG_GATE,
+                      "env": {"GH_TOKEN": "${{ github.token }}"},
+                      "run": "python3 Tools/resolve-staging-beta.py --verify-published-tag"}
 GITFLOW_STEP = {"name": "Check Gitflow pull request target", "if": "github.event_name == 'pull_request'",
-                "run": "python3 Tools/check-gitflow.py"}
+                "env": {"GH_TOKEN": "${{ github.token }}"}, "run": "python3 Tools/check-gitflow.py"}
+
+
+def release_value(output, manual=None):
+    return "${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs." + output + " || inputs." + (manual or output) + " }}"
+
+
+RELEASE_VALUES = {
+    "VERSION": release_value("version"),
+    "UNIVRM_VERSION": release_value("univrm_version"),
+    "EXPECTED_COMMIT": release_value("expected_commit"),
+    "EXPECTED_PACKAGE_SHA256": release_value("package_sha256", "expected_package_sha256"),
+    "CANDIDATE_RUN_ID": release_value("candidate_run_id"),
+    "RELEASE_CHANNEL": "${{ github.event_name == 'workflow_run' && 'beta' || inputs.channel }}",
+}
 
 
 class WorkflowLoader(yaml.SafeLoader):
@@ -75,6 +104,91 @@ def load_workflow(text):
 def require(condition, message):
     if not condition:
         raise ValueError(message)
+
+
+def release_environment(*names):
+    return {name: RELEASE_VALUES[name] for name in names}
+
+
+def require_release_step(steps, name, environment):
+    matches = [step for step in steps if step.get("name") == name]
+    require(len(matches) == 1, "Exactly one " + name + " step is required")
+    step = matches[0]
+    require(step.get("env") == environment,
+            name + ": release values must come from explicit manual inputs or authenticated candidate outputs")
+    require(set(step) <= {"name", "env", "run"},
+            name + ": preserve unconditional default-shell release checks")
+    return step
+
+
+def check_automatic_beta(workflow, jobs):
+    require(not workflow.get("defaults") and not workflow.get("env"),
+            "Automatic publication must not inherit command or source overrides")
+    for job in jobs.values():
+        require(not job.get("defaults") and not job.get("env"),
+                "Publication jobs must not inherit command or source overrides")
+    resolver = jobs["resolve-candidate"]
+    outputs = ("publish", "version", "expected_commit", "package_sha256", "candidate_run_id", "univrm_version")
+    require(resolver.get("outputs") == {name: "${{ steps.candidate.outputs." + name + " }}" for name in outputs},
+            "Automatic release outputs must come only from candidate authentication")
+    require(resolver.get("steps") == [
+        {"uses": CHECKOUT, "with": {"ref": "${{ github.event.workflow_run.head_sha }}",
+                                    "fetch-depth": 0, "persist-credentials": False}},
+        {"uses": PYTHON, "with": {"python-version": "3.12"}},
+        {"name": "Authenticate completed staging candidate", "id": "candidate",
+         "env": {"GH_TOKEN": "${{ github.token }}"}, "run": "python3 Tools/resolve-staging-beta.py"},
+    ], "Authenticate automatic release inputs in the read-only candidate checkout without overrides")
+
+    steps = jobs["release"]["steps"]
+    checkouts = [step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@")]
+    require(checkouts == [{"uses": CHECKOUT, "with": {"ref": RELEASE_SOURCE, "fetch-depth": 0,
+                                                     "persist-credentials": False}}]
+            and steps[0] == checkouts[0],
+            "Publish only the exact authenticated candidate or current manually dispatched main commit")
+    versions = dict(release_environment("UNIVRM_VERSION", "RELEASE_CHANNEL", "EXPECTED_COMMIT"),
+                    EXPORTER_VERSION=RELEASE_VALUES["VERSION"], GH_TOKEN="${{ github.token }}")
+    version_step = require_release_step(steps, "Verify versions", versions)
+    require(version_step.get("run", "").strip() == "python3 Tools/release_policy.py > release-flags.txt",
+            "Always enforce manual main policy and hardcoded automatic beta publication")
+    receipt = require_release_step(steps, "Verify authentic candidate receipt before publication",
+                                   dict(release_environment("CANDIDATE_RUN_ID", "EXPECTED_COMMIT", "VERSION",
+                                                            "EXPECTED_PACKAGE_SHA256"), GH_TOKEN="${{ github.token }}"))
+    require(receipt.get("run", "").strip() == (
+        "python3 Tools/verify-release-candidate.py \\\n"
+        '  --run-id "$CANDIDATE_RUN_ID" --commit "$EXPECTED_COMMIT" \\\n'
+        '  --version "$VERSION" --package-sha256 "$EXPECTED_PACKAGE_SHA256"'),
+        "Always authenticate the exact candidate commit, version and ZIP before publication")
+    package = require_release_step(steps, "Build exporter package",
+                                   release_environment("VERSION", "EXPECTED_PACKAGE_SHA256"))
+    dependencies = require_release_step(steps, "Build UniVRM dependency packages", release_environment("UNIVRM_VERSION"))
+    publish = require_release_step(steps, "Publish release",
+                                   dict(release_environment("VERSION", "UNIVRM_VERSION", "EXPECTED_COMMIT"),
+                                        GH_TOKEN="${{ github.token }}"))
+    require(re.findall(r"--target\s+(\S+)", publish.get("run", "")) == ['"${EXPECTED_COMMIT}"'],
+            "Release tags must target the authenticated source commit rather than a moving workflow SHA")
+    require(steps.index(version_step) < steps.index(receipt) < steps.index(package)
+            < steps.index(dependencies) < steps.index(publish),
+            "Keep version policy, candidate receipt, reproducible build and publication ordered")
+
+    dispatch = jobs["dispatch-listing"]
+    require(dispatch.get("needs") == ["release", "resolve-candidate"]
+            and dispatch.get("if") == "always() && !cancelled() && needs.release.result == 'success'",
+            "Only a successful release may dispatch its listing, including manual releases")
+    expected_run = '''listing_state=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-listing.yml" --jq .state)
+if [ "$listing_state" = "active" ]; then
+  listing_ref=main
+  if [ "$RELEASE_CHANNEL" = beta ]; then
+    listing_ref="v${VERSION}"
+  fi
+  gh workflow run build-listing.yml --repo "$GITHUB_REPOSITORY" --ref "$listing_ref"
+else
+  echo "Release published. Website/VPM deployment remains paused (workflow state: ${listing_state})." >> "$GITHUB_STEP_SUMMARY"
+fi
+'''
+    require(dispatch.get("steps") == [{"name": "Start VPM listing deployment when enabled",
+                                      "env": dict(release_environment("VERSION", "RELEASE_CHANNEL"),
+                                                  GH_TOKEN="${{ github.token }}"), "run": expected_run}],
+            "Beta listing dispatch must use its published immutable version tag and preserve disabled publication")
 
 
 def contains_secret_reference(value):
@@ -125,6 +239,10 @@ def check_mirror_publication(workflow, job):
     require(job.get("environment") == {"name": "github-pages", "url": "${{ steps.deployment.outputs.page_url }}"},
             "Preserve the existing Pages environment and approval boundary")
     steps = job.get("steps", [])
+    require(steps[:2] == [
+        {"uses": CHECKOUT, "with": {"persist-credentials": False, "fetch-depth": 0}},
+        TAG_AUTHENTICATION,
+    ], "Authenticate published beta tags in their exact checkout before exposing mirror credentials")
     positions = {}
     for identity in PUBLICATION_RUNS:
         matches = [i for i, step in enumerate(steps) if step.get("id") == identity]
@@ -137,7 +255,7 @@ def check_mirror_publication(workflow, job):
     require(len(uploads) == 1, "Exactly one canonical Pages artifact upload is required")
     checks = [i for i, step in enumerate(steps)
               if step.get("run") == 'python3 Tools/check-listing.py --listing "$listPublishDirectory/index.json"'
-              and "if" not in step]
+              and set(step) <= {"name", "run"}]
     require(len(checks) == 1 and checks[0] < positions["prepare-publication"],
             "Validate the complete listing before preparing publication")
     require(positions["mirror-preflight"] < positions["prepare-publication"] < uploads[0]
@@ -152,6 +270,8 @@ def check(name, workflow):
     events = workflow.get("on")
     require(isinstance(events, dict), name + ": explicit event mapping required")
     allowed = {"pull_request", "push", "workflow_dispatch", "release"}
+    if name == "release-vpm.yml":
+        allowed.add("workflow_run")
     require(set(events) <= allowed, name + ": unsafe or unreviewed trigger")
     require(workflow.get("permissions") in ({}, {"contents": "read"}), name + ": default permissions must be read-only")
     require(isinstance(workflow.get("concurrency"), dict), name + ": concurrency required")
@@ -210,7 +330,7 @@ def check(name, workflow):
         validation = [i for i, step in enumerate(steps)
                       if step.get("run") == "python3 Tools/run-validation.py --report work/validation.json"]
         require(len(validation) == 1 and guards[0] < validation[0], "Check Gitflow before complete host validation")
-    if name in {"release-vpm.yml", "check-upstream.yml"}:
+    if name == "check-upstream.yml":
         require(set(events) == {"workflow_dispatch"}, name + ": manual trigger required")
     if name == "release-candidate.yml":
         require(set(events) == {"push", "workflow_dispatch"}
@@ -230,8 +350,9 @@ def check(name, workflow):
     if name in {"release-vpm.yml", "release-candidate.yml"}:
         inputs = events["workflow_dispatch"].get("inputs", {})
         require(inputs.get("expected_commit", {}).get("required") is True, name + ": expected commit required")
-        job = jobs["release" if name == "release-vpm.yml" else "candidate"]
-        require(job.get("if") == "github.ref == 'refs/heads/main'", name + ": main-only job required")
+        if name == "release-candidate.yml":
+            require(jobs["candidate"].get("if") == "github.ref == 'refs/heads/main'",
+                    name + ": main-only job required")
         group = "release-vpm" if name == "release-vpm.yml" else "release-candidate"
         require(workflow["concurrency"] == {"group": group, "cancel-in-progress": False, "queue": "max"},
                 name + ": preserve and serialize queued manual runs")
@@ -240,6 +361,18 @@ def check(name, workflow):
         require(any(step.get("run") == "python3 Tools/run-validation.py --report work/validation.json"
                     and not step.get("if") for step in jobs[job_name]["steps"]), name + ": unconditional complete validation required")
     if name == "release-vpm.yml":
+        require(set(events) == {"workflow_dispatch", "workflow_run"}
+                and events["workflow_run"] == {"workflows": ["Build release candidate"],
+                                               "types": ["completed"], "branches": ["main"]},
+                "Automatic beta publication must follow only completed main candidates")
+        resolver = jobs["resolve-candidate"]
+        require(resolver.get("if") == RESOLVE_GATE,
+                "Only a successful same-repository main push candidate may resolve automatic beta inputs")
+        require(resolver.get("permissions") == {"contents": "read", "actions": "read"},
+                "Automatic beta resolution must remain read-only")
+        require(jobs["release"].get("needs") == "resolve-candidate"
+                and jobs["release"].get("if") == RELEASE_GATE,
+                "Publication must require authenticated beta inputs or an explicit main dispatch")
         require(inputs.get("candidate_run_id", {}).get("required") is True, "Publication requires a successful candidate run")
         steps = jobs["release"]["steps"]
         runs = [step.get("run", "") for step in steps]
@@ -248,6 +381,7 @@ def check(name, workflow):
         require(steps.index(gates[0]) < next(i for i, step in enumerate(steps) if step.get("name") == "Publish release"),
                 "Candidate verification must precede publication")
         require(any("Tools/run-validation.py" in run for run in runs), "Full publication validation missing")
+        check_automatic_beta(workflow, jobs)
     if name == "build-listing.yml":
         require(set(events) == {"workflow_dispatch", "pull_request", "release"}
                 and events["release"] == {"types": ["published", "released"]}
@@ -262,7 +396,7 @@ def check(name, workflow):
                 "Preserve PR listing detection, builder and unconditional required gate")
         gate = jobs["build-listing"].get("if", "")
         require(gate == PAGES_GATE,
-                "Pages manual deployment must target main")
+                "Pages manual deployment must target main or an authenticated published beta tag")
         require(workflow["concurrency"] == {"group": "listing-${{ github.event.pull_request.number || github.run_id }}",
                                             "cancel-in-progress": "${{ github.event_name == 'pull_request' }}"},
                 "Do not replace pending publication workflows")

@@ -26,6 +26,8 @@ jobs:
           python-version: "3.12"
       - name: Check Gitflow pull request target
         if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: python3 Tools/check-gitflow.py
       - name: Install pinned workflow parser
         run: 'python3 -m pip install --require-hashes --only-binary=:all: -r Tools/pipeline-requirements.txt'

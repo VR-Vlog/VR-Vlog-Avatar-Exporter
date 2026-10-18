@@ -12,7 +12,7 @@ List commands, environment and actual results, including skips and remaining lim
 
 ## 確認 / Checklist
 
-通常の変更は `develop` 向け、`main` 向けは同一リポジトリの `release/X.Y.Z` / `hotfix/<slug>` からの昇格です。mainへのマージではステージング候補を生成します。公開は別途承認後の手動操作です。
+通常の変更は `develop` 向け、`main` 向けは同一リポジトリの `release/X.Y.Z` / `hotfix/<slug>` からの昇格です。mainへのマージではステージング候補を生成します。新しいbeta版番号と変更履歴が必要です。候補成功後はbetaをGitHub ReleasesとVPMへ自動公開します。stable公開は別途承認後の手動操作です。
 
 - [ ] 変更範囲と検証内容を説明した / Scope and validation are described.
 - [ ] 関連する文書・ライセンス表記を確認した / Relevant documentation and attribution are checked.

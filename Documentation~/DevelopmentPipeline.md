@@ -12,9 +12,10 @@
 | `develop` | 日常開発の基準。PRとpushでhost検証 |
 | `release/X.Y.Z` → `main` | developの検証済み内容から昇格用ブランチを作り、PRをMerge commitで統合 |
 | `hotfix/<slug>` → `main` | mainから緊急修正を分岐し、PRをMerge commitで統合 |
-| `main` | ステージング。pushごとに検証用ZIPと証跡を自動生成 |
+| `main` | ステージング。pushごとに検証用ZIPと証跡を生成し、beta版を自動公開・VPM更新 |
 | `main` → `develop` | main更新後にPRをMerge commitで戻す。競合は専用ブランチで解消 |
-| 公開 | mainの完全SHA・候補run・ZIP hashを指定し、個別承認後に手動実行 |
+| beta公開 | 新しいbeta版のmain候補が成功すると自動実行。stable latestは変更しない |
+| stable公開 | mainの完全SHA・候補run・ZIP hashを指定し、個別承認後に手動実行 |
 
 `develop` と `main` はPR・最新baseに対する必須 `schema` / `listing-validation` で保護し、削除とforce pushを禁止します。`main` のPRはMerge commitだけを許可し、`schema` 内のGitflowチェックで同一リポジトリの `release/X.Y.Z` または `hotfix/<slug>` からの昇格か確認します。forkの通常の変更は `develop` へ送ります。PRの宛先変更時にもチェックをやり直します。
 
@@ -27,7 +28,7 @@ git push -u origin release/0.11.16
 gh pr create --base main --head release/0.11.16
 ```
 
-公開候補を作る前にpackageの版と変更履歴を整えます。既存タグと同じ版のステージングZIPは検証に使えますが、公開済みタグの上書きには使いません。mainへの昇格後は次のreleaseブランチを作る前にmainをdevelopへ戻します。自動back-mergeは追加せず、このPRをメンテナーが確認します。
+昇格PRでpackage.jsonの版をmainより増やし、未公開の `X.Y.Z-beta.N` と対応する変更履歴を用意します。既存タグ・同じ版・版の後退はPR段階で拒否します。ZIP生成時に版を書き換えず、ソース・候補・配布ZIPを一致させます。stable化する場合だけ `release/X.Y.Z` で同じstable版へ進め、候補生成後は手動公開を待ちます。stable manifestから自動beta公開は行いません。mainへの昇格後は次のreleaseブランチを作る前にmainをdevelopへ戻します。自動back-mergeは追加せず、このPRをメンテナーが確認します。
 
 ## 受付と対応判断
 
@@ -52,11 +53,11 @@ workflowの編集では、構文チェックに加え、攻撃者のPRが書込�
 | Validate / `schema` | 全PR（宛先変更を含む）、developへのpush | 読取りのみ | 30分。古い同一PRの検証は取消し |
 | listing検証 | 全PRで変更判定、必要時だけbuilder | PR経路は読取りのみ | 判定/必須gate各2分、builder15分 |
 | Build release candidate | mainへのpush、またはmainへの手動起動と完全なexpected SHA | 読取りのみ。公開しない | 30分、ZIP最大20MiB・JSON各128KiB、artifact7日 |
-| Release VPM Packages | mainへの手動起動、候補run ID・版・channel・SHA一致 | 配布jobに限定 | 30分、同時公開を直列化 |
-| Pages / VPM更新 | mainへの手動起動、または公開releaseの既存経路 | 配布jobに限定 | 15分、Pages artifact1日、進行中の配置は取消さない |
+| Release VPM Packages | 成功したmain push候補の完了イベントでbeta自動公開、またはmainへの手動起動 | 候補解決jobは読取りのみ、配布jobに限定して書込み | 解決5分・公開30分、同時公開を直列化 |
+| Pages / VPM更新 | beta公開後は同じ公開タグへ明示dispatch。mainへの手動起動と公開release経路も維持 | 配布jobに限定 | 15分、Pages artifact1日、進行中の配置は取消さない |
 | upstream調査 | 手動起動 | 読取りのみ。対応版は変更しない | 2分 |
 
-既存の `github-pages` environment・mainの必須チェック・配布承認を維持し、開発ブランチにも同じ必須チェックを適用します。既定ブランチをdevelopへ変更しても、公開・Pagesの手動起動では明示的にmainを選びます。リポジトリの公開設定変更やOSSの告知は、この移行の対象に含みません。
+既存の `github-pages` environment・mainの必須チェック・stable配布承認を維持し、開発ブランチにも同じ必須チェックを適用します。既定ブランチをdevelopへ変更しても、公開の手動起動では明示的にmainを選びます。betaのVPM更新は、公開済みbetaタグとmain祖先関係を認証してから配置し、Pages環境にもbetaタグを許可します。リポジトリの公開設定変更やOSSの告知は、この移行の対象に含みません。
 
 公開・候補生成・Pages配置は `queue: max` と取消し無効で直列化し、新しいrunで待機中の承認済みrunを置き換えません。[GitHubのキュー](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)は最大100 run待機で、満杯なら追加runは取消されます。実際の開始待ち順で処理され、dispatchした時刻の厳密な順序は保証されません。取消されたrunは原因・対象を確認して必要な承認条件を保った再実行を行います。
 
@@ -78,25 +79,25 @@ PR・develop・mainの候補・公開のhost検証は同じ `run-validation.py` 
 
 Unityが必要な変更は[既存の互換性・回帰profile](../Compatibility/README.md#exporter-behavior-and-integration-regression-profiles)に従います。Editorと依存パッケージの実版、検証コミット、コマンド・結果・skip・未確認範囲をPRへ記録します。必要な端末・画像検証、固定コマンドと承認条件をhostテストに置き換えません。
 
-## 候補の生成と公開の承認
+## 候補・beta自動公開・stable公開の承認
 
 mainへのpushでは候補workflowがhost検証からZIP生成までを担当し、Validateを重複起動しません。PRの検証、developへの統合後の検証、昇格後のmain候補はそれぞれ異なるコミット・統合状態を確認します。
 
 1. developで変更を検証し、release/hotfixの必須チェックと最新headのレビューを確認してmainへMerge commitで統合します。公開する版と変更履歴・依存の設定を揃え、そのmainの完全SHAを選びます。
 2. mainへのpushで自動起動した **Build release candidate** が、イベントの完全SHAからステージング候補を生成します。再生成が必要な場合はmainから手動起動し、`expected_commit` に同じSHAを指定します。未コミット変更のあるcheckout、別SHA、不完全・失敗したhost検証、ZIP内の欠落した相対文書リンクは候補として拒否します。
-3. 成功したrunの `release-candidate-<SHA>` artifactで、ZIP・`candidate.json`・`validation.json` を確認します。artifactは7日で期限切れになります。承認・復旧に必要な候補と証跡は、私有情報を混ぜずメンテナーの適切な保存先へ保管します。期限切れの候補を公開用の証拠として再利用せず、同じソースで候補を再生成します。
-4. メンテナーは対象のUnity/実機受入・レビュー・ライセンス・配布文書・残る制限を確認します。所有者の必要な個別承認を、**コミット・version・stable/beta・ZIP SHA-256・候補run ID**に結び付けて得ます。候補生成成功は公開承認の代わりになりません。
-5. 承認後だけ **Release VPM Packages**をmainから起動し、同じ情報を指定します。公開処理は、同じリポジトリの正式な候補workflowがmainのpushまたは手動起動で成功したこと、artifactが有効なこと、receiptとZIPの一致を確認し、host検証とローカル再生成ZIPのSHAも再確認します。fork PR・別workflow・失敗・取消し・途中のrunは拒否します。
-6. 既存のタグ保護・stable/beta区別を保って公開します。betaはstableのlatestを動かしません。同じタグは上書きしません。Releases生成後、既存の許可されたVPM/Pages経路で全公開履歴を生成・検証します。
+3. 成功したmain push候補の完了イベントを **Release VPM Packages** が受けます。APIから元runのリポジトリID・main push・workflow・SHA・成功完了とartifactを確認し、候補SHAをcheckoutしてmainに含まれることを検証します。beta manifestの場合だけ公開へ進みます。PR・fork・手動候補・失敗runは自動公開しません。候補の `release-candidate-<SHA>` artifactにはZIP・`candidate.json`・`validation.json` を保存します。artifactは7日で期限切れになります。承認・復旧に必要な候補と証跡は、私有情報を混ぜずメンテナーの適切な保存先へ保管します。期限切れの候補を公開用の証拠として再利用せず、同じソースで候補を再生成します。
+4. betaの自動公開はmainへの昇格を操作上の承認とします。PRレビューで必要なUnity/実機受入・ライセンス・配布文書・残る制限を確認します。host成功をUnity/実機受入の証明にはしません。stableの公開は引き続き所有者の個別承認を **コミット・version・stable・ZIP SHA-256・候補run ID** に結び付けて得ます。
+5. beta自動公開と、承認後の手動公開は同じ配布jobを使います。stableは承認後だけ **Release VPM Packages**をmainから起動し、同じ情報を指定します。公開処理は、同じリポジトリの正式な候補workflowがmainのpushまたは手動起動で成功したこと、artifactが有効なこと、receiptとZIPの一致を確認し、host検証とローカル再生成ZIPのSHAも再確認します。fork PR・別workflow・失敗・取消し・途中のrunは拒否します。
+6. 既存のタグ保護・stable/beta区別を保って公開します。betaはstableのlatestを動かしません。同じタグは上書きしません。Releases生成後、VPM/Pages経路で全公開履歴を生成・検証します。betaでは最新mainではなく公開した `vX.Y.Z-beta.N` タグから起動するため、処理中にmainが進んでも候補SHAと異なるソースへ切り替わりません。
 7. ReleasesとVPMのURL・版・ZIP hash・依存の整合、VCC/ALCOMへの導入・更新と必要な動作確認を行い、実際に確認した環境を記録して関連Issueへ反映します。
 
-公式ドメインと既存利用者向けのVPM URLは、[公式ドメイン・互換配信の自動同期手順](OrganizationMigration.md#公開時の自動同期)で更新します。既存の一覧公開jobは個人・組織それぞれの専用認証を事前確認し、生成済み公式サイトを保存して組織側を公開した後、3つの公開先を同期します。公式ドメイン・新組織パス・旧組織パス・旧個人パスの4つの実URL、全公開version・ZIP hashの一致を確認するまで、互換配信を含む公開完了とは扱いません。既存の公開承認・公開event gate・environment・直列化を維持します。ステージング候補から公開jobは起動しません。旧組織パスは承認済みのaccount Pagesリポジトリのmain・rootで配信し、GitHub管理の標準Pages公開を使います。定期実行は追加しません。
+公式ドメインと既存利用者向けのVPM URLは、[公式ドメイン・互換配信の自動同期手順](OrganizationMigration.md#公開時の自動同期)で更新します。既存の一覧公開jobは個人・組織それぞれの専用認証を事前確認し、生成済み公式サイトを保存して組織側を公開した後、3つの公開先を同期します。公式ドメイン・新組織パス・旧組織パス・旧個人パスの4つの実URL、全公開version・ZIP hashの一致を確認するまで、互換配信を含む公開完了とは扱いません。stableの公開承認・environment・直列化を維持し、認証したbetaタグのdispatch経路を追加します。旧組織パスは承認済みのaccount Pagesリポジトリのmain・rootで配信し、GitHub管理の標準Pages公開を使います。定期実行は追加しません。
 
 ## 失敗・公開後の対応
 
 失敗した段階のrunと対象SHAを残し、原因を切り分けます。コード修正後は新しいSHAの検証を行い、候補を再生成します。キャッシュ削除やcleanを定例処理にせず、不整合の原因と必要な範囲を確認してから行います。署名URLや鍵、私有素材を含むログは公開しません。
 
-公開前の失敗ではタグやreleaseを作らず、公開後のVPM更新失敗では既に公開したreleaseを無断で作り直さず、同じ配布内容でlisting更新を再試行します。配布に問題が見つかった場合は利用者への影響と対応版を記録し、必要な承認を得て配布導線を止めるか以前の検証済み導線へ戻します。復旧でも公開済みタグ・ZIPを上書きせず、修正を新しいversionとして出します。
+公開前の検証失敗ではタグやreleaseを作らず、公開後のVPM更新失敗では既に公開したreleaseを無断で作り直さず、同じ配布内容でlisting更新を再試行します。betaの復旧は **Build VPM Listing** を公開済みbetaタグから手動起動します。候補run全体の再実行で公開済みタグを上書きしません。配布に問題が見つかった場合は利用者への影響と対応版を記録し、必要な承認を得て配布導線を止めるか以前の検証済み導線へ戻します。復旧でも公開済みタグ・ZIPを上書きせず、修正を新しいversionとして出します。
 
 通常の報告は受付→再現→修正PR→検証→修正版の流れで追います。脆弱性は非公開で対応し、公開の時期・内容はセキュリティポリシーに従います。
 
