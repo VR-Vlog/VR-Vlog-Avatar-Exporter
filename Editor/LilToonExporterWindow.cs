@@ -245,6 +245,7 @@ namespace VRVlog.LilToonExporter
                     if ((lastSavedWarnings.Length > 0 || lastSavedResult != null && !lastSavedResult.IsEmpty) &&
                         GUILayout.Button(ExporterLocalization.T("書き出しの詳細")))
                         ExportResultWindow.ShowSaved(lastSavedResult ?? ExportResultList.Build(null, lastSavedWarnings, lastSavedPath), avatar, OpenBlinkSettings);
+                    if (AppPreviewEntry.Backend != null && GUILayout.Button(ExporterLocalization.T("アプリでの見え方を確認"))) OpenAppPreview(lastSavedPath);
                 }
             }
 
@@ -631,6 +632,20 @@ namespace VRVlog.LilToonExporter
             catch { return null; }
         }
 
+        // Reads the saved file on click so the export result does not keep the
+        // VRM bytes in memory while the window stays open.
+        private static void OpenAppPreview(string path)
+        {
+            byte[] bytes;
+            try { bytes = File.ReadAllBytes(path); }
+            catch (Exception)
+            {
+                EditorUtility.DisplayDialog(ExporterLocalization.T("アプリでの見え方を確認"), ExporterLocalization.T("ファイルを読めません"), ExporterLocalization.T("閉じる"));
+                return;
+            }
+            AppPreviewWindow.Open(bytes, Path.GetFileName(path), path);
+        }
+
         private static string InstalledLilToonStatus()
         {
             var package = FindLilToonPackage();
@@ -653,7 +668,7 @@ namespace VRVlog.LilToonExporter
             return version;
         }
 
-        private static PackageManagerPackageInfo FindLilToonPackage()
+        internal static PackageManagerPackageInfo FindLilToonPackage()
         {
             foreach (var package in PackageManagerPackageInfo.GetAllRegisteredPackages())
                 if (string.Equals(package.name, "jp.lilxyzw.liltoon", StringComparison.Ordinal)) return package;
