@@ -194,6 +194,31 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
         }
 
+        [Test]
+        public void OutputWithoutMeshIsRejected()
+        {
+            var asset = new Dictionary<string, object> { ["version"] = "2.0" };
+            var empty = GlbDocument.Create(new Dictionary<string, object> { ["asset"] = asset }, null).Write();
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateOutputHasMesh(empty));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.OutputHasNoMesh));
+            var withMesh = GlbDocument.Create(new Dictionary<string, object>
+                { ["asset"] = asset, ["meshes"] = new List<object> { new Dictionary<string, object>() } }, null).Write();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateOutputHasMesh(withMesh));
+        }
+
+        // The source check counts the hidden mesh, but the export leaves it out,
+        // so the saved file would be empty.
+        [Test]
+        public void MeshOnlyOnInactiveChildStopsAfterExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Object.DestroyImmediate(skins[1]);
+            skins[0].gameObject.SetActive(false);
+            var error = Assert.Throws<InvalidOperationException>(() => new ExportSettings().Export(fixture.Source, "Hidden", "Tests", new List<string>(), null, null));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.OutputHasNoMesh));
+        }
+
         // A generic AAO avatar uses its root Animator controller, unlike a
         // VRChat descriptor or authored Vrm10Instance. Give the synthetic
         // generic fixture a real idle controller without altering AAO settings.

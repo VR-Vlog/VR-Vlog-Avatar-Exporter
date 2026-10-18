@@ -110,10 +110,12 @@ namespace VRVlog.LilToonExporter
             UniVrmOneClickExporter.ValidateSourceHumanoid(avatar);
             UniVrmOneClickExporter.ValidateSourceHasMesh(avatar);
             if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
-            return UniVrmOneClickExporter.Export(avatar, name, author, warnings,
+            var vrm = UniVrmOneClickExporter.Export(avatar, name, author, warnings,
                 exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
                 excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses,
                 recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, licenseOptions: License, disableAudioLink: true);
+            UniVrmOneClickExporter.ValidateOutputHasMesh(vrm);
+            return vrm;
         }
 
         // The create step of LilToonExporterWindow.ExportAndSaveNormally. It
