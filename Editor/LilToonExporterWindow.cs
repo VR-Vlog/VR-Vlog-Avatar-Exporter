@@ -15,6 +15,9 @@ namespace VRVlog.LilToonExporter
         private string outputPath = "";
         private string lastSavedPath, lastSavedSummary;
         private string[] lastSavedWarnings = Array.Empty<string>();
+        // The result list of the last saved export. Lost on a script reload;
+        // the warnings above then still give a list without the report lines.
+        [NonSerialized] private ExportResultList lastSavedResult;
         private bool showAppearanceOptions;
         [SerializeField] private bool showLicenseSettings;
         private bool showEnvironment;
@@ -236,7 +239,9 @@ namespace VRVlog.LilToonExporter
                         catch { EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T("転送用のコピーを準備できません"), ExporterLocalization.T("閉じる")); }
                     }
                     if (GUILayout.Button(ExporterLocalization.T("保存先を開く"))) EditorUtility.RevealInFinder(lastSavedPath);
-                    if (lastSavedWarnings.Length > 0 && GUILayout.Button(ExporterLocalization.T("書き出しの詳細"))) ExportAppearanceReportWindow.Open(lastSavedWarnings);
+                    if ((lastSavedWarnings.Length > 0 || lastSavedResult != null && !lastSavedResult.IsEmpty) &&
+                        GUILayout.Button(ExporterLocalization.T("書き出しの詳細")))
+                        ExportResultWindow.ShowSaved(lastSavedResult ?? ExportResultList.Build(null, lastSavedWarnings, lastSavedPath), avatar, OpenBlinkSettings);
                 }
             }
 
@@ -309,7 +314,9 @@ namespace VRVlog.LilToonExporter
             if (avatar == null) return;
             blinkStatus.Refresh(EditorApplication.timeSinceStartup, ResolveBlink);
             var resolved = blinkStatus.Resolved;
-            var error = blinkStatus.Error;
+            // An automatic setup that fell back to no blink keeps the old error
+            // visible, so the manual choice is still one click away.
+            var error = blinkStatus.Error ?? (resolved?.UnresolvedAutomatic == true ? resolved.UnresolvedReason : null);
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField(ExporterLocalization.T("瞬き"), ExporterLocalization.T(resolved?.Description) ?? ExporterLocalization.T("設定が必要です"));
             if (GUILayout.Button(showBlink ? ExporterLocalization.T("設定を閉じる") : ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) showBlink = !showBlink;
@@ -475,6 +482,7 @@ namespace VRVlog.LilToonExporter
             lastSavedPath = null;
             lastSavedSummary = null;
             lastSavedWarnings = Array.Empty<string>();
+            lastSavedResult = null;
             // A nonmodal failure window may remain open while the user changes
             // this window. Retry exactly the avatar, destination and options
             // they chose for this attempt; revalidate the live avatar each time.
@@ -490,20 +498,21 @@ namespace VRVlog.LilToonExporter
                 ExporterLocalization.T("上書き"), ExporterLocalization.T("キャンセル"))) return;
             ExportAuthor.Remember(targetAvatar, targetAuthor);
             ExportRecoverySession session = null;
+            // The report of the attempt that produced the bytes being saved.
+            ExportFallbackReport savedReport = null;
             void ExportCompleted(byte[] bytes, IEnumerable<string> warnings)
             {
-                ShowExportCompletion(bytes, warnings, targetOutput);
+                ShowExportCompletion(bytes, warnings, targetOutput, savedReport);
             }
             void Completed() => ExportCompleted(session.LastSuccess.Bytes, session.LastSuccess.Warnings);
             try
             {
-                session = ExportAndSaveNormally(targetAvatar, targetOutput, create, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
+                session = ExportAndSaveNormally(targetAvatar, targetOutput, (options, report, warnings) =>
                 {
-                    // The blink choices live in this window; open their section.
-                    if (this == null) return;
-                    showAppearanceOptions = true; showBlink = true;
-                    Focus(); Repaint();
-                });
+                    var exported = create(options, report, warnings);
+                    savedReport = report?.Fallbacks;
+                    return exported;
+                }, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: OpenBlinkSettings);
                 if (session != null) ExportFailureWindow.Show(session, Completed);
             }
             catch (Exception exception) { ExportFailureWindow.Show(exception); }
@@ -529,11 +538,13 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
-            // The export already worked around what it could not set up. Ask once,
-            // before anything is written, whether to save that result.
-            if (!ExportFallbackConfirmation.Confirm(report.Fallbacks, source, interactive, openBlinkSettings)) return null;
-            ExportOutputWriter.Write(destination, bytes);
-            completed?.Invoke(bytes, warnings);
+            // The export already worked around what it could not set up. Show the
+            // result list once, before anything is written, and save from there.
+            ExportFallbackConfirmation.Confirm(report.Fallbacks, warnings, destination, source, interactive, () =>
+            {
+                ExportOutputWriter.Write(destination, bytes);
+                completed?.Invoke(bytes, warnings);
+            }, openBlinkSettings);
             return null;
         }
 
@@ -555,7 +566,15 @@ namespace VRVlog.LilToonExporter
             return name + "-liltoon.vrm";
         }
 
-        private void ShowExportCompletion(byte[] bytes, IEnumerable<string> warnings, string destination)
+        // The blink choices live in this window; open their section.
+        private void OpenBlinkSettings()
+        {
+            if (this == null) return;
+            showAppearanceOptions = true; showBlink = true;
+            Focus(); Repaint();
+        }
+
+        private void ShowExportCompletion(byte[] bytes, IEnumerable<string> warnings, string destination, ExportFallbackReport report = null)
         {
             var details = (warnings ?? Array.Empty<string>()).ToArray();
             if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
@@ -563,6 +582,7 @@ namespace VRVlog.LilToonExporter
             resultWindow.lastSavedPath = destination;
             resultWindow.lastSavedSummary = string.Format(ExporterLocalization.T("{0:N0}バイト・VRChat表情 {1}件"), bytes.Length, VrmMenuExpressions.CountRegistered(bytes));
             resultWindow.lastSavedWarnings = details;
+            resultWindow.lastSavedResult = ExportResultList.Build(report, details, destination);
             resultWindow.Repaint();
         }
 

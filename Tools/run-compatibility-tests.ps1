@@ -7,7 +7,7 @@ Add-Type -Path @(
 )
 [DependencyCompatibilityTests]::Run()
 Add-Type -Path @(
-    (Join-Path $taskRepo 'Editor/LilToon234Catalogue.cs'),
+    (Join-Path $taskRepo 'Formats/Runtime/LilToon234Catalogue.cs'),
     (Join-Path $taskRepo 'Editor/LilToonStructureCheck.cs'),
     (Join-Path $PSScriptRoot 'LilToonStructureCheckTests.cs')
 )

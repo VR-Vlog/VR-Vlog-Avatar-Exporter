@@ -2,25 +2,25 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-// Kept identical in the exporter and player. No Unity/Editor dependency.
+// Shared by the exporter and player through VRVlog.AvatarFormats. No Unity/Editor dependency.
 namespace VRVlog.Expressions
 {
-    internal sealed class ExpressionAnimationData
+    public sealed class ExpressionAnimationData
     {
-        internal const string Extension = "VRVLOG_expression_animations";
-        internal const string TargetPrefix = "__VRVlog_Anim_";
-        internal string Expression;
-        internal double Duration;
-        internal bool Loop;
-        internal readonly List<Channel> Channels = new List<Channel>();
+        public const string Extension = "VRVLOG_expression_animations";
+        public const string TargetPrefix = "__VRVlog_Anim_";
+        public string Expression;
+        public double Duration;
+        public bool Loop;
+        public readonly List<Channel> Channels = new List<Channel>();
 
-        internal sealed class Point { internal double Value; internal string Target; }
-        internal sealed class Channel
+        public sealed class Point { public double Value; public string Target; }
+        public sealed class Channel
         {
-            internal Curve Curve;
-            internal readonly List<Point> Points = new List<Point>();
+            public Curve Curve;
+            public readonly List<Point> Points = new List<Point>();
 
-            internal void Weights(double time, out int left, out int right, out float blend)
+            public void Weights(double time, out int left, out int right, out float blend)
             {
                 var value = Curve.Evaluate(time);
                 right = 1;
@@ -31,25 +31,25 @@ namespace VRVlog.Expressions
             }
         }
 
-        internal double TimeAt(double elapsed)
+        public double TimeAt(double elapsed)
         {
             elapsed = Math.Max(0, elapsed);
             return Loop ? elapsed % Duration : Math.Min(elapsed, Duration);
         }
 
-        internal sealed class Key
+        public sealed class Key
         {
-            internal double Time, Value, InWeight = 1.0 / 3, OutWeight = 1.0 / 3;
+            public double Time, Value, InWeight = 1.0 / 3, OutWeight = 1.0 / 3;
             // null denotes a stepped tangent; JSON never contains Infinity.
-            internal double? InTangent, OutTangent;
+            public double? InTangent, OutTangent;
         }
 
-        internal sealed class Curve
+        public sealed class Curve
         {
-            internal string PreWrap = "clamp", PostWrap = "clamp";
-            internal readonly List<Key> Keys = new List<Key>();
+            public string PreWrap = "clamp", PostWrap = "clamp";
+            public readonly List<Key> Keys = new List<Key>();
 
-            internal double Evaluate(double time)
+            public double Evaluate(double time)
             {
                 var first = Keys[0];
                 var last = Keys[Keys.Count - 1];
@@ -97,7 +97,7 @@ namespace VRVlog.Expressions
                 return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
             }
 
-            internal void Range(out double minimum, out double maximum)
+            public void Range(out double minimum, out double maximum)
             {
                 minimum = Keys.Min(k => k.Value); maximum = Keys.Max(k => k.Value);
                 for (var i = 1; i < Keys.Count; i++)
@@ -111,7 +111,7 @@ namespace VRVlog.Expressions
                 }
             }
 
-            internal void Validate()
+            public void Validate()
             {
                 if (!Wrap(PreWrap) || !Wrap(PostWrap) || Keys.Count == 0 || Keys.Count > 16384) Bad();
                 var previous = double.NegativeInfinity;
@@ -131,7 +131,7 @@ namespace VRVlog.Expressions
             static bool Wrap(string value) => value == "clamp" || value == "loop" || value == "pingPong";
         }
 
-        internal static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
+        public static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
         {
             var result = new Dictionary<string, object>
             {
@@ -154,7 +154,7 @@ namespace VRVlog.Expressions
             return result;
         }
 
-        internal static List<ExpressionAnimationData> Read(object value)
+        public static List<ExpressionAnimationData> Read(object value)
         {
             var root = Obj(value);
             if (Number(root["schemaVersion"]) != 1) Bad();
