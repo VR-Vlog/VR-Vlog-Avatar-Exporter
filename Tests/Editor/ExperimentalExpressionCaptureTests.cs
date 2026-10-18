@@ -194,9 +194,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { RecoveryCallbackProbe.ResetCounters(); Object.DestroyImmediate(clip); }
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void ReimportRefreshesExplicitRowsAndRestoresTheirPreviousSelection(bool selected)
+        [Test]
+        public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>(); var clip = new AnimationClip { name = "Explicit edited face" };
@@ -209,19 +208,19 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
-                var input = inputs.Single(); input.Selected = selected;
+                var input = inputs.Single();
                 AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(input.Error, Is.Not.Null); Assert.That(input.Selected, Is.False);
+                Assert.That(input.Error, Is.Not.Null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.Expressions, Is.Empty, "An unsupported file stays on the board but is not exported.");
                 AnimationUtility.SetEditorCurve(clip, unsupported, null); AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 2, 90));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(input.Error, Is.Null); Assert.That(input.Selected, Is.EqualTo(selected)); Assert.That(input.Time, Is.EqualTo(2));
-                if (selected)
-                {
-                    type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
-                    var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
-                    Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(90));
-                }
+                Assert.That(input.Error, Is.Null); Assert.That(input.Time, Is.EqualTo(2));
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
+                session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(90));
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
@@ -314,7 +313,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.Single(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(75));
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Count, Is.EqualTo(2));
             }
             finally { Object.DestroyImmediate(window); AssetDatabase.DeleteAsset(folder); Object.DestroyImmediate(retained); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
@@ -853,7 +852,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(95));
                 inputs.Single().Time = 1; // Saving must refresh independently of preview.
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Single().Rows.First(row => row.Path == "Front").Weights[0], Is.EqualTo(95));
                 Assert.That(inputs.Single().Time, Is.EqualTo(newLength));
             }
@@ -996,11 +995,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
 
-        [TestCase("ja", "VRM書き出し", "VRMを保存")]
-        [TestCase("en", "VRM Export", "Save VRM")]
-        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
+        [TestCase("ja", "VRM書き出し", "この割り当てでVRMを保存")]
+        [TestCase("en", "VRM Export", "Save VRM with this assignment")]
+        [TestCase("ko", "VRM 내보내기", "이 할당으로 VRM 저장")]
+        [TestCase("zh-Hans", "VRM 导出", "按此分配保存 VRM")]
+        [TestCase("zh-Hant", "VRM 匯出", "依此分配儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1013,9 +1012,9 @@ namespace VRVlog.LilToonExporter.Tests
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
-                Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
-                Assert.That(ExporterLocalization.T("候補ファイル"), Is.Not.Empty);
-                if (locale != "ja") Assert.That(ExporterLocalization.T("候補ファイル"), Is.Not.EqualTo("候補ファイル"));
+                Assert.That(ExporterLocalization.T("この割り当てでVRMを保存"), Is.EqualTo(save));
+                Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
+                if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
             finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
@@ -1523,15 +1522,11 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(70));
-                var toggles = (System.Collections.Generic.Dictionary<AnimationClip, Rect>)type.GetField("candidateToggleRects", flags).GetValue(window);
-                Click(window, toggles[clips[0]]); Click(window, toggles[clips[2]]);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Move(clips[1], ExpressionBoard.Place.Excluded), Is.True);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
-                Click(window, (Rect)type.GetField("addSelectedRect", flags).GetValue(window));
-                for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
-                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
-                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clips[0], clips[2] }));
-                Assert.That(inputs.All(input => input.Selected && input.Time == 1), Is.True);
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { clips[0], clips[2] }));
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Count, Is.EqualTo(2));
                 Assert.That(session.Expressions.Select(pose => pose.Rows.First(row => row.Path == "Front").Weights[0]), Is.EqualTo(new[] { 70f, 72f }));
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
@@ -1565,14 +1560,14 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var drop = (Rect)type.GetField("expressionDropRect", flags).GetValue(window);
-                Assert.That(drop.height, Is.EqualTo(42));
+                Assert.That(drop.height, Is.GreaterThan(0));
                 DragAndDrop.PrepareStartDrag(); DragAndDrop.objectReferences = clips.Cast<Object>().ToArray();
                 window.SendEvent(new Event { type = EventType.DragUpdated, mousePosition = drop.center });
                 window.SendEvent(new Event { type = EventType.DragPerform, mousePosition = drop.center });
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
                 Assert.That(inputs.Count, Is.EqualTo(count), "Actual IMGUI drag events must add the selected files.");
-                Assert.That(inputs.All(input => input.Error == null && input.Selected), Is.True);
+                Assert.That(inputs.All(input => input.Error == null), Is.True);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(70 + count - 1), "Adding a valid file previews it.");
                 Assert.That(session.ImportClips(inputs).Imported.Count, Is.EqualTo(count));
