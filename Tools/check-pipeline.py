@@ -35,6 +35,10 @@ PUBLICATION_RUNS = {
 }
 PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "VPM_ORG_MIRROR_TOKEN", "sync-vpm-mirrors.py", "prepare-exporter-publication.py")
 DEPLOYMENT = {"id": "deployment", "uses": "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e"}
+PR_EVENTS = {"types": ["opened", "synchronize", "reopened", "edited"]}
+CANDIDATE_COMMIT = "${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}"
+GITFLOW_STEP = {"name": "Check Gitflow pull request target", "if": "github.event_name == 'pull_request'",
+                "run": "python3 Tools/check-gitflow.py"}
 
 
 class WorkflowLoader(yaml.SafeLoader):
@@ -195,11 +199,34 @@ def check(name, workflow):
             check_step_secrets(name, job_name, step)
 
     if name == "validate.yml":
-        require(set(events) == {"pull_request", "push"}, "Validate must run on every PR and main push")
-        require(events["push"] == {"branches": ["main"]}, "Validate push must target main")
+        require(set(events) == {"pull_request", "push"}, "Validate must run on every PR and develop push")
+        require(events["pull_request"] == PR_EVENTS, "Validate must recheck every PR target edit")
+        require(events["push"] == {"branches": ["develop"]}, "Validate push must target develop; main is validated by its candidate")
         require("schema" in jobs, "Required schema check must be preserved")
-    if name in {"release-vpm.yml", "release-candidate.yml", "check-upstream.yml"}:
+        steps = jobs["schema"].get("steps", [])
+        guards = [i for i, step in enumerate(steps) if "Tools/check-gitflow.py" in step.get("run", "")]
+        require(len(guards) == 1 and steps[guards[0]] == GITFLOW_STEP,
+                "Every PR needs the required Gitflow target guard")
+        validation = [i for i, step in enumerate(steps)
+                      if step.get("run") == "python3 Tools/run-validation.py --report work/validation.json"]
+        require(len(validation) == 1 and guards[0] < validation[0], "Check Gitflow before complete host validation")
+    if name in {"release-vpm.yml", "check-upstream.yml"}:
         require(set(events) == {"workflow_dispatch"}, name + ": manual trigger required")
+    if name == "release-candidate.yml":
+        require(set(events) == {"push", "workflow_dispatch"}
+                and events["push"] == {"branches": ["main"]},
+                "Staging candidates must run on main push or explicit manual dispatch only")
+        steps = jobs["candidate"].get("steps", [])
+        source = [step for step in steps if step.get("name") == "Require exact main source"]
+        build = [step for step in steps if step.get("name") == "Build and inspect the candidate"]
+        require(len(source) == len(build) == 1, "Require one exact-source guard and candidate build")
+        require(source[0] == {"name": "Require exact main source", "env": {"EXPECTED_COMMIT": CANDIDATE_COMMIT},
+                              "run": 'test "$GITHUB_SHA" = "$EXPECTED_COMMIT"\ntest "$GITHUB_REF" = refs/heads/main\n'},
+                "Bind push candidates to the event SHA and manual candidates to the expected SHA")
+        require(build[0] == {"name": "Build and inspect the candidate", "env": {"EXPECTED_COMMIT": CANDIDATE_COMMIT},
+                             "run": 'python3 Tools/build-release-candidate.py --expected-commit "$EXPECTED_COMMIT" --report work/validation.json'},
+                "Build the candidate from the same event-specific expected SHA")
+        require(steps.index(source[0]) < steps.index(build[0]), "Verify the main source before building its candidate")
     if name in {"release-vpm.yml", "release-candidate.yml"}:
         inputs = events["workflow_dispatch"].get("inputs", {})
         require(inputs.get("expected_commit", {}).get("required") is True, name + ": expected commit required")
@@ -223,7 +250,8 @@ def check(name, workflow):
         require(any("Tools/run-validation.py" in run for run in runs), "Full publication validation missing")
     if name == "build-listing.yml":
         require(set(events) == {"workflow_dispatch", "pull_request", "release"}
-                and events["release"] == {"types": ["published", "released"]},
+                and events["release"] == {"types": ["published", "released"]}
+                and events["pull_request"] == PR_EVENTS,
                 "Preserve the existing listing validation and approved publication events")
         require("listing-validation" in jobs, "Required listing-validation check must be preserved")
         require(jobs["changes"].get("if") == "github.event_name == 'pull_request'"

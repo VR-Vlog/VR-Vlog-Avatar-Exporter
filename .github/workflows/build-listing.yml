@@ -3,6 +3,7 @@ name: Build VPM Listing
 on:
   workflow_dispatch:
   pull_request:
+    types: [opened, synchronize, reopened, edited]
   release:
     types: [published, released]
 

@@ -26,6 +26,7 @@ runner = tool("run-validation")
 candidate = tool("build-release-candidate")
 release = tool("verify-release-candidate")
 lint = tool("run-actionlint")
+gitflow = tool("check-gitflow")
 SHA = "a" * 40
 
 
@@ -94,6 +95,49 @@ class WorkflowTrustTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 policy.check(name, data)
 
+    def test_branch_validation_and_staging_events_cannot_be_broadened_or_skipped(self):
+        for branches in (["main"], ["develop", "main"], ["*"]):
+            data = self.workflow()
+            data["on"]["push"]["branches"] = branches
+            with self.subTest(branches=branches), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        for change in ({"branches": ["develop"]}, {"types": ["opened", "synchronize", "reopened"]}):
+            data = self.workflow()
+            data["on"]["pull_request"] = change
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        for change in ({"if": "false"}, {"if": "github.base_ref == 'main'"}, {"continue-on-error": True},
+                       {"env": {"GITHUB_EVENT_PATH": "fake.json"}}):
+            data = self.workflow()
+            guard = next(step for step in data["jobs"]["schema"]["steps"] if step.get("name") == "Check Gitflow pull request target")
+            guard.update(change)
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                policy.check("validate.yml", data)
+        data = self.workflow("release-candidate.yml")
+        data["on"]["push"]["branches"] = ["develop"]
+        with self.assertRaises(ValueError):
+            policy.check("release-candidate.yml", data)
+        for name in ("release-vpm.yml", "build-listing.yml"):
+            data = self.workflow(name)
+            data["on"]["push"] = {"branches": ["main"]}
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                policy.check(name, data)
+
+    def test_staging_candidate_cannot_substitute_an_untrusted_commit_source(self):
+        for name in ("Require exact main source", "Build and inspect the candidate"):
+            for source in ("${{ inputs.expected_commit }}", "${{ github.sha }}",
+                           "${{ github.event.pull_request.head.sha }}", "${{ github.event.after }}"):
+                data = self.workflow("release-candidate.yml")
+                step = next(step for step in data["jobs"]["candidate"]["steps"] if step.get("name") == name)
+                step["env"]["EXPECTED_COMMIT"] = source
+                with self.subTest(name=name, source=source), self.assertRaises(ValueError):
+                    policy.check("release-candidate.yml", data)
+        data = self.workflow("release-candidate.yml")
+        source = next(step for step in data["jobs"]["candidate"]["steps"] if step.get("name") == "Require exact main source")
+        source["if"] = "github.event_name == 'workflow_dispatch'"
+        with self.assertRaises(ValueError):
+            policy.check("release-candidate.yml", data)
+
     def test_main_publication_gates_cannot_be_bypassed(self):
         for name, job in (("release-vpm.yml", "release"), ("release-candidate.yml", "candidate"), ("build-listing.yml", "build-listing")):
             data = self.workflow(name)
@@ -153,6 +197,8 @@ class WorkflowTrustTests(unittest.TestCase):
         mutations = (
             lambda w: w["on"].update({"schedule": []}),
             lambda w: w["on"]["release"].update({"types": ["created"]}),
+            lambda w: w["on"]["pull_request"].update({"types": ["opened", "synchronize", "reopened"]}),
+            lambda w: w["on"]["pull_request"].update({"branches": ["develop"]}),
             lambda w: w["concurrency"].update({"cancel-in-progress": True}),
             lambda w: w["jobs"]["changes"].update({"if": "false"}),
             lambda w: w["jobs"]["check-listing-builder"].update({"if": "false"}),
@@ -267,6 +313,75 @@ class WorkflowTrustTests(unittest.TestCase):
             step["env"].pop("VPM_ORG_MIRROR_TOKEN")
             with self.subTest(identity=identity), self.assertRaises(ValueError):
                 policy.check("build-listing.yml", data)
+
+
+class GitflowTests(unittest.TestCase):
+    def event(self, base="main", head="release/1.2.3"):
+        repository = {"id": 123, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"}
+        return {"pull_request": {"base": {"ref": base, "repo": dict(repository)},
+                                 "head": {"ref": head, "repo": dict(repository)}}}
+
+    def test_release_hotfix_and_non_main_targets_pass(self):
+        for base, head in (("main", "release/0.0.0"), ("main", "release/1.23.456"),
+                           ("main", "hotfix/save-error"), ("main", "hotfix/1.2.3"),
+                           ("develop", "feature/change"), ("develop", "main"),
+                           ("release/1.2.3", "fix/release-error")):
+            with self.subTest(base=base, head=head):
+                gitflow.validate(self.event(base, head), "pull_request")
+        event = self.event("develop", "feature/external")
+        event["pull_request"]["head"]["repo"] = {"id": 456, "full_name": "contributor/fork"}
+        gitflow.validate(event, "pull_request")
+
+    def test_main_rejects_direct_development_and_invalid_release_or_hotfix_names(self):
+        for head in ("develop", "feature/change", "release/1.2", "release/01.2.3", "release/1.02.3",
+                     "release/1.2.03", "release/1.2.3-beta.1", "release/1.2.3/extra", "release/",
+                     "hotfix/", "hotfix/nested/fix", "hotfix/.hidden", "hotfix/fix..name",
+                     "hotfix/fix.lock", "hotfix/fix.", "hotfix/fix name"):
+            with self.subTest(head=head), self.assertRaises(ValueError):
+                gitflow.validate(self.event(head=head), "pull_request")
+
+    def test_fork_and_incomplete_repository_identity_cannot_promote_to_main(self):
+        for repository in ({"id": 456, "full_name": "contributor/fork"},
+                           {"id": 456, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 123, "full_name": "contributor/fork"},
+                           {"id": True, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": "123", "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 0, "full_name": "VR-Vlog/VR-Vlog-Avatar-Exporter"},
+                           {"id": 123, "full_name": ""}, {"id": 123, "full_name": " "}, {}, None):
+            for side in ("head", "base"):
+                event = self.event()
+                event["pull_request"][side]["repo"] = repository
+                with self.subTest(side=side, repository=repository), self.assertRaises(ValueError):
+                    gitflow.validate(event, "pull_request")
+
+    def test_missing_malformed_or_wrong_event_payload_fails_closed(self):
+        for event_name in (None, "push", "pull_request_target", "workflow_dispatch"):
+            with self.subTest(event_name=event_name), self.assertRaises(ValueError):
+                gitflow.validate(self.event(), event_name)
+        for event in (None, [], {}, {"pull_request": None}, {"pull_request": {}},
+                      {"pull_request": {"base": "main", "head": "release/1.2.3"}}):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                gitflow.validate(event, "pull_request")
+        for side in ("base", "head"):
+            for ref in (None, "", 123, "bad..branch", "trailing/", "has space", ".hidden", "fix.lock"):
+                event = self.event("develop", "feature/change")
+                event["pull_request"][side]["ref"] = ref
+                with self.subTest(side=side, ref=ref), self.assertRaises(ValueError):
+                    gitflow.validate(event, "pull_request")
+
+    def test_command_reads_the_event_file_instead_of_branch_environment_hints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "event.json"
+            environment = {"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": "pull_request",
+                           "GITHUB_BASE_REF": "develop", "GITHUB_HEAD_REF": "release/1.2.3"}
+            path.write_text(json.dumps(self.event("main", "feature/unapproved")), encoding="utf-8")
+            with mock.patch.dict(gitflow.os.environ, environment), self.assertRaises(ValueError):
+                gitflow.main()
+            path.write_text(json.dumps(self.event("develop", "main")), encoding="utf-8")
+            environment["GITHUB_BASE_REF"] = "main"
+            environment["GITHUB_HEAD_REF"] = "feature/unapproved"
+            with mock.patch.dict(gitflow.os.environ, environment), mock.patch("sys.stdout", new=io.StringIO()):
+                gitflow.main()
 
 
 class ValidationReceiptTests(unittest.TestCase):
@@ -398,7 +513,10 @@ class PublicationReceiptTests(unittest.TestCase):
         return out.getvalue(), digest
 
     def test_success_receipt_is_bound_to_run_commit_version_and_bytes(self):
-        release.verify_run(self.run_fixture(), 123, SHA)
+        for event in ("workflow_dispatch", "push"):
+            run = self.run_fixture()
+            run["event"] = event
+            release.verify_run(run, 123, SHA)
         data, digest = self.archive()
         release.verify_archive(data, SHA, "1.2.3", digest, 42)
         with self.assertRaises(ValueError):
@@ -407,7 +525,8 @@ class PublicationReceiptTests(unittest.TestCase):
     def test_fork_pr_wrong_workflow_failed_and_in_progress_runs_fail(self):
         changes = ({"repository": {"full_name": "attacker/fork"}}, {"head_sha": "b" * 40},
                    {"workflow_id": 456}, {"path": ".github/workflows/fake.yml"},
-                   {"event": "pull_request"}, {"head_branch": "feature"},
+                   {"event": "pull_request"}, {"event": "pull_request_target"}, {"event": "workflow_run"},
+                   {"event": "release"}, {"event": None}, {"head_branch": "develop"}, {"head_branch": "feature"},
                    {"status": "in_progress"}, {"conclusion": "failure"}, {"conclusion": "cancelled"})
         for change in changes:
             run = self.run_fixture()

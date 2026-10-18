@@ -36,9 +36,9 @@ def verify_run(run, workflow_id, sha):
             or run["repository"]["id"] != REPOSITORY_GITHUB_ID
             or run.get("workflow_id") != workflow_id or run.get("path") != WORKFLOW
             or run.get("head_sha") != sha or run.get("head_branch") != "main"
-            or run.get("event") != "workflow_dispatch" or run.get("status") != "completed"
+            or run.get("event") not in {"push", "workflow_dispatch"} or run.get("status") != "completed"
             or run.get("conclusion") != "success"):
-        raise ValueError("Candidate must be a successful manual main run of the approved workflow for this SHA")
+        raise ValueError("Candidate must be a successful main push or manual run of the approved workflow for this SHA")
 
 
 def select_artifact(artifacts, sha):
