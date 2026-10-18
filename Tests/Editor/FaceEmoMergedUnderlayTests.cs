@@ -47,17 +47,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(selected[0].z, Is.EqualTo(neutral[0].z).Within(.00002f), "Untargeted customization stays neutral.");
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single(); Assert.That(expression.Targets, Has.Count.EqualTo(1));
+            // Lowering Mouth below rest stays a residual target; raising Open
+            // from rest 50 to its 100 frame references the shape directly.
+            if (openingZero) Assert.That(expression.Direct, Is.Empty);
+            else Assert.That(expression.Direct.Single(), Is.EqualTo((f.Merged, "Open", 1f)));
             var bytes = VrmMenuExpressions.Add(Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Avatar.Copy,
                 new BuiltInVrm10MaterialExporter(), new MobileTextureSerializer(null),
                 new VRM10ObjectMeta { Name = "Merged common face fixture", Version = "1", Authors = new List<string> { "Tests" } }),
-                new[] { expression });
+                new[] { expression }, new NamedDirectBindings());
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller(),
                 controlRigGenerationOption: ControlRigGenerationOption.None);
             try
             {
                 var clip = imported.Vrm.Expression.CustomClips.Single(value => value.name == "VRChat / " + entry.Name);
-                Assert.That(clip.MorphTargetBindings, Has.Length.EqualTo(1));
-                var skin = imported.transform.Find(clip.MorphTargetBindings.Single().RelativePath).GetComponent<SkinnedMeshRenderer>();
+                Assert.That(clip.MorphTargetBindings, Has.Length.EqualTo(1 + expression.Direct.Count));
+                var skin = imported.transform.Find(clip.MorphTargetBindings.Select(binding => binding.RelativePath).Distinct().Single()).GetComponent<SkinnedMeshRenderer>();
                 foreach (var weight in new[] { 0f, 1f, 0f })
                 {
                     imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(clip.name), weight); imported.Runtime.Process();
@@ -160,10 +164,26 @@ namespace VRVlog.LilToonExporter.Tests
             f.Pose(100, 40); var selected = Vertices(f.Merged); f.Pose(50, 80);
             accessory.SetBlendShapeWeight(1, 20); var independent = Vertices(accessory); accessory.SetBlendShapeWeight(1, 10);
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-            var expression = f.Bake(menu).Single(); Assert.That(expression.Targets, Has.Count.EqualTo(2));
+            // Only Mouth lowered below rest on the merged face needs a target.
+            // Open 100 from rest 50 and the accessory Mouth 20 from rest 10
+            // reference their rebased shapes directly.
+            var expression = f.Bake(menu).Single(); Assert.That(expression.Targets, Has.Count.EqualTo(1));
+            Assert.That(f.Merged.sharedMesh.GetBlendShapeIndex(expression.Targets.Single()), Is.GreaterThanOrEqualTo(0));
+            Assert.That(expression.Direct, Has.Count.EqualTo(2));
+            Assert.That(expression.Direct.Single(direct => direct.Renderer == f.Merged), Is.EqualTo((f.Merged, "Open", 1f)));
+            var accessoryDirect = expression.Direct.Single(direct => direct.Renderer == accessory);
+            Assert.That(accessoryDirect.Shape, Is.EqualTo("Mouth")); Assert.That(accessoryDirect.Weight, Is.EqualTo(10f / 90f).Within(.000001f));
             foreach (var skin in new[] { f.Merged, accessory })
+            {
                 foreach (var target in expression.Targets.Where(name => skin.sharedMesh.GetBlendShapeIndex(name) >= 0))
                     skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(target), 100);
+                foreach (var direct in expression.Direct.Where(value => value.Renderer == skin))
+                {
+                    var index = skin.sharedMesh.GetBlendShapeIndex(direct.Shape);
+                    Assert.That(skin.sharedMesh.GetBlendShapeFrameWeight(index, 0), Is.EqualTo(100));
+                    skin.SetBlendShapeWeight(index, 100 * direct.Weight);
+                }
+            }
             AssertVertices(selected, Vertices(f.Merged)); AssertVertices(independent, Vertices(accessory));
         }
 

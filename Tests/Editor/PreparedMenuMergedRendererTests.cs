@@ -31,13 +31,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Vector3.Distance(neutral[0], selected[0]), Is.GreaterThan(.01f));
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expressions = f.Bake(menu);
-            Assert.That(expressions.Single().Targets, Has.Count.EqualTo(1), "One final channel must contribute once.");
+            // Raising Open from rest 25 to 75 is the rebased Open shape at 50/75.
+            Assert.That(expressions.Single().Targets, Is.Empty);
+            AssertDirect(expressions.Single().Direct.Single(), f.Merged, "Open", 50f / 75f, "One final channel must contribute once.");
             Assert.That(entry.Values, Is.EqualTo(values));
             Assert.That(entry.Values.Select(value => value.Path), Is.EquivalentTo(new[] { "Front", "Back" }));
             Assert.That(entry.Values.Select(value => value.Weight), Is.EqualTo(new[] { 75f, 75f }));
             var bytes = VrmMenuExpressions.Add(Vrm10Exporter.Export(new GltfExportSettings(), f.Avatar.Copy,
                 textureSerializer: new MobileTextureSerializer(null),
-                vrmMeta: new VRM10ObjectMeta { Name = "Merged menu fixture", Version = "1", Authors = new List<string> { "Tests" } }), expressions);
+                vrmMeta: new VRM10ObjectMeta { Name = "Merged menu fixture", Version = "1", Authors = new List<string> { "Tests" } }), expressions,
+                new NamedDirectBindings());
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
@@ -67,9 +70,12 @@ namespace VRVlog.LilToonExporter.Tests
             f.Merged.SetBlendShapeWeight(0, 25); f.Merged.SetBlendShapeWeight(1, 10);
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(1));
-            Apply(f.Merged, expression.Targets, 100); AssertVertices(selected, Vertices(f.Merged));
-            Apply(f.Merged, expression.Targets, 0); AssertVertices(neutral, Vertices(f.Merged));
+            Assert.That(expression.Targets, Is.Empty);
+            Assert.That(expression.Direct, Has.Count.EqualTo(2));
+            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Open"), f.Merged, "Open", 50f / 75f);
+            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Smile"), f.Merged, "Smile", 70f / 90f);
+            Apply(f.Merged, expression, 1); AssertVertices(selected, Vertices(f.Merged));
+            Apply(f.Merged, expression, 0); AssertVertices(neutral, Vertices(f.Merged));
             Assert.That(selected[0].z, Is.EqualTo(neutral[0].z).Within(.00002f), "Unreferenced customization must remain neutral.");
         }
 
@@ -80,15 +86,17 @@ namespace VRVlog.LilToonExporter.Tests
             var menu = Menu(75, 80); f.Prepare(menu, merge: false);
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(2));
-            Assert.That(expression.Targets.Distinct().Count(), Is.EqualTo(2));
+            Assert.That(expression.Targets, Is.Empty);
+            Assert.That(expression.Direct, Has.Count.EqualTo(2));
+            Assert.That(expression.Direct.Select(direct => direct.Renderer).Distinct().Count(), Is.EqualTo(2));
             foreach (var path in new[] { "Front", "Back" })
             {
                 var skin = f.Avatar.Copy.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
-                var target = expression.Targets.Single(name => skin.sharedMesh.GetBlendShapeIndex(name) >= 0);
+                var direct = expression.Direct.Single(value => value.Renderer == skin);
+                AssertDirect(direct, skin, "Open", (path == "Front" ? 50f : 55f) / 75f);
                 var delta = new Vector3[skin.sharedMesh.vertexCount];
-                skin.sharedMesh.GetBlendShapeFrameVertices(skin.sharedMesh.GetBlendShapeIndex(target), 0, delta, null, null);
-                Assert.That(delta[0].y, Is.EqualTo(.03f * (path == "Front" ? .5f : .55f)).Within(.00002f));
+                skin.sharedMesh.GetBlendShapeFrameVertices(skin.sharedMesh.GetBlendShapeIndex(direct.Shape), 0, delta, null, null);
+                Assert.That(delta[0].y * direct.Weight, Is.EqualTo(.03f * (path == "Front" ? .5f : .55f)).Within(.00002f));
             }
         }
 
@@ -101,7 +109,8 @@ namespace VRVlog.LilToonExporter.Tests
             var animations = entry.Animation.ToArray(); var values = entry.Values.ToArray();
             f.Prepare(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(1));
+            Assert.That(expression.Targets, Is.Empty);
+            AssertDirect(expression.Direct.Single(), f.Merged, "Open", 15f / 75f);
             Assert.That(expression.Animation.Channels, Has.Count.EqualTo(1));
             Assert.That(expression.Animation.Channels.Single().Curve.Evaluate(.5), Is.EqualTo(70).Within(.00001));
             Assert.That(entry.Values, Is.EqualTo(values)); Assert.That(entry.Animation, Is.EqualTo(animations));
@@ -169,7 +178,10 @@ namespace VRVlog.LilToonExporter.Tests
             menu.Entries[0].Values[1].Shape = "Smile"; menu.Entries[0].Animation[1].Shape = "Smile";
             f.Prepare(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(1));
+            Assert.That(expression.Targets, Is.Empty);
+            Assert.That(expression.Direct, Has.Count.EqualTo(2));
+            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Open"), f.Merged, "Open", 15f / 75f);
+            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Smile"), f.Merged, "Smile", 30f / 90f);
             Assert.That(expression.Animation.Channels, Has.Count.EqualTo(2));
             Assert.That(expression.Animation.Channels.SelectMany(channel => channel.Points).Where(point => point.Target != null)
                 .Select(point => point.Target).Distinct().Count(), Is.EqualTo(2));
@@ -186,8 +198,9 @@ namespace VRVlog.LilToonExporter.Tests
             f.Merged.SetBlendShapeWeight(0, 40); var selected = Vertices(f.Merged); f.Merged.SetBlendShapeWeight(0, 25);
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(1));
-            Apply(f.Merged, expression.Targets, 100); AssertVertices(selected, Vertices(f.Merged));
+            Assert.That(expression.Targets, Is.Empty);
+            AssertDirect(expression.Direct.Single(), f.Merged, "Open", 15f / 75f);
+            Apply(f.Merged, expression, 1); AssertVertices(selected, Vertices(f.Merged));
             Assert.That(expression.Animation == null || expression.Animation.Channels.Single().Curve.Evaluate(500) == 40, Is.True);
         }
 
@@ -217,6 +230,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
         private static void Apply(SkinnedMeshRenderer skin, IEnumerable<string> targets, float weight)
         { foreach (var target in targets) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(target), weight); }
+        // Direct references point at rebased copy shapes with one 100 frame.
+        private static void Apply(SkinnedMeshRenderer skin, VrmMenuExpressions.Expression expression, float scale)
+        {
+            foreach (var direct in expression.Direct.Where(value => value.Renderer == skin))
+            {
+                var index = skin.sharedMesh.GetBlendShapeIndex(direct.Shape);
+                Assert.That(skin.sharedMesh.GetBlendShapeFrameWeight(index, 0), Is.EqualTo(100));
+                skin.SetBlendShapeWeight(index, 100 * direct.Weight * scale);
+            }
+        }
+        private static void AssertDirect((SkinnedMeshRenderer Renderer, string Shape, float Weight) direct, SkinnedMeshRenderer renderer, string shape, float weight, string message = null)
+        {
+            Assert.That(direct.Renderer, Is.SameAs(renderer), message); Assert.That(direct.Shape, Is.EqualTo(shape), message);
+            Assert.That(direct.Weight, Is.EqualTo(weight).Within(.000001f), message);
+        }
         private static void AssertVertices(Vector3[] expected, Vector3[] actual)
         {
             Assert.That(actual.Length, Is.EqualTo(expected.Length));

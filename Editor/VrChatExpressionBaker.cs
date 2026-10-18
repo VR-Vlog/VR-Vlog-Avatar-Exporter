@@ -130,6 +130,25 @@ namespace VRVlog.LilToonExporter
             return plans;
         }
 
+        // The rebased export shape is one frame holding Evaluate(F) - Evaluate(rest).
+        // A single positive frame is linear, so raising the channel from rest
+        // up to F is that shape at (w - rest) / (F - rest). Anything else, such
+        // as lowering below rest or a curved multi-frame shape, returns null
+        // and stays a baked residual.
+        private static float? DirectWeight(Mesh original, Mesh copy, int shape, float rest, float weight, bool clampToSourceRange)
+        {
+            if (float.IsNaN(rest) || float.IsInfinity(rest) || float.IsNaN(weight) || float.IsInfinity(weight)) return null;
+            if (original.GetBlendShapeFrameCount(shape) != 1) return null;
+            var frame = (double)original.GetBlendShapeFrameWeight(shape, 0);
+            if (!(frame > 0) || double.IsInfinity(frame)) return null;
+            var exported = copy.GetBlendShapeIndex(original.GetBlendShapeName(shape));
+            if (exported < 0 || copy.GetBlendShapeFrameCount(exported) != 1) return null;
+            var r = clampToSourceRange ? AvatarBaseShape.ClampSourceWeight(original, shape, rest) : rest;
+            var w = clampToSourceRange ? AvatarBaseShape.ClampSourceWeight(original, shape, weight) : weight;
+            if (r > w || w > frame || frame <= r) return null;
+            return (float)((w - r) / (frame - r));
+        }
+
         internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
             => Bake(source, clone, menu, meshes, warnings, null);
@@ -225,19 +244,27 @@ namespace VRVlog.LilToonExporter
                     }
                     var rest = group.Rest;
                     var pose = (float[])rest.Clone();
+                    var residual = new List<Channel>();
+                    var direct = 0;
                     foreach (var value in group.Channels)
                     {
                         var index = originalMesh.GetBlendShapeIndex(value.Shape);
                         if (index < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + value.Shape);
-                        pose[index] = value.Weight;
+                        var weight = DirectWeight(originalMesh, copy.sharedMesh, index, rest[index], value.Weight, clampToSourceRange);
+                        if (weight == null) { residual.Add(value); pose[index] = value.Weight; continue; }
+                        if (weight.Value == 0f) continue;
+                        expression.Direct.Add((copy, value.Shape, weight.Value));
+                        direct++;
                     }
                     var delta = AvatarBaseShape.ExpressionDeltas(originalMesh, rest, pose, clampToSourceRange);
                     var zero = Zero(delta);
+                    // The direct binds already keep this entry selectable.
+                    if (zero && direct > 0) continue;
                     if (!zero || !zeroScalarTargets.TryGetValue(copy.sharedMesh, out var name))
                     {
                         Reserve(originalMesh);
                         var parts = new List<string> { "Menu", PathOf(copy), entry.Name };
-                        foreach (var value in group.Channels) { parts.Add(value.Path); parts.Add(value.Shape); parts.Add(Number(value.Weight)); }
+                        foreach (var value in residual) { parts.Add(value.Path); parts.Add(value.Shape); parts.Add(Number(value.Weight)); }
                         name = DeterministicNames.Unique("__VRVlog_Menu_" + DeterministicNames.Hash(parts.ToArray()), usedNames);
                         copy.sharedMesh.AddBlendShapeFrame(name, 100f, delta.Vertices, delta.Normals, delta.Tangents);
                         if (zero) zeroScalarTargets.Add(copy.sharedMesh, name);
@@ -303,7 +330,7 @@ namespace VRVlog.LilToonExporter
                         expression.Animation.Channels.Add(channel);
                     }
                 }
-                if (expression.Targets.Count > 0) result.Add(expression);
+                if (expression.Targets.Count > 0 || expression.Direct.Count > 0) result.Add(expression);
             }
             if (result.Count > 0) warnings?.Add($"VRChatから{result.Count}個の表情を登録しました。選択中は顔の形を保つため瞬き・口・視線の自動変形を止めます。");
             else warnings?.Add("VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。");

@@ -458,7 +458,8 @@ namespace VRVlog.LilToonExporter
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
                     optimizerBindings = ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
-                        objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
+                        objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
+                        menuMorphs: expressions.SelectMany(expression => expression.Direct).Select(direct => (direct.Renderer, direct.Shape)));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
@@ -558,7 +559,7 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.ExpressionOutput, () =>
                 {
                     var filled = new List<(string Preset, string Source)>();
-                    var output = VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false,
+                    var output = VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions, optimizerBindings), warnings, inferBlink: false,
                         inferEmotions: inferEmotionPresets, filledEmotions: filled);
                     RecordInferredEmotions(filled, recoveryReport);
                     return output;

@@ -75,10 +75,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(entry.Animation, Is.Empty);
                 Assert.That(entry.Duration, Is.Zero);
             }
-            var output = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
-            var delta = new Vector3[output.vertexCount];
+            // Face size 75 from rest 0 references its shape directly; only
+            // Blink lowered below rest 50 is baked as a target.
+            var renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>(); var output = renderer.sharedMesh;
+            Assert.That(baked.All(expression => expression.Direct.Single() == (renderer, "Face size", .75f)), Is.True);
+            var delta = new Vector3[output.vertexCount]; var face = new Vector3[output.vertexCount];
             output.GetBlendShapeFrameVertices(output.GetBlendShapeIndex(baked[0].Targets.Single()), 0, delta, null, null);
-            Assert.That(output.vertices[0] + delta[0], Is.EqualTo(new Vector3(4, 0, 0)));
+            output.GetBlendShapeFrameVertices(output.GetBlendShapeIndex("Face size"), 0, face, null, null);
+            Assert.That(output.GetBlendShapeFrameWeight(output.GetBlendShapeIndex("Face size"), 0), Is.EqualTo(100));
+            Assert.That(Vector3.Distance(output.vertices[0] + delta[0] + face[0] * baked[0].Direct.Single().Weight, new Vector3(4, 0, 0)), Is.LessThan(.00001f));
             Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.EqualTo(50));
             Assert.That(mesh.blendShapeCount, Is.EqualTo(2));
             Assert.That(AnimationUtility.GetCurveBindings(clip).Length, Is.EqualTo(3));

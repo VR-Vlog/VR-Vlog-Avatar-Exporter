@@ -104,8 +104,18 @@ namespace VRVlog.LilToonExporter.Tests
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var names = new[] { "VRChat / Happy", "VRChat / Photo face" };
                 var clips = names.Select(name => imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name)).ToArray();
-                Assert.That(clips[0].MorphTargetBindings.Select(binding => (binding.RelativePath, binding.Index, binding.Weight)),
-                    Is.Not.EqualTo(clips[1].MorphTargetBindings.Select(binding => (binding.RelativePath, binding.Index, binding.Weight))));
+                // Both menus raise shape 0 from rest 17 to 75 on its single 100
+                // frame, so each references that shape directly at 58/83 on
+                // every renderer instead of baking its own target.
+                foreach (var clip in clips)
+                {
+                    Assert.That(clip.MorphTargetBindings.Select(binding => binding.RelativePath), Is.EquivalentTo(new[] { "Front", "Back" }), clip.name);
+                    foreach (var binding in clip.MorphTargetBindings)
+                    {
+                        Assert.That(binding.Index, Is.EqualTo(0), clip.name);
+                        Assert.That(binding.Weight, Is.EqualTo(58f / 83f).Within(.000001f), clip.name);
+                    }
+                }
                 Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
                 Assert.That(imported.Vrm.Expression.BlinkLeft, Is.Not.Null);
                 Assert.That(imported.Vrm.Expression.BlinkRight, Is.Not.Null);
@@ -125,8 +135,8 @@ namespace VRVlog.LilToonExporter.Tests
                             AssertVertices(Vertices(expected), Vertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
                         }
                     }
-                // Named menus keep independent morph identities and weights;
-                // equal individual poses must still support additive selection.
+                // Equal named menus now share the directly referenced shape;
+                // UniVRM sums coactivated bindings, so selecting both still adds.
                 var rest = imported.GetComponentsInChildren<SkinnedMeshRenderer>().ToDictionary(skin => skin.name, Vertices);
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(names[0]), 1); imported.Runtime.Process();
                 var single = imported.GetComponentsInChildren<SkinnedMeshRenderer>().ToDictionary(skin => skin.name, Vertices);

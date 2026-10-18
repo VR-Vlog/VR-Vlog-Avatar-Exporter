@@ -108,12 +108,17 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(expression.OverrideLookAt.ToString(), Is.EqualTo("block"));
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expressionName), 1);
                 imported.Runtime.Process();
+                // Raising the shape from rest 35 to 75 references the rebased
+                // shape directly at (75 - 35) / (100 - 35).
                 var binding = expression.MorphTargetBindings.Single();
+                Assert.That(binding.Weight, Is.EqualTo(40f / 65f).Within(.000001f));
                 var skinOut = imported.transform.Find(binding.RelativePath).GetComponent<SkinnedMeshRenderer>();
-                Assert.That(skinOut.GetBlendShapeWeight(binding.Index), Is.EqualTo(100).Within(.01));
+                Assert.That(skinOut.GetBlendShapeWeight(binding.Index), Is.EqualTo(100 * binding.Weight).Within(.01));
                 var delta = new Vector3[skinOut.sharedMesh.vertexCount];
                 skinOut.sharedMesh.GetBlendShapeFrameVertices(binding.Index, 0, delta, null, null);
-                Assert.That(Vector3.Distance(skinOut.sharedMesh.vertices[0] + delta[0], before[0] + new Vector3(.02f, .01f, 0) * .75f), Is.LessThan(.0001));
+                Assert.That(skinOut.sharedMesh.GetBlendShapeFrameCount(binding.Index), Is.EqualTo(1));
+                Assert.That(skinOut.sharedMesh.GetBlendShapeFrameWeight(binding.Index, 0), Is.EqualTo(100));
+                Assert.That(Vector3.Distance(skinOut.sharedMesh.vertices[0] + delta[0] * binding.Weight, before[0] + new Vector3(.02f, .01f, 0) * .75f), Is.LessThan(.0001));
                 Assert.That(fixture.Mesh.vertices, Is.EqualTo(before));
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(s => s.sharedMesh == fixture.Mesh && s.GetBlendShapeWeight(0) == 35), Is.True);
             }
