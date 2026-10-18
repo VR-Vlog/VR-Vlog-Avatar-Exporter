@@ -83,6 +83,10 @@ Textures retain their aspect ratio and are reduced to fit within 1024 × 1024. S
 
 To import on iPhone, save the `.vrm` in Files, enable **lilToon専用表示** in VR Vlog settings, then choose **モデルを変更 → 端末のVRMを選ぶ**. Reload the model after changing the rendering setting.
 
+### App preview
+
+Not yet released: to see a saved VRM as the VR Vlog app loads it, select **アプリでの見え方を確認** after saving, or select **VR Vlog → アプリでの見え方を確認** and choose a `.vrm`. The window shows whether the materials render with lilToon or which ones fall back to MToon, and can switch to standard MToon only. It also applies each VRM expression, plays expression animations, blinks (a test signal for this window only) and sways the avatar to move its spring bones. lilToon is drawn with the official Built-in shaders, so small details can differ from the app's URP shaders. The button and the menu appear only when the VR Vlog app's reader package (`com.vrvlog.avatar-runtime`) is installed in the project.
+
 ## Documentation
 
 Most detailed user guides are currently in Japanese. The compatibility guide and schema files provide additional development references.

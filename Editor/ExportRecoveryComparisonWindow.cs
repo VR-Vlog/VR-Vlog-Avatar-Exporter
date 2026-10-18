@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private static PreviewRenderUtility CreateRenderer(GameObject copy)
+        internal static PreviewRenderUtility CreateRenderer(GameObject copy)
         {
             var preview = new PreviewRenderUtility();
             preview.AddSingleGO(copy);

@@ -1,0 +1,36 @@
+{
+  "name": "VRVlog.LilToonExporter.AppPreview",
+  "rootNamespace": "VRVlog.LilToonExporter",
+  "references": [
+    "VRVlog.LilToonExporter.Editor",
+    "FaceMaskVTuber.UniVrmRuntime",
+    "VRM10",
+    "UniGLTF"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "VRVLOG_AVATAR_RUNTIME",
+    "VRVLOG_VRM_0_131",
+    "VRVLOG_GLTF_0_131"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.vrvlog.avatar-runtime",
+      "expression": "0.0.0",
+      "define": "VRVLOG_AVATAR_RUNTIME"
+    },
+    {
+      "name": "com.vrmc.vrm",
+      "expression": "[0.131.0,0.131.999999999]",
+      "define": "VRVLOG_VRM_0_131"
+    },
+    {
+      "name": "com.vrmc.gltf",
+      "expression": "[0.131.0,0.131.999999999]",
+      "define": "VRVLOG_GLTF_0_131"
+    }
+  ]
+}
