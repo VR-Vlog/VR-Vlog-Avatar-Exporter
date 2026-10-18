@@ -26,7 +26,7 @@ Exporter 側はすでに `ExportRendererSelection.HasGeometry` で同じ条件�
   - 警告が 1 件だけあり、2 つの Renderer のパスを含む。
   - 元のアバターの Renderer は有効のままで、メッシュと材質も変わらない。
 - `RendererSelectionTests.CopyWithoutAnyMeshIsLeftForTheExistingFailure` で、メッシュを持つ Renderer が無い複製では何も無効にせず、警告も出さないことを確かめる。
-- Unity を起動せず、Unity 2022.3.22f1 付属の Roslyn で Editor とテストのアセンブリをコンパイルした。EditMode テストは実行していない。
+- Unity 2022.3.22f1 で、ほかの修正と合わせてパッケージの EditMode テストを全件実行し、上の 2 つ（3 件）が通った。失敗した 9 件は、この変更の無い状態でも失敗するものと、同時に試した別の修正のものだった。
 
 ## 検討した代替案と不採用理由
 
