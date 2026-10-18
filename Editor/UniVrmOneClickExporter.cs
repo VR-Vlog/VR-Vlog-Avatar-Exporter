@@ -46,7 +46,8 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null)
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
+            bool inferEmotionPresets = true)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -75,7 +76,7 @@ namespace VRVlog.LilToonExporter
                     attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
                     return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                         suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard);
+                        authorCopyExpressions, guard, inferEmotionPresets);
                 }, failure => report.Fallbacks.Clear());
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
@@ -107,6 +108,17 @@ namespace VRVlog.LilToonExporter
             report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
             var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
             entry.Count = trimmed;
+        }
+
+        internal const string InferredEmotionCategory = "名前から自動で設定";
+
+        // Emotion presets filled from a name are kept output the user should check.
+        internal static void RecordInferredEmotions(IEnumerable<(string Preset, string Source)> filled, ExportRecoveryReport report)
+        {
+            var category = ExporterLocalization.T(InferredEmotionCategory);
+            foreach (var (preset, source) in filled)
+                report.Fallbacks.Record(ExportOutcome.Kept, category, preset,
+                    string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), preset, source));
         }
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
@@ -157,7 +169,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard)
+            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             // Cloning detaches the avatar from its parents. Reject an inactive
@@ -397,8 +409,16 @@ namespace VRVlog.LilToonExporter
                 // bytes it was given.
                 exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);
                 if (lookAt != null) exported = guard.Run(ExportStage.LookAt, () => lookAt.Apply(exported), () => exported);
-                exported = guard.Run(ExportStage.ExpressionOutput,
-                    () => VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false), () => exported);
+                // Empty emotion presets are filled from menu faces or whole-face names;
+                // each filled preset is listed in the warnings and the result list.
+                exported = guard.Run(ExportStage.ExpressionOutput, () =>
+                {
+                    var filled = new List<(string Preset, string Source)>();
+                    var output = VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false,
+                        inferEmotions: inferEmotionPresets, filledEmotions: filled);
+                    RecordInferredEmotions(filled, recoveryReport);
+                    return output;
+                }, () => exported);
                 exported = guard.Run(ExportStage.BlinkOutput, () => blink.Apply(exported), () => exported);
                 exported = guard.Run(ExportStage.TrackingOutput, () =>
                 {
