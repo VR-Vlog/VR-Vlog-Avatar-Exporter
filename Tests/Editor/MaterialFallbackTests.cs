@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UniGLTF.Extensions.VRMC_vrm;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -156,6 +157,44 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var material in created) Object.DestroyImmediate(material);
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(image);
+            }
+        }
+
+        [Test]
+        public void FakeShadowFallbackIsInvisibleAndOrdinaryFallbackStaysOpaque()
+        {
+            // MToon has no stencil: a visible FakeShadow fallback would cover
+            // the whole mesh it shares (for example a hair mesh) in shadow color.
+            var shader = Shader.Find("_lil/[Optional] lilToonFakeShadow");
+            Assert.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var ordinary = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));
+            var created = new List<Material>();
+            try
+            {
+                var shadowColor = new Color(.74f, .57f, .6f, 1f);
+                source.SetColor("_Color", shadowColor);
+                Assert.IsTrue(LilToonMaterialReader.IsLilToon(source));
+                Assert.IsTrue(LilToonMaterialReader.IsFakeShadow(source));
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, new List<string>());
+                Assert.AreEqual(2, fallback.GetInt("_AlphaMode"), "FakeShadow fallback must blend.");
+                Assert.AreEqual(0, fallback.GetInt("_TransparentWithZWrite"));
+                Assert.AreEqual(0, fallback.GetInt("_OutlineWidthMode"));
+                Assert.AreEqual(0f, fallback.GetColor("_Color").a);
+                Assert.AreEqual(0f, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.color).a);
+                // The lilToon extension still receives the authored color.
+                Assert.AreEqual(shadowColor, source.GetColor("_Color"));
+
+                Assert.IsFalse(LilToonMaterialReader.IsFakeShadow(ordinary));
+                var opaque = UniVrmOneClickExporter.CreateMToonFallback(ordinary, created, null);
+                Assert.AreEqual(0, opaque.GetInt("_AlphaMode"));
+                Assert.AreEqual(1f, opaque.GetColor("_Color").a);
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(ordinary);
             }
         }
 

@@ -138,6 +138,9 @@ namespace VRVlog.LilToonExporter
             (!m.HasProperty("_OutlineVertexR2Width") || m.GetFloat("_OutlineVertexR2Width") == 0f);
 
         public static bool IsLilToon(Material material) => material != null && material.shader != null && ShaderVariant(material.shader.name).Length > 0;
+        // FakeShadow draws only through a stencil written by another material.
+        internal static bool IsFakeShadow(Material material) => material != null && material.shader != null &&
+            string.Equals(ShaderVariant(material.shader.name), "lilToonFakeShadow", StringComparison.OrdinalIgnoreCase);
         private static string ShaderFamily(string name, ICollection<string> warnings)
         {
             var variant = ShaderVariant(name);
