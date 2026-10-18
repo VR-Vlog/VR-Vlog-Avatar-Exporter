@@ -255,12 +255,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
+                // An unsupported shader is now approximated by official lilToon
+                // instead of falling back to a flat MToon material.
                 Assert.That(report.Fallbacks.Items.Select(item => item.Kind), Is.EquivalentTo(
-                    new[] { ExportFallbackKind.Blink, ExportFallbackKind.NonLilToonMaterials }));
+                    new[] { ExportFallbackKind.Blink, ExportFallbackKind.ShaderSubstituted }));
                 Assert.That(ExportFallbackConfirmation.Targets(report.Fallbacks, fixture.Source), Is.EquivalentTo(
                     fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject)));
-                // The warnings of the non-interactive route are unchanged.
-                Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.NonLilToonWarning), StringComparison.Ordinal)), Is.True);
+                Assert.That(warnings, Has.Member(ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Plain"));
+                Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.NonLilToonWarning), StringComparison.Ordinal)), Is.False);
                 Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));
                 Assert.That(dialog.Calls, Is.Empty, "Exporting itself never opens a dialog.");
             }

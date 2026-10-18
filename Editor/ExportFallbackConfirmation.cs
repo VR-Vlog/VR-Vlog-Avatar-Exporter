@@ -22,7 +22,9 @@ namespace VRVlog.LilToonExporter
         // More items than the app accepts; the rest were left out.
         LimitExceeded,
         // A material could not be converted and became color-and-image MToon.
-        MaterialApproximated
+        MaterialApproximated,
+        // A material on an unsupported shader was replaced by an official lilToon approximation.
+        ShaderSubstituted
     }
 
     // One line of the export result: what happened to which item, and why.
@@ -164,6 +166,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.StageOmitted: return "書き出しの一部を省略しました";
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
                 case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
+                case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
                 default: return "lilToonのマテリアルが見つかりませんでした";
             }
         }
@@ -178,6 +181,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.StageOmitted: return "省略した機能";
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた項目";
                 case ExportFallbackKind.MaterialApproximated: return "マテリアル";
+                case ExportFallbackKind.ShaderSubstituted: return "マテリアル";
                 default: return "マテリアル";
             }
         }
