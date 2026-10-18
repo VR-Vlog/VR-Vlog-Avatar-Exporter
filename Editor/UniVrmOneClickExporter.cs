@@ -25,21 +25,77 @@ namespace VRVlog.LilToonExporter
             if (recoveryMaterialSource != null)
                 foreach (var material in source.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null).Distinct())
                     report.Track(material, recoveryMaterialSource(material));
+            var guard = new ExportStageGuard(report.ContinueOnStageFailure);
+            // Remedies found for each left-out stage, kept for the result list.
+            var omittedDiagnostics = new Dictionary<ExportStage, List<ExportRecoveryDiagnostic>>();
+            guard.OnOmit = (stage, error) =>
+            {
+                // Retried stages were already diagnosed by ExportCore before the
+                // copy was destroyed; stages handled in place are diagnosed here.
+                if (report.Diagnostics.Count == 0)
+                    try { report.Fail(source, error); } catch { }
+                omittedDiagnostics[stage] = report.Diagnostics.ToList();
+                report.Diagnostics.Clear();
+            };
+            // A restarted attempt must not repeat the warnings of a discarded one.
+            List<string> attemptWarnings = null;
             try
             {
-                var bytes = ExportCore(source, avatarName, author, warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
-                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions);
+                var bytes = guard.Retry(() =>
+                {
+                    attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
+                    return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
+                        suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
+                        authorCopyExpressions, guard);
+                }, failure => report.Fallbacks.Clear());
+                CopyWarnings(attemptWarnings, warnings);
+                RecordOmissions(guard, report, warnings, omittedDiagnostics);
                 report.Stage = "完了";
                 report.Succeeded = true;
                 return bytes;
             }
             catch (Exception error)
             {
+                CopyWarnings(attemptWarnings, warnings);
+                var cause = ExportStageGuard.Unwrap(error);
                 // A diagnostic failure must never replace the original export error.
                 if (report.Diagnostics.Count == 0)
-                    try { report.Fail(source, error); } catch { }
+                    try { report.Fail(source, cause); } catch { }
+                if (!ReferenceEquals(cause, error)) System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cause).Throw();
                 throw;
+            }
+        }
+
+        // Over 128 bundled poses the first 128 are kept (lenient exports only).
+        static void RecordTrimmedPoses(PoseExportSession poses, ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            var trimmed = poses.TrimmedCount;
+            if (trimmed == 0) return;
+            var reason = string.Format(ExporterLocalization.T(PoseLimitWarning), VRVlog.Poses.HumanoidPoseData.MaximumPoses, trimmed);
+            var name = ExporterLocalization.T(ExportStageGuard.Label(ExportStage.PoseCapture));
+            warnings?.Add(reason);
+            report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
+            var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
+            entry.Count = trimmed;
+        }
+
+        internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
+
+        static void CopyWarnings(List<string> attempt, ICollection<string> warnings)
+        {
+            if (attempt == null || warnings == null) return;
+            foreach (var warning in attempt) warnings.Add(warning);
+        }
+
+        static void RecordOmissions(ExportStageGuard guard, ExportRecoveryReport report, ICollection<string> warnings,
+            Dictionary<ExportStage, List<ExportRecoveryDiagnostic>> diagnostics)
+        {
+            foreach (var omission in guard.Omissions)
+            {
+                diagnostics.TryGetValue(omission.Stage, out var found);
+                report.Fallbacks.AddStage(omission.Stage, omission.Error.Message, found);
+                warnings?.Add(ExporterLocalization.T("書き出しの一部を省略しました") + ": " +
+                    ExporterLocalization.T(ExportStageGuard.Label(omission.Stage)) + " — " + omission.Error.Message);
             }
         }
 
@@ -47,7 +103,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions)
+            Action<GameObject> authorCopyExpressions, ExportStageGuard guard)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             // Cloning detaches the avatar from its parents. Reject an inactive
@@ -66,7 +122,11 @@ namespace VRVlog.LilToonExporter
                 IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray()
             };
             using var manualExclusions = new ExportObjectExclusions(source, manualObjects);
-            var findings = gimmickOptions.AutoExclude ? ExportGimmickDetection.Analyze(source, manualExclusions.Contains) : new List<ExportGimmickFinding>();
+            var findings = gimmickOptions.AutoExclude
+                ? guard.Run(ExportStage.GimmickDetection, () => ExportGimmickDetection.Analyze(source, manualExclusions.Contains), () => new List<ExportGimmickFinding>())
+                : new List<ExportGimmickFinding>();
+            // A failed detection keeps every object instead of guessing.
+            if (guard.IsOmitted(ExportStage.GimmickDetection)) gimmickOptions.AutoExclude = false;
             var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions).ToArray();
             using var exclusions = new ExportObjectExclusions(source, manualObjects.Concat(automaticRoots));
             foreach (var finding in findings.Where(f => f.Renderer == null))
@@ -74,15 +134,26 @@ namespace VRVlog.LilToonExporter
                 else if (finding.Unit == GimmickExclusionUnit.Review) warnings?.Add("自動除外せず保持: " + finding.Target.name + " — " + finding.Reason);
             // Preserve rejection of effective external/excluded source targets.
             // Only unresolved getters wait for the selected root on the copy.
-            NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true);
+            guard.Run(ExportStage.SourceValidation, () => NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true));
             // Re-read the live assets on every export; a preview is never a stale
             // cached source of expression weights after the user edits a clip.
             var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);
             recoveryReport.Stage = "表情メニュー読込";
-            var menu = VrChatExpressionMenu.Read(source, menuPolicy);
-            exclusions.FilterExpressions(menu, warnings);
-            var sourceBlink = BlinkExportSession.CaptureForExport(source, blinkOptions, exclusions.Contains, suppressSharedTextureEmission, suppressHdrTextureEmission);
-            using var poses = new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy);
+            var menu = guard.Run(ExportStage.ExpressionMenu, () =>
+            {
+                var read = VrChatExpressionMenu.Read(source, menuPolicy);
+                exclusions.FilterExpressions(read, warnings);
+                return read;
+            }, () => new VrChatExpressionMenu.Source());
+            // Without the menu, later passes must not read it again either.
+            if (guard.IsOmitted(ExportStage.ExpressionMenu)) menuPolicy = new VrChatMenuImportPolicy { SkipAll = true };
+            var sourceBlink = guard.Run(ExportStage.BlinkCapture,
+                () => BlinkExportSession.CaptureForExport(source, blinkOptions, exclusions.Contains, suppressSharedTextureEmission, suppressHdrTextureEmission),
+                () => BlinkExportSession.CaptureForExport(source, new BlinkExportOptions { Mode = BlinkExportMode.None }, exclusions.Contains,
+                    suppressSharedTextureEmission, suppressHdrTextureEmission));
+            using var poses = guard.Run(ExportStage.PoseCapture, () => new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy),
+                () => PoseExportSession.None(source));
+            poses.TrimToLimit = guard.ContinueOnFailure;
             recoveryReport.Stage = "コピー作成";
             var clone = NdmfExportPreparation.InstantiateOwnedCopy(source);
             clone.name = source.name;
@@ -97,18 +168,18 @@ namespace VRVlog.LilToonExporter
                 // MA resolves against the selected avatar after detaching its
                 // owned copy, just as NDMF does when it creates BuildContext.
                 // Source getters can use an enclosing root or no root at all.
-                NdmfExportPreparation.ValidateCopy(source, clone,
-                    target => exclusions.ContainsCopyTransform(clone, target));
+                guard.Step(ExportStage.CopyValidation, () => NdmfExportPreparation.ValidateCopy(source, clone,
+                    target => exclusions.ContainsCopyTransform(clone, target)));
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
-                using var blink = sourceBlink.ForClone(source, clone);
-                using var gimmicks = new ExportGimmickSession(source, clone, gimmickOptions);
+                using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
+                using var gimmicks = guard.Watch(ExportStage.GimmickDetection, () => new ExportGimmickSession(source, clone, gimmickOptions));
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 using var expressionBindings = new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding);
-                MaAppearanceSnapshot.Apply(source, clone, temporaryMeshes, exclusions, warnings);
+                guard.Step(ExportStage.MaAppearance, () => MaAppearanceSnapshot.Apply(source, clone, temporaryMeshes, exclusions, warnings));
                 PoseExportSession.RemoveAplFromCopy(source, clone);
                 recovery?.Apply(warnings);
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
-                gimmicks.Apply(null, menu, warnings);
+                guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(null, menu, warnings));
                 if (exporterVersion == null) LilToonMainTextureBaker.ValidateAvatar(clone, options: bakeOptions);
                 // Omission consent follows source identity before plugins clone
                 // materials. All actual baking waits for the final appearance.
@@ -118,15 +189,15 @@ namespace VRVlog.LilToonExporter
                     SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
                 var unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
                     suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
-                var faceEmoBindings = FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
-                    expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true);
+                var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
+                    expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true), () => null);
                 List<VrmMenuExpressions.Expression> expressions = null;
                 recoveryReport.Stage = "ビルド処理";
                 // Caller-selected faces join the copy as authored VRM clips, so
                 // the same identity capture, relocation and neutral baking apply.
                 authorCopyExpressions?.Invoke(clone);
                 expressionBindings.CaptureAuthoredExpressions();
-                using var preparation = NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
+                using var preparation = guard.Watch(ExportStage.BuildProcess, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
@@ -136,31 +207,32 @@ namespace VRVlog.LilToonExporter
                     expressionBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
                     faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,
                         transformed.ObjectRegistry, transformed.IsolatedCopyOf);
-                    blink.RebindPrepared(transformed.PreparedRendererFor);
+                    guard.Watch(ExportStage.BlinkCapture, () => blink.RebindPrepared(transformed.PreparedRendererFor));
                     unifiedPreparation?.RebindPrepared(transformed.PreparedRendererFor);
-                    blink.VerifyPreparedIdentity(clone);
+                    guard.Watch(ExportStage.BlinkCapture, () => blink.VerifyPreparedIdentity(clone));
                     unifiedPreparation?.VerifyIdentityAndDeformation();
                     var preparedMenuPolicy = menuPolicy?.WithOwnedCopies(value => transformed.IsolatedCopyOf(value as UnityEngine.Object));
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
-                    menu = VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                        preparedMenuPolicy, source, faceEmoBindings);
+                    menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
+                        preparedMenuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
                         excludedPath: expressionBindings.ExcludesPreparedPath);
-                    gimmicks.Apply(preparedMenuBindings, menu, warnings);
-                    FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
-                        preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings);
-                    poses.CollectPrepared(clone, warnings, preparedMenuPolicy);
+                    guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(preparedMenuBindings, menu, warnings));
+                    guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
+                        preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
+                    guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
+                    RecordTrimmedPoses(poses, warnings, recoveryReport);
                     recoveryReport.Stage = "基準形評価";
                     // This beta retains the prepared copy's rest values. Selected
                     // expressions still use their original FX evaluation above;
                     // all endpoints below share this retained neutral snapshot.
                     warnings?.Add(ExporterLocalization.T("このベータ版ではFXの初期状態の復元を省略し、書き出し用コピーの設定を基本の顔・体形として保存しました。VRChatでの通常時の見た目と異なる場合があります。"));
                     AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights);
-                    blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
-                        suppressHdrTextureEmission: suppressHdrTextureEmission);
+                    guard.Watch(ExportStage.BlinkCapture, () => blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
+                        suppressHdrTextureEmission: suppressHdrTextureEmission));
                     if (blink.MissingAutomatic)
                     {
                         warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
@@ -168,11 +240,12 @@ namespace VRVlog.LilToonExporter
                     }
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
-                    preparedMenuBindings.Capture(menu);
-                    blink.Bake(clone, temporaryMeshes);
+                    guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
+                    guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
                     authoredEndpoints.Bake(temporaryMeshes);
-                    expressions = VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings);
+                    expressions = guard.Step(ExportStage.Expressions,
+                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => null);
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
@@ -180,15 +253,15 @@ namespace VRVlog.LilToonExporter
                     optimizerBindings = ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
-                });
+                }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess)));
                 optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;
                     recoveryReport.Track(copiedMaterial, originalMaterial);
                     recovery?.Track(copiedMaterial, originalMaterial);
                 });
-                blink.Remap(optimizerBindings);
-                RemapMenuExpressions(expressions, optimizerBindings);
+                guard.Watch(ExportStage.BlinkCapture, () => blink.Remap(optimizerBindings));
+                guard.Step(ExportStage.Expressions, () => RemapMenuExpressions(expressions, optimizerBindings));
                 // Authoring passes may restore source material references. Reapply
                 // only the selected, source-identity recipe to the owned copy.
                 recovery?.Apply();
@@ -197,35 +270,43 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 recoveryReport.Stage = "材質保存";
-                var fullSnapshot = exporterVersion != null ? LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source) : null;
+                var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
-                // A lilToon-named shader outside the official 2.3.4 set is not "no lilToon";
-                // keep stopping there rather than silently flattening it.
-                if (withoutLilToon && ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
+                // A lilToon-named shader outside the official 2.3.4 set is not "no lilToon".
+                // Strict exports stop there; otherwise each such material becomes
+                // color-and-image MToon and is listed as approximated.
+                if (withoutLilToon && !guard.ContinueOnFailure &&
+                    ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
                 if (withoutLilToon) { fullSnapshot = null; fallbackWarnings = warnings; }
-                if (fullSnapshot == null) LilToonMainTextureBaker.ValidateAvatar(clone);
-                LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
+                guard.Step(ExportStage.TextureBake, () =>
+                {
+                    if (fullSnapshot == null) LilToonMainTextureBaker.ValidateAvatar(clone);
+                    LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
+                });
                 // Also cover meshes/joints newly created by authoring passes.
                 SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
                 // MA has already applied its authored Merge Armature / Bone
                 // Proxy connections. Independent props are not evidence of a
                 // failed hair attachment and must not trigger a modal edit.
-                using var attachments = new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints);
-                if (attachments.Parts.Count > 0)
+                using var attachments = guard.Step(ExportStage.Attachments,
+                    () => new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints), () => null);
+                if (attachments != null && attachments.Parts.Count > 0)
                     warnings?.Add("本体のボーンと独立したパーツは現在の接続を保持しました: " +
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
-                var springs = PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks);
+                var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
-                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks);
-                optimizerBindings.VerifyMaterialEvidence();
+                ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
+                    lenient: guard.ContinueOnFailure);
+                guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
-                var lookAt = VrmLookAtExport.Capture(source, clone, warnings);
+                var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -234,34 +315,48 @@ namespace VRVlog.LilToonExporter
                     vrmMeta: CreateMeta(avatarName.Trim(), author.Trim(), licenseOptions),
                     afterExport: (converter, model, storage) =>
                     {
-                        fullSnapshot?.Bind(converter, model, storage);
-                        blink.Bind(converter, model, storage);
-                        poses.Bind(converter, model, storage);
+                        if (fullSnapshot != null) guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));
+                        guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));
+                        guard.Watch(ExportStage.PoseCapture, () => poses.Bind(converter, model, storage));
                         optimizerBindings.Bind(converter, model, storage);
                     }, warnings: warnings);
                 recoveryReport.Stage = "出力検査";
-                exported = ExportSkinRoots.Repair(exported, warnings);
-                if (lookAt != null) exported = lookAt.Apply(exported);
-                exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false));
-                if (trackingProfile != null) exported = optimizerBindings.ApplyTracking(exported);
-                else exported = optimizerBindings.ApplyUnified(exported, warnings);
+                // Output stages transform finished bytes; a failing one keeps the
+                // bytes it was given.
+                exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);
+                if (lookAt != null) exported = guard.Run(ExportStage.LookAt, () => lookAt.Apply(exported), () => exported);
+                exported = guard.Run(ExportStage.ExpressionOutput,
+                    () => VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false), () => exported);
+                exported = guard.Run(ExportStage.BlinkOutput, () => blink.Apply(exported), () => exported);
+                exported = guard.Run(ExportStage.TrackingOutput, () =>
+                {
+                    var tracked = trackingProfile != null ? optimizerBindings.ApplyTracking(exported) : optimizerBindings.ApplyUnified(exported, warnings);
+                    if (blink.RequiresUnifiedEvidence && !VrmUnifiedExpressions.HasUsableEvidence(tracked))
+                        throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
+                    return tracked;
+                }, () => exported);
                 if (fullSnapshot != null)
                 {
                     // The dedicated snapshot predates fallback baking. Its binary
                     // payloads no longer depend on mutable Unity texture objects.
-                    exported = fullSnapshot.Inject(exported, exporterVersion, lilToonVersion);
-                    foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
+                    // Over the app's material or texture limit the file keeps
+                    // only the standard VRM materials.
+                    var injected = guard.Run(ExportStage.LilToonExtension, () => fullSnapshot.Inject(exported, exporterVersion, lilToonVersion), () => null);
+                    if (injected != null)
+                    {
+                        exported = injected;
+                        foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
+                    }
+                    else foreach(var warning in fallbackWarnings)warnings?.Add(warning);
                 }
                 else if (withoutLilToon) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
-                if (blink.RequiresUnifiedEvidence && !VrmUnifiedExpressions.HasUsableEvidence(exported))
-                    throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
-                PhysBoneSpringExport.VerifyOutput(exported, springs);
-                return poses.Inject(exported);
+                guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
+                return guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
             }
             catch (Exception error)
             {
                 // Capture Unity-object targets before temporary objects disappear.
-                try { recoveryReport.Fail(source, error); } catch { }
+                try { recoveryReport.Fail(source, ExportStageGuard.Unwrap(error)); } catch { }
                 throw;
             }
             finally
@@ -396,7 +491,8 @@ namespace VRVlog.LilToonExporter
             return meta;
         }
 
-        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null)
+        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
+            bool lenient = false)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -425,7 +521,14 @@ namespace VRVlog.LilToonExporter
                     }
                     if (!converted.TryGetValue(source, out var fallback))
                     {
-                        fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks);
+                        try { fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks); }
+                        catch (Exception error) when (lenient && !(error is OperationCanceledException))
+                        {
+                            // One unreadable material must not cost the whole file.
+                            fallback = CreateMToonDefault(source, created);
+                            warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + source.name + " — " + error.Message);
+                            fallbacks?.Add(ExportFallbackKind.MaterialApproximated, source.name, reason: error.Message);
+                        }
                         converted.Add(source, fallback);
                     }
                     materials[i] = fallback;
@@ -435,10 +538,11 @@ namespace VRVlog.LilToonExporter
             }
             if (others.Count > 0)
                 warnings?.Add(ExporterLocalization.T(NonLilToonWarning) + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
-            if (converted.Count == 0 && others.Count == 0) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
+            if (converted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
             return converted;
         }
 
+        internal const string MaterialApproximatedWarning = "変換できなかった材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
         internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
 
         internal static Material CreateMToonDefault(Material source, List<Material> created)

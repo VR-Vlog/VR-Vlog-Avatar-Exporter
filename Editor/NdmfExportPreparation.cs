@@ -311,9 +311,18 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static NdmfExportPreparation Prepare(GameObject source, GameObject clone, ICollection<string> warnings = null,
-            Action<Material, Material> materialCopyObserver = null, Action<NdmfExportPreparation> afterTransforming = null)
+            Action<Material, Material> materialCopyObserver = null, Action<NdmfExportPreparation> afterTransforming = null,
+            bool skipProcessing = false)
         {
             RequireOwnedCopy(source, clone);
+            // The build tools failed on an earlier attempt: export the copy as
+            // authored, with their components left unprocessed.
+            if (skipProcessing)
+            {
+                var unprocessed = new NdmfExportPreparation();
+                try { afterTransforming?.Invoke(unprocessed); return unprocessed; }
+                catch { unprocessed.Dispose(); throw; }
+            }
             EnsureCopyAvatarRoot(clone);
             // Canonical resolution runs with the selected avatar root. Normalize
             // supported stale direct references only on this owned hierarchy.

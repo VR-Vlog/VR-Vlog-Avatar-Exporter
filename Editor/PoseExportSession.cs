@@ -20,13 +20,23 @@ namespace VRVlog.LilToonExporter
         readonly VrChatMenuImportPolicy menuPolicy;
         readonly GameObject source;
         readonly HashSet<PoseCandidate> authoredEntries = new HashSet<PoseCandidate>();
+        readonly bool collect;
         GameObject prepared;
+        // Keep the first 128 selected poses instead of stopping the export.
+        internal bool TrimToLimit;
+        internal int TrimmedCount => TrimToLimit ? Math.Max(0, SelectedCount - HumanoidPoseData.MaximumPoses) : 0;
 
-        internal PoseExportSession(GameObject source, PoseExportOptions options, Func<Transform, bool> excluded = null, VrChatMenuImportPolicy menuPolicy = null)
+        // A session that collects nothing, used when bundled poses are left out.
+        internal static PoseExportSession None(GameObject source) => new PoseExportSession(source, null, collect: false);
+
+        internal PoseExportSession(GameObject source, PoseExportOptions options, Func<Transform, bool> excluded = null, VrChatMenuImportPolicy menuPolicy = null,
+            bool collect = true)
         {
             this.options = options ?? new PoseExportOptions();
             this.menuPolicy = menuPolicy;
             this.source = source;
+            this.collect = collect;
+            if (!collect) return;
             foreach (var component in source.GetComponentsInChildren<Component>(false))
             {
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
@@ -103,6 +113,7 @@ namespace VRVlog.LilToonExporter
         internal IEnumerable<PoseCandidate> CollectPreparedIncrementally(GameObject copy, ICollection<string> warnings = null, VrChatMenuImportPolicy preparedMenuPolicy = null)
         {
             prepared = copy;
+            if (!collect) yield break;
             Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy));
             var seen = new Dictionary<string, PoseCandidate>();
             var collectedFrames = 0;
@@ -187,21 +198,21 @@ namespace VRVlog.LilToonExporter
                 foreach (var bone in row.Bones) bone.Node = Node(bone.Name);
         }
         internal int SelectedCount => Entries.Count(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
-        void CheckSelectedCount()
+        IEnumerable<PoseCandidate> SelectedEntries()
         {
-            if (SelectedCount > HumanoidPoseData.MaximumPoses)
+            if (!TrimToLimit && SelectedCount > HumanoidPoseData.MaximumPoses)
                 throw new InvalidOperationException("同梱ポーズは128件までです。「ポーズを確認・調整」で不要な項目を除外してください。");
+            var rows = Entries.Where(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
+            return TrimToLimit ? rows.Take(HumanoidPoseData.MaximumPoses) : rows;
         }
         internal List<HumanoidPoseData> Selected()
         {
-            CheckSelectedCount();
-            var selected = Entries.Where(e => e.Error == null && e.Data != null && !options.Excluded.Contains(e.Id)).Select(e => e.Data).ToList();
+            var selected = SelectedEntries().Where(e => e.Data != null).Select(e => e.Data).ToList();
             return selected;
         }
         internal List<HumanoidAnimationData> SelectedAnimations()
         {
-            CheckSelectedCount();
-            var selected = Entries.Where(e => e.Error == null && e.Animation != null && !options.Excluded.Contains(e.Id)).Select(e => e.Animation).ToList();
+            var selected = SelectedEntries().Where(e => e.Animation != null).Select(e => e.Animation).ToList();
             if (selected.Sum(animation => animation.Frames.Count) > HumanoidAnimationData.MaximumTotalFrames)
                 throw new InvalidOperationException("動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。");
             return selected;
