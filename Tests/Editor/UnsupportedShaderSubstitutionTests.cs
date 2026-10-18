@@ -4,7 +4,6 @@ using System.Linq;
 using NUnit.Framework;
 using UniVRM10;
 using UnityEngine;
-using VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -175,7 +174,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var plain = Standard();
             var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
-            var mtoon = Own(new Material(Shader.Find(MToon10Meta.UnityShaderName)) { name = "MToon" });
+            var mtoon = Own(new Material(Shader.Find("VRM10/MToon10")) { name = "MToon" });
             var (avatar, renderers) = Build(plain, plain, official, mtoon);
             Own(avatar);
             var created = new List<Material>(); var warnings = new List<string>();
