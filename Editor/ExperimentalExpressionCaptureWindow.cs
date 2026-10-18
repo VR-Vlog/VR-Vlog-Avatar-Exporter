@@ -284,7 +284,7 @@ namespace VRVlog.LilToonExporter
                     { Clip = item.Clip, Error = clipErrors.TryGetValue(item.Clip, out var reason) ? reason : null, Source = item.Source }));
         }
 
-        bool CanSave => ExportAuthor.IsValid(author) && !presetErrors.Values.Any(value => value != null) && board != null && !board.ExceedsLimit;
+        bool CanSave => ExportAuthor.IsValid(author) && !presetErrors.Values.Any(value => value != null) && board != null && !board.ExceedsLimit && !board.HasDuplicateNames;
 
         // Exactly one next step, derived from the current state.
         string NextStep()
@@ -293,6 +293,7 @@ namespace VRVlog.LilToonExporter
                 if (presetErrors.TryGetValue(preset, out var reason) && reason != null)
                     return string.Format(ExporterLocalization.T("{0}の割り当てを直す"), ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
             if (board.ExceedsLimit) return string.Format(ExporterLocalization.T("その他の表情から{0}件を書き出さないへ移す"), board.OverLimitBy);
+            if (board.HasDuplicateNames) return DuplicateNamesText(ExporterLocalization.T("同じ名前の表情{0}組の片方を書き出さないへ移す"));
             if (board.Items.Count == 0) return ExporterLocalization.T("表情の.animを追加する");
             if (board.AutomaticCount > 0) return string.Format(ExporterLocalization.T("名前で自動割り当てした{0}件を確認する"), board.AutomaticCount);
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T("作者名を入力する");
@@ -410,7 +411,8 @@ namespace VRVlog.LilToonExporter
         void DrawOtherPanel(Rect rect)
         {
             var body = DrawPanelFrame(rect, Place.Other, true, string.Format(ExporterLocalization.T("その他の表情 {0}件"), board.OtherCount),
-                ExporterLocalization.T("VRMのカスタム表情として書き出し"), ExporterLocalization.T("見つかった表情は最初すべてここに入ります"));
+                board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"),
+                ExporterLocalization.T("見つかった表情は最初すべてここに入ります"));
             var items = board.ItemsIn(PlaceKind.Other).ToArray();
             var inner = body.width - ScrollbarWidth - Gap * 2;
             var columns = Mathf.Max(1, Mathf.FloorToInt((inner + Gap) / (CardWidth + Gap)));
@@ -932,7 +934,7 @@ namespace VRVlog.LilToonExporter
             {
                 var clip = item.Clip;
                 var group = item.Added ? ExporterLocalization.T("追加した表情") : item.Source == "FaceEmoの登録" ? "FaceEmo" : ExporterLocalization.T("アバターのController");
-                menu.AddItem(new GUIContent(group + "/" + Item(clip.name)), current?.Clip == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
+                menu.AddItem(new GUIContent(group + "/" + Item(clip.name)), current?.ResolveClip() == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
             }
             System.Collections.Generic.IReadOnlyList<(string Path, string Shape)> options;
             try { options = session.PresetShapeOptions(); }
@@ -989,6 +991,14 @@ namespace VRVlog.LilToonExporter
             RebuildBoard();
             if (board != null && board.ExceedsLimit)
                 throw new InvalidOperationException(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません"), board.OverLimitBy));
+            if (board != null && board.HasDuplicateNames)
+                throw new InvalidOperationException(DuplicateNamesText(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません")));
+        }
+
+        string DuplicateNamesText(string format)
+        {
+            var names = board.DuplicateNames();
+            return string.Format(format, names.Length) + ": " + string.Join(" / ", names);
         }
 
         internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
@@ -1005,6 +1015,8 @@ namespace VRVlog.LilToonExporter
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
             var expressionCount = expressions.Length;
+            // The record route replaces the menu faces even when nothing is left to record.
+            var replaceCustomFaces = board.UsesRecordRoute;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
                 if (this == null || !ReferenceEquals(session, target)) return;
@@ -1020,7 +1032,7 @@ namespace VRVlog.LilToonExporter
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
-                    presets.Select(value => value.Copy()).ToArray());
+                    presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
             }, Completed, previewGimmicks: new ExportGimmickOptions(), interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
             if (recovery != null)

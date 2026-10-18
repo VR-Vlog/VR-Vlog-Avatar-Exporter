@@ -164,6 +164,12 @@ namespace VRVlog.LilToonExporter
         internal int OverLimitBy => Math.Max(0, ExportedCustom().Count - ExperimentalExpressionCaptureSession.MaximumExpressions);
         internal bool ExceedsLimit => UsesRecordRoute && OverLimitBy > 0;
 
+        // Recorded faces are named after their files and names must be unique.
+        // Renaming is not offered, so each repeated name is reported once.
+        internal string[] DuplicateNames() => ExportedCustom().GroupBy(clip => clip.name?.Trim() ?? "", StringComparer.Ordinal)
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
+        internal bool HasDuplicateNames => UsesRecordRoute && DuplicateNames().Length > 0;
+
         internal bool SlotFilled(ExpressionPreset preset) => SlotValue(preset) is PresetAssignment value && !value.IsNone || authored(preset);
         internal int SlotCount => Slots.Count(SlotFilled);
         internal int OtherCount => ExportedCustom().Count;

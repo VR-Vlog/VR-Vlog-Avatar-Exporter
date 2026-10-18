@@ -225,5 +225,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.ExceedsLimit, Is.False);
             Assert.That(board.ExportedCustom().Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
         }
+
+        [Test]
+        public void RepeatedNamesBlockOnlyTheRecordRoute()
+        {
+            var first = Clip("smile"); var second = Clip("smile"); var third = Clip("smile"); var other = Clip("wink");
+            var board = Board(null, new[] { Item(first), Item(second), Item(third), Item(other) });
+            Assert.That(board.DuplicateNames(), Is.EqualTo(new[] { "smile" }), "Each repeated name is reported once.");
+            Assert.That(board.HasDuplicateNames, Is.False, "The ordinary route records nothing, so names do not matter.");
+            board.Move(other, Place.Excluded);
+            Assert.That(board.HasDuplicateNames, Is.True);
+            board.Move(first, Place.Excluded); board.Move(second, Place.Slot(ExpressionPreset.happy));
+            Assert.That(board.DuplicateNames(), Is.Empty, "A face in a slot or the excluded list is not recorded as a custom face.");
+            Assert.That(board.HasDuplicateNames, Is.False);
+        }
     }
 }

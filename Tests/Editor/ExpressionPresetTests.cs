@@ -154,6 +154,37 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }
 
+        // The authored custom clip stands in for the avatar's menu faces, which
+        // the ordinary route keeps and which need the VRChat SDK to build here.
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task ReplacingCustomFacesWithNothingLeavesNoKeptFace(bool withPreset)
+        {
+            using var fixture = Fixture();
+            var authored = ScriptableObject.CreateInstance<VRM10Object>();
+            var kept = ScriptableObject.CreateInstance<VRM10Expression>();
+            kept.name = "Excluded face"; kept.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f) };
+            authored.Expression.AddClip(ExpressionPreset.custom, kept);
+            Vrm10Instance ordinary = null, replaced = null;
+            try
+            {
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                if (withPreset) session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+                var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
+                ordinary = await Load(session.Export("Test", "Tests", blinkOptions: blink));
+                Assert.That(ordinary.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("Excluded face"), "The shortcut routes keep the avatar's faces.");
+                replaced = await Load(session.Export("Test", "Tests", blinkOptions: blink, recordedExpressions: Array.Empty<Session.Pose>(), replaceCustomFaces: true));
+                Assert.That(replaced.Vrm.Expression.CustomClips, Is.Empty, "Replacing with an empty list exports no custom face.");
+                Assert.That(replaced.Vrm.Expression.Happy?.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>(), withPreset ? Is.Not.Empty : Is.Empty);
+            }
+            finally
+            {
+                foreach (var instance in new[] { ordinary, replaced }) if (instance != null) Object.DestroyImmediate(instance.gameObject);
+                Object.DestroyImmediate(kept); Object.DestroyImmediate(authored);
+            }
+        }
+
         [Test]
         public void DuplicateOrNonEmotionAssignmentsAreRejected()
         {
