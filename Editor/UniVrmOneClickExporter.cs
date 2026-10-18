@@ -13,6 +13,7 @@ namespace VRVlog.LilToonExporter
     internal static class UniVrmOneClickExporter
     {
         internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
+        internal const string EmptyMeshRenderersOmitted = "メッシュが空のRendererを書き出しから外しました: ";
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
         internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
         internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
@@ -516,6 +517,7 @@ namespace VRVlog.LilToonExporter
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
                 var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
+                DisableEmptyMeshRenderers(clone, warnings);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -697,6 +699,29 @@ namespace VRVlog.LilToonExporter
                     for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
                 }
             }
+        }
+
+        // UniVRM 0.131 ModelExporter skips a renderer without vertices or
+        // indices and logs one console warning for each. Disable only those
+        // renderers on the export copy, after every authoring pass, so batch
+        // logs keep the warnings that matter. Their nodes and bones are still
+        // written; a material used only by such a renderer no longer is.
+        // When no mesh renderer has geometry, leave the copy as it is.
+        internal static void DisableEmptyMeshRenderers(GameObject clone, ICollection<string> warnings)
+        {
+            if (clone == null || UnityEditor.EditorUtility.IsPersistent(clone))
+                throw new ArgumentException("An independent export copy is required.", nameof(clone));
+            var renderers = ExportRendererSelection.Enumerate(clone).Where(renderer => renderer is SkinnedMeshRenderer || renderer is MeshRenderer).ToArray();
+            var empty = renderers.Where(renderer =>
+            {
+                var filter = renderer is MeshRenderer ? renderer.GetComponent<MeshFilter>() : null;
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
+                return !ExportRendererSelection.HasGeometry(mesh);
+            }).ToArray();
+            if (empty.Length == 0 || empty.Length == renderers.Length) return;
+            foreach (var renderer in empty) renderer.enabled = false;
+            warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", empty.Select(renderer =>
+                renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform))));
         }
 
         private static void EnsureUniVrmVersion()
