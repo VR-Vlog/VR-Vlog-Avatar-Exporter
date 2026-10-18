@@ -16,15 +16,20 @@ namespace VRVlog.LilToonExporter
         private string lastSavedPath, lastSavedSummary;
         private string[] lastSavedWarnings = Array.Empty<string>();
         private bool showAppearanceOptions;
-        [SerializeField] private AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
         [SerializeField] private bool showLicenseSettings;
         private bool showEnvironment;
         private bool showBlink;
-        private BlinkExportOptions blinkOptions = new BlinkExportOptions();
-        private PoseExportOptions poseOptions = new PoseExportOptions();
-        private readonly List<GameObject> excludedObjects = new List<GameObject>();
-        private bool autoExcludeGimmicks = true;
-        private readonly List<GameObject> includedGimmicks = new List<GameObject>();
+        // The avatar's remembered choices; ExportSettingsStore saves them as
+        // they change, so selecting the avatar again brings them back.
+        private ExportSettings settings = new ExportSettings();
+        private string savedSignature;
+        private int loadedRevision;
+        private AvatarLicenseOptions licenseOptions => settings.License;
+        private BlinkExportOptions blinkOptions { get => settings.Blink; set => settings.Blink = value; }
+        private PoseExportOptions poseOptions => settings.Poses;
+        private List<GameObject> excludedObjects => settings.ExcludedObjects;
+        private bool autoExcludeGimmicks { get => settings.AutoExcludeGimmicks; set => settings.AutoExcludeGimmicks = value; }
+        private List<GameObject> includedGimmicks => settings.IncludedGimmicks;
         private List<ExportGimmickFinding> gimmickFindings = new List<ExportGimmickFinding>();
         private double nextGimmickScan;
         private readonly BlinkStatusCache blinkStatus = new BlinkStatusCache();
@@ -61,7 +66,54 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private void OnDisable() => blinkStatus.Invalidate();
+        private void OnDisable()
+        {
+            SaveSettings();
+            blinkStatus.Invalidate();
+        }
+
+        // Saves what changed (also from the pose window, which edits the same
+        // options), and otherwise picks up a save made by another window.
+        private void OnInspectorUpdate()
+        {
+            if (avatar == null || GUIUtility.hotControl != 0 || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (settings.Signature() != savedSignature) SaveSettings();
+            else if (loadedRevision != ExportSettingsStore.Revision) ReloadSettings();
+        }
+
+        // Another window saved. The settings object is kept and only its
+        // contents are replaced, because the pose window edits settings.Poses
+        // by reference; nothing changes when this avatar's settings are the same.
+        private void ReloadSettings()
+        {
+            var loaded = ExportSettingsStore.Load(avatar);
+            loadedRevision = ExportSettingsStore.Revision;
+            if (loaded.Signature() == settings.Signature()) return;
+            settings.Assign(loaded);
+            savedSignature = settings.Signature();
+            InvalidateAvatarScan();
+            Repaint();
+        }
+
+        private void SaveSettings()
+        {
+            if (avatar == null) return;
+            var signature = settings.Signature();
+            if (signature == savedSignature) return;
+            ExportSettingsStore.Save(avatar, settings);
+            savedSignature = signature;
+            loadedRevision = ExportSettingsStore.Revision;
+        }
+
+        private void LoadSettings(GameObject target)
+        {
+            settings = ExportSettingsStore.Load(target, out var skipped);
+            savedSignature = settings.Signature();
+            loadedRevision = ExportSettingsStore.Revision;
+            if (skipped > 0) Debug.LogWarning(string.Format(ExporterLocalization.T("保存していた書き出し設定のうち{0}件の対象が見つからないため外しました。"), skipped), target);
+            InvalidateAvatarScan();
+            Repaint();
+        }
 
         private void InvalidateAvatarScan()
         {
@@ -110,14 +162,10 @@ namespace VRVlog.LilToonExporter
                 GUILayout.Height(24f));
             if (selectedAvatar != avatar)
             {
-                blinkOptions = new BlinkExportOptions();
-                poseOptions = new PoseExportOptions();
+                SaveSettings();
                 showBlink = false;
-                excludedObjects.Clear();
-                includedGimmicks.Clear();
                 gimmickFindings.Clear();
-                InvalidateAvatarScan();
-                licenseOptions = new AvatarLicenseOptions();
+                LoadSettings(selectedAvatar);
                 if (selectedAvatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(selectedAvatar), author));
             }
             avatar = selectedAvatar;
@@ -167,7 +215,7 @@ namespace VRVlog.LilToonExporter
             }
 
             EditorGUILayout.Space(8f);
-            if (licenseOptions == null) licenseOptions = new AvatarLicenseOptions();
+            if (settings.License == null) settings.License = new AvatarLicenseOptions();
             AvatarLicenseSettingsUi.Draw(ref showLicenseSettings, licenseOptions);
 
             EditorGUILayout.Space(14f);
@@ -431,14 +479,12 @@ namespace VRVlog.LilToonExporter
             // this window. Retry exactly the avatar, destination and options
             // they chose for this attempt; revalidate the live avatar each time.
             var targetAvatar = avatar;
-            var targetName = AvatarName();
             var targetAuthor = author;
             var targetOutput = outputPath;
-            var targetBlink = blinkOptions.Copy();
-            var targetPoses = poseOptions.Copy();
-            var targetLicense = licenseOptions.Copy();
-            var targetExclusions = excludedObjects.ToArray();
-            var targetGimmicks = new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray() };
+            SaveSettings();
+            var create = settings.Creator(targetAvatar, AvatarName(), targetAuthor);
+            var targetExclusions = settings.Exclusions();
+            var targetGimmicks = settings.Gimmicks();
             if (File.Exists(targetOutput) && !EditorUtility.DisplayDialog(
                 ExporterLocalization.T("ファイルを上書きしますか？"), targetOutput,
                 ExporterLocalization.T("上書き"), ExporterLocalization.T("キャンセル"))) return;
@@ -451,15 +497,7 @@ namespace VRVlog.LilToonExporter
             void Completed() => ExportCompleted(session.LastSuccess.Bytes, session.LastSuccess.Warnings);
             try
             {
-                session = ExportAndSaveNormally(targetAvatar, targetOutput, (options, report, warnings) =>
-                {
-                    if (targetAvatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
-                    UniVrmOneClickExporter.ValidateSourceHumanoid(targetAvatar);
-                    if (report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
-                    return UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,
-                        PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,
-                        recoveryOptions: options, recoveryReport: report, licenseOptions: targetLicense);
-                }, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
+                session = ExportAndSaveNormally(targetAvatar, targetOutput, create, ExportCompleted, targetExclusions, targetGimmicks, interactive: true, openBlinkSettings: () =>
                 {
                     // The blink choices live in this window; open their section.
                     if (this == null) return;

@@ -1,7 +1,7 @@
 # ヒューマノイドでないアバターは書き出しの前に止める
 
 - 日付: 2026-10-18
-- 対象: `Editor/UniVrmOneClickExporter.cs`・`Editor/LilToonExporterWindow.cs`・`Editor/AppTransferExport.cs`・`Editor/Compatibility/ExporterLocalization.cs`・`Editor/Locales/*.json`・`Tests/Editor/PhysBoneSpringExportTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/UniVrmOneClickExporter.cs`・`Editor/ExportSettings.cs`・`Editor/Compatibility/ExporterLocalization.cs`・`Editor/Locales/*.json`・`Tests/Editor/PhysBoneSpringExportTests.cs`・`CHANGELOG.md`
 
 ## 背景
 
@@ -13,7 +13,7 @@ NDMF と最適化ツールが書き出し用の複製から Animator やボー�
 
 ## 決定
 
-- 書き出し画面と **アプリに転送** の書き出し処理の最初で、選んだアバターを確かめる（`UniVrmOneClickExporter.ValidateSourceHumanoid`）。止めるのは次の 2 つ。
+- 書き出し画面・**アプリに転送**・一括書き出しが共通で使う書き出し処理（`ExportSettings.Export`）の最初で、選んだアバターを確かめる（`UniVrmOneClickExporter.ValidateSourceHumanoid`）。止めるのは次の 2 つ。
   - ルートにヒューマノイドの Avatar を持つ Animator がない。メッセージで、モデルの Rig を Humanoid にしてルートの Animator に設定するよう案内する。
   - Unity がヒューマノイドに必須とする 15 本のボーンのどれかが解決できない。足りないボーンの名前を出す。
 - 文言は日本語を原文にし、英語・韓国語・簡体字・繁体字の訳を足した。ボーン名が続くほうは、可変部分を残して訳すために `DynamicErrorPrefixes` に加えた。
