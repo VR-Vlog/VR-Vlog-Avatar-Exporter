@@ -67,6 +67,11 @@ namespace UnityEngine
             if (!activeInHierarchy) return Array.Empty<T>();
             return components.OfType<T>().Concat(children.SelectMany(child => child.GetComponentsInChildren<T>())).ToArray();
         }
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component
+        {
+            if (!includeInactive) return GetComponentsInChildren<T>();
+            return components.OfType<T>().Concat(children.SelectMany(child => child.GetComponentsInChildren<T>(true))).ToArray();
+        }
     }
 
     public class Renderer : Component

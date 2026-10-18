@@ -53,9 +53,10 @@ namespace VRVlog.LilToonExporter
         internal static bool HiddenFallback(Material material) => material != null && material.shader != null &&
             !Portable(material) && string.Equals(material.GetTag("VRCFallback", true, "").Trim(), "Hidden", StringComparison.OrdinalIgnoreCase);
 
-        internal static ExportGimmickFinding Inspect(Renderer renderer)
+        // avatarRoot: activity is judged inside the avatar (see ExportRendererSelection.ActiveUnder).
+        internal static ExportGimmickFinding Inspect(Renderer renderer, Transform avatarRoot = null)
         {
-            if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) return null;
+            if (renderer == null || !renderer.enabled || !ExportRendererSelection.ActiveUnder(renderer.gameObject, avatarRoot)) return null;
             // Other renderer types have their own export semantics.
             var skin = renderer as SkinnedMeshRenderer;
             if (skin == null && !(renderer is MeshRenderer)) return null;
@@ -88,7 +89,7 @@ namespace VRVlog.LilToonExporter
             foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
             {
                 if (Excluded(renderer.transform)) continue;
-                var finding = Inspect(renderer);
+                var finding = Inspect(renderer, source.transform);
                 if (finding != null) result.Add(finding);
             }
             var matched = new List<ExportGimmickFinding>();
@@ -148,9 +149,10 @@ namespace VRVlog.LilToonExporter
         static IEnumerable<Transform> Candidates(GameObject source, ExportGimmickRule rule, Func<Transform, bool> excluded)
         {
             // Build tools read anchored settings wherever they are, so they are
-            // found on the avatar root and on inactive objects too.
+            // found on the avatar root and on inactive objects too. Activity of
+            // the rest is judged inside the avatar, whose root may be inactive.
             var candidates = source.GetComponentsInChildren<Transform>(true).Where(t => !excluded(t) &&
-                (rule.Anchored || t != source.transform && t.gameObject.activeInHierarchy) && Matches(rule, t)).ToList();
+                (rule.Anchored || t != source.transform && ExportRendererSelection.ActiveUnder(t.gameObject, source.transform)) && Matches(rule, t)).ToList();
             // A structure found again inside a match belongs to the inner gimmick:
             // an outfit that holds one is not the gimmick itself.
             if (!rule.Anchored) candidates.RemoveAll(c => candidates.Any(other => other != c && other.IsChildOf(c)));
@@ -345,7 +347,7 @@ namespace VRVlog.LilToonExporter
             foreach (var animator in source.GetComponentsInChildren<Animator>(true))
                 if (animator.isHuman)
                     for (var i = 0; i < (int)HumanBodyBones.LastBone; i++)
-                        if (Within(animator.GetBoneTransform((HumanBodyBones)i)))
+                        if (Within(HumanoidBones.Resolve(animator, (HumanBodyBones)i)))
                             return "Humanoidの骨を含むため、システム全体は残します。";
             foreach (var component in root.GetComponentsInChildren<Component>(true))
             {
