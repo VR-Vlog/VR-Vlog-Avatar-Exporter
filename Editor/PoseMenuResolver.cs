@@ -13,6 +13,7 @@ namespace VRVlog.LilToonExporter
     internal static class PoseMenuResolver
     {
         static readonly string[] BodyTrackingParts = { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" };
+        internal const string NotBodyPoseMessage = "体の姿勢を変えないメニューです。";
         static bool TrackingControl(StateMachineBehaviour b) => b != null && b.GetType().Name == "VRCAnimatorTrackingControl";
         internal static object Member(object value, string name) => VrChatExpressionMenu.Member(value, name);
         internal static IEnumerable<object> Items(object value) => value is IEnumerable e ? e.Cast<object>() : Enumerable.Empty<object>();
@@ -38,6 +39,11 @@ namespace VRVlog.LilToonExporter
                 try
                 {
                     if (row.Error != null) throw new InvalidOperationException(row.Error);
+                    if (CannotSelectBody(entry, layers, bodyPaths))
+                    {
+                        row.NotBodyPose = true;
+                        throw new InvalidOperationException(NotBodyPoseMessage);
+                    }
                     foreach (var pair in entry.Parameters)
                     {
                         var definitions = expressionDefinitions[pair.Key].ToArray();
@@ -194,6 +200,104 @@ namespace VRVlog.LilToonExporter
                 result.Add(row);
             }
             return result;
+        }
+
+        // Most menu entries are clothing, face or accessory toggles. When none
+        // of the entry's inputs (also through Parameter Driver writes) reaches
+        // a layer that could move the body, the entry cannot select a pose, so
+        // an unrelated layer's restriction (e.g. a hand gesture layer's Tracking
+        // Control) is not its diagnosis. Any doubt, including a failure here,
+        // keeps the full proof.
+        static bool CannotSelectBody(VrChatExpressionMenu.Entry entry, object[] layers, ISet<string> bodyPaths)
+        {
+            var tainted = new HashSet<string>(entry.Parameters.Keys, StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(entry.ControlParameter)) tainted.Add(entry.ControlParameter);
+            try
+            {
+                var graphs = new List<(bool affectsBody, string[] inputs, StateMachineBehaviour[] behaviours)>();
+                foreach (var source in layers)
+                {
+                    var type = Member(source, "type")?.ToString() ?? "";
+                    var runtime = (RuntimeAnimatorController)Member(source, "animatorController");
+                    var controller = ExpressionDependencies.Controller(runtime); var replacements = ExpressionDependencies.Overrides(runtime);
+                    var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
+                    AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
+                    bool Body(AnimatorState s) => s.motion is BlendTree || HasBody(Clip(s), skipMuscles, bodyPaths);
+                    // A synced layer replaces motions of another layer's graph.
+                    AnimatorStateMachine Machine(AnimatorControllerLayer l) => l.syncedLayerIndex >= 0 ? controller.layers[l.syncedLayerIndex].stateMachine : l.stateMachine;
+                    var controllerHasBody = controller.layers.Any(l => l.syncedLayerIndex >= 0 || States(Machine(l)).Any(Body));
+                    foreach (var layer in controller.layers)
+                    {
+                        var machine = Machine(layer);
+                        var all = States(machine).ToArray();
+                        var behaviours = all.SelectMany(s => s.behaviours).Concat(Behaviours(machine)).ToArray();
+                        // Tracking / locomotion / Playable Layer controls, any
+                        // other behaviour and a missing script all count.
+                        var affectsBody = layer.syncedLayerIndex >= 0 || all.Any(Body) || controllerHasBody && all.Any(s => s.writeDefaultValues) || behaviours.Length > 0;
+                        graphs.Add((affectsBody, Inputs(machine).ToArray(), behaviours));
+                    }
+                }
+                // Parameters are shared by all playable layers. A driver in a
+                // steered graph writes entry-dependent values; a Copy forwards one.
+                for (var changed = true; changed;)
+                {
+                    changed = false;
+                    foreach (var graph in graphs)
+                    {
+                        var steered = graph.inputs.Any(tainted.Contains);
+                        foreach (var b in graph.behaviours)
+                        {
+                            if (b == null || KnownControl(b)) continue;
+                            if (!VrChatParameterDriver.IsDriver(b)) return false;
+                            var program = VrChatParameterDriver.Read(b, "");
+                            if (program.Error != null) return false;
+                            foreach (var op in program.Operations)
+                            {
+                                if (op.Kind != "Set" && op.Kind != "Add" && op.Kind != "Random" && op.Kind != "Copy") return false;
+                                if ((steered || op.Kind == "Copy" && (string.IsNullOrEmpty(op.Source) || tainted.Contains(op.Source))) && tainted.Add(op.Destination)) changed = true;
+                            }
+                        }
+                    }
+                }
+                return !graphs.Any(g => g.affectsBody && g.inputs.Any(tainted.Contains));
+            }
+            catch (Exception) { return false; }
+        }
+        // SDK controls that only carry data and never write parameters.
+        static bool KnownControl(StateMachineBehaviour b)
+        {
+            var name = b.GetType().Name;
+            return name == "VRCAnimatorTrackingControl" || name == "VRCAnimatorLocomotionControl" || name == "VRCPlayableLayerControl" ||
+                name == "VRCAnimatorLayerControl" || name == "VRCAnimatorTemporaryPoseSpace" || name == "VRCAnimatorPlayAudio";
+        }
+        // Every parameter that can steer the graph: transition conditions
+        // (any-state, state, entry, sub-state-machine), state parameters and
+        // blend tree parameters. Wider than transitions alone on purpose; muted
+        // and solo-suppressed transitions count too, so a solo flag left on a
+        // pose layer keeps the full diagnosis.
+        static IEnumerable<string> Inputs(AnimatorStateMachine root)
+        {
+            var machines = Machines(root).ToArray();
+            var conditions = machines.SelectMany(m => m.anyStateTransitions).Concat(States(root).SelectMany(s => s.transitions)).SelectMany(t => t.conditions)
+                .Concat(machines.SelectMany(m => m.entryTransitions).SelectMany(t => t.conditions))
+                .Concat(machines.SelectMany(m => m.stateMachines.SelectMany(c => m.GetStateMachineTransitions(c.stateMachine))).SelectMany(t => t.conditions))
+                .Select(c => c.parameter);
+            var states = States(root).SelectMany(s => new[] {
+                s.timeParameterActive ? s.timeParameter : null, s.speedParameterActive ? s.speedParameter : null,
+                s.mirrorParameterActive ? s.mirrorParameter : null, s.cycleOffsetParameterActive ? s.cycleOffsetParameter : null }
+                .Concat(BlendInputs(s.motion as BlendTree, 0)));
+            return conditions.Concat(states).Where(p => !string.IsNullOrEmpty(p));
+        }
+        static IEnumerable<string> BlendInputs(BlendTree tree, int depth)
+        {
+            if (tree == null) yield break;
+            if (depth > 64) throw new InvalidOperationException("BlendTreeの階層が深すぎます。");
+            yield return tree.blendParameter; yield return tree.blendParameterY;
+            foreach (var child in tree.children)
+            {
+                yield return child.directBlendParameter;
+                foreach (var p in BlendInputs(child.motion as BlendTree, depth + 1)) yield return p;
+            }
         }
 
         internal static AnimatorState Resolve(AnimatorStateMachine machine, IDictionary<string, float> selected, ISet<string> external = null, bool omitMatchedMenuEdges = false, AnimatorControllerParameter[] parameters = null, AnimatorState startingState = null)
