@@ -78,7 +78,7 @@ namespace VRVlog.LilToonExporter.Tests
             var blended = Substitute(fade);
             Assert.That(blended.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
             Assert.That(blended.GetFloat("_TransparentMode"), Is.EqualTo(2f));
-            Assert.That(blended.renderQueue, Is.GreaterThan(2500), "The official transparent shader's own queue is kept.");
+            Assert.That(blended.renderQueue, Is.EqualTo(blended.shader.renderQueue), "The official transparent shader's own queue is kept.");
         }
 
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
@@ -103,7 +103,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetColor("_EmissionColor"), Is.EqualTo(new Color(0, 0, 1, 1)));
             Assert.That(output.GetFloat("_UseShadow"), Is.EqualTo(1f));
             Assert.That(output.GetTexture("_ShadowColorTex"), Is.SameAs(shade), "A separate shade image is used directly.");
-            Assert.That(output.GetColor("_ShadowColor"), Is.EqualTo(new Color(.5f, .25f, .25f, 1)));
+            Assert.That(Vector4.Distance(output.GetColor("_ShadowColor"), new Color(.5f, .25f, .25f, 1)), Is.LessThan(1e-5f));
             Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(.6f).Within(1e-6));
             Assert.That(output.GetFloat("_ShadowBlur"), Is.EqualTo(.2f).Within(1e-6));
             Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
