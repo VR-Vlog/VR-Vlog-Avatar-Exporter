@@ -196,7 +196,7 @@ namespace VRVlog.LilToonExporter
 
             Texture main = null; var mainScale = Vector2.one; var mainOffset = Vector2.zero;
             foreach (var name in MainTextures)
-                if (values.Texture(name, out var texture, out var scale, out var offset) && texture != null)
+                if (values.Texture(name, out var texture, out var scale, out var offset) && Flat(texture))
                 { main = texture; mainScale = scale; mainOffset = offset; break; }
             if (main != null)
             {
@@ -210,9 +210,11 @@ namespace VRVlog.LilToonExporter
             if (mode == Mode.Cutout)
                 foreach (var name in Cutoffs)
                     if (values.TryFloat(name, out var cutoff)) { Set(material, "_Cutoff", Mathf.Clamp01(cutoff)); break; }
+            // lilToon clips by _Cutoff in every mode; blended sources do not clip.
+            if (mode == Mode.Transparent) Set(material, "_Cutoff", 0);
 
             foreach (var name in NormalTextures)
-                if (values.Texture(name, out var normal, out var scale, out var offset) && normal != null)
+                if (values.Texture(name, out var normal, out var scale, out var offset) && Flat(normal))
                 {
                     material.SetTexture("_BumpMap", normal);
                     material.SetTextureScale("_BumpMap", scale); material.SetTextureOffset("_BumpMap", offset);
@@ -251,7 +253,7 @@ namespace VRVlog.LilToonExporter
         {
             Texture texture = null; var scale = Vector2.one; var offset = Vector2.zero;
             foreach (var name in EmissionTextures)
-                if (values.Texture(name, out var value, out var valueScale, out var valueOffset) && value != null)
+                if (values.Texture(name, out var value, out var valueScale, out var valueOffset) && Flat(value))
                 { texture = value; scale = valueScale; offset = valueOffset; break; }
             var hasColor = false; var color = Color.black;
             foreach (var name in EmissionColors)
@@ -284,7 +286,7 @@ namespace VRVlog.LilToonExporter
                 if (values.TryVector(name, out var vector) && Finite(vector)) { shade = vector; hasColor = true; break; }
             Texture texture = null;
             foreach (var name in ShadeTextures)
-                if (values.Texture(name, out var value, out _, out _) && value != null) { texture = value; break; }
+                if (values.Texture(name, out var value, out _, out _) && Flat(value)) { texture = value; break; }
             if (!hasColor && texture == null) return;
             Set(material, "_UseShadow", 1);
             if (texture != null && texture != main)
@@ -303,6 +305,8 @@ namespace VRVlog.LilToonExporter
             else if (values.TryFloat("_ShadeToony", out var toony)) Set(material, "_ShadowBlur", Mathf.Clamp01(1 - toony));
         }
 
+        // Every slot the generic mapping fills is a 2D slot.
+        static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
         static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         static bool Finite(Vector4 value) => Finite(value.x) && Finite(value.y) && Finite(value.z) && Finite(value.w);

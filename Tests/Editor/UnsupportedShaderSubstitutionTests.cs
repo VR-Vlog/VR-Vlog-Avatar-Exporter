@@ -79,6 +79,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(blended.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
             Assert.That(blended.GetFloat("_TransparentMode"), Is.EqualTo(2f));
             Assert.That(blended.renderQueue, Is.EqualTo(blended.shader.renderQueue), "The official transparent shader's own queue is kept.");
+            Assert.That(blended.GetFloat("_Cutoff"), Is.EqualTo(0f), "lilToon clips in every mode; a blended source keeps faint pixels.");
         }
 
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
