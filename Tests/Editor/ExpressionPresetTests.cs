@@ -374,5 +374,51 @@ namespace VRVlog.LilToonExporter.Tests
                 if (File.Exists(path)) File.Delete(path);
             }
         }
+
+        [Test]
+        public void StoreKeepsExcludedFacesByAssetAndReadsFilesWithoutThem()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            var folder = "Assets/VRVlogExcludedStore_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                var kept = FaceClip(40); kept.name = "Kept"; AssetDatabase.CreateAsset(kept, folder + "/Kept.anim");
+                var removed = FaceClip(50); removed.name = "Removed"; AssetDatabase.CreateAsset(removed, folder + "/Removed.anim");
+                var memory = FaceClip(60);
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), new[] { kept, removed, memory, kept });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out var skipped), Is.EqualTo(new[] { kept, removed }), "Only assets are stored, once each.");
+                Assert.That(skipped, Is.Zero);
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty);
+                ExpressionPresetStore.Save("avatar-a", new[] { Session.PresetAssignment.None(ExpressionPreset.angry) });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.EqualTo(new[] { kept, removed }), "Saving presets alone keeps the exclusions.");
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"));
+                AssetDatabase.DeleteAsset(folder + "/Removed.anim");
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out skipped), Is.EqualTo(new[] { kept }));
+                Assert.That(skipped, Is.EqualTo(1));
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>());
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.Empty);
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty);
+                Object.DestroyImmediate(memory);
+
+                // A file written before exclusions existed.
+                const string older = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"angry\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"\",\"Shape\":\"\"}]}]}";
+                File.WriteAllText(path, older, Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out skipped).Single().Preset, Is.EqualTo("angry"));
+                Assert.That(skipped, Is.Zero);
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-b", out skipped), Is.Empty);
+                Assert.That(skipped, Is.Zero);
+                ExpressionPresetStore.Save("avatar-b", ExpressionPresetStore.Load("avatar-b", out _), new[] { kept });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-b", out _), Is.EqualTo(new[] { kept }));
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("angry"));
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
     }
 }
