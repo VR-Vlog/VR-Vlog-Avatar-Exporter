@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter
                 var findings = ExportGimmickDetection.Analyze(source);
                 var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions).ToArray();
                 exclusions = new ExportObjectExclusions(source, automaticRoots);
-                gimmicks = new ExportGimmickSession(source, Copy, gimmickOptions);
+                gimmicks = new ExportGimmickSession(source, Copy, gimmickOptions, findings);
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 authoredBindings = new PreparedExpressionBindings(Copy, null, source, ExcludedBinding);
                 foreach (var finding in findings.Where(value => value.Renderer == null))

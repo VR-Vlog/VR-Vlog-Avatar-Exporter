@@ -33,12 +33,14 @@ namespace VRVlog.LilToonExporter.Tests
         {
             internal readonly GameObject Avatar, Pet, Gimmick, Outside;
             internal readonly SkinnedMeshRenderer Face;
+            internal readonly BoxCollider RootSettings;
             readonly string scenePath;
 
             internal SavedAvatar()
             {
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 Avatar = new GameObject("SampleAvatar");
+                RootSettings = Avatar.AddComponent<BoxCollider>();
                 Pet = new GameObject("Pet");
                 Pet.transform.SetParent(Avatar.transform);
                 Gimmick = new GameObject("Gimmick");
@@ -64,6 +66,7 @@ namespace VRVlog.LilToonExporter.Tests
             var settings = new ExportSettings { AutoExcludeGimmicks = false };
             settings.ExcludedObjects.Add(fixture.Pet);
             settings.IncludedGimmicks.Add(fixture.Gimmick);
+            settings.IncludedGimmickComponents.Add(fixture.RootSettings);
             settings.Blink.Mode = BlinkExportMode.Manual;
             settings.Blink.Both.Add(new BlinkShapeBinding { Renderer = fixture.Face, Shape = "Close", Weight = 80f });
             settings.Poses.Excluded.Add("pose-a");
@@ -84,6 +87,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.Signature(), Is.EqualTo(settings.Signature()));
             Assert.That(loaded.ExcludedObjects, Is.EqualTo(new[] { fixture.Pet }));
             Assert.That(loaded.IncludedGimmicks, Is.EqualTo(new[] { fixture.Gimmick }));
+            Assert.That(loaded.IncludedGimmickComponents, Is.EqualTo(new Component[] { fixture.RootSettings }), "A kept component on the root stays a component.");
             Assert.That(loaded.AutoExcludeGimmicks, Is.False);
             Assert.That(loaded.Blink.Mode, Is.EqualTo(BlinkExportMode.Manual));
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));

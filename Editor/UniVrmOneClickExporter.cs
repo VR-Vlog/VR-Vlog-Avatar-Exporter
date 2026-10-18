@@ -145,6 +145,19 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        internal const string OmittedGimmickCategory = "補助ギミック";
+
+        // A gimmick left out by design is a result line, not a confirmation:
+        // the export lost nothing the avatar shows in VRM.
+        internal static void RecordOmittedGimmick(GameObject source, ExportGimmickFinding finding, ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            warnings?.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
+            var path = ExportFallbackReport.RelativePath(source.transform, finding.Target.transform);
+            var entry = report.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T(OmittedGimmickCategory),
+                string.IsNullOrEmpty(path) ? source.name : path, ExporterLocalization.T(finding.Reason));
+            entry.RuleId = finding.RuleId;
+        }
+
         internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
 
         static void CopyWarnings(List<string> attempt, ICollection<string> warnings)
@@ -185,7 +198,8 @@ namespace VRVlog.LilToonExporter
             gimmickOptions = new ExportGimmickOptions
             {
                 AutoExclude = gimmickOptions?.AutoExclude != false,
-                IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray()
+                IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
+                IncludedComponents = (gimmickOptions?.IncludedComponents ?? Array.Empty<Component>()).ToArray()
             };
             using var manualExclusions = new ExportObjectExclusions(source, manualObjects);
             var findings = gimmickOptions.AutoExclude
@@ -195,8 +209,9 @@ namespace VRVlog.LilToonExporter
             if (guard.IsOmitted(ExportStage.GimmickDetection)) gimmickOptions.AutoExclude = false;
             var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions).ToArray();
             using var exclusions = new ExportObjectExclusions(source, manualObjects.Concat(automaticRoots));
+            var automaticComponents = ExportGimmickDetection.AutomaticComponents(findings, gimmickOptions).ToArray();
             foreach (var finding in findings.Where(f => f.Renderer == null))
-                if (automaticRoots.Contains(finding.Target)) warnings?.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
+                if (automaticRoots.Contains(finding.Target) || automaticComponents.Contains(finding)) RecordOmittedGimmick(source, finding, warnings, recoveryReport);
                 else if (finding.Unit == GimmickExclusionUnit.Review) warnings?.Add("自動除外せず保持: " + finding.Target.name + " — " + finding.Reason);
             // Preserve rejection of effective external/excluded source targets.
             // Only unresolved getters wait for the selected root on the copy.
@@ -238,7 +253,7 @@ namespace VRVlog.LilToonExporter
                     target => exclusions.ContainsCopyTransform(clone, target)));
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
-                using var gimmicks = guard.Watch(ExportStage.GimmickDetection, () => new ExportGimmickSession(source, clone, gimmickOptions));
+                using var gimmicks = guard.Watch(ExportStage.GimmickDetection, () => new ExportGimmickSession(source, clone, gimmickOptions, findings));
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 using var expressionBindings = new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding);
                 guard.Step(ExportStage.MaAppearance, () => MaAppearanceSnapshot.Apply(source, clone, temporaryMeshes, exclusions, warnings));

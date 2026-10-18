@@ -18,6 +18,7 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<string> reported = new HashSet<string>(StringComparer.Ordinal);
         readonly HashSet<string> removedPaths = new HashSet<string>(StringComparer.Ordinal);
         readonly HashSet<Transform> removedTransforms = new HashSet<Transform>();
+        readonly List<Component> removedComponents = new List<Component>();
 
         internal bool ContainsPath(string path)
         {
@@ -32,23 +33,40 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.CalculateTransformPath(target, clone.transform) == path);
         }
 
-        internal ExportGimmickSession(GameObject source, GameObject clone, ExportGimmickOptions options)
+        internal ExportGimmickSession(GameObject source, GameObject clone, ExportGimmickOptions options,
+            IEnumerable<ExportGimmickFinding> findings = null)
         {
             if (source == null || clone == null || source == clone) throw new ArgumentException("An independent export clone is required.");
             this.clone = clone;
             enabled = options?.AutoExclude != false;
             var kept = (options?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray();
+            var copies = new Dictionary<Transform, Transform>();
             void Map(Transform from, Transform to)
             {
+                copies[from] = to;
                 if (ExportGimmickDetection.Kept(from, kept)) included.Add(to);
                 for (var i = 0; i < from.childCount; i++) Map(from.GetChild(i), to.GetChild(i));
             }
             Map(source.transform, clone.transform);
+            if (findings == null) return;
+            // The copy keeps the source's component order, so a component is
+            // found again by its index and type, never by a name.
+            foreach (var component in ExportGimmickDetection.AutomaticComponents(findings, options).SelectMany(f => f.Components))
+            {
+                if (component == null || !copies.TryGetValue(component.transform, out var copy)) continue;
+                var index = Array.IndexOf(component.GetComponents<Component>(), component);
+                var candidates = copy.GetComponents<Component>();
+                if (index >= 0 && index < candidates.Length && candidates[index] != null && candidates[index].GetType() == component.GetType())
+                    removedComponents.Add(candidates[index]);
+            }
         }
 
         internal void Apply(PreparedExpressionBindings bindings, VrChatExpressionMenu.Source menu, ICollection<string> warnings)
         {
             if (!enabled) return;
+            // Settings that build tools read are removed before they run.
+            foreach (var component in removedComponents) if (component != null) Object.DestroyImmediate(component);
+            removedComponents.Clear();
             bool Kept(Transform target)
             {
                 for (var t = target; t != null; t = t.parent) if (included.Contains(t)) return true;

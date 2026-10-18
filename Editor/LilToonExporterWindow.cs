@@ -30,6 +30,7 @@ namespace VRVlog.LilToonExporter
         private List<GameObject> excludedObjects => settings.ExcludedObjects;
         private bool autoExcludeGimmicks { get => settings.AutoExcludeGimmicks; set => settings.AutoExcludeGimmicks = value; }
         private List<GameObject> includedGimmicks => settings.IncludedGimmicks;
+        private List<Component> includedGimmickComponents => settings.IncludedGimmickComponents;
         private List<ExportGimmickFinding> gimmickFindings = new List<ExportGimmickFinding>();
         private double nextGimmickScan;
         private readonly BlinkStatusCache blinkStatus = new BlinkStatusCache();
@@ -188,7 +189,7 @@ namespace VRVlog.LilToonExporter
                 using (new EditorGUI.DisabledScope(avatar == null))
                     if (GUILayout.Button(ExporterLocalization.T("ポーズを確認・調整"), GUILayout.Width(160f), GUILayout.Height(26f)))
                         PoseReviewWindow.Show(avatar, poseOptions, excludedObjects.ToArray(),
-                            new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray() });
+                            new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray(), IncludedComponents = includedGimmickComponents.ToArray() });
             }
 
             DrawSeparator();
@@ -298,7 +299,7 @@ namespace VRVlog.LilToonExporter
         private BlinkExportSession ResolveBlink()
         {
             using var manual = new ExportObjectExclusions(avatar, excludedObjects);
-            var options = new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray() };
+            var options = new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray(), IncludedComponents = includedGimmickComponents.ToArray() };
             var findings = autoExcludeGimmicks ? ExportGimmickDetection.Analyze(avatar, manual.Contains) : new List<ExportGimmickFinding>();
             using var exclusions = new ExportObjectExclusions(avatar, excludedObjects.Concat(ExportGimmickDetection.AutomaticRoots(findings, options)));
             return BlinkExportSession.Resolve(avatar, blinkOptions, exclusions.Contains);
@@ -354,7 +355,7 @@ namespace VRVlog.LilToonExporter
                         try
                         {
                             BlinkPreviewWindow.Show(avatar, blinkOptions.Copy(), excludedObjects.ToArray(),
-                                new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray() });
+                                new ExportGimmickOptions { AutoExclude = autoExcludeGimmicks, IncludedObjects = includedGimmicks.ToArray(), IncludedComponents = includedGimmickComponents.ToArray() });
                         }
                         catch (Exception exception) { ExportFailureWindow.Show(exception); }
             }
@@ -432,11 +433,24 @@ namespace VRVlog.LilToonExporter
                     var inherited = includedGimmicks.Any(go => go != null && go != finding.Target && finding.Target.transform.IsChildOf(go.transform));
                     using (new EditorGUI.DisabledScope(!autoExcludeGimmicks || inherited))
                     {
-                        var keep = includedGimmicks.Contains(finding.Target);
+                        // A Component finding keeps only its components, not
+                        // the object (which can be the avatar root).
+                        var components = finding.Unit == GimmickExclusionUnit.Component;
+                        var keep = components
+                            ? finding.Components.Any(includedGimmickComponents.Contains)
+                            : includedGimmicks.Contains(finding.Target);
                         var selected = EditorGUILayout.ToggleLeft(inherited ? ExporterLocalization.T("親の指定により含める") : ExporterLocalization.T("この対象は含める"), keep || inherited);
                         if (!inherited && selected != keep)
                         {
-                            if (selected) includedGimmicks.Add(finding.Target);
+                            if (components)
+                            {
+                                foreach (var component in finding.Components)
+                                {
+                                    includedGimmickComponents.Remove(component);
+                                    if (selected && component != null) includedGimmickComponents.Add(component);
+                                }
+                            }
+                            else if (selected) includedGimmicks.Add(finding.Target);
                             else includedGimmicks.Remove(finding.Target);
                             blinkStatus.Invalidate();
                         }
@@ -453,6 +467,15 @@ namespace VRVlog.LilToonExporter
                 EditorGUILayout.BeginHorizontal();
                 EditorGUILayout.LabelField(ExporterLocalization.T("含める指定: ") + go.name);
                 if (GUILayout.Button(ExporterLocalization.T("解除"), GUILayout.Width(48))) { includedGimmicks.RemoveAt(i); blinkStatus.Invalidate(); }
+                EditorGUILayout.EndHorizontal();
+            }
+            for (var i = includedGimmickComponents.Count - 1; i >= 0; i--)
+            {
+                var component = includedGimmickComponents[i];
+                if (component == null) { includedGimmickComponents.RemoveAt(i); blinkStatus.Invalidate(); continue; }
+                EditorGUILayout.BeginHorizontal();
+                EditorGUILayout.LabelField(ExporterLocalization.T("含める指定: ") + component.name + " (" + component.GetType().Name + ")");
+                if (GUILayout.Button(ExporterLocalization.T("解除"), GUILayout.Width(48))) { includedGimmickComponents.RemoveAt(i); blinkStatus.Invalidate(); }
                 EditorGUILayout.EndHorizontal();
             }
         }
