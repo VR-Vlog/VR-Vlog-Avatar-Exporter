@@ -156,6 +156,44 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceNotHumanoid));
         }
 
+        // A humanoid whose only renderer has no MeshFilter used to be saved as a
+        // VRM with no mesh. ExportSettings.Export stops it before any stage runs.
+        [Test]
+        public void MeshRendererWithoutMeshFilterSourceStopsBeforeExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(skin);
+            var body = new GameObject("Body");
+            body.transform.SetParent(fixture.Source.transform, false);
+            body.AddComponent<MeshRenderer>();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            var warnings = new List<string>();
+            var error = Assert.Throws<InvalidOperationException>(() => new ExportSettings().Export(fixture.Source, "Empty", "Tests", warnings, null, null));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceHasNoMesh));
+            Assert.That(warnings, Is.Empty);
+        }
+
+        [Test]
+        public void NullSkinnedMeshSourceStopsBeforeExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Object.DestroyImmediate(skins[1]);
+            skins[0].sharedMesh = null;
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceHasNoMesh));
+        }
+
+        [Test]
+        public void MeshOnInactiveChildPassesSourceMeshCheck()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Object.DestroyImmediate(skins[1]);
+            skins[0].gameObject.SetActive(false);
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
+        }
+
         // A generic AAO avatar uses its root Animator controller, unlike a
         // VRChat descriptor or authored Vrm10Instance. Give the synthetic
         // generic fixture a real idle controller without altering AAO settings.
