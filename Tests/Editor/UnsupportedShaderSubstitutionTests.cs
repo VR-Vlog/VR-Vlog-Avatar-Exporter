@@ -271,9 +271,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var report = new ExportFallbackReport();
             report.Add(ExportFallbackKind.ShaderSubstituted, "Plain");
-            var message = ExportFallbackConfirmation.Message(report);
-            Assert.That(message, Does.Contain(ExporterLocalization.T(ExportFallbackConfirmation.Failure(ExportFallbackKind.ShaderSubstituted))));
-            Assert.That(message, Does.Contain("Plain"));
+            var row = ExportResultList.Build(report, null).Rows.Single();
+            Assert.That(row.Content, Is.EqualTo(ExporterLocalization.T(ExportFallbackConfirmation.Failure(ExportFallbackKind.ShaderSubstituted))));
+            Assert.That(row.Targets.Select(target => target.Name), Is.EqualTo(new[] { "Plain" }));
             Assert.That(report.Results.Single().Outcome, Is.EqualTo(ExportOutcome.Approximated), "Listed as approximated in the result.");
             Assert.That(ExportFallbackConfirmation.Failure(ExportFallbackKind.ShaderSubstituted),
                 Is.Not.EqualTo(ExportFallbackConfirmation.Failure(ExportFallbackKind.NonLilToonMaterials)));
