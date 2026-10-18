@@ -41,6 +41,14 @@ the structure hash of every tag from 2.0.0 to 2.3.4 matches (see
 have and lacks 3 that it has. Shader Setting changes, encrypted materials and
 custom shaders were not measured.
 
+As of 2026-10-18, 2.3.4 is the newest lilToon release and the official VPM
+listing has no pre-release, so the range covers every stable 2.x release. 1.x
+is not accepted: the exporter requires the 2.3.4 property set exactly, 2.0.0
+changed the fur, lighting and Light Volumes shader code, and 1.x packages
+declare Unity 2018.3. Updating the project to lilToon 2.0.0-2.3.4 migrates 1.x
+materials so they export. See
+`Documentation~/decisions/2026-10-18-liltoon-range-review.md`.
+
 Before exporting, these versions stop with the reason and the next step:
 
 | Installed lilToon | What to do |
