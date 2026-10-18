@@ -1,0 +1,80 @@
+{
+  "unity": "2022.3.22f1",
+  "filterFocused": [
+    "AppearancePreparationTests",
+    "MaReactiveExpressionExportTests",
+    "MaDeletionExportTests",
+    "ExperimentalExpressionCaptureTests"
+  ],
+  "sets": {
+    "E2": {
+      "modularAvatar": "1.13.4",
+      "ndmf": "1.8.3",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.3",
+      "lilToon": "2.3.4",
+      "aao": "1.8.15"
+    },
+    "E4": {
+      "modularAvatar": "1.18.0",
+      "ndmf": "1.11.0",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.3",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "U2": {
+      "modularAvatar": "1.18.7",
+      "ndmf": "1.14.8",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": "1.9.20"
+    }
+  },
+  "runs": [
+    {
+      "set": "E4",
+      "run": "exporter-integration",
+      "commit": "d02a6e8 (before the appearance range gate)",
+      "counts": {"total": 2131, "passed": 2122, "failed": 0, "skipped": 9}
+    },
+    {
+      "set": "E4",
+      "run": "focused",
+      "commit": "a37c0d2",
+      "counts": {"total": 153, "passed": 147, "failed": 6, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 120, "passed": 114, "failed": 6, "skipped": 0}
+      }
+    },
+    {
+      "set": "E2",
+      "run": "focused",
+      "commit": "a37c0d2",
+      "counts": {"total": 153, "passed": 114, "failed": 31, "skipped": 8},
+      "stoppedByRangeMessage": 25,
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 2, "failed": 8, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 0, "failed": 15, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 0, "failed": 0, "skipped": 6},
+        "ExperimentalExpressionCaptureTests": {"total": 120, "passed": 112, "failed": 8, "skipped": 0}
+      }
+    },
+    {
+      "set": "U2",
+      "run": "focused",
+      "commit": "a37c0d2",
+      "counts": {"total": 153, "passed": 149, "failed": 4, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 120, "passed": 116, "failed": 4, "skipped": 0}
+      }
+    }
+  ]
+}
