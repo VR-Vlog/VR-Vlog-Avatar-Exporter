@@ -91,7 +91,7 @@ namespace VRVlog.LilToonExporter
             // Humanoid flags alone do not mask those generic curve bindings.
             mask.AddTransformPath(source.transform, true);
             var animator = source.GetComponent<Animator>();
-            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: animator.GetBoneTransform(PoseSampling.HumanBone(n))))
+            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: HumanoidBones.Resolve(animator, PoseSampling.HumanBone(n))))
                 .Where(b => b.bone != null).ToDictionary(b => AnimationUtility.CalculateTransformPath(b.bone, source.transform), b => PoseSampling.Part(b.name));
             for (var i = 0; i < mask.transformCount; i++)
                 mask.SetTransformActive(i, parts.TryGetValue(mask.GetTransformPath(i), out var part) && mask.GetHumanoidBodyPartActive(part));
@@ -174,7 +174,7 @@ namespace VRVlog.LilToonExporter
             var omitted = new HashSet<string>();
             foreach (var name in row.IsAnimation ? HumanoidAnimationData.BoneNames : HumanoidPoseData.BoneNames)
             {
-                var human = PoseSampling.HumanBone(name); var bone = sourceAnimator.GetBoneTransform(human);
+                var human = PoseSampling.HumanBone(name); var bone = HumanoidBones.Resolve(sourceAnimator, human);
                 if (bone == null || targetAnimator.GetBoneTransform(human) != null) continue;
                 if (row.Layers.Any(layer => layer.Clip != null && PoseSampling.WritesBone(layer, name, bone, source)))
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用コピーからポーズのHumanoidボーンが失われました: ") + human);

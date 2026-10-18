@@ -167,6 +167,58 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // An Animator added under a hidden parent is never bound in this
+        // session; its bones must still be found for the scene-side checks.
+        [Test] public void HumanoidBonesAreFoundOnANeverShownAvatar()
+        {
+            var parent = Own(new GameObject("Hidden parent"));
+            parent.SetActive(false);
+            var root = new GameObject("avatar"); root.transform.SetParent(parent.transform, false);
+            var bones = new Dictionary<HumanBodyBones, Transform>();
+            Transform Bone(HumanBodyBones kind, Transform under, Vector3 position)
+            {
+                var bone = new GameObject(kind.ToString()).transform;
+                bone.SetParent(under, false); bone.position = position; bones.Add(kind, bone); return bone;
+            }
+            var hips = Bone(HumanBodyBones.Hips, root.transform, new Vector3(0, 1, 0));
+            var spine = Bone(HumanBodyBones.Spine, hips, new Vector3(0, 1.2f, 0));
+            var chest = Bone(HumanBodyBones.Chest, spine, new Vector3(0, 1.4f, 0));
+            var neck = Bone(HumanBodyBones.Neck, chest, new Vector3(0, 1.6f, 0));
+            var head = Bone(HumanBodyBones.Head, neck, new Vector3(0, 1.75f, 0));
+            Bone(HumanBodyBones.LeftEye, head, new Vector3(-.03f, 1.8f, .05f));
+            Bone(HumanBodyBones.RightEye, head, new Vector3(.03f, 1.8f, .05f));
+            foreach (var left in new[] { true, false })
+            {
+                var x = left ? -1f : 1f;
+                var arm = Bone(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm, chest, new Vector3(x * .25f, 1.5f, 0));
+                var forearm = Bone(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm, arm, new Vector3(x * .55f, 1.5f, 0));
+                Bone(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand, forearm, new Vector3(x * .8f, 1.5f, 0));
+                var leg = Bone(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg, hips, new Vector3(x * .12f, .9f, 0));
+                var shin = Bone(left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg, leg, new Vector3(x * .12f, .45f, 0));
+                Bone(left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot, shin, new Vector3(x * .12f, .1f, .1f));
+            }
+            var avatar = Own(AvatarBuilder.BuildHumanAvatar(root, new HumanDescription
+            {
+                human = bones.Select(entry => new HumanBone { boneName = entry.Value.name, humanName = HumanTrait.BoneName[(int)entry.Key], limit = new HumanLimit { useDefaultValues = true } }).ToArray(),
+                skeleton = root.GetComponentsInChildren<Transform>(true).Select(t => new SkeletonBone { name = t.name, position = t.localPosition, rotation = t.localRotation, scale = t.localScale }).ToArray(),
+                upperArmTwist = .5f, lowerArmTwist = .5f, upperLegTwist = .5f, lowerLegTwist = .5f, armStretch = .05f, legStretch = .05f
+            }));
+            Assert.That(avatar.isValid && avatar.isHuman, Is.True);
+            var animator = root.AddComponent<Animator>();
+            animator.avatar = avatar;
+            Debug.Log("InactiveRootExportTests: never-shown Animator initialized=" + animator.isInitialized +
+                " GetBoneTransform(Hips)=" + (animator.GetBoneTransform(HumanBodyBones.Hips) == null ? "null" : "found"));
+
+            Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.Hips), Is.SameAs(bones[HumanBodyBones.Hips]));
+            Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.LeftEye), Is.SameAs(bones[HumanBodyBones.LeftEye]));
+            Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.RightEye), Is.SameAs(bones[HumanBodyBones.RightEye]));
+            Assert.That(HumanoidBones.Resolve(animator, HumanBodyBones.Jaw), Is.Null, "An unmapped bone stays unresolved.");
+            var error = Assert.Throws<InvalidOperationException>(() => new ExportObjectExclusions(root, new[] { hips.gameObject }));
+            Assert.That(error.Message, Does.Contain("Humanoid"));
+            Assert.That(root.activeSelf, Is.True);
+            Assert.That(parent.activeSelf, Is.False);
+        }
+
         [Test] public void GimmicksAreFoundUnderAHiddenAvatar()
         {
             var parent = Own(new GameObject("parent"));

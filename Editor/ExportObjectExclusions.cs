@@ -29,7 +29,7 @@ namespace VRVlog.LilToonExporter
             if (animator != null && animator.isHuman)
                 for (var bone = 0; bone < (int)HumanBodyBones.LastBone; bone++)
                 {
-                    var transform = animator.GetBoneTransform((HumanBodyBones)bone);
+                    var transform = HumanoidBones.Resolve(animator, (HumanBodyBones)bone);
                     if (transform != null && Contains(transform))
                         throw new InvalidOperationException("Humanoidの骨格を含むオブジェクトは除外できません: " + transform.name);
                 }

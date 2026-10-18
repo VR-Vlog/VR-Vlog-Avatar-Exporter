@@ -171,7 +171,7 @@ namespace VRVlog.LilToonExporter
             foreach (var animator in source.GetComponentsInChildren<Animator>(true))
                 if (animator.isHuman)
                     for (var i = 0; i < (int)HumanBodyBones.LastBone; i++)
-                        if (Within(animator.GetBoneTransform((HumanBodyBones)i)))
+                        if (Within(HumanoidBones.Resolve(animator, (HumanBodyBones)i)))
                             return "Humanoidの骨を含むため、システム全体は残します。";
             // Transform parent/children references express hierarchy ownership;
             // all other incoming component references must survive the export.

@@ -1,11 +1,11 @@
 # 非表示のアバターも、書き出し用のコピーだけ表示にして書き出す
 
 - 日付: 2026-10-18
-- 対象: `Editor/ExportRendererSelection.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/NdmfExportPreparation.cs`・`Editor/ExportRecovery.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/ExportGimmickDetection.cs`・`Editor/BlinkExportSession.cs`・`Editor/ExportObjectExclusions.cs`・`Editor/PoseExportSession.cs`・`Editor/FaceEmoExpressions.cs`・`Editor/Locales/*.json`・`Tools/validate.py`・`Tests/Editor/InactiveRootExportTests.cs`・`Tests/Editor/RendererSelectionTests.cs`
+- 対象: `Editor/ExportRendererSelection.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/NdmfExportPreparation.cs`・`Editor/ExportRecovery.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/ExportGimmickDetection.cs`・`Editor/BlinkExportSession.cs`・`Editor/ExportObjectExclusions.cs`・`Editor/PoseExportSession.cs`・`Editor/PoseSampling.cs`・`Editor/VrmLookAtExport.cs`・`Editor/HumanoidBones.cs`・`Editor/FaceEmoExpressions.cs`・`Editor/Locales/*.json`・`Tools/validate.py`・`Tests/Editor/InactiveRootExportTests.cs`・`Tests/Editor/RendererSelectionTests.cs`
 
 ## 背景
 
-アバター本体またはその親が非表示（inactive）だと、`ExportRendererSelection.RequireActiveRoot` が例外を投げ、書き出しが始まる前に止まっていた。非表示のまま書き出すと `activeInHierarchy` がすべて false になり、メッシュも表情も見つからない空のファイルになるのを防ぐためだった。衣装違いのアバターを並べて片方を非表示にしておく使い方は普通にあり、「不完全でも必ず書き出す」方針（`2026-10-18-stage-guard.md`）にも合わない。
+アバター本体またはその親が非表示（inactive）だと、`ExportRendererSelection.RequireActiveRoot` が例外を投げ、書き出しが始まる前に止まっていた。非表示のまま書き出すと `activeInHierarchy` がすべて false になり、メッシュも表情も見つからない空のファイルになるのを防ぐためだった。衣装違いのアバターを並べて片方を非表示にしておく使い方は普通にあり、「不完全でも必ず書き出す」方針（`Documentation~/decisions/2026-10-18-stage-guard.md`）にも合わない。
 
 ## 決定
 
@@ -26,6 +26,8 @@
 - `FaceEmoExpressions.ReadRepositories` のアバター内の表情設定の収集
 - `ExportRecoveryPreview.Create`・`ExperimentalExpressionCaptureSession` の非表示の拒否を削除
 
+このセッションで一度も表示されていないアバターの Animator は初期化されておらず、`Animator.GetBoneTransform` が null を返すことがある。元のアバターの Humanoid ボーンを引く処理（除外の検査・エフェクト類の安全確認・視線の測定・同梱ポーズのマスクとボーンの対応・ポーズの取り出し）は `HumanoidBones.Resolve` を通す。`GetBoneTransform` が null で Animator が未初期化のときだけ、Humanoid の設定のボーン名から Animator の下の Transform を探す。同じ名前が 2 つ以上あれば見つからない扱いにする。
+
 ## 変えなかったもの
 
 - コピー側の判定（最適化・表情の照合・揺れ物・視線など）: コピーのルートは表示にしてあるので結果が変わらない。`RequireActiveRoot` はコピーにだけ使う（`ExportOptimizationBindings`）。
@@ -40,5 +42,6 @@
 
 ## 残した課題
 
-- `Animator.GetBoneTransform` などの Animator の問い合わせを、非表示の元のアバターに対して行う処理がある（除外の検査・視線の測定など）。EditMode テストで通ることは確かめたが、すべての経路は確かめていない。
+- ボーン名での補完は、Humanoid の設定のボーン名がアバターの中で 1 つに決まる場合だけ効く。同じ名前のボーンが複数あるアバターでは、そのボーンは見つからない扱いになる。
+- `GetBoneTransform` 以外の Animator の問い合わせ（`isHuman` など）を未初期化の Animator に行ったときの挙動は、テストで使った範囲しか確かめていない。
 - アバターの外の非表示の親の下に置いた表情設定は読まない（上記）。
