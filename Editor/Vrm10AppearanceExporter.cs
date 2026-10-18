@@ -69,9 +69,11 @@ namespace VRVlog.LilToonExporter
                 if (source.normals.Length != source.vertexCount) continue;
                 var mesh = group.Meshes[0];
                 var vertices = new Vector3[source.vertexCount];
-                var normals = new Vector3[source.vertexCount];
                 for (var shape = 0; shape < source.blendShapeCount; shape++)
                 {
+                    // UniVRM 0.131.3+ CreateNativeArray wraps the managed array
+                    // without copying, so each morph needs its own normals array.
+                    var normals = new Vector3[source.vertexCount];
                     var target = mesh.MorphTargets[shape];
                     var frames = source.GetBlendShapeFrameCount(shape);
                     if (frames == 0 || target.Name != source.GetBlendShapeName(shape) || target.VertexBuffer.Count != source.vertexCount)

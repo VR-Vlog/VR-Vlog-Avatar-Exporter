@@ -145,6 +145,55 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // UniVRM 0.131.3 wraps managed arrays without copying them. Every
+        // morph of one mesh must still keep its own NORMAL data in the GLB.
+        [Test]
+        public void EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var baseVertices = new[] { new Vector3(-.1f, 1.7f, .08f), new Vector3(.1f, 1.7f, .08f),
+                new Vector3(-.1f, 1.9f, .08f), new Vector3(.1f, 1.9f, .08f) };
+            f.Mesh.Clear();
+            f.Mesh.name = "Several authored shapes";
+            f.Mesh.vertices = baseVertices;
+            f.Mesh.normals = Enumerable.Repeat(Vector3.forward, 4).ToArray();
+            f.Mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one };
+            f.Mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 4).ToArray();
+            f.Mesh.bindposes = new[] { f.Hair.GetChild(0).worldToLocalMatrix, f.Head.worldToLocalMatrix };
+            f.Mesh.triangles = new[] { 0, 2, 1, 1, 2, 3 };
+            Vector3[] NormalDelta(int shape) => Enumerable.Range(0, 4)
+                .Select(i => new Vector3(.01f * (shape + 1) + .003f * i, -.02f * shape, .004f * (i + shape))).ToArray();
+            var names = new[] { "Shape A", "Shape B", "Shape C" };
+            for (var shape = 0; shape < names.Length; shape++)
+                f.Mesh.AddBlendShapeFrame(names[shape], 100,
+                    Enumerable.Range(0, 4).Select(i => new Vector3(0, .01f * (shape + 1), 0)).ToArray(), NormalDelta(shape), null);
+            f.Mesh.RecalculateBounds();
+            foreach (var skin in f.Copy.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                skin.sharedMesh = f.Mesh;
+                for (var shape = 0; shape < names.Length; shape++) skin.SetBlendShapeWeight(shape, 0);
+            }
+            var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(),
+                f.Copy, new BuiltInVrm10MaterialExporter(), new MobileTextureSerializer(null),
+                new VRM10ObjectMeta { Name = "Several morph normals", Version = "1", Authors = new List<string> { "Tests" } });
+            using var data = new GlbBinaryParser(bytes, "several morph normals").Parse();
+            Assert.That(data.GLTF.meshes, Is.Not.Empty);
+            foreach (var mesh in data.GLTF.meshes)
+            {
+                var primitive = mesh.primitives.Single();
+                Assert.That(primitive.targets.Count, Is.EqualTo(names.Length));
+                for (var shape = 0; shape < names.Length; shape++)
+                {
+                    Assert.That(primitive.targets[shape].NORMAL, Is.GreaterThanOrEqualTo(0), names[shape]);
+                    var normals = data.GetArrayFromAccessor<Vector3>(primitive.targets[shape].NORMAL);
+                    var delta = NormalDelta(shape);
+                    Assert.That(normals.Length, Is.EqualTo(delta.Length));
+                    for (var vertex = 0; vertex < delta.Length; vertex++)
+                        AssertVector(new Vector3(-delta[vertex].x, delta[vertex].y, delta[vertex].z), normals[vertex]);
+                }
+            }
+        }
+
         static (Vector3[] Vertices, Vector3[] Normals) Measure(SkinnedMeshRenderer skin, float weight)
         {
             skin.SetBlendShapeWeight(0, weight);

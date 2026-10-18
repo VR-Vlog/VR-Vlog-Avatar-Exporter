@@ -38,6 +38,10 @@ BEHAVIOR_CASES = {
         'SharedStaticMeshRepairsEveryExportedMeshGroupWithoutSplittingSourceIdentity': 1,
         'SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings': 2,
     },
+    'MorphNormalExportTests': {
+        'AuthoredNormalTargetsKeepSourceIdentityAndSubmeshVertexOrder': 2,
+        'EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals': 1,
+    },
     'AppearanceRecoveryTests': {
         'ActiveOrKeywordEnabledLayersKeepTheOriginalDynamicImageDiagnostic': 3,
         'EmptyMeshDoesNotCreateAFullBindingOrRemoveItsBone': 4,
