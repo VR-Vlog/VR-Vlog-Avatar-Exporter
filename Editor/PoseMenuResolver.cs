@@ -272,11 +272,13 @@ namespace VRVlog.LilToonExporter
         }
         // Every parameter that can steer the graph: transition conditions
         // (any-state, state, entry, sub-state-machine), state parameters and
-        // blend tree parameters. Wider than transitions alone on purpose.
+        // blend tree parameters. Wider than transitions alone on purpose; muted
+        // and solo-suppressed transitions count too, so a solo flag left on a
+        // pose layer keeps the full diagnosis.
         static IEnumerable<string> Inputs(AnimatorStateMachine root)
         {
             var machines = Machines(root).ToArray();
-            var conditions = Transitions(root).SelectMany(t => t.conditions)
+            var conditions = machines.SelectMany(m => m.anyStateTransitions).Concat(States(root).SelectMany(s => s.transitions)).SelectMany(t => t.conditions)
                 .Concat(machines.SelectMany(m => m.entryTransitions).SelectMany(t => t.conditions))
                 .Concat(machines.SelectMany(m => m.stateMachines.SelectMany(c => m.GetStateMachineTransitions(c.stateMachine))).SelectMany(t => t.conditions))
                 .Select(c => c.parameter);

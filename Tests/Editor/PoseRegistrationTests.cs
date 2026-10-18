@@ -312,10 +312,7 @@ namespace VRVlog.LilToonExporter.Tests
                 { Assert.That(result[0].Error, Does.Contain("Tracking Control")); return; }
                 if (defaultLocomotion) { Assert.That(result[0].Error, Does.Contain("外部入力")); return; }
                 if (upperDefaults > 0) { Assert.That(result[0].Error, Does.Contain("Write Defaults")); return; }
-                // The solo transition mutes the menu's own edge, so the menu no longer
-                // reaches the layer: the row is kept out as a non-body menu, not a warning.
-                if (unrelatedSolo) { Assert.That(result[0].NotBodyPose, Is.True, result[0].Error); Assert.That(result[0].Error, Is.EqualTo(PoseMenuResolver.NotBodyPoseMessage)); return; }
-                if (unconditionalFallback > 0 || propOnly || maskedSelection) { Assert.That(result[0].Error, Does.Contain("確定"), "A suppressed or irrelevant parameter edge cannot relate this menu to an unconditional pose."); return; }
+                if (unrelatedSolo || unconditionalFallback > 0 || propOnly || maskedSelection) { Assert.That(result[0].Error, Does.Contain("確定"), "A suppressed or irrelevant parameter edge cannot relate this menu to an unconditional pose."); return; }
                 Assert.That(result[0].Error, Is.Null, result[0].Error);
                 Assert.That(result[0].Name, Is.EqualTo("メニュー名")); Assert.That(result[0].Category, Is.EqualTo("カテゴリー"));
                 if (buttonRelease != null) Assert.That(result[0].Note, Does.Contain("Button解除後"));
