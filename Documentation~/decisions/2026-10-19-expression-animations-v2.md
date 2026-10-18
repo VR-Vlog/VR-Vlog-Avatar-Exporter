@@ -36,11 +36,11 @@ schemaVersion 1 の `VRVLOG_expression_animations` は、アニメーション�
 
 ## 確認したこと
 
-- アプリのリポジトリ（develop、2026-10-19 時点の先頭 `5c069769`）の履歴で、bundleVersion が変わったコミットは次のとおり: `731fdf61`（2026-09-22、1.0.0）、`42aa51be`（09-30、1.0.1）、`43fbc92d`（10-02、1.0.2）、`c4ea980a`（10-03、1.0.3）、`c9b9079b`（10-10、1.0.4）、`76ee5d57`（10-16、1.0.5）。それより前は 0.1.0（`e2c1d80b`）と 0.1.1（`ac735c48`）。
-- `731fdf61`（1.0.0）の時点で、アプリの `ExpressionAnimationData.cs` は exporter の v1 と、公開範囲（internal と public）とコメント 1 行を除いて同じ。`HumanoidPoseData.cs` は exporter の `Editor/HumanoidPoseData.cs` と同じ。`LilToonFullContract.cs` は公開範囲と、後で足した色空間の項目を除いて同じで、schemaMajor 2・schemaMinor 0・lilToon 2.3.4 と同じカタログのコミットを受け付ける。exporter が今書くのは schemaMajor 2 だけなので、1.x の表は作らない。
-- 読み込みのコードが入ったコミットは、expression animations v1 が `06cfdf87`（09-06）、humanoid poses が `fb886762`（09-17）で、どちらも `731fdf61` の祖先。0.1.1 のビルドには読めるものと読めないもの（`ac735c48` の時点では無い）が混ざるので、1.0.0 を最低にした。
-- humanoid animations の読み込みは `8e438156`（10-07）で入った。親のコミットには `VRVLOG_humanoid_animations` の参照が無く、読み込みのコードは exporter の `Editor/HumanoidAnimationData.cs` と同じ。このコミットは 1.0.3 の期間の途中にあり、アプリのビルドのタグを見ると、1.0.3 のビルドのうち 10-03〜10-05 の 9 個は読めず、10-07 以降のものは読める。1.0.4 への版上げ（`c9b9079b`）はこのコミットを含むので、最低を 1.0.4 にした。
-- 色空間: アプリが asset.extras の `VRVLOG_lilToonColorSpace` を読むようになったのは `73c4ccdb`（10-09、1.0.3 の期間）で、exporter が書き始めたのも 10-09。それより前のアプリはこのキーを無視して linear とみなすので、gamma のプロジェクトから書き出したファイルは追加の色の合成がずれるが、読み込み自体はできる。`VRVLOG_materials_liltoon` の版は変わっていないので、表は schemaMajor 2 = 1.0.0 のままにした。
-- 1.0.5 のステージングのビルド（タグが 2 つ）は、v2 の読み込みが入る前のコミットから作られている。v2 を読めない 1.0.5 のビルドがあるので、表の 1.0.5 は上の前提（アプリの対応が 1.0.5 の公開までに入る）が崩れたら直す必要がある。
+- アプリの開発ブランチ（2026-10-19 時点）の履歴で、アプリの版が変わった日は次のとおり: 1.0.0 が 2026-09-22、1.0.1 が 09-30、1.0.2 が 10-02、1.0.3 が 10-03、1.0.4 が 10-10、1.0.5 が 10-16。それより前は 0.1.0 と 0.1.1。
+- 1.0.0 にした時点で、アプリの `ExpressionAnimationData.cs` は exporter の v1 と、公開範囲（internal と public）とコメント 1 行を除いて同じ。`HumanoidPoseData.cs` は exporter の `Editor/HumanoidPoseData.cs` と同じ。`LilToonFullContract.cs` は公開範囲と、後で足した色空間の項目を除いて同じで、schemaMajor 2・schemaMinor 0・lilToon 2.3.4 と同じカタログのコミットを受け付ける。exporter が今書くのは schemaMajor 2 だけなので、1.x の表は作らない。
+- 読み込みのコードが入ったのは、expression animations v1 が 09-06、humanoid poses が 09-17 で、どちらも 1.0.0 より前。0.1.1 のビルドには読めるものと読めないものが混ざるので、1.0.0 を最低にした。
+- humanoid animations の読み込みは 10-07 に入った。それより前には `VRVLOG_humanoid_animations` の参照が無く、読み込みのコードは exporter の `Editor/HumanoidAnimationData.cs` と同じ。10-07 は 1.0.3 の期間の途中なので、1.0.3 のビルドのうち 10-03〜10-05 に作られたものは読めない。1.0.4 のビルドはすべて読めるので、最低を 1.0.4 にした。
+- 色空間: アプリが asset.extras の `VRVLOG_lilToonColorSpace` を読むようになったのは 10-09（1.0.3 の期間）で、exporter が書き始めたのも 10-09。それより前のアプリはこのキーを無視して linear とみなすので、gamma のプロジェクトから書き出したファイルは追加の色の合成がずれるが、読み込み自体はできる。`VRVLOG_materials_liltoon` の版は変わっていないので、表は schemaMajor 2 = 1.0.0 のままにした。
+- 1.0.5 の番号で作られたビルドのうち、すでにあるものは v2 の読み込みが入る前の状態から作られている。v2 を読めない 1.0.5 のビルドがあるので、表の 1.0.5 は上の前提（アプリの対応が 1.0.5 の公開までに入る）が崩れたら直す必要がある。
 - `Tests/Editor/ExpressionAnimationDocumentTests.cs` で、v2 の書き出し→JSON→読み込みの往復（書き直した JSON が同じになることを含む）、アニメーションの無い表情だけのファイル、v1 を両方の読み込みで読めること、v1 の読み込みが v2 を拒むこと、版・重複・知らない source・`expressions` に無い表情・同じ変形の重複・負や小数の番号・名前の target・空のファイルを拒むこと、`WriteDocument` が v1 の内容（名前の target）を拒むこと、版の比較と表の値を確かめる。Formats の netstandard2.1・C# 9 でのビルドも警告なしで通ることを確かめた。
 - 2 つの schema が draft 2020-12 として正しいことと、`Write`・`WriteDocument` の出力がそれぞれの schema に合い、もう一方の schema には合わないことを jsonschema で確かめた。v2 の schema が、知らない source・両方空・負の node・小数の index・文字列の target・余分なプロパティ・`expressions` の欠け・空の表情名・point 1 つ・要素 5 つの key・schemaVersion 3 を拒むことも確かめた。
