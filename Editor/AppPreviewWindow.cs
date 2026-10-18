@@ -263,7 +263,7 @@ namespace VRVlog.LilToonExporter
             Repaint();
         }
 
-        void Step(float deltaTime)
+        internal void Step(float deltaTime)
         {
             if (swayTime >= 0)
             {
@@ -282,6 +282,13 @@ namespace VRVlog.LilToonExporter
             // Expressions and their animations advance every frame; spring bones
             // only move while enabled (SetSpringBonesEnabled). A zero step is never sent.
             load.Tick(deltaTime);
+            // A single play ends on its own, and the button turns back to play.
+            var playing = load.PlayingExpressionAnimation;
+            if (playing != playingAnimation)
+            {
+                playingAnimation = playing;
+                Repaint();
+            }
         }
 
         internal static float BlinkClosure(float time)
@@ -319,7 +326,7 @@ namespace VRVlog.LilToonExporter
             load.SetEyeBlink(amount, amount);
         }
 
-        void PlayAnimation(string name)
+        internal void PlayAnimation(string name)
         {
             load.PlayExpressionAnimation(name);
             playingAnimation = name;

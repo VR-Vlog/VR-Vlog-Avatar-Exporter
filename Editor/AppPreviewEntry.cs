@@ -43,6 +43,8 @@ namespace VRVlog.LilToonExporter
         void ClearExpressions();
         // Null stops the playing animation.
         void PlayExpressionAnimation(string name);
+        // The animation still playing, or null once a single play has ended.
+        string PlayingExpressionAnimation { get; }
         void SetEyeBlink(float left, float right);
         void SetSpringBonesEnabled(bool enabled);
         void ResetSpringBones();

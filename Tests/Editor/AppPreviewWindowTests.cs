@@ -194,6 +194,23 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public async Task TheAnimationButtonTurnsBackToPlayWhenASinglePlayEnds()
+        {
+            AppPreviewEntry.Backend = new FakeBackend(this);
+            var window = AppPreviewWindow.Open(new byte[] { 1 }, "fake.vrm");
+            await window.LastLoad;
+            var session = sessions[0];
+            var field = typeof(AppPreviewWindow).GetField("playingAnimation", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            window.PlayAnimation("wave");
+            window.Step(.1f);
+            Assert.That(field.GetValue(window), Is.EqualTo("wave"));
+            session.PlayingExpressionAnimation = null;
+            window.Step(.1f);
+            Assert.That(field.GetValue(window), Is.Null);
+        }
+
+        [Test]
         public async Task AfterAScriptReloadTheWindowOffersToLoadTheFileAgain()
         {
             var flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -282,7 +299,13 @@ namespace VRVlog.LilToonExporter.Tests
             public void Tick(float deltaTime) { }
             public void SetExpression(string name, float weight) => Calls.Add("SetExpression " + name + " " + Number(weight));
             public void ClearExpressions() => Calls.Add("ClearExpressions");
-            public void PlayExpressionAnimation(string name) => Calls.Add("PlayExpressionAnimation " + name);
+            public void PlayExpressionAnimation(string name)
+            {
+                Calls.Add("PlayExpressionAnimation " + name);
+                PlayingExpressionAnimation = name;
+            }
+
+            public string PlayingExpressionAnimation { get; set; }
             public void SetEyeBlink(float left, float right) => Calls.Add("SetEyeBlink " + Number(left) + " " + Number(right));
             public void SetSpringBonesEnabled(bool enabled) => SpringsEnabled = enabled;
             public void ResetSpringBones() { }

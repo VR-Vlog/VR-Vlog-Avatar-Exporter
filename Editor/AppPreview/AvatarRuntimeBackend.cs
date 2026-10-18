@@ -69,6 +69,7 @@ namespace VRVlog.LilToonExporter
             public void SetExpression(string name, float weight) => AvatarRuntimePreview.SetExpression(load, name, weight);
             public void ClearExpressions() => AvatarRuntimePreview.ClearExpressions(load);
             public void PlayExpressionAnimation(string name) => AvatarRuntimePreview.PlayExpressionAnimation(load, name);
+            public string PlayingExpressionAnimation => load.PlayingExpressionAnimation;
             public void SetEyeBlink(float left, float right) => AvatarRuntimePreview.SetEyeBlink(load, left, right);
             public void SetSpringBonesEnabled(bool enabled) => AvatarRuntimePreview.SetSpringBonesEnabled(load, enabled);
             public void ResetSpringBones() => AvatarRuntimePreview.ResetSpringBones(load);
