@@ -133,6 +133,12 @@ namespace VRVlog.LilToonExporter.Tests
             var deltas = new Vector3[mesh.vertexCount];
             mesh.GetBlendShapeFrameVertices(bind.Index, mesh.GetBlendShapeFrameCount(bind.Index) - 1, deltas, null, null);
             var moving = deltas.Where(delta => delta.magnitude > 1e-4f).ToArray();
+            message += " (" + bind.RelativePath + " #" + bind.Index + " of " + string.Join(", ", Enumerable.Range(0, mesh.blendShapeCount).Select(index =>
+            {
+                var values = new Vector3[mesh.vertexCount];
+                mesh.GetBlendShapeFrameVertices(index, mesh.GetBlendShapeFrameCount(index) - 1, values, null, null);
+                return mesh.GetBlendShapeName(index) + ":" + values.Count(value => value.magnitude > 1e-4f);
+            })) + ", vertices " + mesh.vertexCount + ")";
             Assert.That(moving.Length, Is.EqualTo(3), message);
             foreach (var delta in moving)
                 Assert.That(Mathf.Abs(delta[axis]), Is.GreaterThan(.9f * delta.magnitude), message);

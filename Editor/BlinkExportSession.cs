@@ -314,7 +314,8 @@ namespace VRVlog.LilToonExporter
             var shapes = new Dictionary<SkinnedMeshRenderer, HashSet<string>>();
             void Need(SkinnedMeshRenderer renderer, string shape)
             {
-                if (renderer == null) return;
+                // A replaced renderer is destroyed but must still be followed.
+                if (ReferenceEquals(renderer, null)) return;
                 if (!shapes.TryGetValue(renderer, out var set)) shapes.Add(renderer, set = new HashSet<string>(StringComparer.Ordinal));
                 if (shape != null) set.Add(shape);
             }
