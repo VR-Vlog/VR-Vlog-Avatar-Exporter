@@ -489,7 +489,8 @@ namespace VRVlog.LilToonExporter
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
             var matcapEnabled = source.HasProperty("_UseMatCap") && source.GetFloat("_UseMatCap") > 0.5f;
             var rimEnabled = source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > 0.5f;
-            var outlineEnabled = LilToonMaterialReader.HasPortableOutline(source);
+            var fakeShadow = LilToonMaterialReader.IsFakeShadow(source);
+            var outlineEnabled = !fakeShadow && LilToonMaterialReader.HasPortableOutline(source);
             var shadeTexture = Texture(source, "_ShadowColorTex");
             if (shadeTexture == Texture2D.whiteTexture) shadeTexture = null;
             var context = new MToon10Context(material)
@@ -542,6 +543,15 @@ namespace VRVlog.LilToonExporter
                 context.TextureScale = source.GetTextureScale("_MainTex");
                 context.TextureOffset = source.GetTextureOffset("_MainTex");
             }
+            if (fakeShadow)
+            {
+                // MToon has no stencil, so FakeShadow would cover the whole mesh
+                // it shares geometry with. Keep its slot (the lilToon extension
+                // still references it) but make the portable fallback invisible:
+                // FallbackColor gives alpha 0, which MToon blending clips.
+                context.AlphaMode = MToon10AlphaMode.Transparent;
+                context.TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.Off;
+            }
             context.Validate();
             return material;
         }
@@ -553,7 +563,10 @@ namespace VRVlog.LilToonExporter
         {
             switch (type)
             {
-                case MaterialColorType.color: return Color(source, "_Color", UnityEngine.Color.white);
+                case MaterialColorType.color:
+                    var color = Color(source, "_Color", UnityEngine.Color.white);
+                    if (LilToonMaterialReader.IsFakeShadow(source)) color.a = 0f;
+                    return color;
                 case MaterialColorType.shadeColor: return source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
                     ? MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white), Color(source, "_ShadowColor", UnityEngine.Color.gray), Float(source, "_ShadowStrength", 1f))
                     : Color(source, "_Color", UnityEngine.Color.white);

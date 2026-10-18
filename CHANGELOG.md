@@ -16,6 +16,7 @@
 - 対応するlilToonを2.3.4だけから2.0.0〜2.3.4へ広げました。2.3.4より前の版で作ったマテリアルは、lilToonを2.3.4へ更新したときと同じ見た目で書き出します。バックライトの透明度・影色・Outline Litなどの違いは補正しません。違いの一覧はリポジトリの`Compatibility/README.md`の「Supported lilToon versions」にあります。
 - lilToon 1.x以前・2.3.4より新しい版・プレリリース版では、書き出しの前に理由と対処を表示して止めます。1.x以前はlilToonを2.0.0〜2.3.4へ更新すると、lilToonの移行処理でマテリアルが移行され、そのまま書き出せます。
 - 書き出しの前に、導入済みのlilToonのシェーダーが2.3.4と同じ構成かを確かめ、違えば止めます。
+- lilToonのFakeShadow（`_lil/[Optional] lilToonFakeShadow`）のマテリアルを、標準VRM表示（MToon）では見えないように書き出します。MToonにはステンシルがなく、FakeShadowを追加した髪などのメッシュ全体が影の色で塗られていました。MToon側は透明（アルファ0・深度書き込みなし・輪郭線なし）にし、lilToon専用表示の設定とマテリアルの番号は変えません。
 - 書き出し元に導入されていたlilToonの版を`asset.extras.VRVLOG_lilToonInstalledVersion`に保存します。`sourceLilToonVersion`は準拠するカタログの版（2.3.4）のままで、既存のVR Vlogでそのまま読み込めます。
 
 ## 0.11.15
