@@ -305,7 +305,7 @@ namespace VRVlog.LilToonExporter
         // The source avatar's own VRM settings already fill this emotion.
         internal bool HasAuthoredPreset(ExpressionPreset preset)
         {
-            var expression = Source != null ? Source.GetComponent<Vrm10Instance>()?.Vrm?.Expression : null;
+            var expression = Source != null && Source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
             var clip = expression?.Clips.Where(item => item.Preset == preset).Select(item => item.Clip).FirstOrDefault();
             return clip != null && (clip.MorphTargetBindings?.Length > 0 || clip.MaterialColorBindings?.Length > 0 || clip.MaterialUVBindings?.Length > 0);
         }

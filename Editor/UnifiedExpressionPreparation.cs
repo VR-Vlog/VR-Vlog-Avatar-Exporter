@@ -95,7 +95,7 @@ namespace VRVlog.LilToonExporter
                 .Where(renderer => excluded?.Invoke(renderer.transform) == true).SelectMany(renderer => renderer.sharedMaterials)
                 .Where(material => material != null).Select(material => material.name), StringComparer.Ordinal);
             omittedMaterials.ExceptWith(materials);
-            var clips = clone.GetComponent<Vrm10Instance>()?.Vrm?.Expression?.CustomClips?.Where(clip => clip != null).ToArray()
+            var clips = (clone.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null)?.Expression?.CustomClips?.Where(clip => clip != null).ToArray()
                 ?? Array.Empty<VRM10Expression>();
             declaresUnified = VrmUnifiedExpressions.HasEvidence(meshes.Values.SelectMany(names => names).Concat(clips.Select(clip => clip.name)));
             if (!declaresUnified) return;
@@ -372,7 +372,7 @@ namespace VRVlog.LilToonExporter
             var preparedNames = ExportRendererSelection.Enumerate(avatar).OfType<SkinnedMeshRenderer>()
                 .Where(skin => skin.sharedMesh != null && excluded?.Invoke(skin.transform) != true)
                 .SelectMany(skin => Enumerable.Range(0, skin.sharedMesh.blendShapeCount).Select(skin.sharedMesh.GetBlendShapeName));
-            var preparedClips = avatar.GetComponent<Vrm10Instance>()?.Vrm?.Expression?.CustomClips
+            var preparedClips = (avatar.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null)?.Expression?.CustomClips
                 ?.Where(clip => clip != null).Select(clip => clip.name) ?? Enumerable.Empty<string>();
             var preserveBaselines = declaresUnified || VrmUnifiedExpressions.HasEvidence(preparedNames.Concat(preparedClips));
             var nextWeights = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float>();
@@ -471,7 +471,7 @@ namespace VRVlog.LilToonExporter
             var materials = ExportRendererSelection.Enumerate(avatar).SelectMany(renderer => renderer.sharedMaterials)
                 .Where(material => material != null).GroupBy(material => material.name, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
-            var clips = avatar.GetComponent<Vrm10Instance>()?.Vrm?.Expression?.CustomClips?.Where(clip => clip != null).ToArray()
+            var clips = (avatar.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null)?.Expression?.CustomClips?.Where(clip => clip != null).ToArray()
                 ?? Array.Empty<VRM10Expression>();
             var selected = clips.Where(clip => UnifiedExpressionRegistry.TryCanonicalize(clip.name, out _))
                 .GroupBy(clip => { UnifiedExpressionRegistry.TryCanonicalize(clip.name, out var canonical); return canonical; }, StringComparer.Ordinal)

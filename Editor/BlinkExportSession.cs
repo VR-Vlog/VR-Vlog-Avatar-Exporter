@@ -83,7 +83,7 @@ namespace VRVlog.LilToonExporter
             }
             else
             {
-                var expressions = source.GetComponent<Vrm10Instance>()?.Vrm?.Expression;
+                var expressions = source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
                 var clips = new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight };
                 if (clips.Any(c => c != null))
                 {

@@ -60,7 +60,7 @@ namespace VRVlog.LilToonExporter
             // Other renderer types have their own export semantics.
             var skin = renderer as SkinnedMeshRenderer;
             if (skin == null && !(renderer is MeshRenderer)) return null;
-            var mesh = skin != null ? skin.sharedMesh : renderer.GetComponent<MeshFilter>()?.sharedMesh;
+            var mesh = skin != null ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
             var materials = renderer.sharedMaterials;
             var finding = new ExportGimmickFinding { Target = renderer.gameObject, Renderer = renderer };
             if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount ||
@@ -310,7 +310,7 @@ namespace VRVlog.LilToonExporter
                 // Inactive ordinary wardrobe parts are also evidence against
                 // deleting the entire system, even though they aren't exported.
                 var materials = renderer.sharedMaterials;
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.GetComponent<MeshFilter>()?.sharedMesh;
+                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
                 if (mesh == null || mesh.subMeshCount == 0 || materials.Length < mesh.subMeshCount || materials.Any(m => m == null || m.shader == null))
                     return "メッシュまたは材質が不足しているため、システム全体は残します。";
                 if (!(renderer is MeshRenderer || renderer is SkinnedMeshRenderer) || materials.Length == 0 || !materials.All(HiddenFallback))
