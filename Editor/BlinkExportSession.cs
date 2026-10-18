@@ -325,6 +325,71 @@ namespace VRVlog.LilToonExporter
             candidates.Clear(); candidates.AddRange(nextCandidates);
         }
 
+        internal const string LostBlinkDescription = "瞬きなし（ビルド処理で閉眼用の変形が失われました）";
+
+        // Lenient rebind: follow each blink renderer to the one that holds its
+        // shapes after the build passes. If that is not certain, export with no
+        // blink instead of stopping the export.
+        internal bool FollowPrepared(GameObject prepared, Func<SkinnedMeshRenderer, string, SkinnedMeshRenderer> follow,
+            out bool moved, out string reason)
+        {
+            if (follow == null) throw new ArgumentNullException(nameof(follow));
+            reason = null;
+            moved = false;
+            if (Disabled) return true;
+            var shapes = new Dictionary<SkinnedMeshRenderer, HashSet<string>>();
+            void Need(SkinnedMeshRenderer renderer, string shape)
+            {
+                // A replaced renderer is destroyed but must still be followed.
+                if (ReferenceEquals(renderer, null)) return;
+                if (!shapes.TryGetValue(renderer, out var set)) shapes.Add(renderer, set = new HashSet<string>(StringComparer.Ordinal));
+                if (shape != null) set.Add(shape);
+            }
+            foreach (var binding in Slots.SelectMany(slot => slot)) Need(binding.Renderer, binding.Shape);
+            foreach (var candidate in candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
+            foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
+            try
+            {
+                var map = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
+                foreach (var pair in shapes)
+                {
+                    var targets = pair.Value.Count == 0 ? new[] { follow(pair.Key, null) }
+                        : pair.Value.Select(shape => follow(pair.Key, shape)).Distinct().ToArray();
+                    if (targets.Length != 1 || targets[0] == null)
+                        throw new InvalidOperationException("Modular Avatar / NDMF の処理で瞬きの対象Rendererが失われました。");
+                    map.Add(pair.Key, targets[0]);
+                    moved |= targets[0] != follow(pair.Key, null);
+                }
+                RebindPrepared(renderer => map.TryGetValue(renderer, out var current) ? current : null);
+                VerifyPreparedIdentity(prepared);
+                return true;
+            }
+            // Any failure here (a lost shape, a missing manual renderer) exports
+            // without blink; only a cancellation still stops the export.
+            catch (Exception e) when (!ExportStageGuard.IsCancellation(e))
+            {
+                reason = e.Message;
+                moved = false;
+                DisableLost();
+                return false;
+            }
+        }
+
+        void DisableLost()
+        {
+            foreach (var slot in Slots) slot.Clear();
+            candidates.Clear();
+            inferredEndpoints.Clear();
+            Array.Clear(authored, 0, authored.Length);
+            PreserveAuthored = false;
+            ConfiguredByDescriptor = false;
+            MissingAutomatic = false;
+            allowMissingAutomaticBlink = false;
+            deferredAutomatic = false;
+            Disabled = true;
+            Description = LostBlinkDescription;
+        }
+
         internal void ResolvePreparedNeutral(GameObject prepared, Func<Transform, bool> excluded = null,
             bool suppressSharedTextureEmission = false, bool suppressHdrTextureEmission = false)
         {
