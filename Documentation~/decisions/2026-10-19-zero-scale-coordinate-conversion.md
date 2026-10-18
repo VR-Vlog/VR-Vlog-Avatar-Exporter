@@ -7,7 +7,7 @@
 
 プロジェクト内のアバターとギミックを書き出し画面と同じ経路でまとめて書き出したところ、撮影用のギミックを付けたアバター 1 件で、書き出しは成功したもののコンソールに Unity の「Assertion failed on expression: 'ValidTRS()'」が 197 件出た。ギミックは使わないときに親のオブジェクトの Scale を 1e-45（float で表せるいちばん小さい正の値・`float.Epsilon`）にして隠す作りで、その下に 190 個あまりのオブジェクトがあった。同じギミックには Scale がちょうど 0 のオブジェクトもある。
 
-スタックトレースはすべて `Vrm10AppearanceExporter.Export` から呼ぶ UniVRM の `Model.ConvertCoordinate` の中だった。UniVRM は Unity の座標系から VRM 1.0 の座標系へ移すとき、各ノードのワールド行列の X を反転し、親の逆行列を掛けてローカルの位置・回転・Scale に分解し直す。Scale が 1e-45 のノードの行列は逆行列を計算すると float の範囲を超えて無限大になり、そのノードと下のすべてのノードで分解が `Matrix4x4.rotation` の検査（`ValidTRS`）に引っかかり、1 ノードにつき 1 件のエラーが出る。Scale がちょうど 0 の場合は Unity の検査を通り、エラーは出ない（変更前のコードでテストを流して確かめた）。書き出した VRM では、サイズ 0 の親より下のノードの位置と Scale がすべて 0 になっていた。親が 0 のあいだは見た目は同じだが、元の配置は失われる。
+スタックトレースはすべて `Vrm10AppearanceExporter.Export` から呼ぶ UniVRM の `Model.ConvertCoordinate` の中だった。UniVRM は Unity の座標系から VRM 1.0 の座標系へ移すとき、各ノードのワールド行列の X を反転し、親の逆行列を掛けてローカルの位置・回転・Scale に分解し直す。Scale が 0 や 1e-45 のノードの行列は使える逆行列を持たないので、その下のノードでは「親の逆行列 × 自分の行列」が回転と Scale に分解できない行列になり、分解が `Matrix4x4.rotation` の検査（`ValidTRS`）に引っかかって 1 ノードにつき 1 件のエラーが出る。Scale がちょうど 0 の場合も 1e-45 の場合も、変更前のコードでテストが同じエラーで失敗することを確かめた。書き出した VRM では、サイズ 0 の親より下のノードの位置と Scale がすべて 0 になっていた。親が 0 のあいだは見た目は同じだが、元の配置は失われる。
 
 ## 決定
 
@@ -32,4 +32,4 @@
 
 ## 検証
 
-- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0 と 1e-45 の親（位置と回転を持つ）とその子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の Scale が元の値・親の位置と回転が X を反転した値・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。
+- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0 と 1e-45 の親（位置と回転を持つ）とその子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の Scale が元の値・親の位置と回転が X を反転した値・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。変更前のコードでは 2 件とも「Assertion failed on expression: 'ValidTRS()'」で失敗し、変更後は合格した。

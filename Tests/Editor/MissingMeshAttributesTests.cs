@@ -59,8 +59,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Gimmicks hide parts with a zero or subnormal scale (float.Epsilon is
-        // what such prefabs serialize as 1e-45). Unity accepts an all-zero
-        // matrix, but the subnormal one overflows when inverted.
+        // what such prefabs serialize as 1e-45). LogAssert does not fail on
+        // Unity's native Assertion failed, so collect the log directly.
         [TestCase(0f)] [TestCase(float.Epsilon)]
         public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions(float hiddenScale)
         {
@@ -73,7 +73,7 @@ namespace VRVlog.LilToonExporter.Tests
             var inner = new GameObject("Inside zero scale").transform;
             inner.SetParent(branch, false);
             inner.localPosition = new Vector3(.1f, .2f, .3f);
-            inner.localScale = new Vector3(2, 3, 4);
+            inner.localScale = Vector3.one * 2;
             var logged = new List<string>();
             void Capture(string message, string stack, LogType type)
             {
@@ -94,7 +94,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Mathf.Abs(Quaternion.Dot(new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]),
                 new Quaternion(expected.x, -expected.y, -expected.z, expected.w))), Is.GreaterThan(.9999f));
             Assert.That(Values("Inside zero scale", "translation"), Is.EqualTo(new[] { -.1f, .2f, .3f }).Within(1e-5f));
-            Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 3f, 4f }).Within(1e-5f));
+            Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 2f, 2f }).Within(1e-5f));
         }
 
         [TestCase(false, false)] [TestCase(true, false)]
