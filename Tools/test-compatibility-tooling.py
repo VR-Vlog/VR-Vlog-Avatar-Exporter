@@ -805,7 +805,7 @@ class UpstreamTests(unittest.TestCase):
 
 
 class LilToonRangeGeneratorTests(unittest.TestCase):
-    FILES = ['Compatibility/dependencies.json', 'Editor/LilToon234Catalogue.cs', 'package.json',
+    FILES = ['Compatibility/dependencies.json', 'Formats/Runtime/LilToon234Catalogue.cs', 'package.json',
              'Editor/VRVlog.LilToonExporter.Editor.asmdef', 'Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef']
 
     def setUp(self):

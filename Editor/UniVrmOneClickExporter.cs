@@ -46,7 +46,8 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null)
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
+            bool inferEmotionPresets = true)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -75,7 +76,7 @@ namespace VRVlog.LilToonExporter
                     attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
                     return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                         suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard);
+                        authorCopyExpressions, guard, inferEmotionPresets);
                 }, failure => report.Fallbacks.Clear());
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
@@ -107,6 +108,17 @@ namespace VRVlog.LilToonExporter
             report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
             var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
             entry.Count = trimmed;
+        }
+
+        internal const string InferredEmotionCategory = "名前から自動で設定";
+
+        // Emotion presets filled from a name are kept output the user should check.
+        internal static void RecordInferredEmotions(IEnumerable<(string Preset, string Source)> filled, ExportRecoveryReport report)
+        {
+            var category = ExporterLocalization.T(InferredEmotionCategory);
+            foreach (var (preset, source) in filled)
+                report.Fallbacks.Record(ExportOutcome.Kept, category, preset,
+                    string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), preset, source));
         }
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
@@ -166,7 +178,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard)
+            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -302,6 +314,11 @@ namespace VRVlog.LilToonExporter
                         warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
                         recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
                     }
+                    if (blink.UnresolvedAutomatic)
+                    {
+                        warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
+                        recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                    }
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
@@ -339,15 +356,23 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 recoveryReport.Stage = "材質保存";
+                // Unsupported shaders become official lilToon approximations so
+                // they follow the ordinary lilToon route instead of stopping.
+                if (exporterVersion != null) guard.Step(ExportStage.LilToonSnapshot, () => UnsupportedShaderSubstitution.Apply(clone, temporaryMaterials, warnings, recoveryReport.Fallbacks, (copy, original) =>
+                {
+                    recoveryReport.Track(copy, original);
+                    recovery?.Track(copy, original);
+                }));
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
-                // A lilToon-named shader outside the official 2.3.4 set is not "no lilToon".
-                // Strict exports stop there; otherwise each such material becomes
-                // color-and-image MToon and is listed as approximated.
+                // Derived lilToon builds were approximated above. One still left here
+                // could not be, and is not "no lilToon": strict exports stop there;
+                // otherwise each such material becomes color-and-image MToon and is
+                // listed as approximated.
                 if (withoutLilToon && !guard.ContinueOnFailure &&
                     ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
@@ -402,8 +427,16 @@ namespace VRVlog.LilToonExporter
                 // bytes it was given.
                 exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);
                 if (lookAt != null) exported = guard.Run(ExportStage.LookAt, () => lookAt.Apply(exported), () => exported);
-                exported = guard.Run(ExportStage.ExpressionOutput,
-                    () => VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false), () => exported);
+                // Empty emotion presets are filled from menu faces or whole-face names;
+                // each filled preset is listed in the warnings and the result list.
+                exported = guard.Run(ExportStage.ExpressionOutput, () =>
+                {
+                    var filled = new List<(string Preset, string Source)>();
+                    var output = VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false,
+                        inferEmotions: inferEmotionPresets, filledEmotions: filled);
+                    RecordInferredEmotions(filled, recoveryReport);
+                    return output;
+                }, () => exported);
                 exported = guard.Run(ExportStage.BlinkOutput, () => blink.Apply(exported), () => exported);
                 exported = guard.Run(ExportStage.TrackingOutput, () =>
                 {
@@ -600,8 +633,9 @@ namespace VRVlog.LilToonExporter
                     if (source == null) continue;
                     if (!LilToonMaterialReader.IsLilToon(source))
                     {
-                        // Mixed avatars keep UniVRM's own export of other shaders. Only an
-                        // avatar without any lilToon material gets color-and-image MToon.
+                        // Other shaders left after the substitution (expression targets,
+                        // failed approximations, the legacy route) keep UniVRM's own export.
+                        // Only an avatar without any lilToon material gets color-and-image MToon.
                         if (!convertOthers) continue;
                         if (source.shader != null && source.shader.name == MToon10Meta.UnityShaderName) continue;
                         if (!others.TryGetValue(source, out var plain)) others.Add(source, plain = CreateMToonDefault(source, created));

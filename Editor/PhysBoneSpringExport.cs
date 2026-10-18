@@ -16,6 +16,7 @@ namespace VRVlog.LilToonExporter
     {
         internal const string PhysBoneType = "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone";
         const string ColliderType = "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider";
+        internal const string EndpointName = "VRVlog Spring Endpoint";
 
         internal sealed class Result
         {
@@ -97,6 +98,9 @@ namespace VRVlog.LilToonExporter
                         if (HasLength(chain[i], chain[i + 1]) && !existing.Contains(chain[i].Node) && !owners.ContainsKey(chain[i].Node))
                             owners.Add(chain[i].Node, plan);
             var used = new HashSet<Transform>(existing);
+            // UniVRM renames duplicate node names with one warning each. Name
+            // every generated endpoint uniquely against the frozen hierarchy.
+            var names = new HashSet<string>(children.Keys.Select(t => t.name), StringComparer.Ordinal);
             var colliders = new Dictionary<Component, VRM10SpringBoneCollider>();
             foreach (var plan in plans)
             {
@@ -116,7 +120,7 @@ namespace VRVlog.LilToonExporter
                         var node = point.Node;
                         if (node == null)
                         {
-                            node = new GameObject("VRVlog Spring Endpoint").transform;
+                            node = new GameObject(UniqueName(names, point.Parent.name + "-" + EndpointName)).transform;
                             node.SetParent(point.Parent, false); node.localPosition = point.Offset;
                         }
                         var joint = node.GetComponent<VRM10SpringBoneJoint>() ?? node.gameObject.AddComponent<VRM10SpringBoneJoint>();
@@ -414,6 +418,13 @@ namespace VRVlog.LilToonExporter
         {
             if (node == null || node != copy.transform && !node.IsChildOf(copy.transform))
                 throw new InvalidOperationException("PhysBoneの参照先がアバターの外にあります。");
+        }
+        // Deterministic in creation order: "<parent>-<name>", then " 2", " 3"...
+        static string UniqueName(HashSet<string> used, string preferred)
+        {
+            var name = preferred;
+            for (var i = 2; !used.Add(name); i++) name = preferred + " " + i;
+            return name;
         }
         static void Skip(Result result, ICollection<string> warnings, Component component, string reason)
         { result.Skipped++; warnings?.Add(component.name + ": PhysBoneを省略 — " + reason); }

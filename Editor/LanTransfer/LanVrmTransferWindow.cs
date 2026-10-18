@@ -34,7 +34,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         public static string CreateSnapshotPath()
         {
             LanTransferAvailability.RequireEnabled();
-            return Path.Combine(Path.GetTempPath(), "VRVlogLanTransfers", Guid.NewGuid().ToString("N") + ".vrm");
+            return TransferTempDirectory.NewFile("VRVlogLanTransfers", ".vrm");
         }
 
         public static void Show(string path, string name)

@@ -139,7 +139,7 @@ per-version conversions that this project does not maintain.
 
 ## lilToon shader structure
 
-`Editor/LilToon234Catalogue.cs` is generated from the Built-in RP shader
+`Formats/Runtime/LilToon234Catalogue.cs` is generated from the Built-in RP shader
 declarations of the lilToon 2.3.4 tag by `Tools/generate-liltoon-catalogue.py`
 (`catalogue --fetch 2.3.4 --check` confirms it byte for byte). The same tool
 hashes the shader structure of each lilToon tag into `liltoon-structure.json`

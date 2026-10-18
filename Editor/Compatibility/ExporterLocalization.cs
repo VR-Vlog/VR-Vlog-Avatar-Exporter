@@ -22,6 +22,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static readonly string[] DynamicErrorPrefixes = {
+            "閉眼用の左右がそろっていません: ",
             "このEditorではVRM内の画像形式を表示できません: ",
             "保存されたlilToonシェーダーをこのEditorで利用できません: ",
             "インストール済みlilToonに必要な設定がありません: ",
