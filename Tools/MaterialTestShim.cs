@@ -112,4 +112,9 @@ namespace UniGLTF
             throw new System.NotSupportedException("Texture conversion requires Unity and is not simulated.");
     }
 }
+namespace UniVRM10
+{
+    // Same member names as UniVRM 1.0; only the names are used here.
+    public enum ExpressionPreset { custom, happy, angry, sad, relaxed, surprised, aa, ih, ou, ee, oh, blink, blinkLeft, blinkRight, lookUp, lookDown, lookLeft, lookRight, neutral }
+}
 #endif

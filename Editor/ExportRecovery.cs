@@ -55,6 +55,8 @@ namespace VRVlog.LilToonExporter
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
         // Features the export worked around instead of stopping. Read before saving.
         internal readonly ExportFallbackReport Fallbacks = new ExportFallbackReport();
+        // Empty emotion presets the export filled from a menu face or BlendShape name.
+        internal readonly List<(string Preset, string Source)> InferredEmotions = new List<(string Preset, string Source)>();
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         string errorType;
 
@@ -65,6 +67,7 @@ namespace VRVlog.LilToonExporter
             errorType = null;
             Diagnostics.Clear();
             Fallbacks.Clear();
+            InferredEmotions.Clear();
             originals.Clear();
         }
 

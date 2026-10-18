@@ -236,7 +236,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("びっくり", ExpressionPreset.surprised, 0)]
         [TestCase("Smile Tears", ExpressionPreset.happy, 0)]
         public void NamesSuggestOneEmotion(string name, ExpressionPreset expected, int tier) =>
-            Assert.That(Session.MatchPresetName(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
+            Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
         [TestCase("eye_smile_L")]
         [TestCase("Smile.R")]
@@ -259,7 +259,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void EveryVocabularyWordSuggestsItsEmotionAndTier()
         {
             var checkedWords = 0;
-            foreach (var entry in Session.PresetVocabulary)
+            foreach (var entry in ExpressionNameInference.Emotions)
                 foreach (var word in entry.Words)
                 {
                     var latin = word.All(character => character < 128);
@@ -267,14 +267,14 @@ namespace VRVlog.LilToonExporter.Tests
                         ? new[] { word, word.ToUpperInvariant(), char.ToUpperInvariant(word[0]) + word.Substring(1), "Face_" + word + "_01", "face" + char.ToUpperInvariant(word[0]) + word.Substring(1) }
                         : new[] { word, "表情_" + word, word + "02" };
                     foreach (var name in names)
-                        Assert.That(Session.MatchPresetName(name), Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), name);
+                        Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), name);
                     if (latin) Assert.That(Session.SuggestPreset(word + "x"), Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
                     checkedWords++;
                 }
             Assert.That(checkedWords, Is.GreaterThan(50));
-            var words = Session.PresetVocabulary.SelectMany(entry => entry.Words).ToArray();
+            var words = ExpressionNameInference.Emotions.SelectMany(entry => entry.Words).ToArray();
             Assert.That(words.Distinct().Count(), Is.EqualTo(words.Length), "A word belongs to one emotion and tier.");
-            foreach (var veto in Session.VetoWords.Concat(Session.VetoParts))
+            foreach (var veto in ExpressionNameInference.VetoWords.Concat(ExpressionNameInference.VetoParts))
                 Assert.That(Session.SuggestPreset("Smile " + veto), Is.Null, veto);
         }
 
@@ -333,9 +333,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.happy }), "'Smile' is suggested; the MMD-style '怒り' is not.");
             Assert.That(session.PresetShapeOptions().Any(option => option.Shape == "怒り"), Is.True, "It can still be chosen by hand.");
             Assert.That(session.PresetError(ExpressionPreset.angry, Session.PresetAssignment.ForShape(ExpressionPreset.angry, "Front", "怒り")), Is.Null);
-            Assert.That(Session.MatchPresetName("怒り", latinOnly: true), Is.Null);
-            Assert.That(Session.MatchPresetName("Fcl_BRW_Angry", latinOnly: true), Is.Null);
-            Assert.That(Session.MatchPresetName("Fcl_ALL_Angry", latinOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 0)));
+            Assert.That(ExpressionNameInference.MatchEmotion("怒り", latinOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_BRW_Angry", latinOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_ALL_Angry", latinOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 0)));
         }
 
         [Test]

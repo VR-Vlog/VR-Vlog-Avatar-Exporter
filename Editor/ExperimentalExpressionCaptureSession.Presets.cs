@@ -268,51 +268,9 @@ namespace VRVlog.LilToonExporter
 
         internal static PresetAssignment LoadPresetsForStore(PresetAssignment stored) => LoadPresets(new[] { stored }).Single();
 
-        // Suggest initial values from clip and BlendShape names. Latin words
-        // must match a whole word (split at symbols, digits and camelCase);
-        // Japanese words match inside the name. Tier 0 words name the emotion
-        // itself and win over the looser tier 1 words.
-        internal static readonly (ExpressionPreset Preset, int Tier, string[] Words)[] PresetVocabulary =
-        {
-            (ExpressionPreset.happy, 0, new[] { "happy", "happiness", "smile", "smiling", "grin", "笑顔", "えがお", "喜び", "嬉し", "うれし", "にこにこ", "ニコニコ", "にっこり", "スマイル", "ハッピー" }),
-            (ExpressionPreset.angry, 0, new[] { "angry", "anger", "furious", "mad", "怒", "いかり", "イライラ", "ぷんぷん", "プンプン" }),
-            (ExpressionPreset.sad, 0, new[] { "sad", "sadness", "sorrow", "unhappy", "悲", "哀", "かなし", "しょんぼり", "しょぼん" }),
-            (ExpressionPreset.relaxed, 0, new[] { "relax", "relaxed", "calm", "fun", "peaceful", "楽", "和み", "なごみ", "穏", "リラックス", "ほっこり", "まったり" }),
-            (ExpressionPreset.surprised, 0, new[] { "surprise", "surprised", "suprise", "shock", "shocked", "astonished", "驚", "びっくり", "ビックリ", "おどろ" }),
-            (ExpressionPreset.happy, 1, new[] { "joy", "joyful", "laugh", "laughing", "glad", "cheerful", "笑", "喜", "にこ", "ニコ" }),
-            (ExpressionPreset.angry, 1, new[] { "rage", "annoyed", "grumpy", "むっ", "ムッ" }),
-            (ExpressionPreset.sad, 1, new[] { "cry", "crying", "tear", "tears", "weep", "泣", "涙", "なみだ" }),
-            (ExpressionPreset.relaxed, 1, new[] { "chill", "gentle", "serene", "安らぎ", "やすらぎ" }),
-            (ExpressionPreset.surprised, 1, new[] { "wow", "gasp", "startled", "ぎょっ", "ギョッ" }),
-        };
-
-        // A side, a part of the face, a wink/blink or a toggle is not a whole emotion.
-        internal static readonly string[] VetoWords = { "eye", "eyes", "mouth", "brow", "eyebrow", "cheek", "wink", "blink", "left", "right", "l", "r",
-            "off", "reset", "none", "default", "brw", "mth", "teeth", "tongue", "nose" };
-        internal static readonly string[] VetoParts = { "目", "口", "眉", "頬", "ウィンク", "まばたき", "解除", "左", "右" };
-
-        static string[] LatinWords(string name) => System.Text.RegularExpressions.Regex.Matches(name ?? "", "[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
-            .Cast<System.Text.RegularExpressions.Match>().Select(match => match.Value.ToLowerInvariant()).ToArray();
-
-        static bool IsLatin(string word) => word.All(character => character < 128);
-
-        internal static (ExpressionPreset Preset, int Tier)? MatchPresetName(string name, bool latinOnly = false)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return null;
-            var words = LatinWords(name);
-            if (words.Any(VetoWords.Contains) || VetoParts.Any(part => name.IndexOf(part, StringComparison.Ordinal) >= 0)) return null;
-            for (var tier = 0; tier <= 1; tier++)
-            {
-                var found = PresetVocabulary.Where(entry => entry.Tier == tier && entry.Words.Any(word => IsLatin(word)
-                    ? words.Contains(word) : !latinOnly && name.IndexOf(word, StringComparison.Ordinal) >= 0)).Select(entry => entry.Preset).Distinct().ToArray();
-                // Two emotions in the same tier say neither.
-                if (found.Length == 1) return (found[0], tier);
-                if (found.Length > 1) return null;
-            }
-            return null;
-        }
-
-        internal static ExpressionPreset? SuggestPreset(string name) => MatchPresetName(name)?.Preset;
+        // Suggest initial values from clip and BlendShape names; the vocabulary
+        // and matching rules live in ExpressionNameInference.
+        internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
         // Per emotion, the best tier wins; within a tier added/registered clips
         // come before BlendShapes, in the given order. Unusable faces are skipped.
@@ -322,7 +280,7 @@ namespace VRVlog.LilToonExporter
             var order = 0;
             foreach (var clip in (clips ?? Array.Empty<AnimationClip>()).Where(clip => clip != null).Distinct())
             {
-                var match = MatchPresetName(clip.name); order++;
+                var match = ExpressionNameInference.MatchEmotion(clip.name); order++;
                 if (match != null) candidates.Add((match.Value.Preset, match.Value.Tier, order, preset => PresetAssignment.ForClip(preset, clip)));
             }
             // Japanese BlendShape names commonly follow the MMD set, where "怒り",
@@ -330,7 +288,7 @@ namespace VRVlog.LilToonExporter
             // offered by hand, not as automatic initial values.
             foreach (var option in PresetShapeOptions())
             {
-                var match = MatchPresetName(option.Shape, latinOnly: true); order++;
+                var match = ExpressionNameInference.MatchEmotion(option.Shape, latinOnly: true); order++;
                 if (match != null) candidates.Add((match.Value.Preset, match.Value.Tier, order, preset => PresetAssignment.ForShape(preset, option.Path, option.Shape)));
             }
             var result = new Dictionary<ExpressionPreset, PresetAssignment>();
