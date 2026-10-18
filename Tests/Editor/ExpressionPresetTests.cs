@@ -154,6 +154,37 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }
 
+        // The authored custom clip stands in for the avatar's menu faces, which
+        // the ordinary route keeps and which need the VRChat SDK to build here.
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task ReplacingCustomFacesWithNothingLeavesNoKeptFace(bool withPreset)
+        {
+            using var fixture = Fixture();
+            var authored = ScriptableObject.CreateInstance<VRM10Object>();
+            var kept = ScriptableObject.CreateInstance<VRM10Expression>();
+            kept.name = "Excluded face"; kept.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f) };
+            authored.Expression.AddClip(ExpressionPreset.custom, kept);
+            Vrm10Instance ordinary = null, replaced = null;
+            try
+            {
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                if (withPreset) session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+                var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
+                ordinary = await Load(session.Export("Test", "Tests", blinkOptions: blink));
+                Assert.That(ordinary.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("Excluded face"), "The shortcut routes keep the avatar's faces.");
+                replaced = await Load(session.Export("Test", "Tests", blinkOptions: blink, recordedExpressions: Array.Empty<Session.Pose>(), replaceCustomFaces: true));
+                Assert.That(replaced.Vrm.Expression.CustomClips, Is.Empty, "Replacing with an empty list exports no custom face.");
+                Assert.That(replaced.Vrm.Expression.Happy?.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>(), withPreset ? Is.Not.Empty : Is.Empty);
+            }
+            finally
+            {
+                foreach (var instance in new[] { ordinary, replaced }) if (instance != null) Object.DestroyImmediate(instance.gameObject);
+                Object.DestroyImmediate(kept); Object.DestroyImmediate(authored);
+            }
+        }
+
         [Test]
         public void DuplicateOrNonEmotionAssignmentsAreRejected()
         {
@@ -372,6 +403,52 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExpressionPresetStore.PathOverride = previous;
                 if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void StoreKeepsExcludedFacesByAssetAndReadsFilesWithoutThem()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            var folder = "Assets/VRVlogExcludedStore_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                var kept = FaceClip(40); kept.name = "Kept"; AssetDatabase.CreateAsset(kept, folder + "/Kept.anim");
+                var removed = FaceClip(50); removed.name = "Removed"; AssetDatabase.CreateAsset(removed, folder + "/Removed.anim");
+                var memory = FaceClip(60);
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), new[] { kept, removed, memory, kept });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out var skipped), Is.EqualTo(new[] { kept, removed }), "Only assets are stored, once each.");
+                Assert.That(skipped, Is.Zero);
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty);
+                ExpressionPresetStore.Save("avatar-a", new[] { Session.PresetAssignment.None(ExpressionPreset.angry) });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.EqualTo(new[] { kept, removed }), "Saving presets alone keeps the exclusions.");
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"));
+                AssetDatabase.DeleteAsset(folder + "/Removed.anim");
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out skipped), Is.EqualTo(new[] { kept }));
+                Assert.That(skipped, Is.EqualTo(1));
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>());
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.Empty);
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty);
+                Object.DestroyImmediate(memory);
+
+                // A file written before exclusions existed.
+                const string older = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"angry\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"\",\"Shape\":\"\"}]}]}";
+                File.WriteAllText(path, older, Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out skipped).Single().Preset, Is.EqualTo("angry"));
+                Assert.That(skipped, Is.Zero);
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-b", out skipped), Is.Empty);
+                Assert.That(skipped, Is.Zero);
+                ExpressionPresetStore.Save("avatar-b", ExpressionPresetStore.Load("avatar-b", out _), new[] { kept });
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-b", out _), Is.EqualTo(new[] { kept }));
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("angry"));
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+                AssetDatabase.DeleteAsset(folder);
             }
         }
     }
