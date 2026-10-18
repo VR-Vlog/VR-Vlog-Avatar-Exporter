@@ -546,6 +546,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var left=full.Single(m=>m.name.StartsWith("VRVLOG/"+leftIndex+"/"));var right=full.Single(m=>m.name.StartsWith("VRVLOG/"+rightIndex+"/"));
                 var originalLeft=left.GetColor("_ShadowColor");var originalRight=right.GetColor("_Color");
                 Assert.That(left.GetShaderPassEnabled("ShadowCaster"),Is.False,"Unity pass enablement uses its LightMode tag.");
+                // With the official set both sides use the same shader, so this checks that values reach the runtime material, not shader equivalence.
                 LilToonFullRenderTests.Compare(new Material(source),new Material(left));
                 var leftKey=sameExpressionName?UniVRM10.ExpressionKey.Happy:UniVRM10.ExpressionKey.CreateCustom("Left");
                 var rightKey=UniVRM10.ExpressionKey.CreateCustom(sameExpressionName?"happy":"Right");
