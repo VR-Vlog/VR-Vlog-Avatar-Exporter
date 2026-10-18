@@ -17,6 +17,9 @@ namespace VRVlog.LilToonExporter
         internal readonly List<GameObject> ExcludedObjects = new List<GameObject>();
         internal bool AutoExcludeGimmicks = true;
         internal readonly List<GameObject> IncludedGimmicks = new List<GameObject>();
+        // Kept components of findings that remove only components. They are
+        // separate from IncludedGimmicks so keeping one never keeps its object.
+        internal readonly List<Component> IncludedGimmickComponents = new List<Component>();
         internal BlinkExportOptions Blink = new BlinkExportOptions();
         internal PoseExportOptions Poses = new PoseExportOptions();
         internal AvatarLicenseOptions License = new AvatarLicenseOptions();
@@ -26,7 +29,8 @@ namespace VRVlog.LilToonExporter
         internal ExportGimmickOptions Gimmicks() => new ExportGimmickOptions
         {
             AutoExclude = AutoExcludeGimmicks,
-            IncludedObjects = IncludedGimmicks.Where(item => item != null).ToArray()
+            IncludedObjects = IncludedGimmicks.Where(item => item != null).ToArray(),
+            IncludedComponents = IncludedGimmickComponents.Where(item => item != null).ToArray()
         };
 
         internal ExportSettings Copy()
@@ -40,6 +44,7 @@ namespace VRVlog.LilToonExporter
             };
             copy.ExcludedObjects.AddRange(ExcludedObjects);
             copy.IncludedGimmicks.AddRange(IncludedGimmicks);
+            copy.IncludedGimmickComponents.AddRange(IncludedGimmickComponents);
             return copy;
         }
 
@@ -51,6 +56,7 @@ namespace VRVlog.LilToonExporter
             ExcludedObjects.Clear(); ExcludedObjects.AddRange(other.ExcludedObjects);
             AutoExcludeGimmicks = other.AutoExcludeGimmicks;
             IncludedGimmicks.Clear(); IncludedGimmicks.AddRange(other.IncludedGimmicks);
+            IncludedGimmickComponents.Clear(); IncludedGimmickComponents.AddRange(other.IncludedGimmickComponents);
             Blink = other.Blink;
             if (Poses == null) Poses = new PoseExportOptions();
             Poses.Manual.Clear(); Poses.Manual.AddRange(other.Poses.Manual);
@@ -68,6 +74,8 @@ namespace VRVlog.LilToonExporter
             foreach (var item in ExcludedObjects) Id(item);
             text.Append('|').Append(AutoExcludeGimmicks).Append('|');
             foreach (var item in IncludedGimmicks) Id(item);
+            text.Append('|');
+            foreach (var item in IncludedGimmickComponents) Id(item);
             var blink = Blink ?? new BlinkExportOptions();
             text.Append('|').Append((int)blink.Mode);
             foreach (var slot in new[] { blink.Both, blink.Left, blink.Right })

@@ -46,6 +46,7 @@ namespace VRVlog.LilToonExporter
             public List<string> Excluded = new List<string>();
             public bool AutoExcludeGimmicks = true;
             public List<string> Included = new List<string>();
+            public List<string> IncludedComponents = new List<string>();
             public BlinkExportMode BlinkMode;
             public List<Binding> BlinkBoth = new List<Binding>();
             public List<Binding> BlinkLeft = new List<Binding>();
@@ -136,6 +137,7 @@ namespace VRVlog.LilToonExporter
                 Excluded = settings.ExcludedObjects.Where(item => item != null).Select(Id).ToList(),
                 AutoExcludeGimmicks = settings.AutoExcludeGimmicks,
                 Included = settings.IncludedGimmicks.Where(item => item != null).Select(Id).ToList(),
+                IncludedComponents = settings.IncludedGimmickComponents.Where(item => item != null).Select(Id).ToList(),
                 BlinkMode = blink.Mode,
                 BlinkBoth = Bindings(blink.Both),
                 BlinkLeft = Bindings(blink.Left),
@@ -174,6 +176,7 @@ namespace VRVlog.LilToonExporter
             var settings = new ExportSettings { AutoExcludeGimmicks = entry.AutoExcludeGimmicks };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
             settings.IncludedGimmicks.AddRange((entry.Included ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
+            settings.IncludedGimmickComponents.AddRange((entry.IncludedComponents ?? new List<string>()).Select(Inside<Component>).Where(item => item != null).Distinct());
             settings.Blink = new BlinkExportOptions
             {
                 Mode = Enum.IsDefined(typeof(BlinkExportMode), entry.BlinkMode) ? entry.BlinkMode : BlinkExportMode.Auto,
