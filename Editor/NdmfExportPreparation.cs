@@ -26,6 +26,15 @@ namespace VRVlog.LilToonExporter
         private readonly Dictionary<Renderer, Renderer> rendererReplacements =
             new Dictionary<Renderer, Renderer>();
         private readonly HashSet<Renderer> ambiguousRendererReplacements = new HashSet<Renderer>();
+        // Shape names each renderer of the copy held before the build passes.
+        // A lost shape is followed only to a renderer that newly holds it.
+        private readonly Dictionary<SkinnedMeshRenderer, HashSet<string>> shapesBeforeProcessing =
+            new Dictionary<SkinnedMeshRenderer, HashSet<string>>();
+        private GameObject preparedRoot;
+        // Generated shapes of an earlier export that a build pass removed.
+        // Filled only when the caller tolerates lost shapes.
+        internal readonly List<string> LostMorphs = new List<string>();
+        internal const string LostGeneratedMorphs = "Modular Avatar / NDMF の処理で、以前の書き出しで作られた表情用のBlendShapeが失われたため省略しました: ";
         private string temporaryAssetPath, temporaryAssetGuid;
         // NDMF tracks asset replacements made by authoring/optimization passes.
         // Keep the optional public registry available to the preparation callback.
@@ -163,6 +172,58 @@ namespace VRVlog.LilToonExporter
             if (ambiguousRendererReplacements.Contains(original)) return null;
             if (rendererReplacements.TryGetValue(original, out var current)) return current;
             return original != null ? original : null;
+        }
+
+        // Find the prepared renderer that carries these shapes of a renderer
+        // captured before the build passes. The shapes are looked up again by
+        // name: first on the renderer itself (or its registered replacement),
+        // then on the one renderer that gained all of them, such as the mesh a
+        // pass merged it into. Renderers that already had a shape of that name
+        // never count, so a lost shape cannot land on an unrelated same-named one.
+        internal SkinnedMeshRenderer FollowShapes(SkinnedMeshRenderer original, IEnumerable<string> shapes)
+        {
+            if (ReferenceEquals(original, null)) return null;
+            var names = (shapes ?? Enumerable.Empty<string>()).Where(name => name != null).Distinct(StringComparer.Ordinal).ToArray();
+            var direct = PreparedRendererFor(original);
+            if (names.Length == 0) return direct;
+            bool Holds(SkinnedMeshRenderer skin) => skin != null && skin.sharedMesh != null && preparedRoot != null &&
+                (skin.transform == preparedRoot.transform || skin.transform.IsChildOf(preparedRoot.transform)) &&
+                names.All(name => Enumerable.Range(0, skin.sharedMesh.blendShapeCount)
+                    .Count(index => string.Equals(skin.sharedMesh.GetBlendShapeName(index), name, StringComparison.Ordinal)) == 1);
+            bool Shown(SkinnedMeshRenderer skin) => skin.enabled && skin.gameObject.activeInHierarchy;
+            if (Holds(direct) && Shown(direct)) return direct;
+            if (preparedRoot != null)
+            {
+                var gained = preparedRoot.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(skin => skin != direct && Holds(skin) && Shown(skin) &&
+                    !(shapesBeforeProcessing.TryGetValue(skin, out var before) && names.Any(before.Contains))).ToArray();
+                if (gained.Length == 1) return gained[0];
+            }
+            // A hidden renderer that kept its shapes is still the authored one.
+            return Holds(direct) ? direct : null;
+        }
+
+        internal SkinnedMeshRenderer FollowShape(SkinnedMeshRenderer original, string shape) => FollowShapes(original, new[] { shape });
+
+        private void CaptureShapes(GameObject root)
+        {
+            preparedRoot = root;
+            shapesBeforeProcessing.Clear();
+            if (root == null) return;
+            foreach (var skin in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                shapesBeforeProcessing[skin] = new HashSet<string>(skin.sharedMesh == null ? Enumerable.Empty<string>() :
+                    Enumerable.Range(0, skin.sharedMesh.blendShapeCount).Select(skin.sharedMesh.GetBlendShapeName), StringComparer.Ordinal);
+        }
+
+        // Strict callers stop on a lost generated shape. Lenient callers keep
+        // exporting and the bindings that used the shape are left out later.
+        private void RequireMorphs(HashSet<string> required, GameObject clone, bool tolerate, ICollection<string> warnings)
+        {
+            var lost = required.Except(ExportMorphs(clone)).Except(LostMorphs).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+            if (lost.Length == 0) return;
+            if (!tolerate)
+                throw new InvalidOperationException("Modular Avatar / NDMF の処理で書き出し用の表情が失われました。メッシュや BlendShape を変更する追加ツールの設定を確認してください。");
+            LostMorphs.AddRange(lost);
+            warnings?.Add(LostGeneratedMorphs + string.Join(", ", lost));
         }
 
         // NDMF's registry records provenance for diagnostic references. Read its
@@ -312,14 +373,14 @@ namespace VRVlog.LilToonExporter
 
         internal static NdmfExportPreparation Prepare(GameObject source, GameObject clone, ICollection<string> warnings = null,
             Action<Material, Material> materialCopyObserver = null, Action<NdmfExportPreparation> afterTransforming = null,
-            bool skipProcessing = false)
+            bool skipProcessing = false, bool tolerateLostMorphs = false)
         {
             RequireOwnedCopy(source, clone);
             // The build tools failed on an earlier attempt: export the copy as
             // authored, with their components left unprocessed.
             if (skipProcessing)
             {
-                var unprocessed = new NdmfExportPreparation();
+                var unprocessed = new NdmfExportPreparation(); unprocessed.CaptureShapes(clone);
                 try { afterTransforming?.Invoke(unprocessed); return unprocessed; }
                 catch { unprocessed.Dispose(); throw; }
             }
@@ -329,7 +390,7 @@ namespace VRVlog.LilToonExporter
             ResolveMaSceneReferences(clone);
             if (!NeedsProcessing(clone))
             {
-                var lease = new NdmfExportPreparation();
+                var lease = new NdmfExportPreparation(); lease.CaptureShapes(clone);
                 try { afterTransforming?.Invoke(lease); return lease; }
                 catch { lease.Dispose(); throw; }
             }
@@ -337,12 +398,12 @@ namespace VRVlog.LilToonExporter
             var processor = FindType("nadena.dev.ndmf.AvatarProcessor");
             var package = processor != null ? PackageInfo.FindForAssembly(processor.Assembly) : null;
             var bridge = Bridge.Resolve(FindType, package?.version);
-            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming);
+            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming, tolerateLostMorphs);
         }
 
         internal static NdmfExportPreparation ProcessClone(GameObject source, GameObject clone, Bridge bridge,
             ICollection<string> warnings = null, Action<Material, Material> materialCopyObserver = null,
-            Action<NdmfExportPreparation> afterTransforming = null)
+            Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false)
         {
             RequireOwnedCopy(source, clone);
             EnsureCopyAvatarRoot(clone);
@@ -355,6 +416,7 @@ namespace VRVlog.LilToonExporter
             var existing = new HashSet<Object>(sourceAssets);
             existing.UnionWith(cloneAssets);
             var requiredMorphs = ExportMorphs(clone);
+            lease.CaptureShapes(clone);
             object context = null;
             IDisposable directoryScope = null;
             Exception processError = null;
@@ -398,8 +460,7 @@ namespace VRVlog.LilToonExporter
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
-                            if (!requiredMorphs.IsSubsetOf(ExportMorphs(clone)))
-                                throw new InvalidOperationException("Modular Avatar / NDMF の処理で書き出し用の表情が失われました。メッシュや BlendShape を変更する追加ツールの設定を確認してください。");
+                            lease.RequireMorphs(requiredMorphs, clone, tolerateLostMorphs, warnings);
                             // Phase-end cleanup commits MA's virtual controller.
                             // Only export callers with this preparation callback
                             // can declare/remap morph dependencies for Optimizing.
@@ -429,8 +490,7 @@ namespace VRVlog.LilToonExporter
                     lease.CaptureRendererReplacements(clone, context);
                     // The exporter callback validates scoped AAO mappings;
                     // legacy callers still require exact generated names.
-                    if (afterTransforming == null && !requiredMorphs.IsSubsetOf(ExportMorphs(clone)))
-                        throw new InvalidOperationException("Modular Avatar / NDMF の処理で書き出し用の表情が失われました。メッシュや BlendShape を変更する追加ツールの設定を確認してください。");
+                    if (afterTransforming == null) lease.RequireMorphs(requiredMorphs, clone, tolerateLostMorphs, warnings);
                     warnings?.Add("Modular Avatar / NDMF の衣装・追従・メッシュ編集を一時コピーに適用しました。");
                     return lease;
                 }
@@ -731,6 +791,8 @@ namespace VRVlog.LilToonExporter
                 isolatedAssets.Clear();
                 rendererReplacements.Clear();
                 ambiguousRendererReplacements.Clear();
+                shapesBeforeProcessing.Clear();
+                preparedRoot = null;
             }
             finally
             {

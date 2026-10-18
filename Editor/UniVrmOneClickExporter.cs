@@ -109,7 +109,49 @@ namespace VRVlog.LilToonExporter
             entry.Count = trimmed;
         }
 
-        internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
+        internal const string LostMorphFollowedWarning = "ビルド処理で表情「{0}」の変形「{1}」が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
+        internal const string LostMorphOmittedWarning = "ビルド処理で表情「{0}」の変形「{1}」が見つからなくなったため、その変形を省略しました。";
+        internal const string LostExpressionOmittedWarning = "ビルド処理で表情「{0}」の変形がすべて見つからなくなったため、この表情を省略しました。";
+        internal const string LostBlinkFollowedWarning = "ビルド処理で閉眼用の変形が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
+        internal const string LostBlinkWarning ="ビルド処理で閉眼用の変形を追えなくなったため、瞬きなしで書き出しました。";
+        internal const string LostTrackingWarning = "ビルド処理で表情トラッキング用の変形を追えなくなったため、元の変形との照合を省略しました。";
+
+        // Authored VRM clips and generated shapes that the build passes moved
+        // or removed (lenient exports only).
+        static void RecordLostMorphs(NdmfExportPreparation transformed, List<PreparedExpressionBindings.LostAuthoredMorph> lost,
+            ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            foreach (var shape in transformed.LostMorphs)
+                report.Fallbacks.Record(ExportOutcome.Omitted, "表情", shape, NdmfExportPreparation.LostGeneratedMorphs + shape);
+            foreach (var clip in lost.GroupBy(item => item.Clip))
+            {
+                if (clip.Any(item => item.ClipEmptied))
+                {
+                    var reason = string.Format(ExporterLocalization.T(LostExpressionOmittedWarning), clip.Key);
+                    warnings?.Add(reason);
+                    report.Fallbacks.Record(ExportOutcome.Omitted, "表情", clip.Key, reason);
+                    continue;
+                }
+                foreach (var item in clip)
+                {
+                    var reason = string.Format(ExporterLocalization.T(item.Followed ? LostMorphFollowedWarning : LostMorphOmittedWarning), clip.Key, item.Shape);
+                    warnings?.Add(reason);
+                    report.Fallbacks.Record(ExportOutcome.Approximated, "表情", clip.Key, reason);
+                }
+            }
+        }
+
+        // Menu and FaceEmo entries are already left out one by one when their
+        // target is gone after the build passes. List them in the results too.
+        static void RecordLostMenuExpressions(VrChatExpressionMenu.Source menu, ExportRecoveryReport report)
+        {
+            foreach (var entry in menu?.Entries ?? new List<VrChatExpressionMenu.Entry>())
+                if (entry.Error != null && (entry.Error.Contains(NdmfExportPreparation.UnknownRendererRelocation) ||
+                    entry.Error.StartsWith(PreparedExpressionBindings.LostAfterPreparation, StringComparison.Ordinal)))
+                    report.Fallbacks.Record(ExportOutcome.Omitted, "表情", entry.Name ?? entry.Id ?? "", entry.Error);
+        }
+
+        internal const string UnofficialLilToonReason ="公式のlilToon 2.3.4のシェーダーではありません";
         internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
 
@@ -257,14 +299,52 @@ namespace VRVlog.LilToonExporter
                     recovery?.Track(copy, original);
                 }, afterTransforming: transformed =>
                 {
+                    // A lenient export keeps the build passes: lost shapes are
+                    // followed by name, and only what cannot be found is left out.
+                    var lenient = guard.ContinueOnFailure;
                     expressionBindings.RebindPrepared(transformed.PreparedRendererFor);
-                    expressionBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
+                    var lostAuthored = lenient ? new List<PreparedExpressionBindings.LostAuthoredMorph>() : null;
+                    expressionBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf, lenient ? transformed.FollowShape : null, lostAuthored);
+                    if (lenient) RecordLostMorphs(transformed, lostAuthored, warnings, recoveryReport);
                     faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,
                         transformed.ObjectRegistry, transformed.IsolatedCopyOf);
-                    guard.Watch(ExportStage.BlinkCapture, () => blink.RebindPrepared(transformed.PreparedRendererFor));
-                    unifiedPreparation?.RebindPrepared(transformed.PreparedRendererFor);
-                    guard.Watch(ExportStage.BlinkCapture, () => blink.VerifyPreparedIdentity(clone));
-                    unifiedPreparation?.VerifyIdentityAndDeformation();
+                    if (!lenient)
+                    {
+                        guard.Watch(ExportStage.BlinkCapture, () => blink.RebindPrepared(transformed.PreparedRendererFor));
+                        unifiedPreparation?.RebindPrepared(transformed.PreparedRendererFor);
+                        guard.Watch(ExportStage.BlinkCapture, () => blink.VerifyPreparedIdentity(clone));
+                        unifiedPreparation?.VerifyIdentityAndDeformation();
+                    }
+                    else
+                    {
+                        if (!blink.FollowPrepared(clone, transformed.FollowShape, out var blinkMoved, out var blinkReason))
+                        {
+                            var reason = ExporterLocalization.T(LostBlinkWarning);
+                            warnings?.Add(reason + " (" + blinkReason + ")");
+                            recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink, reason: reason);
+                        }
+                        else if (blinkMoved)
+                        {
+                            var reason = ExporterLocalization.T(LostBlinkFollowedWarning);
+                            warnings?.Add(reason);
+                            recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "瞬き", "", reason);
+                        }
+                        var unified = unifiedPreparation;
+                        try
+                        {
+                            unified?.RebindPrepared(old => transformed.FollowShapes(old, unified.ShapesOf(old)));
+                            unified?.VerifyIdentityAndDeformation();
+                        }
+                        catch (InvalidOperationException error)
+                        {
+                            // Tracking is captured again from the baked copy below;
+                            // only the check against the original routes is lost.
+                            unifiedPreparation = null;
+                            var reason = ExporterLocalization.T(LostTrackingWarning);
+                            warnings?.Add(reason + " (" + error.Message + ")");
+                            recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
+                        }
+                    }
                     var preparedMenuPolicy = menuPolicy?.WithOwnedCopies(value => transformed.IsolatedCopyOf(value as UnityEngine.Object));
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
@@ -295,6 +375,7 @@ namespace VRVlog.LilToonExporter
                     var neutral = NeutralShapeSnapshot.Capture(clone);
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
+                    if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
                     authoredEndpoints.Bake(temporaryMeshes);
@@ -307,7 +388,7 @@ namespace VRVlog.LilToonExporter
                     optimizerBindings = ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
-                }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess)));
+                }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
                 // A lenient export retries without the build passes; a source
