@@ -52,8 +52,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         internal static async Task<CloudEncryptedSnapshot> CreateAsync(CloudVrmTransferSource source, CancellationToken cancellation, byte[] testKey = null, byte[] testIv = null, Func<Stream> testReader = null)
         {
-            var directory = Path.Combine(Path.GetTempPath(), "VRVlogEncryptedTransfers");
-            var path = Path.Combine(directory, Guid.NewGuid().ToString("N") + ".bin");
+            string path = null;
             var cek = new byte[64]; var iv = new byte[16]; var aesKey = new byte[32]; var macKey = new byte[32];
             var buffer = new byte[64 * 1024];
             FileStream file = null;
@@ -66,7 +65,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (testIv != null) Buffer.BlockCopy(testIv, 0, iv, 0, 16);
                 Buffer.BlockCopy(cek, 0, macKey, 0, 32); Buffer.BlockCopy(cek, 32, aesKey, 0, 32);
                 var aad = Aad(source.Name, source.Size, source.FileHash);
-                Directory.CreateDirectory(directory);
+                path = TransferTempDirectory.NewFile("VRVlogEncryptedTransfers", ".bin");
                 file = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read, buffer.Length, FileOptions.SequentialScan);
                 var magic = Encoding.ASCII.GetBytes("VRVLOGE3"); file.Write(magic, 0, magic.Length); file.Write(iv, 0, iv.Length);
                 using (var reader = testReader != null ? testReader() : source.OpenRead())

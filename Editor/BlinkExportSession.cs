@@ -23,6 +23,16 @@ namespace VRVlog.LilToonExporter
         internal bool MissingAutomatic;
         internal const string MissingAutomaticDescription = "瞬きなし（閉眼用の変形が見つかりません）";
         internal const string MissingAutomaticWarning = "閉眼用の変形が見つからないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
+        // Automatic setup found closing names but could not pick one (duplicate
+        // names, an eye without its other side, or shapes that do not move), so
+        // it fell back to no blink. UnresolvedReason keeps the old error text.
+        internal bool UnresolvedAutomatic;
+        internal string UnresolvedReason;
+        internal const string UnresolvedAutomaticDescription = "瞬きなし（閉眼用の変形を自動で決められません）";
+        internal const string UnresolvedAutomaticWarning = "閉眼用の変形を自動で決められないため瞬きなしで書き出しました（「瞬き」の「確認・調整」で手動選択）";
+        internal const string DuplicateClosingNames = "閉眼用の名前が重複しています。「確認・調整」で設定してください。";
+        internal const string UnmatchedClosingSide = "閉眼用の左右がそろっていません: ";
+        internal const string UnusableClosingShapes = "閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。";
         bool allowMissingAutomaticBlink;
         bool deferredAutomatic;
         sealed class Candidate
@@ -125,7 +135,10 @@ namespace VRVlog.LilToonExporter
                         var resolved = BlinkShapeNames.Resolve(names, true,
                             usable);
                         if (resolved[0] == -2)
-                            throw new InvalidOperationException("閉眼用の名前が重複しています。「確認・調整」で設定してください。");
+                        {
+                            result.UnresolvedReason = result.UnresolvedReason ?? DuplicateClosingNames;
+                            continue;
+                        }
                         var completePair = resolved[1] >= 0 && resolved[2] >= 0;
                         if (!result.allowMissingAutomaticBlink && resolved[0] < 0 && !completePair &&
                             (resolved[1] >= 0 || resolved[2] >= 0)) requiredPartialRenderers.Add(renderer);
@@ -166,7 +179,7 @@ namespace VRVlog.LilToonExporter
                     }
                     var unmatched = requiredPartialRenderers.FirstOrDefault(renderer => !claimedPartialRenderers.Contains(renderer));
                     if (unmatched != null)
-                        throw new InvalidOperationException("閉眼用の左右がそろっていません: " + unmatched.name + "。「確認・調整」で設定してください。");
+                        result.UnresolvedReason = result.UnresolvedReason ?? UnmatchedClosingSide + unmatched.name;
                     // Resolve bilateral closure across the avatar: UE models
                     // may put their left and right eyes on different renderers.
                     if (result.Slots[1].Count > 0 && result.Slots[2].Count > 0)
@@ -178,16 +191,29 @@ namespace VRVlog.LilToonExporter
                     else { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     if (!completePairs) { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     result.Description = "自動設定";
+                    // Closing names that never move cannot close the eyes either.
+                    if (result.UnresolvedReason == null && namedClosure && !result.allowMissingAutomaticBlink &&
+                        result.Slots[0].Count == 0 && result.Slots[1].Count == 0)
+                        result.UnresolvedReason = UnusableClosingShapes;
                 }
             }
             // No closing name anywhere: export without blink instead of stopping.
-            // Inert, ambiguous or one-sided closing names still need a choice.
             if (options.Mode == BlinkExportMode.Auto && !result.PreserveAuthored && !result.ConfiguredByDescriptor &&
-                !result.allowMissingAutomaticBlink && !namedClosure && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
+                !result.allowMissingAutomaticBlink && !namedClosure && result.UnresolvedReason == null && result.Slots.All(slot => slot.Count == 0) && result.candidates.Count == 0)
             {
                 result.Disabled = true;
                 result.MissingAutomatic = true;
                 result.Description = MissingAutomaticDescription;
+            }
+            // Ambiguous, one-sided or inert closing names: the automatic setup
+            // does not guess. It exports without blink and says why; a manual
+            // choice in the blink settings still exports the blink.
+            if (result.UnresolvedReason != null)
+            {
+                foreach (var slot in result.Slots) slot.Clear();
+                result.Disabled = true;
+                result.UnresolvedAutomatic = true;
+                result.Description = UnresolvedAutomaticDescription;
             }
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
@@ -377,6 +403,8 @@ namespace VRVlog.LilToonExporter
             Description = resolved.Description;
             Disabled = resolved.Disabled;
             MissingAutomatic = resolved.MissingAutomatic;
+            UnresolvedAutomatic = resolved.UnresolvedAutomatic;
+            UnresolvedReason = resolved.UnresolvedReason;
             PreserveAuthored = resolved.PreserveAuthored;
             Array.Copy(resolved.authored, authored, authored.Length);
             allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
@@ -443,6 +471,7 @@ namespace VRVlog.LilToonExporter
         {
             if (source == clone) throw new ArgumentException("An independent export copy is required.");
             var copy = new BlinkExportSession { Description = Description, PreserveAuthored = PreserveAuthored, Disabled = Disabled, MissingAutomatic = MissingAutomatic,
+                UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
                 allowMissingAutomaticBlink = allowMissingAutomaticBlink, deferredAutomatic = deferredAutomatic };
             Array.Copy(authored, copy.authored, authored.Length);
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)
@@ -473,6 +502,8 @@ namespace VRVlog.LilToonExporter
         {
             if (deferredAutomatic) throw new InvalidOperationException("瞬きの自動設定にはFXのneutral評価が必要です。");
             Validate(clone);
+            var used = DeterministicNames.BlendShapeNames(clone);
+            string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
             if (Disabled)
             {
                 // A no-op standard binding prevents a viewer's raw-name blink
@@ -481,21 +512,24 @@ namespace VRVlog.LilToonExporter
                     .FirstOrDefault(r => ExportRendererSelection.HasGeometry(r.sharedMesh));
                 if (renderer == null) return;
                 var mesh = Object.Instantiate(renderer.sharedMesh); owned.Add(mesh); renderer.sharedMesh = mesh;
-                var name = "__VRVlog_BlinkNone_" + Guid.NewGuid().ToString("N");
+                var name = DeterministicNames.Unique("__VRVlog_BlinkNone_" + DeterministicNames.Hash("BlinkNone", PathOf(renderer)), used);
                 var zeros = new Vector3[mesh.vertexCount]; mesh.AddBlendShapeFrame(name, 100f, zeros, zeros, zeros);
                 foreach (var slot in Slots) slot.Add(new BlinkShapeBinding { Renderer = renderer, Shape = name });
                 return;
             }
-            foreach (var group in Slots.SelectMany(s => s).GroupBy(b => b.Renderer))
+            foreach (var group in Slots.SelectMany((s, slot) => s.Select(binding => (binding, slot))).GroupBy(item => item.binding.Renderer))
             {
                 var renderer = group.Key;
                 var original = renderer.sharedMesh;
                 var generated = Object.Instantiate(original); owned.Add(generated);
-                foreach (var binding in group)
+                foreach (var (binding, slot) in group)
                 {
                     var index = BlinkShapeNames.Unique(Enumerable.Range(0, original.blendShapeCount)
                         .Select(original.GetBlendShapeName).ToArray(), binding.Shape, StringComparison.Ordinal);
-                    var name = "__VRVlog_Blink_" + Guid.NewGuid().ToString("N");
+                    // A shape bound to both blink and one side gets one channel
+                    // per slot, so the slot is part of the name.
+                    var name = DeterministicNames.Unique("__VRVlog_Blink_" + DeterministicNames.Hash("Blink",
+                        PathOf(renderer), binding.Shape, BlinkShapeNames.Presets[slot]), used);
                     AvatarBaseShape.AppendAnimatedShape(original, generated, name, index,
                         renderer.GetBlendShapeWeight(index), Endpoint(binding));
                     binding.Shape = name;
