@@ -125,7 +125,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var good = Usable("app");
             TransferTempDirectory.TestRoots = outcome == "no folder" ? (Func<System.Collections.Generic.IEnumerable<string>>)(() => new[] { Unusable() }) : () => new[] { good };
             var avatar = new UnityEngine.GameObject("vrvlog-app-transfer-temp", typeof(UnityEngine.Animator));
-            var window = UnityEditor.EditorWindow.GetWindow<AppTransferWindow>(false);
+            // Not shown: the window logic runs without an OS window, which batch runs may not create.
+            var window = UnityEngine.ScriptableObject.CreateInstance<AppTransferWindow>();
             string written = null;
             try
             {
@@ -161,7 +162,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             finally
             {
                 typeof(AppTransferWindow).GetField("flow", field).SetValue(window, null);
-                window.Close();
+                UnityEngine.Object.DestroyImmediate(window);
                 UnityEngine.Object.DestroyImmediate(avatar);
             }
         }
