@@ -133,6 +133,8 @@ namespace VRVlog.LilToonExporter
 
         private const string MenuPrefix = "VRChat / ";
         private const string RecordedPrefix = "記録 / ";
+        internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
+        internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
         private static readonly string[] BindKeys = { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" };
         private static readonly string[] OverrideKeys = { "overrideBlink", "overrideLookAt", "overrideMouth" };
 
@@ -155,7 +157,7 @@ namespace VRVlog.LilToonExporter
                 presets[preset.ToString()] = value;
                 open.Remove(preset);
                 changed = true;
-                Warn(warnings, $"{preset}: 名前から自動で設定しました（{source}）。動作を確認してください。");
+                Warn(warnings, string.Format(ExporterLocalization.T(FilledFormat), preset, source));
                 filled?.Add((preset.ToString(), source));
             }
 
@@ -172,7 +174,7 @@ namespace VRVlog.LilToonExporter
                     if (!pair.Key.StartsWith(MenuPrefix, StringComparison.Ordinal) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
                     var name = pair.Key.Substring(MenuPrefix.Length);
                     if (name.StartsWith(RecordedPrefix, StringComparison.Ordinal)) name = name.Substring(RecordedPrefix.Length);
-                    var match = ExpressionNameInference.MatchEmotion(name);
+                    var match = ExpressionNameInference.MatchMenuPath(name);
                     if (match != null) menu.Add((match.Value.Preset, match.Value.Tier, order, name, value));
                 }
                 foreach (var candidate in menu.OrderBy(item => item.Tier).ThenBy(item => item.Order))
@@ -205,6 +207,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var name in group.OrderBy(item => item.Tier).ThenBy(item => item.Order).Select(item => item.Name).Distinct())
                 {
                     var bindings = new List<object>();
+                    var ambiguous = false;
                     foreach (var (nodeIndex, meshIndex, mesh, names) in MeshTargetNames(nodes, meshes))
                     {
                         var found = new List<int>();
@@ -213,8 +216,10 @@ namespace VRVlog.LilToonExporter
                         if (found.Count == 0) continue;
                         if (found.Count > 1)
                         {
-                            Warn(warnings, $"{preset}: mesh {meshIndex} に同名の表情が複数あるため自動設定を省略しました。");
-                            continue;
+                            // Binding the other meshes alone would move only part of the face.
+                            Warn(warnings, string.Format(ExporterLocalization.T(DuplicateNameFormat), preset, meshIndex, name));
+                            ambiguous = true;
+                            break;
                         }
                         var target = found[0];
                         var primitives = List(mesh, "primitives");
@@ -229,8 +234,12 @@ namespace VRVlog.LilToonExporter
                             { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
                         });
                     }
-                    if (bindings.Count == 0) continue;
-                    Fill(preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } }, name);
+                    if (ambiguous || bindings.Count == 0) continue;
+                    // A whole-face shape already closes or shapes the eyes, so
+                    // auto blink on top of it would push the eyelids twice.
+                    Fill(preset, new Dictionary<string, object> {
+                        { "morphTargetBinds", bindings }, { "isBinary", false }, { "overrideBlink", "block" }
+                    }, name);
                     break;
                 }
             }

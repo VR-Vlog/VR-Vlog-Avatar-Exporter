@@ -117,4 +117,9 @@ namespace UniVRM10
     // Same member names as UniVRM 1.0; only the names are used here.
     public enum ExpressionPreset { custom, happy, angry, sad, relaxed, surprised, aa, ih, ou, ee, oh, blink, blinkLeft, blinkRight, lookUp, lookDown, lookLeft, lookRight, neutral }
 }
+namespace VRVlog.LilToonExporter
+{
+    // The locale tables need AssetDatabase; the harness keeps the Japanese source.
+    public static class ExporterLocalization { public static string T(string source) => source; }
+}
 #endif

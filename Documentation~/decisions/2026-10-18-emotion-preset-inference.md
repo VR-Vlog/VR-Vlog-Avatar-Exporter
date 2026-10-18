@@ -14,14 +14,14 @@
 ## 決定
 
 - 名前から VRM の表情を推定する処理を `ExpressionNameInference` にまとめた。
-  - 喜怒哀楽: 2段の語表（`Emotions`）と除外語（`VetoWords`・`VetoParts`）、判定の `MatchEmotion(name, latinOnly)`。語表と判定の規則は 2026-10-14 の決定から変えていない。
+  - 喜怒哀楽: 2段の語表（`Emotions`）と除外語（`VetoWords`・`VetoParts`）、判定の `MatchEmotion(name, latinOnly)`。語表と判定の規則は 2026-10-14 の決定から変えていない。メニューの階層を読む `MatchMenuPath(path)` を足した。
   - 口: 別名の完全一致（`MouthShapes`・`FindExact`）。
   - 瞬きは従来どおり `BlinkShapeNames`。視線（lookUp など）と neutral は名前から推定しない。
 - 通常の書き出し（`UniVrmOneClickExporter.Export`、既定 `inferEmotionPresets: true`）は、口と瞬きを埋めたあとに、空の喜怒哀楽を次の順に埋める。
-  1. メニュー表情: カスタム表情の名前から `VRChat / ` と、続く `記録 / ` を外した残り（サブメニューの階層を含む）を `MatchEmotion` で判定する。日本語の名前も使う。表情ごとに、段の小さいもの → カスタム表情の並び順で1つ選び、morph target・マテリアルの bind と override をそのままコピーする。`isBinary` は `false` にする。
-  2. メッシュの BlendShape（glTF の `extras.targetNames`）: `MatchEmotion(name, latinOnly: true)` で英語の語だけで判定する。表情ごとに、段の小さいもの → ノードと BlendShape の並び順で候補を選び、その名前を持つすべてのノードに重み1で bind する。override は付けない（`none`）。1つのメッシュに同じ名前が2つあると、どちらか決められないので警告を出してその候補を飛ばす。
+  1. メニュー表情: カスタム表情の名前から `VRChat / ` と、続く `記録 / ` を外した残りを `MatchMenuPath` で判定する。日本語の名前も使う。最後の ` / ` より後のラベル（葉）だけで判定し、葉に除外語も感情の語も無いときだけ、近い親の階層から順に1階層ずつ判定する。除外語を含む階層・2つの感情に当たる階層に来たらそこで「該当なし」とする。`喜怒哀楽 / 笑顔` は happy、`Eye / Sad` は sad、`喜怒哀楽 / 1`・`Smile / Wink` は該当なし。表情ごとに、段の小さいもの → カスタム表情の並び順で1つ選び、morph target・マテリアルの bind と override をそのままコピーする。`isBinary` は `false` にする。
+  2. メッシュの BlendShape（glTF の `extras.targetNames`）: `MatchEmotion(name, latinOnly: true)` で英語の語だけで判定する。表情ごとに、段の小さいもの → ノードと BlendShape の並び順で候補を選び、その名前を持つすべてのノードに重み1で bind する。`overrideBlink` は `block`、`overrideMouth`・`overrideLookAt` は付けない（`none`）。1つのメッシュに同じ名前が2つあると、どちらか決められないので警告を出し、その名前をほかのメッシュにも使わずに次の候補へ進む。
 - 「空」は、表情が無いか、bind が1つも無い表情を指す。作者が設定した bind のある喜怒哀楽は置き換えない。
-- 埋めた表情ごとに「`<表情>: 名前から自動で設定しました（<元の名前>）。動作を確認してください。`」の警告を出し、`ExportRecoveryReport.InferredEmotions` に表情と元の名前の組を残す。
+- 埋めた表情ごとに「`<表情>: 名前から自動で設定しました（<元の名前>）。動作を確認してください。`」の警告を出す。警告は書き出しの詳細（`LilToonExporterWindow` の「書き出しの詳細」と、Console の「VR Vlog 書き出し詳細」。**アプリに転送** は Console だけ）に出る。文言は `ExporterLocalization.T` で訳した書式に値を `string.Format` で入れる。
 - 表情・ポーズ指定UIの書き出し（`ExperimentalExpressionCaptureSession` からの3つの呼び出し）は `inferEmotionPresets: false` にした。メニューの「VR Vlog → VRMを書き出す」はこの画面を開くので、メニューからの書き出しの出力は変わらない。名前からの推定が入るのは **アプリに転送**（`AppTransferExport`）と `LilToonExporterWindow` の書き出し。
 
 ## 検討した代替案と不採用理由
@@ -31,6 +31,10 @@
 - 表情・ポーズ指定UIの書き出しでも埋める: 画面で「なし」にした表情が書き出し時に勝手に埋まり、画面の表示と出力が食い違う。画面の自動候補が同じ語表で既に提示しているので、そちらに任せた。
 - 視線・neutral も名前から推定する: 視線は左右・上下の向きと量が名前だけでは決まらず、neutral は「無表情」を表す決まった名前が無い。誤って入ると常に顔が動くので今回は扱わない。
 - 同名の BlendShape が1つのメッシュに複数あるとき先頭を使う: どちらが顔全体の変形か判断できない。口の別名で同名が複数ある場合と同じく、使わずに警告する。
+- 同名が複数あるメッシュだけを外し、ほかのメッシュの同じ名前で埋める: 顔のメッシュが外れて体や髪のメッシュだけが動き、顔の一部しか動かない表情になる。その名前ごと使わない。
+- メニュー表情をサブメニューを含む全体の名前で判定する: `喜怒哀楽` のように複数の感情を含むサブメニューや、`Eye` のような除外語のサブメニューの中にある表情が、葉のラベルだけなら判定できるのにすべて「該当なし」になる。逆に、親の名前が葉の判定を上書きすることも避けたい。
+- BlendShape から埋めた表情の override を付けない（`none`）: 顔全体の BlendShape（`Fcl_ALL_*` など）は目の形も含むので、自動瞬きが重なると瞼が二重に動く。VRoid 系の VRM の喜怒哀楽の既定と同じく `overrideBlink: block` にした。口と視線は、顔全体の表情でもリップシンク・視線を止める理由が VRM 1.0 の仕様に無いので `none` のまま。メニュー表情は元の override をそのままコピーする。
+- 埋めた表情の一覧を `ExportRecoveryReport` に別に持ち、書き出し結果に専用の欄で出す: 成功時の表示（「書き出しの詳細」と Console）は警告の一覧をそのまま出す作りで、報告の構造体を受け取らない。完了処理を複数の画面で変える必要があるうえ、警告にすでに表情と元の名前が出るので、一覧は持たないことにした。
 
 ## 影響
 

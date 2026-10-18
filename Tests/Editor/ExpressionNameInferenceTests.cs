@@ -59,6 +59,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.Null);
         }
 
+        // The leaf label decides; a parent only speaks when every level below says nothing.
+        [TestCase("喜怒哀楽 / 笑顔", ExpressionPreset.happy, 0)]
+        [TestCase("喜怒哀楽 / 怒り", ExpressionPreset.angry, 0)]
+        [TestCase("Eye / Smile", ExpressionPreset.happy, 0)]
+        [TestCase("Left / Sad", ExpressionPreset.sad, 0)]
+        [TestCase("Smile / 1", ExpressionPreset.happy, 0)]
+        [TestCase("Emotes / Joy / A", ExpressionPreset.happy, 1)]
+        [TestCase("Surprised", ExpressionPreset.surprised, 0)]
+        public void MenuPathsAreDecidedByTheLeafFirst(string path, ExpressionPreset expected, int tier) =>
+            Assert.That(ExpressionNameInference.MatchMenuPath(path), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
+
+        // A level with a veto word or several emotions stops the walk.
+        [TestCase("喜怒哀楽 / 1")]
+        [TestCase("Eye / 1")]
+        [TestCase("Smile / Wink")]
+        [TestCase("Smile / Eye / 1")]
+        [TestCase("Happy / smile_angry")]
+        [TestCase("Emotes / A")]
+        public void MenuPathsWithoutAWholeEmotionNameNothing(string path) =>
+            Assert.That(ExpressionNameInference.MatchMenuPath(path), Is.Null);
+
         static Dictionary<string, object> Obj(params object[] pairs)
         {
             var result = new Dictionary<string, object>();
@@ -173,6 +194,10 @@ namespace VRVlog.LilToonExporter.Tests
             var presets = Presets(Infer(bytes, warnings, filled));
             Assert.That(Canonical(((Dictionary<string, object>)presets["angry"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 0), Bind(2, 1)))));
             Assert.That(((Dictionary<string, object>)presets["angry"])["isBinary"], Is.False);
+            // A whole-face shape already shapes the eyes; auto blink must not stack on it.
+            Assert.That(((Dictionary<string, object>)presets["angry"])["overrideBlink"], Is.EqualTo("block"));
+            Assert.That(((Dictionary<string, object>)presets["angry"]).ContainsKey("overrideMouth"), Is.False);
+            Assert.That(((Dictionary<string, object>)presets["angry"]).ContainsKey("overrideLookAt"), Is.False);
             Assert.That(Canonical(((Dictionary<string, object>)presets["happy"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
             Assert.That(filled, Is.EquivalentTo(new[] { ("angry", "Fcl_ALL_Angry"), ("happy", "Fcl_ALL_Joy") }));
             Assert.That(warnings, Does.Contain("angry: 名前から自動で設定しました（Fcl_ALL_Angry）。動作を確認してください。"));
@@ -204,7 +229,34 @@ namespace VRVlog.LilToonExporter.Tests
             var warnings = new List<string>();
             var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Fun", "Fcl_ALL_Fun")));
             Assert.That(Infer(bytes, warnings), Is.EqualTo(bytes));
-            Assert.That(warnings, Does.Contain("relaxed: mesh 0 に同名の表情が複数あるため自動設定を省略しました。"));
+            Assert.That(warnings, Does.Contain("relaxed: mesh 0 に同名のBlendShape（Fcl_ALL_Fun）が複数あるため、この名前は自動設定に使いませんでした。"));
+        }
+
+        [Test]
+        public void DuplicateInOneMeshDropsTheNameForEveryMesh()
+        {
+            var warnings = new List<string>();
+            var filled = new List<(string Preset, string Source)>();
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L), Obj("mesh", 1L)),
+                Arr(Mesh("Fcl_ALL_Fun", "Fcl_ALL_Fun"), Mesh("Fcl_ALL_Fun", "Calm")));
+            var relaxed = (Dictionary<string, object>)Presets(Infer(bytes, warnings, filled))["relaxed"];
+            Assert.That(Canonical(relaxed["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(1, 1)))),
+                "The single copy in mesh 1 alone would move only part of the face; the next name is used.");
+            Assert.That(filled, Is.EqualTo(new[] { ("relaxed", "Calm") }));
+            Assert.That(warnings, Does.Contain("relaxed: mesh 0 に同名のBlendShape（Fcl_ALL_Fun）が複数あるため、この名前は自動設定に使いませんでした。"));
+        }
+
+        [Test]
+        public void MenuFacesInsideAnEmotionSubmenuAreDecidedByTheirLeaf()
+        {
+            var filled = new List<(string Preset, string Source)>();
+            var custom = Obj("VRChat / 喜怒哀楽 / 笑顔", MenuFace(Bind(0, 0)), "VRChat / 喜怒哀楽 / 怒り", MenuFace(Bind(0, 1)),
+                "VRChat / 喜怒哀楽 / 1", MenuFace(Bind(0, 2)), "VRChat / Eye / Sad", MenuFace(Bind(0, 3)), "VRChat / Smile / Wink", MenuFace(Bind(0, 4)));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c", "d", "e")));
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(filled, Is.EqualTo(new[] { ("happy", "喜怒哀楽 / 笑顔"), ("angry", "喜怒哀楽 / 怒り"), ("sad", "Eye / Sad") }));
+            Assert.That(Canonical(((Dictionary<string, object>)presets["sad"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 3)))));
+            Assert.That(presets.ContainsKey("relaxed") || presets.ContainsKey("surprised"), Is.False);
         }
 
         [Test]

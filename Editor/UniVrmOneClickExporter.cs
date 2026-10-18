@@ -275,9 +275,10 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "出力検査";
                 exported = ExportSkinRoots.Repair(exported, warnings);
                 if (lookAt != null) exported = lookAt.Apply(exported);
-                // Empty emotion presets are filled from menu faces or whole-face names.
+                // Empty emotion presets are filled from menu faces or whole-face names;
+                // each filled preset is listed in the warnings (書き出しの詳細).
                 exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false,
-                    inferEmotions: inferEmotionPresets, filledEmotions: recoveryReport.InferredEmotions));
+                    inferEmotions: inferEmotionPresets));
                 if (trackingProfile != null) exported = optimizerBindings.ApplyTracking(exported);
                 else exported = optimizerBindings.ApplyUnified(exported, warnings);
                 if (fullSnapshot != null)

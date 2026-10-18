@@ -51,10 +51,33 @@ namespace VRVlog.LilToonExporter
 
         static bool IsLatin(string word) => word.All(character => character < 128);
 
-        internal static (ExpressionPreset Preset, int Tier)? MatchEmotion(string name, bool latinOnly = false)
+        internal static (ExpressionPreset Preset, int Tier)? MatchEmotion(string name, bool latinOnly = false) =>
+            Evaluate(name, latinOnly, out _);
+
+        // A VRChat menu path ("Sub / Leaf"). The leaf label decides; parent
+        // levels are read, nearest first, only while every level below says
+        // nothing. A level with a veto word or several emotions stops the walk
+        // with no match, so a "喜怒哀楽" or "Eye" submenu never decides alone.
+        internal static (ExpressionPreset Preset, int Tier)? MatchMenuPath(string path)
         {
+            if (string.IsNullOrWhiteSpace(path)) return null;
+            var levels = path.Split(new[] { " / " }, StringSplitOptions.None);
+            for (var i = levels.Length - 1; i >= 0; i--)
+            {
+                var match = Evaluate(levels[i], false, out var decided);
+                if (decided) return match;
+            }
+            return null;
+        }
+
+        // decided is false only when the name has neither a veto word nor any
+        // emotion word, i.e. it says nothing about an emotion.
+        static (ExpressionPreset Preset, int Tier)? Evaluate(string name, bool latinOnly, out bool decided)
+        {
+            decided = false;
             if (string.IsNullOrWhiteSpace(name)) return null;
             var words = LatinWords(name);
+            decided = true;
             if (words.Any(VetoWords.Contains) || VetoParts.Any(part => name.IndexOf(part, StringComparison.Ordinal) >= 0)) return null;
             for (var tier = 0; tier <= 1; tier++)
             {
@@ -64,6 +87,7 @@ namespace VRVlog.LilToonExporter
                 if (found.Length == 1) return (found[0], tier);
                 if (found.Length > 1) return null;
             }
+            decided = false;
             return null;
         }
 
