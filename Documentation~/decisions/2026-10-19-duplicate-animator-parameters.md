@@ -22,7 +22,7 @@ FXのAnimator Controllerに同じ名前のパラメーターが3回宣言され�
 
 ## 確認したこと
 
-- Unity 2022.3.22f1のRoslynで、Editorのアセンブリと `Tests/Editor` のアセンブリをコンパイルできることを確かめた（`Tests/Editor/ExpressionAnimationDocumentTests.cs` は、手元のビルド成果物に新しいアセンブリの参照が無いため除いた）。このPCではUnityのテストを実行していない。
+- Unity 2022.3.22f1のRoslynで、Editorのアセンブリと `Tests/Editor` のアセンブリをコンパイルできることを確かめた（`Tests/Editor/ExpressionAnimationDocumentTests.cs` は、手元のビルド成果物に新しいアセンブリの参照が無いため除いた）。別の検証環境で、EditModeの全件（Unity 2022.3.22f1）を変更前と変更後で実行した。変更前は3402件中9件、変更後は3404件中9件が失敗し、失敗した9件は同じ（任意パッケージが入っていない環境の都合と、GPUの精度による既存の失敗）。型と初期値の扱いを直したあとの版では、表情まわりの4クラス212件がすべて通った。
 - `VrChatMenuExpressionTests.RepeatedFxParameterDeclarationsKeepMenuExpressions` で、`TrackingType`（Int）を3回宣言したFXについて、`FixedNeutralValues` が例外を投げずに `TrackingType=6` を返すこと、メニューの選択で表情が75の重みで取れること、元のコントローラーが変わらないことを確かめる。変更前は `FixedNeutralValues` の `initial.Add` で失敗する。
 - `VrChatMenuExpressionTests.ConflictingFxParameterDeclarationsAreLeftForStrictChecks` で、型と初期値がそろった重複は1つにまとまり、初期値または型が食い違う重複は元の配列のまま返ることを確かめる。
 - `DirectFxExpressionDiscoveryTests.RepeatedFxParameterDeclarationsStillDiscoverFaces` で、同じFXからFXの遷移由来の表情が見つかり、エラーにならないことを確かめる。変更前は、パラメーターを名前で引く辞書を作るところ（`VrChatFxExpressions.Discover` の `ToDictionary` など）で `ArgumentException` になる。
