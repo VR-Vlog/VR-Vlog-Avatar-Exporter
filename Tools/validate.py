@@ -238,7 +238,7 @@ assert "--disable-build-servers" in listing_workflow
 assert "--maxcpucount:1" in listing_workflow
 assert "${{ env.pathToCi }}/.nuke/temp" not in listing_workflow
 assert "pull_request:" in listing_workflow
-assert "  pull_request:\n  release:" in listing_workflow
+# Trigger contracts are parsed and regression-tested by check-pipeline.py and test-pipeline.py.
 for listing_path in (".github/workflows/build-listing.yml", "package.json", "source.json",
                      "Tools/check-listing.py", "Tools/test-listing.py"):
     assert f'"{listing_path}"' in listing_workflow
