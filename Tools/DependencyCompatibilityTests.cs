@@ -29,13 +29,13 @@ public static class DependencyCompatibilityTests
             catch (InvalidOperationException) { rejected = true; }
             Check(rejected, "Direct export also fails before conversion");
         }
-        Check(DependencyPolicy.VrchatSdkMinimum == "3.7.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
-        foreach (var version in new[] { "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6" })
+        Check(DependencyPolicy.VrchatSdkMinimum == "3.5.2" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
+        foreach (var version in new[] { "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6" })
         {
             Check(DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio omission " + version);
-            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.6.0"), "Base must be the same release " + version);
+            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.5.1"), "Base must be the same release " + version);
         }
-        foreach (var version in new[] { null, "", "3.6.0", "3.6.9", "3.5.2", "3.11.0", "4.0.0", "3.10.5-beta.1", "3.10", "3.10.5.0", " 3.10.5", "03.10.5" })
+        foreach (var version in new[] { null, "", "3.5.1", "3.5.0", "3.4.2", "3.5.2-beta.1", "3.11.0", "4.0.0", "3.10.5-beta.1", "3.10", "3.10.5.0", " 3.10.5", "03.10.5" })
             Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio stops " + (version ?? "null"));
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");

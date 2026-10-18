@@ -190,7 +190,7 @@ namespace VRVlog.LilToonExporter
                     basePackage?.name != "com.vrchat.base" || !DependencyPolicy.SupportsVrchatSdkAudio(package.version, basePackage.version))
                     throw new InvalidOperationException("このSDKの音声処理は表情への影響を確認できません: " + type.FullName +
                         "（VRChat SDK " + (package?.version ?? "?") + " / " + (basePackage?.version ?? "?") +
-                        "。確認した範囲: " + DependencyPolicy.VrchatSdkMinimum + "以上" + DependencyPolicy.VrchatSdkBelow + "未満）");
+                        "。対応範囲: " + DependencyPolicy.VrchatSdkMinimum + "以上" + DependencyPolicy.VrchatSdkBelow + "未満）");
                 var reactive = avatar.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials)
                     .Where(material => material != null).Any(material => material.HasProperty("_UseAudioLink") && material.GetFloat("_UseAudioLink") != 0 ||
                         material.shader != null && material.shader.name.IndexOf("AudioLink", StringComparison.OrdinalIgnoreCase) >= 0);
