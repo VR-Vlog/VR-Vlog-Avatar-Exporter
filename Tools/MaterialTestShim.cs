@@ -33,6 +33,7 @@ namespace UnityEngine
     {
         public T[] GetComponents<T>() => throw new System.NotSupportedException("Unity descriptor lookup requires Editor tests.");
         public Transform transform;
+        public bool activeSelf = true;
         public bool activeInHierarchy = true;
         public readonly System.Collections.Generic.List<Renderer> Renderers = new System.Collections.Generic.List<Renderer>();
         public T[] GetComponentsInChildren<T>(bool includeInactive = false) => System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OfType<T>(Renderers));

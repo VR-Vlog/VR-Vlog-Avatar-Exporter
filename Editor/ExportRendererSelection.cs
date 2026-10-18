@@ -41,9 +41,6 @@ namespace VRVlog.LilToonExporter
             return target.activeInHierarchy;
         }
 
-        internal static bool ActiveAndEnabledUnder(Behaviour behaviour, Transform avatarRoot) =>
-            behaviour != null && behaviour.enabled && ActiveUnder(behaviour.gameObject, avatarRoot);
-
         // The avatar itself or one of its parents is inactive in the scene.
         internal static bool HiddenInScene(GameObject avatar) => avatar != null && !avatar.activeInHierarchy;
 

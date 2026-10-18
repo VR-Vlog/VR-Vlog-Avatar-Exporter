@@ -8,6 +8,7 @@ namespace UnityEngine
     public class Transform
     {
         public Transform parent;
+        public GameObject gameObject;
         public int GetSiblingIndex() => throw new NotSupportedException();
         public Transform GetChild(int index) => throw new NotSupportedException();
         public T[] GetComponents<T>() => throw new NotSupportedException();
