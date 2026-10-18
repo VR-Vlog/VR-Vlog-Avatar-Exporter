@@ -40,6 +40,8 @@ namespace VRVlog.LilToonExporter
         internal string Reason;
         // Set for entries made by the stage guard.
         internal ExportStage? Stage;
+        // Set for entries made by a gimmick rule (ExportGimmickRules).
+        internal string RuleId;
         // Recovery diagnostics for a left-out stage (remedies the user can apply).
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
         internal int Count = 1;

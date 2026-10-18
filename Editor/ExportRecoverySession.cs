@@ -93,7 +93,8 @@ namespace VRVlog.LilToonExporter
             this.previewGimmicks = previewGimmicks == null ? null : new ExportGimmickOptions
             {
                 AutoExclude = previewGimmicks.AutoExclude,
-                IncludedObjects = (previewGimmicks.IncludedObjects ?? Array.Empty<GameObject>()).ToArray()
+                IncludedObjects = (previewGimmicks.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
+                IncludedComponents = (previewGimmicks.IncludedComponents ?? Array.Empty<Component>()).ToArray()
             };
             stamp = ExportRecoverySourceStamp.Capture(source);
         }
