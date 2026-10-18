@@ -506,6 +506,14 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(names.Except(authored), Is.EquivalentTo(tails.Select(t => t.name)), "Only generated endpoints are new.");
                 Assert.That(names.Count(n => n.Contains(PhysBoneSpringExport.EndpointName)), Is.EqualTo(names.Where(n => n.Contains(PhysBoneSpringExport.EndpointName)).Distinct().Count()));
                 Assert.That(copy.transform.Find(preferred).GetComponent<VRM10SpringBoneJoint>(), Is.Null);
+                var again = Object.Instantiate(source);
+                try
+                {
+                    PhysBoneSpringExport.Convert(source, again, new List<string>());
+                    Assert.That(again.GetComponent<Vrm10Instance>().SpringBone.Springs.Select(s => s.Joints.Last().transform.name),
+                        Is.EqualTo(tails.Select(t => t.name)), "A second export names the endpoints the same way.");
+                }
+                finally { Object.DestroyImmediate(again); }
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
