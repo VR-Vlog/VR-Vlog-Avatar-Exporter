@@ -39,7 +39,24 @@ public static class DependencyCompatibilityTests
             Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio stops " + (version ?? "null"));
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
-        Check(DependencyPolicy.LilToonVersion == "2.3.4", "Exports conform to the 2.3.4 catalogue");
+        Check(DependencyPolicy.ModularAvatarMinimum == "1.18.0" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
+        foreach (var version in new[] { "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10" })
+        {
+            Check(DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance freeze " + version);
+            Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "No MA error " + version);
+        }
+        foreach (var version in new[] { null, "", "1.17.1", "1.13.4", "1.10.0", "1.19.0", "1.19.0-alpha.0", "1.19.0-alpha.2", "1.18.7-beta.1",
+            "1.18.0-rc.1", "1.18.7+local", "2.0.0", "0.18.7", "1.18", "1.18.7.0", " 1.18.7", "1.18.7 ", "v1.18.7", "01.18.7", "1.18.07", "1.18.x" })
+        {
+            Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + (version ?? "null"));
+            var error = DependencyPolicy.ModularAvatarAppearanceError(version);
+            Check(error != null && error.Contains("1.18.0以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+                "MA error names the range, the fix and that the avatar is unchanged");
+            Check(error.Contains(string.IsNullOrEmpty(version) ? "Modular Avatar ?" : "Modular Avatar " + version), "MA error names the installed version");
+        }
+        Check(DependencyPolicy.ModularAvatarAppearanceError("1.17.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.17.1", StringComparison.Ordinal),
+            "Caller-supplied translation applies to the MA format");
+        Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");
         Check(DependencyPolicy.LilToonMinimum == "2.0.0" && DependencyPolicy.LilToonMaximum == "2.3.4", "Supported lilToon range");
         foreach (var version in new[] { "2.0.0", "2.1.0", "2.1.10", "2.2.1", "2.3.0", "2.3.3", "2.3.4" })
         {
