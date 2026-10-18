@@ -6,6 +6,8 @@ using VRM10.MToon10;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using VRVlog.LilToon;
+using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
 
 namespace VRVlog.LilToonExporter
 {
