@@ -477,7 +477,7 @@ namespace VRVlog.LilToonExporter
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
-                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport);
+                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false);
             // Emotion presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
             if (expressions.Length == 0)
@@ -490,7 +490,8 @@ namespace VRVlog.LilToonExporter
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
-                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored));
+                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
+                        inferEmotionPresets: false);
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
@@ -655,7 +656,8 @@ namespace VRVlog.LilToonExporter
                     lilToonVersion: lilToonVersion, blinkOptions: exportBlinkOptions,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
-                    recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material);
+                    recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
+                    inferEmotionPresets: false);
                 return InjectSourcePoses(bytes, warnings, poses);
             }
             finally
