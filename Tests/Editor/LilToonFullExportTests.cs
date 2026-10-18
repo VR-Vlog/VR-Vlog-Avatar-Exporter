@@ -333,11 +333,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(F.List(F.Root(glb.Json),"bindings").Select(F.Object).Any(b=>F.List(b,"materials").Count==2),Is.True);
                 Assert.That(fixture.Mesh.subMeshCount,Is.EqualTo(before));
                 Assert.That(renderers[0].sharedMaterials,Is.EqualTo(new[]{first,overlay}));
-                var loader=Type.GetType("FaceMaskVTuber.UniVrmRuntime.UniVrmRuntimeLoader, FaceMaskVTuber.UniVrmRuntime");
-                if(loader!=null)
+                if(AppReader.Loader!=null)
                 {
-                    File.WriteAllBytes(path,bytes);loader.GetMethod("ConfigureLilToon").Invoke(null,new object[]{true});
-                    loaded=await (Task<GameObject>)loader.GetMethod("LoadAsync").Invoke(null,new object[]{path,null,false,null});
+                    File.WriteAllBytes(path,bytes);
+                    loaded=await AppReader.LoadAsync(path);
                     Assert.That(loaded,Is.Not.Null);
                     Assert.That(loaded.GetComponentsInChildren<Renderer>(true).Any(r=>r.sharedMaterials.Length==2),Is.True,"Both exported draws remain imported renderer slots.");
                 }
@@ -348,8 +347,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCaseSource(nameof(OfficialShaders))]
         public async Task EveryShaderFamilyLoadsThroughSchema2(string shaderName)
         {
-            var loader=Type.GetType("FaceMaskVTuber.UniVrmRuntime.UniVrmRuntimeLoader, FaceMaskVTuber.UniVrmRuntime");
-            if(loader==null)Assert.Ignore("Requires the combined application validation project.");
+            if(AppReader.Loader==null)Assert.Ignore("Requires the combined application validation project.");
             using var fixture=new AttachmentConnectionTests.Fixture();
             var source=new Material(Shader.Find(shaderName));GameObject loaded=null;
             var path=Path.Combine(Path.GetTempPath(),"vrvlog-family-"+Guid.NewGuid().ToString("N")+".vrm");
@@ -367,10 +365,9 @@ namespace VRVlog.LilToonExporter.Tests
                 renderers[0].receiveShadows=false;renderers[0].shadowCastingMode=UnityEngine.Rendering.ShadowCastingMode.Off;
                 renderers[0].sortingOrder=9;renderers[1].sortingOrder=-4;
                 File.WriteAllBytes(path,UniVrmOneClickExporter.Export(fixture.Source,"Shader family","Tests",exporterVersion:"0.10.0-preview.1",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
-                loader.GetMethod("ConfigureLilToon").Invoke(null,new object[]{true});
-                loaded=await (Task<GameObject>)loader.GetMethod("LoadAsync").Invoke(null,new object[]{path,null,false,null});
+                loaded=await AppReader.LoadAsync(path);
                 Assert.That(loaded,Is.Not.Null,shaderName);
-                Assert.That((string)loader.GetProperty("LastLilToonStatus").GetValue(null),Does.StartWith("full-liltoon:"));
+                Assert.That(AppReader.LastLilToonStatus,Does.StartWith("full-liltoon:"));
                 var skins=loaded.GetComponentsInChildren<SkinnedMeshRenderer>(true);
                 Assert.That(skins[0].receiveShadows,Is.False);Assert.That(skins[0].shadowCastingMode,Is.EqualTo(UnityEngine.Rendering.ShadowCastingMode.Off));
                 Assert.That(skins[0].sortingOrder,Is.GreaterThan(skins[1].sortingOrder));
@@ -515,8 +512,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false)][TestCase(true)]
         public async Task FullExportLoadsThroughApplicationWithoutNameBasedFallback(bool sameExpressionName)
         {
-            var loader = Type.GetType("FaceMaskVTuber.UniVrmRuntime.UniVrmRuntimeLoader, FaceMaskVTuber.UniVrmRuntime");
-            if (loader == null) Assert.Ignore("Application assembly is required for the combined exporter/runtime gate.");
+            if (AppReader.Loader == null) Assert.Ignore("Application assembly is required for the combined exporter/runtime gate.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = new Material(Shader.Find("lilToon")) {name="Same"}; var other = new Material(source) {name="Same"};
             var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid()+".vrm"); GameObject loaded=null;
@@ -535,14 +531,13 @@ namespace VRVlog.LilToonExporter.Tests
                     ?new Dictionary<string,object>{{"preset",new Dictionary<string,object>{{"happy",leftBinding}}},{"custom",new Dictionary<string,object>{{"happy",rightBinding}}}}
                     :new Dictionary<string,object>{{"custom",new Dictionary<string,object>{{"Left",leftBinding},{"Right",rightBinding}}}};
                 File.WriteAllBytes(path,exported.Write());
-                loader.GetMethod("ConfigureLilToon").Invoke(null,new object[]{true});
-                loaded=await (Task<GameObject>)loader.GetMethod("LoadAsync").Invoke(null,new object[]{path,null,false,null});
+                loaded=await AppReader.LoadAsync(path);
                 Assert.That(loaded,Is.Not.Null);
-                Assert.That((string)loader.GetProperty("LastLilToonStatus").GetValue(null),Does.StartWith("full-liltoon:"));
-                var full=loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r=>r.sharedMaterials).Where(m=>m!=null&&m.shader.name.StartsWith("VR Vlog/lilToon 2.3.4/")).Distinct().ToArray();
+                Assert.That(AppReader.LastLilToonStatus,Does.StartWith("full-liltoon:"));
+                var full=loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r=>r.sharedMaterials).Where(m=>m!=null&&AppReader.IsRuntimeShader(m.shader)).Distinct().ToArray();
                 Assert.That(full.Length,Is.EqualTo(2));
                 Assert.That(full.Select(m=>m.name).Distinct().Count(),Is.EqualTo(2),"Expression-facing identities remain distinct for same-name source materials.");
-                Assert.That(full.All(m=>m.shader.name.StartsWith("VR Vlog/lilToon 2.3.4/")),Is.True);
+                Assert.That(full.All(m=>m.name.StartsWith("VRVLOG/")),Is.True);
                 Assert.That(full.Any(m=>m.GetFloat("_UseEmission2nd")==1),Is.True);
                 Assert.That(full.Any(m=>m.GetColor("_Color")==Color.blue),Is.True);
                 var vrm=loaded.GetComponent<UniVRM10.Vrm10Instance>();
@@ -551,6 +546,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var left=full.Single(m=>m.name.StartsWith("VRVLOG/"+leftIndex+"/"));var right=full.Single(m=>m.name.StartsWith("VRVLOG/"+rightIndex+"/"));
                 var originalLeft=left.GetColor("_ShadowColor");var originalRight=right.GetColor("_Color");
                 Assert.That(left.GetShaderPassEnabled("ShadowCaster"),Is.False,"Unity pass enablement uses its LightMode tag.");
+                // With the official set both sides use the same shader, so this checks that values reach the runtime material, not shader equivalence.
                 LilToonFullRenderTests.Compare(new Material(source),new Material(left));
                 var leftKey=sameExpressionName?UniVRM10.ExpressionKey.Happy:UniVRM10.ExpressionKey.CreateCustom("Left");
                 var rightKey=UniVRM10.ExpressionKey.CreateCustom(sameExpressionName?"happy":"Right");
