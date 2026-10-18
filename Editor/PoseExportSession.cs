@@ -37,10 +37,12 @@ namespace VRVlog.LilToonExporter
             this.source = source;
             this.collect = collect;
             if (!collect) return;
-            foreach (var component in source.GetComponentsInChildren<Component>(false))
+            // Activity is judged inside the avatar so a hidden avatar keeps its poses.
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
             {
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
-                if (component.GetComponentInParent<Animator>() != source.GetComponent<Animator>()) continue;
+                if (!ExportRendererSelection.ActiveUnder(component.gameObject, source.transform)) continue;
+                if (component.GetComponentInParent<Animator>(true) != source.GetComponent<Animator>()) continue;
                 var data = PoseMenuResolver.Member(component, "data");
                 foreach (var category in PoseMenuResolver.Items(PoseMenuResolver.Member(data, "categories")))
                     foreach (var pose in PoseMenuResolver.Items(PoseMenuResolver.Member(category, "poses")))
@@ -89,7 +91,7 @@ namespace VRVlog.LilToonExporter
             // Humanoid flags alone do not mask those generic curve bindings.
             mask.AddTransformPath(source.transform, true);
             var animator = source.GetComponent<Animator>();
-            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: animator.GetBoneTransform(PoseSampling.HumanBone(n))))
+            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: HumanoidBones.Resolve(animator, PoseSampling.HumanBone(n))))
                 .Where(b => b.bone != null).ToDictionary(b => AnimationUtility.CalculateTransformPath(b.bone, source.transform), b => PoseSampling.Part(b.name));
             for (var i = 0; i < mask.transformCount; i++)
                 mask.SetTransformActive(i, parts.TryGetValue(mask.GetTransformPath(i), out var part) && mask.GetHumanoidBodyPartActive(part));
@@ -155,7 +157,9 @@ namespace VRVlog.LilToonExporter
                         }
                     }
                     catch (Exception error) { row.Error = error.Message; }
-                if (row.Error != null) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error);
+                // Clothing / face toggles that cannot reach a body layer would
+                // otherwise bury the real pose warnings.
+                if (row.Error != null) { if (!row.NotBodyPose) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error); }
                 else if (!string.IsNullOrEmpty(row.Note)) warnings?.Add("ポーズ: " + row.Name + " — " + row.Note);
                 yield return row;
             }
@@ -172,7 +176,7 @@ namespace VRVlog.LilToonExporter
             var omitted = new HashSet<string>();
             foreach (var name in row.IsAnimation ? HumanoidAnimationData.BoneNames : HumanoidPoseData.BoneNames)
             {
-                var human = PoseSampling.HumanBone(name); var bone = sourceAnimator.GetBoneTransform(human);
+                var human = PoseSampling.HumanBone(name); var bone = HumanoidBones.Resolve(sourceAnimator, human);
                 if (bone == null || targetAnimator.GetBoneTransform(human) != null) continue;
                 if (row.Layers.Any(layer => layer.Clip != null && PoseSampling.WritesBone(layer, name, bone, source)))
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用コピーからポーズのHumanoidボーンが失われました: ") + human);

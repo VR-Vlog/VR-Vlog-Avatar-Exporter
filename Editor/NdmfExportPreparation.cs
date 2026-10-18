@@ -151,6 +151,10 @@ namespace VRVlog.LilToonExporter
                     if (behaviour is MonoBehaviour && editorCallbacks) Object.DestroyImmediate(behaviour);
                     else if (behaviour is Animator) behaviour.enabled = false;
                 }
+                // A hidden avatar (or one under a hidden parent) exports too: only
+                // the owned copy's root is shown, still under the inactive host,
+                // so nothing runs before the cleanup above. The source is untouched.
+                if (!copy.activeSelf) copy.SetActive(true);
                 copy.transform.SetParent(null, true);
                 return copy;
             }
