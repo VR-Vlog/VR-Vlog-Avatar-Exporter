@@ -31,7 +31,7 @@
 
 - メッシュを 1 つでも持つアバターの書き出しは変わらない。
 - Renderer のどこにもメッシュがないアバターは、書き出しの処理を始める前に、理由と選び直しの案内を表示して止まる。これまでは空の VRM が保存されていた。
-- 非表示のオブジェクト・無効な Renderer・除外したオブジェクトにだけメッシュがあり、書き出した VRM にメッシュが 1 つも入らなかった場合は、保存せずに止まる。これまでは空の VRM が保存されていた。
+- 非表示のオブジェクト・無効な Renderer・除外したオブジェクトにだけメッシュがあり、それが lilToon の材質だけのアバターは、これまでどおり材質の検査（「選択したアバターに対応するlilToonマテリアルがありません。」）が先に止める。lilToon 以外の材質を変換する書き出しや、NDMF・最適化ツールが複製からすべてのメッシュを外した場合など、そこを通って書き出した VRM にメッシュが 1 つも入らなかった場合は、書き出した VRM の検査が保存の前に止める。これまでは空の VRM が保存されていた。
 - 書き出し用の複製に対する `DisableEmptyMeshRenderers` は変えていない。NDMF や最適化ツールが複製からすべてのメッシュを外した場合も、書き出した VRM の検査で止まる。
 - 試験的な表情の収録画面からの書き出しは `ExportSettings.Export` を通らないので、どちらの検査も通らない（ヒューマノイドの検査と同じ扱い）。収録には顔のメッシュが要るため、空の VRM になることはない。
 
@@ -41,4 +41,4 @@
 - `PhysBoneSpringExportTests.NullSkinnedMeshSourceStopsBeforeExport`: Renderer がメッシュの外れた Skinned Mesh Renderer だけのアバターで止まる。
 - `PhysBoneSpringExportTests.MeshOnInactiveChildPassesSourceMeshCheck`: メッシュが非表示の子にしかないアバターは止めない。
 - `PhysBoneSpringExportTests.OutputWithoutMeshIsRejected`: `meshes` のない GLB は止め、ある GLB は通す。
-- `PhysBoneSpringExportTests.MeshOnlyOnInactiveChildStopsAfterExport`: メッシュが非表示の子にしかないアバターを `ExportSettings.Export` に渡すと、元のアバターの検査は通り、書き出した VRM の検査のメッセージで止まる。
+- Unity 2022.3.22f1 で、パッケージの EditMode テストを全件実行した。失敗はこの変更の無い状態でも失敗する 9 件だけだった。メッシュが非表示の子にしかないテスト用のアバターを書き出す試験も足したが、上の材質の検査が先に止めたので、その経路は書き出した VRM の検査を通らないことが分かり、試験は外した。

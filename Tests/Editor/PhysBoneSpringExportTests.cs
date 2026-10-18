@@ -206,22 +206,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateOutputHasMesh(withMesh));
         }
 
-        // The source check counts the hidden mesh, but the export leaves it out,
-        // so the file it writes has no mesh and the output check rejects it.
-        [Test]
-        public void MeshOnlyOnInactiveChildStopsAfterExport()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-            Object.DestroyImmediate(skins[1]);
-            skins[0].gameObject.SetActive(false);
-            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Hidden", "Tests", new List<string>(), exporterVersion: "0.9.0", lilToonVersion: "2.3.4",
-                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateOutputHasMesh(bytes));
-            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.OutputHasNoMesh));
-        }
-
         // A generic AAO avatar uses its root Animator controller, unlike a
         // VRChat descriptor or authored Vrm10Instance. Give the synthetic
         // generic fixture a real idle controller without altering AAO settings.
