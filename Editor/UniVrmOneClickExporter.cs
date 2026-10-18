@@ -38,9 +38,9 @@ namespace VRVlog.LilToonExporter
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (!HasHumanoidAnimator(source)) throw new InvalidOperationException(SourceNotHumanoid);
-            // An inactive root has no bound skeleton yet; RequireActiveRoot stops it later.
-            // A disabled Animator may not resolve its bones either; the check on the
-            // prepared copy (ValidatePreparedHumanoid) still covers both cases.
+            // An inactive root has no bound skeleton yet, and a disabled Animator may
+            // not resolve its bones either. The check on the prepared copy, whose root
+            // is shown (ValidatePreparedHumanoid), still covers both cases.
             var animator = source.GetComponent<Animator>();
             if (!source.activeInHierarchy || !animator.enabled) return;
             var missing = RequiredHumanBones.Where(bone => animator.GetBoneTransform(bone) == null).ToArray();
