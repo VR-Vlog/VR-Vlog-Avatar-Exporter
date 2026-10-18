@@ -28,6 +28,7 @@ namespace VRVlog.LilToonExporter
         internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath = null, VrChatMenuImportPolicy menuPolicy = null,
             GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
+            using var inspectCache = ExpressionInspectCache.Begin();
             var source = VrChatExpressionMenu.Read(avatar, menuPolicy);
             NeutralInputProof.Read(avatar, source);
             source.FacialProjectionSession = new FacialProjectionScope.Session(avatar);
