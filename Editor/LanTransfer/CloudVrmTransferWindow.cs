@@ -66,7 +66,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         public static string CreateSnapshotPath()
         {
             CloudTransferAvailability.RequireEnabled();
-            var path = Path.Combine(Path.GetTempPath(), "VRVlogCloudTransfers", Guid.NewGuid().ToString("N") + ".vrm");
+            var path = TransferTempDirectory.NewFile("VRVlogCloudTransfers", ".vrm");
             OwnedSnapshots.Add(path);
             return path;
         }

@@ -256,7 +256,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             exportPainted = false;
             var attempt = ++exportAttempt;
-            var path = AppTransferFlow.NewSnapshotPath();
+            string path;
+            // Every folder that could hold the transfer copy refused it: give up before exporting.
+            try { path = AppTransferFlow.NewSnapshotPath(); }
+            catch (InvalidOperationException exception)
+            {
+                flow.ExportFailed(exception.Message ?? "");
+                Refresh();
+                return;
+            }
             var target = avatar;
             var name = avatarName.Trim();
             var wireName = transferName;
@@ -276,6 +284,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             catch (Exception exception) { failure = exception.Message ?? ""; AppTransferFlow.Discard(path); }
             finally { EditorUtility.ClearProgressBar(); }
             if (saved || attempt != exportAttempt) return;
+            // Nothing was handed to the upload. Delete whatever this attempt left;
+            // a later save from the recovery window writes the file again.
+            AppTransferFlow.Discard(path);
             if (failure == null) { flow.ExportCanceled(); minSize = FormMinimumSize; }
             else flow.ExportFailed(failure);
             Refresh();
