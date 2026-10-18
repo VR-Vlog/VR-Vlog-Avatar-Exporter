@@ -170,7 +170,7 @@ class SyntheticSourceTests(unittest.TestCase):
     def test_rendered_catalogue_reads_back_with_the_same_structure(self):
         text = lc.render_catalogue(self.catalogue)
         self.assertTrue(text.startswith('// Generated from the official lilToon 9.9.9 shader declarations.\n'))
-        self.assertIn('internal static class LilToon999Catalogue', text)
+        self.assertIn('public static class LilToon999Catalogue', text)
         self.assertIn('{"_ReflectionCubeTex", 6},', text)
         self.assertIn('{"Hidden/lilToonGem", "FORWARD_PRE".Split(', text)
         back = lc.parse_catalogue(text)

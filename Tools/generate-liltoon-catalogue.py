@@ -1,4 +1,4 @@
-"""Generate Editor/LilToon234Catalogue.cs and the per-tag lilToon structure table.
+"""Generate Formats/Runtime/LilToon234Catalogue.cs and the per-tag lilToon structure table.
 
 Catalogue from one lilToon tag (a local folder, a tag of a local clone, or a GitHub download):
   python3 Tools/generate-liltoon-catalogue.py catalogue --fetch 2.3.4 --check
