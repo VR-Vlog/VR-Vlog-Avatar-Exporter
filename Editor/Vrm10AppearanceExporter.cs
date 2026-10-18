@@ -47,11 +47,12 @@ namespace VRVlog.LilToonExporter
             return exporter.Storage.ToGlbBytes();
         }
 
-        // ConvertCoordinate rebuilds every node from its world matrix. Under a
-        // zero scale (hidden gimmick parts) that matrix is singular: Unity logs
-        // an Assertion failed 'ValidTRS()' per node and the descendants lose
-        // their local transforms. Convert with those axes at 1, then restore the
-        // authored scale; flipping the X axis does not change scale.
+        // ConvertCoordinate rebuilds every node from its parent's inverse world
+        // matrix. Gimmicks hide parts with a subnormal scale (1e-45), whose
+        // inverse overflows: Unity logs an Assertion failed 'ValidTRS()' per
+        // node and the descendants lose their local transforms. Convert with
+        // near-zero axes at 1, then restore the authored scale; flipping the X
+        // axis does not change scale.
         internal static void ConvertCoordinateKeepingZeroScale(Model model)
         {
             var zeroed = new List<(Node node, Vector3 scale)>();

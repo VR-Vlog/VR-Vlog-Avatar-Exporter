@@ -58,25 +58,41 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Targets.Select(target => target.GetComponent<MeshFilter>().sharedMesh).Distinct().Count(), Is.EqualTo(1));
         }
 
-        [Test]
-        public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions()
+        // Gimmicks hide parts with a zero or subnormal scale (float.Epsilon is
+        // what such prefabs serialize as 1e-45). Unity accepts an all-zero
+        // matrix, but the subnormal one overflows when inverted.
+        [TestCase(0f)] [TestCase(float.Epsilon)]
+        public void ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions(float hiddenScale)
         {
             using var fixture = new Fixture(false, false, false);
             var branch = new GameObject("Zero scale branch").transform;
             branch.SetParent(fixture.Root.transform, false);
             branch.localPosition = new Vector3(.4f, .5f, .6f);
-            branch.localScale = Vector3.zero;
+            branch.localRotation = Quaternion.Euler(10, 20, 30);
+            branch.localScale = Vector3.one * hiddenScale;
             var inner = new GameObject("Inside zero scale").transform;
             inner.SetParent(branch, false);
             inner.localPosition = new Vector3(.1f, .2f, .3f);
             inner.localScale = new Vector3(2, 3, 4);
-            var bytes = fixture.ExportDirect();
-            UnityEngine.TestTools.LogAssert.NoUnexpectedReceived();
+            var logged = new List<string>();
+            void Capture(string message, string stack, LogType type)
+            {
+                if (type == LogType.Assert || type == LogType.Error || type == LogType.Exception) logged.Add(message);
+            }
+            byte[] bytes;
+            Application.logMessageReceived += Capture;
+            try { bytes = fixture.ExportDirect(); }
+            finally { Application.logMessageReceived -= Capture; }
+            Assert.That(logged, Is.Empty);
             var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
             float[] Values(string name, string key) =>
                 ((List<object>)nodes.Single(node => (string)node["name"] == name)[key]).Select(value => Convert.ToSingle(value)).ToArray();
-            Assert.That(Values("Zero scale branch", "scale"), Is.EqualTo(new[] { 0f, 0f, 0f }));
+            Assert.That(Values("Zero scale branch", "scale"), Has.All.EqualTo(hiddenScale));
             Assert.That(Values("Zero scale branch", "translation"), Is.EqualTo(new[] { -.4f, .5f, .6f }).Within(1e-5f));
+            var rotation = Values("Zero scale branch", "rotation");
+            var expected = Quaternion.Euler(10, 20, 30);
+            Assert.That(Mathf.Abs(Quaternion.Dot(new Quaternion(rotation[0], rotation[1], rotation[2], rotation[3]),
+                new Quaternion(expected.x, -expected.y, -expected.z, expected.w))), Is.GreaterThan(.9999f));
             Assert.That(Values("Inside zero scale", "translation"), Is.EqualTo(new[] { -.1f, .2f, .3f }).Within(1e-5f));
             Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 3f, 4f }).Within(1e-5f));
         }
