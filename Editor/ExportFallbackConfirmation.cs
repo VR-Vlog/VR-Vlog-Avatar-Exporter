@@ -15,7 +15,30 @@ namespace VRVlog.LilToonExporter
         // A collider of an unsupported type or shape was left out.
         ColliderSkipped,
         // No lilToon material; other materials became color-and-image MToon.
-        NonLilToonMaterials
+        NonLilToonMaterials,
+        // A stage failed and was left out; the export continued without it.
+        // Names are the stages (ExportStageGuard.Label).
+        StageOmitted,
+        // More items than the app accepts; the rest were left out.
+        LimitExceeded,
+        // A material could not be converted and became color-and-image MToon.
+        MaterialApproximated
+    }
+
+    // One line of the export result: what happened to which item, and why.
+    internal sealed class ExportResultEntry
+    {
+        internal ExportOutcome Outcome;
+        // Short feature name shown in the result list (for example "揺れ物").
+        internal string Category;
+        // The object, material or stage concerned. Empty for whole features.
+        internal string Name;
+        internal string Reason;
+        // Set for entries made by the stage guard.
+        internal ExportStage? Stage;
+        // Recovery diagnostics for a left-out stage (remedies the user can apply).
+        internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
+        internal int Count = 1;
     }
 
     internal sealed class ExportFallback
@@ -32,17 +55,68 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportFallbackReport
     {
         readonly List<ExportFallback> items = new List<ExportFallback>();
+        readonly List<ExportResultEntry> results = new List<ExportResultEntry>();
         internal IReadOnlyList<ExportFallback> Items => items;
+        // Every kept/baked/approximated/omitted item, for the result list.
+        internal IReadOnlyList<ExportResultEntry> Results => results;
         internal int Count => items.Count;
-        internal void Clear() => items.Clear();
+        internal void Clear() { items.Clear(); results.Clear(); }
 
-        internal void Add(ExportFallbackKind kind, string name = null, Transform root = null, Transform target = null)
+        // Number of affected items per outcome. Outcomes without items are 0.
+        internal Dictionary<ExportOutcome, int> Summary()
         {
+            var summary = ((ExportOutcome[])Enum.GetValues(typeof(ExportOutcome))).ToDictionary(outcome => outcome, outcome => 0);
+            foreach (var entry in results) summary[entry.Outcome] += entry.Count;
+            return summary;
+        }
+
+        internal ExportResultEntry Record(ExportOutcome outcome, string category, string name = null, string reason = null, int count = 1)
+        {
+            var entry = new ExportResultEntry { Outcome = outcome, Category = category, Name = name ?? "", Reason = reason ?? "", Count = count };
+            results.Add(entry);
+            return entry;
+        }
+
+        internal static ExportOutcome Outcome(ExportFallbackKind kind)
+        {
+            switch (kind)
+            {
+                case ExportFallbackKind.Blink:
+                case ExportFallbackKind.ColliderSkipped:
+                case ExportFallbackKind.LimitExceeded:
+                    return ExportOutcome.Omitted;
+                default:
+                    return ExportOutcome.Approximated;
+            }
+        }
+
+        internal void Add(ExportFallbackKind kind, string name = null, Transform root = null, Transform target = null, string reason = null)
+        {
+            // StageOmitted entries come with their own result line (AddStage).
+            if (kind != ExportFallbackKind.StageOmitted)
+            {
+                var category = ExportFallbackConfirmation.Feature(kind);
+                var label = name ?? RelativePath(root, target) ?? "";
+                if (!results.Any(entry => entry.Stage == null && entry.Category == category && entry.Name == label))
+                    Record(Outcome(kind), category, label, reason ?? ExportFallbackConfirmation.Failure(kind));
+            }
             var item = items.FirstOrDefault(existing => existing.Kind == kind);
             if (item == null) items.Add(item = new ExportFallback { Kind = kind });
             if (!string.IsNullOrEmpty(name) && !item.Names.Contains(name)) item.Names.Add(name);
             var path = RelativePath(root, target);
             if (path != null && !item.Paths.Contains(path)) item.Paths.Add(path);
+        }
+
+        // A stage the guard left out: one dialog line plus one result line that
+        // keeps the cause and the recovery remedies found for it.
+        internal ExportResultEntry AddStage(ExportStage stage, string reason, IEnumerable<ExportRecoveryDiagnostic> diagnostics = null)
+        {
+            var label = ExportStageGuard.Label(stage);
+            Add(ExportFallbackKind.StageOmitted, ExporterLocalization.T(label));
+            var entry = Record(ExportStageGuard.Outcome(stage), label, "", reason);
+            entry.Stage = stage;
+            if (diagnostics != null) entry.Diagnostics.AddRange(diagnostics);
+            return entry;
         }
 
         internal static string RelativePath(Transform root, Transform target)
@@ -95,6 +169,9 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.Blink: return "瞬きの表情の自動設定ができませんでした";
                 case ExportFallbackKind.PlaneInsideBounds: return "平面のInside Boundsを変換できませんでした";
                 case ExportFallbackKind.ColliderSkipped: return "PhysBoneコライダーを変換できませんでした";
+                case ExportFallbackKind.StageOmitted: return "書き出しの一部を省略しました";
+                case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
+                case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
                 default: return "lilToonのマテリアルが見つかりませんでした";
             }
         }
@@ -106,6 +183,9 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.Blink: return "瞬き";
                 case ExportFallbackKind.PlaneInsideBounds: return "Inside Bounds";
                 case ExportFallbackKind.ColliderSkipped: return "この衝突";
+                case ExportFallbackKind.StageOmitted: return "省略した機能";
+                case ExportFallbackKind.LimitExceeded: return "上限を超えた項目";
+                case ExportFallbackKind.MaterialApproximated: return "その材質の表現";
                 default: return "lilToonの表現";
             }
         }

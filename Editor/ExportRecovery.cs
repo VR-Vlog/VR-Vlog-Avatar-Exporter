@@ -55,6 +55,9 @@ namespace VRVlog.LilToonExporter
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
         // Features the export worked around instead of stopping. Read before saving.
         internal readonly ExportFallbackReport Fallbacks = new ExportFallbackReport();
+        // Set by the caller before exporting. A failing stage is then left out
+        // and listed in Fallbacks instead of stopping the export. Begin keeps it.
+        internal bool ContinueOnStageFailure;
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         string errorType;
 
@@ -67,6 +70,10 @@ namespace VRVlog.LilToonExporter
             Fallbacks.Clear();
             originals.Clear();
         }
+
+        // A lenient export that left stages out still succeeded; keep the
+        // support text from naming the error of a left-out stage.
+        internal void ClearError() => errorType = null;
 
         internal void Track(Material copy, Material original)
         {
