@@ -387,6 +387,8 @@ BEHAVIOR_CASES = {
         'MenuTraversalKeepsLabelsAncestorGatesAndReportsPuppets': 1,
         'PortableCurveMatchesUnityWeightedAndSteppedAnimation': 1,
         'WriteDefaultsOffRetainsTheWholeEvaluatedFace': 1,
+        'RepeatedFxParameterDeclarationsKeepMenuExpressions': 1,
+        'ConflictingFxParameterDeclarationsAreLeftForStrictChecks': 1,
     },
     'ParameterDriverExpressionTests': {
         'FixedSelectorsRetainNativeSdkWritersAndEffectiveOverridesWithIndependentRandomRest': 6,
@@ -800,6 +802,7 @@ BEHAVIOR_CASES = {
         'InstalledMaMarkerCannotMakeAnUnknownCallbackSafe': 1,
         'NativeProcessedControllerCanRetainAFiniteTransformCurveWithNoTarget': 2,
         'TheSameTransformCurveOnALiveOrInactiveTargetStillRejectsTheNativeExpression': 2,
+        'RepeatedFxParameterDeclarationsStillDiscoverFaces': 1,
     },
     'InferredStatePathTests': {
         'RenamedLayerDiscoversItsReachableFaceUsingTheNativeMachineRoot': 2,
