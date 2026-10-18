@@ -34,7 +34,7 @@
     {
       "set": "E1",
       "run": "focused",
-      "commit": "66a1fbe (floor 3.7.0)",
+      "commit": "0af3ace (floor 3.7.0, measured before rebasing onto the UniVRM 0.131 review fixes)",
       "counts": {
         "total": 152,
         "passed": 125,
@@ -71,7 +71,7 @@
     {
       "set": "E2",
       "run": "focused",
-      "commit": "66a1fbe (floor 3.7.0)",
+      "commit": "0af3ace (floor 3.7.0, measured before rebasing onto the UniVRM 0.131 review fixes)",
       "counts": {
         "total": 152,
         "passed": 142,
@@ -98,7 +98,7 @@
     {
       "set": "E3",
       "run": "focused",
-      "commit": "1fbae00",
+      "commit": "153bb90 (measured before rebasing onto the UniVRM 0.131 review fixes)",
       "counts": {
         "total": 152,
         "passed": 121,
@@ -135,7 +135,7 @@
     {
       "set": "E3",
       "run": "focused-rerun",
-      "commit": "1fbae00",
+      "commit": "153bb90 (measured before rebasing onto the UniVRM 0.131 review fixes)",
       "counts": {
         "total": 4,
         "passed": 4,
@@ -147,7 +147,7 @@
     {
       "set": "E3",
       "run": "exporter-integration",
-      "commit": "1fbae00",
+      "commit": "153bb90 (measured before rebasing onto the UniVRM 0.131 review fixes)",
       "counts": {
         "total": 2131,
         "passed": 2002,

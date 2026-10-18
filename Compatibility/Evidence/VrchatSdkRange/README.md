@@ -42,7 +42,10 @@ source controller is left unchanged.
 | E2 | 3.10.5 | Passed | Passed |
 
 E1 and E2 ran on the commit with the earlier 3.7.0 floor. The only change after
-it is the floor constant, so the check that ran is the same.
+it is the floor constant, so the check that ran is the same. All runs were made
+before this branch was rebased onto the UniVRM 0.131 review fixes, which change
+only the UniVRM version defines, tooling and documents; the `commit` values in
+`results.json` name the rebased commits with the same SDK changes.
 
 ## Other results
 
