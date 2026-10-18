@@ -7,14 +7,19 @@ public static class DependencyCompatibilityTests
     static void Check(bool value, string message) { count++; if (!value) throw new Exception(message); }
     public static void Run()
     {
-        foreach (var version in new[] { "0.131.0", "0.131.1", "0.131.2" })
+        Check(DependencyPolicy.UniVrmRange == "0.131.x", "Accepted UniVRM patch line");
+        Check(DependencyPolicy.UniVrmVersions == "0.131.0, 0.131.1, 0.131.2, 0.131.3", "Verified UniVRM patches");
+        var line = new[] { "0.131.0", "0.131.1", "0.131.2", "0.131.3", "0.131.4", "0.131.10" };
+        foreach (var version in line)
         {
+            Check(DependencyPolicy.SupportsUniVrm(version), "Patch line release " + version);
             Check(DependencyPolicy.UniVrmError(version, version) == null, "Matched supported pair " + version);
             DependencyPolicy.RequireUniVrm(version, version);
-            foreach (var other in new[] { "0.131.0", "0.131.1", "0.131.2" })
+            foreach (var other in line)
                 if (other != version) Check(DependencyPolicy.UniVrmError(version, other) != null, "Mixed pair must fail");
         }
-        foreach (var version in new[] { null, "", "0.130.1", "0.131.3", "0.132.0", "0.131.1-preview.1", "0.131.1+local", " 0.131.1", "0.131.1.0" })
+        foreach (var version in new[] { null, "", "0.130.1", "0.130.131", "0.132.0", "1.131.0", "0.13.1", "0.1310.0", "0.131.01",
+            "0.131.1-preview.1", "0.131.4-beta.1", "0.131.1+local", " 0.131.1", "0.131.1 ", "0.131.1.0", "0.131", "0.131.x" })
         {
             Check(!DependencyPolicy.SupportsUniVrm(version), "Unregistered version cannot select a backend");
             Check(DependencyPolicy.UniVrmError(version, "0.131.1") != null, "Invalid VRM");

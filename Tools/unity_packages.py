@@ -15,6 +15,24 @@ def parse_version(text):
     return tuple(int(part) for part in match.groups())
 
 
+def univrm_support(policy, version):
+    """Classify a UniVRM version against Compatibility/dependencies.json.
+
+    `supported` matches DependencyPolicy.SupportsUniVrm: any release X.Y.Z of the
+    accepted patch line `uniVrm.vpmRange` (X.Y.x). `listed` says whether the
+    patch is in `uniVrm.versions`, i.e. already verified with its source commit.
+    """
+    line = re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.x', policy['uniVrm']['vpmRange'])
+    if not line:
+        raise ValueError('uniVrm.vpmRange is not an X.Y.x patch line: ' + repr(policy['uniVrm']['vpmRange']))
+    try:
+        parsed = parse_version(version)
+    except ValueError:
+        parsed = None
+    supported = parsed is not None and parsed[:2] == (int(line.group(1)), int(line.group(2)))
+    return {'supported': supported, 'listed': supported and version in policy['uniVrm']['versions']}
+
+
 def _package_json(folder):
     data = json.loads((folder / 'package.json').read_text(encoding='utf-8-sig'))
     if not isinstance(data, dict) or not isinstance(data.get('version'), str):

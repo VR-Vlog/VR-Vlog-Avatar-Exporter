@@ -38,6 +38,10 @@ BEHAVIOR_CASES = {
         'SharedStaticMeshRepairsEveryExportedMeshGroupWithoutSplittingSourceIdentity': 1,
         'SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings': 2,
     },
+    'MorphNormalExportTests': {
+        'AuthoredNormalTargetsKeepSourceIdentityAndSubmeshVertexOrder': 2,
+        'EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals': 1,
+    },
     'AppearanceRecoveryTests': {
         'ActiveOrKeywordEnabledLayersKeepTheOriginalDynamicImageDiagnostic': 3,
         'EmptyMeshDoesNotCreateAFullBindingOrRemoveItsBone': 4,
@@ -1163,7 +1167,10 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-    supported = args.expect_univrm in config['uniVrm']['versions']
+    # Every release of the accepted patch line is supported, as at export time,
+    # so a new patch can be verified before it is added to uniVrm.versions.
+    univrm = unity_packages.univrm_support(config, args.expect_univrm)
+    supported = univrm['supported']
     filters = profile_filters(supported, args.profile)
     identity_before = source_identity(root)
     liltoon_before = installed_liltoon(args.project, args.expect_liltoon)
@@ -1193,7 +1200,8 @@ def main():
     # version that was readable beforehand can be compared.
     if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
-    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
+    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm,
+              'uniVrmSupported': supported, 'uniVrmListed': univrm['listed'], 'unity': args.expect_unity,
               'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}
     (output / (stamp + '.json')).write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
