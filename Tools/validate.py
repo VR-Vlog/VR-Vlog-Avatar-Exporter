@@ -333,7 +333,7 @@ assert '.Attempt(' not in normal_export and '.SavePending(' not in normal_export
 assert 'ExportRecoverySourceStamp' not in normal_export
 assert (root / 'Tests/Editor/ExportFlowTests.cs').is_file()
 assert 'ExportAndSaveNormally(' in (root / 'Tests/Editor/ExportFlowTests.cs').read_text(encoding='utf-8')
-assert 'recoveryOptions: options, recoveryReport: report' in window
+assert 'recoveryOptions: recoveryOptions, recoveryReport: recoveryReport' in export_settings
 assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer)?.Unit' in recovery
 assert 'code == "audio-link"' in recovery and 'Official(audio)' in recovery
 # Recovery compares partial solver output with the original capture separately

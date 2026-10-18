@@ -95,15 +95,32 @@ namespace VRVlog.LilToonExporter
             if (key == null) { Unsaved[avatar.GetInstanceID()] = settings.Copy(); return; }
             // A file from another format version is left untouched.
             var store = Read(out var foreign);
-            if (foreign) return;
+            if (foreign) { WarnOnce(ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。")); return; }
             store = store ?? new Store();
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
             // Defaults are not written, so the file only lists adjusted avatars.
             if (settings.Signature() != new ExportSettings().Signature()) store.Avatars.Add(Capture(key, avatar, settings));
             if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
-            var path = FilePath;
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+            // Remembering is a convenience: a file that cannot be written never stops an export.
+            try
+            {
+                var path = FilePath;
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+            }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                WarnOnce(string.Format(ExporterLocalization.T("書き出し設定を保存できませんでした: {0}"), error.Message));
+            }
+        }
+
+        static bool warned;
+
+        static void WarnOnce(string message)
+        {
+            if (warned) return;
+            warned = true;
+            Debug.LogWarning(message);
         }
 
         static AvatarEntry Capture(string key, GameObject avatar, ExportSettings settings)

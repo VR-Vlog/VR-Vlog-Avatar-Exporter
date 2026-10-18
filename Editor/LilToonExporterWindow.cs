@@ -76,9 +76,23 @@ namespace VRVlog.LilToonExporter
         // options), and otherwise picks up a save made by another window.
         private void OnInspectorUpdate()
         {
-            if (avatar == null || GUIUtility.hotControl != 0) return;
+            if (avatar == null || GUIUtility.hotControl != 0 || EditorApplication.isPlayingOrWillChangePlaymode) return;
             if (settings.Signature() != savedSignature) SaveSettings();
-            else if (loadedRevision != ExportSettingsStore.Revision) LoadSettings(avatar);
+            else if (loadedRevision != ExportSettingsStore.Revision) ReloadSettings();
+        }
+
+        // Another window saved. The settings object is kept and only its
+        // contents are replaced, because the pose window edits settings.Poses
+        // by reference; nothing changes when this avatar's settings are the same.
+        private void ReloadSettings()
+        {
+            var loaded = ExportSettingsStore.Load(avatar);
+            loadedRevision = ExportSettingsStore.Revision;
+            if (loaded.Signature() == settings.Signature()) return;
+            settings.Assign(loaded);
+            savedSignature = settings.Signature();
+            InvalidateAvatarScan();
+            Repaint();
         }
 
         private void SaveSettings()

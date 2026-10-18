@@ -43,6 +43,22 @@ namespace VRVlog.LilToonExporter
             return copy;
         }
 
+        // Replaces the choices with those of other while keeping this object
+        // and its Poses, which an open pose window may be editing.
+        internal void Assign(ExportSettings other)
+        {
+            other = other?.Copy() ?? new ExportSettings();
+            ExcludedObjects.Clear(); ExcludedObjects.AddRange(other.ExcludedObjects);
+            AutoExcludeGimmicks = other.AutoExcludeGimmicks;
+            IncludedGimmicks.Clear(); IncludedGimmicks.AddRange(other.IncludedGimmicks);
+            Blink = other.Blink;
+            if (Poses == null) Poses = new PoseExportOptions();
+            Poses.Manual.Clear(); Poses.Manual.AddRange(other.Poses.Manual);
+            Poses.Excluded.Clear(); Poses.Excluded.UnionWith(other.Poses.Excluded);
+            Poses.Names.Clear(); foreach (var item in other.Poses.Names) Poses.Names[item.Key] = item.Value;
+            License = other.License;
+        }
+
         // A cheap text that changes whenever a choice changes. Windows compare
         // it to know when to save; it is not stored.
         internal string Signature()

@@ -161,6 +161,18 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ReloadingKeepsThePoseOptionsAnOpenPoseWindowEdits()
+        {
+            using var fixture = new SavedAvatar();
+            var settings = new ExportSettings();
+            var poses = settings.Poses;
+            settings.Assign(Adjusted(fixture));
+            Assert.That(settings.Poses, Is.SameAs(poses));
+            Assert.That(settings.Poses.Names["pose-b"], Is.EqualTo("Renamed"));
+            Assert.That(settings.Signature(), Is.EqualTo(Adjusted(fixture).Signature()));
+        }
+
+        [Test]
         public void AppTransferExportsWithTheAvatarsRememberedSettings()
         {
             using var fixture = new SavedAvatar();
