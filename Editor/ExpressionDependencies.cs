@@ -97,11 +97,21 @@ namespace VRVlog.LilToonExporter
             return runtime as AnimatorController ?? throw new InvalidOperationException("FX Animator Controllerを取得できません。");
         }
 
-        // Unity resolves a repeated parameter name to one parameter; keep the first declaration only.
+        // Unity resolves a repeated parameter name to one parameter. Collapse repeats only when every
+        // declaration agrees on type and defaults; conflicting ones stay for the callers' strict checks.
         internal static AnimatorControllerParameter[] UniqueParameters(RuntimeAnimatorController runtime)
         {
+            var parameters = Controller(runtime).parameters;
+            var first = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            foreach (var parameter in parameters.Where(parameter => parameter != null))
+            {
+                if (!first.TryGetValue(parameter.name, out var seen)) { first.Add(parameter.name, parameter); continue; }
+                if (seen.type != parameter.type || seen.defaultBool != parameter.defaultBool ||
+                    seen.defaultInt != parameter.defaultInt || !seen.defaultFloat.Equals(parameter.defaultFloat)) return parameters;
+            }
+            if (first.Count == parameters.Count(parameter => parameter != null)) return parameters;
             var names = new HashSet<string>(StringComparer.Ordinal);
-            return Controller(runtime).parameters.Where(parameter => parameter == null || names.Add(parameter.name)).ToArray();
+            return parameters.Where(parameter => parameter == null || names.Add(parameter.name)).ToArray();
         }
 
         internal static Dictionary<AnimationClip, AnimationClip> Overrides(RuntimeAnimatorController runtime)

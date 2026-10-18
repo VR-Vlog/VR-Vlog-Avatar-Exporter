@@ -1,4 +1,4 @@
-# FXのAnimator Controllerで重複するパラメーターは最初の宣言だけを使う
+# FXのAnimator Controllerで型と初期値がそろった重複パラメーターは最初の宣言だけを使う
 
 - 日付: 2026-10-19
 - 対象: `Editor/ExpressionDependencies.cs`・`Editor/AdditionalParameterConstants.cs`・`Editor/ExperimentalExpressionControllerScope.cs`・`Editor/ExpressionEvaluationSession.cs`・`Editor/FixedExpressionContext.cs`・`Editor/HeldAutomaticExpressionLayers.cs`・`Editor/NativeTreeTrajectory.cs`・`Editor/NeutralAdditionalDataPreflight.cs`・`Editor/NeutralCurveConditions.cs`・`Editor/NeutralParameterDependencies.cs`・`Editor/NeutralRandomRest.cs`・`Editor/NeutralShapeSampler.cs`・`Editor/PoseMenuResolver.cs`・`Editor/VrChatAuthoredFaces.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/VrChatFxExpressions.cs`・`Tests/Editor/VrChatMenuExpressionTests.cs`・`Tests/Editor/DirectFxExpressionDiscoveryTests.cs`・`CHANGELOG.md`
@@ -14,6 +14,7 @@ FXのAnimator Controllerに同じ名前のパラメーターが3回宣言され�
 ## 決定
 
 - `ExpressionDependencies.UniqueParameters(RuntimeAnimatorController)` を足す。`Controller(runtime).parameters` から、同じ名前（ordinal）の2つ目以降の宣言を落とした配列を返す。名前が1つのパラメーターに解決されるUnityの動作に合わせ、最初の宣言を使う。`null` の要素はそのまま残し、これまでの検査に任せる。
+- 一本化するのは、同じ名前の宣言がすべて同じ型・初期値（`defaultBool`・`defaultInt`・`defaultFloat`）のときだけにする。1つでも食い違う名前があれば、重複を含む元の配列をそのまま返し、これまでどおり例外や証明の打ち切りでその表情を省く。どの宣言の値が実際に使われるかをこちらで決めつけないため。
 - パラメーターを名前で引く・名前ごとにまとめる箇所は、`controller.parameters` の代わりにこの関数を使う。評価用に作るコントローラーの複製（`ExpressionEvaluationSession`・`ExperimentalExpressionControllerScope`・`VrChatExpressionSampler` のプローブ）も、重複を落とした宣言で作る。複製の側でも後続の処理が名前で引くため。
 - 名前の集合を作るだけの箇所・`Any` で有無を見るだけの箇所・プレイアブルへ値を設定するだけの箇所は変えない。重複があっても結果が変わらない。
 - `TryReachableFxCommands`・`TryFixedGateReads`・`PoseMenuResolver.Resolve` が受け取った配列の重複を拒む検査はそのまま残し、呼び出す側で重複を落としてから渡す。
@@ -23,4 +24,5 @@ FXのAnimator Controllerに同じ名前のパラメーターが3回宣言され�
 
 - Unity 2022.3.22f1のRoslynで、Editorのアセンブリと `Tests/Editor` のアセンブリをコンパイルできることを確かめた（`Tests/Editor/ExpressionAnimationDocumentTests.cs` は、手元のビルド成果物に新しいアセンブリの参照が無いため除いた）。このPCではUnityのテストを実行していない。
 - `VrChatMenuExpressionTests.RepeatedFxParameterDeclarationsKeepMenuExpressions` で、`TrackingType`（Int）を3回宣言したFXについて、`FixedNeutralValues` が例外を投げずに `TrackingType=6` を返すこと、メニューの選択で表情が75の重みで取れること、元のコントローラーが変わらないことを確かめる。変更前は `FixedNeutralValues` の `initial.Add` で失敗する。
+- `VrChatMenuExpressionTests.ConflictingFxParameterDeclarationsAreLeftForStrictChecks` で、型と初期値がそろった重複は1つにまとまり、初期値または型が食い違う重複は元の配列のまま返ることを確かめる。
 - `DirectFxExpressionDiscoveryTests.RepeatedFxParameterDeclarationsStillDiscoverFaces` で、同じFXからFXの遷移由来の表情が見つかり、エラーにならないことを確かめる。変更前は、パラメーターを名前で引く辞書を作るところ（`VrChatFxExpressions.Discover` の `ToDictionary` など）で `ArgumentException` になる。

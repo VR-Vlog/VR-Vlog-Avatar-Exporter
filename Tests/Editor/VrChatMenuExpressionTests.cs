@@ -144,6 +144,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(sourceJson), "The source controller keeps its repeated declarations.");
         }
 
+        [Test]
+        public void ConflictingFxParameterDeclarationsAreLeftForStrictChecks()
+        {
+            DiscreteController();
+            var matching = Enumerable.Range(0, 2).Select(_ => new AnimatorControllerParameter
+                { name = "TrackingType", type = AnimatorControllerParameterType.Int, defaultInt = 6 });
+            controller.parameters = controller.parameters.Concat(matching).ToArray();
+            Assert.That(ExpressionDependencies.UniqueParameters(controller).Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(1));
+            // Same name with another type or default cannot be collapsed safely.
+            controller.parameters = controller.parameters.Concat(new[]
+            {
+                new AnimatorControllerParameter { name = "TrackingType", type = AnimatorControllerParameterType.Int, defaultInt = 1 },
+            }).ToArray();
+            Assert.That(ExpressionDependencies.UniqueParameters(controller).Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(3));
+            controller.parameters = controller.parameters.Where(parameter => parameter.name != "TrackingType").Concat(new[]
+            {
+                new AnimatorControllerParameter { name = "TrackingType", type = AnimatorControllerParameterType.Int },
+                new AnimatorControllerParameter { name = "TrackingType", type = AnimatorControllerParameterType.Float },
+            }).ToArray();
+            Assert.That(ExpressionDependencies.UniqueParameters(controller).Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(2));
+        }
+
         private (float Face, float Blink, AnimatorStateInfo State) OriginalNativeSelectedPose(RuntimeAnimatorController runtime)
         {
             // Independent original-controller witness: no exporter dependency,
