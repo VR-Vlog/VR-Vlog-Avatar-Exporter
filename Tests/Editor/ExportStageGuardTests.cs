@@ -14,11 +14,13 @@ namespace VRVlog.LilToonExporter.Tests
         [TearDown]
         public void ResetFaultInjection() => ExportStageGuard.FaultInjection = null;
 
-        static IEnumerable<ExportStage> Stages => Enum.GetValues(typeof(ExportStage)).Cast<ExportStage>();
+        // Stage names, since the internal enum cannot be a public test parameter.
+        static IEnumerable<string> Stages => Enum.GetNames(typeof(ExportStage));
 
         [TestCaseSource(nameof(Stages))]
-        public void EveryStageCanFailAndTheFileIsStillWritten(ExportStage stage)
+        public void EveryStageCanFailAndTheFileIsStillWritten(string stageName)
         {
+            var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Guarded" };
             try
@@ -61,8 +63,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCaseSource(nameof(Stages))]
-        public void StrictExportsStillStopAtTheFirstFailure(ExportStage stage)
+        public void StrictExportsStillStopAtTheFirstFailure(string stageName)
         {
+            var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Strict" };
             try
