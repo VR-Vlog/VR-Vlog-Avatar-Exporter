@@ -424,6 +424,10 @@ an absent package is a skip, while an installed but unloaded component is a fail
 Record the exact AAO version and any explicitly applied
 dependency patch; use the fixture's supported configuration API. Missing or
 unsupported integration packages cause required skips and therefore a failed run.
+The AAO spring fixtures carry a VRChat Avatar Descriptor and a weighted body, as
+real avatars do. The box-removal fixtures have no Descriptor, so NDMF picks the
+generic platform, where AAO runs only from 1.9.0; they skip on older AAO.
+`Compatibility/Evidence/AaoRange/` has the 1.7.13, 1.8.15 and 1.9.20 results.
 
 The runner runs each selected class and checks named critical regressions and their
 parameter counts. A missing class/case, duplicate identity, failed/skipped case,

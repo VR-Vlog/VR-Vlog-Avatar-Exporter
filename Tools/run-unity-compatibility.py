@@ -144,6 +144,7 @@ BEHAVIOR_CASES = {
         'MalformedPhysBoneDataStillStopsConversion': 3,
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,
+        'PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem': 1,
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
@@ -1005,6 +1006,7 @@ INTEGRATION_CASES = {
     },
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
+        'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real
