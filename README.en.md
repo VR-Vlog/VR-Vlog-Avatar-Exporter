@@ -27,7 +27,7 @@ The exporter does not reproduce every shader effect, Animator behavior or VRChat
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
 | lilToon | 2.0.0–2.3.4; install it with your avatar before exporting |
-| UniVRM / UniGLTF | Matching 0.131.0, 0.131.1 or 0.131.2 packages |
+| UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 
 Install Modular Avatar and its dependencies beforehand if your avatar uses them. The [dependency policy](Compatibility/dependencies.json) records supported versions; the exporter reports missing or unsupported packages without automatically changing them.

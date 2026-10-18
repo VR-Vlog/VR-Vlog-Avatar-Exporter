@@ -7,7 +7,7 @@ the installable package; development manifests and test tools are excluded.
 
 The independent Editor compatibility assembly references only Unity. It owns
 the menu and environment diagnostics. The UniVRM backend and its tests compile
-only when both VRM10 and UniGLTF match an explicitly listed version. The runtime
+only when both VRM10 and UniGLTF are in the accepted 0.131 patch line. The runtime
 guard also rejects mixed versions. Missing/unsupported packages therefore do
 not make this exporter's UniVRM references break compilation before diagnostics.
 Compilation errors inside another package can still prevent Unity from loading
@@ -23,8 +23,15 @@ without absolute paths or avatar data. A missing backend alone is not evidence
 of a compile error in another tool.
 
 The VPM requirement stays at `0.131.x` to avoid forcing changes to an existing
-creator project. Only the explicitly listed patches can export. A future patch
-selected by VPM requires review before it is enabled. Diagnostics never install,
+creator project. Every release of that patch line can export when UniGLTF and
+VRM have the same version (`[0.131.0,0.132.0)` version defines; prereleases,
+build metadata and other minor lines stop). `uniVrm.versions` lists the patches
+actually verified with their official source commit; a new 0.131 patch is
+accepted before it is listed. The UniVRM APIs the exporter calls did not change
+from 0.131.0 to 0.131.3. A later patch that changes their signatures makes the
+backend fail to compile, which diagnostics report; a behavior change behind an
+unchanged signature is only found when that patch is verified. A new minor line (0.132 and later) still requires review and a new
+adapter. Diagnostics never install,
 upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
