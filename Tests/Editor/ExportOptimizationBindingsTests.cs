@@ -154,10 +154,13 @@ namespace VRVlog.LilToonExporter.Tests
             bindings.BindNodes(skin => skin == target ? 1 : -1);
             var expression = new VrmMenuExpressions.Expression { Name = "Smile" };
             expression.Direct.Add((originals[0], "Smile", .25f)); expression.Direct.Add((originals[1], "Smile", .5f));
-            var bind = MenuBinds(VrmMenuExpressions.Add(MenuOutput("Smile"), new[] { expression }, bindings), "VRChat / Smile").Single();
+            var warnings = new List<string>();
+            var bind = MenuBinds(VrmMenuExpressions.Add(MenuOutput("Smile"), new[] { expression }, bindings, warnings), "VRChat / Smile").Single();
             Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
             Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
             Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.25).Within(.000001));
+            // The dropped .5 is reported, not lost silently.
+            Assert.That(warnings, Has.Exactly(1).Contains("Smile"));
         }
 
         static byte[] MenuOutput(params string[] names) => GlbDocument.Create(new Dictionary<string, object> {

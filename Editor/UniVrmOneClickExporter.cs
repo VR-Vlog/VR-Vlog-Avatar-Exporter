@@ -506,6 +506,7 @@ namespace VRVlog.LilToonExporter
                     recovery?.Track(copiedMaterial, originalMaterial);
                 });
                 guard.Watch(ExportStage.BlinkCapture, () => blink.Remap(optimizerBindings));
+                // Direct references stay as captured; MenuBinding resolves them later.
                 guard.Step(ExportStage.Expressions, () => RemapMenuExpressions(expressions, optimizerBindings));
                 // Authoring passes may restore source material references. Reapply
                 // only the selected, source-identity recipe to the owned copy.

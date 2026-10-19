@@ -110,18 +110,26 @@ namespace VRVlog.LilToonExporter
                 if ((expression.Direct.Count > 0 || expression.DirectPoints.Count > 0) && direct == null)
                     throw new InvalidOperationException("表情の元BlendShapeの出力先を解決できません: " + expression.Name);
                 var binds = new List<object>();
-                void Bind(Dictionary<string, object> bind)
+                void Bind(Dictionary<string, object> bind, string shape)
                 {
                     // Merged source shapes keep the first declaration only,
-                    // as UniVRM would otherwise apply one target twice.
-                    if (binds.Cast<Dictionary<string, object>>().Any(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
-                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]))) return;
+                    // as UniVRM would otherwise apply one target twice. One
+                    // merged target cannot hold two weights; say which was kept.
+                    var first = binds.Cast<Dictionary<string, object>>().FirstOrDefault(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
+                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]));
+                    if (first != null)
+                    {
+                        if (Math.Abs(Convert.ToDouble(first["weight"]) - Convert.ToDouble(bind["weight"])) > 1e-4)
+                            warnings?.Add("表情「" + expression.Name + "」で、最適化ツールが1つにまとめたシェイプキー「" + shape +
+                                "」に別々の値が指定されていたため、最初の値だけを使いました。");
+                        return;
+                    }
                     binds.Add(bind);
                 }
                 Dictionary<string, object> Weighted(ExpressionAnimationData.MorphReference morph, double weight) =>
                     new Dictionary<string, object> { ["node"] = (long)morph.Node, ["index"] = (long)morph.Index, ["weight"] = weight };
-                foreach (var target in expression.Targets) Bind(Weighted(Named(target), 1.0));
-                foreach (var (renderer, shape, weight) in expression.Direct) Bind(direct.MenuBinding(glb.Json, renderer, shape, weight));
+                foreach (var target in expression.Targets) Bind(Weighted(Named(target), 1.0), target);
+                foreach (var (renderer, shape, weight) in expression.Direct) Bind(direct.MenuBinding(glb.Json, renderer, shape, weight), shape);
                 ExpressionAnimationData animation = null;
                 if (expression.Animation != null)
                 {
@@ -147,7 +155,8 @@ namespace VRVlog.LilToonExporter
                         }
                         animation.Channels.Add(copy);
                     }
-                    foreach (var (point, weight) in expression.FinalPoints()) Bind(Weighted(resolved[point], weight));
+                    foreach (var (point, weight) in expression.FinalPoints())
+                        Bind(Weighted(resolved[point], weight), point.Target ?? (expression.DirectPoints.TryGetValue(point, out var source) ? source.Shape : null));
                     var morphs = resolved.Values.Select(morph => (morph.Node, morph.Index)).ToList();
                     if (morphs.Distinct().Count() != morphs.Count)
                     {
