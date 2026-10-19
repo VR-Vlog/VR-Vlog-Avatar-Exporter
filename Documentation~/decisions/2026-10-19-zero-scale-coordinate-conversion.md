@@ -33,4 +33,5 @@
 
 ## 検証
 
-- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0・1e-45・1 軸だけ 0 の親（位置と回転を持つ）と、0 の親の中にもう 1 つ 0 のノードがある場合について、その下の子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の 0 に近い軸の Scale が元の値と一致すること、親の位置と回転・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。変更前のコードでは 2 件とも「Assertion failed on expression: 'ValidTRS()'」で失敗し、変更後は合格した。
+- `MissingMeshAttributesTests.ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions`: Scale が 0・1e-45・1 軸だけ 0 の親（位置と回転を持つ）と、0 の親の中にもう 1 つ 0 のノードがある場合について、その下の子（位置と Scale を持つ）を付けたアバターを書き出し、書き出しのあいだにエラーのログが出ないこと、親の 0 に近い軸の Scale が元の値と一致すること、親の位置と回転・子の位置が X を反転した値・子の Scale が元の値であることを確かめる。`LogAssert` は Unity 内部の `Assertion failed` をテストの失敗として扱わないので、`Application.logMessageReceived` でログを集めて確かめる。変更前のコードでは 4 件とも「Assertion failed on expression: 'ValidTRS()'」で失敗し、変更後は合格した。
+- Unity 2022.3.22f1 で、パッケージの EditMode テストを全件実行した。失敗はこの変更の無い状態でも失敗する 9 件だけだった。レビューの指摘を直したあとの版で、関係する 4 クラス 115 件がすべて合格した。
