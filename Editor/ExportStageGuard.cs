@@ -27,6 +27,7 @@ namespace VRVlog.LilToonExporter
         TextureBake,
         Attachments,
         PhysBone,
+        Constraints,
         LookAt,
         SkinRepair,
         ExpressionOutput,
@@ -195,6 +196,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.TextureBake: return "標準VRM表示用の画像の焼き込み";
                 case ExportStage.Attachments: return "独立したパーツの接続の確認";
                 case ExportStage.PhysBone: return "揺れ物";
+                case ExportStage.Constraints: return "コンストレイントの変換";
                 case ExportStage.LookAt: return "視線";
                 case ExportStage.SkinRepair: return "スキンの修復";
                 case ExportStage.ExpressionOutput: return "VRM表情の追加";
