@@ -334,6 +334,7 @@ BEHAVIOR_CASES = {
         'DirectBaseClipWithoutStateProvenanceCannotDiscardItsLayerControl': 1,
         'InactiveSelectedStateKeepsItsOwnWeightButExecutesAControlOfAnotherLayer': 1,
         'SelectedCallbackRetainsItsUpperNonEquivalentSelectorTarget': 2,
+        'AControlOnALateExitTimeTargetIsFollowed': 1,
     },
     'SelectedExpressionAppearanceTests': {
         'UnchangedPreparedAppearanceKeepsOnlyAuthoredMorphAnimation': 8,
@@ -375,8 +376,8 @@ BEHAVIOR_CASES = {
         'GestureClipKeepsChangingCurvesButRejectsPartialMaterialFaces': 1,
         'AnimatedExpressionDataContracts': 1,
         'BlendTreeUsesTheMenuValueInsteadOfPublishingItsIndividualShapes': 1,
-        'DelayedExitCannotMasqueradeAsAFixedExpression': 1,
-        'DelayedNonLoopingStepCannotMasqueradeAsAFixedExpression': 1,
+        'DelayedExitIsFollowedAndReported': 1,
+        'DelayedNonLoopingStepIsSavedAtItsLastKeyAndReported': 1,
         'DuplicateHierarchyPathsCannotCaptureTheWrongFace': 1,
         'GestureBlendTreeLeavesAreNotRegisteredAsSeparateExpressions': 1,
         'GestureClipKeepsTheAuthoredCombinationDespiteAutomaticBlink': 1,
