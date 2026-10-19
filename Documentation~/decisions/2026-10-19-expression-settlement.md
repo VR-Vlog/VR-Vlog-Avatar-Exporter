@@ -27,6 +27,7 @@
     - 時間で変わる表情を最後のキーで保存しました
   - 警告は、メニューの項目（`VrChatExpressionSampler.Analyze`）・FX の条件から見つけた候補・Gesture のステートのどの経路で読んだ表情でも、その表情のメッセージに入れる。書き出しはこのメッセージから警告と結果の一覧の行を作る。最初の実装では、メニューの項目を読む `Analyze` だけが警告を受け取っておらず、exit time の遷移で決めた表情が書き出されても警告と「近似」の行が出なかった。
   - 表情と同時に再生されているクリップに、手の待機アニメーションのようなヒューマノイドの筋肉（またはルートモーション）のカーブがあり、それが時間で動くときも、BlendShape のカーブと同じように警告を付けて書き出す。これらは Animator のカーブだが Animator Controller のパラメーターではなく、BlendShape を動かせない。これまでは「時間で変わるBlendShape・パラメーター曲線」として表情ごと外していた。
+  - 既定の顔（表情を選んでいないときの顔）を読むときも、同じカーブは BlendShape・パラメーターを動かさない値として扱い、データの検査だけをして止まっているかの判定から外す。Gesture の表情では、選んだ手のレイヤーの下にあるもう片方の手のレイヤーがそのまま残り、その待機ステートが既定の顔を書きつつ手の筋肉をループさせていると、既定の顔が「固定表情に変換できません」となって表情ごと外れていた。筋肉のカーブは既定の顔の値を変えないので、警告は付けない。依存の解析が筋肉の名前を必要なカーブとして挙げる場合（解析の結果が無い場合も）があるので、解析の結果ではなく Animator Controller のパラメーターの名前かどうかで分ける。
   - 試験的な一括収録（`ExperimentalInstalledExpressionPlayer`）にも同じ処理を入れた。
   - Gesture の Blend Tree の表情で時間の決定が必要になったときは、これまでどおりアニメーションとして読む経路（`AnimatedGestureTree.Read`）に回す。
 - 入れなかったもの:
@@ -41,6 +42,6 @@
 ## 確認したこと
 
 - Unity の API の前提（`AnimatorStateInfo.length` がステートの速度を含むこと、`AnimatorTransitionInfo.duration` が `durationUnit` の単位で返ること）を、速度 0.5・1・2 と固定／正規化の遷移時間で、PlayableGraph を細かく進めて実測した時間と比べた（`NativeClocksMatchTheSettlementConversion`）。
-- `ExpressionSettlementTests` で、10 秒のクリップ（速度 0.5・1・2）、5 秒後の exit time（遷移時間 0・0.5 秒・正規化 0.5）、ループ、循環、0.25 秒の遷移、Add の Parameter Driver、Motion Time、試験的な一括収録を確かめる。メニューの項目を `Analyze` で読んだとき exit time で決めた表情のメッセージに警告が入り、結果の一覧に「表情」の「近似」の行が出ること、ループする手の筋肉のカーブが表情と同じクリップ・別のレイヤーにあっても表情の値が書き出されて警告が付くことも確かめる。`SelectedLayerControlTests` で、exit time のあとに VRCAnimatorLayerControl でレイヤーの重みを変える表情を確かめる。
+- `ExpressionSettlementTests` で、10 秒のクリップ（速度 0.5・1・2）、5 秒後の exit time（遷移時間 0・0.5 秒・正規化 0.5）、ループ、循環、0.25 秒の遷移、Add の Parameter Driver、Motion Time、試験的な一括収録を確かめる。メニューの項目を `Analyze` で読んだとき exit time で決めた表情のメッセージに警告が入り、結果の一覧に「表情」の「近似」の行が出ること、ループする手の筋肉のカーブが表情と同じクリップ・別のレイヤーにあっても表情の値が書き出されて警告が付くこと、Gesture の表情の下のレイヤーで既定の顔を書く待機ステートが手の筋肉をループさせていても表情が書き出されることも確かめる。`SelectedLayerControlTests` で、exit time のあとに VRCAnimatorLayerControl でレイヤーの重みを変える表情を確かめる。
 - これまで「書き出しから外れる」ことを確かめていた既存のテストのうち、時間で決まるものは、最終状態の値と警告を確かめるように直した。Motion Time・速度のパラメーター・Cycle Offset・パラメーターのカーブは引き続き外れることを確かめる。
-- Unity 2022.3.22f1 の EditMode テストで、表情・既定表情・FX の候補・レイヤー制御・Gesture まわりの 23 クラス（1336 件）を回し、1330 件が通った。2 件は APL が入っていないときに飛ばすテスト。落ちた 4 件は `RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces` の APL のケースで、テスト用のプロジェクトに APL が入っていないことによる（この変更の前から落ちる）。
+- Unity 2022.3.22f1 の EditMode テストで、表情・既定表情・FX の候補・レイヤー制御・Gesture まわりの 23 クラス（1337 件）を回し、1331 件が通った。2 件は APL が入っていないときに飛ばすテスト。落ちた 4 件は `RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces` の APL のケースで、テスト用のプロジェクトに APL が入っていないことによる（この変更の前から落ちる）。

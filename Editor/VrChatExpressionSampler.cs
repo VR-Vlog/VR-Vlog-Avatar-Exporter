@@ -1734,6 +1734,17 @@ namespace VRVlog.LilToonExporter
                                 ValidateNativeParameterCurve(parameterCurve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
                                 continue;
                             }
+                            // A humanoid muscle or root motion curve names no
+                            // controller parameter. It drives no parameter or
+                            // BlendShape, so it never moves the rest face, even
+                            // when the dependency proof lists it or is absent.
+                            if (neutral && binding.type == typeof(Animator) &&
+                                !controller.parameters.Any(parameter => parameter.name == binding.propertyName))
+                            {
+                                ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding),
+                                    layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                continue;
+                            }
                             // An uncaptured support/appearance morph may target
                             // another authored layout absent from this copy. It
                             // must not require a renderer lookup for this plan.

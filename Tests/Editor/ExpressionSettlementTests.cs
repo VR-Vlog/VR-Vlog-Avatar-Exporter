@@ -240,6 +240,32 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Contain(ExpressionSettlement.LoopingFinal));
         }
 
+        // A Right Hand gesture keeps the Left Hand layer below it. Its idle
+        // holds the rest face while looping hand muscles, so the rest face
+        // sampled under the gesture is still a fixed pose. The Eyes layer
+        // keeps the gesture from being the top layer that alone fixes the
+        // rest face, so the hand layer's curves are checked.
+        [Test]
+        public void AGestureAboveALoopingHandIdleLayerIsExported()
+        {
+            foreach (var side in new[] { "Left", "Right" })
+            {
+                controller.AddParameter("Gesture" + side, AnimatorControllerParameterType.Int);
+                var hand = Layer(side + " Hand");
+                var idle = State(hand, "Idle", HandIdle(null, Clip(side + " hand idle", 25))); hand.defaultState = idle;
+                Transition(idle, State(hand, side + " smile", Clip(side + " smile", side == "Left" ? 40 : 75)), "Gesture" + side, 2);
+            }
+            var open = new AnimationClip { name = "Eyes open" };
+            AnimationUtility.SetEditorCurve(open, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Constant(0, 1, 0));
+            AssetDatabase.AddObjectToAsset(open, controller);
+            var eyes = Layer("Eyes"); eyes.defaultState = State(eyes, "Open", open);
+            VrChatGestureExpressions.Add(avatar, metadata);
+            var entry = metadata.Entries.Single(item => item.Name == "ジェスチャー / Right smile");
+            Assert.That(entry.Error, Is.Null, entry.Error);
+            Assert.That(entry.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
+        }
+
         // Analyze reads the menu for the one-click export. Its settlement
         // decision must reach the entry and the export result list.
         [Test]
