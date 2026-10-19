@@ -20,6 +20,7 @@ namespace VRVlog.LilToonExporter.Tests
             f.Copy.transform.localScale = Vector3.one * .5f;
             var hips = f.Copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Hips);
             Assert.That(hips.parent, Is.SameAs(f.Copy.transform));
+            f.PrepareMeshesForExport();
             var locals = f.Copy.GetComponentsInChildren<Transform>(true).ToDictionary(t => t, t => (t.localPosition, t.localRotation, t.localScale));
             var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Copy, new BuiltInVrm10MaterialExporter(),
                 new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Root scale fixture", Version = "1", Authors = new List<string> { "Tests" } });
