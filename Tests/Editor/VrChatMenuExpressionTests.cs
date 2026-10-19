@@ -104,8 +104,10 @@ namespace VRVlog.LilToonExporter.Tests
                 "The previous state owns the retained value, even though the current clip does not bind it.");
         }
 
+        // A delayed change is followed to its final state and reported
+        // instead of being saved as if the face were already fixed.
         [Test]
-        public void DelayedExitCannotMasqueradeAsAFixedExpression()
+        public void DelayedExitIsFollowedAndReported()
         {
             DiscreteController();
             var states = controller.layers[0].stateMachine.states;
@@ -115,17 +117,24 @@ namespace VRVlog.LilToonExporter.Tests
             transition.hasExitTime = true;
             transition.exitTime = 10;
             transition.duration = 0;
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1)));
+            var messages = new List<string>();
+            var values = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1), messages: messages);
+            // Idle returns to Smile at once while the menu input is held.
+            Assert.That(values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
         }
 
         [Test]
-        public void DelayedNonLoopingStepCannotMasqueradeAsAFixedExpression()
+        public void DelayedNonLoopingStepIsSavedAtItsLastKeyAndReported()
         {
             DiscreteController();
             var clip = (AnimationClip)controller.layers[0].stateMachine.states.Single(s => s.state.name == "Smile").state.motion;
             var curve = new AnimationCurve(new Keyframe(0, 75, 0, float.PositiveInfinity), new Keyframe(10, 100, float.PositiveInfinity, 0));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"), curve);
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1)));
+            var messages = new List<string>();
+            var values = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1), messages: messages);
+            Assert.That(values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(100).Within(.01));
+            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.FinalKeyOfClip }));
         }
 
         [Test]
@@ -297,7 +306,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(native.State.normalizedTime, Is.InRange(.1f, .9f));
             if (kind == "future bend" || kind == "loop" || kind == "future SDK timer")
                 Assert.That(native.Face, Is.EqualTo(75).Within(.01), "A currently constant native pose alone must not certify its future.");
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1)));
+            // The future curve or callback is not hidden: the face is decided
+            // at its final state and the decision is reported.
+            var messages = new List<string>();
+            var face = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1), messages: messages)
+                .Single(value => value.Shape == "Face size").Weight;
+            var expected = new Dictionary<string, (float Face, string Message)>
+            {
+                ["ongoing segment"] = (75, ExpressionSettlement.FinalKeyOfClip), ["loop"] = (0, ExpressionSettlement.LoopingFinal),
+                ["future bend"] = (30, ExpressionSettlement.FinalKeyOfClip), ["weighted tail bend"] = (75, ExpressionSettlement.FinalKeyOfClip),
+                ["wrapped short curve"] = (float.NaN, ExpressionSettlement.FinalKeyOfClip), ["future SDK timer"] = (10, ExpressionSettlement.FollowedTransitions)
+            }[kind];
+            if (!float.IsNaN(expected.Face)) Assert.That(face, Is.EqualTo(expected.Face).Within(kind == "loop" ? 1.01 : .01));
+            Assert.That(messages, Does.Contain(expected.Message));
         }
 
         [TestCase("loop")]
@@ -322,6 +343,18 @@ namespace VRVlog.LilToonExporter.Tests
             if (kind == "cycle offset") state.cycleOffset = .25f;
             if (kind == "parameter curve") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Clock"), AnimationCurve.Linear(0, 0, .5f, 1));
             if (kind == "future exit") { var exit = state.AddTransition(machine.defaultState); exit.hasExitTime = true; exit.exitTime = 10; exit.duration = 0; }
+            // The state's own clock is advanced to its final state and
+            // reported. Parameter-driven or offset clocks stay unsupported.
+            if (kind == "loop" || kind == "late curve" || kind == "future exit")
+            {
+                var messages = new List<string>();
+                var face = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1), messages: messages)
+                    .Single(value => value.Shape == "Face size").Weight;
+                Assert.That(face, kind == "loop" ? Is.EqualTo(0).Within(1.01) : Is.EqualTo(75).Within(.01));
+                Assert.That(messages, Does.Contain(kind == "loop" ? ExpressionSettlement.LoopingFinal :
+                    kind == "late curve" ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.FollowedTransitions));
+                return;
+            }
             Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1)));
         }
 
@@ -350,7 +383,16 @@ namespace VRVlog.LilToonExporter.Tests
                     EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"), null);
             controller.layers = new[] { new AnimatorControllerLayer { name = lower.name, stateMachine = lower, defaultWeight = 1 }, upper };
             if (!supported)
-            { Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1))); return; }
+            {
+                // The lower loop is not dominated. It is kept at its first
+                // frame and reported instead of being hidden by the upper face.
+                var messages = new List<string>();
+                var moved = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1), messages: messages);
+                Assert.That(messages, Does.Contain(ExpressionSettlement.LoopingFinal));
+                if (kind == "fractional override") Assert.That(moved.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(37.5).Within(1.01));
+                if (kind == "unbound channel") Assert.That(moved.Single(value => value.Shape == "Blink").Weight, Is.EqualTo(0).Within(1.01));
+                return;
+            }
             var native = OriginalNativeSelectedPose(controller);
             Assert.That(native.Face, Is.EqualTo(75).Within(.01));
             var values = VrChatExpressionSampler.Sample(avatar, controller, Params("Face", 0), Params("Face", 1));

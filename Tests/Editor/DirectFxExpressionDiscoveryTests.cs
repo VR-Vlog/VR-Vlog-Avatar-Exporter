@@ -1486,6 +1486,14 @@ namespace VRVlog.LilToonExporter.Tests
                 kind == "moving curve" ? AnimationCurve.Linear(0, 75, 30, 100) : AnimationCurve.Constant(0, 1, 0));
             var entries = Read().Entries;
             var entry = entries.Single(value => value.Name == "FX / Smile");
+            if (kind != "visibility")
+            {
+                // A timed face is settled from the Animator and reported.
+                Assert.That(entry.Error, Is.Null);
+                Assert.That(Weight(entry), Is.EqualTo(kind == "moving curve" ? 100 : 75).Within(.01));
+                Assert.That(entry.Messages, Does.Contain(kind == "moving curve" ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.CyclicTransitions));
+                return;
+            }
             Assert.That(entry.Error, Is.Not.Null.And.Not.Empty); Assert.That(entry.Values, Is.Empty);
             Assert.That(entries.Where(value => value.Error == null), Is.Empty,
                 "Neither the authored face nor its automatic timed destination may become an isolated partial export.");

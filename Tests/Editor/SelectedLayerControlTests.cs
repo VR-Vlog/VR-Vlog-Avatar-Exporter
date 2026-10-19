@@ -183,6 +183,28 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AControlOnALateExitTimeTargetIsFollowed()
+        {
+            var machine = controller.layers[TargetLayer].stateMachine;
+            neutral.transitions = Array.Empty<AnimatorStateTransition>(); machine.RemoveState(selected);
+            AnimationUtility.SetEditorCurve((AnimationClip)neutral.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"), AnimationCurve.Constant(0, 1, 80));
+            var layers = controller.layers; layers[TargetLayer].defaultWeight = 0; controller.layers = layers;
+            var source = controller.layers[1].stateMachine;
+            var wait = State(source, "Menu waits", Clip(controller, "Wait", new[] { "Body" }, "Body size", 30));
+            var on = State(source, "Menu enables target later", Clip(controller, "On"));
+            Control(on, 1); To(command, wait, 1);
+            var late = wait.AddTransition(on); late.hasExitTime = true; late.exitTime = 6; late.duration = 0;
+            var before = Before();
+            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
+            var messages = new List<string>();
+            var values = VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, new Dictionary<string, float> { ["Menu"] = 1 },
+                metadata: metadata, messages: messages);
+            Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            Unchanged(before);
+        }
+
+        [Test]
         public void LayerRelaySelectionUsesStateEntryOrderAndFreshProbes()
         {
             Control(command, 0); var on = State(controller.layers[1].stateMachine, "Relay enables layer", Clip(controller, "On"));
@@ -382,7 +404,20 @@ namespace VRVlog.LilToonExporter.Tests
                 var later = State(controller.layers[1].stateMachine, "Future layer disable", Clip(controller, "Later")); Control(later, 0);
                 var transition = command.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
             }
-            var before = Before(); Assert.Throws<InvalidOperationException>(() => Sample()); Unchanged(before);
+            var before = Before();
+            if (kind == "moving" || kind == "lateControl")
+            {
+                // The state's own clock is settled and reported: a loop at its
+                // first frame, a later control after its exit time.
+                var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
+                var messages = new List<string>();
+                var values = VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, new Dictionary<string, float> { ["Menu"] = 1 },
+                    metadata: metadata, messages: messages);
+                Assert.That(values.Single(value => value.Shape == "Body size").Weight, kind == "moving" ? Is.EqualTo(0).Within(1.7) : Is.EqualTo(30).Within(.01));
+                Assert.That(messages, Does.Contain(kind == "moving" ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FollowedTransitions));
+            }
+            else Assert.Throws<InvalidOperationException>(() => Sample());
+            Unchanged(before);
         }
 
         [TestCase("Action")] [TestCase("Gesture")] [TestCase("Additive")]

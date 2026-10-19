@@ -99,7 +99,7 @@ namespace VRVlog.LilToonExporter
                         {
                             entry.Values.AddRange(VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
                                 entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                                candidate.Layer, candidate.Path));
+                                candidate.Layer, candidate.Path, entry.Messages));
                             if (candidate.DefaultValues != null)
                             {
                                 // A readonly parent may make an authored inner
@@ -180,8 +180,15 @@ namespace VRVlog.LilToonExporter
                 if (entry.Error == null)
                     try
                     {
-                        entry.Values.AddRange(VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
-                            entry.Parameters, excludedPath, source, entry.Unevaluated, context, candidate.Layer, candidate.Path));
+                        var settlement = new List<string>();
+                        var values = VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
+                            entry.Parameters, excludedPath, source, entry.Unevaluated, context, candidate.Layer, candidate.Path, settlement);
+                        // A moving BlendTree keeps its animated reading rather
+                        // than one settled frame.
+                        if (settlement.Count > 0 && ExpressionDependencies.Controller(source.Controller).GetStateEffectiveMotion(candidate.State, candidate.Layer) is BlendTree)
+                            throw new InvalidOperationException(settlement[0]);
+                        entry.Values.AddRange(values);
+                        foreach (var message in settlement) entry.Messages.Add(message);
                     }
                     catch (InvalidOperationException error)
                     {
