@@ -203,6 +203,16 @@ namespace VRVlog.LilToonExporter
                     report.Fallbacks.Record(ExportOutcome.Omitted, "表情", entry.Name ?? entry.Id ?? "", entry.Error);
         }
 
+        // A menu expression decided from its timed transitions or terminal
+        // clip key is kept, but is an approximation of the moving original.
+        internal static void RecordSettledMenuExpressions(VrChatExpressionMenu.Source menu, ExportRecoveryReport report)
+        {
+            foreach (var entry in menu?.Entries ?? new List<VrChatExpressionMenu.Entry>())
+                if (entry.Error == null)
+                    foreach (var message in ExpressionSettlement.Messages.Where(entry.Messages.Contains))
+                        report.Fallbacks.Record(ExportOutcome.Approximated, "表情", entry.Name ?? entry.Id ?? "", message);
+        }
+
         // An animated expression whose loop ends neutral shows no change in
         // apps that only read the VRM expression. Ask before saving.
         internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
@@ -484,6 +494,7 @@ namespace VRVlog.LilToonExporter
                     authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
                     if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
+                    RecordSettledMenuExpressions(menu, recoveryReport);
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
                     authoredEndpoints.Bake(temporaryMeshes);

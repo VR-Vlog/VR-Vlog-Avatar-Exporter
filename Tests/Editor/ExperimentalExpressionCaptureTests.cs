@@ -1293,7 +1293,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (callback.StartsWith("audio", StringComparison.Ordinal)) smile.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio"));
                 if (callback == "unknown") Assert.That(smile.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);
                 var clip = new AnimationClip();
-                var expectedWeight = callback == "neutral" ? 35f : callback == "synced" ? 85f : 75f;
+                var expectedWeight = callback == "neutral" ? 35f : callback == "synced" ? 85f : callback == "delayed" ? 95f : 75f;
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, callback == "neutral" ? 35 : 75));
                 if (callback == "display") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
                 if (callback == "delayed") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
@@ -1369,7 +1369,10 @@ namespace VRVlog.LilToonExporter.Tests
                 session.DiscoverCandidates();
                 var candidate = session.Candidates.Entries.First(entry => entry.Name == "Smile");
                 Assert.That(smile.behaviours.Length, Is.EqualTo(callback == "audio" || callback == "unknown" ? 1 : 0), "Source callbacks remain on their original asset.");
-                if (callback == "unknown" || callback == "display" || callback == "delayed")
+                // A late change is now kept at the clip's last key and listed
+                // as approximated instead of dropping the face.
+                if (callback == "delayed") Assert.That(candidate.Messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
+                if (callback == "unknown" || callback == "display")
                 {
                     Assert.That(candidate.Error, Is.Not.Null, "Unknown callbacks must not be silently omitted.");
                     Assert.Throws<InvalidOperationException>(() => session.PreviewCandidate(candidate));

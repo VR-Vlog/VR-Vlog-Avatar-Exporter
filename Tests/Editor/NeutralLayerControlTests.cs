@@ -433,7 +433,16 @@ namespace VRVlog.LilToonExporter.Tests
                 expectedState: machine.defaultState.name, expectUnitGlobalFx: true, selection: selected, selectedSignal: selectedSignal);
             Assert.That(expected, Is.EqualTo(85).Within(.01), "The original native sampled pose is still stable; that alone cannot certify the future relay.");
             var source = VrChatExpressionMenu.Read(avatar);
-            Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source));
+            if (kind == "late changing signal")
+                Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source));
+            else
+            {
+                // Timed relay edges are followed natively and reported.
+                var messages = new List<string>();
+                var values = VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source, messages: messages);
+                Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(expected).Within(.01));
+                Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            }
             AssertSourceUnchanged(before);
         }
 

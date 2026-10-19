@@ -16,7 +16,7 @@ namespace VRVlog.LilToonExporter
     internal static class ExperimentalInstalledExpressionPlayer
     {
         internal static List<VrChatExpressionMenu.MorphValue> Sample(GameObject avatar, VrChatExpressionMenu.Source source,
-            IDictionary<string, float> selected, AnimatorState forcedState = null, int forcedLayer = -1)
+            IDictionary<string, float> selected, AnimatorState forcedState = null, int forcedLayer = -1, ICollection<string> warnings = null)
         {
             var runtime = source.Controller;
             var controller = ExpressionDependencies.Controller(runtime);
@@ -129,14 +129,30 @@ namespace VRVlog.LilToonExporter
                     else settledFrames = 0;
                     previous = result;
                 }
-                if (settledFrames < 30) throw new InvalidOperationException("動く表情のため、一括収録の固定時刻を確定できません。");
-                ValidateStationary(playable, evaluation.Controller, dependencies.Parameters, includedPaths);
+                // A face still moving here is decided from its timed
+                // transitions and terminal clip keys. A face the stationary
+                // proof accepts is not stepped further.
+                var temporal = new List<string>();
+                var settled = ExpressionSettlement.Settle(graph, playable, evaluation.Controller,
+                    layer => layer == 0 || playable.GetLayerWeight(layer) != 0, evaluation.Check, temporal,
+                    (layer, clip, binding) => binding.type != typeof(Animator) && Relevant(includedPaths, binding),
+                    () =>
+                    {
+                        if (settledFrames < 30) return false;
+                        try { ValidateStationary(playable, evaluation.Controller, dependencies.Parameters, includedPaths); return true; }
+                        catch (InvalidOperationException) { return false; }
+                    });
+                if (!settled && settledFrames < 30) throw new InvalidOperationException("動く表情のため、一括収録の固定時刻を確定できません。");
+                if (settled) result = Read();
+                ValidateStationary(playable, evaluation.Controller, dependencies.Parameters, includedPaths, settled ? temporal : null);
                 var selectedAppearance = Appearance(copy);
                 var difference = selectedAppearance.Keys.Concat(appearance.Keys).Distinct().FirstOrDefault(key =>
                     !appearance.TryGetValue(key, out var neutralValue) || !selectedAppearance.TryGetValue(key, out var selectedValue) || neutralValue != selectedValue);
                 if (difference != null) throw new InvalidOperationException("材質・ボーン・表示切替を含む表情はこの固定形状収録へ部分的に取り込めません: " + difference);
                 if (result.Any(value => float.IsNaN(value.Weight) || float.IsInfinity(value.Weight)))
                     throw new InvalidOperationException("再生後の表情に不正な変形量があります。");
+                if (warnings != null)
+                    foreach (var message in temporal) if (!warnings.Contains(message)) warnings.Add(message);
                 return result;
             }
             finally
@@ -146,17 +162,20 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static void ValidateStationary(AnimatorControllerPlayable playable, AnimatorController controller, ISet<string> needed, ISet<string> includedPaths)
+        static bool Relevant(ISet<string> includedPaths, EditorCurveBinding binding) => binding.type != typeof(AudioSource) &&
+            (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) || includedPaths.Contains(binding.path));
+
+        static void ValidateStationary(AnimatorControllerPlayable playable, AnimatorController controller, ISet<string> needed, ISet<string> includedPaths,
+            ICollection<string> warnings = null)
         {
+            void Warn(string message) { if (!warnings.Contains(message)) warnings.Add(message); }
             var parameters = new Dictionary<string, float>(StringComparer.Ordinal);
             foreach (var parameter in controller.parameters)
                 if (parameter.type != AnimatorControllerParameterType.Trigger)
                     parameters[parameter.name] = parameter.type == AnimatorControllerParameterType.Bool ? (playable.GetBool(parameter.name) ? 1 : 0) :
                         parameter.type == AnimatorControllerParameterType.Int ? playable.GetInteger(parameter.name) : playable.GetFloat(parameter.name);
             var layers = controller.layers;
-            bool Relevant(EditorCurveBinding binding) => binding.type == typeof(Animator) ? needed.Contains(binding.propertyName) :
-                binding.type != typeof(AudioSource) && (binding.type != typeof(SkinnedMeshRenderer) ||
-                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) || includedPaths.Contains(binding.path));
+            bool Needed(EditorCurveBinding binding) => binding.type == typeof(Animator) ? needed.Contains(binding.propertyName) : Relevant(includedPaths, binding);
             for (var layer = 0; layer < layers.Length; layer++)
             {
                 if (layer != 0 && playable.GetLayerWeight(layer) == 0) continue;
@@ -177,7 +196,10 @@ namespace VRVlog.LilToonExporter
                             matched = true; currentState = child.state;
                             if (child.state.transitions.Concat(machine.anyStateTransitions).Any(transition => !transition.mute && transition.hasExitTime &&
                                 !ExpressionDependencies.IsFalse(transition, parameters)))
-                                throw new InvalidOperationException("時間で遷移する表情は固定収録できません。");
+                            {
+                                if (warnings == null) throw new InvalidOperationException("時間で遷移する表情は固定収録できません。");
+                                Warn(ExpressionSettlement.FollowedTransitions);
+                            }
                         }
                     foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name);
                 }
@@ -194,8 +216,17 @@ namespace VRVlog.LilToonExporter
                     if (!stateInfo.loop && stateInfo.normalizedTime >= 1 && currentState.speed > 0 &&
                         !currentState.speedParameterActive && !currentState.timeParameterActive &&
                         controller.GetStateEffectiveMotion(currentState, layer) == clip && !clip.isLooping) continue;
-                    var varying = AnimationUtility.GetCurveBindings(clip).Where(Relevant).Where(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))
-                        .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip).Where(Relevant).Where(binding => AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(key => key.value).Distinct().Count() > 1)).ToArray();
+                    var varyingCurves = AnimationUtility.GetCurveBindings(clip).Where(Needed).Where(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))).ToArray();
+                    var varying = varyingCurves.Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip).Where(Needed).Where(binding => AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(key => key.value).Distinct().Count() > 1)).ToArray();
+                    // A settled face keeps the clip's final key or loop start.
+                    // Parameter and object reference curves and parameter-driven
+                    // or offset clocks stay rejected.
+                    if (warnings != null && varying.Length > 0 && varying.Length == varyingCurves.Length && varying.All(binding => binding.type != typeof(Animator)) &&
+                        !currentState.timeParameterActive && !currentState.speedParameterActive && !currentState.cycleOffsetParameterActive && currentState.cycleOffset == 0)
+                    {
+                        Warn(stateInfo.loop ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FinalKeyOfClip);
+                        continue;
+                    }
                     if (varying.Length > 0) throw new InvalidOperationException("時間で変わる曲線を含む表情は固定収録できません: " + layers[layer].name + " / " + clip.name + " / " + varying[0].path + " / " + varying[0].propertyName);
                 }
             }

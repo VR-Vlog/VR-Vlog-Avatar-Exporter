@@ -178,7 +178,7 @@ namespace VRVlog.LilToonExporter
                     try
                     {
                         var neutral = Snapshot("FXの基準表情");
-                        foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>()))
+                        foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>(), warnings: Warnings))
                             Set(neutral, value.Path, value.Shape, value.Weight);
                         ValidatePose(neutral); ApplyUnchecked(neutral);
                     }
@@ -220,7 +220,12 @@ namespace VRVlog.LilToonExporter
                     if (entry.Error != null) continue;
                     if (EditorUtility.DisplayCancelableProgressBar("導入済みの表情を収録中", entry.Name,
                         (float)result.Entries.IndexOf(entry) / Mathf.Max(1, result.Entries.Count))) throw new OperationCanceledException();
-                    try { entry.Values.AddRange(ExperimentalInstalledExpressionPlayer.Sample(Copy, result, entry.Parameters)); }
+                    try
+                    {
+                        var settlement = new List<string>();
+                        entry.Values.AddRange(ExperimentalInstalledExpressionPlayer.Sample(Copy, result, entry.Parameters, warnings: settlement));
+                        foreach (var message in settlement) { entry.Messages.Add(message); Warnings.Add(entry.Name + ": " + message); }
+                    }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
                 // Registered FaceEmo branches can exist outside the avatar root,
