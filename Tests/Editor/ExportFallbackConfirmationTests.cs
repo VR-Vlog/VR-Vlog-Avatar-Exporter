@@ -89,6 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void AStageIsNamedWithItsPhase()
         {
             Assert.That(ExportStageGuard.DisplayName(ExportStage.BlinkCapture), Is.EqualTo("表情: 瞬き"));
+            Assert.That(ExportStageGuard.DisplayName(ExportStage.PhysBone), Is.EqualTo("揺れ物"));
         }
 
         [TestCase(false, false)][TestCase(true, true)]

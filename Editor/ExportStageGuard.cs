@@ -267,9 +267,14 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // "表情: 瞬き". Each part is translated on its own.
-        internal static string DisplayName(ExportStage stage) =>
-            ExporterLocalization.T(PhaseLabel(Phase(stage))) + ": " + ExporterLocalization.T(Label(stage));
+        // "表情: 瞬き". Each part is translated on its own; a stage named like its
+        // phase ("揺れ物") is shown once.
+        internal static string DisplayName(ExportStage stage)
+        {
+            var phase = PhaseLabel(Phase(stage));
+            var label = Label(stage);
+            return label == phase ? ExporterLocalization.T(label) : ExporterLocalization.T(phase) + ": " + ExporterLocalization.T(label);
+        }
 
         // What leaving the stage out means for the file. Stages that only check
         // something are approximations; the rest drop their feature.
