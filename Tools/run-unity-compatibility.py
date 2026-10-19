@@ -777,6 +777,7 @@ BEHAVIOR_CASES = {
         'MalformedDirectEntryExitReportsBeforeNativePlayback': 1,
         'ChainedStateTransitionsKeepThePrecedingParameterGate': 1,
         'OneDimensionalTreePublishesAuthoredSelectionsThroughNativeBlending': 1,
+        'MovingTreeKnotIsNotSettledToOneFrame': 1,
         'NestedTreeRetainsBothAuthoredControlValues': 1,
         'NestedTreesSharingAControlRetainInnerKnotsBeyondTheParentRange': 1,
         'UserSelectionAroundARuntimeControlledInnerTreeUsesTheFixedEnvironment': 1,

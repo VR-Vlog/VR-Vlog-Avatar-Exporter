@@ -1001,6 +1001,28 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void MovingTreeKnotIsNotSettledToOneFrame()
+        {
+            // An FX tree knot reaches settlement like a clip state does. The
+            // FX path has no animated tree reading, so it is left out instead
+            // of keeping the final key of one moving child.
+            controller.AddParameter("ExpressionStrength", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Moving face mix", blendType = BlendTreeType.Simple1D,
+                blendParameter = "ExpressionStrength", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            var moving = Clip("Moving", 0);
+            AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
+                AnimationCurve.Linear(0, 75, 30, 100));
+            tree.AddChild(Clip("Off", 0), 0); tree.AddChild(moving, 1);
+            neutral.motion = tree;
+            var entry = Read().Entries.Single();
+            Assert.That(entry.Parameters["ExpressionStrength"], Is.EqualTo(1));
+            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted));
+            Assert.That(entry.Values, Is.Empty); Assert.That(entry.Unevaluated, Is.Empty);
+            Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
+        }
+
+        [Test]
         public void NestedTreeRetainsBothAuthoredControlValues()
         {
             controller.AddParameter("ExpressionMix", AnimatorControllerParameterType.Float);
