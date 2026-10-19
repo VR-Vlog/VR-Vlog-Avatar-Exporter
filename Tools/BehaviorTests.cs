@@ -105,7 +105,59 @@ public static class ExporterBehaviorTests
         threw = false;
         try { VrmExpressionBindings.AddMissing(Encode(split)); } catch (InvalidOperationException) { threw = true; }
         Check(threw, "Reject inconsistent target counts across split primitives.");
+        CheckDescriptorVisemes();
         return $"Exporter behavior checks passed ({_assertions} assertions).";
+    }
+
+    // Shapes in DescriptorVisemes.Slots order: aa, ee, ih, oh, ou.
+    private static VrmExpressionBindings.DescriptorVisemes Visemes(int node, params string[] shapes)
+    {
+        var result = new VrmExpressionBindings.DescriptorVisemes { Node = node };
+        for (var i = 0; i < shapes.Length; i++) result.Shapes[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset] = shapes[i];
+        return result;
+    }
+    private static Dictionary<string, object> FirstBind(Dictionary<string, object> presets, string preset) =>
+        (Dictionary<string, object>)((List<object>)((Dictionary<string, object>)presets[preset])["morphTargetBinds"])[0];
+
+    private static void CheckDescriptorVisemes()
+    {
+        foreach (var names in new[] { new[] { "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou" }, new[] { "あ", "え", "い", "お", "う" } })
+        {
+            var warnings = new List<string>();
+            var bytes = Encode(Fixture(new[] { "lip_sil" }.Concat(names).ToArray()));
+            var presets = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false,
+                descriptor: Visemes(1, names))).Json);
+            for (var i = 0; i < names.Length; i++)
+            {
+                var bind = FirstBind(presets, VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset);
+                Check((long)bind["node"] == 1L && (long)bind["index"] == i + 1L,
+                    "Descriptor visemes bind their own shapes even when the names are not known aliases.");
+            }
+            Check(warnings.Count == 0, "Descriptor visemes that all bind add no warning.");
+        }
+        var both = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("vrc.v_aa", "merged__vrc.v_aa")),
+            inferBlink: false, descriptor: Visemes(1, "merged__vrc.v_aa"))).Json);
+        Check((long)FirstBind(both, "aa")["index"] == 1L, "The descriptor shape beats the alias guess.");
+        var authored = Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou");
+        ((Dictionary<string, object>)((Dictionary<string, object>)authored["extensions"])["VRMC_vrm"])["expressions"] =
+            Obj("preset", Obj("aa", Obj()));
+        var kept = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(authored), inferBlink: false,
+            descriptor: Visemes(1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"))).Json);
+        Check(((Dictionary<string, object>)kept["aa"]).Count == 0 && kept.ContainsKey("ou"),
+            "An authored preset, even an empty one, wins over the descriptor.");
+        var missingWarnings = new List<string>();
+        var missing = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh")),
+            missingWarnings, inferBlink: false, descriptor: Visemes(1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"))).Json);
+        Check(missing.Count == 4 && !missing.ContainsKey("ou") && missingWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning),
+            "Report a declared viseme that is not in the output.");
+        var notExported = new List<string>();
+        var fallback = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou")),
+            notExported, inferBlink: false, descriptor: Visemes(-1, "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou"))).Json);
+        Check(fallback.Count == 5 && !notExported.Contains(VrmExpressionBindings.UnboundVisemeWarning),
+            "Known aliases still bind when the descriptor renderer has no output node.");
+        var noneWarnings = new List<string>();
+        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa")), noneWarnings, inferBlink: false);
+        Check(!noneWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning), "Without a descriptor, keep the previous warnings only.");
     }
 
     private static void CheckMaterials()
