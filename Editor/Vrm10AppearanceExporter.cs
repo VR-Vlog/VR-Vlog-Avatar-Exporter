@@ -35,7 +35,7 @@ namespace VRVlog.LilToonExporter
                             new BufferAccessor(arrays, buffer, AccessorValueType.FLOAT, AccessorVectorType.VEC2, uv.Length));
                         warnings?.Add("未設定のUV0を(0, 0)として保存しました: " + group.Name);
                     }
-            model.ConvertCoordinate(Coordinates.Vrm1);
+            ConvertCoordinateKeepingZeroScale(model);
             using var exporter = new Vrm10Exporter(settings, materialExporter, textureSerializer);
             exporter.Export(avatar, model, converter, new ExportArgs { removeMorphNormal = settings.ExportOnlyBlendShapePosition }, vrmMeta);
             // Vrm10Exporter emits materials in model.Materials order. Preserve
@@ -46,6 +46,38 @@ namespace VRVlog.LilToonExporter
             afterExport?.Invoke(converter, model, exporter.Storage);
             return exporter.Storage.ToGlbBytes();
         }
+
+        // ConvertCoordinate rebuilds every node from its parent's inverse world
+        // matrix. Gimmicks hide parts with a zero or subnormal (1e-45) scale,
+        // which has no usable inverse: Unity logs an Assertion failed
+        // 'ValidTRS()' per descendant and they lose their local transforms.
+        // Convert with near-zero axes at 1, then restore only those axes. The
+        // other axes keep UniVRM's result, which decomposes into a positive
+        // scale and moves any mirroring into the rotation.
+        internal static void ConvertCoordinateKeepingZeroScale(Model model)
+        {
+            var zeroed = new List<(Node node, Vector3 scale)>();
+            foreach (var node in model.Root.Traverse().Skip(1))
+            {
+                var scale = node.LocalScalingWithoutUpdate;
+                if (!NearZero(scale.x) && !NearZero(scale.y) && !NearZero(scale.z)) continue;
+                zeroed.Add((node, scale));
+                node.LocalScalingWithoutUpdate = new Vector3(NearZero(scale.x) ? 1 : scale.x,
+                    NearZero(scale.y) ? 1 : scale.y, NearZero(scale.z) ? 1 : scale.z);
+            }
+            if (zeroed.Count > 0) model.Root.CalcWorldMatrix();
+            model.ConvertCoordinate(Coordinates.Vrm1);
+            if (zeroed.Count == 0) return;
+            foreach (var (node, scale) in zeroed)
+            {
+                var converted = node.LocalScalingWithoutUpdate;
+                node.LocalScalingWithoutUpdate = new Vector3(NearZero(scale.x) ? scale.x : converted.x,
+                    NearZero(scale.y) ? scale.y : converted.y, NearZero(scale.z) ? scale.z : converted.z);
+            }
+            model.Root.CalcWorldMatrix();
+        }
+
+        private static bool NearZero(float value) => Mathf.Abs(value) < 1e-6f;
 
         // The pinned ModelExporter computes useNormal but only copies each
         // morph's POSITION buffer. Fill NORMAL from its exact renderer/node map
