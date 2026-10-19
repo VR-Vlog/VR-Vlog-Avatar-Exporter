@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Does.Contain("最適化前の表情の参照がありません"));
             var expression = new VrmMenuExpressions.Expression { Name = "Smile" };
             expression.Direct.Add((originals[0], "Smile", .25f)); expression.Direct.Add((originals[1], "Smile", .5f));
-            var binds = MenuBinds(VrmMenuExpressions.Add(bytes, new[] { expression }, bindings), "VRChat / Smile");
+            var binds = MenuBinds(VrmMenuExpressions.Add(bytes, new[] { expression }, bindings), "Smile");
             Assert.That(binds, Has.Length.EqualTo(2));
             AssertBind(binds.Single(bind => Convert.ToInt32(bind["index"]) == 1), 1, .25f);
             AssertBind(binds.Single(bind => Convert.ToInt32(bind["index"]) == 2), 2, .5f);
@@ -155,7 +155,7 @@ namespace VRVlog.LilToonExporter.Tests
             var expression = new VrmMenuExpressions.Expression { Name = "Smile" };
             expression.Direct.Add((originals[0], "Smile", .25f)); expression.Direct.Add((originals[1], "Smile", .5f));
             var warnings = new List<string>();
-            var bind = MenuBinds(VrmMenuExpressions.Add(MenuOutput("Smile"), new[] { expression }, bindings, warnings), "VRChat / Smile").Single();
+            var bind = MenuBinds(VrmMenuExpressions.Add(MenuOutput("Smile"), new[] { expression }, bindings, warnings), "Smile").Single();
             Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
             Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
             Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.25).Within(.000001));

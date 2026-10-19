@@ -574,7 +574,10 @@ namespace VRVlog.LilToonExporter
                 foreach (var pose in expressions)
                 {
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
-                    expression.name = "VRChat / 記録 / " + pose.Name;
+                    // The recorded name as is; a repeated, VRM preset or face
+                    // tracking name gets " (2)", " (3)"... like a menu face.
+                    expression.name = VrmMenuExpressions.UniqueName(pose.Name,
+                        name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
                     expression.IsBinary = true;
                     expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
                     var bindings = new List<MorphTargetBinding>();
@@ -607,8 +610,9 @@ namespace VRVlog.LilToonExporter
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
                 }
-                // Emotion presets are separate clips. Recorded custom faces keep
-                // their names, so app-side animation references stay valid.
+                // Emotion presets are separate clips. Recorded custom faces stay
+                // custom clips under their recorded names (numbered on a clash),
+                // so the animation extension still finds them.
                 foreach (var face in presetFaces)
                 {
                     var expression = CreatePresetExpression(face.Preset); assets.Add(expression);

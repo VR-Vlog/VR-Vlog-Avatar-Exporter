@@ -593,8 +593,13 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.ExpressionOutput, () =>
                 {
                     var filled = new List<(string Preset, string Source)>();
-                    var output = VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings), warnings, inferBlink: false,
-                        inferEmotions: inferEmotionPresets, filledEmotions: filled);
+                    // Only the faces Add registered may fill an empty emotion;
+                    // their names no longer carry a source prefix, so each is
+                    // inferred from its menu path as before.
+                    var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
+                        inferEmotions: inferEmotionPresets, filledEmotions: filled,
+                        emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions));
                     RecordInferredEmotions(filled, recoveryReport);
                     return output;
                 }, () => exported);

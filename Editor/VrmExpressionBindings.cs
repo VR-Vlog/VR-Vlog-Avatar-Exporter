@@ -8,8 +8,12 @@ namespace VRVlog.LilToonExporter
     // mistaken for a glTF node or morph target after mesh export.
     internal static class VrmExpressionBindings
     {
+        // emotionCandidates maps each custom expression this export registered
+        // (by its final VRM name) to the text emotion inference reads for it,
+        // such as its menu path; only those may fill an empty emotion.
         public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
-            bool inferEmotions = false, ICollection<(string Preset, string Source)> filledEmotions = null)
+            bool inferEmotions = false, ICollection<(string Preset, string Source)> filledEmotions = null,
+            IReadOnlyDictionary<string, string> emotionCandidates = null)
         {
             var glb = GlbDocument.Read(bytes);
             var vrm = Object(Object(glb.Json, "extensions"), "VRMC_vrm");
@@ -120,7 +124,7 @@ namespace VRVlog.LilToonExporter
                 changed = true;
                 Warn(warnings, $"{mapping.Preset}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。");
             }
-            if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions))
+            if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates))
             {
                 changed = true;
                 presets = Object(Object(vrm, "expressions"), "preset");
@@ -131,8 +135,6 @@ namespace VRVlog.LilToonExporter
             return changed ? glb.Write() : bytes;
         }
 
-        private const string MenuPrefix = "VRChat / ";
-        private const string RecordedPrefix = "記録 / ";
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
         private static readonly string[] BindKeys = { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" };
@@ -142,7 +144,7 @@ namespace VRVlog.LilToonExporter
         // then a raw BlendShape whose Latin name names one whole emotion.
         // Authored presets that move anything are never changed.
         private static bool AddEmotions(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
-            ICollection<string> warnings, ICollection<(string Preset, string Source)> filled)
+            ICollection<string> warnings, ICollection<(string Preset, string Source)> filled, IReadOnlyDictionary<string, string> candidates)
         {
             var expressions = Object(vrm, "expressions");
             var presets = Object(expressions, "preset");
@@ -163,19 +165,20 @@ namespace VRVlog.LilToonExporter
 
             // Menu faces are whole faces the avatar author named, so Japanese
             // words count here. One menu face fills at most one emotion.
+            // Authored custom expressions are not candidates.
             var custom = Object(expressions, "custom");
-            if (custom != null)
+            if (custom != null && candidates != null && candidates.Count > 0)
             {
                 var menu = new List<(UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name, Dictionary<string, object> Value)>();
                 var order = 0;
                 foreach (var pair in custom)
                 {
                     order++;
-                    if (!pair.Key.StartsWith(MenuPrefix, StringComparison.Ordinal) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
-                    var name = pair.Key.Substring(MenuPrefix.Length);
-                    if (name.StartsWith(RecordedPrefix, StringComparison.Ordinal)) name = name.Substring(RecordedPrefix.Length);
-                    var match = ExpressionNameInference.MatchMenuPath(name);
-                    if (match != null) menu.Add((match.Value.Preset, match.Value.Tier, order, name, value));
+                    if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
+                    // The VRM name is the item label alone; the menu path still
+                    // decides, so a "Smile" submenu's item "1" stays happy.
+                    var match = ExpressionNameInference.MatchMenuPath(path ?? pair.Key);
+                    if (match != null) menu.Add((match.Value.Preset, match.Value.Tier, order, pair.Key, value));
                 }
                 foreach (var candidate in menu.OrderBy(item => item.Tier).ThenBy(item => item.Order))
                 {

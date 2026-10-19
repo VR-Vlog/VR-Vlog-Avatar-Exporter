@@ -270,7 +270,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var snapshot = session.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray(); session.Expressions.Clear();
                 var bytes = session.Export("Retry snapshot", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recordedExpressions: snapshot);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                Assert.That(imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray(), Is.EqualTo(new[] { "VRChat / 記録 / Captured face" }));
+                Assert.That(imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray(), Is.EqualTo(new[] { "Captured face" }));
                 Assert.That(authored.Expression.CustomClips.Single(), Is.SameAs(original));
             }
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(clip); Object.DestroyImmediate(authored); Object.DestroyImmediate(original); }
@@ -709,7 +709,7 @@ namespace VRVlog.LilToonExporter.Tests
                     canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.GetComponentsInChildren<Renderer>(true).Any(renderer => renderer.name == "Auxiliary fallback"), Is.False);
                 Assert.That(imported.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
-                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "VRChat / 記録 / Selected face"), Is.True);
+                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "Selected face"), Is.True);
                 Assert.That(hiddenSkin != null && hiddenSkin.sharedMaterial == hiddenMaterial, Is.True);
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(sourceBefore));
             }
@@ -823,7 +823,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = session.Export("Read only meshes", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
-                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(face => face.name == "VRChat / 記録 / Read only face"), Is.True);
+                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(face => face.name == "Read only face"), Is.True);
                 Assert.That(meshes.All(mesh => !mesh.isReadable), Is.True);
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(sourceBefore));
             }
@@ -1114,7 +1114,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
-                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "VRChat / 記録 / Smile");
+                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "Smile");
                 Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(2));
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), 1);
                 imported.Runtime.Process();
@@ -1237,7 +1237,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(imported.Vrm.Meta.OtherLicenseUrl, Is.EqualTo("https://example.invalid/fixture-license"));
                 Assert.That(imported.Vrm.Meta.ThirdPartyLicenses, Is.EqualTo("Synthetic test fixture"));
                 Assert.That(imported.Vrm.Meta.Redistribution, Is.False);
-                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "VRChat / 記録 / 笑顔");
+                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "笑顔");
                 Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(2));
                 Assert.That(expression.IsBinary, Is.True, "Recorded faces use the existing fixed-expression selection contract.");
                 Assert.That(expression.OverrideBlink.ToString(), Is.EqualTo("block"));

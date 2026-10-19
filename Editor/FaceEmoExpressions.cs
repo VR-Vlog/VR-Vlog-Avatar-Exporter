@@ -511,7 +511,7 @@ namespace VRVlog.LilToonExporter
         {
             snapshot = snapshot ?? new BindingSnapshot(clone, excludedPath, preparedExcludedPath, deferPermanentOverrides);
             VisitRegistered(registered, "FaceEmo", new HashSet<object>(), 0,
-                (animation, path) => snapshot.CaptureClip(Resolve(animation)));
+                (animation, path, exportName) => snapshot.CaptureClip(Resolve(animation)));
             return snapshot;
         }
 
@@ -577,13 +577,16 @@ namespace VRVlog.LilToonExporter
             var nextSerial = serial;
             try
             {
-                VisitRegistered(list, prefix, visited, depth, (animation, path) =>
-                    AddClip(avatar, animation, path, source, ref nextSerial, excludedPath, bindings));
+                VisitRegistered(list, prefix, visited, depth, (animation, path, exportName) =>
+                    AddClip(avatar, animation, path, exportName, source, ref nextSerial, excludedPath, bindings));
             }
             finally { serial = nextSerial; }
         }
 
-        private static void VisitRegistered(object list, string prefix, HashSet<object> visited, int depth, Action<object, string> addClip)
+        // addClip receives the animation, its path and its VRM name: the
+        // pattern's display name for its default face, null for a branch
+        // (not a menu item), which then uses its clip name.
+        private static void VisitRegistered(object list, string prefix, HashSet<object> visited, int depth, Action<object, string, string> addClip)
         {
             if (list == null) return;
             if (depth > 16 || !visited.Add(list)) throw new InvalidOperationException("FaceEmoのグループ参照が循環しているか深すぎます。");
@@ -605,9 +608,10 @@ namespace VRVlog.LilToonExporter
                         var animationName = Resolve(Member(mode, "Animation"))?.name;
                         if (!string.IsNullOrEmpty(animationName)) displayName = animationName;
                     }
+                    var exportName = string.IsNullOrWhiteSpace(displayName) ? null : displayName;
                     if (string.IsNullOrWhiteSpace(displayName)) displayName = "表情パターン";
                     var path = prefix + " / " + displayName;
-                    if (defaultAnimation != null) addClip(defaultAnimation, path + " / デフォルト");
+                    if (defaultAnimation != null) addClip(defaultAnimation, path + " / デフォルト", exportName);
                     var branchIndex = 0;
                     foreach (var branch in Items(Member(mode, "Branches")))
                     {
@@ -623,7 +627,7 @@ namespace VRVlog.LilToonExporter
                             var animation = Member(branch, variant);
                             if (animation == null) continue;
                             var label = variant == "BaseAnimation" ? "基本" : variant == "LeftHandAnimation" ? "左トリガー" : variant == "RightHandAnimation" ? "右トリガー" : "両トリガー";
-                            addClip(animation, path + " / " + branchIndex + " / " + label);
+                            addClip(animation, path + " / " + branchIndex + " / " + label, null);
                         }
                     }
                 }
@@ -660,7 +664,7 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("FaceEmoのメニュー順序と保存済み項目が一致しません。");
         }
 
-        private static void AddClip(GameObject avatar, object animation, string path, VrChatExpressionMenu.Source source, ref int serial, Func<string, bool> excludedPath,
+        private static void AddClip(GameObject avatar, object animation, string path, string exportName, VrChatExpressionMenu.Source source, ref int serial, Func<string, bool> excludedPath,
             BindingSnapshot bindings)
         {
             if (source.Entries.Count >= 512) throw new InvalidOperationException("表情候補が512件を超えています。");
@@ -670,6 +674,7 @@ namespace VRVlog.LilToonExporter
                 var clip = Resolve(animation);
                 if (clip == null) throw new InvalidOperationException("FaceEmoに登録されたアニメーションGUIDを解決できません。");
                 entry.Name = path + " / " + clip.name;
+                entry.ExportName = exportName ?? clip.name;
                 PlayerSelection selected;
                 if (bindings == null)
                 {

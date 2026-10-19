@@ -418,6 +418,7 @@ namespace VRVlog.LilToonExporter.Tests
             var expression = source.Entries.Single();
             Assert.That(expression.Error, Is.Null);
             Assert.That(expression.Name, Is.EqualTo("ジェスチャー / Smile"));
+            Assert.That(expression.VrmName(), Is.EqualTo("Smile"));
             Assert.That(expression.Values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(75));
             Assert.That(expression.Values.Single(v => v.Shape == "Blink").Weight, Is.EqualTo(0));
             Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(25));
@@ -442,6 +443,7 @@ namespace VRVlog.LilToonExporter.Tests
                 VrChatGestureExpressions.Add(avatar, source);
                 Assert.That(source.Entries, Has.Count.EqualTo(1));
                 Assert.That(source.Entries.Single().Name, Is.EqualTo("ジェスチャー / My smile"));
+                Assert.That(source.Entries.Single().VrmName(), Is.EqualTo("My smile"), "The VRM name is the overriding clip.");
                 Assert.That(source.Entries.Single().Values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(42));
             }
             finally { UnityEngine.Object.DestroyImmediate(overrides); }

@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session.SetPreset(ExpressionPreset.surprised, Session.PresetAssignment.ForShape(ExpressionPreset.surprised, "Front", "Smile"));
                 var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Load(bytes);
-                Assert.That(imported.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("VRChat / 記録 / Sample"),
+                Assert.That(imported.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("Sample"),
                     "Recorded faces keep their custom names for the app's animation references.");
                 Assert.That(imported.Vrm.Expression.Surprised, Is.Not.Null);
                 var front = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();

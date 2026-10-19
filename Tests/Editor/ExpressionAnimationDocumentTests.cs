@@ -104,14 +104,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void SchemaOneStillReadsThroughBothReaders()
         {
-            var animation = Animation("VRChat / Smile", Channel((0, null), (1, null)));
+            var animation = Animation("Smile", Channel((0, null), (1, null)));
             animation.Channels[0].Points[1].Target = ExpressionAnimationData.TargetPrefix + "Smile_1";
             var json = JsonDom.Parse(JsonDom.Serialize(ExpressionAnimationData.Write(new[] { animation })));
 
             var document = ExpressionAnimationData.ReadDocument(json);
             Assert.That(document.SchemaVersion, Is.EqualTo(1));
             Assert.That(document.Expressions, Is.Empty);
-            Assert.That(document.Animations.Single().Expression, Is.EqualTo("VRChat / Smile"));
+            Assert.That(document.Animations.Single().Expression, Is.EqualTo("Smile"));
             Assert.That(document.Animations[0].Channels[0].Points.Select(p => p.Target), Is.EqualTo(new[] { null, ExpressionAnimationData.TargetPrefix + "Smile_1" }));
             Assert.That(document.Animations[0].Channels[0].Points.All(p => p.Morph == null));
 
