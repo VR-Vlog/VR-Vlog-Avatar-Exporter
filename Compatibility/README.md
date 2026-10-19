@@ -417,5 +417,5 @@ user project's import/reload history; record this limit explicitly.
 
 The file format remains schema 2.0 for full lilToon (legacy 1.x remains readable).
 The app's embedded 2.3.4 catalogue and shaders are unchanged. More versions mean
-more validation work; exact gates deliberately trade immediate adoption of an
+more validation work; the range gate and the structure check deliberately trade immediate adoption of an
 unknown update for predictable exports and actionable errors.
