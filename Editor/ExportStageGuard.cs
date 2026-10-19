@@ -38,6 +38,10 @@ namespace VRVlog.LilToonExporter
         PoseOutput,
     }
 
+    // The steps a user sees. Each stage belongs to one phase; the stages stay
+    // separate so that leaving one out keeps the rest of its phase.
+    internal enum ExportPhase { Precheck, Skeleton, Expressions, Materials, Springs, Export, ResultList }
+
     // Carries a failure out of a stage that changed the export copy. The export
     // is restarted from a fresh copy with this stage left out.
     internal sealed class ExportStageFailure : Exception
@@ -208,6 +212,64 @@ namespace VRVlog.LilToonExporter
                 default: return stage.ToString();
             }
         }
+
+        // The phase only groups stages for display; it does not decide when they run.
+        internal static ExportPhase Phase(ExportStage stage)
+        {
+            switch (stage)
+            {
+                case ExportStage.GimmickDetection:
+                case ExportStage.SourceValidation:
+                case ExportStage.CopyValidation:
+                case ExportStage.MaAppearance:
+                    return ExportPhase.Precheck;
+                case ExportStage.BuildProcess:
+                case ExportStage.Attachments:
+                case ExportStage.SkinRepair:
+                case ExportStage.Constraints:
+                    return ExportPhase.Skeleton;
+                case ExportStage.ExpressionMenu:
+                case ExportStage.BlinkCapture:
+                case ExportStage.PoseCapture:
+                case ExportStage.FaceEmo:
+                case ExportStage.Expressions:
+                case ExportStage.ExpressionOutput:
+                case ExportStage.BlinkOutput:
+                case ExportStage.TrackingOutput:
+                case ExportStage.LookAt:
+                case ExportStage.PoseOutput:
+                    return ExportPhase.Expressions;
+                case ExportStage.LilToonSnapshot:
+                case ExportStage.TextureBake:
+                case ExportStage.OptimizerEvidence:
+                case ExportStage.LilToonExtension:
+                    return ExportPhase.Materials;
+                case ExportStage.PhysBone:
+                case ExportStage.PhysBoneVerify:
+                    return ExportPhase.Springs;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(stage), stage, null);
+            }
+        }
+
+        internal static string PhaseLabel(ExportPhase phase)
+        {
+            switch (phase)
+            {
+                case ExportPhase.Precheck: return "事前確認";
+                case ExportPhase.Skeleton: return "骨格";
+                case ExportPhase.Expressions: return "表情";
+                case ExportPhase.Materials: return "マテリアル";
+                case ExportPhase.Springs: return "揺れ物";
+                case ExportPhase.Export: return "書き出し";
+                case ExportPhase.ResultList: return "結果一覧";
+                default: return phase.ToString();
+            }
+        }
+
+        // "表情: 瞬き". Each part is translated on its own.
+        internal static string DisplayName(ExportStage stage) =>
+            ExporterLocalization.T(PhaseLabel(Phase(stage))) + ": " + ExporterLocalization.T(Label(stage));
 
         // What leaving the stage out means for the file. Stages that only check
         // something are approximations; the rest drop their feature.

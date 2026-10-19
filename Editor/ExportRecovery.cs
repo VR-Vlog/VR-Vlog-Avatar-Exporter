@@ -31,6 +31,7 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryDiagnostic
     {
         internal string Id, Code, Stage, Target, Reason, Remedy, LostEffect;
+        internal ExportPhase? Phase;
         internal Object Source;
         internal ExportRecoveryAction Action;
     }
@@ -51,6 +52,8 @@ namespace VRVlog.LilToonExporter
     {
         internal GameObject DiagnosticSource;
         internal string Stage = "環境確認";
+        // The phase Stage belongs to, for display. Null when only Stage is known.
+        internal ExportPhase? Phase = ExportPhase.Precheck;
         internal bool Succeeded;
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
         // Features the export worked around instead of stopping. Read before saving.
@@ -64,6 +67,7 @@ namespace VRVlog.LilToonExporter
         internal void Begin()
         {
             Stage = "環境確認";
+            Phase = ExportPhase.Precheck;
             Succeeded = false;
             errorType = null;
             Diagnostics.Clear();
@@ -83,10 +87,10 @@ namespace VRVlog.LilToonExporter
         internal Material SourceMaterial(Material material)
             => !ReferenceEquals(material, null) && originals.TryGetValue(material, out var original) ? original : material;
 
-        internal static ExportRecoveryReport FromException(GameObject source, Exception error, string stage = null)
+        internal static ExportRecoveryReport FromException(GameObject source, Exception error, string stage = null, ExportPhase? phase = null)
         {
             var report = new ExportRecoveryReport();
-            if (stage != null) report.Stage = stage;
+            if (stage != null) { report.Stage = stage; report.Phase = phase; }
             try { report.Fail(source, error); }
             catch
             {
@@ -113,11 +117,13 @@ namespace VRVlog.LilToonExporter
             if (error is VrChatMenuImportLimitException menuLimit)
             {
                 Stage = "表情メニュー読込";
+                Phase = ExportPhase.Expressions;
                 AddMenuLimit(source, menuLimit.Summary);
             }
             else if (error is VrChatMenuImportPolicyException)
             {
                 Stage = "表情メニュー読込";
+                Phase = ExportPhase.Expressions;
                 var root = source != null ? VrChatExpressionMenu.Root(source) as Object : null;
                 Add("menu-import-changed", root != null ? root : source, ExporterLocalization.T("VRChatメニュー全体"), error.Message,
                     "メニュー由来の表情・ポーズの取り込みをすべて省略して試せます。ジェスチャー・FaceEmo・APL・手動追加・既存VRM表情は保持します。",
@@ -254,7 +260,7 @@ namespace VRVlog.LilToonExporter
         void Add(string code, Object source, string target, string reason, string remedy, string effect, ExportRecoveryAction action)
         {
             Diagnostics.Add(new ExportRecoveryDiagnostic { Id = code + ":" + Diagnostics.Count, Code = code,
-                Stage = Stage, Source = source, Target = target, Reason = reason, Remedy = remedy, LostEffect = effect, Action = action });
+                Stage = Stage, Phase = Phase, Source = source, Target = target, Reason = reason, Remedy = remedy, LostEffect = effect, Action = action });
         }
 
         // Deliberately omit local labels, free-form exception text, paths, names,

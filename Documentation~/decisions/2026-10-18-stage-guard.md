@@ -65,4 +65,5 @@
 
 - 書き出し画面とアプリへの転送では、失敗した機能を省いたファイルが保存される。省いた内容は警告と `ExportFallbackReport.Results` に残る。
 - 新しい段階を足すときは、`ExportStage` に値を足し、`ExportStageGuard.Label` と `Outcome` に表示名と分類を書き、呼び出しを `Run`・`Step`・`Watch` のどれかで囲む。テストの差し込みは全段階を自動で回す。
+- 段階を足すときは、`ExportStageGuard.Phase` にもその段階が属する工程を書く（2026-10-19 追記）。書き忘れると `Phase` が例外を投げ、`ExportStageGuardTests.EveryStageBelongsToAPhase` が失敗する。工程の考え方は `2026-10-19-export-phases.md`。
 - ファイルを作れないとき（保存先・UniVRM の書き出し自体の失敗・取り消し）は従来どおり止まる。

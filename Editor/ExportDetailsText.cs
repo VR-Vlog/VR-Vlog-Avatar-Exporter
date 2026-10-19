@@ -12,6 +12,11 @@ namespace VRVlog.LilToonExporter
     {
         internal static void Copy(string details) => EditorGUIUtility.systemCopyBuffer = details ?? "";
 
+        // The stage with its phase in front, or alone when the phase is not known.
+        internal static string StageLine(ExportPhase? phase, string stage) =>
+            ExporterLocalization.T("工程: ") +
+            (phase.HasValue ? ExporterLocalization.T(ExportStageGuard.PhaseLabel(phase.Value)) + ": " : "") + ExporterLocalization.T(stage);
+
         internal static string Failure(string message, string technicalDetails,
             IEnumerable<ExportRecoveryDiagnostic> diagnostics)
         {
@@ -20,7 +25,7 @@ namespace VRVlog.LilToonExporter
             foreach (var issue in diagnostics ?? Array.Empty<ExportRecoveryDiagnostic>())
             {
                 if (issue == null) continue;
-                text.AppendLine(ExporterLocalization.T("工程: ") + ExporterLocalization.T(issue.Stage));
+                text.AppendLine(StageLine(issue.Phase, issue.Stage));
                 text.AppendLine(ExporterLocalization.T("対象: ") + issue.Target);
                 text.AppendLine(ExporterLocalization.T("理由: ") + ExporterLocalization.T(issue.Reason));
                 text.AppendLine(ExporterLocalization.T("次にすること: ") + ExporterLocalization.T(issue.Remedy));

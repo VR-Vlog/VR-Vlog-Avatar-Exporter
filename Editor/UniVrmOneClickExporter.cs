@@ -122,6 +122,7 @@ namespace VRVlog.LilToonExporter
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
                 report.Stage = "完了";
+                report.Phase = ExportPhase.ResultList;
                 report.Succeeded = true;
                 report.ClearError();
                 return bytes;
@@ -144,7 +145,7 @@ namespace VRVlog.LilToonExporter
             var trimmed = poses.TrimmedCount;
             if (trimmed == 0) return;
             var reason = string.Format(ExporterLocalization.T(PoseLimitWarning), VRVlog.Poses.HumanoidPoseData.MaximumPoses, trimmed);
-            var name = ExporterLocalization.T(ExportStageGuard.Label(ExportStage.PoseCapture));
+            var name = ExportStageGuard.DisplayName(ExportStage.PoseCapture);
             warnings?.Add(reason);
             report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
             var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
@@ -285,7 +286,7 @@ namespace VRVlog.LilToonExporter
                 diagnostics.TryGetValue(omission.Stage, out var found);
                 report.Fallbacks.AddStage(omission.Stage, omission.Error.Message, found);
                 warnings?.Add(ExporterLocalization.T("書き出しの一部を省略しました") + ": " +
-                    ExporterLocalization.T(ExportStageGuard.Label(omission.Stage)) + " — " + omission.Error.Message);
+                    ExportStageGuard.DisplayName(omission.Stage) + " — " + omission.Error.Message);
             }
         }
 
@@ -305,6 +306,7 @@ namespace VRVlog.LilToonExporter
             // the avatar's own inactive children stay out as usual.
             if (ExportRendererSelection.HiddenInScene(source)) RecordHiddenRoot(source, warnings, recoveryReport);
             recoveryReport.Stage = "原本検査";
+            recoveryReport.Phase = ExportPhase.Precheck;
             var trackingProfile = source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile;
             var manualObjects = (excludedObjects ?? Array.Empty<GameObject>()).ToArray();
             gimmickOptions = new ExportGimmickOptions
@@ -332,6 +334,7 @@ namespace VRVlog.LilToonExporter
             // cached source of expression weights after the user edits a clip.
             var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);
             recoveryReport.Stage = "表情メニュー読込";
+            recoveryReport.Phase = ExportPhase.Expressions;
             var menu = guard.Run(ExportStage.ExpressionMenu, () =>
             {
                 var read = VrChatExpressionMenu.Read(source, menuPolicy);
@@ -348,6 +351,7 @@ namespace VRVlog.LilToonExporter
                 () => PoseExportSession.None(source));
             poses.TrimToLimit = guard.ContinueOnFailure;
             recoveryReport.Stage = "コピー作成";
+            recoveryReport.Phase = ExportPhase.Precheck;
             var clone = NdmfExportPreparation.InstantiateOwnedCopy(source);
             clone.name = source.name;
             var temporaryMaterials = new List<Material>();
@@ -386,6 +390,7 @@ namespace VRVlog.LilToonExporter
                     expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true), () => null);
                 List<VrmMenuExpressions.Expression> expressions = null;
                 recoveryReport.Stage = "ビルド処理";
+                recoveryReport.Phase = ExportPhase.Skeleton;
                 // Caller-selected faces join the copy as authored VRM clips, so
                 // the same identity capture, relocation and neutral baking apply.
                 authorCopyExpressions?.Invoke(clone);
@@ -457,6 +462,7 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
                     RecordTrimmedPoses(poses, warnings, recoveryReport);
                     recoveryReport.Stage = "基準形評価";
+                    recoveryReport.Phase = ExportPhase.Expressions;
                     // This beta retains the prepared copy's rest values. Selected
                     // expressions still use their original FX evaluation above;
                     // all endpoints below share this retained neutral snapshot.
@@ -516,6 +522,7 @@ namespace VRVlog.LilToonExporter
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 recoveryReport.Stage = "材質保存";
+                recoveryReport.Phase = ExportPhase.Materials;
                 // Unsupported shaders become official lilToon approximations so
                 // they follow the ordinary lilToon route instead of stopping.
                 if (exporterVersion != null) guard.Step(ExportStage.LilToonSnapshot, () => UnsupportedShaderSubstitution.Apply(clone, temporaryMaterials, warnings, recoveryReport.Fallbacks, (copy, original) =>
@@ -561,15 +568,19 @@ namespace VRVlog.LilToonExporter
                     warnings?.Add("本体のボーンと独立したパーツは現在の接続を保持しました: " +
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
+                recoveryReport.Phase = ExportPhase.Springs;
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
+                recoveryReport.Phase = ExportPhase.Skeleton;
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
+                recoveryReport.Phase = ExportPhase.Materials;
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
                     lenient: guard.ContinueOnFailure);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
+                recoveryReport.Phase = ExportPhase.Export;
                 var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
                 DisableEmptyMeshRenderers(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
@@ -588,6 +599,7 @@ namespace VRVlog.LilToonExporter
                         optimizerBindings.Bind(converter, model, storage);
                     }, warnings: warnings);
                 recoveryReport.Stage = "出力検査";
+                recoveryReport.Phase = ExportPhase.Export;
                 // Output stages transform finished bytes; a failing one keeps the
                 // bytes it was given.
                 exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);

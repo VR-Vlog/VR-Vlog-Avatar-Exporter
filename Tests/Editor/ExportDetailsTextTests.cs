@@ -49,6 +49,19 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void TheStageLineNamesItsPhaseWhenKnown()
+        {
+            var issues = new[]
+            {
+                new ExportRecoveryDiagnostic { Stage = "表情メニュー読込", Phase = ExportPhase.Expressions },
+                new ExportRecoveryDiagnostic { Stage = "材質保存" },
+            };
+            var lines = ExportDetailsText.Failure(null, null, issues).Split('\n').Select(line => line.TrimEnd('\r')).ToArray();
+            Assert.That(lines, Has.Member(ExporterLocalization.T("工程: ") + ExporterLocalization.T("表情") + ": " + ExporterLocalization.T("表情メニュー読込")));
+            Assert.That(lines, Has.Member(ExporterLocalization.T("工程: ") + ExporterLocalization.T("材質保存")));
+        }
+
+        [Test]
         public void NativeClipboardAndUtf8FileContainTheSameCompleteUnicodeText()
         {
             var details = new string('文', 180000) + "\n最後のエラー 👁️\r\n最終行\t保存終了";
