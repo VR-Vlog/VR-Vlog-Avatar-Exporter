@@ -38,7 +38,9 @@
 
 - `ExportStageGuardTests.EveryStageBelongsToAPhase`: すべての段階が例外なく工程に対応する。
 - `ExportStageGuardTests.EveryStageCanFailAndTheFileIsStillWritten`: 24 段階それぞれについて、確認の一覧に出る名前が工程付きの名前になり、結果の一覧で省略の行が工程付きの名前のまとまりに入り、省略の警告が別の知らせとして出ないことを確かめた。
-- `ExportFallbackConfirmationTests.EveryShippedLocaleTranslatesTheResultWords`: 7 つの工程の名前が 4 言語の訳にある。
+- `ExportFallbackConfirmationTests.EveryShippedLocaleTranslatesTheResultWords`: 7 つの工程の名前と「基準形評価」が 4 言語の訳にある。
 - `ExportFallbackConfirmationTests.AStageIsNamedWithItsPhase`: 日本語で「表情: 瞬き」になる。
 - `ExportDetailsTextTests.TheStageLineNamesItsPhaseWhenKnown`: 工程が分かる行には工程が付き、分からない行は従来どおり。
-- Unity 2022.3.22f1 で、段階・省略・復旧・結果の一覧に関わる EditMode テストを回した。書き出したファイルが変わらないことは、変更の前後で同じアバターを書き出してバイト列を比べて確かめる。
+- Unity 2022.3.22f1 で、段階・省略・復旧・結果の一覧に関わる EditMode テスト 649 件を回した。失敗は APL が入っていないテスト用プロジェクトで APL を前提にする 4 件だけだった。
+- 構成の違う手元のアバター 6 体を変更の前後で書き出し、6 体とも VRM ファイルの sha256 が一致した。同じコードで 2 回書き出しても一致することを先に確かめてあるので、この変更は書き出すファイルを変えない。
+- `揺れ物` のように段階名と工程名が同じときは「揺れ物: 揺れ物」と重ねず「揺れ物」と出す（`AStageIsNamedWithItsPhase`）。
