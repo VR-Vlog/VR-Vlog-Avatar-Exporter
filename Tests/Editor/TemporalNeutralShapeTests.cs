@@ -375,7 +375,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (!dominatedBlink)
                 {
                     var document = GlbDocument.Read(bytes);
-                    var programs = ExpressionAnimationData.Read(((Dictionary<string, object>)document.Json["extensions"])[ExpressionAnimationData.Extension]);
+                    var programs = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)document.Json["extensions"])[ExpressionAnimationData.Extension]).Animations;
                     var program = programs.Single(animation => animation.Expression.Contains(idleClip.name));
                     Assert.That(program.Loop, Is.True); Assert.That(program.Duration, Is.EqualTo(idleClip.length).Within(.001));
                     Assert.That(program.Channels.Count, Is.EqualTo(2));

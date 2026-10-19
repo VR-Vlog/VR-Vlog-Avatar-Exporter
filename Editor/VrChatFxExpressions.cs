@@ -82,7 +82,7 @@ namespace VRVlog.LilToonExporter
                     var entry = new VrChatExpressionMenu.Entry {
                         Id = "fx/" + key, Name = "FX / " + candidate.State.name +
                             (candidate.State.motion is BlendTree ? " (" + assignment + ")" : ""),
-                        Error = candidate.Error
+                        Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Menu
                     };
                     foreach (var value in candidate.Values) entry.Parameters.Add(value.Key, value.Value);
                     if (entry.Error == null)
@@ -151,7 +151,7 @@ namespace VRVlog.LilToonExporter
             {
                 var entry = new VrChatExpressionMenu.Entry {
                     Id = "gesture-state/" + layer + "/" + candidate.Path + "/" + Assignment(candidate.Values),
-                    Name = label, Error = candidate.Error
+                    Name = label, Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Gesture
                 };
                 foreach (var pair in candidate.Values)
                     entry.Parameters.Add(pair.Key, pair.Key == "GestureLeftWeight" || pair.Key == "GestureRightWeight" ? Mathf.Clamp01(pair.Value) : pair.Value);

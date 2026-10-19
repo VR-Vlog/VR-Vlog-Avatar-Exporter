@@ -61,9 +61,20 @@ namespace VRVlog.LilToonExporter.Tests
             animation.Channels.Add(channel); expressions[0].Animation = animation;
             ((List<object>)root["meshes"])[0] = Mesh("raw-eye", "composite-face", ExpressionAnimationData.TargetPrefix + "test");
             var animated = GlbDocument.Read(VrmMenuExpressions.Add(GlbDocument.Create(root, binary).Write(), expressions));
-            var stored = ExpressionAnimationData.Read(((Dictionary<string, object>)animated.Json["extensions"])[ExpressionAnimationData.Extension]);
-            check(stored[0].Expression == "VRChat / 顔 / 笑顔 (2)" && stored[0].Channels[0].Points[0].Target == null,
-                "Animated data follows the final disambiguated expression name and supports a zero residual without a mesh target.");
+            var written = ((Dictionary<string, object>)animated.Json["extensions"])[ExpressionAnimationData.Extension];
+            var document = ExpressionAnimationData.ReadDocument(written);
+            var stored = document.Animations;
+            check(document.SchemaVersion == 2 && document.Expressions.Count == 1 && document.Expressions[0].Expression == "VRChat / 顔 / 笑顔 (2)" &&
+                document.Expressions[0].Source == ExpressionSource.Menu, "Schema 2 lists the registered expression with its source.");
+            check(stored[0].Expression == "VRChat / 顔 / 笑顔 (2)" && stored[0].Channels[0].Points[0].Morph == null &&
+                stored[0].Channels[0].Points[1].Morph != null && stored[0].Channels[0].Points[1].Morph.Node == 2 && stored[0].Channels[0].Points[1].Morph.Index == 2,
+                "Animated data follows the final disambiguated expression name; points refer to the output node and morph index, rest moves nothing.");
+            var animatedBinds = (List<object>)((Dictionary<string, object>)Custom(animated.Json)["VRChat / 顔 / 笑顔 (2)"])["morphTargetBinds"];
+            check(animatedBinds.Count == 3 && animatedBinds.Cast<Dictionary<string, object>>().Any(b => (long)b["node"] == 2 && (long)b["index"] == 2 && Convert.ToDouble(b["weight"]) == 1),
+                "The VRM expression holds the animation's last frame.");
+            rejected = false;
+            try { ExpressionAnimationData.Read(written); } catch (InvalidOperationException) { rejected = true; }
+            check(rejected, "Apps that read only schema 1 reject the file and keep the standard expression.");
             check(Custom(animated.Json).Count == 2 && VrmMenuExpressions.CountRegistered(animated.Write()) == 1,
                 "Animation basis morphs do not inflate the exported expression count or selector list.");
             check(((List<object>)animated.Json["extensionsUsed"]).Contains(ExpressionAnimationData.Extension) && !animated.Json.ContainsKey("extensionsRequired"),

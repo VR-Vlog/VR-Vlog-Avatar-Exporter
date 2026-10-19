@@ -60,7 +60,10 @@ namespace VRVlog.LilToonExporter
                     var entry = new VrChatExpressionMenu.Entry {
                         Id = "authored-fx/" + layer + "/" + target.Path,
                         Name = "FXクリップ / " + clip.name,
-                        UsesFacialProjection = true
+                        UsesFacialProjection = true,
+                        // Not a menu control: it plays on contact or other
+                        // external input, like a hand gesture does.
+                        Source = VRVlog.Expressions.ExpressionSource.Gesture
                     };
                     try
                     {
