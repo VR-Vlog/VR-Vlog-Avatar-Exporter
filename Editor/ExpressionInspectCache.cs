@@ -22,6 +22,10 @@ namespace VRVlog.LilToonExporter
         private readonly Dictionary<int, bool> persistent = new Dictionary<int, bool>();
         private readonly Dictionary<int, EditorCurveBinding[]> bindings = new Dictionary<int, EditorCurveBinding[]>();
         private readonly Dictionary<(int Clip, EditorCurveBinding Binding), bool?> dynamic = new Dictionary<(int Clip, EditorCurveBinding Binding), bool?>();
+        private readonly Dictionary<int, (int Index, AnimationClip Clip)[]> stationary = new Dictionary<int, (int Index, AnimationClip Clip)[]>();
+        private readonly Dictionary<int, EditorCurveBinding[]> curveBindings = new Dictionary<int, EditorCurveBinding[]>();
+        private readonly Dictionary<int, EditorCurveBinding[]> objectBindings = new Dictionary<int, EditorCurveBinding[]>();
+        private readonly Dictionary<(int Clip, EditorCurveBinding Binding), bool> constant = new Dictionary<(int Clip, EditorCurveBinding Binding), bool>();
         private bool disposed;
 
         internal int Hits { get; private set; }
@@ -95,6 +99,43 @@ namespace VRVlog.LilToonExporter
             if (!Persistent(clip)) return ExpressionDependencies.ReadDynamic(clip, binding);
             var key = (clip.GetInstanceID(), binding);
             if (!dynamic.TryGetValue(key, out var result)) dynamic.Add(key, result = ExpressionDependencies.ReadDynamic(clip, binding));
+            return result;
+        }
+
+        // Every expression probe proves the same stationary FX layers again.
+        // Their graph checks only read the persistent controller; the binding
+        // checks that depend on the caller's path exclusion run on each call.
+        // Hits return a copy, so a caller cannot change the cached entry.
+        internal (int Index, AnimationClip Clip)[] StationaryCandidates(RuntimeAnimatorController runtime)
+        {
+            if (!Persistent(runtime) || runtime is AnimatorOverrideController overrides && !Persistent(overrides.runtimeAnimatorController))
+                return ExpressionDependencies.StationaryCandidates(runtime);
+            var id = runtime.GetInstanceID();
+            if (!stationary.TryGetValue(id, out var result)) stationary.Add(id, result = ExpressionDependencies.StationaryCandidates(runtime));
+            return ((int Index, AnimationClip Clip)[])result.Clone();
+        }
+
+        internal EditorCurveBinding[] CurveBindings(AnimationClip clip)
+        {
+            if (!Persistent(clip)) return AnimationUtility.GetCurveBindings(clip);
+            var id = clip.GetInstanceID();
+            if (!curveBindings.TryGetValue(id, out var result)) curveBindings.Add(id, result = AnimationUtility.GetCurveBindings(clip));
+            return (EditorCurveBinding[])result.Clone();
+        }
+
+        internal EditorCurveBinding[] ObjectBindings(AnimationClip clip)
+        {
+            if (!Persistent(clip)) return AnimationUtility.GetObjectReferenceCurveBindings(clip);
+            var id = clip.GetInstanceID();
+            if (!objectBindings.TryGetValue(id, out var result)) objectBindings.Add(id, result = AnimationUtility.GetObjectReferenceCurveBindings(clip));
+            return (EditorCurveBinding[])result.Clone();
+        }
+
+        internal bool Constant(AnimationClip clip, EditorCurveBinding binding)
+        {
+            if (!Persistent(clip)) return VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding));
+            var key = (clip.GetInstanceID(), binding);
+            if (!constant.TryGetValue(key, out var result)) constant.Add(key, result = VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
             return result;
         }
 

@@ -161,8 +161,8 @@ namespace VRVlog.LilToonExporter
                     EditorCurveBinding.FloatCurve(value.Path, typeof(SkinnedMeshRenderer), "blendShape." + value.Shape)));
                 ExpressionDependencies.ValidateAdditionalProbeBehaviours(runtime, metadata, inputContext, outputMorphs);
             }
-            var stationaryBindings = StationaryBindings(avatar, runtime, excludedPath);
             var permanent = ExpressionDependencies.StationaryLayers(runtime, excludedPath);
+            var stationaryBindings = StationaryBindings(avatar, permanent, excludedPath);
             var originalController = ExpressionDependencies.Controller(runtime);
             var originalLayers = originalController.layers;
             var replacements = ExpressionDependencies.Overrides(runtime);
@@ -562,9 +562,12 @@ namespace VRVlog.LilToonExporter
         }
 
         private static HashSet<EditorCurveBinding> StationaryBindings(GameObject avatar, RuntimeAnimatorController runtime,
+            Func<string, bool> excludedPath) => StationaryBindings(avatar, ExpressionDependencies.StationaryLayers(runtime, excludedPath), excludedPath);
+
+        private static HashSet<EditorCurveBinding> StationaryBindings(GameObject avatar, Dictionary<int, AnimationClip> stationaryLayers,
             Func<string, bool> excludedPath)
         {
-            var result = ExpressionDependencies.StationaryMorphBindings(runtime, excludedPath);
+            var result = ExpressionDependencies.StationaryMorphBindings(stationaryLayers, excludedPath);
             // Unused inactive wardrobe layers cannot become a reason to sample
             // another outfit or reject an otherwise retained facial expression.
             result.RemoveWhere(binding =>

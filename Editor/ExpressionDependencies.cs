@@ -804,18 +804,44 @@ namespace VRVlog.LilToonExporter
         // proven stationary default clip; gesture and timed layers still enter
         // the graph solely through their real property/parameter dependencies.
         internal static HashSet<EditorCurveBinding> StationaryMorphBindings(RuntimeAnimatorController runtime,
-            Func<string, bool> excludedPath = null)
+            Func<string, bool> excludedPath = null) => StationaryMorphBindings(StationaryLayers(runtime, excludedPath), excludedPath);
+
+        // Takes the result of StationaryLayers for the same runtime and
+        // exclusion, so one caller does not prove the same layers twice.
+        internal static HashSet<EditorCurveBinding> StationaryMorphBindings(Dictionary<int, AnimationClip> stationaryLayers,
+            Func<string, bool> excludedPath)
         {
+            var cache = ExpressionInspectCache.Current;
             var result = new HashSet<EditorCurveBinding>();
-            foreach (var clip in StationaryLayers(runtime, excludedPath).Values)
-                result.UnionWith(AnimationUtility.GetCurveBindings(clip).Where(binding => excludedPath?.Invoke(binding.path) != true));
+            foreach (var clip in stationaryLayers.Values)
+                result.UnionWith((cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Where(binding => excludedPath?.Invoke(binding.path) != true));
             return result;
         }
 
         internal static Dictionary<int, AnimationClip> StationaryLayers(RuntimeAnimatorController runtime,
             Func<string, bool> excludedPath = null)
         {
+            var cache = ExpressionInspectCache.Current;
             var result = new Dictionary<int, AnimationClip>();
+            foreach (var (index, clip) in cache?.StationaryCandidates(runtime) ?? StationaryCandidates(runtime))
+            {
+                if ((cache?.ObjectBindings(clip) ?? AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    .Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
+                var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
+                    .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
+                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
+                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                    !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
+                result.Add(index, clip);
+            }
+            return result;
+        }
+
+        // The graph-only part of StationaryLayers. It does not depend on path
+        // exclusion; the binding checks above run again for every caller.
+        internal static (int Index, AnimationClip Clip)[] StationaryCandidates(RuntimeAnimatorController runtime)
+        {
+            var result = new List<(int Index, AnimationClip Clip)>();
             var controller = Controller(runtime);
             var replacements = Overrides(runtime);
             var layers = controller.layers;
@@ -831,14 +857,9 @@ namespace VRVlog.LilToonExporter
                     state.timeParameterActive || state.speedParameterActive || state.mirrorParameterActive || state.cycleOffsetParameterActive ||
                     !(state.motion is AnimationClip clip)) continue;
                 if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
-                if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
-                var bindings = AnimationUtility.GetCurveBindings(clip).Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
-                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
-                    !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))) continue;
-                result.Add(index, clip);
+                result.Add((index, clip));
             }
-            return result;
+            return result.ToArray();
         }
 
         private static void RemoveIndependentAutomaticWriters(Layer[] layers, ISet<EditorCurveBinding> automatic,
