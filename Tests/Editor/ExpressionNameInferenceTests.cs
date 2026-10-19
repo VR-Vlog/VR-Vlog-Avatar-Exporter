@@ -182,7 +182,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AuthoredCustomExpressionsAreNotCandidates()
         {
             var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)), "Sad (2)", MenuFace(Bind(0, 2)));
-            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c")));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("s0", "s1", "s2")));
             var filled = new List<(string Preset, string Source)>();
             var presets = Presets(Infer(bytes, filled: filled, registered: new[] { "怒り", "Sad (2)" }));
             Assert.That(filled, Is.EqualTo(new[] { ("angry", "怒り"), ("sad", "Sad (2)") }), "A numbered menu face still names its emotion.");
@@ -300,7 +300,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var filled = new List<(string Preset, string Source)>();
             var custom = Obj("1", MenuFace(Bind(0, 0)), "1 (2)", MenuFace(Bind(0, 1)));
-            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b")));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("s0", "s1")));
             var paths = new Dictionary<string, string> { ["1"] = "Other / 1", ["1 (2)"] = "Smile / 1" };
             var happy = (Dictionary<string, object>)Presets(Infer(bytes, paths, filled: filled))["happy"];
             Assert.That(Canonical(happy["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
