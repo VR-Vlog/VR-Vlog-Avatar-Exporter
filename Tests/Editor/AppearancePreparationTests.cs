@@ -34,9 +34,13 @@ namespace VRVlog.LilToonExporter.Tests
                 AvatarBaseShape.Preserve(clone, clone, owned, null);
                 var expressions = VrChatExpressionBaker.Bake(null, clone, menu, owned, null, bindings);
                 Assert.That(prepared.sharedMesh.vertices[0], Is.EqualTo(new Vector3(restChanges ? 4 : 1, restChanges ? 1 : 0, 0)));
+                // Raising Blink to its 100 frame references the prepared shape
+                // directly at full weight instead of baking a target.
+                Assert.That(expressions[0].Targets, Is.Empty);
+                Assert.That(expressions[0].Direct.Single(), Is.EqualTo((prepared, "Blink", 1f)));
                 var delta = new Vector3[3];
-                prepared.sharedMesh.GetBlendShapeFrameVertices(prepared.sharedMesh.GetBlendShapeIndex(expressions[0].Targets[0]), 0, delta, null, null);
-                Assert.That(prepared.sharedMesh.vertices[0] + delta[0], Is.EqualTo(new Vector3(restChanges ? 4 : 1, 2, 0)), "Blink keeps prepared face size and reaches one full blink.");
+                prepared.sharedMesh.GetBlendShapeFrameVertices(prepared.sharedMesh.GetBlendShapeIndex("Blink"), 0, delta, null, null);
+                Assert.That(prepared.sharedMesh.vertices[0] + delta[0] * expressions[0].Direct.Single().Weight, Is.EqualTo(new Vector3(restChanges ? 4 : 1, 2, 0)), "Blink keeps prepared face size and reaches one full blink.");
                 Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(25));
                 Assert.That(original.vertices[0], Is.EqualTo(new Vector3(1, 0, 0)));
             }

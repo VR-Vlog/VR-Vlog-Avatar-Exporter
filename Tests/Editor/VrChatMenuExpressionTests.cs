@@ -69,10 +69,17 @@ namespace VRVlog.LilToonExporter.Tests
                 menu.Entries.Add(entry);
                 var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, temporary, null);
                 Assert.That(expressions, Has.Count.EqualTo(1));
-                var baked = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
+                var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>(); var baked = copy.sharedMesh;
+                // Raising Face size from rest 25 to 75 references its rebased
+                // shape directly; lowering Blink below rest stays a residual.
+                var direct = expressions[0].Direct.Single();
+                Assert.That(direct.Renderer, Is.SameAs(copy)); Assert.That(direct.Shape, Is.EqualTo("Face size"));
+                Assert.That(direct.Weight, Is.EqualTo(50f / 75f).Within(.000001f));
+                Assert.That(expressions[0].Targets.Single(), Is.EqualTo(baked.GetBlendShapeName(2)));
                 var v = new Vector3[3]; var n = new Vector3[3]; var t = new Vector3[3];
                 baked.GetBlendShapeFrameVertices(2, 0, v, n, t);
-                Assert.That(baked.vertices[0] + v[0], Is.EqualTo(new Vector3(4, 0, 0)));
+                var face = new Vector3[3]; baked.GetBlendShapeFrameVertices(baked.GetBlendShapeIndex("Face size"), 0, face, n, t);
+                Assert.That(Vector3.Distance(baked.vertices[0] + v[0] + face[0] * direct.Weight, new Vector3(4, 0, 0)), Is.LessThan(.00001f));
                 Assert.That(mesh.blendShapeCount, Is.EqualTo(2));
             }
             finally
@@ -650,6 +657,29 @@ namespace VRVlog.LilToonExporter.Tests
             for (var shape = 0; shape < mesh.blendShapeCount; shape++) skin.SetBlendShapeWeight(shape, 0);
         }
 
+        // Adds a 200 frame (twice the 100 delta) to the named shapes. A
+        // multi-frame shape cannot be referenced directly, so these tests keep
+        // exercising generated targets; the 100 frame stays at index 0.
+        private void SplitFrames(params string[] names)
+        {
+            var count = mesh.vertexCount; var frames = new List<(string Name, Vector3[] V, Vector3[] N, Vector3[] T)>();
+            for (var shape = 0; shape < mesh.blendShapeCount; shape++)
+            {
+                Assert.That(mesh.GetBlendShapeFrameCount(shape), Is.EqualTo(1)); Assert.That(mesh.GetBlendShapeFrameWeight(shape, 0), Is.EqualTo(100));
+                var v = new Vector3[count]; var n = new Vector3[count]; var t = new Vector3[count];
+                mesh.GetBlendShapeFrameVertices(shape, 0, v, n, t); frames.Add((mesh.GetBlendShapeName(shape), v, n, t));
+            }
+            mesh.ClearBlendShapes();
+            foreach (var frame in frames)
+            {
+                mesh.AddBlendShapeFrame(frame.Name, 100, frame.V, frame.N, frame.T);
+                if (names.Contains(frame.Name))
+                    mesh.AddBlendShapeFrame(frame.Name, 200, frame.V.Select(value => value * 2).ToArray(),
+                        frame.N.Select(value => value * 2).ToArray(), frame.T.Select(value => value * 2).ToArray());
+            }
+            Assert.That(names.All(name => mesh.GetBlendShapeFrameCount(mesh.GetBlendShapeIndex(name)) == 2), Is.True);
+        }
+
         private static VrChatExpressionMenu.Entry BasisEntry(string name, string shape, double duration = 1, bool animation = true, string path = "Face", double maximum = 100)
         {
             var entry = new VrChatExpressionMenu.Entry { Id = name, Name = name, Duration = duration, Loop = duration == 1 };
@@ -671,6 +701,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             for (var shape = 0; shape < skin.sharedMesh.blendShapeCount; shape++) skin.SetBlendShapeWeight(shape, 0);
             foreach (var name in expression.Targets) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(name), 100);
+            // The basis fixtures author every frame at 100, so a direct
+            // reference with weight x is the native weight 100x.
+            foreach (var direct in expression.Direct)
+                if (direct.Renderer == skin) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(direct.Shape), 100 * direct.Weight);
             foreach (var channel in expression.Animation.Channels)
             {
                 channel.Weights(time, out var left, out var right, out var blend);
@@ -845,7 +879,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void EqualScalarPosesRetainIndependentSimultaneousTargets()
         {
-            BasisMesh(3, ("First", Vector3.right * .01f, Vector3.zero, Vector3.zero));
+            BasisMesh(3, ("First", Vector3.right * .01f, Vector3.zero, Vector3.zero)); SplitFrames("First");
             var menu = new VrChatExpressionMenu.Source(); menu.Entries.Add(BasisEntry("First row", "First", animation: false)); menu.Entries.Add(BasisEntry("Second row", "First", animation: false));
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>(); var native = new Mesh();
             try
@@ -864,7 +898,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ExactZeroScalarMarkersKeepAllExpressionSettingsAndNativeCoactivation(bool clamp)
         {
-            BasisMesh(3, ("Face", Vector3.right * .01f, Vector3.zero, Vector3.zero));
+            BasisMesh(3, ("Face", Vector3.right * .01f, Vector3.zero, Vector3.zero)); SplitFrames("Face");
             var menu = new VrChatExpressionMenu.Source();
             for (var row = 0; row < 4; row++)
             {
@@ -938,6 +972,7 @@ namespace VRVlog.LilToonExporter.Tests
             BasisMesh(3, ("Zero", Vector3.zero, Vector3.zero, Vector3.zero),
                 ("Changed", Vector3.right * (kind == "position" || kind == "tiny position" ? .01f : 0),
                     kind == "normal" ? Vector3.up * .02f : Vector3.zero, kind == "tangent" ? Vector3.forward * .03f : Vector3.zero));
+            SplitFrames("Zero", "Changed");
             var menu = new VrChatExpressionMenu.Source(); menu.Entries.Add(BasisEntry("Neutral", "Zero", animation: false));
             menu.Entries.Add(BasisEntry("Changed one", "Changed", animation: false)); menu.Entries.Add(BasisEntry("Changed two", "Changed", animation: false));
             if (kind == "tiny position") foreach (var entry in menu.Entries.Skip(1)) entry.Values.Single().Weight = .09f;
@@ -981,7 +1016,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ZeroScalarMarkersRemainUniqueToTheActualRenderer()
         {
-            BasisMesh(3, ("Zero", Vector3.zero, Vector3.zero, Vector3.zero));
+            BasisMesh(3, ("Zero", Vector3.zero, Vector3.zero, Vector3.zero)); SplitFrames("Zero");
             var other = new GameObject("Other", typeof(SkinnedMeshRenderer)); other.transform.SetParent(avatar.transform, false);
             other.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
             var menu = new VrChatExpressionMenu.Source(); menu.Entries.Add(BasisEntry("First", "Zero", animation: false));
@@ -1002,7 +1037,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ExactZeroScalarReuseRespectsTheOriginalMemoryBudget(bool zero)
         {
             const int vertices = 65536, rows = 58;
-            BasisMesh(vertices, ("Face", zero ? Vector3.zero : Vector3.right * .01f, Vector3.zero, Vector3.zero));
+            BasisMesh(vertices, ("Face", zero ? Vector3.zero : Vector3.right * .01f, Vector3.zero, Vector3.zero)); SplitFrames("Face");
             var menu = new VrChatExpressionMenu.Source(); for (var row = 0; row < rows; row++) menu.Entries.Add(BasisEntry("Row " + row, "Face", animation: false));
             var before = ExportSourceFingerprint.Compute(avatar); var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>();
             try
@@ -1046,6 +1081,10 @@ namespace VRVlog.LilToonExporter.Tests
             const int vertices = 65536, rows = 32;
             BasisMesh(vertices, Enumerable.Range(0, rows).Select(index => ("Basis" + index,
                 Vector3.right * .01f * (duplicate ? 1 : index + 1), Vector3.up * .02f, Vector3.forward * .03f)).ToArray());
+            // A rest of 50 makes the static 25 lower the face, which keeps it
+            // a generated target instead of a direct reference.
+            var source = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
+            for (var shape = 0; shape < rows; shape++) source.SetBlendShapeWeight(shape, 50);
             var menu = new VrChatExpressionMenu.Source();
             for (var row = 0; row < rows; row++)
             {
@@ -1110,7 +1149,14 @@ namespace VRVlog.LilToonExporter.Tests
                     expression.Animation.Expression = expression.Name;
                 }
                 Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(expressions.Select(expression => expression.Animation).ToList())).Count, Is.EqualTo(2));
-                if (startingAtEnd) Assert.That(expressions.SelectMany(expression => expression.Targets).Distinct().Count(), Is.EqualTo(2));
+                // The static 100 is the single 100 frame itself, so each range
+                // references it directly instead of baking its own scalar target.
+                if (startingAtEnd)
+                    foreach (var expression in expressions)
+                    {
+                        Assert.That(expression.Targets, Is.Empty);
+                        Assert.That(expression.Direct.Single(), Is.EqualTo((copy, "Face", 1f)));
+                    }
             }
             finally { UnityEngine.Object.DestroyImmediate(original); UnityEngine.Object.DestroyImmediate(actual); UnityEngine.Object.DestroyImmediate(clone); foreach (var item in owned) UnityEngine.Object.DestroyImmediate(item); }
         }

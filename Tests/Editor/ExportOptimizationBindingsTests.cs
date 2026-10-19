@@ -96,6 +96,91 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(source.GetComponent<ExportOptimizationMarker>(), Is.Null);
         }
 
+        // A merge that renames same-named shapes per source renderer, as a
+        // mesh merge in rename mode does: each menu reference binds the new
+        // node and renamed index with the weight the menu asked for.
+        [Test]
+        public void MenuDirectReferencesFollowRenamedMergedShapesToTheirFinalNode()
+        {
+            Skin(source, "face", "Smile"); Skin(source, "body", "Smile");
+            clone = Object.Instantiate(source);
+            var originals = clone.GetComponentsInChildren<SkinnedMeshRenderer>();
+            using var bindings = ExportOptimizationBindings.Capture(clone, menuMorphs: originals.Select(skin => (skin, "Smile")));
+            var marker = clone.GetComponent<ExportOptimizationMarker>();
+            var target = Skin(clone, "merged", "Other");
+            target.sharedMesh.AddBlendShapeFrame("Smile (face)", 100, Enumerable.Repeat(Vector3.up * .2f, 3).ToArray(), null, null);
+            target.sharedMesh.AddBlendShapeFrame("Smile (body)", 100, Enumerable.Repeat(Vector3.right * .2f, 3).ToArray(), null, null);
+            foreach (var route in marker.Morphs)
+            {
+                route.Shape = route.SourceRendererId == originals[0].GetInstanceID() ? "Smile (face)" : "Smile (body)";
+                route.Renderer = target;
+            }
+            Object.DestroyImmediate(originals[0].gameObject); Object.DestroyImmediate(originals[1].gameObject);
+            bindings.ValidateAndApply();
+            bindings.BindNodes(skin => skin == target ? 1 : -1);
+            var bytes = MenuOutput("Other", "Smile (face)", "Smile (body)");
+            var json = GlbDocument.Read(bytes).Json;
+            void AssertBind(Dictionary<string, object> bind, int index, float weight)
+            {
+                Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
+                Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(index));
+                Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(weight).Within(.000001));
+            }
+            AssertBind(bindings.MenuBinding(json, originals[0], "Smile", .25f), 1, .25f);
+            AssertBind(bindings.MenuBinding(json, originals[1], "Smile", .5f), 2, .5f);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => bindings.MenuBinding(json, originals[0], "Other", 1)).Message,
+                Does.Contain("最適化前の表情の参照がありません"));
+            var expression = new VrmMenuExpressions.Expression { Name = "Smile" };
+            expression.Direct.Add((originals[0], "Smile", .25f)); expression.Direct.Add((originals[1], "Smile", .5f));
+            var binds = MenuBinds(VrmMenuExpressions.Add(bytes, new[] { expression }, bindings), "VRChat / Smile");
+            Assert.That(binds, Has.Length.EqualTo(2));
+            AssertBind(binds.Single(bind => Convert.ToInt32(bind["index"]) == 1), 1, .25f);
+            AssertBind(binds.Single(bind => Convert.ToInt32(bind["index"]) == 2), 2, .5f);
+        }
+
+        // When the merge coalesces both sources into one output shape, the
+        // expression keeps the first reference instead of applying it twice.
+        [Test]
+        public void MenuDirectReferencesCoalescedIntoOneShapeKeepTheFirstBind()
+        {
+            Skin(source, "face", "Smile"); Skin(source, "body", "Smile");
+            clone = Object.Instantiate(source);
+            var originals = clone.GetComponentsInChildren<SkinnedMeshRenderer>();
+            using var bindings = ExportOptimizationBindings.Capture(clone, menuMorphs: originals.Select(skin => (skin, "Smile")));
+            var target = Skin(clone, "merged", "Smile");
+            foreach (var route in clone.GetComponent<ExportOptimizationMarker>().Morphs) route.Renderer = target;
+            Object.DestroyImmediate(originals[0].gameObject); Object.DestroyImmediate(originals[1].gameObject);
+            bindings.ValidateAndApply();
+            bindings.BindNodes(skin => skin == target ? 1 : -1);
+            var expression = new VrmMenuExpressions.Expression { Name = "Smile" };
+            expression.Direct.Add((originals[0], "Smile", .25f)); expression.Direct.Add((originals[1], "Smile", .5f));
+            var warnings = new List<string>();
+            var bind = MenuBinds(VrmMenuExpressions.Add(MenuOutput("Smile"), new[] { expression }, bindings, warnings), "VRChat / Smile").Single();
+            Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
+            Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
+            Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.25).Within(.000001));
+            // The dropped .5 is reported, not lost silently.
+            Assert.That(warnings, Has.Exactly(1).Contains("Smile"));
+        }
+
+        static byte[] MenuOutput(params string[] names) => GlbDocument.Create(new Dictionary<string, object> {
+            ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+            ["nodes"] = new List<object> { new Dictionary<string, object> { ["name"] = "other" }, new Dictionary<string, object> { ["mesh"] = 0L } },
+            ["meshes"] = new List<object> { new Dictionary<string, object> {
+                ["extras"] = new Dictionary<string, object> { ["targetNames"] = names.Cast<object>().ToList() },
+                ["primitives"] = new List<object> { new Dictionary<string, object> { ["targets"] = names.Select(_ => (object)new Dictionary<string, object>()).ToList() } }
+            } },
+            ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = new Dictionary<string, object> {
+                ["expressions"] = new Dictionary<string, object> { ["custom"] = new Dictionary<string, object>() } } }
+        }, Array.Empty<byte>()).Write();
+
+        static Dictionary<string, object>[] MenuBinds(byte[] bytes, string name)
+        {
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"];
+            var custom = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"];
+            return ((List<object>)((Dictionary<string, object>)custom[name])["morphTargetBinds"]).Cast<Dictionary<string, object>>().ToArray();
+        }
+
         [Test]
         public void LosingAnEffectiveEndpointCannotBeHiddenByANameOnAnotherMesh()
         {

@@ -11,7 +11,18 @@ namespace VRVlog.LilToonExporter
         {
             internal string Name;
             internal readonly List<string> Targets = new List<string>();
+            // Shapes on the export copies that reproduce a channel by
+            // themselves: the final morph target scaled by Weight.
+            internal readonly List<(UnityEngine.SkinnedMeshRenderer Renderer, string Shape, float Weight)> Direct =
+                new List<(UnityEngine.SkinnedMeshRenderer Renderer, string Shape, float Weight)>();
             internal ExpressionAnimationData Animation = null;
+        }
+
+        // Resolves a direct reference through the optimizer route captured
+        // before export, so renamed or merged shapes keep their binding.
+        internal interface IDirectBindings
+        {
+            Dictionary<string, object> MenuBinding(Dictionary<string, object> json, UnityEngine.SkinnedMeshRenderer renderer, string shape, float weight);
         }
 
         internal static int CountRegistered(byte[] bytes)
@@ -27,9 +38,10 @@ namespace VRVlog.LilToonExporter
                 binds is List<object> list && list.Count > 0);
         }
 
-        // Register only the composite targets made for actual menu entries. Raw
-        // morph names are never promoted to selectable expressions.
-        internal static byte[] Add(byte[] bytes, IList<Expression> expressions)
+        // Register only actual menu entries. Each one binds its composite
+        // targets at full weight and the original shapes it moves linearly at
+        // their own weight; raw shapes do not become selectable expressions.
+        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null, ICollection<string> warnings = null)
         {
             if (expressions.Count == 0) return bytes;
             var glb = GlbDocument.Read(bytes);
@@ -68,6 +80,25 @@ namespace VRVlog.LilToonExporter
                     }
                     if (matches.Count != 1) throw new InvalidOperationException("表情の出力先を一意に特定できません: " + expression.Name);
                     if (expression.Targets.Contains(target)) binds.Add(matches.Single());
+                }
+                if (expression.Direct.Count > 0 && direct == null)
+                    throw new InvalidOperationException("表情の元BlendShapeの出力先を解決できません: " + expression.Name);
+                foreach (var (renderer, shape, weight) in expression.Direct)
+                {
+                    var bind = direct.MenuBinding(glb.Json, renderer, shape, weight);
+                    // Merged source shapes keep the first declaration only,
+                    // as UniVRM would otherwise apply one target twice. One
+                    // merged target cannot hold two weights; say which was kept.
+                    var first = binds.Cast<Dictionary<string, object>>().FirstOrDefault(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
+                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]));
+                    if (first != null)
+                    {
+                        if (Math.Abs(Convert.ToDouble(first["weight"]) - Convert.ToDouble(bind["weight"])) > 1e-4)
+                            warnings?.Add("表情「" + expression.Name + "」で、最適化ツールが1つにまとめたシェイプキー「" + shape +
+                                "」に別々の値が指定されていたため、最初の値だけを使いました。");
+                        continue;
+                    }
+                    binds.Add(bind);
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
                 custom.Add(name, new Dictionary<string, object>
