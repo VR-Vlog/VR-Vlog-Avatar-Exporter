@@ -211,6 +211,83 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Is.Empty);
         }
 
+        // A hand idle animates humanoid muscles, not controller parameters.
+        private AnimationClip HandIdle(string name, AnimationClip clip = null)
+        {
+            clip = clip ?? new AnimationClip { name = name };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"),
+                new AnimationCurve(new Keyframe(0, 0), new Keyframe(.5f, 1), new Keyframe(1, 0)));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(clip, settings);
+            if (!AssetDatabase.Contains(clip)) AssetDatabase.AddObjectToAsset(clip, controller);
+            return clip;
+        }
+
+        [TestCase(false)] [TestCase(true)]
+        public void ALoopingHandMuscleCurveBesideTheFaceIsSettled(bool separateLayer)
+        {
+            if (separateLayer)
+            {
+                Selected(Clip("Smile", 75));
+                // The hand layer also writes the face in another state, so it
+                // takes part in the expression while it stays in its idle.
+                var hand = Layer("Left Hand");
+                var idle = State(hand, "Idle", HandIdle("Hands idle")); hand.defaultState = idle;
+                Transition(idle, State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
+            }
+            else Selected(HandIdle(null, Clip("Smile with hand", 75)));
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.LoopingFinal));
+        }
+
+        // Analyze reads the menu for the one-click export. Its settlement
+        // decision must reach the entry and the export result list.
+        [Test]
+        public void AMenuItemFollowedThroughAnExitTimeIsListedAsApproximated()
+        {
+            var a = Selected(Clip("A", 0));
+            Timed(a, State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5);
+            Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
+            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (menuType == null || descriptorType == null) Assert.Ignore("Install the real VRChat SDK to run menu-analysis integration tests.");
+            var menu = ScriptableObject.CreateInstance(menuType);
+            AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
+            using (var data = new SerializedObject(menu))
+            {
+                var controls = data.FindProperty("controls"); controls.arraySize = 1;
+                var item = controls.GetArrayElementAtIndex(0);
+                item.FindPropertyRelative("name").stringValue = "Late smile";
+                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "Toggle");
+                item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
+                item.FindPropertyRelative("value").floatValue = 1;
+                data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var descriptor = avatar.AddComponent(descriptorType);
+            using (var data = new SerializedObject(descriptor))
+            {
+                data.FindProperty("customExpressions").boolValue = true;
+                data.FindProperty("expressionsMenu").objectReferenceValue = menu;
+                data.FindProperty("customizeAnimationLayers").boolValue = true;
+                var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
+                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
+                layer.FindPropertyRelative("isDefault").boolValue = false;
+                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                data.FindProperty("specialAnimationLayers").arraySize = 0;
+                data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var source = VrChatExpressionSampler.Analyze(avatar);
+            var entry = source.Entries.Single(e => e.Name == "Late smile");
+            Assert.That(entry.Error, Is.Null, string.Join("\n", source.Messages));
+            Assert.That(entry.Values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(60).Within(.01));
+            Assert.That(entry.Messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            var report = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordSettledMenuExpressions(source, report);
+            Assert.That(report.Fallbacks.Results.Where(row => row.Outcome == ExportOutcome.Approximated && row.Category == "表情" && row.Name == "Late smile")
+                .Select(row => row.Reason), Does.Contain(ExpressionSettlement.FollowedTransitions));
+        }
+
         [Test]
         public void TheExperimentalPlayerKeepsTheLastKeyOfALongClip()
         {

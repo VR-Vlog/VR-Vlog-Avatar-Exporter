@@ -204,7 +204,7 @@ namespace VRVlog.LilToonExporter
 
         // A menu expression decided from its timed transitions or terminal
         // clip key is kept, but is an approximation of the moving original.
-        static void RecordSettledMenuExpressions(VrChatExpressionMenu.Source menu, ExportRecoveryReport report)
+        internal static void RecordSettledMenuExpressions(VrChatExpressionMenu.Source menu, ExportRecoveryReport report)
         {
             foreach (var entry in menu?.Entries ?? new List<VrChatExpressionMenu.Entry>())
                 if (entry.Error == null)

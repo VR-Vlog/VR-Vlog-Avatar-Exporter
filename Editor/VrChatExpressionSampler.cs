@@ -43,7 +43,10 @@ namespace VRVlog.LilToonExporter
                     try
                     {
                         var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
-                        entry.Values.AddRange(SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context));
+                        // Settlement messages reach the export warnings and
+                        // the result list through entry.Messages.
+                        entry.Values.AddRange(SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context,
+                            messages: entry.Messages));
                         if (context.UsedParameters.Count > 0)
                             entry.Messages.Add("外部入力は通常状態・設定済み初期値で固定表情として保存しました（自動切り替えは再現しません）: " +
                                 string.Join(", ", context.UsedParameters.OrderBy(name => name, StringComparer.Ordinal).Select(name => name + "=" +
@@ -1758,7 +1761,12 @@ namespace VRVlog.LilToonExporter
                                 continue;
                             }
                             if (IsConstant(curve)) continue;
-                            if (temporalWarnings != null && plainClock && binding.type == typeof(SkinnedMeshRenderer))
+                            // A humanoid muscle or root motion curve is an
+                            // Animator binding that names no controller
+                            // parameter. It cannot change a BlendShape, so a
+                            // looping hand idle beside the face is settled too.
+                            if (temporalWarnings != null && plainClock && (binding.type == typeof(SkinnedMeshRenderer) ||
+                                binding.type == typeof(Animator) && !controller.parameters.Any(parameter => parameter.name == binding.propertyName)))
                             {
                                 ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
                                 Temporal(playable.GetCurrentAnimatorStateInfo(layer).loop ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FinalKeyOfClip);
