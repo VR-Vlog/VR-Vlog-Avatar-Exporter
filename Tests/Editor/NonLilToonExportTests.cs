@@ -57,12 +57,13 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void AvatarWhoseMaterialsAreAllMissingNamesTheRenderers()
         {
             var avatar = new GameObject("avatar"); owned.Add(avatar);
-            var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.name = "Body"; part.transform.SetParent(avatar.transform, false);
+            var outfit = new GameObject("Outfit").transform; outfit.SetParent(avatar.transform, false);
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.name = "Body"; part.transform.SetParent(outfit, false);
             part.GetComponent<Renderer>().sharedMaterials = new Material[] { null, null };
             var created = new List<Material>();
             var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ReplaceLilToonMaterials(
                 avatar, created, new List<Texture2D>(), new List<string>(), false, convertOthers: true));
-            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.MissingMaterialsError + "Body"));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.MissingMaterialsError + "Outfit/Body"));
             Assert.That(created, Is.Empty);
         }
 

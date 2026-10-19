@@ -824,7 +824,8 @@ namespace VRVlog.LilToonExporter
                     var source = materials[i];
                     if (source == null)
                     {
-                        if (!unassigned.Contains(renderer.name)) unassigned.Add(renderer.name);
+                        var path = renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+                        if (!unassigned.Contains(path)) unassigned.Add(path);
                         continue;
                     }
                     assigned = true;
@@ -862,7 +863,7 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(ExporterLocalization.T(NonLilToonWarning) + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
             // A product whose material references are all broken has no shader
             // to report. Name the empty renderers instead of blaming lilToon.
-            if (converted.Count == 0 && others.Count == 0 && !lenient && !assigned && unassigned.Count > 0)
+            if (!lenient && !assigned && unassigned.Count > 0)
                 throw new InvalidOperationException(MissingMaterialsError + string.Join(", ", unassigned.Take(5)) +
                     (unassigned.Count > 5 ? ", …" : ""));
             if (converted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
