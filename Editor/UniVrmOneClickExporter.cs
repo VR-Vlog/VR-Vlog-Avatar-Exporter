@@ -17,6 +17,8 @@ namespace VRVlog.LilToonExporter
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
         internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
         internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
+        internal const string SourceHasNoMesh = "書き出せるメッシュがありません\nSkinned Mesh RendererかMesh Filter付きのMesh Rendererを持つアバターを選択";
+        internal const string OutputHasNoMesh = "書き出し対象のメッシュがありません\n非表示のオブジェクトと除外の設定を見直す";
 
         // Unity's AvatarBuilder rejects a humanoid without any of these, so a
         // VRM missing one cannot be imported again as a humanoid.
@@ -46,6 +48,27 @@ namespace VRVlog.LilToonExporter
             if (!source.activeInHierarchy || !animator.enabled) return;
             var missing = RequiredHumanBones.Where(bone => animator.GetBoneTransform(bone) == null).ToArray();
             if (missing.Length > 0) throw new InvalidOperationException(SourceMissingHumanBones + string.Join(", ", missing));
+        }
+
+        // Without any geometry UniVRM still saves a VRM with no mesh and the
+        // expression, blink and tracking stages fail one by one. Inactive objects
+        // and disabled renderers count, so only a source with no mesh at all stops.
+        internal static void ValidateSourceHasMesh(GameObject source)
+        {
+            if (source == null) throw new ArgumentNullException(nameof(source));
+            var hasMesh = source.GetComponentsInChildren<Renderer>(true).Any(renderer =>
+                renderer is SkinnedMeshRenderer skin ? ExportRendererSelection.HasGeometry(skin.sharedMesh) :
+                renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && ExportRendererSelection.HasGeometry(filter.sharedMesh));
+            if (!hasMesh) throw new InvalidOperationException(SourceHasNoMesh);
+        }
+
+        // Hidden objects, disabled renderers and exclusions pass the source check
+        // but are not written, so check the saved file itself as well.
+        internal static void ValidateOutputHasMesh(byte[] glb)
+        {
+            var json = GlbDocument.Read(glb).Json;
+            if (!json.TryGetValue("meshes", out var meshes) || !(meshes is List<object> list) || list.Count == 0)
+                throw new InvalidOperationException(OutputHasNoMesh);
         }
 
         // NDMF / optimizer passes may remove the root Animator or required

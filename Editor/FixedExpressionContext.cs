@@ -27,7 +27,7 @@ namespace VRVlog.LilToonExporter
             VrChatExpressionMenu.Source source = null)
         {
             var result = new FixedExpressionContext();
-            foreach (var parameter in ExpressionDependencies.Controller(runtime).parameters)
+            foreach (var parameter in ExpressionDependencies.UniqueParameters(runtime))
             {
                 var builtIn = VrChatParameterDriver.BuiltIn.Contains(parameter.name);
                 if ((!builtIn && source?.ExternalParameters.Contains(parameter.name) != true) ||

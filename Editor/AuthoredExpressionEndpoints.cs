@@ -53,7 +53,7 @@ namespace VRVlog.LilToonExporter
             if (neutral == null || neutral.Root != prepared)
                 throw new ArgumentException("The neutral snapshot must belong to the prepared avatar.");
             var session = new AuthoredExpressionEndpoints(prepared, neutral, profile);
-            var expression = prepared.GetComponent<Vrm10Instance>()?.Vrm?.Expression;
+            var expression = prepared.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
             if (expression != null)
             {
                 // Preset slots are authoritative, even if one asset is also used

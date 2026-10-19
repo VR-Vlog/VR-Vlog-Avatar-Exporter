@@ -197,7 +197,7 @@ namespace VRVlog.LilToonExporter
             Func<int, AnimatorState, bool> stateFilter = null, int? onlyLayer = null)
         {
             var controller = ExpressionDependencies.Controller(source.Controller);
-            var parameters = controller.parameters.ToDictionary(value => value.name, StringComparer.Ordinal);
+            var parameters = ExpressionDependencies.UniqueParameters(controller).ToDictionary(value => value.name, StringComparer.Ordinal);
             var defaults = parameters.Values.ToDictionary(value => value.name, value =>
                 value.type == AnimatorControllerParameterType.Bool ? (value.defaultBool ? 1f : 0f) :
                 value.type == AnimatorControllerParameterType.Int ? value.defaultInt : value.defaultFloat, StringComparer.Ordinal);
@@ -242,7 +242,7 @@ namespace VRVlog.LilToonExporter
             var declarations = new Dictionary<string, HashSet<AnimatorControllerParameterType>>(StringComparer.Ordinal);
             foreach (var runtime in new[] { source.Controller }.Concat(source.OtherControllers.Where(value => value != null)))
             {
-                foreach (var parameter in ExpressionDependencies.Controller(runtime).parameters)
+                foreach (var parameter in ExpressionDependencies.UniqueParameters(runtime))
                 {
                     if (!declarations.TryGetValue(parameter.name, out var types))
                         declarations.Add(parameter.name, types = new HashSet<AnimatorControllerParameterType>());

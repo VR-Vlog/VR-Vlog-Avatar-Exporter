@@ -100,7 +100,7 @@ namespace VRVlog.LilToonExporter
         {
             var layers = controller.layers; var origin = layer; var chain = new HashSet<int>();
             var parameters = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-            foreach (var parameter in controller.parameters)
+            foreach (var parameter in ExpressionDependencies.UniqueParameters(controller))
             {
                 if (parameter == null || string.IsNullOrEmpty(parameter.name) || parameters.ContainsKey(parameter.name))
                     throw new InvalidOperationException("FXの入力パラメーター宣言が不正・重複しています。");

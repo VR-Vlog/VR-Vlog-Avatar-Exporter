@@ -35,7 +35,7 @@ namespace VRVlog.LilToonExporter
             // UniVRM serializes VRM10Object.LookAt itself. Keep an edited one;
             // untouched defaults (for example a VRM10Object kept only for its
             // expressions) carry no look-at information of the avatar.
-            var authoredLookAt = copy.GetComponent<Vrm10Instance>()?.Vrm?.LookAt;
+            var authoredLookAt = copy.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.LookAt : null;
             if (authoredLookAt != null && !IsUniVrmDefault(authoredLookAt)) return null;
             var animator = copy.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.isHuman) return null;

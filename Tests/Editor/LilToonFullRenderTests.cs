@@ -28,7 +28,11 @@ namespace VRVlog.LilToonExporter.Tests
             utility.GetMethod("SetupMultiMaterial",new[]{typeof(Material)}).Invoke(null,new object[]{source});
             var values=new List<object>();foreach(var name in new[]{"_TransparentMode","_UseOutline"})values.Add(new Dictionary<string,object>{{"name",name},{"value",new List<object>{source.GetFloat(name),0,0,0}}});
             var spec=new Dictionary<string,object>{{"sourceShader",sourceName},{"values",values}};
-            var shaderName=(string)runtimeType.GetMethod("ShaderName",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[]{spec});
+            var shaderName=AppReader.RuntimeShaderName(spec);
+            // The official set keeps Multi fur on the keyword-driven Hidden/lilToonMultiFur;
+            // any other Multi must still resolve to a non-Multi shader and is compared.
+            if(!AppReader.AppProject && shaderName=="Hidden/lilToonMultiFur")
+                Assert.Ignore("Multi fur keywords are reproduced as uniforms only for the application's own shader set; the official set reads "+sourceName+" with "+shaderName+".");
             var runtime=new Material(Shader.Find(shaderName));runtime.CopyPropertiesFromMaterial(source);runtime.shaderKeywords=Array.Empty<string>();
             var state=Type.GetType("FaceMaskVTuber.UniVrmRuntime.LilToonMultiState, FaceMaskVTuber.UniVrmRuntime");
             state.GetMethod("Apply",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,new object[]{runtime,source.shaderKeywords.Cast<object>().ToList()});
@@ -38,8 +42,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCaseSource(nameof(Shaders))]
         public void DefaultShaderMatchesReferencePixels(string sourceName)
         {
-            var full=Shader.Find("VR Vlog/lilToon 2.3.4/"+VRVlog.LilToon.LilToon234Catalogue.Shaders[sourceName]);
-            if(full==null) Assert.Ignore("Requires the combined application validation project.");
+            if(!AppReader.AppProject) Assert.Ignore("Requires the application's own shader set; with the official set this compares a shader with itself.");
+            var full=Shader.Find(AppReader.AppPrefix+VRVlog.LilToon.LilToon234Catalogue.Shaders[sourceName]); Assert.That(full,Is.Not.Null,"The application project installs its shader set.");
             var original=Shader.Find(sourceName); Assert.That(original,Is.Not.Null);
             var authoring=new Material(original); var runtime=new Material(full);
             // FakeShadow normally requires a receiver that has already written
@@ -58,8 +62,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("_UseParallax")][TestCase("_UsePOM")]
         public void EnabledFeatureMatchesReferencePixels(string feature)
         {
-            var shader=Shader.Find("VR Vlog/lilToon 2.3.4/lts");
-            if(shader==null)Assert.Ignore("Requires the combined application validation project.");
+            if(!AppReader.AppProject)Assert.Ignore("Requires the application's own shader set; with the official set this compares a shader with itself.");
+            var shader=Shader.Find(AppReader.AppPrefix+"lts");Assert.That(shader,Is.Not.Null,"The application project installs its shader set.");
             var original=new Material(Shader.Find("lilToon")); var runtime=new Material(shader);
             Assert.That(original.HasProperty(feature),Is.True,"The feature must use an official enabling property.");
             original.SetFloat(feature,1);
@@ -75,8 +79,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(1,0f)][TestCase(2,.5f)][TestCase(3,1f)]
         public void FurSubdivisionAndRandomnessMatchReference(int layers,float random)
         {
-            var full=Shader.Find("VR Vlog/lilToon 2.3.4/lts_fur");
-            if(full==null)Assert.Ignore("Requires the combined application validation project.");
+            if(!AppReader.AppProject)Assert.Ignore("Requires the application's own shader set; with the official set this compares a shader with itself.");
+            var full=Shader.Find(AppReader.AppPrefix+"lts_fur");Assert.That(full,Is.Not.Null,"The application project installs its shader set.");
             var original=new Material(Shader.Find("Hidden/lilToonFur")); var runtime=new Material(full);
             original.SetFloat("_FurLayerNum",layers); original.SetFloat("_FurRandomize",random);
             original.SetVector("_FurVector",new Vector4(.1f,.3f,1,.1f)); original.SetFloat("_FurGravity",.7f);
@@ -92,7 +96,9 @@ namespace VRVlog.LilToonExporter.Tests
             object Create(long bytes)=>Activator.CreateInstance(type,BindingFlags.Instance|BindingFlags.NonPublic,null,new object[]{bytes},null);
             var get=type.GetMethod("Get",BindingFlags.Instance|BindingFlags.NonPublic);
             object Read(object cache,int a,int b,int c)=>get.Invoke(cache,new object[]{new Vector4(a,b,c,1)});
-            var cache=Create(32L*1024*1024);var first=Read(cache,1,1,1);
+            var cache=Create(32L*1024*1024);object first=null;
+            try{first=Read(cache,1,1,1);}
+            catch(TargetInvocationException e) when(!AppReader.AppProject&&e.InnerException is DllNotFoundException){Assert.Ignore("Requires the application's native tessellation plugin (VRVlogTessellator), which is not part of the reader package.");}
             for(var a=1;a<=10;a++)for(var b=1;b<=10;b++)for(var c=1;c<=3;c++)Read(cache,a,b,c);
             Assert.That(Read(cache,1,1,1),Is.SameAs(first),"A count threshold must not clear the cache.");
             var small=Create(2048);var hot=Read(small,1,1,1);

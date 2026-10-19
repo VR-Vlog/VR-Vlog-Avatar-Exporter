@@ -59,7 +59,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var binding in AnimationUtility.GetCurveBindings(clips[0]))
                 {
                     var name = binding.propertyName;
-                    var parameter = controller.parameters.SingleOrDefault(value => value.name == name);
+                    var parameter = ExpressionDependencies.UniqueParameters(controller).SingleOrDefault(value => value.name == name);
                     if (parameter == null || parameter.type != AnimatorControllerParameterType.Float ||
                         VrChatParameterDriver.BuiltIn.Contains(name) || metadata.ExternalParameters.Contains(name) ||
                         dependencies.Drivers.Values.Any(program => program.Operations.Any(operation => operation.Destination == name))) continue;

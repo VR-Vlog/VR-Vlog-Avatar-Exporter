@@ -47,7 +47,7 @@ namespace VRVlog.LilToonExporter
                 }
                 return false;
             }
-            var types = original.parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var types = ExpressionDependencies.UniqueParameters(original).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
             for (var index = 1; index < layers.Length; index++)
             {

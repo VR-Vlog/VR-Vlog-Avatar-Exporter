@@ -20,7 +20,7 @@ namespace VRVlog.LilToonExporter
             // repeat sampling remains periodic after baking a single tile.
             if (texture.wrapModeU == TextureWrapMode.Repeat && texture.wrapModeV == TextureWrapMode.Repeat &&
                 maskScale.x == Mathf.Round(maskScale.x) && maskScale.y == Mathf.Round(maskScale.y)) return;
-            var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.GetComponent<MeshFilter>()?.sharedMesh;
+            var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
             var scale = material.GetTextureScale("_MainTex"); var offset = material.GetTextureOffset("_MainTex");
             var contained = mesh != null && mesh.subMeshCount > 0;
             if (contained)
