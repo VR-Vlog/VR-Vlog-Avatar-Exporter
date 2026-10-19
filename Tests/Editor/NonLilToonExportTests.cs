@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
@@ -51,6 +52,28 @@ namespace VRVlog.LilToonExporter.Tests
             LilToonFullSnapshot snapshot = null;
             Assert.DoesNotThrow(() => snapshot = LilToonFullSnapshot.Capture(avatar, warnings: warnings));
             Assert.That(snapshot.IsEmpty, Is.True, "The exporter saves a plain MToon VRM instead of an empty lilToon extension.");
+        }
+
+        [Test] public void AvatarWhoseMaterialsAreAllMissingNamesTheRenderers()
+        {
+            var avatar = new GameObject("avatar"); owned.Add(avatar);
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.name = "Body"; part.transform.SetParent(avatar.transform, false);
+            part.GetComponent<Renderer>().sharedMaterials = new Material[] { null, null };
+            var created = new List<Material>();
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ReplaceLilToonMaterials(
+                avatar, created, new List<Texture2D>(), new List<string>(), false, convertOthers: true));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.MissingMaterialsError + "Body"));
+            Assert.That(created, Is.Empty);
+        }
+
+        [Test] public void AnAssignedNonLilToonMaterialKeepsTheLilToonMessage()
+        {
+            var avatar = new GameObject("avatar"); owned.Add(avatar);
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.transform.SetParent(avatar.transform, false);
+            part.GetComponent<Renderer>().sharedMaterials = new[] { null, Standard(Color.white, null) };
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ReplaceLilToonMaterials(
+                avatar, new List<Material>(), new List<Texture2D>(), new List<string>(), false));
+            Assert.That(error.Message, Is.EqualTo("選択したアバターに対応するlilToonマテリアルがありません。"));
         }
 
         [Test] public void AMissingBehaviourIsNeverTreatedAsAnExportComponent()
