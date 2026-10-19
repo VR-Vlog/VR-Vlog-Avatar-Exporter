@@ -17,6 +17,7 @@ namespace VRVlog.LilToonExporter
         };
 
         internal const string UnboundVisemeWarning = "口の形（aa・ih・ou・ee・oh）のVRM設定を一部作れませんでした。Avatar DescriptorのLip Syncで指定した変形が書き出したメッシュにありません。";
+        internal const string UnexportedVisemeMeshWarning = "口の形（aa・ih・ou・ee・oh）のVRM設定を一部作れませんでした。Avatar DescriptorのLip SyncのFace Meshが書き出したアバターに含まれていません。";
 
         // VRChat Lip Sync (VisemeBlendShape) read from the processed copy. It
         // names the mouth shapes whatever they are called, so it comes before
@@ -28,6 +29,7 @@ namespace VRVlog.LilToonExporter
                 (10, "aa"), (11, "ee"), (12, "ih"), (13, "oh"), (14, "ou"),
             };
             internal int Node = -1;
+            // Only slots that named a shape. A null name could not reach the output.
             internal readonly Dictionary<string, string> Shapes = new Dictionary<string, string>();
         }
 
@@ -160,8 +162,10 @@ namespace VRVlog.LilToonExporter
                 changed = true;
                 Warn(warnings, $"{mapping.Preset}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。");
             }
-            if (descriptor != null && Mappings.Any(mapping => presets == null || !presets.ContainsKey(mapping.Preset)))
-                Warn(warnings, UnboundVisemeWarning);
+            // Only slots that named a shape count. Empty slots stay silent as
+            // before, and a known alias that bound the preset is enough.
+            if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
+                Warn(warnings, descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning);
             if (inferBlink && (presets == null || (!presets.ContainsKey("blink") &&
                 !(presets.ContainsKey("blinkLeft") && presets.ContainsKey("blinkRight")))))
                 Warn(warnings, "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。");

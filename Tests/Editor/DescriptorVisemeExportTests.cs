@@ -61,8 +61,10 @@ namespace VRVlog.LilToonExporter.Tests
         // its shared mesh, and a Lip Sync descriptor on its Front renderer.
         AttachmentConnectionTests.Fixture ExportAvatar(IEnumerable<string> shapes, string[] visemes)
         {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
             var fixture = new AttachmentConnectionTests.Fixture();
-            var material = new Material(Shader.Find("lilToon")); owned.Add(material);
+            var material = new Material(shader); owned.Add(material);
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
             var zeros = new Vector3[fixture.Mesh.vertexCount];
             foreach (var name in shapes) fixture.Mesh.AddBlendShapeFrame(name, 100, zeros, zeros, zeros);
@@ -90,6 +92,13 @@ namespace VRVlog.LilToonExporter.Tests
             var avatar = new GameObject("avatar"); owned.Add(avatar);
             var face = new GameObject("face"); face.transform.SetParent(avatar.transform, false);
             Descriptor(avatar, lipSync, face.AddComponent<SkinnedMeshRenderer>(), LipNames);
+            Assert.That(VrChatVisemeExport.Capture(avatar, _ => 0), Is.Null);
+        }
+
+        [Test] public void CaptureIgnoresAnUnsetFaceMesh()
+        {
+            var avatar = new GameObject("avatar"); owned.Add(avatar);
+            Descriptor(avatar, "VisemeBlendShape", null, LipNames);
             Assert.That(VrChatVisemeExport.Capture(avatar, _ => 0), Is.Null);
         }
 
@@ -135,6 +144,32 @@ namespace VRVlog.LilToonExporter.Tests
             var presets = Presets(glb);
             Assert.That(presets.ContainsKey("aa") && !presets.ContainsKey("ou"), Is.True);
             Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
+        }
+
+        // Recording a face removes the descriptor from the export copy. The
+        // Lip Sync captured before that must still bind, or warn when it cannot.
+        [TestCase(5)][TestCase(4)]
+        public void RecordedExpressionExportBindsDescriptorVisemes(int present)
+        {
+            DescriptorType();
+            using var fixture = ExportAvatar(LipNames.Take(present), LipNames);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+            session.SetWeight(0, 0, 65); session.Capture("Recorded face");
+            var warnings = new List<string>();
+            var glb = GlbDocument.Read(session.Export("Recorded visemes", "Tests", warnings,
+                new BlinkExportOptions { Mode = BlinkExportMode.None }));
+            var presets = Presets(glb);
+            for (var i = 0; i < present; i++)
+                Assert.That(BoundShape(glb, (Dictionary<string, object>)presets[VrmExpressionBindings.DescriptorVisemes.Slots[i].Preset]),
+                    Is.EqualTo(LipNames[i]));
+            if (present == LipNames.Length)
+                Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnboundVisemeWarning));
+            else
+            {
+                Assert.That(presets.ContainsKey("ou"), Is.False);
+                Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
+            }
+            Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnexportedVisemeMeshWarning));
         }
     }
 }

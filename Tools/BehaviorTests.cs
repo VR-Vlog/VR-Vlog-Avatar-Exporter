@@ -153,8 +153,24 @@ public static class ExporterBehaviorTests
         var notExported = new List<string>();
         var fallback = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou")),
             notExported, inferBlink: false, descriptor: Visemes(-1, "vrc.v_aa", "vrc.v_e", "vrc.v_ih", "vrc.v_oh", "vrc.v_ou"))).Json);
-        Check(fallback.Count == 5 && !notExported.Contains(VrmExpressionBindings.UnboundVisemeWarning),
+        Check(fallback.Count == 5 && !notExported.Contains(VrmExpressionBindings.UnboundVisemeWarning) &&
+            !notExported.Contains(VrmExpressionBindings.UnexportedVisemeMeshWarning),
             "Known aliases still bind when the descriptor renderer has no output node.");
+        var emptySlots = new List<string>();
+        var partial = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee")),
+            emptySlots, inferBlink: false, descriptor: Visemes(1, "lip_aa"))).Json);
+        Check(partial.Count == 1 && partial.ContainsKey("aa") && emptySlots.Count == 0,
+            "Empty Lip Sync slots without aliases stay silent.");
+        var unexported = new List<string>();
+        VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou")), unexported, inferBlink: false,
+            descriptor: Visemes(-1, "lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou"));
+        Check(unexported.Contains(VrmExpressionBindings.UnexportedVisemeMeshWarning) && !unexported.Contains(VrmExpressionBindings.UnboundVisemeWarning),
+            "A Face Mesh that was not exported gets its own warning.");
+        var lostWarnings = new List<string>();
+        var lost = Presets(GlbDocument.Read(VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa", "lip_ee", "lip_ih", "lip_oh", "lip_ou")),
+            lostWarnings, inferBlink: false, descriptor: Visemes(1, "lip_aa", null, "lip_ih", "lip_oh", "lip_ou"))).Json);
+        Check(lost.Count == 4 && !lost.ContainsKey("ee") && lostWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning),
+            "A named shape that the optimizer could not follow is reported, not guessed.");
         var noneWarnings = new List<string>();
         VrmExpressionBindings.AddMissing(Encode(Fixture("lip_aa")), noneWarnings, inferBlink: false);
         Check(!noneWarnings.Contains(VrmExpressionBindings.UnboundVisemeWarning), "Without a descriptor, keep the previous warnings only.");
