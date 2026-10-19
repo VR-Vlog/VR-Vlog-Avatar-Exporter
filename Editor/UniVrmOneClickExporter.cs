@@ -202,6 +202,14 @@ namespace VRVlog.LilToonExporter
                     report.Fallbacks.Record(ExportOutcome.Omitted, "表情", entry.Name ?? entry.Id ?? "", entry.Error);
         }
 
+        // An animated expression whose loop ends neutral shows no change in
+        // apps that only read the VRM expression. Ask before saving.
+        internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
+        {
+            foreach (var expression in expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>())
+                if (expression.EndsNeutral) report.Fallbacks.Add(ExportFallbackKind.ExpressionEndsNeutral, expression.Name);
+        }
+
         internal const string InferredEmotionCategory = "名前から自動で設定";
 
         // Emotion presets filled from a name are kept output the user should check.
@@ -475,6 +483,7 @@ namespace VRVlog.LilToonExporter
                     authoredEndpoints.Bake(temporaryMeshes);
                     expressions = guard.Step(ExportStage.Expressions,
                         () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => new List<VrmMenuExpressions.Expression>());
+                    RecordExpressionsEndingNeutral(expressions, recoveryReport);
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
@@ -482,7 +491,8 @@ namespace VRVlog.LilToonExporter
                     optimizerBindings = ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
-                        menuMorphs: expressions.SelectMany(expression => expression.Direct).Select(direct => (direct.Renderer, direct.Shape)));
+                        menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
+                            .Concat(expression.DirectPoints.Values)));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
@@ -626,7 +636,8 @@ namespace VRVlog.LilToonExporter
                 else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
-                return guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
+                exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
+                return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error)
             {

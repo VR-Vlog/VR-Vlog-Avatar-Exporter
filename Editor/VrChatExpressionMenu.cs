@@ -119,6 +119,9 @@ namespace VRVlog.LilToonExporter
             internal readonly List<MorphValue> Unevaluated = new List<MorphValue>();
             internal readonly List<string> Messages = new List<string>();
             internal bool UsesFacialProjection = false;
+            // Where the entry came from (VRVlog.Expressions.ExpressionSource):
+            // menu, gesture or faceEmo. Every reader sets it explicitly.
+            internal string Source = VRVlog.Expressions.ExpressionSource.Menu;
         }
 
         internal sealed class AnimatedMorph
@@ -271,7 +274,7 @@ namespace VRVlog.LilToonExporter
                     if (!string.IsNullOrEmpty(parameter)) values[parameter] = Number(Member(control, "value"));
                     if (type == "SubMenu") { WalkEntries(Member(control, "subMenu"), name, id, values, stack, result, depth + 1, policy, root); continue; }
                     var entry = new Entry { Id = id + "\n" + name + "\n" + JsonDom.Serialize(values.ToDictionary(p => p.Key, p => (object)p.Value)), Name = name,
-                        ControlType = type, ControlParameter = parameter };
+                        ControlType = type, ControlParameter = parameter, Source = VRVlog.Expressions.ExpressionSource.Menu };
                     foreach (var pair in values) entry.Parameters.Add(pair.Key, pair.Value);
                     if (type != "Button" && type != "Toggle") entry.Error = "連続調整（Puppet）は一つの固定表情に変換できません。";
                     else if (string.IsNullOrEmpty(parameter)) entry.Error = "操作対象のパラメーターがありません。";

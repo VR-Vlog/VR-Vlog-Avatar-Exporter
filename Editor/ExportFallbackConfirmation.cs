@@ -24,7 +24,10 @@ namespace VRVlog.LilToonExporter
         // A material could not be converted and became color-and-image MToon.
         MaterialApproximated,
         // A material on an unsupported shader was replaced by an official lilToon approximation.
-        ShaderSubstituted
+        ShaderSubstituted,
+        // An animated expression whose loop ends on the neutral face. Apps that
+        // only read the VRM expression show no change. Names are the expressions.
+        ExpressionEndsNeutral
     }
 
     // One line of the export result: what happened to which item, and why.
@@ -158,6 +161,8 @@ namespace VRVlog.LilToonExporter
         internal static IExportFallbackDialog Dialog = new EditorDialog();
         internal static Func<bool> IsBatchMode = () => Application.isBatchMode;
 
+        internal const string ExpressionEndsNeutralText = "ループの最後が元の顔に戻る表情です。VR Vlogでは動きますが、ほかのアプリでは選んでも顔が変わりません";
+
         internal static string Failure(ExportFallbackKind kind)
         {
             switch (kind)
@@ -169,6 +174,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
                 case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
                 case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
+                case ExportFallbackKind.ExpressionEndsNeutral: return ExpressionEndsNeutralText;
                 default: return "lilToonのマテリアルが見つかりませんでした";
             }
         }
@@ -184,6 +190,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.LimitExceeded: return "上限を超えた項目";
                 case ExportFallbackKind.MaterialApproximated: return "マテリアル";
                 case ExportFallbackKind.ShaderSubstituted: return "マテリアル";
+                case ExportFallbackKind.ExpressionEndsNeutral: return "表情";
                 default: return "マテリアル";
             }
         }

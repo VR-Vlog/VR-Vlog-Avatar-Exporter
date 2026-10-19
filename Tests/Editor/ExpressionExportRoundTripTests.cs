@@ -97,8 +97,21 @@ namespace VRVlog.LilToonExporter.Tests
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 var glb = GlbDocument.Read(bytes);
-                var animations = ExpressionAnimationData.Read(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
+                var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
+                var animations = document.Animations;
+                // The menu toggle and the FX gesture keep their sources.
+                Assert.That(document.Expressions.Single(value => value.Expression == "VRChat / Face / Smile").Source, Is.EqualTo(ExpressionSource.Menu));
+                Assert.That(document.Expressions.Where(value => value.Expression != "VRChat / Face / Smile").Select(value => value.Source),
+                    Is.EqualTo(new[] { ExpressionSource.Gesture }));
+                Assert.That(document.Expressions.Single(value => value.Source == ExpressionSource.Gesture).Expression, Is.EqualTo(animations.Single().Expression));
+                var asset = (Dictionary<string, object>)glb.Json["asset"];
+                var required = (Dictionary<string, object>)((Dictionary<string, object>)asset["extras"])[VRVlog.AvatarFormats.AvatarFormatVersions.RequiredAppVersionsKey];
+                Assert.That(required[ExpressionAnimationData.Extension], Is.EqualTo("1.0.5"));
                 Assert.That(animations.Single().Channels.Count, Is.EqualTo(1));
+                // Rest 35 up to the single 100 frame moves the original shape directly.
+                Assert.That(animations.Single().Channels[0].Points.Select(point => point.Value), Is.EqualTo(new[] { 35d, 100d }));
+                Assert.That(animations.Single().Channels[0].Points[0].Morph, Is.Null);
+                Assert.That(animations.Single().Channels[0].Points[1].Morph, Is.Not.Null);
                 Assert.That(animations.Single().Channels[0].Curve.Evaluate(.5), Is.EqualTo(67.5).Within(.001));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 const string expressionName = "VRChat / Face / Smile";

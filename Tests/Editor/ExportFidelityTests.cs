@@ -576,6 +576,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(source.Entries.Count, Is.EqualTo(2));
                 Assert.That(source.Entries[0].Name, Does.Contain("お気に入り / 茶色の目"));
                 Assert.That(source.Entries[0].Values.Single().Weight, Is.EqualTo(75));
+                Assert.That(source.Entries.Select(entry => entry.Source), Is.All.EqualTo(VRVlog.Expressions.ExpressionSource.FaceEmo));
                 Assert.That(source.Entries[1].Error, Is.Not.Null);
                 Assert.That(body.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.Zero);
                 // FaceEmo stores groups and modes in separate arrays and their
