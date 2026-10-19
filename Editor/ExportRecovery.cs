@@ -282,6 +282,7 @@ namespace VRVlog.LilToonExporter
                 case "状態確定": return "appearance";
                 case "材質保存": return "material-snapshot";
                 case "揺れ物変換": return "physbone";
+                case "コンストレイント変換": return "constraint";
                 case "VRM変換": return "vrm";
                 case "出力検査": return "output-validation";
                 case "完了": return "complete";
