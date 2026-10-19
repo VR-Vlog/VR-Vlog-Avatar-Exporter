@@ -19,6 +19,9 @@ namespace VRVlog.LilToonExporter
             using var arrays = new NativeArrayManager();
             using var meshPreparation = VrmMeshAttributePreparation.Prepare(avatar, warnings);
             var converter = new ModelExporter();
+            // Keep the baked hierarchy until the end so Vrm10Exporter and
+            // afterExport see the same node TRS as ModelExporter did.
+            using var rootScale = RootScaleBake.Apply(avatar);
             var model = converter.Export(settings, arrays, avatar);
             PreserveMorphNormals(converter, arrays, settings);
             meshPreparation.RestoreSourceMeshKeys(converter);

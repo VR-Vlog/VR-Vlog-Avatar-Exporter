@@ -14,9 +14,11 @@ boneは`bone`（VRM 1.0のHumanoid名）、`node`（VRMC_vrm.humanoidと同じno
 `D = inverse(root.rotation) * sampled.rotation * inverse(rest.rotation) * root.rotation`。
 親から子の順で `worldRotation = root.rotation * D * restAvatarRotation` と適用する。
 これは親相対のlocalRotationではない。control rigのレスト軸が変わっても同じ方向差分を使用できる。
-hipsOffsetはレスト腰からのroot空間の位置差分、単位m。rootの配置位置・回転・サイズは保存しない。
+hipsOffsetはレスト腰からのroot空間の位置差分、単位m。rootの配置位置・回転は保存しない。
+採取はアバターrootのスケールを1にして行うが、書き出す値はVRMのモデル空間の値で、アバターrootのスケールを含む。
+Exporterはrootのスケールを直下のノードへ移して書き出すので、hipsOffsetにも同じスケールを軸ごとに掛ける。
 VRM1の右手系。Unityとの変換はX反転、位置(-x,y,z)、回転(x,-y,-z,w)。
-UniVRMが省略するアバターrootのTRSを除いたメートル座標で採取し、読み込み後のサイズを一度だけ適用する。
+UniVRMが省略するアバターrootの位置・回転を除いたメートル座標で書き出し、読み込み後のサイズを一度だけ適用する。
 
 上限は128ポーズ、各50骨、JSON UTF-8 2MiB、文字列256 UTF-16文字、採用時刻0〜600秒、
 腰差分の各軸±10m。非有限値・重複ID/骨/node・非単位回転・不一致骨参照は拒否。
