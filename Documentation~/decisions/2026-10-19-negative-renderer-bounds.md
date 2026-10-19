@@ -1,0 +1,28 @@
+# 描画範囲（Bounds）の負の大きさを絶対値にして保存する
+
+- 日付: 2026-10-19
+- 対象: `Editor/LilToonFullSnapshot.cs`（`Bind`）
+
+## 背景
+
+Prefabの上書きでSkinnedMeshRendererの描画範囲（`m_AABB.m_Extent`）に負の値（例: `y: -0.39`）が入ったアバターがある。Unityはこの値をそのまま受け付け、`localBounds.extents` も負のまま返す。
+
+lilToon専用表示（`VRVLOG_materials_liltoon`）の `bindings[].renderer.boundsExtents` には `localBounds` の中心と大きさをそのまま書いていた。一方、同じ拡張の検証（`LilToonFullContract.Validate`）は大きさの成分が負なら `Invalid renderer bounds.` で拒否する。書き出し側が自分の契約に反するデータを作っていたため、このアバターは書き出しの終盤で全体が失敗していた。
+
+## 決定
+
+- `boundsExtents` には各成分の絶対値を書く。軸平行の箱は中心と大きさの絶対値で決まり、負の大きさの `Bounds` と絶対値の `Bounds` は同じ範囲を表す。読み込む側はこの範囲でカリングすればよい。
+- `boundsCenter` は変えない。
+- 負の成分があったレンダラーごとに、書き出しの警告へ「<レンダラー名>: 描画範囲（Bounds）の大きさが負の値だったため、絶対値にして保存しました。」を追加する。
+- 検証（`LilToonFullContract`）は厳しいまま残す。ファイル内の負の大きさは引き続き不正とし、書き出し側だけで正規化する。
+- 元のアバターのレンダラーは変更しない。書き出しはコピーから読み取るだけで、`localBounds` を書き換えない。
+- 他に `localBounds` を使う箇所への影響:
+  - `ExportVrmLilToonPreview` はファイルの値をプレビュー対象へ適用し、終了時に適用前の値へ戻すだけで、元のレンダラーとファイルの値を比べない。比較による誤検出は起きない。
+  - `ExportSourceFingerprint` は元のアバターの変更検出のために元の `localBounds` を記録する。ファイルの値とは比べないので変更しない。
+  - `SkinnedMeshFallbackWeights` はメッシュの差し替えの前後で `localBounds` を退避して戻すだけで、符号を変えない。
+
+## 検討した代替案と不採用理由
+
+- 検証で負の大きさを許す: ファイルの意味が曖昧になり、読み込む側ごとに負の値の扱いを決める必要が出る。書き出し側で同じ範囲へ正規化すれば済む。
+- 負の大きさを見つけたら書き出しを止めて修正を促す: Unity上では問題なく表示されているアバターで、同じ範囲を表す値へ一意に直せるのに、利用者に手作業を求めることになる。
+- 元のアバターの `localBounds` を直す: 書き出しでは元のアバターを変更しない方針に反する。
