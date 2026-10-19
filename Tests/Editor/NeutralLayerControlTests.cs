@@ -437,11 +437,14 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source));
             else
             {
-                // Timed relay edges are followed natively and reported.
+                // A live timed relay edge is followed natively and reported.
+                // The selected blend-tree input keeps its edge false, so the
+                // edge is reported as held instead.
                 var messages = new List<string>();
                 var values = VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source, messages: messages);
                 Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(expected).Within(.01));
-                Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+                Assert.That(messages, Does.Contain(kind == "selected blend-tree input" ?
+                    ExpressionSettlement.HeldTransitions : ExpressionSettlement.FollowedTransitions));
             }
             AssertSourceUnchanged(before);
         }
