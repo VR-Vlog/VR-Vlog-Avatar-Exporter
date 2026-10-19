@@ -6,20 +6,7 @@ namespace VRVlog.LilToonExporter
 {
     internal static class VrmTrackingExpressions
     {
-        internal static readonly string[] Names = {
-            "BrowDownLeft", "BrowDownRight", "BrowInnerUp", "BrowOuterUpLeft", "BrowOuterUpRight",
-            "CheekPuff", "CheekSquintLeft", "CheekSquintRight", "EyeBlinkLeft", "EyeBlinkRight",
-            "EyeLookDownLeft", "EyeLookDownRight", "EyeLookInLeft", "EyeLookInRight",
-            "EyeLookOutLeft", "EyeLookOutRight", "EyeLookUpLeft", "EyeLookUpRight",
-            "EyeSquintLeft", "EyeSquintRight", "EyeWideLeft", "EyeWideRight",
-            "JawForward", "JawLeft", "JawOpen", "JawRight", "MouthClose",
-            "MouthDimpleLeft", "MouthDimpleRight", "MouthFrownLeft", "MouthFrownRight",
-            "MouthFunnel", "MouthLeft", "MouthLowerDownLeft", "MouthLowerDownRight",
-            "MouthPressLeft", "MouthPressRight", "MouthPucker", "MouthRight",
-            "MouthRollLower", "MouthRollUpper", "MouthShrugLower", "MouthShrugUpper",
-            "MouthSmileLeft", "MouthSmileRight", "MouthStretchLeft", "MouthStretchRight",
-            "MouthUpperUpLeft", "MouthUpperUpRight", "NoseSneerLeft", "NoseSneerRight", "TongueOut"
-        };
+        internal static readonly string[] Names = TrackingExpressionNames.PerfectSync;
 
         internal static byte[] Add(byte[] bytes, VrmTrackingProfile profile)
         {

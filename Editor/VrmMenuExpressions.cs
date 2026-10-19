@@ -11,6 +11,11 @@ namespace VRVlog.LilToonExporter
         internal sealed class Expression
         {
             internal string Name;
+            // The text emotion inference reads (the menu path, e.g. "Smile / 1");
+            // null reads Name.
+            internal string InferenceName;
+            // The name Add registered, with any duplicate-name suffix.
+            internal string RegisteredName;
             // Where the expression came from (ExpressionSource), listed in the
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
@@ -69,6 +74,13 @@ namespace VRVlog.LilToonExporter
         // exporter, with their final duplicate-name suffix. Empty without it.
         internal static IReadOnlyCollection<string> RegisteredNames(byte[] bytes) => RegisteredNames(GlbDocument.Read(bytes).Json);
 
+        // The expressions Add registered, by final name, with the text emotion
+        // inference reads for each: the same text as before names lost their
+        // menu path, so a "Smile" submenu still makes its item "1" happy.
+        internal static Dictionary<string, string> EmotionCandidates(IEnumerable<Expression> expressions) =>
+            (expressions ?? Enumerable.Empty<Expression>()).Where(e => e.RegisteredName != null)
+                .ToDictionary(e => e.RegisteredName, e => e.InferenceName ?? e.Name, StringComparer.Ordinal);
+
         static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
         {
             var extensions = Path(json, "extensions");
@@ -93,13 +105,19 @@ namespace VRVlog.LilToonExporter
         // imported expressions by name, so custom "happy" would collide with
         // the preset) or a face tracking channel name (the app and the
         // tracking output would read it as that channel, and a tracking
-        // profile refuses to replace an existing expression).
+        // profile refuses to replace an existing expression). The app drops
+        // the whole expression animation extension when a listed name is a
+        // preset (exact, case-sensitive), a Perfect Sync or Unified
+        // Expressions channel by its own matching, or the rest clip it adds
+        // for Unified Expressions; each of those is reserved here.
         internal static bool Reserved(string name) =>
-            PresetNames.Contains(name) || UnifiedExpressionRegistry.TryCanonicalize(name, out _)
-#if !EXPORTER_BEHAVIOR_TESTS
-            || Array.IndexOf(VrmTrackingExpressions.Names, name) >= 0
-#endif
-            ;
+            PresetNames.Contains(name) || TrackingExpressionNames.IsPerfectSync(name) ||
+            UnifiedExpressionRegistry.TryCanonicalize(name, out _) || IsUnifiedRest(name);
+
+        // The app names its rest clip RestPrefix, then RestPrefix2, RestPrefix3...
+        static bool IsUnifiedRest(string name) =>
+            name != null && name.StartsWith(UnifiedExpressionRegistry.RestPrefix, StringComparison.Ordinal) &&
+            name.Skip(UnifiedExpressionRegistry.RestPrefix.Length).All(c => c >= '0' && c <= '9');
 
         // name, or name (2), name (3)... when taken or reserved.
         internal static string UniqueName(string name, Func<string, bool> taken)
@@ -222,6 +240,7 @@ namespace VRVlog.LilToonExporter
                     ["overrideBlink"] = "block", ["overrideMouth"] = "block", ["overrideLookAt"] = "block"
                 });
                 document.Expressions.Add(new ExpressionSource { Expression = name, Source = expression.Source });
+                expression.RegisteredName = name;
                 if (animation != null)
                 {
                     animation.Expression = name; // Includes any duplicate-name suffix.

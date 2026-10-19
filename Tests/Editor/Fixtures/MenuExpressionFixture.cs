@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using VRVlog.Expressions;
+using VRVlog.FaceTracking;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -110,10 +111,40 @@ namespace VRVlog.LilToonExporter.Tests
                 "The completion count reads the extension's list; the authored bound expression is not counted.");
             check(VrmMenuExpressions.CountRegistered(GlbDocument.Create(plainRoot, binary).Write()) == 0,
                 "Without the extension no expression counts as registered, even a bound authored one.");
+
+            // Emotion inference reads the menu path, not the shortened VRM name.
+            var paths = new List<VrmMenuExpressions.Expression> {
+                new VrmMenuExpressions.Expression { Name = "1", InferenceName = "Other / 1" },
+                new VrmMenuExpressions.Expression { Name = "1", InferenceName = "Smile / 1" },
+                new VrmMenuExpressions.Expression { Name = "Wink" } };
+            foreach (var item in paths) item.Targets.Add("composite-b");
+            var pathOutput = VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), paths);
+            var candidates = VrmMenuExpressions.EmotionCandidates(paths);
+            check(candidates.Count == 3 && candidates["1"] == "Other / 1" && candidates["1 (2)"] == "Smile / 1" && candidates["Wink"] == "Wink",
+                "Each registered name keeps the text inference reads; without one it reads the name.");
+            var filled = new List<(string Preset, string Source)>();
+            VrmExpressionBindings.AddMissing(pathOutput, inferBlink: false, inferEmotions: true, filledEmotions: filled, emotionCandidates: candidates);
+            check(filled.SequenceEqual(new[] { ("happy", "1 (2)") }), "Item \"1\" of a \"Smile\" submenu still fills happy.");
             check(VrmMenuExpressions.UniqueName("Smile", name => false) == "Smile" &&
                 VrmMenuExpressions.UniqueName("Smile", name => name == "Smile" || name == "Smile (2)") == "Smile (3)" &&
                 VrmMenuExpressions.UniqueName("blink", name => false) == "blink (2)" && VrmMenuExpressions.UniqueName("Blink", name => false) == "Blink",
                 "Only exact VRM preset names are reserved.");
+
+            // The app drops the whole extension when a listed name is a preset
+            // or a tracking channel by its own matching; such names are numbered,
+            // and the numbered name is not reserved again.
+            var trackingNames = TrackingExpressionNames.PerfectSync
+                .SelectMany(name => new[] { name, char.ToLowerInvariant(name[0]) + name.Substring(1), name.ToUpperInvariant(),
+                    "Fcl_ALL_" + name, "Face." + name, "Body/" + name, "mesh:" + name, " " + name + " " })
+                .Concat(UnifiedExpressionRegistry.AllNames.SelectMany(name => new[] { name, UnifiedExpressionRegistry.Prefix + name }))
+                .Concat(new[] { "neutral", "happy", "lookRight", "blinkLeft", "ee", UnifiedExpressionRegistry.RestPrefix,
+                    UnifiedExpressionRegistry.RestPrefix + "2" }).ToArray();
+            var notNumbered = trackingNames.Where(name => VrmMenuExpressions.UniqueName(name, taken => false) != name + " (2)").ToArray();
+            check(notNumbered.Length == 0, "Every preset or tracking name the app rejects is numbered: " + string.Join(", ", notNumbered));
+            check(trackingNames.All(name => !VrmMenuExpressions.Reserved(name + " (2)")), "A numbered name is never reserved.");
+            var renamed = new[] { "Smile", "Blink", "Happy", "BigSmile", "SmileJawOpen", UnifiedExpressionRegistry.RestPrefix + " (2)" }
+                .Where(name => VrmMenuExpressions.UniqueName(name, taken => false) != name).ToArray();
+            check(renamed.Length == 0, "Names that only contain a channel name, or differ from a preset in case, keep their name: " + string.Join(", ", renamed));
         }
     }
 }

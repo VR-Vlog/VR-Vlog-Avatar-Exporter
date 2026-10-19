@@ -103,12 +103,17 @@ namespace VRVlog.LilToonExporter.Tests
             return GlbDocument.Create(root, new byte[] { 1, 2, 3, 4 }).Write();
         }
 
-        // registered: the custom expressions this export added (menu and
-        // recorded faces). Null treats every custom expression in the file so.
+        // registered: the custom expressions this export added, each inferred
+        // from its own name. Null treats every custom expression in the file so.
         static byte[] Infer(byte[] bytes, List<string> warnings = null, List<(string Preset, string Source)> filled = null, bool inferEmotions = true,
             IEnumerable<string> registered = null) =>
+            Infer(bytes, (registered ?? CustomNames(bytes)).ToDictionary(name => name, name => name, StringComparer.Ordinal), warnings, filled, inferEmotions);
+
+        // paths: final VRM name -> the text inference reads (the menu path).
+        static byte[] Infer(byte[] bytes, IReadOnlyDictionary<string, string> paths, List<string> warnings = null,
+            List<(string Preset, string Source)> filled = null, bool inferEmotions = true) =>
             VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: filled,
-                emotionCandidates: new HashSet<string>(registered ?? CustomNames(bytes), StringComparer.Ordinal));
+                emotionCandidates: paths);
 
         static IEnumerable<string> CustomNames(byte[] bytes) =>
             Expressions(bytes).TryGetValue("custom", out var value) ? ((Dictionary<string, object>)value).Keys.ToArray() : Array.Empty<string>();
@@ -270,19 +275,37 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain("relaxed: mesh 0 に同名のBlendShape（Fcl_ALL_Fun）が複数あるため、この名前は自動設定に使いませんでした。"));
         }
 
-        // Menu faces are named by their item label alone; the submenu path is
-        // not part of the VRM name.
+        // The VRM name is the item label alone, but inference still reads the
+        // menu path: the leaf decides, and a parent speaks only when every
+        // level below says nothing.
         [Test]
-        public void MenuFacesAreDecidedByTheirItemLabel()
+        public void MenuFacesInsideAnEmotionSubmenuAreDecidedByTheirLeaf()
         {
             var filled = new List<(string Preset, string Source)>();
             var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)),
                 "1", MenuFace(Bind(0, 2)), "Sad", MenuFace(Bind(0, 3)), "Wink", MenuFace(Bind(0, 4)));
             var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c", "d", "e")));
-            var presets = Presets(Infer(bytes, filled: filled));
+            var paths = new Dictionary<string, string> {
+                ["笑顔"] = "喜怒哀楽 / 笑顔", ["怒り"] = "喜怒哀楽 / 怒り", ["1"] = "喜怒哀楽 / 1", ["Sad"] = "Eye / Sad", ["Wink"] = "Smile / Wink" };
+            var presets = Presets(Infer(bytes, paths, filled: filled));
             Assert.That(filled, Is.EqualTo(new[] { ("happy", "笑顔"), ("angry", "怒り"), ("sad", "Sad") }));
             Assert.That(Canonical(((Dictionary<string, object>)presets["sad"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 3)))));
             Assert.That(presets.ContainsKey("relaxed") || presets.ContainsKey("surprised"), Is.False);
+        }
+
+        // An item "1" inside a "Smile" submenu is named "1" (or "1 (2)") in
+        // the VRM and still fills happy, as it did when the name kept its path.
+        [Test]
+        public void ItemOfAnEmotionSubmenuStillNamesTheEmotion()
+        {
+            var filled = new List<(string Preset, string Source)>();
+            var custom = Obj("1", MenuFace(Bind(0, 0)), "1 (2)", MenuFace(Bind(0, 1)));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b")));
+            var paths = new Dictionary<string, string> { ["1"] = "Other / 1", ["1 (2)"] = "Smile / 1" };
+            var happy = (Dictionary<string, object>)Presets(Infer(bytes, paths, filled: filled))["happy"];
+            Assert.That(Canonical(happy["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
+            Assert.That(filled, Is.EqualTo(new[] { ("happy", "1 (2)") }), "The result names the face by its VRM name.");
+            Assert.That(Infer(bytes, registered: new[] { "1", "1 (2)" }), Is.EqualTo(bytes), "The label alone names no emotion.");
         }
 
         [Test]

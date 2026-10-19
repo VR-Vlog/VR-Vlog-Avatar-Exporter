@@ -18,6 +18,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/VrmExpressionBindings.cs'),
     (Join-Path $taskRepo 'Editor/UnifiedExpressionRegistry.cs'),
     (Join-Path $taskRepo 'Editor/VrmUnifiedExpressions.cs'),
+    (Join-Path $taskRepo 'Editor/TrackingExpressionNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmMenuExpressions.cs'),
     (Join-Path $taskRepo 'Editor/VrChatExpressionMenu.cs'),
     (Join-Path $taskRepo 'Editor/VrChatFixedExpressionCurve.cs'),

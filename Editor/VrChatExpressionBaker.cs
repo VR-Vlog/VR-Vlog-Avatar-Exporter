@@ -256,7 +256,7 @@ namespace VRVlog.LilToonExporter
             foreach (var plan in plans)
             {
                 var entry = plan.Entry;
-                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), Source = entry.Source };
+                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source };
                 // Binds that change the face at time = duration; a zero marker does not.
                 var moved = 0;
                 foreach (var group in plan.Poses)
