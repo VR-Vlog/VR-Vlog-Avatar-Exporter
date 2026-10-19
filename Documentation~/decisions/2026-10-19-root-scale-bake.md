@@ -17,6 +17,8 @@ UniVRMの `ModelExporter.Export(settings, arrays, avatar)` は、渡したアバ
 - 書き出し後にノードを参照する処理（`afterExport` の各 `Bind`、視線の `offsetFromHeadBone`、揺れ物・コライダーの値、書き出したバイト列の検査）は、ノードの番号か各ノードのローカル空間の値だけを使い、ワールド行列が変わらないので結果は変わらない。
 - 同梱ポーズと動くポーズの `hipsOffset` は、採取・保存・ポーズ確認画面ではこれまでどおりルートのScaleを1にした値を使い、VRMへ書き込むとき（`PoseExportSession.Inject`）だけ `Vector3.Scale(ルートのScale, hipsOffset)` にする。VRMのモデル空間はルートのScaleを含むようになったので、書き込む値もそれに合わせる。掛けるScaleは `RootScaleBake` が移すのと同じ、書き出し用コピーのルートの `localScale` で、書き出しの直前に一度だけ取る。仕様（`Documentation~/HumanoidPoses.md`・`HumanoidAnimations.md`）にもそう書いた。
 - `hipsOffset` 以外に、ルートのScaleを含まない位置をVRMへ書く処理は見つからなかった（ポーズの回転はScaleの影響を受けず、視線・揺れ物はノードのローカル空間の値）。
+- 移すのは書き出し用コピーのルートの `localScale` で、コピーはワールドの拡縮を保って作るため、シーン上でアバターを拡縮した親の下に置いているときはその親の拡縮も含む。VRChatではアバターをシーンのルートに置いてアップロードするのが通常で、そのときはルート自身のScaleと一致する。
+- 揺れ物の半径（PhysBoneの `radius` を生で書く値）の空間は変えていない。モデルが元の大きさに戻ったことで、これまで大きすぎるモデルに対して書いていた半径の見え方が変わる場合がある。
 
 ## 検討した代替案と不採用理由
 
