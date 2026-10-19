@@ -221,7 +221,9 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。");
             return selected;
         }
-        internal byte[] Inject(byte[] bytes)
+        // Sampling ignores the avatar root scale, but RootScaleBake exports the
+        // VRM model space with it. Pass the root localScale that was exported.
+        internal byte[] Inject(byte[] bytes, Vector3 rootScale)
         {
             var poses = Selected(); var animations = SelectedAnimations();
             if (poses.Count == 0 && animations.Count == 0) return bytes;
@@ -231,6 +233,11 @@ namespace VRVlog.LilToonExporter
             if (poses.Count > 0)
             {
                 var extension = HumanoidPoseData.Write(poses);
+                if (rootScale != Vector3.one)
+                {
+                    foreach (Dictionary<string, object> pose in (List<object>)extension["poses"]) ScaleOffset(pose, rootScale);
+                    HumanoidPoseData.Read(extension);
+                }
                 if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidPoseData.MaximumBytes) throw new InvalidOperationException("ポーズ拡張が2MiBを超えました。");
                 HumanoidPoseData.ValidateReferences(poses, document.Json);
                 extensions.Add(HumanoidPoseData.Extension, extension); ((List<object>)raw).Add(HumanoidPoseData.Extension);
@@ -238,12 +245,24 @@ namespace VRVlog.LilToonExporter
             if (animations.Count > 0)
             {
                 var extension = HumanoidAnimationData.Write(animations);
+                if (rootScale != Vector3.one)
+                {
+                    foreach (Dictionary<string, object> animation in (List<object>)extension["animations"])
+                        foreach (Dictionary<string, object> frame in (List<object>)animation["frames"]) ScaleOffset(frame, rootScale);
+                    HumanoidAnimationData.Read(extension);
+                }
                 if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidAnimationData.MaximumBytes)
                     throw new InvalidOperationException("動くポーズの拡張が16MiBを超えました。不要な項目を除外してください。");
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
                 extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
             }
             return AvatarFormatRequirements.Write(document.Write());
+        }
+        // The X reflection to glTF commutes with an axis-aligned scale.
+        static void ScaleOffset(Dictionary<string, object> entry, Vector3 rootScale)
+        {
+            var offset = (List<object>)entry["hipsOffset"];
+            entry["hipsOffset"] = offset.Select((value, axis) => (object)(Convert.ToDouble(value) * rootScale[axis])).ToList();
         }
         public void Dispose() { foreach (var value in owned) if (value != null) Object.DestroyImmediate(value); owned.Clear(); }
     }

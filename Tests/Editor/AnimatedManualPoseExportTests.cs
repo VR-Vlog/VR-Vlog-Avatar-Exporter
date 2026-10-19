@@ -711,7 +711,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.PrepareMeshesForExport();
                 var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), fixture.Copy, new BuiltInVrm10MaterialExporter(),
                     new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Animated pose fixture", Authors = new List<string> { "Test" } }, afterExport: session.Bind);
-                bytes = session.Inject(bytes); var json = GlbDocument.Read(bytes).Json; var extensions = (Dictionary<string, object>)json["extensions"];
+                bytes = session.Inject(bytes, fixture.Copy.transform.localScale); var json = GlbDocument.Read(bytes).Json; var extensions = (Dictionary<string, object>)json["extensions"];
                 var animations = HumanoidAnimationData.Read(extensions[HumanoidAnimationData.Extension]); HumanoidAnimationData.ValidateReferences(animations, json);
                 var armAnimation = animations.Single(value => value.Id == "fixture.animated-arm");
                 var headAnimation = animations.Single(value => value.Id == "fixture.animated-head");

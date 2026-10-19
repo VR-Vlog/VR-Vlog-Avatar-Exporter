@@ -199,7 +199,7 @@ namespace VRVlog.LilToonExporter.Tests
             session.CollectPrepared(fixture.Copy);
             Assert.That(session.Entries, Is.Empty);
             var bytes = new byte[] { 1, 2, 3 };
-            Assert.That(session.Inject(bytes), Is.SameAs(bytes));
+            Assert.That(session.Inject(bytes, Vector3.one), Is.SameAs(bytes));
         }
 
         [Test]

@@ -4,7 +4,9 @@ using System.Linq;
 using NUnit.Framework;
 using UniGLTF;
 using UniVRM10;
+using UnityEditor;
 using UnityEngine;
+using VRVlog.Poses;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -30,6 +32,50 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Numbers(node, "scale"), Is.EqualTo(new[] { .5, .5, .5 }).Within(1e-6));
             Assert.That(f.Copy.transform.localScale, Is.EqualTo(Vector3.one * .5f));
             foreach (var pair in locals) Assert.That((pair.Key.localPosition, pair.Key.localRotation, pair.Key.localScale), Is.EqualTo(pair.Value), pair.Key.name);
+        }
+
+        [Test]
+        public void PoseAndAnimationHipsOffsetsAreExportedInTheScaledModelSpace()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var animator = f.Source.GetComponent<Animator>();
+            var hips = animator.GetBoneTransform(HumanBodyBones.Hips); var hipY = hips.localPosition.y;
+            var arm = AnimationUtility.CalculateTransformPath(animator.GetBoneTransform(HumanBodyBones.LeftUpperArm), f.Source.transform);
+            var hip = EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(hips, f.Source.transform), typeof(Transform), "m_LocalPosition.y");
+            var still = new AnimationClip { name = "Lowered" }; var moving = new AnimationClip { name = "Lowering" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(still, EditorCurveBinding.FloatCurve(arm, typeof(Transform), "localEulerAnglesRaw.z"), AnimationCurve.Constant(0, 1, 40));
+                AnimationUtility.SetEditorCurve(still, hip, AnimationCurve.Constant(0, 1, hipY - .2f));
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve(arm, typeof(Transform), "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, 1, 60));
+                AnimationUtility.SetEditorCurve(moving, hip, AnimationCurve.Linear(0, hipY, 1, hipY - .4f));
+                var options = new PoseExportOptions();
+                options.Manual.Add(new ManualPose { Clip = still, Name = "Lowered" });
+                options.Manual.Add(new ManualPose { Clip = moving, Name = "Lowering" });
+                using var session = new PoseExportSession(f.Source, options); session.CollectPrepared(f.Copy);
+                Assert.That(session.Entries.Select(row => row.Error), Is.All.Null);
+                var pose = session.Selected().Single(); var animation = session.SelectedAnimations().Single();
+                var sampledPose = pose.HipsOffset.ToArray();
+                var sampledFrames = animation.Frames.Select(frame => frame.HipsOffset.ToArray()).ToArray();
+                Assert.That(sampledPose[1], Is.EqualTo(-.2).Within(.001), "Sampling stays root-scale free.");
+                Assert.That(sampledFrames.Last()[1], Is.EqualTo(-.4).Within(.001));
+                f.PrepareMeshesForExport();
+                f.Copy.transform.localScale = Vector3.one * .5f;
+                var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Copy, new BuiltInVrm10MaterialExporter(),
+                    new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Root scale pose fixture", Authors = new List<string> { "Tests" } },
+                    afterExport: session.Bind);
+                bytes = session.Inject(bytes, f.Copy.transform.localScale);
+                var extensions = (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var exportedPose = HumanoidPoseData.Read(extensions[HumanoidPoseData.Extension]).Single();
+                Assert.That(exportedPose.HipsOffset, Is.EqualTo(sampledPose.Select(value => value * .5)).Within(1e-6));
+                var exportedFrames = HumanoidAnimationData.Read(extensions[HumanoidAnimationData.Extension]).Single().Frames;
+                Assert.That(exportedFrames.Count, Is.EqualTo(sampledFrames.Length));
+                for (var i = 0; i < sampledFrames.Length; i++)
+                    Assert.That(exportedFrames[i].HipsOffset, Is.EqualTo(sampledFrames[i].Select(value => value * .5)).Within(1e-6), "frame " + i);
+                Assert.That(pose.HipsOffset, Is.EqualTo(sampledPose), "Stored pose data stays root-scale free.");
+                Assert.That(animation.Frames.Select(frame => frame.HipsOffset), Is.EqualTo(sampledFrames));
+            }
+            finally { Object.DestroyImmediate(still); Object.DestroyImmediate(moving); }
         }
 
         [Test]
