@@ -228,6 +228,31 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void TheAvatarRootIsNeitherSourceNorTarget()
+        {
+            // UniVRM does not write the root as a node; a reference to it
+            // would become -1 in the file.
+            using var f = new Fixture();
+            f.Constraint<AimConstraint>(f.B, 1, f.Copy.transform).aimVector = Vector3.down;
+            f.B.rotation = Quaternion.FromToRotation(Vector3.down, f.Copy.transform.position - f.B.position);
+            f.Constraint<RotationConstraint>(f.Copy.transform, 1, f.A);
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.Empty);
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EqualTo(new[] { ConstraintExport.OmittedOutside, ConstraintExport.OmittedOutside }));
+        }
+
+        [Test]
+        public void ASingleAxisRotationAcrossParentsOrOntoItselfKeepsThePose()
+        {
+            using var f = new Fixture();
+            f.Constraint<RotationConstraint>(f.B, 1, f.Other).rotationAxis = Axis.Y;
+            f.Constraint<RotationConstraint>(f.A, 1, f.A);
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.Empty);
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EquivalentTo(new[] { ConstraintExport.OmittedParent, ConstraintExport.OmittedSetting }));
+        }
+
+        [Test]
         public void TheSourceAvatarIsNeverConverted()
         {
             using var f = new Fixture();

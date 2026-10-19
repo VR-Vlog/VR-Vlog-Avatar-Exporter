@@ -23,10 +23,10 @@ namespace VRVlog.LilToonExporter
         internal const string ApproximatedRoll = "1軸だけの回転をVRMのロールコンストレイントで近似しました";
         internal const string ApproximatedAim = "VRMのエイムコンストレイントで近似しました。向ける軸は保ちますが、ねじれが元と異なる場合があります";
         internal const string OmittedKind = "VRMに同じ働きのコンストレイントがないため、今の姿勢のまま書き出しました";
-        internal const string OmittedSetting = "VRMで表せない設定（複数のソース・2軸だけの回転・ワールドに固定・軸以外の向き）のため、今の姿勢のまま書き出しました";
-        internal const string OmittedParent = "ソースと対象の親が違うワールド空間の回転はVRMで表せないため、今の姿勢のまま書き出しました";
+        internal const string OmittedSetting = "VRMで表せない設定（複数のソース・自分自身がソース・2軸だけの回転・ワールドに固定・軸以外の向き）のため、今の姿勢のまま書き出しました";
+        internal const string OmittedParent = "ソースと対象の親が違う回転（ワールド空間の回転と1軸だけの回転）はVRMで表せないため、今の姿勢のまま書き出しました";
         internal const string OmittedRest = "VRMで近似すると基準の向きの差で元より大きくずれるため、今の姿勢のまま書き出しました";
-        internal const string OmittedOutside = "アバターの外か非表示のオブジェクトを参照しているため、今の姿勢のまま書き出しました";
+        internal const string OmittedOutside = "アバターのルート・アバターの外・非表示のオブジェクトを参照しているため、今の姿勢のまま書き出しました";
         internal const string OmittedDuplicate = "同じオブジェクトに別のコンストレイントが既にあるため、今の姿勢のまま書き出しました";
         internal static readonly string[] Reasons =
         {
@@ -68,19 +68,32 @@ namespace VRVlog.LilToonExporter
             // Authored VRM constraints win; VRM allows one per node.
             var taken = new HashSet<Transform>(copy.GetComponentsInChildren<IVrm10Constraint>(true)
                 .Select(c => c.ConstraintTarget).Where(t => t != null));
-            foreach (var plan in plans)
+            var added = new List<Component>();
+            var decisions = new List<(Plan Plan, ExportOutcome Outcome, string Reason)>();
+            try
             {
-                var sources = plan.Sources.Where(s => s.Transform != null && s.Weight > 0 && !float.IsInfinity(s.Weight)).ToArray();
-                // Off, unlocked or weightless constraints never move anything.
-                if (!plan.Active || !(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
-                result.Sources++;
-                var (outcome, reason) = Apply(plan, sources, copy.transform, taken);
-                if (outcome == ExportOutcome.Omitted) result.Omitted++;
-                else
+                foreach (var plan in plans)
                 {
-                    taken.Add(plan.Target);
-                    if (outcome == ExportOutcome.Kept) result.Kept++; else result.Approximated++;
+                    var sources = plan.Sources.Where(s => s.Transform != null && s.Weight > 0 && !float.IsInfinity(s.Weight)).ToArray();
+                    // Off, unlocked or weightless constraints never move anything.
+                    if (!plan.Active || !(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
+                    var (outcome, reason) = Apply(plan, sources, copy.transform, taken, added);
+                    if (outcome != ExportOutcome.Omitted) taken.Add(plan.Target);
+                    decisions.Add((plan, outcome, reason));
                 }
+            }
+            catch
+            {
+                // The stage is omitted as a whole; never write a partial set.
+                foreach (var component in added) if (component != null) UnityEngine.Object.DestroyImmediate(component);
+                throw;
+            }
+            foreach (var (plan, outcome, reason) in decisions)
+            {
+                result.Sources++;
+                if (outcome == ExportOutcome.Omitted) result.Omitted++;
+                else if (outcome == ExportOutcome.Kept) result.Kept++;
+                else result.Approximated++;
                 var entry = fallbacks?.Record(outcome, Category, plan.Target.name + " (" + plan.Component.GetType().Name + ")", reason);
                 if (entry != null) entry.Path = ExportFallbackReport.RelativePath(copy.transform, plan.Target);
             }
@@ -90,22 +103,25 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken)
+        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken, List<Component> added)
         {
             if (plan.Kind == Kind.Parent || plan.Kind == Kind.Position || plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
             var source = sources[0].Transform;
-            if (!Inside(root, target) || !Inside(root, source) || source == target) return (ExportOutcome.Omitted, OmittedOutside);
+            if (source == target) return (ExportOutcome.Omitted, OmittedSetting);
+            if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
             if (taken.Contains(target)) return (ExportOutcome.Omitted, OmittedDuplicate);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
             if (plan.Kind == Kind.Rotation)
             {
-                if (!plan.LocalSpace && target.parent != source.parent) return (ExportOutcome.Omitted, OmittedParent);
                 var axes = (plan.X ? 1 : 0) + (plan.Y ? 1 : 0) + (plan.Z ? 1 : 0);
+                // Roll maps the delta through both rests in the shared parent
+                // frame, even for a local-space source.
+                if ((!plan.LocalSpace || axes == 1) && target.parent != source.parent) return (ExportOutcome.Omitted, OmittedParent);
                 if (axes == 1)
                 {
-                    var roll = target.gameObject.AddComponent<Vrm10RollConstraint>();
+                    var roll = target.gameObject.AddComponent<Vrm10RollConstraint>(); added.Add(roll);
                     roll.Source = source; roll.Weight = weight;
                     roll.RollAxis = plan.X ? RollAxis.X : plan.Y ? RollAxis.Y : RollAxis.Z;
                     return (ExportOutcome.Approximated, ApproximatedRoll);
@@ -113,7 +129,7 @@ namespace VRVlog.LilToonExporter
                 if (axes != 3) return (ExportOutcome.Omitted, OmittedSetting);
                 var rest = Quaternion.Angle(target.localRotation, source.localRotation);
                 if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
-                var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>();
+                var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
                 rotation.Source = source; rotation.Weight = weight;
                 return rest <= KeptRestAngle && weight == 1 ? (ExportOutcome.Kept, KeptRotation) : (ExportOutcome.Approximated, ApproximatedRotation);
             }
@@ -122,13 +138,14 @@ namespace VRVlog.LilToonExporter
             var toSource = source.position - target.position;
             if (toSource.sqrMagnitude < 1e-10f || Vector3.Angle(target.rotation * vector, toSource) > MaximumAimAngle)
                 return (ExportOutcome.Omitted, OmittedRest);
-            var aim = target.gameObject.AddComponent<Vrm10AimConstraint>();
+            var aim = target.gameObject.AddComponent<Vrm10AimConstraint>(); added.Add(aim);
             aim.Source = source; aim.Weight = weight; aim.AimAxis = axis;
             return (ExportOutcome.Approximated, ApproximatedAim);
         }
 
+        // UniVRM does not write the root as a node, so it can be neither end.
         static bool Inside(Transform root, Transform value) =>
-            value != null && (value == root || value.IsChildOf(root)) && value.gameObject.activeInHierarchy;
+            value != null && value != root && value.IsChildOf(root) && value.gameObject.activeInHierarchy;
 
         static bool TryAxis(Vector3 value, out AimAxis axis, out Vector3 vector)
         {
