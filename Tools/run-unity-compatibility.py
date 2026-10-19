@@ -26,6 +26,7 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'FailureSnapshotKeepsEveryTargetSharingOneRecoveryActionAfterReload': 1,
         'ExceptionWithoutDiagnosticsIsStillAvailableInFull': 1,
+        'TheStageLineNamesItsPhaseWhenKnown': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 4,
@@ -111,6 +112,7 @@ BEHAVIOR_CASES = {
     },
     'ExportFallbackConfirmationTests': {
         'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
+        'AStageIsNamedWithItsPhase': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
         'BatchAndNonInteractiveCallersSaveWithoutTheList': 2,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
