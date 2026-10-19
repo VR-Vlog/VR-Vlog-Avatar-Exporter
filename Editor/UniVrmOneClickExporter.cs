@@ -570,6 +570,8 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "VRM変換";
                 var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
                 DisableEmptyMeshRenderers(clone, warnings);
+                // The root scale RootScaleBake moves into the VRM model space.
+                var rootScale = clone.transform.localScale;
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -641,7 +643,7 @@ namespace VRVlog.LilToonExporter
                 else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
-                exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
+                exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error)
