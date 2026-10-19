@@ -20,6 +20,7 @@ lilToon専用表示（`VRVLOG_materials_liltoon`）の `bindings[].renderer.boun
   - `ExportVrmLilToonPreview` はファイルの値をプレビュー対象へ適用し、終了時に適用前の値へ戻すだけで、元のレンダラーとファイルの値を比べない。比較による誤検出は起きない。
   - `ExportSourceFingerprint` は元のアバターの変更検出のために元の `localBounds` を記録する。ファイルの値とは比べないので変更しない。
   - `SkinnedMeshFallbackWeights` はメッシュの差し替えの前後で `localBounds` を退避して戻すだけで、符号を変えない。
+  - 書き出し用のコピーで `sharedMesh` を差し替える経路（共有メッシュの分離・余剰の材質スロット・法線の無いメッシュの準備・最適化の作り直し）を通ったレンダラーは、`localBounds` がメッシュ由来の値に戻る。この場合は負の大きさも残らず警告も出ない。この PR では変えない既存の挙動。
 
 ## 検討した代替案と不採用理由
 
