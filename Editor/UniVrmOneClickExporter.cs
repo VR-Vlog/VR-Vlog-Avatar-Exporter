@@ -512,7 +512,9 @@ namespace VRVlog.LilToonExporter
                 NormalTexture = normalEnabled ? Texture(source, "_BumpMap") : null,
                 NormalTextureScale = normalEnabled ? Float(source, "_BumpScale", 1f) : 0f,
                 EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionColor, suppressSharedTextureEmission),
-                EmissiveTexture = emissionEnabled ? Texture(source, "_EmissionMap") : null,
+                // MToon has no emission mask or main-color tint; bake them so a
+                // small mask does not light the whole mesh (lilToon 2.3.4).
+                EmissiveTexture = emissionEnabled ? EmissionMaskBaker.Create(source, textures) ?? Texture(source, "_EmissionMap") : null,
                 MatcapColorFactorSrgb = FallbackColor(source, MaterialColorType.matcapColor, suppressSharedTextureEmission),
                 MatcapTexture = matcapEnabled ? Texture(source, "_MatCapTex") : null,
                 // MToon has no directional backlight. When lilToon rim light is

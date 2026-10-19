@@ -26,5 +26,27 @@ namespace VRVlog.LilToonExporter
             var main = material.GetTexture("_MainTex");
             return main != null && main == material.GetTexture(map);
         }
+
+        // lilToon 2.3.4 multiplies emission by _EmissionBlendMask and by
+        // lerp(1, albedo, _EmissionMainStrength). MToon has neither, so the
+        // fallback bakes them into its emissive image (EmissionMaskBaker).
+        public static bool NeedsEmissionBake(Material material) => HasEmissionMask(material) ||
+            material.HasProperty("_EmissionMainStrength") && material.GetFloat("_EmissionMainStrength") > 0;
+
+        public static bool HasEmissionMask(Material material) => material.HasProperty("_EmissionBlendMask") &&
+            material.GetTexture("_EmissionBlendMask") != null && material.GetTexture("_EmissionBlendMask") != Texture2D.whiteTexture;
+
+        // The baked image is sampled with the main UV transform, so it needs
+        // UV0 emission and an invertible main texture placement.
+        public static bool CanBakeEmission(Material material)
+        {
+            if (material.HasProperty("_EmissionMap_UVMode") && material.GetFloat("_EmissionMap_UVMode") != 0) return false;
+            if (!material.HasProperty("_MainTex")) return true;
+            var scale = material.GetTextureScale("_MainTex");
+            var offset = material.GetTextureOffset("_MainTex");
+            return Finite(scale.x) && Finite(scale.y) && scale.x != 0 && scale.y != 0 && Finite(offset.x) && Finite(offset.y);
+        }
+
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }
