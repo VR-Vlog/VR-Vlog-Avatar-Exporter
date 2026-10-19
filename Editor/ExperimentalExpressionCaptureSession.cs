@@ -574,7 +574,10 @@ namespace VRVlog.LilToonExporter
                 foreach (var pose in expressions)
                 {
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
-                    expression.name = "VRChat / 記録 / " + pose.Name;
+                    // The recorded name as is; a repeated, VRM preset or face
+                    // tracking name gets " (2)", " (3)"... like a menu face.
+                    expression.name = VrmMenuExpressions.UniqueName(pose.Name,
+                        name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
                     expression.IsBinary = true;
                     expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
                     var bindings = new List<MorphTargetBinding>();

@@ -44,7 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
-                var clip = imported.Vrm.Expression.CustomClips.Single(value => value.name == "VRChat / " + entry.Name);
+                var clip = imported.Vrm.Expression.CustomClips.Single(value => value.name == entry.VrmName());
                 Assert.That(clip.MorphTargetBindings, Has.Length.EqualTo(1));
                 var binding = clip.MorphTargetBindings.Single();
                 var skin = imported.transform.Find(binding.RelativePath).GetComponent<SkinnedMeshRenderer>();

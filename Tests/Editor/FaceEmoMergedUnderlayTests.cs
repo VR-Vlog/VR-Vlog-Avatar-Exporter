@@ -59,7 +59,7 @@ namespace VRVlog.LilToonExporter.Tests
                 controlRigGenerationOption: ControlRigGenerationOption.None);
             try
             {
-                var clip = imported.Vrm.Expression.CustomClips.Single(value => value.name == "VRChat / " + entry.Name);
+                var clip = imported.Vrm.Expression.CustomClips.Single(value => value.name == entry.VrmName());
                 Assert.That(clip.MorphTargetBindings, Has.Length.EqualTo(1 + expression.Direct.Count));
                 var skin = imported.transform.Find(clip.MorphTargetBindings.Select(binding => binding.RelativePath).Distinct().Single()).GetComponent<SkinnedMeshRenderer>();
                 foreach (var weight in new[] { 0f, 1f, 0f })

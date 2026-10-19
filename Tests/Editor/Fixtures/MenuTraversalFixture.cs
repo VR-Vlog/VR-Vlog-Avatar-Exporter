@@ -20,6 +20,9 @@ namespace VRVlog.LilToonExporter.Tests
             var source = Read(menu);
             check(source.Entries.Count == 3, "Menus produce control entries, not individual morph names.");
             check(source.Entries[0].Name == "表情 / 笑顔" && source.Entries[0].Error == null, "Composed expression retains its menu/submenu name.");
+            check(source.Entries[0].VrmName() == "笑顔", "The VRM name is the item label without its submenu path.");
+            check(new VrChatExpressionMenu.Entry { Name = "表情 / 笑顔", ExportName = " " }.VrmName() == "笑顔" && new VrChatExpressionMenu.Entry { Name = "笑顔" }.VrmName() == "笑顔",
+                "A blank VRM name falls back to the last element of the path.");
             check(source.Entries[0].Parameters["Face"] == 3 && source.Entries[0].Parameters["OpenFace"] == 1,
                 "Child selection carries its own parameter and the ancestor submenu gate.");
             check(source.Entries[1].Error.Contains("Puppet") && source.Entries[2].Error != null, "Puppets and missing parameters have explicit per-item errors.");
@@ -30,6 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
             menu.controls.Add(new Control { name = "別経路", type = "SubMenu", subMenu = sub });
             source = Read(menu);
             check(source.Entries.Count == 6 && source.Entries[3].Name == "別経路 / 笑顔", "Shared submenu assets can be used through multiple independent paths.");
+            check(source.Entries[0].VrmName() == "笑顔" && source.Entries[3].VrmName() == "笑顔", "The same label in two submenus keeps one VRM name; registration numbers the second.");
             check(!source.Entries[3].Parameters.ContainsKey("OpenFace"), "Ancestor parameters do not leak between menu branches.");
             sub.controls[0].value = float.NaN;
             bool rejected = false;

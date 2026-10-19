@@ -244,7 +244,7 @@ namespace VRVlog.LilToonExporter.Tests
             var json = GlbDocument.Read(bytes).Json;
             var nodes = (List<object>)json["nodes"];
             var custom = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)json["extensions"])["VRMC_vrm"])["expressions"])["custom"];
-            var binds = ((List<object>)((Dictionary<string, object>)custom["VRChat / Combined"])["morphTargetBinds"]).Cast<Dictionary<string, object>>().ToArray();
+            var binds = ((List<object>)((Dictionary<string, object>)custom["Combined"])["morphTargetBinds"]).Cast<Dictionary<string, object>>().ToArray();
             Assert.That(binds, Has.Length.EqualTo(4));
             Assert.That(binds.Count(bind => Convert.ToDouble(bind["weight"]) == 1), Is.EqualTo(2));
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());

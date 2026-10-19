@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using VRVlog.Expressions;
+using VRVlog.FaceTracking;
 
 namespace VRVlog.LilToonExporter
 {
@@ -51,17 +52,62 @@ namespace VRVlog.LilToonExporter
             Dictionary<string, object> MenuBinding(Dictionary<string, object> json, UnityEngine.SkinnedMeshRenderer renderer, string shape, float weight);
         }
 
+        // Counts the expressions this exporter registered: those listed in the
+        // expression animation extension that bind a morph. Authored custom
+        // expressions and unbound names are not counted.
         internal static int CountRegistered(byte[] bytes)
         {
-            var current = GlbDocument.Read(bytes).Json;
-            foreach (var key in new[] { "extensions", "VRMC_vrm", "expressions", "custom" })
+            var json = GlbDocument.Read(bytes).Json;
+            var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
+            if (custom == null) return 0;
+            return RegisteredNames(json).Count(name => custom.TryGetValue(name, out var value) &&
+                value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
+                binds is List<object> list && list.Count > 0);
+        }
+
+        // Names the expression animation extension lists as registered by this
+        // exporter, with their final duplicate-name suffix. Empty without it.
+        internal static IReadOnlyCollection<string> RegisteredNames(byte[] bytes) => RegisteredNames(GlbDocument.Read(bytes).Json);
+
+        static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
+        {
+            var extensions = Path(json, "extensions");
+            if (extensions == null || !extensions.TryGetValue(ExpressionAnimationData.Extension, out var value)) return Array.Empty<string>();
+            return ExpressionAnimationData.ReadDocument(value).Expressions.Select(e => e.Expression).ToArray();
+        }
+
+        static Dictionary<string, object> Path(Dictionary<string, object> current, params string[] keys)
+        {
+            foreach (var key in keys)
             {
-                if (!current.TryGetValue(key, out var value) || !(value is Dictionary<string, object> next)) return 0;
+                if (!current.TryGetValue(key, out var value) || !(value is Dictionary<string, object> next)) return null;
                 current = next;
             }
-            return current.Count(p => p.Key.StartsWith("VRChat / ", StringComparison.Ordinal) &&
-                p.Value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
-                binds is List<object> list && list.Count > 0);
+            return current;
+        }
+
+        static readonly HashSet<string> PresetNames = new HashSet<string>(
+            Enum.GetNames(typeof(UniVRM10.ExpressionPreset)).Where(name => name != "custom"), StringComparer.Ordinal);
+
+        // A custom expression must not take a VRM 1.0 preset name (UniVRM keys
+        // imported expressions by name, so custom "happy" would collide with
+        // the preset) or a face tracking channel name (the app and the
+        // tracking output would read it as that channel, and a tracking
+        // profile refuses to replace an existing expression).
+        internal static bool Reserved(string name) =>
+            PresetNames.Contains(name) || UnifiedExpressionRegistry.TryCanonicalize(name, out _)
+#if !EXPORTER_BEHAVIOR_TESTS
+            || Array.IndexOf(VrmTrackingExpressions.Names, name) >= 0
+#endif
+            ;
+
+        // name, or name (2), name (3)... when taken or reserved.
+        internal static string UniqueName(string name, Func<string, bool> taken)
+        {
+            var result = name;
+            var suffix = 2;
+            while (taken(result) || Reserved(result)) result = name + " (" + suffix++ + ")";
+            return result;
         }
 
         // Register only actual menu entries. Each one binds its composite
@@ -82,9 +128,9 @@ namespace VRVlog.LilToonExporter
             var document = new ExpressionAnimationDocument();
             foreach (var expression in expressions)
             {
-                var name = "VRChat / " + expression.Name;
-                var suffix = 2;
-                while (custom.ContainsKey(name)) name = "VRChat / " + expression.Name + " (" + suffix++ + ")";
+                // The name carries no source prefix; the extension lists the
+                // source. Recorded and authored custom faces keep their names.
+                var name = UniqueName(expression.Name, custom.ContainsKey);
                 ExpressionAnimationData.MorphReference Named(string target)
                 {
                     var matches = new List<ExpressionAnimationData.MorphReference>();

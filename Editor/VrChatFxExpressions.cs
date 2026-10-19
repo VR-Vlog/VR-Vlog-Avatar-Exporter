@@ -68,6 +68,8 @@ namespace VRVlog.LilToonExporter
             try
             {
                 var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
+                var controller = ExpressionDependencies.Controller(source.Controller);
+                var overrides = ExpressionDependencies.Overrides(source.Controller);
                 foreach (var candidate in Discover(source, context, excludedPath).ToArray())
                 {
                     // Recovery exclusions are authoritative even when the menu's
@@ -79,9 +81,15 @@ namespace VRVlog.LilToonExporter
                     if (!seen.Add(key)) continue;
                     if (candidate.Error == null && source.Entries.Any(entry => entry.Error == null &&
                         entry.Id?.StartsWith("fx/", StringComparison.Ordinal) != true && SameParameters(entry.Parameters, candidate.Values))) continue;
+                    // The VRM name is the clip the state plays. A BlendTree has
+                    // no single clip, so it keeps the state name and its values.
+                    var motion = EffectiveMotion(controller, candidate.State, candidate.Layer);
+                    if (motion is AnimationClip played && overrides.TryGetValue(played, out var replaced)) motion = replaced;
                     var entry = new VrChatExpressionMenu.Entry {
                         Id = "fx/" + key, Name = "FX / " + candidate.State.name +
                             (candidate.State.motion is BlendTree ? " (" + assignment + ")" : ""),
+                        ExportName = motion is AnimationClip fxClip ? fxClip.name :
+                            candidate.State.name + (motion is BlendTree ? " (" + assignment + ")" : ""),
                         Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Menu
                     };
                     foreach (var value in candidate.Values) entry.Parameters.Add(value.Key, value.Value);
@@ -138,7 +146,7 @@ namespace VRVlog.LilToonExporter
         // or turn a hand-controlled clock into an autoplaying animation.
         internal static List<VrChatExpressionMenu.Entry> ReadGestureState(GameObject avatar,
             VrChatExpressionMenu.Source source, int layer, AnimatorState state, string label,
-            Func<string, bool> excludedPath = null)
+            Func<string, bool> excludedPath = null, string exportLabel = null)
         {
             var handInputs = new HashSet<string>(new[] { "GestureLeft", "GestureRight", "GestureLeftWeight", "GestureRightWeight" }, StringComparer.Ordinal);
             var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
@@ -151,7 +159,7 @@ namespace VRVlog.LilToonExporter
             {
                 var entry = new VrChatExpressionMenu.Entry {
                     Id = "gesture-state/" + layer + "/" + candidate.Path + "/" + Assignment(candidate.Values),
-                    Name = label, Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Gesture
+                    Name = label, ExportName = exportLabel, Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Gesture
                 };
                 foreach (var pair in candidate.Values)
                     entry.Parameters.Add(pair.Key, pair.Key == "GestureLeftWeight" || pair.Key == "GestureRightWeight" ? Mathf.Clamp01(pair.Value) : pair.Value);
@@ -161,6 +169,7 @@ namespace VRVlog.LilToonExporter
                         ExpressionDependencies.Controller(source.Controller).parameters.Any(parameter => parameter.name == "Gesture" + hand + "Weight"))
                         entry.Parameters.Add("Gesture" + hand + "Weight", 1);
                 entry.Name += " (" + Assignment(entry.Parameters) + ")";
+                if (entry.ExportName != null) entry.ExportName += " (" + Assignment(entry.Parameters) + ")";
                 // Some hand trees place knots slightly outside the hand's
                 // documented [0,1] domain to shape their native interpolation.
                 // Sample the reachable boundary with the original mixing.

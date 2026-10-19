@@ -18,7 +18,7 @@
   - 口: 別名の完全一致（`MouthShapes`・`FindExact`）。
   - 瞬きは従来どおり `BlinkShapeNames`。視線（lookUp など）と neutral は名前から推定しない。
 - 通常の書き出し（`UniVrmOneClickExporter.Export`、既定 `inferEmotionPresets: true`）は、口と瞬きを埋めたあとに、空の喜怒哀楽を次の順に埋める。
-  1. メニュー表情: カスタム表情の名前から `VRChat / ` と、続く `記録 / ` を外した残りを `MatchMenuPath` で判定する。日本語の名前も使う。最後の ` / ` より後のラベル（葉）だけで判定し、葉に除外語も感情の語も無いときだけ、近い親の階層から順に1階層ずつ判定する。除外語を含む階層・2つの感情に当たる階層に来たらそこで「該当なし」とする。`喜怒哀楽 / 笑顔` は happy、`Eye / Sad` は sad、`喜怒哀楽 / 1`・`Smile / Wink` は該当なし。表情ごとに、段の小さいもの → カスタム表情の並び順で1つ選び、morph target・マテリアルの bind と override をそのままコピーする。`isBinary` は `false` にする。
+  1. メニュー表情: カスタム表情の名前から `VRChat / ` と、続く `記録 / ` を外した残りを `MatchMenuPath` で判定する（2026-10-19 に表情名から接頭辞と経路を外した（`2026-10-19-expression-plain-names.md`）。以後は、この書き出しが `VRVLOG_expression_animations` の表に登録した表情だけを候補にし、その名前をそのまま判定する）。日本語の名前も使う。最後の ` / ` より後のラベル（葉）だけで判定し、葉に除外語も感情の語も無いときだけ、近い親の階層から順に1階層ずつ判定する。除外語を含む階層・2つの感情に当たる階層に来たらそこで「該当なし」とする。`喜怒哀楽 / 笑顔` は happy、`Eye / Sad` は sad、`喜怒哀楽 / 1`・`Smile / Wink` は該当なし。表情ごとに、段の小さいもの → カスタム表情の並び順で1つ選び、morph target・マテリアルの bind と override をそのままコピーする。`isBinary` は `false` にする。
   2. メッシュの BlendShape（glTF の `extras.targetNames`）: `MatchEmotion(name, latinOnly: true)` で英語の語だけで判定する。表情ごとに、段の小さいもの → ノードと BlendShape の並び順で候補を選び、その名前を持つすべてのノードに重み1で bind する。`overrideBlink` は `block`、`overrideMouth`・`overrideLookAt` は付けない（`none`）。1つのメッシュに同じ名前が2つあると、どちらか決められないので警告を出し、その名前をほかのメッシュにも使わずに次の候補へ進む。
 - 「空」は、表情が無いか、bind が1つも無い表情を指す。作者が設定した bind のある喜怒哀楽は置き換えない。
 - 埋めた表情ごとに「`<表情>: 名前から自動で設定しました（<元の名前>）。動作を確認してください。`」の警告を出す。警告は書き出しの詳細（`LilToonExporterWindow` の「書き出しの詳細」と、Console の「VR Vlog 書き出し詳細」。**アプリに転送** は Console だけ）に出る。文言は `ExporterLocalization.T` で訳した書式に値を `string.Format` で入れる。

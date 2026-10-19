@@ -206,7 +206,7 @@ namespace VRVlog.LilToonExporter.Tests
 
             var bytes = scene.Export(new[] { expression });
             var json = GlbDocument.Read(bytes).Json;
-            var binds = Binds(json, "VRChat / Raise");
+            var binds = Binds(json, "Raise");
             Assert.That(binds, Has.Length.EqualTo(2));
             Assert.That(binds.Select(bind => MorphName(json, new ExpressionAnimationData.MorphReference { Node = Convert.ToInt32(bind["node"]), Index = Convert.ToInt32(bind["index"]) })),
                 Is.EquivalentTo(new[] { "Raise", "Wide" }));
@@ -220,7 +220,7 @@ namespace VRVlog.LilToonExporter.Tests
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
-                AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "VRChat / Raise", "Front", 0, withoutAnimation: true),
+                AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "Raise", "Front", 0, withoutAnimation: true),
                     "The VRM expression is the last frame.");
             }
             finally { Object.DestroyImmediate(imported.gameObject); }
@@ -287,7 +287,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = scene.Export(new[] { expression });
                 var json = GlbDocument.Read(bytes).Json;
                 var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
-                Assert.That(document.Animations.Single().Expression, Is.EqualTo("VRChat / Played"));
+                Assert.That(document.Animations.Single().Expression, Is.EqualTo("Played"));
                 var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 try
                 {
@@ -295,8 +295,8 @@ namespace VRVlog.LilToonExporter.Tests
                     foreach (var path in new[] { "Front", "Back" })
                     {
                         foreach (var time in new[] { 0, duration / 4, duration / 2, duration })
-                            AssertVertices(scene.Expected(entry, path, time), Played(imported, json, document, "VRChat / Played", path, time), path + " at " + time);
-                        AssertVertices(scene.Expected(entry, path, duration), Played(imported, json, document, "VRChat / Played", path, 0, withoutAnimation: true),
+                            AssertVertices(scene.Expected(entry, path, time), Played(imported, json, document, "Played", path, time), path + " at " + time);
+                        AssertVertices(scene.Expected(entry, path, duration), Played(imported, json, document, "Played", path, 0, withoutAnimation: true),
                             path + " VRM expression");
                     }
                 }
@@ -326,12 +326,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
             var json = GlbDocument.Read(bytes).Json;
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
-            Assert.That(document.Animations.Select(animation => animation.Expression), Is.EquivalentTo(new[] { "VRChat / Loop", "VRChat / Moving" }));
+            Assert.That(document.Animations.Select(animation => animation.Expression), Is.EquivalentTo(new[] { "Loop", "Moving" }));
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
-                AssertVertices(scene.Expected(neutral, "Front", .5), Played(imported, json, document, "VRChat / Loop", "Front", .5), "Moves in VR Vlog");
-                AssertVertices(scene.Expected(neutral, "Front", 1), Played(imported, json, document, "VRChat / Loop", "Front", 0, withoutAnimation: true),
+                AssertVertices(scene.Expected(neutral, "Front", .5), Played(imported, json, document, "Loop", "Front", .5), "Moves in VR Vlog");
+                AssertVertices(scene.Expected(neutral, "Front", 1), Played(imported, json, document, "Loop", "Front", 0, withoutAnimation: true),
                     "Other apps keep the neutral face.");
             }
             finally { Object.DestroyImmediate(imported.gameObject); }
@@ -373,8 +373,8 @@ namespace VRVlog.LilToonExporter.Tests
             var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
-                AssertVertices(scene.Expected(entry, "Front", .5), Played(imported, json, document, "VRChat / Back", "Front", .5), "Moves in VR Vlog");
-                AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "VRChat / Back", "Front", 0, withoutAnimation: true),
+                AssertVertices(scene.Expected(entry, "Front", .5), Played(imported, json, document, "Back", "Front", .5), "Moves in VR Vlog");
+                AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "Back", "Front", 0, withoutAnimation: true),
                     "Other apps keep the neutral face.");
             }
             finally { Object.DestroyImmediate(imported.gameObject); }
@@ -411,9 +411,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(document.SchemaVersion, Is.EqualTo(2));
             Assert.That(document.Expressions.Select(value => (value.Expression, value.Source)), Is.EqualTo(new[]
             {
-                ("VRChat / Smile", ExpressionSource.Menu), ("VRChat / Smile (2)", ExpressionSource.Gesture), ("VRChat / Wide", ExpressionSource.FaceEmo)
+                ("Smile", ExpressionSource.Menu), ("Smile (2)", ExpressionSource.Gesture), ("Wide", ExpressionSource.FaceEmo)
             }));
-            Assert.That(document.Animations.Single().Expression, Is.EqualTo("VRChat / Smile (2)"));
+            Assert.That(document.Animations.Single().Expression, Is.EqualTo("Smile (2)"));
         }
 
         // (f) The final bytes name the lowest app version for each VRVLOG_
@@ -458,7 +458,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(json.TryGetValue("extensionsRequired", out var required) && ((List<object>)required).Contains(ExpressionAnimationData.Extension), Is.False);
             var extension = Extension(bytes);
             Assert.That(Convert.ToInt64(extension["schemaVersion"]), Is.EqualTo(2));
-            Assert.That(ExpressionAnimationData.ReadDocument(extension).Animations.Single().Expression, Is.EqualTo("VRChat / Raise"));
+            Assert.That(ExpressionAnimationData.ReadDocument(extension).Animations.Single().Expression, Is.EqualTo("Raise"));
             Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.Read(extension));
             var empty = GlbDocument.Read(scene.Export(new List<VrmMenuExpressions.Expression>())).Json;
             Assert.That(((Dictionary<string, object>)empty["extensions"]).ContainsKey(ExpressionAnimationData.Extension), Is.False);
@@ -549,7 +549,7 @@ namespace VRVlog.LilToonExporter.Tests
             var channels = ExpressionAnimationData.ReadDocument(Extension(bytes)).Animations.Single().Channels;
             Assert.That(channels.Select(channel => channel.Points[0].Morph), Is.All.Null);
             Assert.That(channels.Select(channel => (channel.Points[1].Morph.Node, channel.Points[1].Morph.Index)), Is.EqualTo(new[] { (1, 1), (1, 2) }));
-            var binds = Binds(GlbDocument.Read(bytes).Json, "VRChat / Smile");
+            var binds = Binds(GlbDocument.Read(bytes).Json, "Smile");
             Assert.That(binds.Select(bind => (Convert.ToInt32(bind["node"]), Convert.ToInt32(bind["index"]))), Is.EquivalentTo(new[] { (1, 1), (1, 2) }));
             Assert.That(binds.Select(bind => Convert.ToDouble(bind["weight"])), Is.All.EqualTo(.5).Within(Tolerance));
         }
@@ -572,8 +572,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Has.Exactly(1).Contains("Smile"));
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
             Assert.That(document.Animations, Is.Empty);
-            Assert.That(document.Expressions.Single().Expression, Is.EqualTo("VRChat / Smile"));
-            var bind = Binds(GlbDocument.Read(bytes).Json, "VRChat / Smile").Single();
+            Assert.That(document.Expressions.Single().Expression, Is.EqualTo("Smile"));
+            var bind = Binds(GlbDocument.Read(bytes).Json, "Smile").Single();
             Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
             Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
             Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.5).Within(Tolerance));
@@ -610,8 +610,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings.Count, Is.EqualTo(2));
             var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
             Assert.That(document.Animations, Is.Empty);
-            Assert.That(document.Expressions.Single().Expression, Is.EqualTo("VRChat / Smile"));
-            var bind = Binds(GlbDocument.Read(bytes).Json, "VRChat / Smile").Single();
+            Assert.That(document.Expressions.Single().Expression, Is.EqualTo("Smile"));
+            var bind = Binds(GlbDocument.Read(bytes).Json, "Smile").Single();
             Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
             Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
             Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.25).Within(Tolerance));

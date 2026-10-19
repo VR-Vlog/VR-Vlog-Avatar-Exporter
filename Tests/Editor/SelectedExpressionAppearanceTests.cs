@@ -552,7 +552,7 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                 }
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name.StartsWith("VRChat / ", StringComparison.Ordinal));
+                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name == "Mixed selected");
                 var importedMaterials = imported.GetComponentsInChildren<SkinnedMeshRenderer>().SelectMany(renderer => renderer.sharedMaterials).Distinct().ToArray();
                 var colorBefore = importedMaterials.Select(item => item.color).ToArray();
                 foreach (var input in new[] { 0f, 1f, 0f })

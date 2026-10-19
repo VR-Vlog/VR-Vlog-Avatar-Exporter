@@ -23,19 +23,19 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var binary = new byte[] { 1, 2, 3, 4 };
             var root = Obj("asset", Obj("version", "2.0"), "extensions", Obj("VRMC_vrm", Obj("expressions", Obj(
-                "preset", Obj("blink", Obj("isBinary", false)), "custom", Obj("VRChat / 顔 / 笑顔", Obj("isBinary", false))))),
+                "preset", Obj("blink", Obj("isBinary", false)), "custom", Obj("笑顔", Obj("isBinary", false))))),
                 "nodes", Arr(Obj("mesh", 1L), Obj(), Obj("mesh", 0L)),
                 "meshes", Arr(Mesh("raw-eye", "composite-face"), Mesh("raw-body", "composite-brow")));
-            var expressions = new List<VrmMenuExpressions.Expression> { new VrmMenuExpressions.Expression { Name = "顔 / 笑顔" } };
+            var expressions = new List<VrmMenuExpressions.Expression> { new VrmMenuExpressions.Expression { Name = "笑顔" } };
             expressions[0].Targets.AddRange(new[] { "composite-face", "composite-brow" });
             var bytes = GlbDocument.Create(root, binary).Write();
             var result = GlbDocument.Read(VrmMenuExpressions.Add(bytes, expressions));
             check(VrmMenuExpressions.CountRegistered(bytes) == 0, "A blink preset and an unbound custom name are not exported selectable faces.");
             check(VrmMenuExpressions.CountRegistered(result.Write()) == 1, "The export completion count comes from the actual bound VRM expressions.");
             var custom = Custom(result.Json);
-            check(custom.Count == 2 && custom.ContainsKey("VRChat / 顔 / 笑顔 (2)"), "One composed menu entry is added; same-named authored expressions are retained.");
-            check(!(bool)((Dictionary<string, object>)custom["VRChat / 顔 / 笑顔"])["isBinary"], "Existing expression settings remain unchanged.");
-            var expression = (Dictionary<string, object>)custom["VRChat / 顔 / 笑顔 (2)"];
+            check(custom.Count == 2 && custom.ContainsKey("笑顔 (2)"), "One composed menu entry is added; same-named authored expressions are retained.");
+            check(!(bool)((Dictionary<string, object>)custom["笑顔"])["isBinary"], "Existing expression settings remain unchanged.");
+            var expression = (Dictionary<string, object>)custom["笑顔 (2)"];
             var binds = (List<object>)expression["morphTargetBinds"];
             check(binds.Count == 2 && (long)((Dictionary<string, object>)binds[0])["node"] == 2 &&
                 (long)((Dictionary<string, object>)binds[1])["node"] == 0, "Multi-renderer expressions bind final exported nodes after reordering.");
@@ -64,12 +64,12 @@ namespace VRVlog.LilToonExporter.Tests
             var written = ((Dictionary<string, object>)animated.Json["extensions"])[ExpressionAnimationData.Extension];
             var document = ExpressionAnimationData.ReadDocument(written);
             var stored = document.Animations;
-            check(document.SchemaVersion == 2 && document.Expressions.Count == 1 && document.Expressions[0].Expression == "VRChat / 顔 / 笑顔 (2)" &&
+            check(document.SchemaVersion == 2 && document.Expressions.Count == 1 && document.Expressions[0].Expression == "笑顔 (2)" &&
                 document.Expressions[0].Source == ExpressionSource.Menu, "Schema 2 lists the registered expression with its source.");
-            check(stored[0].Expression == "VRChat / 顔 / 笑顔 (2)" && stored[0].Channels[0].Points[0].Morph == null &&
+            check(stored[0].Expression == "笑顔 (2)" && stored[0].Channels[0].Points[0].Morph == null &&
                 stored[0].Channels[0].Points[1].Morph != null && stored[0].Channels[0].Points[1].Morph.Node == 2 && stored[0].Channels[0].Points[1].Morph.Index == 2,
                 "Animated data follows the final disambiguated expression name; points refer to the output node and morph index, rest moves nothing.");
-            var animatedBinds = (List<object>)((Dictionary<string, object>)Custom(animated.Json)["VRChat / 顔 / 笑顔 (2)"])["morphTargetBinds"];
+            var animatedBinds = (List<object>)((Dictionary<string, object>)Custom(animated.Json)["笑顔 (2)"])["morphTargetBinds"];
             check(animatedBinds.Count == 3 && animatedBinds.Cast<Dictionary<string, object>>().Any(b => (long)b["node"] == 2 && (long)b["index"] == 2 && Convert.ToDouble(b["weight"]) == 1),
                 "The VRM expression holds the animation's last frame.");
             rejected = false;
@@ -83,6 +83,37 @@ namespace VRVlog.LilToonExporter.Tests
             rejected = false;
             try { VrmMenuExpressions.Add(GlbDocument.Create(root, binary).Write(), expressions); } catch (InvalidOperationException) { rejected = true; }
             check(rejected, "Ambiguous instanced output targets are rejected rather than bound to an arbitrary node.");
+
+            // Names carry no source prefix. Repeated labels, VRM preset names
+            // and face tracking channel names get " (2)", " (3)"...
+            var plainRoot = Obj("asset", Obj("version", "2.0"), "extensions", Obj("VRMC_vrm", Obj("expressions", Obj(
+                "custom", Obj("Authored", Obj("isBinary", false, "morphTargetBinds", Arr(Obj("node", 0L, "index", 0L, "weight", 1.0))))))),
+                "nodes", Arr(Obj("mesh", 0L)), "meshes", Arr(Mesh("composite-a", "composite-b")));
+            var plain = new List<VrmMenuExpressions.Expression>();
+            foreach (var (name, source) in new[] { ("Smile", ExpressionSource.Menu), ("Smile", ExpressionSource.Gesture), ("Smile", ExpressionSource.FaceEmo),
+                ("Authored", ExpressionSource.Menu), ("happy", ExpressionSource.Menu), ("JawOpen", ExpressionSource.Menu) })
+            {
+                var item = new VrmMenuExpressions.Expression { Name = name, Source = source };
+                item.Targets.Add("composite-b");
+                plain.Add(item);
+            }
+            var plainResult = GlbDocument.Read(VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), plain));
+            var plainNames = new[] { "Smile", "Smile (2)", "Smile (3)", "Authored (2)", "happy (2)", "JawOpen (2)" };
+            check(plainNames.All(Custom(plainResult.Json).ContainsKey) && Custom(plainResult.Json).ContainsKey("Authored") && Custom(plainResult.Json).Count == 7,
+                "Menu names are plain; a repeated, authored, VRM preset or tracking channel name is numbered.");
+            var plainDocument = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)plainResult.Json["extensions"])[ExpressionAnimationData.Extension]);
+            check(plainDocument.Expressions.Select(e => e.Expression).SequenceEqual(plainNames) &&
+                plainDocument.Expressions.Select(e => e.Source).SequenceEqual(plain.Select(e => e.Source)),
+                "The extension lists the final numbered names with their sources.");
+            check(VrmMenuExpressions.CountRegistered(plainResult.Write()) == 6 &&
+                VrmMenuExpressions.RegisteredNames(plainResult.Write()).SequenceEqual(plainNames),
+                "The completion count reads the extension's list; the authored bound expression is not counted.");
+            check(VrmMenuExpressions.CountRegistered(GlbDocument.Create(plainRoot, binary).Write()) == 0,
+                "Without the extension no expression counts as registered, even a bound authored one.");
+            check(VrmMenuExpressions.UniqueName("Smile", name => false) == "Smile" &&
+                VrmMenuExpressions.UniqueName("Smile", name => name == "Smile" || name == "Smile (2)") == "Smile (3)" &&
+                VrmMenuExpressions.UniqueName("blink", name => false) == "blink (2)" && VrmMenuExpressions.UniqueName("Blink", name => false) == "Blink",
+                "Only exact VRM preset names are reserved.");
         }
     }
 }

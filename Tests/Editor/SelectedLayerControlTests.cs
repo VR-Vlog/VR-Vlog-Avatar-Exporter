@@ -446,7 +446,7 @@ namespace VRVlog.LilToonExporter.Tests
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                const string name = "VRChat / Controlled face";
+                const string name = "Controlled face";
                 Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == name), Is.True);
                 foreach (var input in new[] { 0f, 1f, 0f })
                 {

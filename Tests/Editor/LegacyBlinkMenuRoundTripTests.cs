@@ -102,7 +102,7 @@ namespace VRVlog.LilToonExporter.Tests
                     exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var names = new[] { "VRChat / Happy", "VRChat / Photo face" };
+                var names = new[] { "Happy", "Photo face" };
                 var clips = names.Select(name => imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name)).ToArray();
                 // Both menus raise shape 0 from rest 17 to 75 on its single 100
                 // frame, so each references that shape directly at 58/83 on

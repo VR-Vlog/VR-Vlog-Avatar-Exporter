@@ -103,8 +103,15 @@ namespace VRVlog.LilToonExporter.Tests
             return GlbDocument.Create(root, new byte[] { 1, 2, 3, 4 }).Write();
         }
 
-        static byte[] Infer(byte[] bytes, List<string> warnings = null, List<(string Preset, string Source)> filled = null, bool inferEmotions = true) =>
-            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: filled);
+        // registered: the custom expressions this export added (menu and
+        // recorded faces). Null treats every custom expression in the file so.
+        static byte[] Infer(byte[] bytes, List<string> warnings = null, List<(string Preset, string Source)> filled = null, bool inferEmotions = true,
+            IEnumerable<string> registered = null) =>
+            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: filled,
+                emotionCandidates: new HashSet<string>(registered ?? CustomNames(bytes), StringComparer.Ordinal));
+
+        static IEnumerable<string> CustomNames(byte[] bytes) =>
+            Expressions(bytes).TryGetValue("custom", out var value) ? ((Dictionary<string, object>)value).Keys.ToArray() : Array.Empty<string>();
 
         static Dictionary<string, object> Expressions(byte[] bytes) =>
             (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"])["VRMC_vrm"])["expressions"];
@@ -132,7 +139,7 @@ namespace VRVlog.LilToonExporter.Tests
             var filled = new List<(string Preset, string Source)>();
             var face = MenuFace(Bind(0, 1));
             face["materialColorBinds"] = Arr(Obj("material", 0L, "type", "color", "targetValue", Arr(1.0, 0.0, 0.0, 1.0)));
-            var bytes = Glb(null, Obj("VRChat / 笑顔", face), Arr(Obj("mesh", 0L)), Arr(Mesh("base", "composite")));
+            var bytes = Glb(null, Obj("笑顔", face), Arr(Obj("mesh", 0L)), Arr(Mesh("base", "composite")));
             var output = Infer(bytes, warnings, filled);
             var happy = (Dictionary<string, object>)Presets(output)["happy"];
             Assert.That(Canonical(happy["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
@@ -142,32 +149,49 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(happy["overrideMouth"], Is.EqualTo("block"));
             Assert.That(happy["overrideLookAt"], Is.EqualTo("block"));
             Assert.That(Presets(output).Keys, Is.EquivalentTo(new[] { "happy" }), "One menu face fills one emotion.");
-            Assert.That(((Dictionary<string, object>)Expressions(output)["custom"]).ContainsKey("VRChat / 笑顔"), Is.True, "The menu face stays selectable.");
+            Assert.That(((Dictionary<string, object>)Expressions(output)["custom"]).ContainsKey("笑顔"), Is.True, "The menu face stays selectable.");
             Assert.That(filled, Is.EqualTo(new[] { ("happy", "笑顔") }));
             Assert.That(warnings, Does.Contain("happy: 名前から自動で設定しました（笑顔）。動作を確認してください。"));
 
             var parsed = GlbDocument.Read(output).Json;
             var expressions = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)parsed["extensions"])["VRMC_vrm"])["expressions"];
-            var custom = (Dictionary<string, object>)((Dictionary<string, object>)expressions["custom"])["VRChat / 笑顔"];
+            var custom = (Dictionary<string, object>)((Dictionary<string, object>)expressions["custom"])["笑顔"];
             var preset = (Dictionary<string, object>)((Dictionary<string, object>)expressions["preset"])["happy"];
             Assert.That(preset["morphTargetBinds"], Is.Not.SameAs(custom["morphTargetBinds"]));
             Assert.That(custom["isBinary"], Is.True, "The custom expression itself is unchanged.");
         }
 
         [Test]
-        public void RecordedMenuFacesStripTheirPrefix()
+        public void RecordedFacesFillByTheirPlainName()
         {
             var filled = new List<(string Preset, string Source)>();
-            var bytes = Glb(null, Obj("VRChat / 記録 / Surprised", MenuFace(Bind(0, 0))), Arr(Obj("mesh", 0L)), Arr(Mesh("composite")));
-            Infer(bytes, filled: filled);
+            var bytes = Glb(null, Obj("Surprised", MenuFace(Bind(0, 0))), Arr(Obj("mesh", 0L)), Arr(Mesh("composite")));
+            Infer(bytes, filled: filled, registered: new[] { "Surprised" });
             Assert.That(filled, Is.EqualTo(new[] { ("surprised", "Surprised") }));
+        }
+
+        // Names carry no source prefix, so the exporter says which custom
+        // expressions it registered. An authored custom expression with an
+        // emotion name never fills a preset, even when it moves something.
+        [Test]
+        public void AuthoredCustomExpressionsAreNotCandidates()
+        {
+            var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)), "Sad (2)", MenuFace(Bind(0, 2)));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled, registered: new[] { "怒り", "Sad (2)" }));
+            Assert.That(filled, Is.EqualTo(new[] { ("angry", "怒り"), ("sad", "Sad (2)") }), "A numbered menu face still names its emotion.");
+            Assert.That(presets.ContainsKey("happy"), Is.False, "The authored 笑顔 is not a candidate.");
+            Assert.That(Infer(bytes, registered: Array.Empty<string>()), Is.EqualTo(bytes), "Without registered faces nothing is filled from custom names.");
+            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferEmotions: true), Is.EqualTo(bytes),
+                "A caller that names no candidates fills nothing from custom names.");
         }
 
         [Test]
         public void AuthoredEmotionThatMovesSomethingIsKept()
         {
             var authored = Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false);
-            var bytes = Glb(Obj("happy", authored), Obj("VRChat / 笑顔", MenuFace(Bind(0, 1))),
+            var bytes = Glb(Obj("happy", authored), Obj("笑顔", MenuFace(Bind(0, 1))),
                 Arr(Obj("mesh", 0L)), Arr(Mesh("base", "composite", "Fcl_ALL_Joy")));
             var warnings = new List<string>();
             var output = Infer(bytes, warnings);
@@ -178,7 +202,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AuthoredEmotionWithoutBindsIsFilled()
         {
-            var bytes = Glb(Obj("happy", Obj("morphTargetBinds", Arr(), "isBinary", false)), Obj("VRChat / 笑顔", MenuFace(Bind(0, 1))),
+            var bytes = Glb(Obj("happy", Obj("morphTargetBinds", Arr(), "isBinary", false)), Obj("笑顔", MenuFace(Bind(0, 1))),
                 Arr(Obj("mesh", 0L)), Arr(Mesh("base", "composite")));
             var happy = (Dictionary<string, object>)Presets(Infer(bytes))["happy"];
             Assert.That(Canonical(happy["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
@@ -207,7 +231,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void MenuFaceWinsOverBlendShapeForTheSameEmotion()
         {
             var filled = new List<(string Preset, string Source)>();
-            var bytes = Glb(null, Obj("VRChat / Smile", MenuFace(Bind(0, 2))), Arr(Obj("mesh", 0L)),
+            var bytes = Glb(null, Obj("Smile", MenuFace(Bind(0, 2))), Arr(Obj("mesh", 0L)),
                 Arr(Mesh("Fcl_ALL_Joy", "Fcl_ALL_Angry", "composite")));
             var presets = Presets(Infer(bytes, filled: filled));
             Assert.That(Canonical(((Dictionary<string, object>)presets["happy"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 2)))));
@@ -246,15 +270,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain("relaxed: mesh 0 に同名のBlendShape（Fcl_ALL_Fun）が複数あるため、この名前は自動設定に使いませんでした。"));
         }
 
+        // Menu faces are named by their item label alone; the submenu path is
+        // not part of the VRM name.
         [Test]
-        public void MenuFacesInsideAnEmotionSubmenuAreDecidedByTheirLeaf()
+        public void MenuFacesAreDecidedByTheirItemLabel()
         {
             var filled = new List<(string Preset, string Source)>();
-            var custom = Obj("VRChat / 喜怒哀楽 / 笑顔", MenuFace(Bind(0, 0)), "VRChat / 喜怒哀楽 / 怒り", MenuFace(Bind(0, 1)),
-                "VRChat / 喜怒哀楽 / 1", MenuFace(Bind(0, 2)), "VRChat / Eye / Sad", MenuFace(Bind(0, 3)), "VRChat / Smile / Wink", MenuFace(Bind(0, 4)));
+            var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)),
+                "1", MenuFace(Bind(0, 2)), "Sad", MenuFace(Bind(0, 3)), "Wink", MenuFace(Bind(0, 4)));
             var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c", "d", "e")));
             var presets = Presets(Infer(bytes, filled: filled));
-            Assert.That(filled, Is.EqualTo(new[] { ("happy", "喜怒哀楽 / 笑顔"), ("angry", "喜怒哀楽 / 怒り"), ("sad", "Eye / Sad") }));
+            Assert.That(filled, Is.EqualTo(new[] { ("happy", "笑顔"), ("angry", "怒り"), ("sad", "Sad") }));
             Assert.That(Canonical(((Dictionary<string, object>)presets["sad"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 3)))));
             Assert.That(presets.ContainsKey("relaxed") || presets.ContainsKey("surprised"), Is.False);
         }
@@ -277,7 +303,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DisabledInferenceFillsNothing()
         {
-            var bytes = Glb(null, Obj("VRChat / 笑顔", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Angry", "composite")));
+            var bytes = Glb(null, Obj("笑顔", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Angry", "composite")));
             var filled = new List<(string Preset, string Source)>();
             Assert.That(Infer(bytes, filled: filled, inferEmotions: false), Is.EqualTo(bytes));
             Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false), Is.EqualTo(bytes), "The default leaves emotions alone.");

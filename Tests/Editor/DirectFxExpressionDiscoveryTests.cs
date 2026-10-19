@@ -80,6 +80,7 @@ namespace VRVlog.LilToonExporter.Tests
             Transition(neutral, selected, "FaceChoice", 2);
             var entry = Read().Entries.Single();
             Assert.That(entry.Name, Is.EqualTo("FX / Authored smile"));
+            Assert.That(entry.VrmName(), Is.EqualTo("Smile"), "The VRM name is the clip the state plays, not the state name.");
             Assert.That(entry.Parameters["FaceChoice"], Is.EqualTo(2));
             Assert.That(entry.Error, Is.Null); Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
         }
@@ -994,6 +995,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entries, Has.Count.EqualTo(2)); Assert.That(entries.Select(entry => entry.Error), Is.All.Null);
             Assert.That(entries.Select(entry => entry.Parameters["ExpressionStrength"]), Is.EqualTo(new[] { .5f, 1f }));
             Assert.That(entries.Select(Weight), Is.EqualTo(new[] { 40f, 80f }).Within(.01));
+            // A BlendTree has no single clip, so the VRM name keeps the state name and its value.
+            Assert.That(entries.Select(entry => entry.VrmName()), Is.EqualTo(entries.Select(entry => entry.Name.Substring("FX / ".Length))));
+            Assert.That(entries.Select(entry => entry.VrmName()), Is.All.StartsWith("Neutral ("));
         }
 
         [Test]

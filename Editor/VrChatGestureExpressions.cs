@@ -43,6 +43,7 @@ namespace VRVlog.LilToonExporter
                 {
                     Id = "gesture/" + path,
                     Name = "ジェスチャー / " + (clip != null ? clip.name : path),
+                    ExportName = clip != null ? clip.name : path.Substring(path.LastIndexOf('/') + 1),
                     Source = ExpressionSource.Gesture
                 };
                 try
@@ -50,7 +51,7 @@ namespace VRVlog.LilToonExporter
                     if (motion is BlendTree || clip != null && target.State.timeParameterActive && HasChangingMorph(clip, excludedPath))
                     {
                         var composed = VrChatFxExpressions.ReadGestureState(avatar, source, target.Layer, target.State,
-                            entry.Name, excludedPath);
+                            entry.Name, excludedPath, entry.ExportName);
                         if (source.Entries.Count + composed.Count > 512) throw new InvalidOperationException("表情候補が512個を超えています。FXの表情登録を整理してください。");
                         source.Entries.AddRange(composed);
                         continue;

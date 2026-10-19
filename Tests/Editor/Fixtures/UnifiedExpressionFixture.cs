@@ -40,7 +40,9 @@ namespace VRVlog.LilToonExporter.Tests
             menuEntry.Targets.Add("__VRVlog_Menu_JawOpenFixture");
             var menuOutput = VrmUnifiedExpressions.Add(VrmMenuExpressions.Add(Encode(menuRoot), new List<VrmMenuExpressions.Expression> { menuEntry }));
             var menuCustom = Custom(GlbDocument.Read(menuOutput).Json);
-            var menuRoute = (Dictionary<string, object>)menuCustom["VRChat / JawOpen"];
+            // A menu label that names a tracking channel is numbered so the
+            // selectable face is never read as that channel.
+            var menuRoute = (Dictionary<string, object>)menuCustom["JawOpen (2)"];
             var trackedJaw = (Dictionary<string, object>)menuCustom["UE/JawOpen"];
             check((bool)menuRoute["isBinary"] && (string)menuRoute["overrideMouth"] == "block" && VrmMenuExpressions.CountRegistered(menuOutput) == 1,
                 "A generated JawOpen menu remains a binary blocking selectable expression.");
