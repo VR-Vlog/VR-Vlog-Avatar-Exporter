@@ -307,6 +307,7 @@ namespace VRVlog.LilToonExporter
                 {
                     expression.Animation = new ExpressionAnimationData { Duration = entry.Duration, Loop = entry.Loop };
                     var usedTargets = new HashSet<string>(StringComparer.Ordinal);
+                    var endsAwayFromRest = false;
                     foreach (var animated in plan.Animation)
                     {
                         var original = animated.Mesh;
@@ -314,6 +315,7 @@ namespace VRVlog.LilToonExporter
                         var shape = original.GetBlendShapeIndex(animated.Shape);
                         if (shape < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + animated.Shape);
                         animated.Curve.Range(out var minimum, out var maximum);
+                        if (animated.Curve.Evaluate(entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
                         var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         expression.Animation.Channels.Add(channel);
                         if (DirectAnimation(original, copy, shape, animated.Rest[shape], minimum, maximum, clampToSourceRange, out var from, out var to))
@@ -324,6 +326,9 @@ namespace VRVlog.LilToonExporter
                             expression.DirectPoints.Add(full, (animated.Renderer, animated.Shape));
                             continue;
                         }
+                        // A constant curve outside the direct range would bake
+                        // one point, which Channel.Weights cannot blend.
+                        if (!(minimum < maximum)) throw new InvalidOperationException("表情のアニメーションの値が変化しません: " + entry.Name + " / " + animated.Shape);
                         // Morph residuals are affine between source frames.
                         // Enclose varying curves with canonical frame endpoints,
                         // so different extrema can use the same exact basis.
@@ -372,14 +377,17 @@ namespace VRVlog.LilToonExporter
                             channel.Points.Add(new ExpressionAnimationData.Point { Value = weight, Target = target });
                         }
                     }
-                    moved += expression.FinalPoints().Count();
+                    // Every channel ending at rest is the neutral face even
+                    // when its final points are two binds that cancel out.
+                    if (endsAwayFromRest) moved += expression.FinalPoints().Count();
                     // The loop ends on the neutral face. Keep the expression
-                    // selectable with the shared zero marker.
+                    // selectable with the shared zero marker unless those
+                    // binds already do.
                     if (moved == 0)
                     {
                         expression.EndsNeutral = true;
                         var renderer = plan.Animation[0].Renderer;
-                        if (expression.Targets.Count == 0)
+                        if (expression.Targets.Count == 0 && !expression.FinalPoints().Any())
                         {
                             if (!zeroScalarTargets.TryGetValue(renderer.sharedMesh, out var name))
                             {

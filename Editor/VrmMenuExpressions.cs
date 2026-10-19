@@ -130,6 +130,7 @@ namespace VRVlog.LilToonExporter
                     new Dictionary<string, object> { ["node"] = (long)morph.Node, ["index"] = (long)morph.Index, ["weight"] = weight };
                 foreach (var target in expression.Targets) Bind(Weighted(Named(target), 1.0), target);
                 foreach (var (renderer, shape, weight) in expression.Direct) Bind(direct.MenuBinding(glb.Json, renderer, shape, weight), shape);
+                var fixedMorphs = binds.Cast<Dictionary<string, object>>().Select(b => (Convert.ToInt32(b["node"]), Convert.ToInt32(b["index"]))).ToList();
                 ExpressionAnimationData animation = null;
                 if (expression.Animation != null)
                 {
@@ -158,11 +159,12 @@ namespace VRVlog.LilToonExporter
                     foreach (var (point, weight) in expression.FinalPoints())
                         Bind(Weighted(resolved[point], weight), point.Target ?? (expression.DirectPoints.TryGetValue(point, out var source) ? source.Shape : null));
                     var morphs = resolved.Values.Select(morph => (morph.Node, morph.Index)).ToList();
-                    if (morphs.Distinct().Count() != morphs.Count)
+                    if (morphs.Distinct().Count() != morphs.Count || morphs.Any(fixedMorphs.Contains))
                     {
-                        // An optimizer merged two animated shapes into one
-                        // morph; the app could not move them apart. Keep the
-                        // VRM expression (the last frame) without the motion.
+                        // An optimizer merged two animated shapes, or an
+                        // animated shape and a fixed one, into one morph; the
+                        // app could not move them apart. Keep the VRM
+                        // expression (the last frame) without the motion.
                         warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて最後のフレームの顔だけを登録しました。");
                         animation = null;
                     }

@@ -354,6 +354,46 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(row.Content, Is.EqualTo(ExporterLocalization.T(ExportFallbackConfirmation.ExpressionEndsNeutralText)));
         }
 
+        // A curve that ends at rest between two baked knots ends on two binds
+        // that cancel out; it is still the neutral face and is listed.
+        [Test]
+        public async Task CurveEndingAtRestBetweenKnotsEndsNeutral()
+        {
+            using var scene = new Scene(raise: 50);
+            var entry = Entry("Back", 1, false, new (string, string, float)[0], ("Front", "Raise", Curve((0, 0), (.5, 100), (1, 50))));
+            var expression = scene.Bake(entry).Single();
+            Assert.That(expression.FinalPoints().Count(), Is.EqualTo(2), "The last frame is half of each knot.");
+            Assert.That(expression.EndsNeutral, Is.True);
+            Assert.That(expression.Targets, Is.Empty, "The final binds keep it selectable without the zero marker.");
+
+            var bytes = scene.Export(new[] { expression });
+            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+            var json = GlbDocument.Read(bytes).Json;
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+            try
+            {
+                AssertVertices(scene.Expected(entry, "Front", .5), Played(imported, json, document, "VRChat / Back", "Front", .5), "Moves in VR Vlog");
+                AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "VRChat / Back", "Front", 0, withoutAnimation: true),
+                    "Other apps keep the neutral face.");
+            }
+            finally { Object.DestroyImmediate(imported.gameObject); }
+
+            var report = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordExpressionsEndingNeutral(new[] { expression }, report);
+            Assert.That(report.Fallbacks.Items.Single().Names, Is.EqualTo(new[] { "Back" }));
+        }
+
+        // A constant curve below rest cannot be moved directly, and baking it
+        // would leave one point; it stops with a message instead.
+        [Test]
+        public void ConstantCurveOutsideTheDirectRangeIsRejected()
+        {
+            using var scene = new Scene(raise: 60);
+            var entry = Entry("Flat", 1, false, new (string, string, float)[0], ("Front", "Raise", Curve((0, 40), (1, 40))));
+            Assert.That(Assert.Throws<InvalidOperationException>(() => scene.Bake(entry)).Message, Does.Contain("変化しません"));
+        }
+
         // (e) Every registered expression is listed with its source, animated
         // or not, including the duplicate-name suffix.
         [Test]
@@ -537,6 +577,44 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
             Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
             Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.5).Within(Tolerance));
+        }
+
+        // A fixed shape and an animated one coalesced into one morph: the
+        // reader would write the curve over the fixed value, so the animation
+        // is left out, and the second weight on that morph is reported.
+        [Test]
+        public void FixedAndAnimatedShapesCoalescedIntoOneMorphKeepOnlyTheLastFrame()
+        {
+            using var merge = new Merge();
+            merge.Skin(merge.Source, "face", "Smile"); merge.Skin(merge.Source, "body", "Smile");
+            merge.Clone = Object.Instantiate(merge.Source);
+            var originals = merge.Clone.GetComponentsInChildren<SkinnedMeshRenderer>();
+            using var bindings = ExportOptimizationBindings.Capture(merge.Clone, menuMorphs: originals.Select(skin => (skin, "Smile")));
+            var target = merge.Skin(merge.Clone, "merged", "Smile");
+            foreach (var route in merge.Clone.GetComponent<ExportOptimizationMarker>().Morphs) route.Renderer = target;
+            Object.DestroyImmediate(originals[0].gameObject); Object.DestroyImmediate(originals[1].gameObject);
+            bindings.ValidateAndApply();
+            bindings.BindNodes(skin => skin == target ? 1 : -1);
+            var expression = new VrmMenuExpressions.Expression { Name = "Smile",
+                Animation = new ExpressionAnimationData { Duration = 1, Loop = false } };
+            expression.Direct.Add((originals[0], "Smile", .25f));
+            var channel = new ExpressionAnimationData.Channel { Curve = Curve((0, 0), (1, 50)) };
+            var full = new ExpressionAnimationData.Point { Value = 100 };
+            channel.Points.Add(new ExpressionAnimationData.Point { Value = 0 }); channel.Points.Add(full);
+            expression.Animation.Channels.Add(channel);
+            expression.DirectPoints.Add(full, (originals[1], "Smile"));
+            var warnings = new List<string>();
+            var bytes = VrmMenuExpressions.Add(MergedOutput("Smile"), new[] { expression }, bindings, warnings);
+            Assert.That(warnings, Has.Exactly(1).Contains("アニメーションを省いて"));
+            Assert.That(warnings, Has.Exactly(1).Contains("最初の値だけ"));
+            Assert.That(warnings.Count, Is.EqualTo(2));
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            Assert.That(document.Animations, Is.Empty);
+            Assert.That(document.Expressions.Single().Expression, Is.EqualTo("VRChat / Smile"));
+            var bind = Binds(GlbDocument.Read(bytes).Json, "VRChat / Smile").Single();
+            Assert.That(Convert.ToInt32(bind["node"]), Is.EqualTo(1));
+            Assert.That(Convert.ToInt32(bind["index"]), Is.EqualTo(0));
+            Assert.That(Convert.ToDouble(bind["weight"]), Is.EqualTo(.25).Within(Tolerance));
         }
     }
 }
