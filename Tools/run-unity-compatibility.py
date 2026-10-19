@@ -226,6 +226,7 @@ BEHAVIOR_CASES = {
     },
     'NeutralShapeSamplerTests': {
         'UnknownComponentPropertyPreservesPreparedNeutralAndReportsTarget': 1,
+        'ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest': 1,
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 4,
         'ConstraintCoupledMorphKeepsPreparedWeightWhileIndependentFaceStillSamples': 2,
         'ConstraintEnabledSupportKeepsPreparedRestWithoutExecutingConstraint': 2,
