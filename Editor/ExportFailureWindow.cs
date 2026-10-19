@@ -14,7 +14,8 @@ namespace VRVlog.LilToonExporter
         {
             public string id, stage, target, reason, remedy, lostEffect;
             public UnityEngine.Object source;
-            public bool hasAction;
+            public bool hasAction, hasPhase;
+            public ExportPhase phase;
             public ExportRecoveryActionKind actionKind;
         }
 
@@ -114,7 +115,7 @@ namespace VRVlog.LilToonExporter
                 if (issue == null) continue;
                 issues.Add(new IssueView
                 {
-                    id = issue.Action?.Id ?? issue.Id, stage = issue.Stage, target = issue.Target,
+                    id = issue.Action?.Id ?? issue.Id, stage = issue.Stage, hasPhase = issue.Phase.HasValue, phase = issue.Phase ?? default, target = issue.Target,
                     reason = issue.Reason, remedy = issue.Remedy, lostEffect = issue.LostEffect,
                     source = issue.Source, hasAction = issue.Action != null,
                     actionKind = issue.Action != null ? issue.Action.Kind : default
@@ -165,7 +166,7 @@ namespace VRVlog.LilToonExporter
                     showTechnicalDetails = EditorGUILayout.Foldout(showTechnicalDetails, ExporterLocalization.T("エラーの詳細・問い合わせ"));
                     if (showTechnicalDetails)
                     {
-                        foreach (var issue in issues) EditorGUILayout.LabelField(ExporterLocalization.T("工程: ") + ExporterLocalization.T(issue.stage), EditorStyles.wordWrappedLabel);
+                        foreach (var issue in issues) EditorGUILayout.LabelField(ExportDetailsText.StageLine(issue.hasPhase ? issue.phase : (ExportPhase?)null, issue.stage), EditorStyles.wordWrappedLabel);
                         EditorGUILayout.LabelField(technicalDetails ?? "", EditorStyles.wordWrappedLabel);
                         if (GUILayout.Button(copied ? ExporterLocalization.T("共有用の診断をコピーしました") : ExporterLocalization.T("共有用の診断をコピー")))
                         {

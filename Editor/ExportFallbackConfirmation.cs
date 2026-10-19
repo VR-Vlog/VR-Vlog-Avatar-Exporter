@@ -121,7 +121,7 @@ namespace VRVlog.LilToonExporter
         internal ExportResultEntry AddStage(ExportStage stage, string reason, IEnumerable<ExportRecoveryDiagnostic> diagnostics = null)
         {
             var label = ExportStageGuard.Label(stage);
-            Add(ExportFallbackKind.StageOmitted, ExporterLocalization.T(label));
+            Add(ExportFallbackKind.StageOmitted, ExportStageGuard.DisplayName(stage));
             var entry = Record(ExportStageGuard.Outcome(stage), label, "", reason);
             entry.Stage = stage;
             if (diagnostics != null) entry.Diagnostics.AddRange(diagnostics);

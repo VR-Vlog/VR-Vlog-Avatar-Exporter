@@ -51,9 +51,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(entry.Reason, Is.EqualTo("injected " + stage));
                 Assert.That(entry.Outcome, Is.EqualTo(ExportStageGuard.Outcome(stage)));
                 Assert.That(report.Fallbacks.Items.Single(item => item.Kind == ExportFallbackKind.StageOmitted).Names,
-                    Is.EqualTo(new[] { ExporterLocalization.T(ExportStageGuard.Label(stage)) }));
+                    Is.EqualTo(new[] { ExportStageGuard.DisplayName(stage) }));
                 Assert.That(warnings.Count(warning => warning.Contains("injected " + stage)), Is.EqualTo(1),
                     "Warnings of a discarded attempt must not be repeated.");
+                var list = ExportResultList.Build(report.Fallbacks, warnings);
+                Assert.That(list.Rows.Single(row => row.Stage == stage).Group, Is.EqualTo(ExportStageGuard.DisplayName(stage)));
+                Assert.That(list.Rows.Any(row => row.Outcome == null && row.Content.Contains("injected " + stage)), Is.False,
+                    "The omission warning is the same item as the stage line, not another notice.");
 
                 // Non-destructive: the copy and its temporary objects are gone.
                 Assert.That(SceneManager.GetActiveScene().rootCount, Is.EqualTo(roots));
@@ -84,6 +88,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(report.Fallbacks.Results.Any(result => result.Stage != null), Is.False);
             }
             finally { Object.DestroyImmediate(material); }
+        }
+
+        [Test]
+        public void EveryStageBelongsToAPhase()
+        {
+            foreach (ExportStage stage in Enum.GetValues(typeof(ExportStage)))
+                Assert.DoesNotThrow(() => ExportStageGuard.Phase(stage), stage.ToString());
         }
 
         [Test]
