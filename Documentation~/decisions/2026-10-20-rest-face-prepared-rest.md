@@ -17,6 +17,8 @@
 
 prepared rest と live rest が違うのは、待機ステートがシーンの値と違う BlendShape の値を書いている場合（顔の形の調整や、まばたきを 0 に固定するクリップ）、加算レイヤー、重みが 1 未満のレイヤー、Expression Parameters の既定値で既定以外のステートが選ばれる場合など。これらのアバターでは、既定の顔が 10-19 より前の値に戻る。
 
+ハンドサインの表情は、10-19 のとおりアニメーターを再生した既定の顔（live rest）を基準に値を決める。書き出す既定の顔だけが prepared rest になるので、両者が違うアバターでは、表情が持たない BlendShape の見え方がその差の分だけずれる可能性がある。10-19 より前はこの表情そのものを書き出していなかったので、以前より悪くなる組はない。
+
 ## 検証
 
 - `NeutralShapeSamplerTests.ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest`: 既定のステートで開き 75 を書き、ループする手の筋肉のカーブを足す。結果は空（prepared rest）、警告は 1 件でカーブの名前を含み、シーンの重みは変わらない。`!restFace` を外すと失敗する
