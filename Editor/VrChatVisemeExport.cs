@@ -50,16 +50,24 @@ namespace VRVlog.LilToonExporter
             internal void Remap(ExportOptimizationBindings mappings)
             {
                 if (Renderer == null) return;
+                // Only declared shapes choose the output renderer; a missing
+                // shape must not pin it to a renderer the optimizer merged away.
+                var routes = new Dictionary<string, (SkinnedMeshRenderer Renderer, string Shape)>();
                 SkinnedMeshRenderer target = null;
+                foreach (var pair in Shapes)
+                {
+                    if (string.IsNullOrEmpty(pair.Value) || !mappings.TryMapMorph(Renderer, pair.Value, out var mapped)) continue;
+                    routes.Add(pair.Key, mapped);
+                    if (target == null) target = mapped.Renderer;
+                }
+                if (target == null) return;
                 foreach (var preset in Shapes.Keys.ToArray())
                 {
-                    var shape = Shapes[preset];
-                    if (string.IsNullOrEmpty(shape)) continue;
-                    if (!mappings.TryMapMorph(Renderer, shape, out var mapped)) mapped = (Renderer, shape);
-                    if (target == null) target = mapped.Renderer;
-                    Shapes[preset] = mapped.Renderer == target ? mapped.Shape : null;
+                    if (string.IsNullOrEmpty(Shapes[preset])) continue;
+                    if (routes.TryGetValue(preset, out var mapped)) Shapes[preset] = mapped.Renderer == target ? mapped.Shape : null;
+                    else if (target != Renderer) Shapes[preset] = null;
                 }
-                if (target != null) Renderer = target;
+                Renderer = target;
             }
 
             // outputNode maps the exported GameObject to its glTF node (-1
