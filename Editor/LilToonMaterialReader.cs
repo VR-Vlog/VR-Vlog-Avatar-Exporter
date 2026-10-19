@@ -33,9 +33,13 @@ namespace VRVlog.LilToonExporter
                     (material.HasProperty("_EmissionMap_ScrollRotate") && !material.GetVector("_EmissionMap_ScrollRotate").Equals(new Vector4(0, 0, 0, 0))) ||
                     (material.HasProperty("_EmissionBlink") && material.GetVector("_EmissionBlink").x != 0) ||
                     Enabled(material, "_EmissionUseGrad") ||
-                    (material.HasProperty("_EmissionParallaxDepth") && material.GetFloat("_EmissionParallaxDepth") != 0))
+                    (material.HasProperty("_EmissionParallaxDepth") && material.GetFloat("_EmissionParallaxDepth") != 0) ||
+                    (LilToonEmissionPolicy.HasEmissionMask(material) && material.HasProperty("_EmissionBlendMask_ScrollRotate") &&
+                     !material.GetVector("_EmissionBlendMask_ScrollRotate").Equals(new Vector4(0, 0, 0, 0))))
                     AddWarning(warnings, $"{material.name}: 発光の特殊UV・回転・時間変化は省略し、UV0の固定した発光として近似しました。");
-                if ((HasTexture(material, "_EmissionBlendMask") && material.GetTexture("_EmissionBlendMask") != Texture2D.whiteTexture) ||
+                // The MToon fallback bakes a UV0 mask (EmissionMaskBaker); only
+                // other UV modes and non-additive blending remain approximated.
+                if ((LilToonEmissionPolicy.HasEmissionMask(material) && !LilToonEmissionPolicy.CanBakeEmission(material)) ||
                     (material.HasProperty("_EmissionBlendMode") && material.GetFloat("_EmissionBlendMode") != 1))
                     AddWarning(warnings, $"{material.name}: 発光のマスク・合成方法は専用表示へ保存しました。標準MToonでは加算発光として近似します。");
             }
