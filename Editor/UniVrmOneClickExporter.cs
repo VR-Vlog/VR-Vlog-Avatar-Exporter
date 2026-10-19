@@ -572,8 +572,12 @@ namespace VRVlog.LilToonExporter
                 case MaterialColorType.shadeColor: return source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
                     ? MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white), Color(source, "_ShadowColor", UnityEngine.Color.gray), Float(source, "_ShadowStrength", 1f))
                     : Color(source, "_Color", UnityEngine.Color.white);
+                // lilToon 2.3.4 scales emission by lerp(1, invLighting, _EmissionFluorescence),
+                // and invLighting is 0 under normal light. MToon emission is not
+                // light-dependent, so use that lit-scene value: 1 - fluorescence.
                 case MaterialColorType.emissionColor: return EnabledOrTexture(source, "_UseEmission", "_EmissionMap") && !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission)
-                    ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f)) : UnityEngine.Color.black;
+                    ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f))
+                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return source.HasProperty("_UseMatCap") && source.GetFloat("_UseMatCap") > .5f
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
