@@ -109,10 +109,15 @@ namespace VRVlog.LilToonExporter.Tests
             var animations = entry.Animation.ToArray(); var values = entry.Values.ToArray();
             f.Prepare(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Is.Empty);
-            AssertDirect(expression.Direct.Single(), f.Merged, "Open", 15f / 75f);
+            // The animated channel stays out of the static shape. Rest 25 up
+            // to the single 100 frame moves the original shape directly, and
+            // the VRM expression holds the last frame (100).
+            Assert.That(expression.Targets, Is.Empty); Assert.That(expression.Direct, Is.Empty);
             Assert.That(expression.Animation.Channels, Has.Count.EqualTo(1));
             Assert.That(expression.Animation.Channels.Single().Curve.Evaluate(.5), Is.EqualTo(70).Within(.00001));
+            Assert.That(expression.Animation.Channels.Single().Points.Select(point => point.Value), Is.EqualTo(new[] { 25d, 100d }));
+            Assert.That(expression.DirectPoints.Values.Single(), Is.EqualTo((f.Merged, "Open")));
+            AssertDirect(Final(expression).Single(), f.Merged, "Open", 1f);
             Assert.That(entry.Values, Is.EqualTo(values)); Assert.That(entry.Animation, Is.EqualTo(animations));
             Assert.That(entry.Animation.Select(value => value.Curve), Is.EqualTo(curves));
             Assert.That(entry.Animation.Select(value => value.Path), Is.EqualTo(new[] { "Front", "Back" }));
@@ -178,13 +183,13 @@ namespace VRVlog.LilToonExporter.Tests
             menu.Entries[0].Values[1].Shape = "Smile"; menu.Entries[0].Animation[1].Shape = "Smile";
             f.Prepare(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Is.Empty);
-            Assert.That(expression.Direct, Has.Count.EqualTo(2));
-            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Open"), f.Merged, "Open", 15f / 75f);
-            AssertDirect(expression.Direct.Single(direct => direct.Shape == "Smile"), f.Merged, "Smile", 30f / 90f);
+            Assert.That(expression.Targets, Is.Empty); Assert.That(expression.Direct, Is.Empty);
             Assert.That(expression.Animation.Channels, Has.Count.EqualTo(2));
-            Assert.That(expression.Animation.Channels.SelectMany(channel => channel.Points).Where(point => point.Target != null)
-                .Select(point => point.Target).Distinct().Count(), Is.EqualTo(2));
+            // Each channel moves its own original shape from its rest.
+            Assert.That(expression.Animation.Channels.Select(channel => channel.Points.First().Value), Is.EquivalentTo(new[] { 25d, 10d }));
+            Assert.That(expression.Animation.Channels.All(channel => channel.Points.Count == 2 && channel.Points.All(point => point.Target == null)), Is.True);
+            Assert.That(expression.DirectPoints.Values.Select(value => value.Shape), Is.EquivalentTo(new[] { "Open", "Smile" }));
+            Assert.That(Final(expression).Select(value => value.Weight), Is.EqualTo(new[] { 1f, 1f }));
         }
 
         [TestCase(false)]
@@ -198,8 +203,10 @@ namespace VRVlog.LilToonExporter.Tests
             f.Merged.SetBlendShapeWeight(0, 40); var selected = Vertices(f.Merged); f.Merged.SetBlendShapeWeight(0, 25);
             AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
             var expression = f.Bake(menu).Single();
+            // Whichever alias comes first, the VRM expression is Open at 40:
+            // a static direct bind, or the constant animation's last frame.
             Assert.That(expression.Targets, Is.Empty);
-            AssertDirect(expression.Direct.Single(), f.Merged, "Open", 15f / 75f);
+            AssertDirect(Final(expression).Single(), f.Merged, "Open", 15f / 75f);
             Apply(f.Merged, expression, 1); AssertVertices(selected, Vertices(f.Merged));
             Assert.That(expression.Animation == null || expression.Animation.Channels.Single().Curve.Evaluate(500) == 40, Is.True);
         }
@@ -230,10 +237,15 @@ namespace VRVlog.LilToonExporter.Tests
         }
         private static void Apply(SkinnedMeshRenderer skin, IEnumerable<string> targets, float weight)
         { foreach (var target in targets) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(target), weight); }
+        // The VRM expression's direct binds: the static ones and the
+        // animation's last frame on original shapes.
+        private static List<(SkinnedMeshRenderer Renderer, string Shape, float Weight)> Final(VrmMenuExpressions.Expression expression) =>
+            expression.Direct.Concat(expression.FinalPoints().Where(value => expression.DirectPoints.ContainsKey(value.Point))
+                .Select(value => (expression.DirectPoints[value.Point].Renderer, expression.DirectPoints[value.Point].Shape, value.Weight))).ToList();
         // Direct references point at rebased copy shapes with one 100 frame.
         private static void Apply(SkinnedMeshRenderer skin, VrmMenuExpressions.Expression expression, float scale)
         {
-            foreach (var direct in expression.Direct.Where(value => value.Renderer == skin))
+            foreach (var direct in Final(expression).Where(value => value.Renderer == skin))
             {
                 var index = skin.sharedMesh.GetBlendShapeIndex(direct.Shape);
                 Assert.That(skin.sharedMesh.GetBlendShapeFrameWeight(index, 0), Is.EqualTo(100));

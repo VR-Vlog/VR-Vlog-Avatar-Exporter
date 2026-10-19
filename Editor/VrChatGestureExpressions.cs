@@ -42,7 +42,8 @@ namespace VRVlog.LilToonExporter
                 var entry = new VrChatExpressionMenu.Entry
                 {
                     Id = "gesture/" + path,
-                    Name = "ジェスチャー / " + (clip != null ? clip.name : path)
+                    Name = "ジェスチャー / " + (clip != null ? clip.name : path),
+                    Source = ExpressionSource.Gesture
                 };
                 try
                 {
@@ -255,8 +256,9 @@ namespace VRVlog.LilToonExporter
                 if (projection != null && !projection.Morphs.Contains(binding)) continue;
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 if (curve == null) throw new InvalidOperationException("表情アニメーションの曲線を読み取れません: " + clip.name);
-                // The standard VRM expression is the first pose. The animated
-                // channels are exported separately and replayed by VR Vlog.
+                // The static value is the first pose. The animated channels
+                // are exported separately and replayed by VR Vlog; the VRM
+                // expression takes their last frame.
                 var weight = (float)ReadCurve(curve).Evaluate(0);
                 var renderer = VrChatExpressionSampler.FindRenderer(avatar, binding.path);
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy)

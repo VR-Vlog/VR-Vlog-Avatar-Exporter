@@ -10,12 +10,38 @@ namespace VRVlog.LilToonExporter
         internal sealed class Expression
         {
             internal string Name;
+            // Where the expression came from (ExpressionSource), listed in the
+            // expression animation extension.
+            internal string Source = ExpressionSource.Menu;
             internal readonly List<string> Targets = new List<string>();
             // Shapes on the export copies that reproduce a channel by
             // themselves: the final morph target scaled by Weight.
             internal readonly List<(UnityEngine.SkinnedMeshRenderer Renderer, string Shape, float Weight)> Direct =
                 new List<(UnityEngine.SkinnedMeshRenderer Renderer, string Shape, float Weight)>();
             internal ExpressionAnimationData Animation = null;
+            // Animation points that move an original shape of the export copy.
+            // Other points name a baked morph (Point.Target) or move nothing.
+            internal readonly Dictionary<ExpressionAnimationData.Point, (UnityEngine.SkinnedMeshRenderer Renderer, string Shape)> DirectPoints =
+                new Dictionary<ExpressionAnimationData.Point, (UnityEngine.SkinnedMeshRenderer Renderer, string Shape)>();
+            // The animation ends on the neutral face; the VRM expression only
+            // holds a zero marker that keeps it selectable.
+            internal bool EndsNeutral = false;
+
+            // The animation's shape at time = duration: per channel the two
+            // points Channel.Weights picks, at 1 - blend and blend. Points that
+            // move nothing and zero weights are left out.
+            internal IEnumerable<(ExpressionAnimationData.Point Point, float Weight)> FinalPoints()
+            {
+                if (Animation == null) yield break;
+                foreach (var channel in Animation.Channels)
+                {
+                    channel.Weights(Animation.Duration, out var left, out var right, out var blend);
+                    if (1f - blend != 0f && Moves(channel.Points[left])) yield return (channel.Points[left], 1f - blend);
+                    if (blend != 0f && Moves(channel.Points[right])) yield return (channel.Points[right], blend);
+                }
+            }
+
+            bool Moves(ExpressionAnimationData.Point point) => point.Target != null || point.Morph != null || DirectPoints.ContainsKey(point);
         }
 
         // Resolves a direct reference through the optimizer route captured
@@ -39,9 +65,12 @@ namespace VRVlog.LilToonExporter
         }
 
         // Register only actual menu entries. Each one binds its composite
-        // targets at full weight and the original shapes it moves linearly at
-        // their own weight; raw shapes do not become selectable expressions.
-        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null)
+        // targets at full weight, the original shapes it moves linearly at
+        // their own weight, and its animation's shape at time = duration;
+        // raw shapes do not become selectable expressions. The animation
+        // extension (schema 2) lists every registered expression with its
+        // source and refers to morphs by node and morph target index.
+        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null, ICollection<string> warnings = null)
         {
             if (expressions.Count == 0) return bytes;
             var glb = GlbDocument.Read(bytes);
@@ -50,18 +79,15 @@ namespace VRVlog.LilToonExporter
             var custom = Object(root, "custom");
             var nodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
-            var animations = new List<ExpressionAnimationData>();
+            var document = new ExpressionAnimationDocument();
             foreach (var expression in expressions)
             {
                 var name = "VRChat / " + expression.Name;
                 var suffix = 2;
                 while (custom.ContainsKey(name)) name = "VRChat / " + expression.Name + " (" + suffix++ + ")";
-                var binds = new List<object>();
-                var allTargets = expression.Targets.Concat(expression.Animation == null ? Enumerable.Empty<string>() :
-                    expression.Animation.Channels.SelectMany(c => c.Points).Select(p => p.Target).Where(t => t != null));
-                foreach (var target in allTargets)
+                ExpressionAnimationData.MorphReference Named(string target)
                 {
-                    var matches = new List<object>();
+                    var matches = new List<ExpressionAnimationData.MorphReference>();
                     for (var nodeIndex = 0; nodeIndex < nodes.Count; nodeIndex++)
                     {
                         var node = (Dictionary<string, object>)nodes[nodeIndex];
@@ -75,22 +101,62 @@ namespace VRVlog.LilToonExporter
                             foreach (Dictionary<string, object> primitive in (List<object>)mesh["primitives"])
                                 if (!primitive.TryGetValue("targets", out var targets) || ((List<object>)targets).Count != names.Count)
                                     throw new InvalidOperationException("表情の出力先モーフ数が一致しません: " + expression.Name);
-                            matches.Add(new Dictionary<string, object> { ["node"] = (long)nodeIndex, ["index"] = (long)i, ["weight"] = 1.0 });
+                            matches.Add(new ExpressionAnimationData.MorphReference { Node = nodeIndex, Index = i });
                         }
                     }
                     if (matches.Count != 1) throw new InvalidOperationException("表情の出力先を一意に特定できません: " + expression.Name);
-                    if (expression.Targets.Contains(target)) binds.Add(matches.Single());
+                    return matches.Single();
                 }
-                if (expression.Direct.Count > 0 && direct == null)
+                if ((expression.Direct.Count > 0 || expression.DirectPoints.Count > 0) && direct == null)
                     throw new InvalidOperationException("表情の元BlendShapeの出力先を解決できません: " + expression.Name);
-                foreach (var (renderer, shape, weight) in expression.Direct)
+                var binds = new List<object>();
+                void Bind(Dictionary<string, object> bind)
                 {
-                    var bind = direct.MenuBinding(glb.Json, renderer, shape, weight);
                     // Merged source shapes keep the first declaration only,
                     // as UniVRM would otherwise apply one target twice.
                     if (binds.Cast<Dictionary<string, object>>().Any(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
-                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]))) continue;
+                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]))) return;
                     binds.Add(bind);
+                }
+                Dictionary<string, object> Weighted(ExpressionAnimationData.MorphReference morph, double weight) =>
+                    new Dictionary<string, object> { ["node"] = (long)morph.Node, ["index"] = (long)morph.Index, ["weight"] = weight };
+                foreach (var target in expression.Targets) Bind(Weighted(Named(target), 1.0));
+                foreach (var (renderer, shape, weight) in expression.Direct) Bind(direct.MenuBinding(glb.Json, renderer, shape, weight));
+                ExpressionAnimationData animation = null;
+                if (expression.Animation != null)
+                {
+                    // Copy the program with every point resolved to its output
+                    // node and morph target index; null points stay null.
+                    var resolved = new Dictionary<ExpressionAnimationData.Point, ExpressionAnimationData.MorphReference>();
+                    animation = new ExpressionAnimationData { Duration = expression.Animation.Duration, Loop = expression.Animation.Loop };
+                    foreach (var channel in expression.Animation.Channels)
+                    {
+                        var copy = new ExpressionAnimationData.Channel { Curve = channel.Curve };
+                        foreach (var point in channel.Points)
+                        {
+                            ExpressionAnimationData.MorphReference morph = null;
+                            if (point.Target != null) morph = Named(point.Target);
+                            else if (expression.DirectPoints.TryGetValue(point, out var shape))
+                            {
+                                var bind = direct.MenuBinding(glb.Json, shape.Renderer, shape.Shape, 1f);
+                                morph = new ExpressionAnimationData.MorphReference { Node = Convert.ToInt32(bind["node"]), Index = Convert.ToInt32(bind["index"]) };
+                            }
+                            else if (point.Morph != null) morph = point.Morph;
+                            if (morph != null) resolved.Add(point, morph);
+                            copy.Points.Add(new ExpressionAnimationData.Point { Value = point.Value, Morph = morph });
+                        }
+                        animation.Channels.Add(copy);
+                    }
+                    foreach (var (point, weight) in expression.FinalPoints()) Bind(Weighted(resolved[point], weight));
+                    var morphs = resolved.Values.Select(morph => (morph.Node, morph.Index)).ToList();
+                    if (morphs.Distinct().Count() != morphs.Count)
+                    {
+                        // An optimizer merged two animated shapes into one
+                        // morph; the app could not move them apart. Keep the
+                        // VRM expression (the last frame) without the motion.
+                        warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて最後のフレームの顔だけを登録しました。");
+                        animation = null;
+                    }
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
                 custom.Add(name, new Dictionary<string, object>
@@ -98,21 +164,20 @@ namespace VRVlog.LilToonExporter
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
                     ["overrideBlink"] = "block", ["overrideMouth"] = "block", ["overrideLookAt"] = "block"
                 });
-                if (expression.Animation != null)
+                document.Expressions.Add(new ExpressionSource { Expression = name, Source = expression.Source });
+                if (animation != null)
                 {
-                    expression.Animation.Expression = name; // Includes any duplicate-name suffix.
-                    animations.Add(expression.Animation);
+                    animation.Expression = name; // Includes any duplicate-name suffix.
+                    if (expression.Animation != null) expression.Animation.Expression = name;
+                    document.Animations.Add(animation);
                 }
             }
-            if (animations.Count > 0)
-            {
-                var extensions = (Dictionary<string, object>)glb.Json["extensions"];
-                if (extensions.ContainsKey(ExpressionAnimationData.Extension))
-                    throw new InvalidOperationException("既存の表情アニメーション拡張を上書きできません。");
-                extensions.Add(ExpressionAnimationData.Extension, ExpressionAnimationData.Write(animations));
-                if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
-                ((List<object>)used).Add(ExpressionAnimationData.Extension);
-            }
+            var extensions = (Dictionary<string, object>)glb.Json["extensions"];
+            if (extensions.ContainsKey(ExpressionAnimationData.Extension))
+                throw new InvalidOperationException("既存の表情アニメーション拡張を上書きできません。");
+            extensions.Add(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document));
+            if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
+            ((List<object>)used).Add(ExpressionAnimationData.Extension);
             return glb.Write();
         }
 

@@ -664,7 +664,7 @@ namespace VRVlog.LilToonExporter
             BindingSnapshot bindings)
         {
             if (source.Entries.Count >= 512) throw new InvalidOperationException("表情候補が512件を超えています。");
-            var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/" + serial++, Name = path };
+            var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/" + serial++, Name = path, Source = VRVlog.Expressions.ExpressionSource.FaceEmo };
             try
             {
                 var clip = Resolve(animation);

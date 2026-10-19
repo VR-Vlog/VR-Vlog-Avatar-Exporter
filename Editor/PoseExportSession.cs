@@ -243,7 +243,7 @@ namespace VRVlog.LilToonExporter
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
                 extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
             }
-            return document.Write();
+            return AvatarFormatRequirements.Write(document.Write());
         }
         public void Dispose() { foreach (var value in owned) if (value != null) Object.DestroyImmediate(value); owned.Clear(); }
     }

@@ -708,8 +708,14 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var channel in expression.Animation.Channels)
             {
                 channel.Weights(time, out var left, out var right, out var blend);
-                if (channel.Points[left].Target != null) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(channel.Points[left].Target), 100 * (1 - blend));
-                if (channel.Points[right].Target != null) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(channel.Points[right].Target), 100 * blend);
+                void Point(ExpressionAnimationData.Point point, float weight)
+                {
+                    if (point.Target != null) skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(point.Target), 100 * weight);
+                    else if (expression.DirectPoints.TryGetValue(point, out var direct) && direct.Renderer == skin)
+                        skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(direct.Shape), 100 * weight);
+                }
+                Point(channel.Points[left], 1 - blend);
+                Point(channel.Points[right], blend);
             }
         }
 
@@ -795,6 +801,7 @@ namespace VRVlog.LilToonExporter.Tests
                         mesh.AddBlendShapeFrame(name, weight, Enumerable.Repeat(position * (weight / 100), 3).ToArray(),
                             Enumerable.Repeat(normal * (weight / 100), 3).ToArray(), Enumerable.Repeat(tangent * (weight / 100), 3).ToArray());
             }
+            else SplitFrames("First", "Other");
             var menu = new VrChatExpressionMenu.Source(); menu.Entries.Add(BasisEntry("First face", "First")); menu.Entries.Add(BasisEntry("Other face", "Other", 2));
             if (kind == "alias")
                 foreach (var entry in menu.Entries)
@@ -856,6 +863,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             BasisMesh(3, ("First", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f),
                 ("Alias", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f));
+            // The 200 knot already rules out a direct reference; the channels
+            // case needs multi-frame shapes to keep generated targets.
+            if (kind == "channels") SplitFrames("First", "Alias");
             var menu = new VrChatExpressionMenu.Source(); var entry = BasisEntry("Combined face", "First", maximum: kind == "knots" ? 200 : 100);
             if (kind == "channels") entry.Animation.Add(BasisEntry("Alias", "Alias").Animation.Single()); menu.Entries.Add(entry);
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>(); var clamp = PlayerSettings.legacyClampBlendShapeWeights;
@@ -1060,7 +1070,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AnimationGeometryCannotShareTargetsAcrossRenderers()
         {
-            BasisMesh(3, ("First", Vector3.right * .01f, Vector3.zero, Vector3.zero));
+            BasisMesh(3, ("First", Vector3.right * .01f, Vector3.zero, Vector3.zero)); SplitFrames("First");
             var second = new GameObject("Second", typeof(SkinnedMeshRenderer)); second.transform.SetParent(avatar.transform, false); second.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
             var menu = new VrChatExpressionMenu.Source(); menu.Entries.Add(BasisEntry("First row", "First")); menu.Entries.Add(BasisEntry("Second row", "First", path: "Second"));
             var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>();
@@ -1081,16 +1091,16 @@ namespace VRVlog.LilToonExporter.Tests
             const int vertices = 65536, rows = 32;
             BasisMesh(vertices, Enumerable.Range(0, rows).Select(index => ("Basis" + index,
                 Vector3.right * .01f * (duplicate ? 1 : index + 1), Vector3.up * .02f, Vector3.forward * .03f)).ToArray());
-            // A rest of 50 makes the static 25 lower the face, which keeps it
-            // a generated target instead of a direct reference.
+            // A rest of 50 under a curve starting at 25 lowers the face, which
+            // keeps the animation generated instead of a direct reference.
             var source = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
             for (var shape = 0; shape < rows; shape++) source.SetBlendShapeWeight(shape, 50);
             var menu = new VrChatExpressionMenu.Source();
             for (var row = 0; row < rows; row++)
             {
                 var entry = BasisEntry("Row" + row, "Basis" + row);
-                // Keep this budget test's independent scalar payload nonzero;
-                // the separate exact-zero test covers inert marker pooling.
+                // Both knots (0 and 100) differ from rest, so each row needs
+                // two generated frames unless exact geometry is reused.
                 entry.Values.Single().Weight = 25; entry.Animation.Single().Curve.Keys[0].Value = 25;
                 foreach (var key in entry.Animation.Single().Curve.Keys) key.InTangent = key.OutTangent = 75;
                 menu.Entries.Add(entry);
@@ -1098,17 +1108,18 @@ namespace VRVlog.LilToonExporter.Tests
             var before = ExportSourceFingerprint.Compute(avatar); var clone = UnityEngine.Object.Instantiate(avatar); var owned = new List<Mesh>();
             try
             {
-                Assert.That(rows * 2L * vertices * 36, Is.GreaterThan(128L * 1024 * 1024), "Unpooled scalar and animation frames exceed the unchanged cap.");
+                Assert.That(rows * 2L * vertices * 36, Is.GreaterThan(128L * 1024 * 1024), "Unpooled animation frames exceed the unchanged cap.");
                 if (!duplicate)
                     Assert.That(Assert.Throws<InvalidOperationException>(() => VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null)).Message, Does.Contain("128 MiB"));
                 else
                 {
                     var expressions = VrChatExpressionBaker.Bake(avatar, clone, menu, owned, null);
                     Assert.That(expressions.Count, Is.EqualTo(rows));
-                    Assert.That(expressions.SelectMany(expression => expression.Targets).Distinct().Count(), Is.EqualTo(rows));
+                    // The animated channel stays out of the static shape.
+                    Assert.That(expressions.All(expression => expression.Targets.Count == 0 && expression.Direct.Count == 0), Is.True);
                     Assert.That(expressions.Select(BasisTarget).Distinct().Count(), Is.EqualTo(1));
                     var generated = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh.blendShapeCount - mesh.blendShapeCount;
-                    Assert.That(generated, Is.EqualTo(rows + 1)); Assert.That(generated * (long)vertices * 36, Is.LessThan(128L * 1024 * 1024));
+                    Assert.That(generated, Is.EqualTo(2)); Assert.That(generated * (long)vertices * 36, Is.LessThan(128L * 1024 * 1024));
                 }
                 Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(mesh.blendShapeCount, Is.EqualTo(rows));
             }
@@ -1119,7 +1130,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges(bool startingAtEnd)
         {
-            BasisMesh(3, ("Face", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f));
+            BasisMesh(3, ("Face", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f)); SplitFrames("Face");
             var menu = new VrChatExpressionMenu.Source();
             foreach (var maximum in new[] { 35d, 70d })
             {
@@ -1139,7 +1150,8 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var channel = expression.Animation.Channels.Single();
                     Assert.That(channel.Points.Select(point => point.Value), Is.EqualTo(new[] { 0d, 100d }));
-                    Assert.That(channel.Points.Single(point => point.Target == null).Value, Is.EqualTo(startingAtEnd ? 100d : 0d));
+                    // Knots are measured from rest (0), even when the clip starts at 100.
+                    Assert.That(channel.Points.Single(point => point.Target == null).Value, Is.EqualTo(0d));
                     Assert.That(expression.Animation.Duration, Is.EqualTo(2)); Assert.That(expression.Animation.Loop, Is.False);
                     for (var sample = 0; sample <= 8; sample++)
                     {
@@ -1148,17 +1160,42 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     expression.Animation.Expression = expression.Name;
                 }
-                Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(expressions.Select(expression => expression.Animation).ToList())).Count, Is.EqualTo(2));
-                // The static 100 is the single 100 frame itself, so each range
-                // references it directly instead of baking its own scalar target.
-                if (startingAtEnd)
-                    foreach (var expression in expressions)
-                    {
-                        Assert.That(expression.Targets, Is.Empty);
-                        Assert.That(expression.Direct.Single(), Is.EqualTo((copy, "Face", 1f)));
-                    }
+                Assert.That(SchemaTwoRoundTrip(expressions.Select(expression => expression.Animation).ToArray()), Is.EqualTo(2));
+                // The clip's first pose is not baked into the static shape;
+                // the animation alone moves the channel.
+                foreach (var expression in expressions)
+                {
+                    Assert.That(expression.Targets, Is.Empty);
+                    Assert.That(expression.Direct, Is.Empty);
+                }
             }
             finally { UnityEngine.Object.DestroyImmediate(original); UnityEngine.Object.DestroyImmediate(actual); UnityEngine.Object.DestroyImmediate(clone); foreach (var item in owned) UnityEngine.Object.DestroyImmediate(item); }
+        }
+
+        // Points measured from rest need not start at the clip's first value,
+        // which schema 1 requires. Write schema 2 with each named target as its
+        // own morph index, as VrmMenuExpressions.Add resolves them.
+        private static int SchemaTwoRoundTrip(params ExpressionAnimationData[] animations)
+        {
+            var document = new ExpressionAnimationDocument(); var indices = new Dictionary<string, int>();
+            foreach (var animation in animations)
+            {
+                document.Expressions.Add(new ExpressionSource { Expression = animation.Expression, Source = ExpressionSource.Menu });
+                var copy = new ExpressionAnimationData { Expression = animation.Expression, Duration = animation.Duration, Loop = animation.Loop };
+                foreach (var channel in animation.Channels)
+                {
+                    var resolved = new ExpressionAnimationData.Channel { Curve = channel.Curve };
+                    foreach (var point in channel.Points)
+                    {
+                        if (point.Target != null && !indices.ContainsKey(point.Target)) indices.Add(point.Target, indices.Count);
+                        resolved.Points.Add(new ExpressionAnimationData.Point { Value = point.Value,
+                            Morph = point.Target == null ? null : new ExpressionAnimationData.MorphReference { Node = 0, Index = indices[point.Target] } });
+                    }
+                    copy.Channels.Add(resolved);
+                }
+                document.Animations.Add(copy);
+            }
+            return ExpressionAnimationData.ReadDocument(ExpressionAnimationData.WriteDocument(document)).Animations.Count;
         }
 
         private static void AssertNativePnt(Mesh expected, Mesh actual)
@@ -1220,7 +1257,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(channel.Points.Select(point => point.Value), Is.EqualTo(wantedPoints));
                 Assert.That(VrChatExpressionBaker.SameCurve(channel.Curve, curve), Is.True);
                 expression.Animation.Expression = expression.Name;
-                Assert.That(ExpressionAnimationData.Read(ExpressionAnimationData.Write(new[] { expression.Animation })).Count, Is.EqualTo(1));
+                Assert.That(SchemaTwoRoundTrip(expression.Animation), Is.EqualTo(1));
                 var frameV = new List<Vector3[]>(); var frameN = new List<Vector3[]>(); var frameT = new List<Vector3[]>();
                 for (var frame = 0; frame < mesh.GetBlendShapeFrameCount(0); frame++)
                 {
@@ -1274,7 +1311,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void CanonicalAnimationKnotsRetainIndependentChannelsInsideOneFace()
         {
             BasisMesh(3, ("First", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f),
-                ("Other", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f));
+                ("Other", Vector3.right * .01f, Vector3.up * .02f, Vector3.forward * .03f)); SplitFrames("First", "Other");
             var entry = BasisEntry("Two channels", "First", maximum: 35);
             entry.Values.Add(BasisEntry("Other", "Other", maximum: 70).Values.Single());
             entry.Animation.Add(BasisEntry("Other", "Other", maximum: 70).Animation.Single());
