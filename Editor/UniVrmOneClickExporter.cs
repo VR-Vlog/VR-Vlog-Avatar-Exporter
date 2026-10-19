@@ -17,7 +17,8 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null)
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
+            VrChatVisemeExport.Captured descriptorVisemes = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -29,7 +30,7 @@ namespace VRVlog.LilToonExporter
             {
                 var bytes = ExportCore(source, avatarName, author, warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions);
+                    authorCopyExpressions, descriptorVisemes);
                 report.Stage = "完了";
                 report.Succeeded = true;
                 return bytes;
@@ -47,7 +48,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions)
+            Action<GameObject> authorCopyExpressions, VrChatVisemeExport.Captured descriptorVisemes)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             // Cloning detaches the avatar from its parents. Reject an inactive
@@ -101,6 +102,9 @@ namespace VRVlog.LilToonExporter
                     target => exclusions.ContainsCopyTransform(clone, target));
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
                 using var blink = sourceBlink.ForClone(source, clone);
+                // Lip Sync captured before the caller removed the descriptor
+                // follows this copy and the optimizer the same way as blink.
+                var capturedVisemes = descriptorVisemes?.ForClone(source, clone);
                 using var gimmicks = new ExportGimmickSession(source, clone, gimmickOptions);
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 using var expressionBindings = new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding);
@@ -137,6 +141,7 @@ namespace VRVlog.LilToonExporter
                     faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,
                         transformed.ObjectRegistry, transformed.IsolatedCopyOf);
                     blink.RebindPrepared(transformed.PreparedRendererFor);
+                    capturedVisemes?.RebindPrepared(transformed.PreparedRendererFor);
                     unifiedPreparation?.RebindPrepared(transformed.PreparedRendererFor);
                     blink.VerifyPreparedIdentity(clone);
                     unifiedPreparation?.VerifyIdentityAndDeformation();
@@ -179,7 +184,8 @@ namespace VRVlog.LilToonExporter
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
                     optimizerBindings = ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
-                        objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true);
+                        objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
+                        keptMorphs: capturedVisemes?.Morphs(clone));
                 });
                 optimizerBindings.ValidateAndApply((copy, original) =>
                 {
@@ -188,6 +194,7 @@ namespace VRVlog.LilToonExporter
                     recovery?.Track(copiedMaterial, originalMaterial);
                 });
                 blink.Remap(optimizerBindings);
+                capturedVisemes?.Remap(optimizerBindings);
                 RemapMenuExpressions(expressions, optimizerBindings);
                 // Authoring passes may restore source material references. Reapply
                 // only the selected, source-identity recipe to the owned copy.
@@ -226,6 +233,7 @@ namespace VRVlog.LilToonExporter
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
                 var lookAt = VrmLookAtExport.Capture(source, clone, warnings);
+                VrmExpressionBindings.DescriptorVisemes visemes = null;
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -238,11 +246,14 @@ namespace VRVlog.LilToonExporter
                         blink.Bind(converter, model, storage);
                         poses.Bind(converter, model, storage);
                         optimizerBindings.Bind(converter, model, storage);
+                        int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
+                        visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
                     }, warnings: warnings);
                 recoveryReport.Stage = "出力検査";
                 exported = ExportSkinRoots.Repair(exported, warnings);
                 if (lookAt != null) exported = lookAt.Apply(exported);
-                exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false));
+                exported = blink.Apply(VrmExpressionBindings.AddMissing(VrmMenuExpressions.Add(exported, expressions), warnings, inferBlink: false,
+                    descriptor: visemes));
                 if (trackingProfile != null) exported = optimizerBindings.ApplyTracking(exported);
                 else exported = optimizerBindings.ApplyUnified(exported, warnings);
                 if (fullSnapshot != null)
