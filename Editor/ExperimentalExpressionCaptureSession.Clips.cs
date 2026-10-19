@@ -244,7 +244,7 @@ namespace VRVlog.LilToonExporter
             return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
 
-        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions)
+        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale)
         {
             // APL definitions still belong to the original avatar; generated
             // menu poses belong to the prepared copy. Collect both before
@@ -264,7 +264,7 @@ namespace VRVlog.LilToonExporter
             }
             foreach (var pose in poses.Selected()) foreach (var bone in pose.Bones) bone.Node = Node(bone.Name);
             foreach (var animation in poses.SelectedAnimations()) foreach (var bone in animation.Bones) bone.Node = Node(bone.Name);
-            return poses.Inject(bytes);
+            return poses.Inject(bytes, rootScale);
         }
     }
 }

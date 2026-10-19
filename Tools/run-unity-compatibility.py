@@ -125,6 +125,8 @@ BEHAVIOR_CASES = {
     },
     'NonLilToonExportTests': {
         'AMissingBehaviourIsNeverTreatedAsAnExportComponent': 1,
+        'AnAssignedNonLilToonMaterialKeepsTheLilToonMessage': 1,
+        'AvatarWhoseMaterialsAreAllMissingNamesTheRenderers': 1,
         'AvatarWithoutLilToonStillProducesASnapshot': 1,
         'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
     },

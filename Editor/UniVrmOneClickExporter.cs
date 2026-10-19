@@ -573,6 +573,8 @@ namespace VRVlog.LilToonExporter
                         string.Join(", ", attachments.Parts.ConvertAll(part => part.Root.name)));
                 recoveryReport.Stage = "揺れ物変換";
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
+                recoveryReport.Stage = "コンストレイント変換";
+                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
                     lenient: guard.ContinueOnFailure);
@@ -581,6 +583,8 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Stage = "VRM変換";
                 var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
                 DisableEmptyMeshRenderers(clone, warnings);
+                // The root scale RootScaleBake moves into the VRM model space.
+                var rootScale = clone.transform.localScale;
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -652,7 +656,7 @@ namespace VRVlog.LilToonExporter
                 else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
-                exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported), () => exported);
+                exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error)
@@ -816,7 +820,7 @@ namespace VRVlog.LilToonExporter
             return meta;
         }
 
-        private static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
+        internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
             bool lenient = false)
         {
             var converted = new Dictionary<Material, Material>();
@@ -824,6 +828,8 @@ namespace VRVlog.LilToonExporter
             // fallback materials have been serialized. Never cache across exports.
             var outlineMasks = new Dictionary<Texture, Texture2D>();
             var others = new Dictionary<Material, Material>();
+            var unassigned = new List<string>();
+            var assigned = false;
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
             {
                 var materials = renderer.sharedMaterials;
@@ -831,7 +837,13 @@ namespace VRVlog.LilToonExporter
                 for (var i = 0; i < materials.Length; i++)
                 {
                     var source = materials[i];
-                    if (source == null) continue;
+                    if (source == null)
+                    {
+                        var path = renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform);
+                        if (!unassigned.Contains(path)) unassigned.Add(path);
+                        continue;
+                    }
+                    assigned = true;
                     if (!LilToonMaterialReader.IsLilToon(source))
                     {
                         // Other shaders left after the substitution (expression targets,
@@ -864,10 +876,16 @@ namespace VRVlog.LilToonExporter
             }
             if (others.Count > 0)
                 warnings?.Add(ExporterLocalization.T(NonLilToonWarning) + string.Join(", ", others.Keys.Select(material => material.name).Distinct()));
+            // A product whose material references are all broken has no shader
+            // to report. Name the empty renderers instead of blaming lilToon.
+            if (!lenient && !assigned && unassigned.Count > 0)
+                throw new InvalidOperationException(MissingMaterialsError + string.Join(", ", unassigned.Take(5)) +
+                    (unassigned.Count > 5 ? ", …" : ""));
             if (converted.Count == 0 && others.Count == 0 && !lenient) throw new InvalidOperationException("選択したアバターに対応するlilToonマテリアルがありません。");
             return converted;
         }
 
+        internal const string MissingMaterialsError = "表示中のメッシュに材質が1つも割り当てられていないため、書き出せません。材質の参照が切れている可能性があります。元のアバターで材質を割り当ててください: ";
         internal const string MaterialApproximatedWarning = "変換できなかった材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
         internal const string NonLilToonWarning = "lilToon以外の材質をMToonの既定値で書き出しました（色とメイン画像のみ）: ";
 

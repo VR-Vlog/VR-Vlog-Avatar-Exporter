@@ -670,7 +670,8 @@ namespace VRVlog.LilToonExporter
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
                     inferEmotionPresets: false);
-                return InjectSourcePoses(bytes, warnings, poses);
+                // The exporter's clone keeps this root scale and bakes it into the VRM.
+                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
             }
             finally
             {
