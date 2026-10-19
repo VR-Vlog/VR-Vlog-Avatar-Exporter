@@ -73,6 +73,8 @@ namespace VRVlog.LilToonExporter.Tests
                     ExportResultList.CountFormat, ExportResultList.NoticeGroup,
                     ExportResultList.StageOmittedContent, ExportResultList.StageApproximatedContent }
                 .Concat(ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome)))
+                .Concat(((ExportPhase[])Enum.GetValues(typeof(ExportPhase))).Select(ExportStageGuard.PhaseLabel))
+                .Concat(new[] { "基準形評価" })
                 .Concat(((ExportFallbackKind[])Enum.GetValues(typeof(ExportFallbackKind))).SelectMany(kind =>
                     new[] { ExportFallbackConfirmation.Failure(kind), ExportFallbackConfirmation.Feature(kind) })).Distinct().ToArray();
             var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
@@ -83,6 +85,12 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var source in sources)
                     Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
             }
+        }
+
+        [Test] public void AStageIsNamedWithItsPhase()
+        {
+            Assert.That(ExportStageGuard.DisplayName(ExportStage.BlinkCapture), Is.EqualTo("表情: 瞬き"));
+            Assert.That(ExportStageGuard.DisplayName(ExportStage.PhysBone), Is.EqualTo("揺れ物"));
         }
 
         [TestCase(false, false)][TestCase(true, true)]

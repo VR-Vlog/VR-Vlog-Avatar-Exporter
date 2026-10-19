@@ -94,7 +94,7 @@ namespace VRVlog.LilToonExporter
         // stage. A notice with this exact text is the same item as the stage line.
         static string StageWarning(ExportResultEntry entry) =>
             ExporterLocalization.T(ExportFallbackConfirmation.Failure(ExportFallbackKind.StageOmitted)) + ": " +
-            ExporterLocalization.T(entry.Category) + " — " + entry.Reason;
+            ExportStageGuard.DisplayName(entry.Stage.Value) + " — " + entry.Reason;
 
         // "happy: ..." already shows "happy" in the target column.
         static string WithoutName(string reason, string name) =>
@@ -114,7 +114,7 @@ namespace VRVlog.LilToonExporter
                 known.Add(entry.Reason);
                 known.Add(reason);
                 if (entry.Stage != null) known.Add(StageWarning(entry));
-                var group = ExporterLocalization.T(entry.Category);
+                var group = entry.Stage != null ? ExportStageGuard.DisplayName(entry.Stage.Value) : ExporterLocalization.T(entry.Category);
                 var content = entry.Stage == null ? WithoutName(reason, entry.Name)
                     : ExporterLocalization.T(entry.Outcome == ExportOutcome.Omitted ? StageOmittedContent : StageApproximatedContent);
                 var row = rows.FirstOrDefault(existing => existing.Stage == entry.Stage && existing.Outcome == entry.Outcome &&
