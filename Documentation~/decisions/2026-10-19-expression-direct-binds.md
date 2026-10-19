@@ -22,7 +22,9 @@
   - 128 MiBの上限の見積もりには、実際に焼き込む差分だけを数える。
 - `VrmMenuExpressions.Expression`に`Direct`（複製のRenderer・BlendShape名・重み）を足し、`VrmMenuExpressions.Add`は焼き込んだ表情を重み1、直接参照を各自の重みで登録する。同じ表情の中で同じ（node, index）が重なったときは最初の1つだけを残す（UniVRMは1つの表情の中の重複を最初の1つだけ使うので、それに合わせる）。
 - 直接参照の出力先は、最適化ツールの統合や改名のあとでも追えるように`ExportOptimizationBindings`で解決する。`Capture`に`menuMorphs`を渡すと、その参照を使える変形として記録し（`requireUsableEndpoint: true`）、`BindNodes`はその出力先のnodeも確定する。`MenuBinding`は記録した参照から最終的なnode・index・重みを返す。出力先のnodeがないときは、その段階で止める。
-- アニメーションする表情の処理と`RemapMenuExpressions`は変えていない。
+  - 最適化ツールが別々のRendererの同じ名前のBlendShapeを1つにまとめ、同じ表情でそれぞれに違う値が指定されていたときは、まとめた先の1つの変形に2つの値は持たせられないので最初の値を使い、書き出しの詳細に1行出す（以前は別々の差分を焼いていたので、それぞれの形が保たれていた）。
+- 直接参照する元のBlendShapeは、最適化ツールで消せない変形として記録する（`requireUsableEndpoint: true`）。そのため、表情で使っているBlendShapeを利用者が最適化ツールで固定・削除する設定にしていると、以前は焼いた差分が残って書き出せたところが、出力先がないとして止まる。表情で使うBlendShapeを固定する設定は表情を壊すので、黙って書き出すより止める方を選んだ。
+- アニメーションする表情の処理と`RemapMenuExpressions`は変えていない。`RemapMenuExpressions`が`Direct`を書き換えないのは、直接参照の出力先を後で`MenuBinding`が最適化ツールの経路から解決するため。
 - `VrmMenuExpressions`はホスト上の挙動テスト（`Tools/run-behavior-tests.ps1`）でもコンパイルするので、出力先の解決は`IDirectBindings`のインターフェイス越しにしている。
 
 ## 確認したこと

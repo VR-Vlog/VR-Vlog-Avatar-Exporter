@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
         // Register only actual menu entries. Each one binds its composite
         // targets at full weight and the original shapes it moves linearly at
         // their own weight; raw shapes do not become selectable expressions.
-        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null)
+        internal static byte[] Add(byte[] bytes, IList<Expression> expressions, IDirectBindings direct = null, ICollection<string> warnings = null)
         {
             if (expressions.Count == 0) return bytes;
             var glb = GlbDocument.Read(bytes);
@@ -87,9 +87,17 @@ namespace VRVlog.LilToonExporter
                 {
                     var bind = direct.MenuBinding(glb.Json, renderer, shape, weight);
                     // Merged source shapes keep the first declaration only,
-                    // as UniVRM would otherwise apply one target twice.
-                    if (binds.Cast<Dictionary<string, object>>().Any(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
-                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]))) continue;
+                    // as UniVRM would otherwise apply one target twice. One
+                    // merged target cannot hold two weights; say which was kept.
+                    var first = binds.Cast<Dictionary<string, object>>().FirstOrDefault(b => Convert.ToInt64(b["node"]) == Convert.ToInt64(bind["node"]) &&
+                        Convert.ToInt64(b["index"]) == Convert.ToInt64(bind["index"]));
+                    if (first != null)
+                    {
+                        if (Math.Abs(Convert.ToDouble(first["weight"]) - Convert.ToDouble(bind["weight"])) > 1e-4)
+                            warnings?.Add("表情「" + expression.Name + "」で、最適化ツールが1つにまとめたシェイプキー「" + shape +
+                                "」に別々の値が指定されていたため、最初の値だけを使いました。");
+                        continue;
+                    }
                     binds.Add(bind);
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
