@@ -532,6 +532,9 @@ namespace VRVlog.LilToonExporter
                         exportBlinkOptions.SelectMode(BlinkExportMode.Manual, resolvedBlink);
                     }
                 }
+                // Lip Sync names the mouth shapes on this descriptor. Like blink,
+                // capture it before the descriptor is removed below.
+                var visemes = VrChatVisemeExport.Read(exportCopy);
                 // Source controllers remain on the preview for candidate discovery.
                 // This private export copy already contains the selected completed faces.
                 // Prevent a second Animator evaluation from replacing the explicit baseline.
@@ -655,7 +658,8 @@ namespace VRVlog.LilToonExporter
                     lilToonVersion: lilToonVersion, blinkOptions: exportBlinkOptions,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
-                    recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material);
+                    recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
+                    descriptorVisemes: visemes);
                 return InjectSourcePoses(bytes, warnings, poses);
             }
             finally

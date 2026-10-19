@@ -198,6 +198,45 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [TestCase(null, 1f)]
+        [TestCase(0f, 1f)]
+        [TestCase(.5f, .5f)]
+        [TestCase(1f, 0f)]
+        public void FluorescentEmissionUsesTheLitSceneStrength(float? fluorescence, float expected)
+        {
+            // lilToon 2.3.4 multiplies fluorescent emission by its inverse
+            // lighting, which is 0 under normal light; MToon cannot vary it.
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon for the fluorescence property.");
+            var source = new Material(shader);
+            var image = new Texture2D(2, 2);
+            var created = new List<Material>();
+            try
+            {
+                source.SetTexture("_EmissionMap", image);
+                source.SetFloat("_UseEmission", 1f);
+                source.SetFloat("_EmissionBlend", 1f);
+                source.SetColor("_EmissionColor", Color.white);
+                if (fluorescence.HasValue) source.SetFloat("_EmissionFluorescence", fluorescence.Value);
+                var emission = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.emissionColor);
+                Assert.AreEqual(expected, emission.r, .00001f);
+                Assert.AreEqual(expected, emission.g, .00001f);
+                Assert.AreEqual(expected, emission.b, .00001f);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, new List<string>(), false);
+                Assert.AreEqual(expected, fallback.GetColor("_EmissionColor").r, .00001f);
+                // The lilToon extension keeps the authored value.
+                if (fluorescence.HasValue)
+                    Assert.AreEqual(fluorescence.Value, LilToonMaterialReader.Read(source, 0, (_, __) => 0,
+                        suppressSharedTextureEmission: false).floats.Single(item => item.name == "_EmissionFluorescence").value);
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(image);
+            }
+        }
+
         [Test]
         public void OptOutRetainsEmissionInBothMaterialRepresentations()
         {

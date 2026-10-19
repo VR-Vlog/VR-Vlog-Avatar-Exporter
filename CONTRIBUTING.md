@@ -54,6 +54,28 @@ git diff --check
 
 `check-public-content.py` scans tracked files for common disclosure patterns; stage intended new files so they are included. It is not a complete security audit. `generate-compatibility.py` without `--write` checks generated policy drift and does not change source.
 
+### Third-party names
+
+Do not write the names of avatars, outfits, products or their creators and shops in source, tests, documentation, commit messages, branch names, issues, pull requests or release notes. Use generic words such as "avatar A" or "outfit B". `Tools/check-names.py` finds them using a name list that you keep outside the repository (never commit the list):
+
+```sh
+python3 Tools/check-names.py --names /path/outside/repo/names.txt            # tracked files
+gh pr view 123 --json body -q .body | python3 Tools/check-names.py --names /path/outside/repo/names.txt --text -
+```
+
+To check every push locally, add a pre-push hook. Hooks are not versioned, so each clone needs this once:
+
+```sh
+cat > .git/hooks/pre-push <<'EOF'
+#!/bin/sh
+exec python3 Tools/check-names.py --pre-push "$@"
+EOF
+chmod +x .git/hooks/pre-push
+export EXPORTER_BANNED_NAMES=/path/outside/repo/names.txt   # e.g. in your shell profile
+```
+
+The hook scans the pushed branch name, commit messages, added lines and file paths. Without `EXPORTER_BANNED_NAMES` it skips with a message instead of blocking.
+
 Host behavior checks also use PowerShell 7. The [Validate workflow](.github/workflows/validate.yml) is the complete command reference, including dependency, exporter, transfer, pose, bake and NDMF host checks. These host checks do not prove Unity integration or device behavior.
 
 For implementation changes, run the relevant pinned Unity profiles from the [compatibility guide](Compatibility/README.md#exporter-behavior-and-integration-regression-profiles). Record the actual Editor and package versions, tested commit, results and any skips. Preserve the original avatar and its referenced assets. Do not use host adapters, relabeled dependencies or older test results as evidence of a successful Unity run.
