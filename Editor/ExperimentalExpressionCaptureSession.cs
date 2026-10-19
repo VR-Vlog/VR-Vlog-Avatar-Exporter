@@ -610,8 +610,9 @@ namespace VRVlog.LilToonExporter
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
                 }
-                // Emotion presets are separate clips. Recorded custom faces keep
-                // their names, so app-side animation references stay valid.
+                // Emotion presets are separate clips. Recorded custom faces stay
+                // custom clips under their recorded names (numbered on a clash),
+                // so the animation extension still finds them.
                 foreach (var face in presetFaces)
                 {
                     var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
