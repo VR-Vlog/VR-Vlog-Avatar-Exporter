@@ -9,8 +9,8 @@ namespace VRVlog.LilToonExporter.Tests
     {
         static readonly int[] Sizes = ExperimentalExpressionCaptureSession.PresetGroups.Select(group => group.Presets.Length).ToArray();
 
-        // The narrowest slot area: the window's minimum width less its margins and scrollbar.
-        const float NarrowWidth = 600 - 32 - ExpressionSlotLayout.ScrollbarWidth - 2;
+        // The narrowest slot area: the window's minimum width less its margins and the page scrollbar.
+        const float NarrowWidth = 600 - 32 - ExpressionSlotLayout.ScrollbarWidth;
 
         static int[] RowsOf(ExpressionSlotLayout.Result layout) => layout.Groups.Select(group => group.Row).ToArray();
 
@@ -98,6 +98,47 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
             finally { EditorStyles.label.fontSize = label; EditorStyles.miniLabel.fontSize = mini; }
+        }
+
+        // The slots scroll with the page, so the area is as tall as its slots;
+        // the old area stopped at 438 and scrolled inside.
+        [Test]
+        public void TheSlotAreaIsAsTallAsItsSlots()
+        {
+            var layout = ExpressionSlotLayout.Compute(NarrowWidth, true, true, Sizes);
+            Assert.That(layout.Height, Is.GreaterThan(438));
+            Assert.That(layout.Groups.SelectMany(group => group.Slots).Max(slot => slot.yMax), Is.LessThanOrEqualTo(layout.Height));
+            Assert.That(layout.Fold.yMax, Is.LessThanOrEqualTo(layout.Height));
+        }
+
+        [Test]
+        public void TheConfirmButtonFollowsTheCaption()
+        {
+            ExpressionSlotLayout.CaptionAndButton(10, 400, 120, 100, out var caption, out var button);
+            Assert.That(caption, Is.EqualTo(120));
+            Assert.That(button, Is.EqualTo(10 + 120 + 8));
+            // A narrow header shortens the caption and keeps the button whole.
+            ExpressionSlotLayout.CaptionAndButton(10, 200, 300, 100, out caption, out button);
+            Assert.That(caption, Is.EqualTo(200 - 10 - 100 - 8));
+            Assert.That(button + 100, Is.EqualTo(200));
+            ExpressionSlotLayout.CaptionAndButton(10, 200, 300, 0, out caption, out _);
+            Assert.That(caption, Is.EqualTo(190));
+        }
+
+        [Test]
+        public void TheOtherTitleCountsUnsupportedFilesApart()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.OtherTitle(3, 0), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情 {0}件"), 3)));
+            Assert.That(ExperimentalExpressionCaptureWindow.OtherTitle(3, 2), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情 {0}件・対応外{1}件"), 3, 2)));
+        }
+
+        [TestCase("瞬きなし（閉眼用の変形が見つかりません）", "瞬きなし")]
+        [TestCase("No blink (no eye-closing shape found)", "No blink")]
+        [TestCase("VRChatの閉眼設定", "VRChatの閉眼設定")]
+        [TestCase("閉眼用の変形が見つかりません: Body", "閉眼用の変形が見つかりません")]
+        public void ABlinkSlotShowsTheHeadOfItsDescription(string text, string head)
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.StateHead(text), Is.EqualTo(head));
         }
     }
 }

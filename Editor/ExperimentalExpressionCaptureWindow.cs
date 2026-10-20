@@ -72,7 +72,8 @@ namespace VRVlog.LilToonExporter
         const string LargeThumbnailsPreference = "VRVlog.ExpressionBoard.LargeThumbnails";
         const string ExtraPresetsPreference = "VRVlog.ExpressionBoard.ShowExtraPresets";
         bool? largeThumbnails, showExtraPresets;
-        Vector2 slotScroll;
+        // The page view in window coordinates, from the last repaint.
+        Rect pageView;
         // The width the slots were laid out for, from the last repaint, so every
         // event of a frame places the slots the same way.
         float slotAreaWidth;
@@ -382,7 +383,14 @@ namespace VRVlog.LilToonExporter
                         DrawPreview();
                         EditorGUILayout.Space(8);
                         if (current.type == EventType.Layout) RebuildBoard();
+                        // A card dragged near the top or bottom edge scrolls the page.
+                        if (current.type == EventType.DragUpdated && DragAndDrop.GetGenericData(DragKey) is AnimationClip && pageView.Contains(current.mousePosition))
+                        {
+                            var step = current.mousePosition.y < pageView.y + 24 ? -8 : current.mousePosition.y > pageView.yMax - 24 ? 8 : 0;
+                            if (step != 0) { pageScroll.y = Mathf.Max(0, pageScroll.y + step); Repaint(); }
+                        }
                         pageScroll = EditorGUILayout.BeginScrollView(pageScroll);
+                        var pageHidden = pageView.height > 0 ? HideOutside(new Rect(pageScroll, pageView.size)) : null;
                         DrawSlots();
                         EditorGUILayout.Space(8);
                         DrawPanels();
@@ -395,7 +403,9 @@ namespace VRVlog.LilToonExporter
                         EditorGUILayout.Space(16);
                         DrawSave();
                         DrawFeedback();
+                        RestoreEvent(pageHidden);
                         EditorGUILayout.EndScrollView();
+                        if (current.type == EventType.Repaint) pageView = GUILayoutUtility.GetLastRect();
                         DrawBottomBar();
                     }
                 }
@@ -639,37 +649,31 @@ namespace VRVlog.LilToonExporter
             var size = GUI.Toolbar(toolbar, large ? 1 : 0, new[] { ExporterLocalization.T("小"), ExporterLocalization.T("大") }, EditorStyles.miniButton);
             if (size != (large ? 1 : 0)) { largeThumbnails = large = size == 1; EditorPrefs.SetBool(LargeThumbnailsPreference, large); }
             var right = sizeLabel.x - 8;
+            // The confirm button follows the caption text, not the right edge.
+            var caption = string.Format(ExporterLocalization.T("VRMの表情 {0}・ドロップで入れ替え"), Count(MainPresets));
             var automatic = board.AutomaticCount();
+            var buttonWidth = automatic > 0 ? Mathf.Min(150, Mathf.Max(0, right - header.x) * .5f) : 0;
+            ExpressionSlotLayout.CaptionAndButton(header.x, right, dimMini.CalcSize(new GUIContent(caption)).x, buttonWidth, out var captionWidth, out var buttonX);
+            var captionRect = new Rect(header.x, header.y + 2, captionWidth, 18);
+            GUI.Label(captionRect, new GUIContent(Fit(caption, dimMini, captionRect.width), caption), dimMini);
             if (automatic > 0)
             {
                 var label = string.Format(ExporterLocalization.T("自動の候補{0}件を確定"), automatic);
-                var width = Mathf.Min(150, Mathf.Max(0, right - header.x) * .5f);
-                var button = new Rect(right - width, header.y + 2, width, 18);
-                if (GUI.Button(button, new GUIContent(Fit(label, EditorStyles.miniButton, width - 8), label), EditorStyles.miniButton)) Queue(ConfirmAutomatic);
-                right = button.x - 8;
+                var button = new Rect(buttonX, header.y + 2, buttonWidth, 18);
+                if (GUI.Button(button, new GUIContent(Fit(label, EditorStyles.miniButton, buttonWidth - 8), label), EditorStyles.miniButton)) Queue(ConfirmAutomatic);
             }
-            var caption = string.Format(ExporterLocalization.T("VRMの表情 {0}・ドロップで入れ替え"), Count(MainPresets));
-            var captionRect = new Rect(header.x, header.y + 2, Mathf.Max(0, right - header.x), 18);
-            GUI.Label(captionRect, new GUIContent(Fit(caption, dimMini, captionRect.width), caption), dimMini);
 
             // The slots are placed for the width of the last repaint, so every
-            // event of a frame sees the same rectangles.
+            // event of a frame sees the same rectangles. The page scrollbar is
+            // left out of the width either way, so it showing up cannot move them.
             var groups = ExperimentalExpressionCaptureSession.PresetGroups;
             if (slotAreaWidth <= 0) slotAreaWidth = position.width - 32;
             var open = ShowExtraPresets;
-            var layout = ExpressionSlotLayout.Compute(slotAreaWidth - ScrollbarWidth - 2, large, open, groups.Select(group => group.Presets.Length).ToArray());
-            var height = Mathf.Min(layout.Height, ExpressionSlotLayout.TopLimit);
-            var area = GUILayoutUtility.GetRect(100, height, GUILayout.ExpandWidth(true));
+            var width = Mathf.Min(slotAreaWidth, position.width - 32 - ScrollbarWidth);
+            var layout = ExpressionSlotLayout.Compute(width, large, open, groups.Select(group => group.Presets.Length).ToArray());
+            var area = GUILayoutUtility.GetRect(100, layout.Height, GUILayout.ExpandWidth(true));
             if (current.type == EventType.Repaint && area.width > 1 && !Mathf.Approximately(area.width, slotAreaWidth)) { slotAreaWidth = area.width; Repaint(); }
-            var scrolls = layout.Height > height;
-            // A card dragged near the top or bottom edge scrolls the slots.
-            if (scrolls && current.type == EventType.DragUpdated && DragAndDrop.GetGenericData(DragKey) is AnimationClip && area.Contains(current.mousePosition))
-            {
-                var step = current.mousePosition.y < area.y + 24 ? -8 : current.mousePosition.y > area.yMax - 24 ? 8 : 0;
-                if (step != 0) { slotScroll.y = Mathf.Clamp(slotScroll.y + step, 0, layout.Height - height); Repaint(); }
-            }
-            var hidden = HideOutside(area);
-            slotScroll = GUI.BeginScrollView(area, slotScroll, new Rect(0, 0, area.width - ScrollbarWidth, layout.Height), false, scrolls);
+            GUI.BeginGroup(area);
             foreach (var group in layout.Groups)
             {
                 var presets = groups[group.Index].Presets;
@@ -677,8 +681,7 @@ namespace VRVlog.LilToonExporter
                 for (var index = 0; index < presets.Length; index++) DrawSlot(presets[index], group.Slots[index], large);
             }
             DrawFoldRow(layout.Fold, open);
-            GUI.EndScrollView();
-            RestoreEvent(hidden);
+            GUI.EndGroup();
         }
 
         void DrawGroupCaption(Rect rect, string label, UniVRM10.ExpressionPreset[] presets)
@@ -743,14 +746,32 @@ namespace VRVlog.LilToonExporter
             {
                 if (repaint) Dashed(thumb, CardBorderColor);
                 GUI.Label(thumb, Fit(ExporterLocalization.T("ここへドロップ"), centeredDim, thumb.width), centeredDim);
+                // An empty slot can also be filled from the list, without a drag.
+                if (GUI.Button(thumb, new GUIContent("", ExporterLocalization.T("一覧から選ぶ")), GUIStyle.none)) ShowPresetMenu(preset, thumb);
             }
             if (repaint && Nullable.Equals(dropHover, target)) Outline(tile, AccentColor);
 
             var stateRect = new Rect(rect.x + 1, tile.yMax + 1, rect.width - 2, ExpressionSlotLayout.State);
             var state = reason ?? SlotState(preset, assignment);
+            // The blink setting's description is too long for a slot; the slot
+            // shows its head and the tooltip all of it.
+            var shown = reason == null && state == blinkFallback ? StateHead(state) : state;
             var style = reason != null ? errorMini : dimMini;
-            GUI.Label(stateRect, new GUIContent(Fit(state, style, stateRect.width), state), style);
+            GUI.Label(stateRect, new GUIContent(Fit(shown, style, stateRect.width), state), style);
             HandleDrop(rect, target);
+        }
+
+        // The part before the first bracket or ": " of a description.
+        internal static string StateHead(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            var end = text.Length;
+            foreach (var mark in new[] { "（", " (", ": " })
+            {
+                var index = text.IndexOf(mark, StringComparison.Ordinal);
+                if (index > 0 && index < end) end = index;
+            }
+            return text.Substring(0, end);
         }
 
         // What saving does with the slot.
@@ -827,11 +848,16 @@ namespace VRVlog.LilToonExporter
                 usable ? null : "対応外", usable ? ItemTooltip(item) : item.Error, closeTooltip, close);
         }
 
+        // count: the items that are exported; unusable ones are counted apart.
+        internal static string OtherTitle(int count, int unusable) => unusable > 0
+            ? string.Format(ExporterLocalization.T("その他の表情 {0}件・対応外{1}件"), count, unusable)
+            : string.Format(ExporterLocalization.T("その他の表情 {0}件"), count);
+
         void DrawOtherPanel(Rect rect)
         {
-            var body = DrawPanelFrame(rect, Place.Other, string.Format(ExporterLocalization.T("その他の表情 {0}件"), board.OtherCount),
-                board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"));
             var items = board.ItemsIn(PlaceKind.Other).ToArray();
+            var body = DrawPanelFrame(rect, Place.Other, OtherTitle(board.OtherCount, items.Count(item => !ExpressionBoard.Usable(item))),
+                board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"));
             var size = ExpressionSlotLayout.Thumb(LargeThumbnails);
             var columns = PanelColumns(body, size);
             var view = new Rect(0, 0, body.width - ScrollbarWidth, Mathf.Max(body.height, PanelRows(items.Length, columns, size)));

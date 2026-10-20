@@ -10,7 +10,7 @@ namespace VRVlog.LilToonExporter
     internal static class ExpressionSlotLayout
     {
         internal const float Gap = 6, GroupGap = 18, Caption = 16, Label = 16, Name = 16, State = 14, Fold = 20,
-            ScrollbarWidth = 14, TopLimit = 438;
+            ScrollbarWidth = 14;
 
         // Groups 0-2 (emotions, blink, mouth) are always shown; 3-4 (gaze,
         // neutral) sit under the fold row.
@@ -52,7 +52,16 @@ namespace VRVlog.LilToonExporter
             return rows;
         }
 
-        // width: the inside of the slot area (without its scrollbar).
+        // The header caption is followed by the confirm button, 8 apart; the
+        // caption gives way first. button: the button width, 0 when there is none.
+        internal static void CaptionAndButton(float left, float right, float text, float button, out float caption, out float buttonX)
+        {
+            var room = Mathf.Max(0, right - left - (button > 0 ? button + 8 : 0));
+            caption = Mathf.Min(text, room);
+            buttonX = left + caption + 8;
+        }
+
+        // width: the inside of the slot area.
         // sizes: the number of slots of each group, in PresetGroups order.
         internal static Result Compute(float width, bool large, bool extraOpen, IReadOnlyList<int> sizes)
         {
