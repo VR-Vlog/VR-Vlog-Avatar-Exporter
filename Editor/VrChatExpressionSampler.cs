@@ -714,14 +714,25 @@ namespace VRVlog.LilToonExporter
                 HashSet<(int Layer, AnimationClip Clip, EditorCurveBinding Binding)> gateShadowed = null;
                 bool Settles(int layer) => !excludedLayers.Contains(layer) && !equivalentStates.Contains(layer) &&
                     (layer == 0 || playable.GetLayerWeight(layer) > 0.00001f || dependencies.WeightControlLayers.Contains(layer));
-                // Report the layers whose state, before settlement advances
-                // time, plays a BlendTree. The caller decides whether a time
-                // decision may stand for that selection.
-                if (followTransitions && settledTreeLayers != null)
+                // Report the layers whose state, before or after settlement
+                // advances time, plays a BlendTree that still moves. The
+                // caller decides whether a time decision may stand for it.
+                var resolveState = followTransitions && settledTreeLayers != null ? ExpressionSettlement.StateResolver(originalController) : null;
+                void ReportMovingTrees()
+                {
+                    if (resolveState == null) return;
                     for (var layer = 0; layer < controller.layers.Length; layer++)
-                        if (Settles(layer) && CurrentEffectiveMotion(originalController, layer,
-                            playable.GetCurrentAnimatorStateInfo(layer).fullPathHash) is BlendTree)
+                    {
+                        if (!Settles(layer) || settledTreeLayers.Contains(controller.layers[layer].name)) continue;
+                        var hashes = playable.IsInTransition(layer)
+                            ? new[] { playable.GetCurrentAnimatorStateInfo(layer).fullPathHash, playable.GetNextAnimatorStateInfo(layer).fullPathHash }
+                            : new[] { playable.GetCurrentAnimatorStateInfo(layer).fullPathHash };
+                        if (hashes.Any(hash => CurrentEffectiveMotion(originalController, resolveState, layer, hash) is BlendTree tree &&
+                            MovingTree(tree, runtime, excludedPath)))
                             settledTreeLayers.Add(controller.layers[layer].name);
+                    }
+                }
+                ReportMovingTrees();
                 var settled = followTransitions && ExpressionSettlement.Settle(graph, playable, controller,
                     Settles,
                     remember, temporal,
@@ -743,6 +754,8 @@ namespace VRVlog.LilToonExporter
                         }
                         catch (InvalidOperationException) { return false; }
                     });
+                // Timed transitions can enter a tree only during settlement.
+                if (settled) ReportMovingTrees();
                 void CheckSelectedState()
                 {
                     if (expectedLayer.HasValue && (expectedLayer.Value < 0 || expectedLayer.Value >= controller.layers.Length ||
@@ -1046,35 +1059,49 @@ namespace VRVlog.LilToonExporter
 
         // The authored motion of a playing state, following a Synced Layer to
         // its source machine and override like the FX candidate discovery.
-        private static Motion CurrentEffectiveMotion(AnimatorController controller, int layer, int fullPathHash)
+        // The state comes from the lookup Settle uses (a cyclic sync has none).
+        private static Motion CurrentEffectiveMotion(AnimatorController controller, Func<int, int, AnimatorState> resolve, int layer, int fullPathHash)
         {
             var layers = controller.layers;
-            if (layer < 0 || layer >= layers.Length) return null;
-            var source = layer;
-            var visited = new HashSet<int>();
-            while (layers[source].syncedLayerIndex >= 0)
-            {
-                if (!visited.Add(source)) return null;
-                source = layers[source].syncedLayerIndex;
-                if (source < 0 || source >= layers.Length) return null;
-            }
-            var machine = layers[source].stateMachine;
-            if (machine == null) return null;
-            AnimatorState found = null;
-            void Visit(AnimatorStateMachine current, string path)
-            {
-                foreach (var child in current.states)
-                    if (Animator.StringToHash(path + "." + child.state.name) == fullPathHash) found = found ?? child.state;
-                foreach (var child in current.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name);
-            }
-            foreach (var root in new[] { layers[layer].name, layers[source].name, machine.name }.Distinct(StringComparer.Ordinal))
-                Visit(machine, root);
+            var found = layer < 0 || layer >= layers.Length ? null : resolve(layer, fullPathHash);
             if (found == null) return null;
             for (var index = layer; ; index = layers[index].syncedLayerIndex)
             {
                 var motion = controller.GetStateEffectiveMotion(found, index);
                 if (motion != null || layers[index].syncedLayerIndex < 0) return motion ?? found.motion;
             }
+        }
+
+        // A tree blurs a settled frame only while its output still changes:
+        // a child clip moves a face morph, or some clip of the controller
+        // moves one of its blend inputs. Still clips at fixed inputs give one
+        // exact frame, so such a tree is settled like a clip.
+        private static bool MovingTree(BlendTree tree, RuntimeAnimatorController runtime, Func<string, bool> excludedPath)
+        {
+            var overrides = ExpressionDependencies.Overrides(runtime);
+            var inputs = new HashSet<string>(StringComparer.Ordinal);
+            var clips = new HashSet<AnimationClip>();
+            var visited = new HashSet<Motion>();
+            void Visit(Motion motion)
+            {
+                if (motion == null || !visited.Add(motion)) return;
+                if (motion is AnimationClip clip) { clips.Add(overrides.TryGetValue(clip, out var replaced) ? replaced : clip); return; }
+                if (!(motion is BlendTree node)) return;
+                if (node.blendType != BlendTreeType.Direct) inputs.Add(node.blendParameter);
+                if (node.blendType != BlendTreeType.Simple1D && node.blendType != BlendTreeType.Direct) inputs.Add(node.blendParameterY);
+                foreach (var child in node.children)
+                {
+                    if (node.blendType == BlendTreeType.Direct) inputs.Add(child.directBlendParameter);
+                    Visit(child.motion);
+                }
+            }
+            Visit(tree);
+            bool Moves(AnimationClip clip, Func<EditorCurveBinding, bool> relevant) => clip != null &&
+                AnimationUtility.GetCurveBindings(clip).Any(binding => relevant(binding) && !IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+            return clips.Any(clip => Moves(clip, binding => binding.type == typeof(SkinnedMeshRenderer) &&
+                    binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) && excludedPath?.Invoke(binding.path) != true)) ||
+                runtime.animationClips.Distinct().Any(clip => Moves(clip, binding => binding.type == typeof(Animator) && binding.path == "" &&
+                    inputs.Contains(binding.propertyName)));
         }
 
         internal static bool MatchesExpectedStatePath(AnimatorController controller, int layer, string expectedStatePath, int fullPathHash)

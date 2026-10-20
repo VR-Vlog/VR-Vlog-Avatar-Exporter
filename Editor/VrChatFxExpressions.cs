@@ -104,13 +104,15 @@ namespace VRVlog.LilToonExporter
                         try
                         {
                             var settlement = new List<string>();
+                            var trees = new List<string>();
                             var values = VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
                                 entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                                candidate.Layer, candidate.Path, settlement);
+                                candidate.Layer, candidate.Path, settlement, trees);
                             // FX tree knots are candidates too. A tree still
                             // moving after the warm-up has no animated reading
                             // on this path, so one settled frame is not taken.
-                            if (settlement.Count > 0 && motion is BlendTree) throw new InvalidOperationException(SettledFxTreeOmitted);
+                            // A tree of still clips is one exact frame and stays.
+                            if (settlement.Count > 0 && trees.Count > 0) throw new InvalidOperationException(SettledFxTreeOmitted);
                             entry.Values.AddRange(values);
                             foreach (var message in settlement) entry.Messages.Add(message);
                             if (candidate.DefaultValues != null)
