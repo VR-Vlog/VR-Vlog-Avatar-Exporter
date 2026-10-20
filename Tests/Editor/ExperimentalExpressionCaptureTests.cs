@@ -1928,6 +1928,28 @@ namespace VRVlog.LilToonExporter.Tests
             front.name = "Front";
             using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
         }
+
+        // Making the session hashes the source; the rest of that batch uses
+        // that hash, and the next batch still sees an edit.
+        [Test]
+        public void ASessionMadeInABatchCountsAsThatBatchsCheck()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var front = fixture.Source.transform.Find("Front");
+            ExperimentalExpressionCaptureSession session;
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                front.name = "Front edited";
+                Assert.DoesNotThrow(session.CaptureBaseline, "The batch the session was made in is already checked.");
+            }
+            using (session)
+            {
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+                front.name = "Front";
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
+            }
+        }
     }
 
 }
