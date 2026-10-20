@@ -1796,6 +1796,50 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void BottomBarNamesWhatBlocksTheSave()
+        {
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var presets = new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>();
+            var clips = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 2).Select(index => new AnimationClip { name = "Face " + index }).ToArray();
+            var twin = new AnimationClip { name = "Face 0" };
+            var board = new ExpressionBoard(presets, (preset, value) => { if (value == null) presets.Remove(preset); else presets[preset] = value; },
+                candidates => new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>(), null);
+            try
+            {
+                type.GetField("board", flags).SetValue(window, board);
+                type.GetField("author", flags).SetValue(window, "");
+                board.SetItems(null, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                type.GetField("transferMode", flags).SetValue(window, true);
+                Assert.That(window.BlockReason(), Is.Null, "The transfer asks the author in the next window.");
+                type.GetField("transferMode", flags).SetValue(window, false);
+                type.GetField("author", flags).SetValue(window, "Author");
+                Assert.That(window.BlockReason(), Is.Null);
+
+                board.SetItems(new[] { new ExpressionBoard.Item { Clip = twin, Added = true, Source = "Fixture" } }, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません"), 1) + ": Face 0"));
+
+                board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                board.Move(clips[0], ExpressionBoard.Place.Excluded);
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません"), 1)));
+
+                var errors = (System.Collections.Generic.Dictionary<ExpressionPreset, string>)type.GetField("presetErrors", flags).GetValue(window);
+                errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";
+                Assert.That(window.BlockReason(), Is.EqualTo("Angry reason"), "The first broken slot in board order gives its own reason.");
+
+                type.GetField("excludedObjectEdits", flags).SetValue(window, new System.Collections.Generic.List<GameObject>());
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); Object.DestroyImmediate(twin);
+                foreach (var clip in clips) Object.DestroyImmediate(clip);
+            }
+        }
+
         static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
     }
 

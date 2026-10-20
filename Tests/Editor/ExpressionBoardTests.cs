@@ -245,6 +245,45 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ConfirmClearAndSwapReachAllThirteenAndFiveSlots()
+        {
+            var all = ExperimentalExpressionCaptureSession.AssignablePresets;
+            var groups = ExperimentalExpressionCaptureSession.PresetGroups;
+            var main = groups.Take(3).SelectMany(group => group.Presets).ToArray();
+            var extra = groups.Skip(3).SelectMany(group => group.Presets).ToArray();
+            Assert.That(main.Length, Is.EqualTo(13));
+            Assert.That(extra.Length, Is.EqualTo(5));
+            var faces = all.ToDictionary(preset => preset, preset => Clip(preset + " face"));
+            var board = Board(null, all.Select(preset => Item(faces[preset])));
+            board.ApplyAutomatic();
+            Assert.That(all.All(preset => presets[preset].Clip == faces[preset] && presets[preset].Automatic), Is.True);
+            foreach (var group in groups) Assert.That(board.AutomaticCount(group.Presets), Is.EqualTo(group.Presets.Length), group.Label);
+
+            // Confirming the shown groups leaves the folded ones as suggestions.
+            Assert.That(board.ConfirmAutomatic(main), Is.EqualTo(13));
+            Assert.That(board.AutomaticCount(main), Is.Zero);
+            Assert.That(board.AutomaticCount(extra), Is.EqualTo(5));
+            Assert.That(board.ConfirmAutomatic(), Is.EqualTo(5));
+            Assert.That(board.SlotCount(), Is.EqualTo(18));
+
+            // A drop on a filled slot in another group swaps the previous face out.
+            Assert.That(board.Move(faces[ExpressionPreset.neutral], Place.Slot(ExpressionPreset.happy)), Is.True);
+            Assert.That(board.PlaceOf(faces[ExpressionPreset.happy]), Is.EqualTo(Place.Other));
+            Assert.That(presets[ExpressionPreset.neutral].IsNone, Is.True);
+            Assert.That(board.Move(faces[ExpressionPreset.happy], Place.Slot(ExpressionPreset.neutral)), Is.True);
+            Assert.That(board.PlaceOf(faces[ExpressionPreset.happy]), Is.EqualTo(Place.Slot(ExpressionPreset.neutral)));
+            Assert.That(board.Move(faces[ExpressionPreset.blinkRight], Place.Slot(ExpressionPreset.lookDown)), Is.True);
+            Assert.That(board.PlaceOf(faces[ExpressionPreset.lookDown]), Is.EqualTo(Place.Other));
+            Assert.That(board.SlotCount(), Is.EqualTo(17));
+
+            foreach (var preset in all) board.ClearSlot(preset);
+            Assert.That(all.All(preset => presets[preset].IsNone && !presets[preset].Automatic), Is.True);
+            Assert.That(board.SlotCount(), Is.Zero);
+            Assert.That(board.AutomaticCount(), Is.Zero);
+            Assert.That(board.OtherCount, Is.EqualTo(18), "Clearing a slot returns its face to the other expressions.");
+        }
+
+        [Test]
         public void MoreThanTheLimitBlocksOnlyTheRecordRoute()
         {
             var faces = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 3).Select(index => Item(Clip("face " + index))).ToArray();
