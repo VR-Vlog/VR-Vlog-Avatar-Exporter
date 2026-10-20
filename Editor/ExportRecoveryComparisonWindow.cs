@@ -189,7 +189,6 @@ namespace VRVlog.LilToonExporter
             {
             contentScroll = content.scrollPosition;
             EditorGUILayout.LabelField(ExporterLocalization.T("書き出せました。まだ保存していません。"), EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(ExporterLocalization.T("見た目と変更点を確認し、下の「このVRMを保存する」で保存してください。"), EditorStyles.wordWrappedLabel);
             EditorGUILayout.LabelField(ExporterLocalization.T("保存するファイル: ") + System.IO.Path.GetFileName(session.Destination), EditorStyles.wordWrappedMiniLabel);
             var skipAllMenus = session.LastSuccess.Options.Actions.Any(action => action.Kind == ExportRecoveryActionKind.SkipVrChatMenus);
             var appliedActions = session.LastSuccess.Options.Actions.Where(action =>
