@@ -28,8 +28,11 @@ viseme の BlendShape は、`VisemeSkinnedMesh` と同じ名前のノードの�
 
 ## develop との統合（2026-10-21）
 
-develop の `2026-10-19-descriptor-visemes.md` は、書き出し用のコピー（NDMF の処理後）の記述子を読み、`converter.Nodes` で `VisemeSkinnedMesh` の出力のノードを決める。統合後のかんたんの書き出しはこちらを使い、`DescriptorVisemes` を 1 つにまとめた。
+develop の #223（`2026-10-19-descriptor-visemes.md`）は、書き出し用のコピー（NDMF の処理後）の記述子を `VrChatVisemeExport` で読み、`converter.Nodes` で `VisemeSkinnedMesh` の出力のノードを決める。表情を記録して書き出すときも、記述子を外す前に `VrChatVisemeExport.Captured` に取っておき、最適化ツールの後まで追いかける。統合後はすべての書き出しでこちらだけを使い、この記録で足したメッシュの名前で探す割り当て（`visemeRenderer`・`visemeShapes` と、BlendShape を持つ唯一のメッシュへ回す処理）は消した。
 
-- 出力のノードが分かっているとき（`Node` が 0 以上）は、そのノードだけに割り当て、確認の警告を出さない。Face Mesh が出力に無いときは唯一のメッシュへ回さず、「Face Mesh が含まれていない」の警告にする。
-- メッシュの名前しか分からないとき（`FromLipSync`・`RendererName`）は、この記録の決定どおり、同じ名前のノード、無ければ BlendShape を持つ唯一のメッシュの順に探し、使った BlendShape 名を添えて警告する。
-- どちらも、morph target の数が合わないときは例外にせず名前の推定に回す。指定した口の形を作れなかったときは develop の 2 種類の警告を出す。
+- 口の形は Face Mesh の出力のノードだけに割り当てる。Face Mesh が出力に無いときは、その BlendShape を持つメッシュが 1 つだけあっても割り当てず、「Face Mesh が含まれていない」の警告を出す。
+- この記録の決定 3 は残す。Face Mesh がその BlendShape を持たないとき（名前が重複するときを含む）は、記述子からは埋めず、既知の名前の推定に回す。それでも埋まらなければ develop の「指定した変形が書き出したメッシュにありません」の警告を出す。
+- 記述子から埋めた枠には警告を出さない（Face Mesh に作者が指定した変形なので、確認を求める必要がない）。使った BlendShape 名を添える警告文と、その 4 言語の訳は消した。
+- morph target の数が合わないときは、develop と同じく例外にする。
+- `ExpressionNameInferenceTests` の 4 件は、メッシュの名前の代わりに Face Mesh の出力のノードを渡す形に直した。記述子から埋めたときの警告を確かめていた所は警告が出ないことを、Face Mesh が無いとき唯一のメッシュへ回すことを確かめていた所は割り当てず警告を出すことを確かめるように変えた。
+- 寛容な書き出し（失敗しても続ける書き出し）で Lip Sync のメッシュを BlendShape の名前で追いかけるときは、元のメッシュにある名前だけを使う。古い名前が 1 つ残っているだけで 5 つの口の形がすべて外れないようにするため。

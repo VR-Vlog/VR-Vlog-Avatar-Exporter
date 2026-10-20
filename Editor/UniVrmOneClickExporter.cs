@@ -494,7 +494,10 @@ namespace VRVlog.LilToonExporter
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "瞬き", "", reason);
                         }
                         // A Lip Sync mesh that cannot be followed is treated as not exported.
-                        capturedVisemes?.RebindPrepared(old => transformed.FollowShapes(old, capturedVisemes.Shapes.Values));
+                        // Only names the mesh has are followed, as in Morphs, so one
+                        // stale Lip Sync name does not lose the other mouth shapes.
+                        capturedVisemes?.RebindPrepared(old => transformed.FollowShapes(old, capturedVisemes.Shapes.Values.Where(shape =>
+                            !string.IsNullOrEmpty(shape) && old != null && old.sharedMesh != null && old.sharedMesh.GetBlendShapeIndex(shape) >= 0)));
                         var unified = unifiedPreparation;
                         try
                         {
