@@ -218,6 +218,9 @@ namespace VRVlog.LilToonExporter
                 steps.Next("fingerprint");
                 // Settle source read caches before guarding subsequent edits.
                 sourceStamp = ExportSourceFingerprint.Compute(source);
+                // The stamps were just taken from the source as it is: the rest
+                // of this batch need not hash the whole avatar again.
+                if (batchDepth > 0) validatedBatch = batchId;
             }
             catch { Dispose(); throw; }
         }

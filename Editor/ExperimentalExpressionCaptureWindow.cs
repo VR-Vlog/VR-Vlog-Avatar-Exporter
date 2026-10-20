@@ -209,15 +209,18 @@ namespace VRVlog.LilToonExporter
         {
             if (session == null || preview == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
             using var batch = ExperimentalExpressionCaptureSession.Batch();
-            if (blinkFallbackStale)
-            {
-                blinkFallbackStale = false;
-                using var timing = ExpressionBoardTimings.Step("blinkFallback");
-                try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
-                catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
-                Repaint();
-            }
+            RefreshBlinkFallback();
             if (thumbnailRequests.Count > 0) using (ExpressionBoardTimings.Step("thumbnails")) RenderThumbnails();
+        }
+
+        void RefreshBlinkFallback()
+        {
+            if (!blinkFallbackStale || session == null) return;
+            blinkFallbackStale = false;
+            using var timing = ExpressionBoardTimings.Step("blinkFallback");
+            try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
+            catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
+            Repaint();
         }
 
         // The key holds the drawn size in pixels, so a new size or display scale
@@ -501,6 +504,16 @@ namespace VRVlog.LilToonExporter
                 PrepareWith(Array.Empty<GameObject>());
                 excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
             }
+            // Inside this batch the session's check of the source is already
+            // done; on the next update the blink line would hash the avatar again.
+            RefreshBlinkFallback();
+        }
+
+        // Preparing holds the editor for a few seconds on a large avatar.
+        static void PrepareProgress(string step, float progress)
+        {
+            if (EditorUtility.DisplayCancelableProgressBar(ExporterLocalization.T("書き出しを準備中"), step, progress))
+                throw new OperationCanceledException();
         }
 
         void PrepareWith(GameObject[] objects)
@@ -510,16 +523,19 @@ namespace VRVlog.LilToonExporter
             {
                 using var steps = ExpressionBoardTimings.Sequence();
                 steps.Next("session");
+                PrepareProgress(ExporterLocalization.T("アバターを読み込み"), 0);
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
                 steps.Next("recommend");
+                PrepareProgress(ExporterLocalization.T("表情ファイルを確認"), .45f);
                 recommendations = session.RecommendClips();
                 steps.Next("clipErrors");
                 foreach (var item in session.ClipErrors(recommendations.Select(item => item.Clip))) clipErrors[item.Key] = item.Value;
                 steps.Next("preview");
+                PrepareProgress(ExporterLocalization.T("プレビューを用意"), .7f);
                 preview = new PreviewRenderUtility();
                 NdmfExportPreparation.ShowOwnedCopyInPreview(session.Copy, preview);
                 var renderers = ExportRendererSelection.Enumerate(session.Copy).ToArray();
@@ -544,6 +560,7 @@ namespace VRVlog.LilToonExporter
                 saved = null;
                 candidateValidationPending = false;
                 steps.Next("presets");
+                PrepareProgress(ExporterLocalization.T("割り当てを決める"), .75f);
                 LoadPresetChoices();
             }
             catch { Cleanup(); throw; }
