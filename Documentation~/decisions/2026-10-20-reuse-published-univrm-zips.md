@@ -19,6 +19,10 @@ v0.12.0-beta.1のBuild VPM Listingが「Require current mirrors immediately befo
 - 片方の依存だけが公開済みのときもリリースを止める
 - UniVRMの版を上げたときは、これまでどおり新しい依存ZIPを作って添付する
 
+## 判定が外れて止まったとき
+
+判定は正規のlistingを見るので、UniVRMの版を上げたリリースのlistingが公開される前（Pagesの更新待ち）に次のリリースが走ると、そのリリースは依存ZIPを作り直して添付する。この場合もBuild VPM Listingは今回と同じ照合で止まり、利用者の一覧は変わらない。新しい方のリリースから依存ZIP（`com.vrmc.gltf-<版>.zip`・`com.vrmc.vrm-<版>.zip`）を消し、止まったBuild VPM Listingを再実行すれば、最初に公開したZIPが載る。
+
 ## 採らなかった案
 
 - ZIPを毎回同じバイト列で作る（並び順と日時を固定する）: 公開済みのZIPと同じバイト列にはできない。listingのURLもリリースごとに変わるので、検査はやはり止まる
