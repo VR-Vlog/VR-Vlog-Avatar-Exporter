@@ -315,7 +315,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var pb = PhysBone(root.gameObject);
                 Set(pb, "endpointPosition", Vector3.down * .1f);
                 Set(pb, "pull", .4f); Set(pb, "spring", .2f); Set(pb, "gravity", 0f);
-                Set(pb, "immobileType", immobileType); Set(pb, "immobile", .6f);
+                Set(pb, "immobileType", immobileType); Set(pb, "immobile", .6f); Set(pb, "gravityFalloff", .5f);
                 copy = Object.Instantiate(source);
                 var warnings = new List<string>();
                 PhysBoneSpringExport.Convert(source, copy, warnings);
@@ -324,6 +324,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(joint.m_dragForce, Is.EqualTo(drag).Within(.001));
                 Assert.That(warnings.Contains("Hair" + AllMotionImmobileWarning), Is.EqualTo(immobileType == 0));
                 Assert.That(warnings.Contains("Hair" + WorldImmobileWarning), Is.EqualTo(immobileType != 0));
+                Assert.That(warnings.Contains("Hair: Gravity Falloffは重力の減衰として近似しました。"), Is.True);
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }

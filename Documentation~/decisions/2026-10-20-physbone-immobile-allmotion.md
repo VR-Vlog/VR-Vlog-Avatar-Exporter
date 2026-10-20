@@ -94,6 +94,6 @@ ImmobileがありImmobile TypeがAll Motionの揺れものだけ、書き出すs
 
 ## 検証
 
-- `PhysBoneSpringExportTests.AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp`: Pull 0.4・Spring 0.2・Immobile 0.6で、All Motionはstiffness 1.9・dragForce 0.78、Worldはstiffness 1.6・dragForce 0.48。警告はどちらか一方だけ
+- `PhysBoneSpringExportTests.AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp`: Pull 0.4・Spring 0.2・Immobile 0.6で、All Motionはstiffness 1.9・dragForce 0.78、Worldはstiffness 1.6・dragForce 0.48。Immobileの警告はどちらか一方だけで、Gravity Falloffを併せて設定すると別の行に出る
 - `PhysBoneSpringExportTests.AllMotionImmobileDragNeverExceedsOne`: Spring 0・Immobile 1でdragForceが1に止まる
 - 上の比較（34体×アプリの状態・素のVRM）
