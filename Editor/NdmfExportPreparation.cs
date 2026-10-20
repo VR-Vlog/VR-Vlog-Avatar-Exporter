@@ -214,6 +214,11 @@ namespace VRVlog.LilToonExporter
 
         internal SkinnedMeshRenderer FollowShape(SkinnedMeshRenderer original, string shape) => FollowShapes(original, new[] { shape });
 
+        // Whether the renderer held the shape before the build passes. Still
+        // answers after a pass destroyed or merged that renderer.
+        internal bool HadShape(SkinnedMeshRenderer original, string shape) => !ReferenceEquals(original, null) && shape != null &&
+            shapesBeforeProcessing.TryGetValue(original, out var before) && before.Contains(shape);
+
         private void CaptureShapes(GameObject root)
         {
             preparedRoot = root;

@@ -21,6 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         const string Marker = "__VRVlogLostMorphTest_";
         const string OldGenerated = "__VRVlog_Menu_old";
         const string Renamed = "Face renamed";
+        const string Missing = "Mouth missing";
 
         static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
@@ -62,15 +63,18 @@ namespace VRVlog.LilToonExporter.Tests
             internal readonly List<Object> Owned = new List<Object>();
             internal string Folder;
 
-            internal Scene(string mode, Type descriptorType, Type proxyType)
+            // visemes names the Lip Sync shapes (aa, ee, ih, oh, ou); Front
+            // gets each non-null one except Missing, which only the descriptor names.
+            internal Scene(string mode, Type descriptorType, Type proxyType, string[] visemes = null)
             {
                 var folderName = "__NdmfLostMorph_" + Guid.NewGuid().ToString("N");
                 AssetDatabase.CreateFolder("Assets", folderName); Folder = "Assets/" + folderName;
                 var source = Fixture.Source;
                 Front = source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 Back = source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
-                Front.sharedMesh = ShapedMesh(Fixture.Mesh, ("Face blink", new Vector3(0, -.04f, 0)), ("Face smile", new Vector3(0, 0, .05f)),
-                    ("Unused", new Vector3(.03f, 0, 0)), (OldGenerated, new Vector3(-.03f, 0, 0)));
+                Front.sharedMesh = ShapedMesh(Fixture.Mesh, new[] { ("Face blink", new Vector3(0, -.04f, 0)), ("Face smile", new Vector3(0, 0, .05f)),
+                    ("Unused", new Vector3(.03f, 0, 0)), (OldGenerated, new Vector3(-.03f, 0, 0)) }.Concat((visemes ?? Array.Empty<string>())
+                    .Where(name => name != null && name != Missing).Select(name => (name, new Vector3(0, .05f, 0)))).ToArray());
                 // In "twin" Back has its own shape with the face blink name.
                 Back.sharedMesh = mode == "twin"
                     ? ShapedMesh(Fixture.Mesh, ("Back detail", new Vector3(.02f, .01f, 0)), ("Face blink", new Vector3(0, -.04f, 0)))
@@ -81,7 +85,17 @@ namespace VRVlog.LilToonExporter.Tests
                     for (var index = 0; index < skin.sharedMesh.blendShapeCount; index++) skin.SetBlendShapeWeight(index, 0);
                     skin.sharedMaterial.shader = Shader.Find("lilToon");
                 }
-                SetFx(source.AddComponent(descriptorType), DefaultController(Folder + "/Base.controller"));
+                var descriptor = source.AddComponent(descriptorType);
+                SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
+                if (visemes != null)
+                {
+                    var lipSync = descriptorType.GetField("lipSync");
+                    lipSync.SetValue(descriptor, Enum.Parse(lipSync.FieldType, "VisemeBlendShape"));
+                    descriptorType.GetField("VisemeSkinnedMesh").SetValue(descriptor, Front);
+                    var slots = new string[15];
+                    Array.Copy(visemes, 0, slots, 10, visemes.Length);
+                    descriptorType.GetField("VisemeBlendShapes").SetValue(descriptor, slots);
+                }
                 // MA moves Back under the head, so the output shows that MA ran.
                 var proxy = Back.gameObject.AddComponent(proxyType);
                 proxyType.GetField("boneReference").SetValue(proxy, HumanBodyBones.Head);
@@ -100,12 +114,12 @@ namespace VRVlog.LilToonExporter.Tests
                 new GameObject(Marker + mode).transform.SetParent(source.transform, false);
             }
 
-            internal byte[] Export(List<string> warnings, ExportRecoveryReport report)
+            internal byte[] Export(List<string> warnings, ExportRecoveryReport report, VrChatVisemeExport.Captured visemes = null)
             {
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
                 blink.Both.Add(new BlinkShapeBinding { Renderer = Front, Shape = "Face blink", Weight = 100 });
                 return UniVrmOneClickExporter.Export(Fixture.Source, "NDMF lost morph", "Tests", warnings,
-                    blinkOptions: blink, recoveryReport: report);
+                    blinkOptions: blink, recoveryReport: report, descriptorVisemes: visemes);
             }
 
             public void Dispose()
@@ -273,6 +287,54 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(smile.Length, Is.EqualTo(1), log);
                 Assert.That(smile[0].RelativePath, Is.EqualTo(PathOf(imported, "Front")), log);
                 AssertShape(imported, smile[0], 2, "Smile stays on the face");
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
+        // The Lip Sync captured before the build passes, as the recorded
+        // expression export does, follows the face to the renamed or merged
+        // renderer. A name the face never had is left out on its own.
+        [TestCase("rename", false)]
+        [TestCase("merge", false)]
+        [TestCase("rename", true)]
+        [TestCase("merge", true)]
+        public async Task LenientExportFollowsLipSyncToTheRenamedOrMergedFace(string mode, bool missing)
+        {
+            var installed = RequireInstalled();
+            var mouths = new[] { "Mouth a", "Mouth e", "Mouth i", "Mouth o", missing ? Missing : "Mouth u" };
+            using var scene = new Scene(mode, installed.Descriptor, installed.Proxy, mouths);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report, VrChatVisemeExport.Read(scene.Fixture.Source));
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                var log = string.Join("\n", warnings);
+                var face = PathOf(imported, mode == "merge" ? "Back" : Renamed);
+                var expression = imported.Vrm.Expression;
+                var bound = new[] { expression.Aa, expression.Ee, expression.Ih, expression.Oh, expression.Ou };
+                for (var index = 0; index < mouths.Length; index++)
+                {
+                    var binds = bound[index].MorphTargetBindings;
+                    if (mouths[index] == Missing)
+                    {
+                        Assert.That(binds, Is.Null.Or.Empty, log);
+                        continue;
+                    }
+                    Assert.That(binds.Length, Is.EqualTo(1), mouths[index] + "\n" + log);
+                    Assert.That(binds[0].RelativePath, Is.EqualTo(face), mouths[index] + "\n" + log);
+                    var mesh = imported.transform.Find(face).GetComponent<SkinnedMeshRenderer>().sharedMesh;
+                    Assert.That(mesh.GetBlendShapeName(binds[0].Index), Is.EqualTo(mouths[index]), log);
+                    AssertShape(imported, binds[0], 1, mouths[index] + " must open the mouth");
+                }
+                bool Warned(string message) => warnings.Contains(message) || warnings.Contains(ExporterLocalization.T(message));
+                Assert.That(Warned(VrmExpressionBindings.UnexportedVisemeMeshWarning), Is.False, log);
+                Assert.That(Warned(VrmExpressionBindings.UnboundVisemeWarning), Is.EqualTo(missing), log);
             }
             finally
             {
