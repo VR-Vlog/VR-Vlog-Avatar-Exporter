@@ -18,6 +18,12 @@ namespace VRVlog.LilToonExporter
         const int MaximumNodes = 8192, MaximumDepth = 16, MaximumCandidates = 256;
         const int MaximumConditionChecks = MaximumNodes * 32;
 
+        // A time-decided BlendTree is never one settled frame. The gesture
+        // path catches its message and reads the tree as an animation, so it
+        // is not shown; the FX path has no animated reading and omits it.
+        internal const string SettledTreeIsAnimated = "BlendTreeの表情は時間で決めた1フレームではなくアニメーションとして読みます。";
+        internal const string SettledFxTreeOmitted = "時間で変わるFXのBlendTreeは、時間で決めた1フレームの固定表情に変換できません。";
+
         sealed class Candidate
         {
             internal int Layer;
@@ -97,9 +103,16 @@ namespace VRVlog.LilToonExporter
                     {
                         try
                         {
-                            entry.Values.AddRange(VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
+                            var settlement = new List<string>();
+                            var values = VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
                                 entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                                candidate.Layer, candidate.Path, entry.Messages));
+                                candidate.Layer, candidate.Path, settlement);
+                            // FX tree knots are candidates too. A tree still
+                            // moving after the warm-up has no animated reading
+                            // on this path, so one settled frame is not taken.
+                            if (settlement.Count > 0 && motion is BlendTree) throw new InvalidOperationException(SettledFxTreeOmitted);
+                            entry.Values.AddRange(values);
+                            foreach (var message in settlement) entry.Messages.Add(message);
                             if (candidate.DefaultValues != null)
                             {
                                 // A readonly parent may make an authored inner
@@ -186,7 +199,7 @@ namespace VRVlog.LilToonExporter
                         // A moving BlendTree keeps its animated reading rather
                         // than one settled frame.
                         if (settlement.Count > 0 && ExpressionDependencies.Controller(source.Controller).GetStateEffectiveMotion(candidate.State, candidate.Layer) is BlendTree)
-                            throw new InvalidOperationException(settlement[0]);
+                            throw new InvalidOperationException(SettledTreeIsAnimated);
                         entry.Values.AddRange(values);
                         foreach (var message in settlement) entry.Messages.Add(message);
                     }
