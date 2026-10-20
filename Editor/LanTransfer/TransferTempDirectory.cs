@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace VRVlog.LilToonExporter.LanTransfer
@@ -101,10 +102,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         static bool HasFreeSpace(string directory)
         {
-            try { return new DriveInfo(Path.GetPathRoot(directory)).AvailableFreeSpace >= RequiredFreeBytes; }
+            try
+            {
+                // Unity's DriveInfo constructor reads the volume information of every
+                // drive on the PC, which can take seconds when a drive does not answer.
+                // On Windows the folder itself is asked directly. UNC paths need the trailing separator.
+                if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                    return !GetDiskFreeSpaceEx(directory.TrimEnd('\\', '/') + "\\", out var available, out _, out _) || available >= (ulong)RequiredFreeBytes;
+                return new DriveInfo(Path.GetPathRoot(directory)).AvailableFreeSpace >= RequiredFreeBytes;
+            }
             // Network and unusual paths have no drive information; let the write decide.
             catch (Exception) { return true; }
         }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        static extern bool GetDiskFreeSpaceEx(string directory, out ulong freeBytesAvailable, out ulong totalBytes, out ulong totalFreeBytes);
 
         // Only files this exporter names (32 hex digits) in its own folders are removed.
         internal static void SweepStale(string directory)
