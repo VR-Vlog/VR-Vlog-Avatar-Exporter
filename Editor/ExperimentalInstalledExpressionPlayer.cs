@@ -168,7 +168,6 @@ namespace VRVlog.LilToonExporter
         static void ValidateStationary(AnimatorControllerPlayable playable, AnimatorController controller, ISet<string> needed, ISet<string> includedPaths,
             ICollection<string> warnings = null)
         {
-            void Warn(string message) { if (!warnings.Contains(message)) warnings.Add(message); }
             var parameters = new Dictionary<string, float>(StringComparer.Ordinal);
             foreach (var parameter in controller.parameters)
                 if (parameter.type != AnimatorControllerParameterType.Trigger)
@@ -198,7 +197,7 @@ namespace VRVlog.LilToonExporter
                                 !ExpressionDependencies.IsFalse(transition, parameters)))
                             {
                                 if (warnings == null) throw new InvalidOperationException("時間で遷移する表情は固定収録できません。");
-                                Warn(ExpressionSettlement.FollowedTransitions);
+                                ExpressionSettlement.Held(warnings);
                             }
                         }
                     foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name);
@@ -222,9 +221,10 @@ namespace VRVlog.LilToonExporter
                     // Parameter and object reference curves and parameter-driven
                     // or offset clocks stay rejected.
                     if (warnings != null && varying.Length > 0 && varying.Length == varyingCurves.Length && varying.All(binding => binding.type != typeof(Animator)) &&
-                        !currentState.timeParameterActive && !currentState.speedParameterActive && !currentState.cycleOffsetParameterActive && currentState.cycleOffset == 0)
+                        !currentState.timeParameterActive && !currentState.speedParameterActive && currentState.speed > 0 &&
+                        !currentState.cycleOffsetParameterActive && currentState.cycleOffset == 0)
                     {
-                        Warn(stateInfo.loop ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FinalKeyOfClip);
+                        ExpressionSettlement.Clip(stateInfo.loop, warnings);
                         continue;
                     }
                     if (varying.Length > 0) throw new InvalidOperationException("時間で変わる曲線を含む表情は固定収録できません: " + layers[layer].name + " / " + clip.name + " / " + varying[0].path + " / " + varying[0].propertyName);
