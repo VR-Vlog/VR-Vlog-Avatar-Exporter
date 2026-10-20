@@ -128,7 +128,9 @@ namespace VRVlog.LilToonExporter
         internal string Author => author;
         internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
         internal bool TransferMode => transferMode;
-        internal int SlotCount => board?.SlotCount(ExperimentalExpressionCaptureSession.EmotionPresets) ?? 0;
+        // The board header counts the same 13 slots ("割当x/13").
+        internal int SlotCount => board?.SlotCount(MainPresets) ?? 0;
+        internal static int MainSlotCount => MainPresets.Length;
         internal int ExcludedObjectCount => session?.ExcludedObjects.Count ?? 0;
 
         public static void Open()

@@ -21,6 +21,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void SmallThumbnailsPutEmotionsAndBlinkOnOneRowWhenWide()
         {
             Assert.That(Sizes, Is.EqualTo(new[] { 5, 3, 5, 4, 1 }));
+            Assert.That(ExperimentalExpressionCaptureWindow.MainSlotCount, Is.EqualTo(13),
+                "The transfer summary divides by the same slots the board header counts.");
             var layout = ExpressionSlotLayout.Compute(1000, false, false, Sizes);
             Assert.That(layout.Rows, Is.EqualTo(2));
             Assert.That(layout.Groups.Select(group => group.Index), Is.EqualTo(new[] { 0, 1, 2 }), "The fold hides gaze and the neutral face.");
