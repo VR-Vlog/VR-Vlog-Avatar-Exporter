@@ -14,7 +14,8 @@ namespace VRVlog.LilToonExporter
         // Materials whose shader was missing from the project when this file was saved.
         internal int MissingShaders { get; }
         readonly byte[] hash;
-        internal SavedExpressionVrm(string path, byte[] bytes, int expressions, int poses, int missingShaders = 0)
+        internal SavedExpressionVrm(string path, byte[] bytes, int expressions, int poses) : this(path, bytes, expressions, poses, 0) { }
+        internal SavedExpressionVrm(string path, byte[] bytes, int expressions, int poses, int missingShaders)
         {
             Path = path; Expressions = expressions; Poses = poses; MissingShaders = missingShaders;
             using (var sha = SHA256.Create()) hash = sha.ComputeHash(bytes);
