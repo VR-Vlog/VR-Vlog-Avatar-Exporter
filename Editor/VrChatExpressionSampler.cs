@@ -2036,16 +2036,39 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // Expression analysis calls this tens of thousands of times, so only the
+        // children whose names lead along the path are visited instead of building
+        // every transform's path. The matches are the transforms whose
+        // AnimationUtility.CalculateTransformPath equals the path, including
+        // ambiguous ones made by names that contain "/".
         internal static SkinnedMeshRenderer FindRenderer(GameObject root, string path)
         {
-            if (root.GetComponentsInChildren<Transform>(true).Count(t => AnimationUtility.CalculateTransformPath(t, root.transform) == path) != 1)
+            var found = new List<Transform>();
+            if (path != null)
+            {
+                if (path.Length == 0) found.Add(root.transform);
+                CollectTransformsAtPath(root.transform, path, found);
+            }
+            if (found.Count != 1)
                 throw new InvalidOperationException("重複する階層パスの表情は取り込めません: " + path);
-            var matches = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Where(r => AnimationUtility.CalculateTransformPath(r.transform, root.transform) == path).ToArray();
-            if (matches.Length != 1 || matches[0].sharedMesh == null)
+            var renderer = found[0].GetComponent<SkinnedMeshRenderer>();
+            if (renderer == null || renderer.sharedMesh == null)
                 throw new InvalidOperationException("Rendererのパスを一意に解決できません: " + path);
-            for (var current = matches[0].transform; current != root.transform; current = current.parent)
+            for (var current = renderer.transform; current != root.transform; current = current.parent)
                 if (current.name.Contains("/")) throw new InvalidOperationException("名前に / を含む階層の表情は取り込めません: " + path);
-            return matches[0];
+            return renderer;
+        }
+
+        private static void CollectTransformsAtPath(Transform parent, string rest, List<Transform> found)
+        {
+            for (var i = 0; i < parent.childCount; i++)
+            {
+                var child = parent.GetChild(i);
+                var name = child.name;
+                if (!rest.StartsWith(name, StringComparison.Ordinal)) continue;
+                if (rest.Length == name.Length) found.Add(child);
+                else if (rest[name.Length] == '/') CollectTransformsAtPath(child, rest.Substring(name.Length + 1), found);
+            }
         }
 
     }
