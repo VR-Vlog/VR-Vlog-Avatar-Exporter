@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter
                 text.AppendLine(StageLine(issue.Phase, issue.Stage));
                 text.AppendLine(ExporterLocalization.T("対象: ") + issue.Target);
                 text.AppendLine(ExporterLocalization.T("理由: ") + ExporterLocalization.T(issue.Reason));
-                text.AppendLine(ExporterLocalization.T("次にすること: ") + ExporterLocalization.T(issue.Remedy));
+                text.AppendLine(ExporterLocalization.T("対処: ") + ExporterLocalization.T(issue.Remedy));
                 text.AppendLine(ExporterLocalization.T("変わる点: ") + ExporterLocalization.T(issue.LostEffect));
                 text.AppendLine();
             }

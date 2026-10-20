@@ -328,7 +328,6 @@ namespace VRVlog.LilToonExporter
             if (!showBlink && error == null) return;
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                EditorGUILayout.LabelField(ExporterLocalization.T("瞬きはこの欄で設定します。設定後、「開閉をプレビュー」で確認できます。"), EditorStyles.wordWrappedLabel);
                 var mode = (BlinkExportMode)EditorGUILayout.Popup(ExporterLocalization.T("設定"), (int)blinkOptions.Mode,
                     new[] { ExporterLocalization.T("自動"), ExporterLocalization.T("手動"), ExporterLocalization.T("瞬きなし") });
                 if (mode != blinkOptions.Mode)
