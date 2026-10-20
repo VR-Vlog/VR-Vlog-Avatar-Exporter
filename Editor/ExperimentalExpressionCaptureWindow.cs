@@ -453,7 +453,13 @@ namespace VRVlog.LilToonExporter
                         if (current.type == EventType.Repaint) pageContentHeight = GUILayoutUtility.GetLastRect().yMax;
                         RestoreEvent(pageHidden);
                         EditorGUILayout.EndScrollView();
-                        if (current.type == EventType.Repaint) pageView = GUILayoutUtility.GetLastRect();
+                        if (current.type == EventType.Repaint)
+                        {
+                            // The panel height is clamped to the view: draw again when the view changed.
+                            var view = GUILayoutUtility.GetLastRect();
+                            if (view.height != pageView.height) Repaint();
+                            pageView = view;
+                        }
                         DrawBottomBar();
                     }
                 }
