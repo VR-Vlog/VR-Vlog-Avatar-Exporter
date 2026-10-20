@@ -491,7 +491,15 @@ namespace VRVlog.LilToonExporter
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
             var presetFaces = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray())
-                .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment))).ToArray();
+                .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment),
+                    item.Assignment.Automatic)).ToArray();
+            // Blink presets are written by the blink export only. Automatic
+            // candidates repeat its own choice, so they leave blinkOptions as
+            // is; one choice of the user's makes every assigned blink preset
+            // the manual setting.
+            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset)).ToArray();
+            if (blinkFaces.Any(face => !face.Automatic)) blinkOptions = AssignedBlink(blinkFaces.Select(face => (face.Preset, face.Morphs)));
+            presetFaces = presetFaces.Where(face => !BlinkPresets.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
             // Without explicit faces, retain the ordinary exporter's VRChat
             // menu/FX, authored expressions, metadata and preparation route.
             // replaceCustomFaces asks for exactly the recorded custom faces, even
@@ -503,7 +511,7 @@ namespace VRVlog.LilToonExporter
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
-            // Emotion presets alone keep that ordinary route. They enter its copy
+            // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
             if (!replaceCustomFaces && expressions.Length == 0)
             {
@@ -633,7 +641,7 @@ namespace VRVlog.LilToonExporter
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
                 }
-                // Emotion presets are separate clips. Recorded custom faces stay
+                // Standard presets are separate clips. Recorded custom faces stay
                 // custom clips under their recorded names (numbered on a clash),
                 // so the animation extension still finds them.
                 foreach (var face in presetFaces)
