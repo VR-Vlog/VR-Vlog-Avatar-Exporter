@@ -74,6 +74,10 @@ namespace VRVlog.LilToonExporter
         bool? largeThumbnails, showExtraPresets;
         // The page view in window coordinates, from the last repaint.
         Rect pageView;
+        // How tall the page is inside the view, from the last repaint.
+        float pageContentHeight;
+        // The excluded panel in window coordinates, beside expressionDropRect.
+        Rect excludedDropRect;
         // The width the slots were laid out for, from the last repaint, so every
         // event of a frame places the slots the same way.
         float slotAreaWidth;
@@ -84,6 +88,9 @@ namespace VRVlog.LilToonExporter
         readonly System.Collections.Generic.Dictionary<string, Texture2D> thumbnails = new System.Collections.Generic.Dictionary<string, Texture2D>();
         readonly System.Collections.Generic.Dictionary<string, ThumbnailRequest> thumbnailRequests = new System.Collections.Generic.Dictionary<string, ThumbnailRequest>();
         readonly System.Collections.Generic.HashSet<string> thumbnailsShown = new System.Collections.Generic.HashSet<string>();
+        // Faces that failed to draw stay plain until the files or the preview
+        // change, so a broken face is tried and reported once, not every frame.
+        readonly System.Collections.Generic.HashSet<string> thumbnailFailures = new System.Collections.Generic.HashSet<string>();
         bool boardDrawn;
         const int ThumbnailsPerUpdate = 4;
         const float ThumbnailDistance = .6f;
@@ -93,7 +100,9 @@ namespace VRVlog.LilToonExporter
         bool blinkFallbackStale = true;
 
         // Fixed sizes: the board never follows the font size or the names.
-        const float Gap = ExpressionSlotLayout.Gap, PanelHeight = 300, PanelHeader = 26, ScrollbarWidth = ExpressionSlotLayout.ScrollbarWidth;
+        const float Gap = ExpressionSlotLayout.Gap, PanelHeight = 300, PanelHeader = 26;
+        // The skin's own scrollbar, read while drawing, not a fixed guess.
+        static float ScrollbarWidth => ExpressionSlotLayout.ScrollbarWidth(GUI.skin.verticalScrollbar);
         // The mock colors are the dark skin; the light skin gets the same roles.
         static Color Skin(int dark, int light) => Hex(EditorGUIUtility.isProSkin ? dark : light);
         static Color LineColor => Skin(0x242424, 0x999999);
@@ -209,31 +218,60 @@ namespace VRVlog.LilToonExporter
             var key = (clip != null ? "c" + clip.GetInstanceID() : "s" + path + "/" + shape) + "@" + pixels;
             if (Event.current != null && Event.current.type == EventType.Repaint) thumbnailsShown.Add(key);
             if (thumbnails.TryGetValue(key, out var texture)) return texture;
+            if (thumbnailFailures.Contains(key)) return null;
             if (!thumbnailRequests.ContainsKey(key)) thumbnailRequests[key] = new ThumbnailRequest { Clip = clip, Path = path, Shape = shape, Size = size };
             return null;
         }
 
+        // Each request leaves the queue whatever happens to it: drawn, or
+        // remembered as failed. When the preview's own face cannot be read or
+        // put back, the rest of the queue fails too, so nothing is retried
+        // every update.
         void RenderThumbnails()
         {
-            var original = session.CurrentFace();
+            ExperimentalExpressionCaptureSession.Pose original;
+            try { original = session.CurrentFace(); }
+            catch (Exception exception) when (!(exception is OperationCanceledException))
+            {
+                FailThumbnails(thumbnailRequests.Keys.ToArray(), exception);
+                Repaint();
+                return;
+            }
             try
             {
-                foreach (var pair in thumbnailRequests.Take(ThumbnailsPerUpdate).ToArray())
+                foreach (var key in thumbnailRequests.Keys.Take(ThumbnailsPerUpdate).ToArray())
                 {
-                    thumbnailRequests.Remove(pair.Key);
-                    thumbnails[pair.Key] = RenderThumbnail(pair.Value);
+                    var request = thumbnailRequests[key];
+                    thumbnailRequests.Remove(key);
+                    Texture2D texture;
+                    try { texture = RenderThumbnail(request); }
+                    catch (Exception exception) when (!(exception is OperationCanceledException)) { FailThumbnails(new[] { key }, exception); continue; }
+                    if (texture != null) thumbnails[key] = texture;
+                    else FailThumbnails(new[] { key }, null);
                 }
             }
             finally
             {
                 // The preview shows the face it showed before.
-                session.ShowFace(original);
-                preview.camera.ResetAspect();
+                try { session.ShowFace(original); preview.camera.ResetAspect(); }
+                catch (Exception exception) when (!(exception is OperationCanceledException)) { FailThumbnails(thumbnailRequests.Keys.ToArray(), exception); }
             }
             Repaint();
         }
 
-        // A face that cannot be drawn stays a plain square.
+        // Failed faces stay plain squares; each is reported once in the Console.
+        void FailThumbnails(string[] keys, Exception exception)
+        {
+            foreach (var key in keys)
+            {
+                thumbnailRequests.Remove(key);
+                if (thumbnailFailures.Add(key) && exception != null)
+                    Debug.LogWarning(string.Format(ExporterLocalization.T("表情のサムネイルを描けませんでした: {0}"), exception.Message));
+            }
+        }
+
+        // A face whose pose cannot be built returns null and stays a plain
+        // square; a failed render is thrown to RenderThumbnails.
         Texture2D RenderThumbnail(ThumbnailRequest request)
         {
             try
@@ -254,7 +292,7 @@ namespace VRVlog.LilToonExporter
             {
                 var failed = preview.EndStaticPreview();
                 if (failed != null) DestroyImmediate(failed);
-                return null;
+                throw;
             }
             var texture = preview.EndStaticPreview();
             if (texture != null) texture.hideFlags = HideFlags.HideAndDontSave;
@@ -264,7 +302,7 @@ namespace VRVlog.LilToonExporter
         void ClearThumbnails()
         {
             foreach (var texture in thumbnails.Values) if (texture != null) DestroyImmediate(texture);
-            thumbnails.Clear(); thumbnailRequests.Clear(); thumbnailsShown.Clear();
+            thumbnails.Clear(); thumbnailRequests.Clear(); thumbnailsShown.Clear(); thumbnailFailures.Clear();
         }
 
         // After a repaint, faces no tile showed (a removed file, the other size)
@@ -353,7 +391,8 @@ namespace VRVlog.LilToonExporter
                 if (hovered != hoverTile) { hoverTile = hovered; Repaint(); }
             }
             var repaint = current.type == EventType.Repaint;
-            if (repaint) { closableTiles.Clear(); thumbnailsShown.Clear(); boardDrawn = false; }
+            // Slots the fold hides drop out of slotRects until they are drawn again.
+            if (repaint) { closableTiles.Clear(); thumbnailsShown.Clear(); slotRects.Clear(); boardDrawn = false; }
             using (new EditorGUILayout.VerticalScope(new GUIStyle { padding = new RectOffset(16, 16, 12, 12) }))
             {
                 EditorGUILayout.LabelField(ExporterLocalization.T(transferMode ? "アプリに転送（通常）" : "VRMを書き出す"), EditorStyles.boldLabel);
@@ -384,10 +423,11 @@ namespace VRVlog.LilToonExporter
                         EditorGUILayout.Space(8);
                         if (current.type == EventType.Layout) RebuildBoard();
                         // A card dragged near the top or bottom edge scrolls the page.
-                        if (current.type == EventType.DragUpdated && DragAndDrop.GetGenericData(DragKey) is AnimationClip && pageView.Contains(current.mousePosition))
+                        if (current.type == EventType.DragUpdated && DragAndDrop.GetGenericData(DragKey) is AnimationClip)
                         {
-                            var step = current.mousePosition.y < pageView.y + 24 ? -8 : current.mousePosition.y > pageView.yMax - 24 ? 8 : 0;
-                            if (step != 0) { pageScroll.y = Mathf.Max(0, pageScroll.y + step); Repaint(); }
+                            var step = DragScroll(pageView, current.mousePosition, DropTargetAt(current.mousePosition), pageScroll.y,
+                                Mathf.Max(0, pageContentHeight - pageView.height));
+                            if (step != 0) { pageScroll.y += step; Repaint(); }
                         }
                         pageScroll = EditorGUILayout.BeginScrollView(pageScroll);
                         var pageHidden = pageView.height > 0 ? HideOutside(new Rect(pageScroll, pageView.size)) : null;
@@ -403,6 +443,7 @@ namespace VRVlog.LilToonExporter
                         EditorGUILayout.Space(16);
                         DrawSave();
                         DrawFeedback();
+                        if (current.type == EventType.Repaint) pageContentHeight = GUILayoutUtility.GetLastRect().yMax;
                         RestoreEvent(pageHidden);
                         EditorGUILayout.EndScrollView();
                         if (current.type == EventType.Repaint) pageView = GUILayoutUtility.GetLastRect();
@@ -523,20 +564,27 @@ namespace VRVlog.LilToonExporter
         bool CanSave => (transferMode || ExportAuthor.IsValid(author)) && !BlocksExport;
 
         // What the next step asks to fix before any export, to a file or to the app.
-        internal bool BlocksExport => excludedObjectEdits != null || presetErrors.Values.Any(value => value != null) ||
-            board == null || board.ExceedsLimit || board.HasDuplicateNames;
+        // It is the board part of BlockReason, so the two never disagree.
+        internal bool BlocksExport => BoardBlockReason() != null;
 
         // Why the save button is off, shown in the bottom bar; null when it can
         // save. The same messages stop the save when it is called anyway.
-        internal string BlockReason()
+        internal string BlockReason() =>
+            BoardBlockReason() ?? (!transferMode && !ExportAuthor.IsValid(author) ? ExporterLocalization.T(ExportAuthor.Required) : null);
+
+        // The reasons on the board itself, in the order the bottom bar names
+        // them; the author is asked apart because the transfer asks it later.
+        string BoardBlockReason()
         {
             if (excludedObjectEdits != null) return ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません");
             foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
                 if (presetErrors.TryGetValue(preset, out var reason) && reason != null) return reason;
-            if (board == null) return null;
+            // A reason kept for a preset outside the board order still stops it.
+            var other = presetErrors.Values.FirstOrDefault(value => value != null);
+            if (other != null) return other;
+            if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
             if (board.ExceedsLimit) return string.Format(ExporterLocalization.T(OverLimitFormat), board.OverLimitBy);
             if (board.HasDuplicateNames) return DuplicateNamesText(ExporterLocalization.T(DuplicateNamesFormat));
-            if (!transferMode && !ExportAuthor.IsValid(author)) return ExporterLocalization.T(ExportAuthor.Required);
             return null;
         }
 
@@ -626,6 +674,13 @@ namespace VRVlog.LilToonExporter
         static readonly UniVRM10.ExpressionPreset[] MainPresets = ExperimentalExpressionCaptureSession.PresetGroups
             .Take(ExpressionSlotLayout.MainGroups).SelectMany(group => group.Presets).ToArray();
 
+        // The slots on screen: the 13, and gaze and neutral while the fold is
+        // open. The header's confirm button counts and confirms these only, so
+        // its number matches the dashed slots the user can see.
+        internal static UniVRM10.ExpressionPreset[] ShownPresets(bool extraOpen) => extraOpen
+            ? ExperimentalExpressionCaptureSession.PresetGroups.SelectMany(group => group.Presets).ToArray()
+            : MainPresets;
+
         bool LargeThumbnails => largeThumbnails ??= EditorPrefs.GetBool(LargeThumbnailsPreference, false);
         bool ShowExtraPresets => showExtraPresets ??= EditorPrefs.GetBool(ExtraPresetsPreference, false);
 
@@ -651,7 +706,9 @@ namespace VRVlog.LilToonExporter
             var right = sizeLabel.x - 8;
             // The confirm button follows the caption text, not the right edge.
             var caption = string.Format(ExporterLocalization.T("VRMの表情 {0}・ドロップで入れ替え"), Count(MainPresets));
-            var automatic = board.AutomaticCount();
+            // The button counts and confirms the same slots: the ones on screen.
+            var shown = ShownPresets(ShowExtraPresets);
+            var automatic = board.AutomaticCount(shown);
             var buttonWidth = automatic > 0 ? Mathf.Min(150, Mathf.Max(0, right - header.x) * .5f) : 0;
             ExpressionSlotLayout.CaptionAndButton(header.x, right, dimMini.CalcSize(new GUIContent(caption)).x, buttonWidth, out var captionWidth, out var buttonX);
             var captionRect = new Rect(header.x, header.y + 2, captionWidth, 18);
@@ -660,7 +717,7 @@ namespace VRVlog.LilToonExporter
             {
                 var label = string.Format(ExporterLocalization.T("自動の候補{0}件を確定"), automatic);
                 var button = new Rect(buttonX, header.y + 2, buttonWidth, 18);
-                if (GUI.Button(button, new GUIContent(Fit(label, EditorStyles.miniButton, buttonWidth - 8), label), EditorStyles.miniButton)) Queue(ConfirmAutomatic);
+                if (GUI.Button(button, new GUIContent(Fit(label, EditorStyles.miniButton, buttonWidth - 8), label), EditorStyles.miniButton)) Queue(() => ConfirmAutomatic(shown));
             }
 
             // The slots are placed for the width of the last repaint, so every
@@ -810,7 +867,33 @@ namespace VRVlog.LilToonExporter
             var right = new Rect(left.xMax + 8, area.y, rightWidth, area.height);
             DrawOtherPanel(left);
             DrawExcludedPanel(right);
-            if (Event.current.type == EventType.Repaint) expressionDropRect = ScreenRect(left);
+            if (Event.current.type == EventType.Repaint) { expressionDropRect = ScreenRect(left); excludedDropRect = ScreenRect(right); }
+        }
+
+        internal const float DragScrollBand = 24, DragScrollStep = 8;
+
+        // How far a card held at pointer scrolls the page on one drag event.
+        // The page scrolls only inside the band at the top or bottom edge and
+        // stops at either end. Over a drop target it scrolls only until that
+        // target is whole in the view: the target moves toward the middle and
+        // stays under the pointer, instead of running away from it.
+        // target: the slot or panel under the pointer, null when none.
+        internal static float DragScroll(Rect view, Vector2 pointer, Rect? target, float scroll, float maxScroll)
+        {
+            if (view.height <= 0 || !view.Contains(pointer)) return 0;
+            var step = pointer.y < view.y + DragScrollBand ? -DragScrollStep : pointer.y > view.yMax - DragScrollBand ? DragScrollStep : 0;
+            if (step == 0) return 0;
+            if (target is Rect rect && (step < 0 ? rect.yMin >= view.yMin : rect.yMax <= view.yMax)) return 0;
+            return Mathf.Clamp(scroll + step, 0, Mathf.Max(0, maxScroll)) - scroll;
+        }
+
+        // The slot or panel under a window position, from the last repaint.
+        Rect? DropTargetAt(Vector2 point)
+        {
+            foreach (var rect in slotRects.Values) if (rect.Contains(point)) return rect;
+            if (expressionDropRect.Contains(point)) return expressionDropRect;
+            if (excludedDropRect.Contains(point)) return excludedDropRect;
+            return null;
         }
 
         Rect DrawPanelFrame(Rect rect, Place target, string title, string caption)
@@ -1037,10 +1120,10 @@ namespace VRVlog.LilToonExporter
             ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
         }
 
-        void ConfirmAutomatic()
+        void ConfirmAutomatic(UniVRM10.ExpressionPreset[] presets)
         {
             RebuildBoard();
-            board.ConfirmAutomatic();
+            board.ConfirmAutomatic(presets);
             SaveChoices();
             RefreshPresetErrors();
         }
