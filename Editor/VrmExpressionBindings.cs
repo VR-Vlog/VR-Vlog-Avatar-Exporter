@@ -183,8 +183,8 @@ namespace VRVlog.LilToonExporter
             return changed ? glb.Write() : bytes;
         }
 
-        internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
-        internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。動作を確認してください。";
+        internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
+        internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
         private static readonly string[] BindKeys = { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" };
         private static readonly string[] OverrideKeys = { "overrideBlink", "overrideLookAt", "overrideMouth" };

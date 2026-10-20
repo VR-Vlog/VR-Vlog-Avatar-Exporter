@@ -165,7 +165,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Presets(output).Keys, Is.EquivalentTo(new[] { "happy" }), "One menu face fills one emotion.");
             Assert.That(((Dictionary<string, object>)Expressions(output)["custom"]).ContainsKey("笑顔"), Is.True, "The menu face stays selectable.");
             Assert.That(filled, Is.EqualTo(new[] { ("happy", "笑顔") }));
-            Assert.That(warnings, Does.Contain("happy: 名前から自動で設定しました（笑顔）。動作を確認してください。"));
+            Assert.That(warnings, Does.Contain("happy: 名前から自動で設定しました（笑顔）。書き出したVRMで表情の動きを確認してください。"));
 
             var parsed = GlbDocument.Read(output).Json;
             var expressions = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)parsed["extensions"])["VRMC_vrm"])["expressions"];
@@ -238,7 +238,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(((Dictionary<string, object>)presets["angry"]).ContainsKey("overrideLookAt"), Is.False);
             Assert.That(Canonical(((Dictionary<string, object>)presets["happy"])["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
             Assert.That(filled, Is.EquivalentTo(new[] { ("angry", "Fcl_ALL_Angry"), ("happy", "Fcl_ALL_Joy") }));
-            Assert.That(warnings, Does.Contain("angry: 名前から自動で設定しました（Fcl_ALL_Angry）。動作を確認してください。"));
+            Assert.That(warnings, Does.Contain("angry: 名前から自動で設定しました（Fcl_ALL_Angry）。書き出したVRMで表情の動きを確認してください。"));
         }
 
         [Test]
