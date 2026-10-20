@@ -148,6 +148,16 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Rect View = new Rect(0, 100, 600, 400);
 
         [Test]
+        public void PanelHeightStaysInsideItsRangeAndThePageView()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.ShownPanelHeight(450, 0), Is.EqualTo(450), "Before the first repaint the saved height is used.");
+            Assert.That(ExperimentalExpressionCaptureWindow.ShownPanelHeight(20, 800), Is.EqualTo(ExperimentalExpressionCaptureWindow.MinPanelHeight));
+            Assert.That(ExperimentalExpressionCaptureWindow.ShownPanelHeight(5000, 0), Is.EqualTo(ExperimentalExpressionCaptureWindow.MaxPanelHeight));
+            Assert.That(ExperimentalExpressionCaptureWindow.ShownPanelHeight(600, 400), Is.LessThan(400), "The bottom edge stays inside a small window.");
+            Assert.That(ExperimentalExpressionCaptureWindow.ShownPanelHeight(600, 100), Is.EqualTo(ExperimentalExpressionCaptureWindow.MinPanelHeight), "A tiny window keeps one row.");
+        }
+
+        [Test]
         public void DragScrollMovesOnlyNearTheEdges()
         {
             Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 110), null, 200, 1000), Is.EqualTo(-ExperimentalExpressionCaptureWindow.DragScrollStep));
