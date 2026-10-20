@@ -1578,7 +1578,9 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70 + index));
             try
             {
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show restores the place the editor saved for this window, so the
+                // size is set after it; a shorter window would scroll the panels away.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
