@@ -82,36 +82,51 @@ namespace VRVlog.LilToonExporter
         static string Stripped(string normalized) =>
             Regex.Replace(Regex.Replace(normalized, @"^\d+_", ""), "_(l|r|left|right)$", "");
 
-        internal string PartOf(string name)
+        internal string PartOf(string name) => PartOf(name, out _);
+
+        // Listed is false for a name the table does not list.
+        internal string PartOf(string name, out bool listed)
         {
             var key = Normalize(name);
-            if (parts.TryGetValue(key, out var part)) return part;
-            if (parts.TryGetValue(Stripped(key), out part)) return part;
+            listed = parts.TryGetValue(key, out var part) || parts.TryGetValue(Stripped(key), out part);
+            if (listed) return part;
             // A Latin name that names one whole emotion (Fcl_ALL_Joy) is the whole face.
             var match = ExpressionNameInference.MatchEmotion(name, latinOnly: true);
             return match != null ? "whole." + match.Value.Preset : null;
         }
 
+        // The parts that support each emotion a face can be guessed as from parts.
+        static readonly Dictionary<string, string[]> Supporting = new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            { "happy", new[] { "eye.happy", "mouth.smile", "mouth.open_smile" } },
+            { "relaxed", new[] { "eye.relaxed" } },
+            { "surprised", new[] { "eye.wide", "mouth.o", "brow.up" } },
+        };
+
         // The emotion of a face from the shapes it moves and their weights
-        // (0-100), with its support: 3 for a whole-face name, otherwise the
-        // number of face parts that agree. Null when the parts do not name
-        // exactly one emotion, when only one part moves, when the parts say
-        // sad or angry without a whole-face name, or when the eyes are a
-        // gimmick (hearts, stars, spirals).
+        // (0-100), with its support: 3 for a listed whole-face name, 1 for an
+        // unlisted one that only reads as an emotion, otherwise the number of
+        // part kinds (eye, mouth, brow) whose part shows the emotion. Null
+        // when the parts do not name exactly one emotion, when only one part
+        // kind moves, when the parts say sad or angry without a whole-face
+        // name, or when the eyes are a gimmick (hearts, stars, spirals).
         internal (ExpressionPreset Preset, int Support)? Classify(IEnumerable<(string Shape, float Weight)> shapes)
         {
             if (parts.Count == 0 || shapes == null) return null;
             var found = new HashSet<string>(StringComparer.Ordinal);
+            var listedWhole = false;
             foreach (var (shape, weight) in shapes)
             {
                 if (weight < MinWeight) continue;
-                var part = PartOf(shape);
-                if (part != null) found.Add(part);
+                var part = PartOf(shape, out var listed);
+                if (part == null) continue;
+                found.Add(part);
+                if (listed && part.StartsWith("whole.", StringComparison.Ordinal)) listedWhole = true;
             }
             if (found.Contains("eye.gimmick")) return null;
             var whole = found.Where(part => part.StartsWith("whole.", StringComparison.Ordinal)).Select(part => part.Substring(6)).Distinct().ToArray();
             if (whole.Length > 1) return null;
-            if (whole.Length == 1) return Preset(whole[0], 3);
+            if (whole.Length == 1) return Preset(whole[0], listedWhole ? 3 : 1);
 
             bool Has(string part) => found.Contains(part);
             var smile = Has("mouth.smile") || Has("mouth.open_smile");
@@ -137,7 +152,8 @@ namespace VRVlog.LilToonExporter
             // ambiguous instead of happy.
             var emotion = result.First();
             if (emotion == "sad" || emotion == "angry") return null;
-            return Preset(emotion, kinds);
+            // A blink or a viseme moving next to the emotion does not support it.
+            return Preset(emotion, Supporting[emotion].Where(found.Contains).Select(part => part.Split('.')[0]).Distinct().Count());
         }
 
         static (ExpressionPreset Preset, int Support)? Preset(string name, int support) =>

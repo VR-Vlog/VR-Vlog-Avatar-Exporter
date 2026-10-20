@@ -76,7 +76,8 @@ namespace VRVlog.LilToonExporter
                 return string.Format(ExporterLocalization.T("表情は名前から自動・書き出さないオブジェクト{0}件"), excludedCount);
             }
             var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
-            return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/5・書き出さないオブジェクト{1}件"), board.SlotCount, board.ExcludedObjectCount);
+            return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/{1}・書き出さないオブジェクト{2}件"),
+                board.SlotCount, ExperimentalExpressionCaptureWindow.MainSlotCount, board.ExcludedObjectCount);
         }
 
         // Null when the detailed transfer can export this avatar.
