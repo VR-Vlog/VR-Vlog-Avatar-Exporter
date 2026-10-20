@@ -94,9 +94,10 @@ def publisher_from_environment(environment):
             and environment.get("GITHUB_REPOSITORY_ID") == PUBLISHER_REPOSITORY_ID and isinstance(workflow_ref, str)
             and isinstance(ref, str) and workflow_ref == f"{repository}/{PUBLISHER_WORKFLOW}@{ref}",
             "Publication requires the fixed publisher workflow context")
-    require((event == "workflow_dispatch" and ref == "refs/heads/main")
+    beta_tag = re.fullmatch(r"refs/tags/v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-beta\.(?:0|[1-9][0-9]*)", ref)
+    require((event == "workflow_dispatch" and (ref == "refs/heads/main" or beta_tag))
             or (event == "release" and re.fullmatch(r"refs/tags/v[0-9A-Za-z][0-9A-Za-z.+-]*", ref)),
-            "Publication requires main dispatch or a release tag context")
+            "Publication requires main dispatch, an authenticated beta tag dispatch or a release tag context")
     publisher = {"repository": repository, "workflow": PUBLISHER_WORKFLOW,
                  "source_commit": environment.get("GITHUB_SHA")}
     for key, variable in (("run_number", "GITHUB_RUN_NUMBER"), ("run_id", "GITHUB_RUN_ID")):

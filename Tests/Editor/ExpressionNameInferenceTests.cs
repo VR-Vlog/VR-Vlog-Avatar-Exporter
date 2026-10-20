@@ -521,7 +521,8 @@ namespace VRVlog.LilToonExporter.Tests
             new[] { "", "", "", "", "", "", "", "", "", "", aa, e, i, o, u };
 
         static byte[] Mouth(byte[] bytes, string renderer, string[] visemes, List<string> warnings = null) =>
-            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, visemeRenderer: renderer, visemeShapes: visemes);
+            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false,
+                descriptor: VrmExpressionBindings.DescriptorVisemes.FromLipSync(renderer, visemes));
 
         [Test]
         public void DescriptorVisemesFillMouthWhenShapeNamesMatchNoKnownName()

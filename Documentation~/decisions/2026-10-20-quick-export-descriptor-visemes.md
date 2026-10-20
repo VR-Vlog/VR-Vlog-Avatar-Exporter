@@ -25,3 +25,11 @@ viseme の BlendShape は、`VisemeSkinnedMesh` と同じ名前のノードの�
 
 - `ExpressionNameInferenceTests` に、記述子の viseme 名が既知の名前に合わない場合・既存の口の形が記述子より優先される場合・記述子の viseme が使えないとき名前の推定に戻る場合・Lip Sync のメッシュかその BlendShape を持つ唯一のメッシュに割り当てる場合（Lip Sync のメッシュが BlendShape を持たないときに別のメッシュへ回さないことを含む）の 4 件を足した。
 - EditMode で `ExpressionNameInferenceTests` と `ExportFallbackConfirmationTests`（97 件）、表情・メニュー・書き出し結果まわり（170 件）が通った。
+
+## develop との統合（2026-10-21）
+
+develop の `2026-10-19-descriptor-visemes.md` は、書き出し用のコピー（NDMF の処理後）の記述子を読み、`converter.Nodes` で `VisemeSkinnedMesh` の出力のノードを決める。統合後のかんたんの書き出しはこちらを使い、`DescriptorVisemes` を 1 つにまとめた。
+
+- 出力のノードが分かっているとき（`Node` が 0 以上）は、そのノードだけに割り当て、確認の警告を出さない。Face Mesh が出力に無いときは唯一のメッシュへ回さず、「Face Mesh が含まれていない」の警告にする。
+- メッシュの名前しか分からないとき（`FromLipSync`・`RendererName`）は、この記録の決定どおり、同じ名前のノード、無ければ BlendShape を持つ唯一のメッシュの順に探し、使った BlendShape 名を添えて警告する。
+- どちらも、morph target の数が合わないときは例外にせず名前の推定に回す。指定した口の形を作れなかったときは develop の 2 種類の警告を出す。

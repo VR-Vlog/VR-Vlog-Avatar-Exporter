@@ -8,6 +8,36 @@ namespace VRVlog.LilToonExporter
     // mistaken for a glTF node or morph target after mesh export.
     internal static class VrmExpressionBindings
     {
+        internal const string UnboundVisemeWarning = "口の形（aa・ih・ou・ee・oh）のVRM設定を一部作れませんでした。Avatar DescriptorのLip Syncで指定した変形が書き出したメッシュにありません。";
+        internal const string UnexportedVisemeMeshWarning = "口の形（aa・ih・ou・ee・oh）のVRM設定を一部作れませんでした。Avatar DescriptorのLip SyncのFace Meshが書き出したアバターに含まれていません。";
+
+        // VRChat Lip Sync (VisemeBlendShape). It names the mouth shapes
+        // whatever they are called, so it comes before the known names.
+        // The exporter reads it from the processed copy and knows the output
+        // Node of VisemeSkinnedMesh; a caller that only has the mesh's name
+        // sets RendererName instead.
+        internal sealed class DescriptorVisemes
+        {
+            // VisemeBlendShapes order: sil PP FF TH DD kk CH SS nn RR aa E I O U.
+            internal static readonly (int Slot, string Preset)[] Slots = {
+                (10, "aa"), (11, "ee"), (12, "ih"), (13, "oh"), (14, "ou"),
+            };
+            internal int Node = -1;
+            internal string RendererName;
+            // Only slots that named a shape. A null name could not reach the output.
+            internal readonly Dictionary<string, string> Shapes = new Dictionary<string, string>();
+
+            // The descriptor's Lip Sync mesh name and its 15 viseme shapes.
+            internal static DescriptorVisemes FromLipSync(string rendererName, IReadOnlyList<string> visemeShapes)
+            {
+                var result = new DescriptorVisemes { RendererName = rendererName };
+                foreach (var (slot, preset) in Slots)
+                    if (visemeShapes != null && slot < visemeShapes.Count && !string.IsNullOrEmpty(visemeShapes[slot]))
+                        result.Shapes[preset] = visemeShapes[slot];
+                return result;
+            }
+        }
+
         // emotionCandidates maps each custom expression this export registered
         // (by its final VRM name) to the text emotion inference reads for it,
         // such as its menu path; only those may fill an empty emotion.
@@ -15,14 +45,13 @@ namespace VRVlog.LilToonExporter
         // with shapeNames, a candidate whose label says nothing can still fill
         // an emotion its face clearly shows. Each filled emotion is added to
         // filledEmotions with the message format that explains it.
-        // visemeRenderer and visemeShapes are the VRChat descriptor's Lip Sync
-        // mesh name and its 15 viseme shapes; they fill an empty mouth preset
-        // before the known names do.
+        // descriptor is the VRChat descriptor's Lip Sync; it fills an empty
+        // mouth preset before the known names do.
         public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
             bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledEmotions = null,
             IReadOnlyDictionary<string, string> emotionCandidates = null,
             IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null,
-            string visemeRenderer = null, IReadOnlyList<string> visemeShapes = null)
+            DescriptorVisemes descriptor = null)
         {
             var glb = GlbDocument.Read(bytes);
             var vrm = Object(Object(glb.Json, "extensions"), "VRMC_vrm");
@@ -95,7 +124,7 @@ namespace VRVlog.LilToonExporter
                 // An authored preset, including an intentionally empty one,
                 // always wins over inferred raw mesh names.
                 if (presets != null && presets.ContainsKey(mapping.Preset)) continue;
-                if (VisemeBinding(nodes, meshes, visemeRenderer, visemeShapes, mapping.Preset) is { } viseme)
+                if (VisemeBinding(nodes, meshes, descriptor, mapping.Preset) is { } viseme)
                 {
                     if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
                     if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
@@ -103,7 +132,11 @@ namespace VRVlog.LilToonExporter
                         { "morphTargetBinds", new List<object> { viseme } }, { "isBinary", false }
                     };
                     changed = true;
-                    Warn(warnings, string.Format(ExporterLocalization.T(VisemeFilledFormat), mapping.Preset, visemeShapes[VisemeSlots[mapping.Preset]]));
+                    // The exporter's output node is the author's Face Mesh, so
+                    // that binding needs no check. A binding found by the mesh's
+                    // name may have landed on another mesh; say which shape.
+                    if (descriptor.Node < 0)
+                        Warn(warnings, string.Format(ExporterLocalization.T(VisemeFilledFormat), mapping.Preset, descriptor.Shapes[mapping.Preset]));
                     continue;
                 }
                 var bindings = new List<object>();
@@ -144,6 +177,10 @@ namespace VRVlog.LilToonExporter
                 changed = true;
                 Warn(warnings, $"{mapping.Preset}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。");
             }
+            // Only slots that named a shape count. Empty slots stay silent as
+            // before, and a known alias that bound the preset is enough.
+            if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
+                Warn(warnings, LipSyncMeshInOutput(nodes, descriptor) ? UnboundVisemeWarning : UnexportedVisemeMeshWarning);
             if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates, emotionShapes, shapeNames))
             {
                 changed = true;
@@ -157,22 +194,17 @@ namespace VRVlog.LilToonExporter
 
         internal const string VisemeFilledFormat = "{0}: VRChatのリップシンク設定から自動で設定しました（{1}）。書き出したVRMで口の動きを確認してください。";
 
-        // VRChat Lip Sync viseme slots (sil, PP, FF, TH, DD, kk, CH, SS, nn,
-        // RR, aa, E, I, O, U) that name a VRM mouth preset.
-        private static readonly Dictionary<string, int> VisemeSlots = new Dictionary<string, int> {
-            { "aa", 10 }, { "ee", 11 }, { "ih", 12 }, { "oh", 13 }, { "ou", 14 }
-        };
-
-        // The descriptor's Lip Sync shape for a mouth preset, bound on the node
-        // named like the Lip Sync mesh. Only when no node has that name (an
-        // optimizer merged or renamed it) is the one mesh that has the shape
-        // used. Otherwise null, and the known names decide.
-        private static Dictionary<string, object> VisemeBinding(List<object> nodes, List<object> meshes, string renderer,
-            IReadOnlyList<string> shapes, string preset)
+        // The descriptor's Lip Sync shape for a mouth preset, bound only on the
+        // Lip Sync mesh: its output node when the exporter knows it, otherwise
+        // the nodes named like it. Only for a caller that knows just the name,
+        // and only when no node has it (an optimizer merged or renamed it), is
+        // the one mesh that has the shape used. An exporter-known Face Mesh
+        // missing from the output binds nothing. Otherwise null, and the known
+        // names decide.
+        private static Dictionary<string, object> VisemeBinding(List<object> nodes, List<object> meshes, DescriptorVisemes descriptor, string preset)
         {
-            if (shapes == null || !VisemeSlots.TryGetValue(preset, out var slot) || slot >= shapes.Count || string.IsNullOrEmpty(shapes[slot]))
+            if (descriptor == null || !descriptor.Shapes.TryGetValue(preset, out var shape) || string.IsNullOrEmpty(shape))
                 return null;
-            var shape = shapes[slot];
             var all = MeshTargetNames(nodes, meshes).ToList();
             int Target(List<object> names)
             {
@@ -185,9 +217,9 @@ namespace VRVlog.LilToonExporter
                 }
                 return found;
             }
-            var named = all.Where(item => renderer != null && nodes[item.Node] is Dictionary<string, object> node &&
-                node.TryGetValue("name", out var name) && string.Equals(name as string, renderer, StringComparison.Ordinal)).ToList();
-            var candidates = (named.Count > 0 ? named : all).Where(item => Target(item.Names) != -1).ToList();
+            var face = all.Where(item => IsLipSyncMesh(nodes, item.Node, descriptor)).ToList();
+            var byName = descriptor.Node < 0 && descriptor.RendererName != null && face.Count == 0;
+            var candidates = (byName ? all : face).Where(item => Target(item.Names) != -1).ToList();
             if (candidates.Count != 1) return null;
             var (nodeIndex, _, mesh, names) = candidates[0];
             var target = Target(names);
@@ -201,6 +233,14 @@ namespace VRVlog.LilToonExporter
             }
             return new Dictionary<string, object> { { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 } };
         }
+
+        private static bool IsLipSyncMesh(List<object> nodes, int nodeIndex, DescriptorVisemes descriptor) =>
+            descriptor.Node >= 0 ? nodeIndex == descriptor.Node
+                : descriptor.RendererName != null && nodes[nodeIndex] is Dictionary<string, object> node &&
+                  node.TryGetValue("name", out var name) && string.Equals(name as string, descriptor.RendererName, StringComparison.Ordinal);
+
+        private static bool LipSyncMeshInOutput(List<object> nodes, DescriptorVisemes descriptor) =>
+            descriptor.Node >= 0 && descriptor.Node < nodes.Count || Enumerable.Range(0, nodes.Count).Any(index => IsLipSyncMesh(nodes, index, descriptor));
 
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。動作を確認してください。";

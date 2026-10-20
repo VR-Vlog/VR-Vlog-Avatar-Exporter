@@ -1,6 +1,8 @@
 name: Build release candidate
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       expected_commit:
@@ -26,7 +28,7 @@ jobs:
           persist-credentials: false
       - name: Require exact main source
         env:
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
         run: |
           test "$GITHUB_SHA" = "$EXPECTED_COMMIT"
           test "$GITHUB_REF" = refs/heads/main
@@ -41,7 +43,7 @@ jobs:
         run: python3 Tools/run-validation.py --report work/validation.json
       - name: Build and inspect the candidate
         env:
-          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_COMMIT: ${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}
         run: python3 Tools/build-release-candidate.py --expected-commit "$EXPECTED_COMMIT" --report work/validation.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

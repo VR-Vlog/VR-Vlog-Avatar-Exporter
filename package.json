@@ -1,6 +1,6 @@
 {
   "name": "com.vrvlog.liltoon-vrm-exporter",
-  "version": "0.11.15",
+  "version": "0.11.16-beta.1",
   "vrvlogCloudTransfer": true,
   "displayName": "VR Vlog lilToon VRM Exporter",
   "description": "Exports a VRM 1.0 MToon fallback and validated lilToon extension in one step.",

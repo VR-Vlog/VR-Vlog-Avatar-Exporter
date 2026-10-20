@@ -556,6 +556,13 @@ class PublicationTests(unittest.TestCase):
         release = dict(environment, GITHUB_EVENT_NAME="release", GITHUB_REF="refs/tags/v0.11.14-beta.1",
                        GITHUB_WORKFLOW_REF=publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@refs/tags/v0.11.14-beta.1")
         self.assertEqual(self.publisher, publication.publisher_from_environment(release))
+        beta_dispatch = dict(release, GITHUB_EVENT_NAME="workflow_dispatch")
+        self.assertEqual(self.publisher, publication.publisher_from_environment(beta_dispatch))
+        for ref in ("refs/tags/v0.11.16", "refs/tags/v0.11.16-beta.01", "refs/tags/v0.11.16-rc.1"):
+            invalid = dict(beta_dispatch, GITHUB_REF=ref,
+                           GITHUB_WORKFLOW_REF=publication.PUBLISHER_REPOSITORY + "/" + publication.PUBLISHER_WORKFLOW + "@" + ref)
+            with self.subTest(ref=ref), self.assertRaises(publication.PreparationError):
+                publication.publisher_from_environment(invalid)
         for key, value in (("GITHUB_ACTIONS", "false"), ("GITHUB_REPOSITORY", "fork/repository"),
                            ("GITHUB_REPOSITORY", publication.LEGACY_PUBLISHER_REPOSITORY),
                            ("GITHUB_REPOSITORY_ID", "1355769105"), ("GITHUB_REPOSITORY_ID", "01355769104"),

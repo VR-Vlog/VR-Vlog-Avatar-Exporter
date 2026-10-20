@@ -4,6 +4,6 @@
 - Copyright (c) 2020-2024 lilxyzw
 - ライセンス：MIT — [ライセンス全文](lilToon-LICENSE.txt)
 
-`AlphaMaskBaker.shader` と `LayerAlphaBaker.shader` はlilToon 2.3.4の処理を改変して使用しています。出典は [ltspass_baker.shader](https://github.com/lilxyzw/lilToon/blob/2.3.4/Assets/lilToon/Shader/ltspass_baker.shader) と [lil_common_frag.hlsl](https://github.com/lilxyzw/lilToon/blob/2.3.4/Assets/lilToon/Shader/Includes/lil_common_frag.hlsl) です。
+`AlphaMaskBaker.shader`・`LayerAlphaBaker.shader`・`EmissionMaskBaker.shader` はlilToon 2.3.4の処理を改変して使用しています。出典は [ltspass_baker.shader](https://github.com/lilxyzw/lilToon/blob/2.3.4/Assets/lilToon/Shader/ltspass_baker.shader) と [lil_common_frag.hlsl](https://github.com/lilxyzw/lilToon/blob/2.3.4/Assets/lilToon/Shader/Includes/lil_common_frag.hlsl) です。
 
 lilToon本体（2.0.0〜2.3.4）は別途導入が必要です。上の改変は2.3.4の処理を元にしており、導入済みの版によって変わりません。
