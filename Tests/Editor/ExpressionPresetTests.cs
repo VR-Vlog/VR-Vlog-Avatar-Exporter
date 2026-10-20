@@ -802,6 +802,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var assignment in chosen) session.SetPreset(Session.ParsePreset(assignment.Preset), assignment);
                 Assert.That(session.PresetError(ExpressionPreset.blinkLeft, chosen[0]), Is.Null);
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Null);
+                Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.False);
                 var bytes = session.Export("Test", "Tests", presets: chosen);
                 Assert.That(BoundShapes(bytes, "blinkLeft").Length, Is.EqualTo(1), "The unchanged 'Hair detail' is not part of the blink.");
                 Assert.That(BoundShapes(bytes, "blinkRight").Length, Is.EqualTo(1));
@@ -823,6 +824,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var error = session.PresetError(ExpressionPreset.blinkLeft, chosen[0]);
                 Assert.That(error, Is.Not.Null, "Both eyes move 'Hair detail' away from the baseline.");
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Not.Null);
+                Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.True, "The slot shows the short overlap text.");
+                Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkRight, chosen[1]), Is.True);
                 var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", presets: chosen));
                 Assert.That(thrown.Message, Is.EqualTo(error), "The export stops with the eye slot's own error.");
             }
