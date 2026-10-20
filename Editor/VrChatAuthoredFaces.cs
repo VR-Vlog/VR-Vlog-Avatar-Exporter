@@ -60,7 +60,11 @@ namespace VRVlog.LilToonExporter
                     var entry = new VrChatExpressionMenu.Entry {
                         Id = "authored-fx/" + layer + "/" + target.Path,
                         Name = "FXクリップ / " + clip.name,
-                        UsesFacialProjection = true
+                        ExportName = clip.name,
+                        UsesFacialProjection = true,
+                        // Not a menu control: it plays on contact or other
+                        // external input, like a hand gesture does.
+                        Source = VRVlog.Expressions.ExpressionSource.Gesture
                     };
                     try
                     {
@@ -100,7 +104,7 @@ namespace VRVlog.LilToonExporter
         {
             var layers = controller.layers; var origin = layer; var chain = new HashSet<int>();
             var parameters = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-            foreach (var parameter in controller.parameters)
+            foreach (var parameter in ExpressionDependencies.UniqueParameters(controller))
             {
                 if (parameter == null || string.IsNullOrEmpty(parameter.name) || parameters.ContainsKey(parameter.name))
                     throw new InvalidOperationException("FXの入力パラメーター宣言が不正・重複しています。");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using UnityEngine;
 using VRVlog.Expressions;
@@ -92,6 +93,10 @@ namespace VRVlog.LilToonExporter
                     if (channel.Curve != null && !SameCurve(channel.Curve, value.Curve)) throw Conflict(channel);
                     channel.Curve = value.Curve;
                 }
+                // The readers record an animated channel's static value as the
+                // clip's first pose, so a merged value must still match that.
+                // The value itself is not baked: the animation alone moves the
+                // channel, and the VRM expression takes its last frame.
                 foreach (var channel in origins.Values)
                 {
                     if (channel.Curve != null)
@@ -129,6 +134,45 @@ namespace VRVlog.LilToonExporter
             return plans;
         }
 
+        // The rebased export shape is one frame holding Evaluate(F) - Evaluate(rest).
+        // A single positive frame is linear, so raising the channel from rest
+        // up to F is that shape at (w - rest) / (F - rest). Anything else, such
+        // as lowering below rest or a curved multi-frame shape, returns null
+        // and stays a baked residual.
+        private static float? DirectWeight(Mesh original, Mesh copy, int shape, float rest, float weight, bool clampToSourceRange)
+        {
+            if (float.IsNaN(rest) || float.IsInfinity(rest) || float.IsNaN(weight) || float.IsInfinity(weight)) return null;
+            if (original.GetBlendShapeFrameCount(shape) != 1) return null;
+            var frame = (double)original.GetBlendShapeFrameWeight(shape, 0);
+            if (!(frame > 0) || double.IsInfinity(frame)) return null;
+            var exported = copy.GetBlendShapeIndex(original.GetBlendShapeName(shape));
+            if (exported < 0 || copy.GetBlendShapeFrameCount(exported) != 1) return null;
+            var r = clampToSourceRange ? AvatarBaseShape.ClampSourceWeight(original, shape, rest) : rest;
+            var w = clampToSourceRange ? AvatarBaseShape.ClampSourceWeight(original, shape, weight) : weight;
+            if (r > w || w > frame || frame <= r) return null;
+            return (float)((w - r) / (frame - r));
+        }
+
+        // An animated channel moves the rebased export shape directly when the
+        // whole curve stays between rest and the shape's single frame, where
+        // the shape is linear and Unity clamps nothing. The two points are then
+        // rest (moves nothing) and the frame (the export shape at full weight).
+        private static bool DirectAnimation(Mesh original, Mesh copy, int shape, float rest, double minimum, double maximum,
+            bool clampToSourceRange, out double from, out double to)
+        {
+            from = to = 0;
+            if (original.GetBlendShapeFrameCount(shape) != 1) return false;
+            var frame = original.GetBlendShapeFrameWeight(shape, 0);
+            if (DirectWeight(original, copy, shape, rest, frame, clampToSourceRange) != 1f) return false;
+            if (double.IsNaN(minimum) || double.IsInfinity(minimum) || double.IsNaN(maximum) || double.IsInfinity(maximum)) return false;
+            if (clampToSourceRange && (AvatarBaseShape.ClampSourceWeight(original, shape, minimum) != minimum ||
+                AvatarBaseShape.ClampSourceWeight(original, shape, maximum) != maximum)) return false;
+            from = clampToSourceRange ? AvatarBaseShape.ClampSourceWeight(original, shape, rest) : rest;
+            to = frame;
+            // Points keep the animation schema's bounds; a larger frame is baked.
+            return from >= -10000 && to <= 10000 && from <= minimum && maximum <= to && to > from;
+        }
+
         internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
             => Bake(source, clone, menu, meshes, warnings, null);
@@ -149,11 +193,14 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(string.Join(", ", group.Select(d => d.Name).Distinct()) + ": " + group.Key);
             // Unique internal names survive UniVRM's renderer/node reordering.
             // Bind against the actual exported names, never guessed mesh indices.
-            var prefix = "__VRVlog_Menu_" + Guid.NewGuid().ToString("N") + "_";
-            var serial = 0;
+            // Names hash the renderer, entry and source channels, so the same
+            // avatar exports the same names; _2, _3 settle repeated inputs.
+            var usedNames = DeterministicNames.BlendShapeNames(clone);
+            string PathOf(SkinnedMeshRenderer skin) => UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform);
+            string Number(double value) => value.ToString("R", CultureInfo.InvariantCulture);
             var clampToSourceRange = UnityEditor.PlayerSettings.legacyClampBlendShapeWeights;
             long generatedBytes = 0;
-            var basis = new Dictionary<(Mesh mesh, int shape, double initial, double value), string>();
+            var basis = new Dictionary<(Mesh mesh, int shape, double rest, double value), string>();
             // A zero residual remains zero at every accumulated weight, even
             // with legacy clamping. Only these scalar markers may share an
             // index; nonzero poses retain independent simultaneous targets.
@@ -209,7 +256,23 @@ namespace VRVlog.LilToonExporter
             foreach (var plan in plans)
             {
                 var entry = plan.Entry;
-                var expression = new VrmMenuExpressions.Expression { Name = entry.Name };
+                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source };
+                // The source shapes and end weights, before any of them is
+                // baked into a menu target, for emotion inference.
+                foreach (var group in plan.Poses)
+                    foreach (var value in group.Channels.Where(value => value.Curve == null))
+                    {
+                        var index = group.Mesh.GetBlendShapeIndex(value.Shape);
+                        if (index >= 0 && value.Weight != group.Rest[index]) expression.Shapes.Add((value.Shape, value.Weight));
+                    }
+                foreach (var animated in plan.Animation)
+                {
+                    var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
+                    var end = animated.Curve.Evaluate(entry.Duration);
+                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)end));
+                }
+                // Binds that change the face at time = duration; a zero marker does not.
+                var moved = 0;
                 foreach (var group in plan.Poses)
                 {
                     var originalMesh = group.Mesh;
@@ -219,20 +282,36 @@ namespace VRVlog.LilToonExporter
                         copy.sharedMesh = UnityEngine.Object.Instantiate(copy.sharedMesh);
                         meshes.Add(copy.sharedMesh);
                     }
+                    // Animated channels belong to the animation alone; the
+                    // static shape keeps them at rest.
+                    var fixedChannels = group.Channels.Where(value => value.Curve == null).ToArray();
+                    if (fixedChannels.Length == 0) continue;
                     var rest = group.Rest;
                     var pose = (float[])rest.Clone();
-                    foreach (var value in group.Channels)
+                    var residual = new List<Channel>();
+                    var direct = 0;
+                    foreach (var value in fixedChannels)
                     {
                         var index = originalMesh.GetBlendShapeIndex(value.Shape);
                         if (index < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + value.Shape);
-                        pose[index] = value.Weight;
+                        var weight = DirectWeight(originalMesh, copy.sharedMesh, index, rest[index], value.Weight, clampToSourceRange);
+                        if (weight == null) { residual.Add(value); pose[index] = value.Weight; continue; }
+                        if (weight.Value == 0f) continue;
+                        expression.Direct.Add((copy, value.Shape, weight.Value));
+                        direct++;
                     }
+                    moved += direct;
                     var delta = AvatarBaseShape.ExpressionDeltas(originalMesh, rest, pose, clampToSourceRange);
                     var zero = Zero(delta);
+                    if (!zero) moved++;
+                    // The direct binds already keep this entry selectable.
+                    if (zero && direct > 0) continue;
                     if (!zero || !zeroScalarTargets.TryGetValue(copy.sharedMesh, out var name))
                     {
                         Reserve(originalMesh);
-                        name = prefix + serial++;
+                        var parts = new List<string> { "Menu", PathOf(copy), entry.Name };
+                        foreach (var value in residual) { parts.Add(value.Path); parts.Add(value.Shape); parts.Add(Number(value.Weight)); }
+                        name = DeterministicNames.Unique("__VRVlog_Menu_" + DeterministicNames.Hash(parts.ToArray()), usedNames);
                         copy.sharedMesh.AddBlendShapeFrame(name, 100f, delta.Vertices, delta.Normals, delta.Tangents);
                         if (zero) zeroScalarTargets.Add(copy.sharedMesh, name);
                     }
@@ -242,16 +321,34 @@ namespace VRVlog.LilToonExporter
                 {
                     expression.Animation = new ExpressionAnimationData { Duration = entry.Duration, Loop = entry.Loop };
                     var usedTargets = new HashSet<string>(StringComparer.Ordinal);
+                    var endsAwayFromRest = false;
                     foreach (var animated in plan.Animation)
                     {
                         var original = animated.Mesh;
                         var copy = animated.Renderer.sharedMesh;
                         var shape = original.GetBlendShapeIndex(animated.Shape);
+                        if (shape < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + animated.Shape);
                         animated.Curve.Range(out var minimum, out var maximum);
+                        if (animated.Curve.Evaluate(entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
+                        var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
+                        expression.Animation.Channels.Add(channel);
+                        if (DirectAnimation(original, copy, shape, animated.Rest[shape], minimum, maximum, clampToSourceRange, out var from, out var to))
+                        {
+                            var full = new ExpressionAnimationData.Point { Value = to };
+                            channel.Points.Add(new ExpressionAnimationData.Point { Value = from });
+                            channel.Points.Add(full);
+                            expression.DirectPoints.Add(full, (animated.Renderer, animated.Shape));
+                            continue;
+                        }
+                        // A constant curve outside the direct range would bake
+                        // one point, which Channel.Weights cannot blend.
+                        if (!(minimum < maximum)) throw new InvalidOperationException("表情のアニメーションの値が変化しません: " + entry.Name + " / " + animated.Shape);
                         // Morph residuals are affine between source frames.
                         // Enclose varying curves with canonical frame endpoints,
                         // so different extrema can use the same exact basis.
-                        var initial = animated.Curve.Evaluate(0);
+                        // Every residual is measured from rest, the shape a
+                        // point without a morph leaves in place.
+                        var rest = (double)animated.Rest[shape];
                         var frames = new SortedSet<double> { 0 };
                         for (var frame = 0; frame < original.GetBlendShapeFrameCount(shape); frame++)
                         {
@@ -263,40 +360,62 @@ namespace VRVlog.LilToonExporter
                         var knots = new SortedSet<double> { minimum, maximum };
                         if (minimum < maximum)
                         {
-                            var candidates = new SortedSet<double>(frames) { initial };
+                            var candidates = new SortedSet<double>(frames) { rest };
                             var lower = candidates.Where(weight => weight <= minimum).DefaultIfEmpty(minimum).Max();
                             var upper = candidates.Where(weight => weight >= maximum).DefaultIfEmpty(maximum).Min();
                             knots = new SortedSet<double> { lower, upper };
-                            // The initial value selects an endpoint when useful;
-                            // do not add an unnecessary interior point for it.
+                            // Rest selects an endpoint when useful; do not add
+                            // an unnecessary interior point for it.
                             foreach (var weight in frames) if (weight > lower && weight < upper) knots.Add(weight);
                         }
-                        var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         foreach (var weight in knots)
                         {
                             string target = null;
-                            if (weight != initial && (!basis.TryGetValue((copy, shape, initial, weight), out target) || usedTargets.Contains(target)))
+                            if (weight != rest && (!basis.TryGetValue((copy, shape, rest, weight), out target) || usedTargets.Contains(target)))
                             {
-                                var delta = AvatarBaseShape.AnimatedDeltas(original, shape, initial, weight, clampToSourceRange);
+                                var delta = AvatarBaseShape.AnimatedDeltas(original, shape, rest, weight, clampToSourceRange);
                                 var hash = Hash(delta);
                                 target = EquivalentTarget(copy, delta, usedTargets, hash);
                                 if (target == null)
                                 {
                                     Reserve(original);
-                                    target = ExpressionAnimationData.TargetPrefix + prefix + serial++;
+                                    target = DeterministicNames.Unique(ExpressionAnimationData.TargetPrefix + "__VRVlog_Menu_" + DeterministicNames.Hash("MenuAnimation",
+                                        PathOf(animated.Renderer), entry.Name, animated.Path, animated.Shape, Number(rest), Number(weight)), usedNames);
                                     copy.AddBlendShapeFrame(target, 100f, delta.Vertices, delta.Normals, delta.Tangents);
                                     if (!geometry.TryGetValue((copy, hash), out var names)) geometry.Add((copy, hash), names = new List<string>());
                                     names.Add(target);
                                 }
-                                basis[(copy, shape, initial, weight)] = target;
+                                basis[(copy, shape, rest, weight)] = target;
                             }
                             if (target != null) usedTargets.Add(target);
                             channel.Points.Add(new ExpressionAnimationData.Point { Value = weight, Target = target });
                         }
-                        expression.Animation.Channels.Add(channel);
+                    }
+                    // Every channel ending at rest is the neutral face even
+                    // when its final points are two binds that cancel out.
+                    if (endsAwayFromRest) moved += expression.FinalPoints().Count();
+                    // The loop ends on the neutral face. Keep the expression
+                    // selectable with the shared zero marker unless those
+                    // binds already do.
+                    if (moved == 0)
+                    {
+                        expression.EndsNeutral = true;
+                        var renderer = plan.Animation[0].Renderer;
+                        if (expression.Targets.Count == 0 && !expression.FinalPoints().Any())
+                        {
+                            if (!zeroScalarTargets.TryGetValue(renderer.sharedMesh, out var name))
+                            {
+                                Reserve(plan.Animation[0].Mesh);
+                                name = DeterministicNames.Unique("__VRVlog_Menu_" + DeterministicNames.Hash("Menu", PathOf(renderer), entry.Name), usedNames);
+                                var empty = new Vector3[renderer.sharedMesh.vertexCount];
+                                renderer.sharedMesh.AddBlendShapeFrame(name, 100f, empty, empty, empty);
+                                zeroScalarTargets.Add(renderer.sharedMesh, name);
+                            }
+                            expression.Targets.Add(name);
+                        }
                     }
                 }
-                if (expression.Targets.Count > 0) result.Add(expression);
+                if (expression.Targets.Count > 0 || expression.Direct.Count > 0 || expression.FinalPoints().Any()) result.Add(expression);
             }
             if (result.Count > 0) warnings?.Add($"VRChatから{result.Count}個の表情を登録しました。選択中は顔の形を保つため瞬き・口・視線の自動変形を止めます。");
             else warnings?.Add("VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。");

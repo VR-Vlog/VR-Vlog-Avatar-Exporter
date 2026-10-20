@@ -47,19 +47,30 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(entry.DeclaringType, Is.EqualTo(typeof(CloudVrmTransferWindow)));
                 Assert.That(entry.Name, Is.EqualTo("OpenSavedVrmForDevelopment"));
             }
+            // The expression board's "次へ" opens the detailed transfer the same way.
+            var detailed = (MethodInfo)exporter.GetMethod("DetailedTransferMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(detailed != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (detailed != null)
+            {
+                Assert.That(detailed.DeclaringType, Is.EqualTo(typeof(AppTransferWindow)));
+                Assert.That(detailed.Name, Is.EqualTo("OpenDetailed"));
+            }
         }
 
-        [Test]
-        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot()
+        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 48)]
+        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 49)]
+        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string path, int priority)
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
-            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod("OpenFromMenu", flags).GetCustomAttributes(typeof(MenuItem), false).Single();
-            Assert.That(entry.menuItem, Is.EqualTo("GameObject/VR Vlog/アプリに転送…"));
+            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Single();
+            Assert.That(entry.menuItem, Is.EqualTo(path));
             Assert.That(entry.validate, Is.False);
             // Without a priority in the creation block the Hierarchy context menu does not list the entry.
-            Assert.That(entry.priority, Is.EqualTo(49));
-            var validation = typeof(AppTransferWindow).GetMethod("CanOpenFromMenu", flags);
+            // The two entries are next to each other, the quick one first.
+            Assert.That(entry.priority, Is.EqualTo(priority));
+            var validation = typeof(AppTransferWindow).GetMethod(canOpen, flags);
             Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
+            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).menuItem, Is.EqualTo(path));
             var selection = Selection.objects;
             var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
             var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
@@ -102,7 +113,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(4));
+            Assert.That(members.Length, Is.EqualTo(11));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 

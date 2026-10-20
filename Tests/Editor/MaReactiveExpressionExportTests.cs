@@ -358,7 +358,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var count = VrmMenuExpressions.CountRegistered(bytes);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
-                const string name = "VRChat / Smile";
+                const string name = "Smile";
                 var present = imported.Vrm.Expression.CustomClips.Any(clip => clip.name == name);
                 CaptureEvidence(imported, name, present, count, permanentDeletion, parameterKind);
                 Assert.That(count, Is.EqualTo(1), string.Join("\n", warnings));

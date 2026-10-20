@@ -1,0 +1,335 @@
+{
+  "version": 1,
+  "note": "Normalized BlendShape names (NFKC, lower case, spaces/_/-/./middle dot -> _) and the part of the face each one moves. Built from faces judged by eye; each name was seen in two or more unrelated avatars.",
+  "minWeight": 50,
+  "labels": [
+    {
+      "label": "whole.angry",
+      "names": [
+        "angry"
+      ]
+    },
+    {
+      "label": "whole.surprised",
+      "names": [
+        "surprised"
+      ]
+    },
+    {
+      "label": "eye.angry",
+      "names": [
+        "eye_angry",
+        "つり目"
+      ]
+    },
+    {
+      "label": "eye.close",
+      "names": [
+        "blink",
+        "eye_blink",
+        "eye_close",
+        "eye_close_blink",
+        "vrc_eyelids_blink",
+        "まばたき"
+      ]
+    },
+    {
+      "label": "eye.close_x",
+      "names": [
+        "><",
+        "eye_><",
+        "はぅ"
+      ]
+    },
+    {
+      "label": "eye.gimmick",
+      "names": [
+        "eye_guruguru",
+        "eye_heart",
+        "eye_kyoro",
+        "eye_star",
+        "eye_白目",
+        "pupil_sick",
+        "pupil_star",
+        "ぐるぐる目",
+        "しいたけ",
+        "はぁと",
+        "はちゅ目",
+        "ハイライト消し",
+        "星目",
+        "白目"
+      ]
+    },
+    {
+      "label": "eye.happy",
+      "names": [
+        "eye_happy",
+        "eye_joy",
+        "eye_smile",
+        "笑い",
+        "笑い2"
+      ]
+    },
+    {
+      "label": "eye.jito",
+      "names": [
+        "eye_jito",
+        "eye_jitome",
+        "じと目",
+        "じと目2",
+        "ジト目"
+      ]
+    },
+    {
+      "label": "eye.other",
+      "names": [
+        "12_lookingdown",
+        "12_lookingup",
+        "eye_down",
+        "eye_highlight_main_big",
+        "eye_highlight_main_small",
+        "eye_left",
+        "eye_move_down",
+        "eye_move_up",
+        "eye_pupil_big",
+        "eye_pupil_down",
+        "eye_pupil_small",
+        "eye_pupil_up",
+        "eye_right",
+        "eye_small",
+        "eye_up",
+        "eyelid_thick",
+        "eyelid_thin",
+        "eyelookdownleft",
+        "eyelookdownright",
+        "eyelookinleft",
+        "eyelookinright",
+        "eyelookoutleft",
+        "eyelookoutright",
+        "eyelookupleft",
+        "eyelookupright",
+        "lookdown",
+        "lookleft",
+        "lookright",
+        "lookup",
+        "lowerlid",
+        "pupil_big",
+        "pupil_left",
+        "pupil_right",
+        "pupil_small",
+        "vrc_looking_down",
+        "vrc_looking_up",
+        "vrc_lowerlid_left",
+        "vrc_lowerlid_right",
+        "上を見る",
+        "下を見る",
+        "寄り目",
+        "瞳大",
+        "瞳小"
+      ]
+    },
+    {
+      "label": "eye.relaxed",
+      "names": [
+        "eye_nagomi",
+        "eye_和み",
+        "なごみ",
+        "なごみ2"
+      ]
+    },
+    {
+      "label": "eye.wide",
+      "names": [
+        "eye_big",
+        "eye_surprised",
+        "eye_驚き",
+        "eyewideleft",
+        "eyewideright",
+        "目大"
+      ]
+    },
+    {
+      "label": "eye.wink",
+      "names": [
+        "eye_wink_l",
+        "eye_wink_r",
+        "eyeblinkleft",
+        "eyeblinkright",
+        "なごみ右",
+        "なごみ左",
+        "ウィンク",
+        "ウィンク2",
+        "ウィンク2右",
+        "ウィンク右",
+        "ウインク",
+        "ウインク右"
+      ]
+    },
+    {
+      "label": "brow.angry",
+      "names": [
+        "eyebrow_angry",
+        "怒り",
+        "怒り右",
+        "怒り左",
+        "眉_怒り"
+      ]
+    },
+    {
+      "label": "brow.other",
+      "names": [
+        "上右",
+        "上左",
+        "下右",
+        "下左"
+      ]
+    },
+    {
+      "label": "brow.sad",
+      "names": [
+        "browinnerup",
+        "eyebrow_sad",
+        "困る",
+        "困る右",
+        "困る左",
+        "悲しい"
+      ]
+    },
+    {
+      "label": "brow.up",
+      "names": [
+        "上"
+      ]
+    },
+    {
+      "label": "mouth.angry",
+      "names": [
+        "mouth_angry"
+      ]
+    },
+    {
+      "label": "mouth.frown",
+      "names": [
+        "41_mth_angry",
+        "mouth_sad",
+        "mouthfrownleft",
+        "mouthfrownright",
+        "へ",
+        "口角下げ"
+      ]
+    },
+    {
+      "label": "mouth.o",
+      "names": [
+        "3",
+        "41_mth_surprise",
+        "mouth_△",
+        "mouth_○",
+        "□",
+        "▲",
+        "ロ"
+      ]
+    },
+    {
+      "label": "mouth.open_smile",
+      "names": [
+        "41_mth_smile2",
+        "41_mth_smile3",
+        "mouth_big",
+        "mouth_happy",
+        "mouth_triangle",
+        "mouth_wa",
+        "mouth_ω□",
+        "mouth_ワ",
+        "ω□",
+        "ワ"
+      ]
+    },
+    {
+      "label": "mouth.other",
+      "names": [
+        "mouth_awawa",
+        "mouth_cat",
+        "tongue_down",
+        "tongue_left",
+        "tongue_out",
+        "tongue_right",
+        "tongue_up",
+        "tongueout",
+        "ω",
+        "てへぺろ",
+        "ぺろっ",
+        "もぐもぐ",
+        "キバ",
+        "一文字",
+        "口上",
+        "口下"
+      ]
+    },
+    {
+      "label": "mouth.smile",
+      "names": [
+        "mouth_smile",
+        "mouth_smile_1",
+        "mouth_smile_2",
+        "mouth_v",
+        "mouth_ω",
+        "mouthsmileleft",
+        "mouthsmileright",
+        "smile",
+        "にっこり",
+        "にやり",
+        "にやり2",
+        "口角上げ"
+      ]
+    },
+    {
+      "label": "mouth.viseme",
+      "names": [
+        "a",
+        "aa",
+        "ah",
+        "ch",
+        "e",
+        "i",
+        "jawopen",
+        "mouth_a",
+        "mouth_e",
+        "mouth_i",
+        "mouth_i2",
+        "mouth_o",
+        "mouth_u",
+        "mouth_u2",
+        "mouthfunnel",
+        "o",
+        "oh",
+        "u",
+        "あ",
+        "あ2",
+        "い",
+        "う",
+        "え",
+        "えー",
+        "お",
+        "エー"
+      ]
+    },
+    {
+      "label": "cheek.blush",
+      "names": [
+        "blush",
+        "face_shy",
+        "other_blush",
+        "照れ",
+        "頬染め"
+      ]
+    },
+    {
+      "label": "tear",
+      "names": [
+        "汗",
+        "涙"
+      ]
+    }
+  ]
+}

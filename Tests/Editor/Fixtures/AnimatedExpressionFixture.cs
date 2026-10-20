@@ -21,7 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
             curve.Keys[0].OutTangent = 100; curve.Keys[0].OutWeight = .8;
             curve.Keys[1].InTangent = 0; curve.Keys[1].InWeight = .1;
             check(Math.Abs(curve.Evaluate(.7625) - 80) < .00001, "Weighted tangents solve Bezier time rather than treating time as its parameter.");
-            var animation = new ExpressionAnimationData { Expression = "VRChat / ジェスチャー / Cry", Duration = 1, Loop = true };
+            var animation = new ExpressionAnimationData { Expression = "Cry", Duration = 1, Loop = true };
             var channel = new ExpressionAnimationData.Channel { Curve = curve };
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 0, Target = ExpressionAnimationData.TargetPrefix + "low" });
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 50, Target = ExpressionAnimationData.TargetPrefix + "middle" });

@@ -97,6 +97,23 @@ namespace VRVlog.LilToonExporter
             return runtime as AnimatorController ?? throw new InvalidOperationException("FX Animator Controllerを取得できません。");
         }
 
+        // Unity resolves a repeated parameter name to one parameter. Collapse repeats only when every
+        // declaration agrees on type and defaults; conflicting ones stay for the callers' strict checks.
+        internal static AnimatorControllerParameter[] UniqueParameters(RuntimeAnimatorController runtime)
+        {
+            var parameters = Controller(runtime).parameters;
+            var first = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            foreach (var parameter in parameters.Where(parameter => parameter != null))
+            {
+                if (!first.TryGetValue(parameter.name, out var seen)) { first.Add(parameter.name, parameter); continue; }
+                if (seen.type != parameter.type || seen.defaultBool != parameter.defaultBool ||
+                    seen.defaultInt != parameter.defaultInt || !seen.defaultFloat.Equals(parameter.defaultFloat)) return parameters;
+            }
+            if (first.Count == parameters.Count(parameter => parameter != null)) return parameters;
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            return parameters.Where(parameter => parameter == null || names.Add(parameter.name)).ToArray();
+        }
+
         internal static Dictionary<AnimationClip, AnimationClip> Overrides(RuntimeAnimatorController runtime)
         {
             var result = new Dictionary<AnimationClip, AnimationClip>();
@@ -201,7 +218,7 @@ namespace VRVlog.LilToonExporter
             foreach (var controller in new[] { runtime }.Concat(source?.OtherControllers.Where(value => value != null) ??
                 Enumerable.Empty<RuntimeAnimatorController>()))
             {
-                foreach (var parameter in Controller(controller).parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     if (!declarations.TryGetValue(parameter.name, out var values))
                         declarations.Add(parameter.name, values = new List<AnimatorControllerParameter>());
@@ -232,7 +249,7 @@ namespace VRVlog.LilToonExporter
                         (selection == null || !selection.TryGetValue("IsLocal", out var selectedLocal) || selectedLocal == 1) &&
                         (fixedContext.Values.TryGetValue("IsLocal", out var local) ? local == 1 :
                             source.Defaults.TryGetValue("IsLocal", out local) && local == 1);
-                    foreach (var parameter in Controller(runtime).parameters)
+                    foreach (var parameter in UniqueParameters(runtime))
                     {
                         var name = parameter.name;
                         // Only a signal with actual cross-playable producers
@@ -335,7 +352,7 @@ namespace VRVlog.LilToonExporter
                     .SelectMany(layer => layer.Writes), StringComparer.Ordinal);
                 written.ExceptWith(preservedParameterWrites.Keys);
                 var invariant = new Dictionary<string, float>(StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     var name = parameter.name;
                     if (written.Contains(name) || parameter.type == AnimatorControllerParameterType.Trigger ||
@@ -379,7 +396,7 @@ namespace VRVlog.LilToonExporter
                 if (otherControllers.All(other => other.Unknown.Count == 0)) writers.ExceptWith(preservedParameterWrites.Keys);
                 var fixedValues = new Dictionary<string, float>(StringComparer.Ordinal);
                 if (defaults != null && selection != null)
-                    foreach (var parameter in controller.parameters)
+                    foreach (var parameter in UniqueParameters(controller))
                     {
                         var suppliedInput = fixedContext?.Values.ContainsKey(parameter.name) == true;
                         if (writers.Contains(parameter.name) || parameter.type == AnimatorControllerParameterType.Trigger ||
@@ -399,10 +416,10 @@ namespace VRVlog.LilToonExporter
                     {
                         HashSet<StateMachineBehaviour> reachedCommands = null;
                         if (fixedContext != null && controller.layers[index].syncedLayerIndex < 0 &&
-                            FixedExpressionContext.TryReachableFxCommands(controller.layers[index].stateMachine, fixedValues, controller.parameters, out var fixedReached))
+                            FixedExpressionContext.TryReachableFxCommands(controller.layers[index].stateMachine, fixedValues, UniqueParameters(controller), out var fixedReached))
                             reachedCommands = fixedReached;
                         else if (controller.layers[index].syncedLayerIndex < 0 &&
-                            TryFixedGateReads(controller.layers[index].stateMachine, controller.parameters, fixedValues, out var reads, out var reached))
+                            TryFixedGateReads(controller.layers[index].stateMachine, UniqueParameters(controller), fixedValues, out var reads, out var reached))
                         {
                             info[index].Reads.IntersectWith(reads);
                             reachedCommands = reached;
@@ -682,7 +699,7 @@ namespace VRVlog.LilToonExporter
             if (signals.Count == 0) return false;
             foreach (var signal in signals)
             {
-                var declarations = controller.parameters.Where(parameter => parameter.name == signal).ToArray();
+                var declarations = UniqueParameters(controller).Where(parameter => parameter.name == signal).ToArray();
                 if (declarations.Length != 1 || declarations[0].type != AnimatorControllerParameterType.Float ||
                     !NeutralShapeSnapshot.Finite(declarations[0].defaultFloat) || VrChatParameterDriver.BuiltIn.Contains(signal) ||
                     source?.ExternalParameters.Contains(signal) == true || source?.MenuInputs.Contains(signal) == true ||
@@ -787,18 +804,44 @@ namespace VRVlog.LilToonExporter
         // proven stationary default clip; gesture and timed layers still enter
         // the graph solely through their real property/parameter dependencies.
         internal static HashSet<EditorCurveBinding> StationaryMorphBindings(RuntimeAnimatorController runtime,
-            Func<string, bool> excludedPath = null)
+            Func<string, bool> excludedPath = null) => StationaryMorphBindings(StationaryLayers(runtime, excludedPath), excludedPath);
+
+        // Takes the result of StationaryLayers for the same runtime and
+        // exclusion, so one caller does not prove the same layers twice.
+        internal static HashSet<EditorCurveBinding> StationaryMorphBindings(Dictionary<int, AnimationClip> stationaryLayers,
+            Func<string, bool> excludedPath)
         {
+            var cache = ExpressionInspectCache.Current;
             var result = new HashSet<EditorCurveBinding>();
-            foreach (var clip in StationaryLayers(runtime, excludedPath).Values)
-                result.UnionWith(AnimationUtility.GetCurveBindings(clip).Where(binding => excludedPath?.Invoke(binding.path) != true));
+            foreach (var clip in stationaryLayers.Values)
+                result.UnionWith((cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Where(binding => excludedPath?.Invoke(binding.path) != true));
             return result;
         }
 
         internal static Dictionary<int, AnimationClip> StationaryLayers(RuntimeAnimatorController runtime,
             Func<string, bool> excludedPath = null)
         {
+            var cache = ExpressionInspectCache.Current;
             var result = new Dictionary<int, AnimationClip>();
+            foreach (var (index, clip) in cache?.StationaryCandidates(runtime) ?? StationaryCandidates(runtime))
+            {
+                if ((cache?.ObjectBindings(clip) ?? AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    .Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
+                var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
+                    .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
+                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
+                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                    !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
+                result.Add(index, clip);
+            }
+            return result;
+        }
+
+        // The graph-only part of StationaryLayers. It does not depend on path
+        // exclusion; the binding checks above run again for every caller.
+        internal static (int Index, AnimationClip Clip)[] StationaryCandidates(RuntimeAnimatorController runtime)
+        {
+            var result = new List<(int Index, AnimationClip Clip)>();
             var controller = Controller(runtime);
             var replacements = Overrides(runtime);
             var layers = controller.layers;
@@ -814,14 +857,9 @@ namespace VRVlog.LilToonExporter
                     state.timeParameterActive || state.speedParameterActive || state.mirrorParameterActive || state.cycleOffsetParameterActive ||
                     !(state.motion is AnimationClip clip)) continue;
                 if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
-                if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
-                var bindings = AnimationUtility.GetCurveBindings(clip).Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
-                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
-                    !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))) continue;
-                result.Add(index, clip);
+                result.Add((index, clip));
             }
-            return result;
+            return result.ToArray();
         }
 
         private static void RemoveIndependentAutomaticWriters(Layer[] layers, ISet<EditorCurveBinding> automatic,
@@ -865,7 +903,7 @@ namespace VRVlog.LilToonExporter
             otherWritten.ExceptWith(preservedWrites.Keys);
             var result = new Dictionary<string, float>(StringComparer.Ordinal);
             var initial = new Dictionary<string, float>(StringComparer.Ordinal);
-            foreach (var parameter in controller.parameters)
+            foreach (var parameter in UniqueParameters(controller))
             {
                 var suppliedInput = fixedContext?.Values.ContainsKey(parameter.name) == true;
                 if (otherWritten.Contains(parameter.name) || !suppliedInput && source?.ExternalParameters.Contains(parameter.name) == true ||
@@ -894,7 +932,7 @@ namespace VRVlog.LilToonExporter
                 var programs = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
                 var reachable = Inspect(runtime, excludedPath, programs, new List<string>(), true, result);
                 var curveWrites = new HashSet<string>(reachable.SelectMany(layer => layer.CurveWrites), StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters.Where(parameter => initial.ContainsKey(parameter.name) && !result.ContainsKey(parameter.name)))
+                foreach (var parameter in UniqueParameters(controller).Where(parameter => initial.ContainsKey(parameter.name) && !result.ContainsKey(parameter.name)))
                 {
                     if (curveWrites.Contains(parameter.name)) continue;
                     var operations = programs.Values.SelectMany(program => program.Operations).Where(operation => operation.Destination == parameter.name).ToArray();
@@ -953,7 +991,7 @@ namespace VRVlog.LilToonExporter
             var written = new HashSet<string>(fx.SelectMany(layer => layer.Writes)
                 .Concat(result.SelectMany(item => item.Layers).SelectMany(layer => layer.Writes)), StringComparer.Ordinal);
             var declarations = new[] { runtime }.Concat(result.Select(item => item.Runtime))
-                .SelectMany(value => Controller(value).parameters).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
+                .SelectMany(value => UniqueParameters(value)).GroupBy(parameter => parameter.name, StringComparer.Ordinal);
             var incompatible = new HashSet<string>(declarations.Where(group => group.Select(parameter => parameter.type).Distinct().Count() != 1)
                 .Select(group => group.Key), StringComparer.Ordinal);
             var preservedWrites = AdditionalParameterConstants.Prove(runtime, source, fixedContext, defaults, selection);
@@ -962,7 +1000,7 @@ namespace VRVlog.LilToonExporter
                 var controller = Controller(item.Runtime);
                 var inputs = FixedExpressionContext.Create(item.Runtime, defaults ?? source.Defaults, source);
                 var invariant = new Dictionary<string, float>(StringComparer.Ordinal);
-                foreach (var parameter in controller.parameters)
+                foreach (var parameter in UniqueParameters(controller))
                 {
                     if (written.Contains(parameter.name) || incompatible.Contains(parameter.name) ||
                         parameter.type != AnimatorControllerParameterType.Bool && parameter.type != AnimatorControllerParameterType.Int &&
@@ -1200,11 +1238,32 @@ namespace VRVlog.LilToonExporter
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls = false,
             IDictionary<string, float> neutralFixed = null, bool typedConditions = false, int? fxLayerCount = null)
         {
+            var cache = ExpressionInspectCache.Current;
+            var key = cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount);
+            if (key != null && cache.TryReplay(key, excludedPath, neutralFixed != null, drivers, unknown, out var cached)) return cached;
+            var trace = key == null ? null : cache.Record(Controller(runtime).layers.Length);
+            var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, cache, trace);
+            if (trace != null) cache.Store(key, trace, result);
+            return result;
+        }
+
+        private static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
+            Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls,
+            IDictionary<string, float> neutralFixed, bool typedConditions, int? fxLayerCount,
+            ExpressionInspectCache cache, ExpressionInspectCache.Trace trace)
+        {
+            void Driver(StateMachineBehaviour behaviour, VrChatParameterDriver.Program program)
+            {
+                trace?.Drivers.Add(new KeyValuePair<StateMachineBehaviour, VrChatParameterDriver.Program>(behaviour, program));
+                if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, program);
+            }
+            void Unknown(string text) { trace?.Unknown.Add(text); unknown.Add(text); }
+            var excludedPaths = excludedPath == null ? null : new Dictionary<string, bool>(StringComparer.Ordinal);
             var controller = Controller(runtime);
             var replacements = Overrides(runtime);
             var layers = controller.layers;
             var result = new Layer[layers.Length];
-            var conditionTypes = !typedConditions && neutralFixed == null ? null : controller.parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var conditionTypes = !typedConditions && neutralFixed == null ? null : UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
             for (var index = 0; index < layers.Length; index++)
             {
@@ -1244,7 +1303,7 @@ namespace VRVlog.LilToonExporter
                             {
                                 info.FxControl = true;
                                 if (!info.FxCommands.ContainsKey(behaviour)) info.FxCommands.Add(behaviour, control);
-                                if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, control);
+                                Driver(behaviour, control);
                             }
                             else if (!info.WeightControls.ContainsKey(behaviour)) info.WeightControls.Add(behaviour, sdkWeight);
                             continue;
@@ -1253,13 +1312,13 @@ namespace VRVlog.LilToonExporter
                             VrChatParameterDriver.IsTemporaryPoseSpace(behaviour) || VrChatParameterDriver.IsLocomotionControl(behaviour)) continue;
                         if (!VrChatParameterDriver.IsDriver(behaviour))
                         {
-                            unknown.Add(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
+                            Unknown(path + " / " + (behaviour == null ? "欠けたBehaviour" : behaviour.GetType().Name));
                             continue;
                         }
                         var program = VrChatParameterDriver.Read(behaviour, path);
                         info.DriverPrograms.Add(program);
-                        if (!drivers.ContainsKey(behaviour)) drivers.Add(behaviour, program);
-                        if (program.Error != null) { unknown.Add(path + " / Parameter Driver: " + program.Error); continue; }
+                        Driver(behaviour, program);
+                        if (program.Error != null) { Unknown(path + " / Parameter Driver: " + program.Error); continue; }
                         foreach (var op in program.Operations)
                         {
                             info.Writes.Add(op.Destination);
@@ -1296,30 +1355,8 @@ namespace VRVlog.LilToonExporter
                         if (!(motion is AnimationClip clip)) return;
                         if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
                         info.Clips.Add(clip);
-                        var bindings = AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
-                        if (bindings.Length == 0) info.EmptyMotion = true;
-                        foreach (var binding in bindings)
-                        {
-                            // Animator parameters are global even if a caller
-                            // happens to exclude the animator's transform path.
-                            if (binding.type == typeof(Animator)) { info.Writes.Add(binding.propertyName); info.CurveWrites.Add(binding.propertyName); info.HasBindings = true; continue; }
-                            if (excludedPath?.Invoke(binding.path) == true) continue;
-                            info.HasBindings = true;
-                            if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
-                            {
-                                info.Morphs.Add(binding);
-                                if (neutralFixed != null)
-                                {
-                                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                                    if (curve != null)
-                                    {
-                                        VrChatGestureExpressions.ReadCurve(curve).Range(out var minimum, out var maximum);
-                                        info.DynamicMorph |= minimum != maximum;
-                                    }
-                                }
-                            }
-                            else info.NonMorphBindings = true;
-                        }
+                        trace?.Clips[index].Add(clip);
+                        InspectClipBindings(info, clip, excludedPath, excludedPaths, neutralFixed != null, cache);
                     }
                     finally { motions.Remove(motion); }
                 }
@@ -1360,6 +1397,45 @@ namespace VRVlog.LilToonExporter
                 Visit(layers[sourceIndex].stateMachine, layers[index].name);
             }
             return result;
+        }
+
+        // excludedPaths remembers the caller's answer per path for one call;
+        // large FX graphs repeat the same few renderer paths in every clip.
+        internal static void InspectClipBindings(Layer info, AnimationClip clip, Func<string, bool> excludedPath,
+            Dictionary<string, bool> excludedPaths, bool readRanges, ExpressionInspectCache cache)
+        {
+            var bindings = cache?.Bindings(clip) ?? ReadBindings(clip);
+            if (bindings.Length == 0) info.EmptyMotion = true;
+            foreach (var binding in bindings)
+            {
+                // Animator parameters are global even if a caller
+                // happens to exclude the animator's transform path.
+                if (binding.type == typeof(Animator)) { info.Writes.Add(binding.propertyName); info.CurveWrites.Add(binding.propertyName); info.HasBindings = true; continue; }
+                if (excludedPath != null)
+                {
+                    if (!excludedPaths.TryGetValue(binding.path, out var excluded))
+                        excludedPaths.Add(binding.path, excluded = excludedPath(binding.path));
+                    if (excluded) continue;
+                }
+                info.HasBindings = true;
+                if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                {
+                    info.Morphs.Add(binding);
+                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;
+                }
+                else info.NonMorphBindings = true;
+            }
+        }
+
+        internal static EditorCurveBinding[] ReadBindings(AnimationClip clip) =>
+            AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
+
+        internal static bool? ReadDynamic(AnimationClip clip, EditorCurveBinding binding)
+        {
+            var curve = AnimationUtility.GetEditorCurve(clip, binding);
+            if (curve == null) return null;
+            VrChatGestureExpressions.ReadCurve(curve).Range(out var minimum, out var maximum);
+            return minimum != maximum;
         }
     }
 }

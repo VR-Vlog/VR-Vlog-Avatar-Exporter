@@ -33,6 +33,7 @@ namespace UnityEngine
     {
         public T[] GetComponents<T>() => throw new System.NotSupportedException("Unity descriptor lookup requires Editor tests.");
         public Transform transform;
+        public bool activeSelf = true;
         public bool activeInHierarchy = true;
         public readonly System.Collections.Generic.List<Renderer> Renderers = new System.Collections.Generic.List<Renderer>();
         public T[] GetComponentsInChildren<T>(bool includeInactive = false) => System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OfType<T>(Renderers));
@@ -111,5 +112,15 @@ namespace UniGLTF
         public static UnityEngine.Texture2D CopyTexture(UnityEngine.Texture source, ColorSpace colorSpace, bool alpha, UnityEngine.Material material) =>
             throw new System.NotSupportedException("Texture conversion requires Unity and is not simulated.");
     }
+}
+namespace UniVRM10
+{
+    // Same member names as UniVRM 1.0; only the names are used here.
+    public enum ExpressionPreset { custom, happy, angry, sad, relaxed, surprised, aa, ih, ou, ee, oh, blink, blinkLeft, blinkRight, lookUp, lookDown, lookLeft, lookRight, neutral }
+}
+namespace VRVlog.LilToonExporter
+{
+    // The locale tables need AssetDatabase; the harness keeps the Japanese source.
+    public static class ExporterLocalization { public static string T(string source) => source; }
 }
 #endif

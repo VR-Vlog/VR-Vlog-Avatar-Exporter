@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -116,6 +117,83 @@ namespace VRVlog.LilToonExporter
             }
             foreach (var controller in controllers) Add(controller.animationClips, "アバターに登録されたController");
             return result.OrderBy(item => item.Clip.name, StringComparer.Ordinal).ToList();
+        }
+
+        // The VRChat Expressions Menu paths ("Face / Smile") of the Toggle and
+        // Button items that select each clip in the FX controller, in menu
+        // order. The board reads emotions from them as the quick export reads
+        // its menu faces. Nothing here may stop the board from opening.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar)
+        {
+            try
+            {
+                var menu = VrChatExpressionMenu.Read(avatar);
+                return MenuClipPaths(menu.Entries, menu.Controller, menu.Defaults);
+            }
+            catch (Exception) { return new Dictionary<AnimationClip, List<string>>(); }
+        }
+
+        // A clip is linked to an item only when the item alone decides it: a
+        // state playing the clip directly is entered by a transition (any
+        // state, state or entry) that no condition makes false under the menu
+        // defaults overlaid with the item's fixed values, and that some
+        // condition on the item's parameter makes false when only that
+        // parameter goes back to its default (off, released). An item that
+        // selects several clips (a face split over Eyes/Mouth/Brow layers) is
+        // linked to none: each clip is only part of the face. Blend Trees and
+        // sub-machine destinations are not followed.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults)
+        {
+            var result = new Dictionary<AnimationClip, List<string>>();
+            if (entries == null || fx == null) return result;
+            var overrides = ExpressionDependencies.Overrides(fx);
+            var links = new List<(AnimatorTransitionBase Transition, AnimationClip Clip)>();
+            void Link(AnimatorTransitionBase transition)
+            {
+                if (transition == null || !(transition.destinationState?.motion is AnimationClip clip)) return;
+                links.Add((transition, overrides.TryGetValue(clip, out var replaced) ? replaced : clip));
+            }
+            void Walk(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen)
+            {
+                if (machine == null || !seen.Add(machine)) return;
+                foreach (var transition in machine.anyStateTransitions) Link(transition);
+                foreach (var transition in machine.entryTransitions) Link(transition);
+                foreach (var child in machine.states)
+                    foreach (var transition in child.state?.transitions ?? Array.Empty<AnimatorStateTransition>()) Link(transition);
+                foreach (var child in machine.stateMachines)
+                {
+                    foreach (var transition in machine.GetStateMachineTransitions(child.stateMachine)) Link(transition);
+                    Walk(child.stateMachine, seen);
+                }
+            }
+            var seenMachines = new HashSet<AnimatorStateMachine>();
+            foreach (var layer in ExpressionDependencies.Controller(fx).layers) Walk(layer.stateMachine, seenMachines);
+            foreach (var entry in entries)
+            {
+                if (entry == null || entry.Error != null || entry.ControlType != "Toggle" && entry.ControlType != "Button" ||
+                    string.IsNullOrEmpty(entry.ControlParameter) || !entry.Parameters.ContainsKey(entry.ControlParameter)) continue;
+                var parameter = entry.ControlParameter;
+                var on = new Dictionary<string, float>(StringComparer.Ordinal);
+                if (defaults != null) foreach (var pair in defaults) on[pair.Key] = pair.Value;
+                foreach (var pair in entry.Parameters) on[pair.Key] = pair.Value;
+                var off = new Dictionary<string, float>(on, StringComparer.Ordinal)
+                    { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
+                var selected = new HashSet<AnimationClip>();
+                foreach (var link in links)
+                {
+                    var own = link.Transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
+                    // Off at the default: some condition on the parameter is false there.
+                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, on) ||
+                        !ExpressionDependencies.IsFalse(link.Transition, off)) continue;
+                    selected.Add(link.Clip);
+                }
+                if (selected.Count != 1) continue;
+                var clip = selected.Single();
+                if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
+                if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+            }
+            return result;
         }
 
         internal string ClipError(AnimationClip clip, float time)
@@ -244,7 +322,7 @@ namespace VRVlog.LilToonExporter
             return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
 
-        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions)
+        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale)
         {
             // APL definitions still belong to the original avatar; generated
             // menu poses belong to the prepared copy. Collect both before
@@ -264,7 +342,7 @@ namespace VRVlog.LilToonExporter
             }
             foreach (var pose in poses.Selected()) foreach (var bone in pose.Bones) bone.Node = Node(bone.Name);
             foreach (var animation in poses.SelectedAnimations()) foreach (var bone in animation.Bones) bone.Node = Node(bone.Name);
-            return poses.Inject(bytes);
+            return poses.Inject(bytes, rootScale);
         }
     }
 }

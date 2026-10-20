@@ -5,8 +5,9 @@ upgrading it to lilToon 2.3.4. The only allowed difference is
 `asset.extras.VRVLOG_lilToonInstalledVersion`. Everything else must match exactly: the whole
 glTF JSON (floats compared with ==) and the bytes of every bufferView, including the raw DEFLATE
 chunks of `VRVLOG_materials_liltoon`. The exporter's per-export placeholder morph target names
-(`__VRVlog_BlinkNone_<GUID>`, `__VRVlog_Empty_<GUID>`) are renumbered before comparing; two
-exports in the same project already differ there, so they say nothing about lilToon.
+(`__VRVlog_BlinkNone_<GUID>`, `__VRVlog_Empty_<GUID>`) are renumbered before comparing. Exporters
+before 2026-10-18 used a new GUID there on every export; newer ones derive the name from the
+renderer path and source name, so the renumbering only matters for older files.
 
 Pass two .glb/.vrm files or two directories (files are paired by relative path). Exit codes:
 0 = identical except the allowed key, 1 = differences or version mismatches,
@@ -28,9 +29,10 @@ JSON_CHUNK = 0x4E4F534A
 BIN_CHUNK = 0x004E4942
 SUFFIXES = (".glb", ".vrm")
 MAX_REPORTED = 500
-# The exporter names its placeholder morph targets with a new GUID on every export
-# (BlinkExportSession, ExportOptimizationBindings). They are renumbered in order of
-# appearance, so the structure still has to match while the GUID itself is ignored.
+# Exporters before 2026-10-18 named their placeholder morph targets with a new GUID on
+# every export (BlinkExportSession, ExportOptimizationBindings); newer ones use a hash of
+# the renderer path and source name. They are renumbered in order of appearance, so the
+# structure still has to match while the 32-digit part itself is ignored.
 RANDOM_NAME = re.compile(r"^(__VRVlog_(?:BlinkNone|Empty)_)[0-9a-f]{32}$")
 _MISSING = object()
 

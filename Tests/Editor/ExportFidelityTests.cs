@@ -269,6 +269,39 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void BakersTreatMeshRendererWithoutMeshFilterAsMissingMesh()
+        {
+            // The Editor's fake null for an absent MeshFilter must read as no mesh.
+            var avatar = new GameObject("Avatar");
+            var child = new GameObject("MeshRendererOnly");
+            child.transform.SetParent(avatar.transform, false);
+            var renderer = child.AddComponent<MeshRenderer>();
+            var layered = CreateLayerMaterial("2nd");
+            var shader = Shader.Find("lilToonTransparent");
+            if (shader == null) shader = Shader.Find("Hidden/lilToonTransparent");
+            Assert.That(shader, Is.Not.Null, "Install supported lilToon.");
+            var masked = new Material(shader);
+            try
+            {
+                masked.SetFloat("_AlphaMaskMode", 1);
+                masked.SetTextureScale("_AlphaMask", new Vector2(0.5f, 0.5f));
+                var warnings = new List<string>();
+                Assert.DoesNotThrow(() => AlphaMaskBaker.CheckUvRange(renderer, 0, masked, warnings));
+                Assert.That(warnings.Count, Is.EqualTo(1));
+                layered.SetFloat("_Main2ndTexIsDecal", 1);
+                renderer.sharedMaterial = layered;
+                var error = Assert.Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar));
+                Assert.That(error.Issues.Any(i => i.RendererPath == "MeshRendererOnly" && i.Setting == "模様を置くUVの範囲"), Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatar);
+                Object.DestroyImmediate(layered);
+                Object.DestroyImmediate(masked);
+            }
+        }
+
         private static Material CreateLayerMaterial(string layer)
         {
             var shader = Shader.Find("lilToon");
@@ -543,6 +576,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(source.Entries.Count, Is.EqualTo(2));
                 Assert.That(source.Entries[0].Name, Does.Contain("お気に入り / 茶色の目"));
                 Assert.That(source.Entries[0].Values.Single().Weight, Is.EqualTo(75));
+                Assert.That(source.Entries.Select(entry => entry.Source), Is.All.EqualTo(VRVlog.Expressions.ExpressionSource.FaceEmo));
                 Assert.That(source.Entries[1].Error, Is.Not.Null);
                 Assert.That(body.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.Zero);
                 // FaceEmo stores groups and modes in separate arrays and their

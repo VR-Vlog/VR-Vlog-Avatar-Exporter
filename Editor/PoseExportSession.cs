@@ -20,17 +20,29 @@ namespace VRVlog.LilToonExporter
         readonly VrChatMenuImportPolicy menuPolicy;
         readonly GameObject source;
         readonly HashSet<PoseCandidate> authoredEntries = new HashSet<PoseCandidate>();
+        readonly bool collect;
         GameObject prepared;
+        // Keep the first 128 selected poses instead of stopping the export.
+        internal bool TrimToLimit;
+        internal int TrimmedCount => TrimToLimit ? Math.Max(0, SelectedCount - HumanoidPoseData.MaximumPoses) : 0;
 
-        internal PoseExportSession(GameObject source, PoseExportOptions options, Func<Transform, bool> excluded = null, VrChatMenuImportPolicy menuPolicy = null)
+        // A session that collects nothing, used when bundled poses are left out.
+        internal static PoseExportSession None(GameObject source) => new PoseExportSession(source, null, collect: false);
+
+        internal PoseExportSession(GameObject source, PoseExportOptions options, Func<Transform, bool> excluded = null, VrChatMenuImportPolicy menuPolicy = null,
+            bool collect = true)
         {
             this.options = options ?? new PoseExportOptions();
             this.menuPolicy = menuPolicy;
             this.source = source;
-            foreach (var component in source.GetComponentsInChildren<Component>(false))
+            this.collect = collect;
+            if (!collect) return;
+            // Activity is judged inside the avatar so a hidden avatar keeps its poses.
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
             {
                 if (component == null || component.GetType().FullName != AplType || excluded?.Invoke(component.transform) == true) continue;
-                if (component.GetComponentInParent<Animator>() != source.GetComponent<Animator>()) continue;
+                if (!ExportRendererSelection.ActiveUnder(component.gameObject, source.transform)) continue;
+                if (component.GetComponentInParent<Animator>(true) != source.GetComponent<Animator>()) continue;
                 var data = PoseMenuResolver.Member(component, "data");
                 foreach (var category in PoseMenuResolver.Items(PoseMenuResolver.Member(data, "categories")))
                     foreach (var pose in PoseMenuResolver.Items(PoseMenuResolver.Member(category, "poses")))
@@ -79,7 +91,7 @@ namespace VRVlog.LilToonExporter
             // Humanoid flags alone do not mask those generic curve bindings.
             mask.AddTransformPath(source.transform, true);
             var animator = source.GetComponent<Animator>();
-            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: animator.GetBoneTransform(PoseSampling.HumanBone(n))))
+            var parts = HumanoidPoseData.BoneNames.Select(n => (name: n, bone: HumanoidBones.Resolve(animator, PoseSampling.HumanBone(n))))
                 .Where(b => b.bone != null).ToDictionary(b => AnimationUtility.CalculateTransformPath(b.bone, source.transform), b => PoseSampling.Part(b.name));
             for (var i = 0; i < mask.transformCount; i++)
                 mask.SetTransformActive(i, parts.TryGetValue(mask.GetTransformPath(i), out var part) && mask.GetHumanoidBodyPartActive(part));
@@ -103,6 +115,7 @@ namespace VRVlog.LilToonExporter
         internal IEnumerable<PoseCandidate> CollectPreparedIncrementally(GameObject copy, ICollection<string> warnings = null, VrChatMenuImportPolicy preparedMenuPolicy = null)
         {
             prepared = copy;
+            if (!collect) yield break;
             Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy));
             var seen = new Dictionary<string, PoseCandidate>();
             var collectedFrames = 0;
@@ -144,7 +157,9 @@ namespace VRVlog.LilToonExporter
                         }
                     }
                     catch (Exception error) { row.Error = error.Message; }
-                if (row.Error != null) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error);
+                // Clothing / face toggles that cannot reach a body layer would
+                // otherwise bury the real pose warnings.
+                if (row.Error != null) { if (!row.NotBodyPose) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error); }
                 else if (!string.IsNullOrEmpty(row.Note)) warnings?.Add("ポーズ: " + row.Name + " — " + row.Note);
                 yield return row;
             }
@@ -161,7 +176,7 @@ namespace VRVlog.LilToonExporter
             var omitted = new HashSet<string>();
             foreach (var name in row.IsAnimation ? HumanoidAnimationData.BoneNames : HumanoidPoseData.BoneNames)
             {
-                var human = PoseSampling.HumanBone(name); var bone = sourceAnimator.GetBoneTransform(human);
+                var human = PoseSampling.HumanBone(name); var bone = HumanoidBones.Resolve(sourceAnimator, human);
                 if (bone == null || targetAnimator.GetBoneTransform(human) != null) continue;
                 if (row.Layers.Any(layer => layer.Clip != null && PoseSampling.WritesBone(layer, name, bone, source)))
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用コピーからポーズのHumanoidボーンが失われました: ") + human);
@@ -187,26 +202,28 @@ namespace VRVlog.LilToonExporter
                 foreach (var bone in row.Bones) bone.Node = Node(bone.Name);
         }
         internal int SelectedCount => Entries.Count(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
-        void CheckSelectedCount()
+        IEnumerable<PoseCandidate> SelectedEntries()
         {
-            if (SelectedCount > HumanoidPoseData.MaximumPoses)
+            if (!TrimToLimit && SelectedCount > HumanoidPoseData.MaximumPoses)
                 throw new InvalidOperationException("同梱ポーズは128件までです。「ポーズを確認・調整」で不要な項目を除外してください。");
+            var rows = Entries.Where(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
+            return TrimToLimit ? rows.Take(HumanoidPoseData.MaximumPoses) : rows;
         }
         internal List<HumanoidPoseData> Selected()
         {
-            CheckSelectedCount();
-            var selected = Entries.Where(e => e.Error == null && e.Data != null && !options.Excluded.Contains(e.Id)).Select(e => e.Data).ToList();
+            var selected = SelectedEntries().Where(e => e.Data != null).Select(e => e.Data).ToList();
             return selected;
         }
         internal List<HumanoidAnimationData> SelectedAnimations()
         {
-            CheckSelectedCount();
-            var selected = Entries.Where(e => e.Error == null && e.Animation != null && !options.Excluded.Contains(e.Id)).Select(e => e.Animation).ToList();
+            var selected = SelectedEntries().Where(e => e.Animation != null).Select(e => e.Animation).ToList();
             if (selected.Sum(animation => animation.Frames.Count) > HumanoidAnimationData.MaximumTotalFrames)
                 throw new InvalidOperationException("動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。");
             return selected;
         }
-        internal byte[] Inject(byte[] bytes)
+        // Sampling ignores the avatar root scale, but RootScaleBake exports the
+        // VRM model space with it. Pass the root localScale that was exported.
+        internal byte[] Inject(byte[] bytes, Vector3 rootScale)
         {
             var poses = Selected(); var animations = SelectedAnimations();
             if (poses.Count == 0 && animations.Count == 0) return bytes;
@@ -216,6 +233,11 @@ namespace VRVlog.LilToonExporter
             if (poses.Count > 0)
             {
                 var extension = HumanoidPoseData.Write(poses);
+                if (rootScale != Vector3.one)
+                {
+                    foreach (Dictionary<string, object> pose in (List<object>)extension["poses"]) ScaleOffset(pose, rootScale);
+                    HumanoidPoseData.Read(extension);
+                }
                 if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidPoseData.MaximumBytes) throw new InvalidOperationException("ポーズ拡張が2MiBを超えました。");
                 HumanoidPoseData.ValidateReferences(poses, document.Json);
                 extensions.Add(HumanoidPoseData.Extension, extension); ((List<object>)raw).Add(HumanoidPoseData.Extension);
@@ -223,12 +245,24 @@ namespace VRVlog.LilToonExporter
             if (animations.Count > 0)
             {
                 var extension = HumanoidAnimationData.Write(animations);
+                if (rootScale != Vector3.one)
+                {
+                    foreach (Dictionary<string, object> animation in (List<object>)extension["animations"])
+                        foreach (Dictionary<string, object> frame in (List<object>)animation["frames"]) ScaleOffset(frame, rootScale);
+                    HumanoidAnimationData.Read(extension);
+                }
                 if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidAnimationData.MaximumBytes)
                     throw new InvalidOperationException("動くポーズの拡張が16MiBを超えました。不要な項目を除外してください。");
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
                 extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
             }
-            return document.Write();
+            return AvatarFormatRequirements.Write(document.Write());
+        }
+        // The X reflection to glTF commutes with an axis-aligned scale.
+        static void ScaleOffset(Dictionary<string, object> entry, Vector3 rootScale)
+        {
+            var offset = (List<object>)entry["hipsOffset"];
+            entry["hipsOffset"] = offset.Select((value, axis) => (object)(Convert.ToDouble(value) * rootScale[axis])).ToList();
         }
         public void Dispose() { foreach (var value in owned) if (value != null) Object.DestroyImmediate(value); owned.Clear(); }
     }

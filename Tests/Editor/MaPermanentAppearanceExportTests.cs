@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null); Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
-                const string name = "VRChat / Smile";
+                const string name = "Smile";
                 Assert.That(imported.Vrm.Expression.CustomClips.Count(clip => clip.name == name), Is.EqualTo(1));
                 var menuExpression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name);
                 Assert.That(menuExpression.IsBinary, Is.True, "A VRChat toggle is exported as a binary expression.");

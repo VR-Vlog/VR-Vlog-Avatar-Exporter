@@ -33,6 +33,19 @@ namespace VRVlog.LilToonExporter
                 if (!ExportRendererSelection.HasGeometry(mesh)) continue;
                 foreach (var material in renderer.sharedMaterials)
                 {
+                    // A substitute can carry the source's brightness into
+                    // _MainTexHSVG, which sends it to lilToon's baker too.
+                    if (!bakes && material != null && UnsupportedShaderSubstitution.NeedsSubstitute(material))
+                    {
+                        Material substitute = null;
+                        try { substitute = UnsupportedShaderSubstitution.Create(material); }
+                        catch (Exception) { }
+                        if (substitute != null)
+                        {
+                            bakes |= LilToonMainTextureBaker.NeedsBake(substitute);
+                            UnityEngine.Object.DestroyImmediate(substitute);
+                        }
+                    }
                     if (material == null || material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)) continue;
                     if (!shaders.Contains(material.shader)) shaders.Add(material.shader);
                     // Export options can only turn layers off, so this is a

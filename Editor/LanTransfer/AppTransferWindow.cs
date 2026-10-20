@@ -12,23 +12,35 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // name and the consent, exports, uploads the encrypted VRM and shows the QR of the
     // vrvlog://import#... link. AppTransferFlow decides what is shown and when; this class
     // builds the UI Toolkit view (AppTransferWindow.uxml/.uss) and connects it to the Editor.
+    // The quick transfer exports with the remembered settings; the detailed one is the second
+    // step after the expression board, and exports what that board shows.
     public sealed class AppTransferWindow : EditorWindow
     {
-        internal const string MenuPath = "GameObject/VR Vlog/アプリに転送…";
+        internal const string QuickMenuPath = "GameObject/VR Vlog/アプリに転送（かんたん）";
+        internal const string DetailedMenuPath = "GameObject/VR Vlog/アプリに転送（通常）";
         // The Hierarchy context menu lists the GameObject entries of the creation block,
-        // which ends at priority 49. That value puts this entry last in it, above Properties.
-        internal const int MenuPriority = 49;
+        // which ends at priority 49; an entry at 50 or above is left out of it. These values
+        // put the two entries next to each other at its end, the quick one first.
+        internal const int QuickMenuPriority = 48, DetailedMenuPriority = 49;
         private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
         // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
         private const float TransferChrome = 253f;
         private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // Above the QR once the export is saved, when materials lost their shader. Kept out of
+        // AppTransferText: that list holds one-line texts without punctuation or requests.
+        internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
+        // The height that warning adds to the QR screen: at the minimum width of 420 it wraps to 3 lines
+        // in every translation, plus the box's padding and its 8 bottom margin.
+        private const float MissingShadersHeight = 64f;
         // The layout and styles next to this script, found by their asset GUIDs.
         private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
 
         [SerializeField] private GameObject avatar;
         [SerializeField] private string avatarName = "";
+        // Opened from the expression board: the export is what that board shows.
+        [SerializeField] private bool detailed;
         // Consent is for the avatar on screen, so it is asked again each time.
         [NonSerialized] private bool consented;
         // The privacy policy row stays once shown, so ticking it does not move the form.
@@ -42,6 +54,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private string transferName;
         [NonSerialized] private int placeholderSide;
         [NonSerialized] private int exportAttempt;
+        // Materials whose shader was missing in the export the current upload comes from.
+        [NonSerialized] private int missingShaders;
         [NonSerialized] private bool exportPainted;
         [NonSerialized] private double exportDeadline;
         [NonSerialized] private double nextRepaint;
@@ -51,9 +65,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         [NonSerialized] private bool built;
         [NonSerialized] private VisualElement content, form, formFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
-        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox;
-        [NonSerialized] private Button diagnosticsButton, createButton, messageButton, regenerateButton, closeButton;
-        [NonSerialized] private Label heading, subtitle, avatarLabel, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
+        [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton;
+        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
@@ -61,7 +75,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private Image qrImage;
         [NonSerialized] private IMGUIContainer uploadBar;
 
-        [MenuItem(MenuPath, false, MenuPriority)]
+        [MenuItem(QuickMenuPath, false, QuickMenuPriority)]
         private static void OpenFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
@@ -69,9 +83,25 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         // Listed only in versions that transfer, and for one avatar root.
-        [MenuItem(MenuPath, true)]
+        [MenuItem(QuickMenuPath, true)]
         private static bool CanOpenFromMenu() =>
             CloudTransferAvailability.Enabled && Selection.gameObjects.Length == 1 && IsAvatarRoot(Selection.gameObjects[0]);
+
+        // The detailed transfer starts on the expression board. When the exporter cannot
+        // run, the quick window opens instead and says why.
+        [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
+        private static void OpenDetailedFromMenu(MenuCommand command)
+        {
+            var selected = command.context as GameObject ?? Selection.activeGameObject;
+            if (selected == null) return;
+            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? ExportEntry.Resolve() : null;
+            if (entry != null) entry.EditDetails(selected);
+            // Without the exporter the detailed window says why, under the item the user chose.
+            else OpenDetailed(selected);
+        }
+
+        [MenuItem(DetailedMenuPath, true)]
+        private static bool CanOpenDetailedFromMenu() => CanOpenFromMenu();
 
         // The top of an avatar: it has an Animator and nothing above it has one.
         internal static bool IsAvatarRoot(GameObject target)
@@ -82,15 +112,30 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return true;
         }
 
-        public static void Open(GameObject target)
+        public static void Open(GameObject target) => Open(target, false);
+
+        // The second step of the detailed transfer, opened by the expression board's
+        // "次へ" for the avatar on that board.
+        public static void OpenDetailed(GameObject target) => Open(target, true);
+
+        private static void Open(GameObject target, bool detailedExport)
         {
             foreach (var open in Resources.FindObjectsOfTypeAll<AppTransferWindow>())
             {
                 if (!open.Transferring) continue;
-                // The same avatar keeps its transfer; only the window comes forward.
-                if (open.avatar == target || !ConfirmEndingTransfer()) { open.Focus(); return; }
+                // The same quick transfer keeps its QR; only the window comes forward. The board's
+                // "次へ" or a switch between quick and detailed leaves that QR out of date, so it asks.
+                var same = open.avatar == target;
+                if (same && !detailedExport && !open.detailed || !(same ? ConfirmRedoingTransfer() : ConfirmEndingTransfer())) { open.Focus(); return; }
             }
             var window = GetWindow<AppTransferWindow>(false);
+            // Back from the board to the same form, the name, consent and terms typed there stay.
+            if (target != null && window.avatar == target && window.detailed == detailedExport && (window.flow == null || window.flow.View == AppTransferView.Form))
+            {
+                window.Focus();
+                return;
+            }
+            window.detailed = detailedExport;
             window.Select(target, true);
             window.minSize = FormMinimumSize;
             window.Show();
@@ -101,6 +146,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Another avatar cancels the upload or the QR on screen, so it is asked first.
         private static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
             T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
+
+        private static bool ConfirmRedoingTransfer() => EditorUtility.DisplayDialog(T("QRを作り直す"),
+            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
 
         private static string T(string source) => ExporterLocalization.T(source);
         private Texture2D Icon => icon != null ? icon : icon = AppTransferIcon.Create();
@@ -125,16 +173,31 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
         }
 
+        // The name of the avatar's last successful transfer, or null.
+        private string RememberedName(GameObject target)
+        {
+            var remembered = target != null ? Exporter?.RememberedName(target) : null;
+            return string.IsNullOrEmpty(remembered) ? null : remembered;
+        }
+
+        // Whether the expression board this window exports from is open and prepared.
+        private bool BoardReady => !detailed || avatar == null || Exporter?.DetailedProblem(avatar) == null;
+        // The open board has an error its next step names, such as a face that does not work.
+        private bool BoardNeedsFix => detailed && avatar != null && BoardReady && (Exporter?.DetailedNeedsFix(avatar) ?? false);
+
         private void Select(GameObject target, bool opened)
         {
             // A recovery still pending for the previous avatar must not start an upload.
             exportAttempt++;
             flow?.Stop();
             ClearQr();
+            missingShaders = 0;
             // A name left over from an avatar that no longer exists is not the user's choice for this one.
-            var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name;
+            var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name
+                || avatarName == RememberedName(avatar);
             avatar = target;
-            if (untouched) avatarName = target != null ? target.name : "";
+            // Opening starts from the name of the avatar's last transfer.
+            if (untouched) avatarName = target == null ? "" : opened ? RememberedName(target) ?? target.name : target.name;
             consented = false;
             nameFits = null;
             Exporter?.SelectAvatar(target);
@@ -213,7 +276,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private string Reason()
         {
             if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
-            return AppTransferFlow.BlockReason(avatar != null, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
+            if (BoardNeedsFix) return AppTransferText.NeedsBoardFix;
+            return AppTransferFlow.BlockReason(avatar != null, BoardReady, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
                 CloudVrmTransferWindow.PrivacyConsentAccepted);
         }
 
@@ -226,6 +290,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ExpectExportPaint();
             FitTransferSize();
             Refresh();
+        }
+
+        // The expression board in its transfer mode, for the avatar on screen. From the quick
+        // transfer this switches to the detailed one, so this window closes.
+        private void EditDetails()
+        {
+            var entry = Exporter;
+            if (entry == null || avatar == null || Transferring) return;
+            // Declining the board's change of avatar keeps this window.
+            if (entry.EditDetails(avatar) && !detailed) Close();
         }
 
         // A new QR uploads again from the exported copy. After a failed export there is none, so export again.
@@ -256,26 +330,43 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             exportPainted = false;
             var attempt = ++exportAttempt;
-            var path = AppTransferFlow.NewSnapshotPath();
+            // A new export replaces the one the warning was about.
+            missingShaders = 0;
+            string path;
+            // Every folder that could hold the transfer copy refused it: give up before exporting.
+            try { path = AppTransferFlow.NewSnapshotPath(); }
+            catch (InvalidOperationException exception)
+            {
+                flow.ExportFailed(exception.Message ?? "");
+                Refresh();
+                return;
+            }
             var target = avatar;
             var name = avatarName.Trim();
             var wireName = transferName;
+            var fromBoard = detailed;
             var saved = false;
             void Saved()
             {
                 // The recovery window can save long after this attempt was replaced or the window closed.
                 if (this == null || flow == null || attempt != exportAttempt) { AppTransferFlow.Discard(path); return; }
                 saved = true;
+                missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
+                // Grow for the warning now, while the upload is shown, so the QR never moves once it is on screen.
+                if (missingShaders > 0) FitTransferSize();
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
                 Refresh();
             }
             string failure;
-            try { failure = Exporter.Export(target, name, path, Saved); }
+            try { failure = fromBoard ? Exporter.ExportDetailed(target, name, path, Saved) : Exporter.Export(target, name, path, Saved); }
             catch (Exception exception) { failure = exception.Message ?? ""; AppTransferFlow.Discard(path); }
             finally { EditorUtility.ClearProgressBar(); }
             if (saved || attempt != exportAttempt) return;
+            // Nothing was handed to the upload. Delete whatever this attempt left;
+            // a later save from the recovery window writes the file again.
+            AppTransferFlow.Discard(path);
             if (failure == null) { flow.ExportCanceled(); minSize = FormMinimumSize; }
             else flow.ExportFailed(failure);
             Refresh();
@@ -301,7 +392,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void FitTransferSize()
         {
             var side = SlotSide;
-            var height = HeaderHeight + side + TransferChrome;
+            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
             var screen = EditorGUIUtility.GetMainWindowPosition().height;
             if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
             var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);
@@ -354,9 +445,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             problemBox = root.Q<HelpBox>("exporter-problem");
             diagnosticsButton = root.Q<Button>("diagnostics");
             playingBox = root.Q<HelpBox>("playing");
+            missingShadersBox = root.Q<HelpBox>("missing-shaders");
             formFields = root.Q("form-fields");
             avatarLabel = root.Q<Label>("avatar-label");
             avatarField = root.Q<ObjectField>("avatar-field");
+            summaryText = root.Q<Label>("summary-text");
+            summaryButton = root.Q<Button>("summary-button");
             nameLabel = root.Q<Label>("name-label");
             nameField = root.Q<TextField>("name-field");
             nameHint = root.Q<Label>("name-hint");
@@ -435,6 +529,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The VRM terms are the IMGUI section shared with the export window.
             root.Q<IMGUIContainer>("terms").onGUIHandler = DrawTerms;
             diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
+            summaryButton.clicked += EditDetails;
             createButton.clicked += Begin;
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
@@ -494,7 +589,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (titleContent.text != title || titleContent.image != Icon) titleContent = new GUIContent(title, Icon);
             var view = shownView = Flow.View;
             var sending = view != AppTransferView.Form;
-            heading.text = T(AppTransferText.Heading);
+            heading.text = T(detailed ? AppTransferText.HeadingDetailed : AppTransferText.HeadingQuick);
             subtitle.text = sending ? string.Format(T(AppTransferText.Sending), avatarName.Trim()) : "";
             Show(subtitle, sending);
             Show(form, !sending);
@@ -517,6 +612,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
             avatarLabel.text = T("アバター");
             if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
+            // What the export takes from elsewhere, and where to change it.
+            summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
+            summaryButton.text = T(!detailed ? AppTransferText.EditDetails : BoardReady ? AppTransferText.BackToBoard : AppTransferText.OpenBoard);
+            summaryButton.SetEnabled(avatar != null && !Transferring);
             nameLabel.text = T(AppTransferText.Name);
             if (nameField.value != avatarName) nameField.SetValueWithoutNotify(avatarName);
             nameHint.text = T(AppTransferText.NameHint);
@@ -541,6 +640,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void RefreshTransfer(AppTransferView view)
         {
+            // The saved export does not look like the avatar. Shown once per export, from its upload on,
+            // so it does not appear above a QR that is already on screen.
+            var warnShaders = missingShaders > 0 && view != AppTransferView.Exporting;
+            missingShadersBox.text = warnShaders ? string.Format(T(MissingShadersText), missingShaders) : "";
+            Show(missingShadersBox, warnShaders);
             // The area keeps the size of the QR through every state, so the rows below never move.
             slotRow.style.height = SlotSide;
             var showQr = view == AppTransferView.Waiting && qrTexture != null;
@@ -629,6 +733,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<bool> HasAuthor;
             internal Action DrawTerms;
             internal Func<GameObject, string, string, Action, string> Export;
+            internal Func<GameObject, string> RememberedName;
+            internal Func<GameObject, bool, string> SettingsSummary;
+            internal Func<GameObject, string> DetailedProblem;
+            internal Func<GameObject, bool> DetailedNeedsFix;
+            internal Func<GameObject, bool> EditDetails;
+            internal Func<GameObject, string, string, Action, string> ExportDetailed;
+            internal Func<int> LastMissingShaderCount;
 
             internal static ExportEntry Resolve()
             {
@@ -643,6 +754,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         HasAuthor = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "HasAuthor"),
                         DrawTerms = (Action)Delegate.CreateDelegate(typeof(Action), target, "DrawTerms"),
                         Export = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "Export"),
+                        RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
+                        SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),
+                        DetailedProblem = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "DetailedProblem"),
+                        DetailedNeedsFix = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "DetailedNeedsFix"),
+                        EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
+                        ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
+                        LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
                     };
                 }
                 catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException

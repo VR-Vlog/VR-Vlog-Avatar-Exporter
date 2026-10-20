@@ -5,16 +5,16 @@ using System.IO;
 
 namespace VRVlog.LilToon
 {
-    // Shared verbatim with the exporter. Parsing never interprets shader code,
+    // Shared by the exporter and player through VRVlog.AvatarFormats. Parsing never interprets shader code,
     // file paths, external URLs or unknown property names from an avatar.
-    internal static class LilToonFullContract
+    public static class LilToonFullContract
     {
-        internal const string ExtensionName = "VRVLOG_materials_liltoon";
-        internal const string SourceColorSpaceKey = "VRVLOG_lilToonColorSpace";
+        public const string ExtensionName = "VRVLOG_materials_liltoon";
+        public const string SourceColorSpaceKey = "VRVLOG_lilToonColorSpace";
 
         // glTF asset extras preserve compatibility with schema 2.0 consumers.
         // Earlier VRChat exports omit this metadata and use the Linear workflow.
-        internal static string SourceColorSpace(Dictionary<string, object> gltf)
+        public static string SourceColorSpace(Dictionary<string, object> gltf)
         {
             if (!gltf.TryGetValue("asset", out var rawAsset) || !(rawAsset is Dictionary<string, object> asset) ||
                 !asset.TryGetValue("extras", out var rawExtras) || !(rawExtras is Dictionary<string, object> extras) ||
@@ -23,7 +23,7 @@ namespace VRVlog.LilToon
             if (value != "linear" && value != "gamma") Fail("Unsupported lilToon authoring color space.");
             return value;
         }
-        internal static void ValidatePixels(byte[] bytes, string format)
+        public static void ValidatePixels(byte[] bytes, string format)
         {
             // Payloads use little-endian IEEE-754 components. Check exponents
             // directly, including alpha, without allocating a second image.
@@ -37,17 +37,17 @@ namespace VRVlog.LilToon
                 if (nonFinite) Fail("Non-finite HDR pixel component.");
             }
         }
-        internal static Dictionary<string, object> Root(Dictionary<string, object> gltf)
+        public static Dictionary<string, object> Root(Dictionary<string, object> gltf)
         {
             if (!gltf.TryGetValue("extensions", out var raw) || !(raw is Dictionary<string, object> ext) || !ext.TryGetValue(ExtensionName, out raw)) return null;
             return Object(raw);
         }
-        internal static bool IsFull(Dictionary<string, object> gltf)
+        public static bool IsFull(Dictionary<string, object> gltf)
         {
             var root = Root(gltf);
             return root != null && Int(root, "schemaMajor") >= 2;
         }
-        internal static void Validate(Dictionary<string, object> gltf, long fileLength, int binaryLength, long decodedByteBudget = long.MaxValue)
+        public static void Validate(Dictionary<string, object> gltf, long fileLength, int binaryLength, long decodedByteBudget = long.MaxValue)
         {
             if (fileLength < 20 || fileLength > int.MaxValue || binaryLength < 0 || binaryLength > fileLength)
                 Fail("VRM length exceeds the supported GLB array range or is invalid.");
@@ -179,23 +179,23 @@ namespace VRVlog.LilToon
             }
             if (!seen.IsSubsetOf(usedMaterials)) Fail("Unbound full lilToon material.");
         }
-        internal static object Get(Dictionary<string, object> obj, string key) => obj.TryGetValue(key, out var value) ? value : throw new InvalidDataException("Missing " + key);
-        internal static Dictionary<string, object> Object(object raw) => raw as Dictionary<string, object> ?? throw new InvalidDataException("Expected object.");
-        internal static List<object> List(object raw) => raw as List<object> ?? throw new InvalidDataException("Expected array.");
-        internal static List<object> List(Dictionary<string, object> obj, string key) => List(Get(obj, key));
-        internal static object At(List<object> array, int index) => index >= 0 && index < array.Count ? array[index] : throw new InvalidDataException("Index out of bounds.");
-        internal static int Int(Dictionary<string, object> obj, string key) => Integer(Get(obj, key));
-        internal static int Integer(object raw) { var value = Numeric(raw); if (value < int.MinValue || value > int.MaxValue || value != Math.Truncate(value)) Fail("Expected integer."); return (int)value; }
-        internal static double Number(Dictionary<string, object> obj, string key) => Numeric(Get(obj, key));
-        internal static double Numeric(object raw)
+        public static object Get(Dictionary<string, object> obj, string key) => obj.TryGetValue(key, out var value) ? value : throw new InvalidDataException("Missing " + key);
+        public static Dictionary<string, object> Object(object raw) => raw as Dictionary<string, object> ?? throw new InvalidDataException("Expected object.");
+        public static List<object> List(object raw) => raw as List<object> ?? throw new InvalidDataException("Expected array.");
+        public static List<object> List(Dictionary<string, object> obj, string key) => List(Get(obj, key));
+        public static object At(List<object> array, int index) => index >= 0 && index < array.Count ? array[index] : throw new InvalidDataException("Index out of bounds.");
+        public static int Int(Dictionary<string, object> obj, string key) => Integer(Get(obj, key));
+        public static int Integer(object raw) { var value = Numeric(raw); if (value < int.MinValue || value > int.MaxValue || value != Math.Truncate(value)) Fail("Expected integer."); return (int)value; }
+        public static double Number(Dictionary<string, object> obj, string key) => Numeric(Get(obj, key));
+        public static double Numeric(object raw)
         {
             if (!(raw is long || raw is int || raw is double || raw is float || raw is decimal)) Fail("Expected number.");
             var value = Convert.ToDouble(raw, CultureInfo.InvariantCulture); if (double.IsNaN(value) || double.IsInfinity(value) || Math.Abs(value) > float.MaxValue) Fail("Non-finite number."); return value;
         }
-        internal static float[] Vector(object raw) { var values = List(raw); if (values.Count != 4) Fail("Expected four components."); return new[] {(float)Numeric(values[0]), (float)Numeric(values[1]), (float)Numeric(values[2]), (float)Numeric(values[3])}; }
-        internal static string Text(Dictionary<string, object> obj, string key) { var value = Get(obj, key) as string; if (value == null || value.Length > 1024) Fail("Invalid string."); return value; }
-        internal static bool Bool(Dictionary<string, object> obj, string key) => Get(obj, key) is bool value ? value : throw new InvalidDataException("Expected boolean.");
-        internal static void Keys(Dictionary<string, object> obj, params string[] keys) { var allowed = new HashSet<string>(keys, StringComparer.Ordinal); foreach (var key in obj.Keys) if (!allowed.Contains(key)) Fail("Unknown field: " + key); }
+        public static float[] Vector(object raw) { var values = List(raw); if (values.Count != 4) Fail("Expected four components."); return new[] {(float)Numeric(values[0]), (float)Numeric(values[1]), (float)Numeric(values[2]), (float)Numeric(values[3])}; }
+        public static string Text(Dictionary<string, object> obj, string key) { var value = Get(obj, key) as string; if (value == null || value.Length > 1024) Fail("Invalid string."); return value; }
+        public static bool Bool(Dictionary<string, object> obj, string key) => Get(obj, key) is bool value ? value : throw new InvalidDataException("Expected boolean.");
+        public static void Keys(Dictionary<string, object> obj, params string[] keys) { var allowed = new HashSet<string>(keys, StringComparer.Ordinal); foreach (var key in obj.Keys) if (!allowed.Contains(key)) Fail("Unknown field: " + key); }
         static void Fail(string message) => throw new InvalidDataException(message);
     }
 }

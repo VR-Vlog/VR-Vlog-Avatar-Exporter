@@ -82,7 +82,9 @@ assert "must be an array" in injector and "must be an object" in injector
 assert "Validate(output, extension.materials.Count)" in injector
 assert "ExportRendererSelection.Enumerate(avatar)" in injector
 assert "ExportRendererSelection.Enumerate(clone)" in one_click
-assert one_click.index("ExportRendererSelection.RequireActiveRoot(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
+assert "ExportRendererSelection.RequireActiveRoot(source)" not in one_click
+assert one_click.index("ExportRendererSelection.HiddenInScene(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
+assert "if (!copy.activeSelf) copy.SetActive(true);" in (root / "Editor/NdmfExportPreparation.cs").read_text(encoding="utf-8")
 assert "_MainTex" in reader and "_UseShadow" in reader and "_UseOutline" in reader
 assert "特殊シェーダーは標準lilToonとして近似しました" in reader
 assert 'const string optionalPrefix = "[Optional]";' in reader
@@ -184,7 +186,7 @@ assert 'Guid.NewGuid().ToString("N")' in recovery_session
 assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
-assert "UniVrmOneClickExporter.Export" in window
+assert "UniVrmOneClickExporter.Export" not in window and "settings.Creator(targetAvatar, AvatarName(), targetAuthor)" in window
 assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
 assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
@@ -193,8 +195,15 @@ assert "RequireSupportedLilToon(GameObject avatar)" in window
 # Both export entries compare the shaders the avatar uses with the catalogue.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
 assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-# "アプリに転送" exports through the same check.
-assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+# The export window, "アプリに転送" and batch callers export through ExportSettings,
+# which runs the same check.
+export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
+assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in export_settings
+assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
+assert "licenseOptions: License, disableAudioLink: true" in export_settings
+assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
+assert "targetSettings.Creator(avatar, name, targetAuthor)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+assert "UniVrmOneClickExporter.Export" not in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
 assert f'? info.version : "{package["version"]}"' in window
 assert "using UnityEditor.PackageManager;" not in window
@@ -305,10 +314,8 @@ assert "HasPortableOutline(source)" in one_click
 assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_OutlineTex")' not in one_click
 assert 'private string author = "";' in window
 assert 'private string avatarName = "";' not in window
-assert 'UniVrmOneClickExporter.Export(targetAvatar, targetName, targetAuthor, warnings, false,' in window
-assert 'PackageVersion(), RequireSupportedLilToon(targetAvatar), false, targetExclusions, null, targetGimmicks, targetBlink, targetPoses,' in window
 assert 'var targetOutput = outputPath;' in window
-assert 'var targetExclusions = excludedObjects.ToArray();' in window
+assert 'var targetExclusions = settings.Exclusions();' in window
 assert 'ExportFailureWindow.Show(session, Completed)' in window
 assert 'session = ExportAndSaveNormally(targetAvatar, targetOutput,' in window
 normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
@@ -326,8 +333,8 @@ assert '.Attempt(' not in normal_export and '.SavePending(' not in normal_export
 assert 'ExportRecoverySourceStamp' not in normal_export
 assert (root / 'Tests/Editor/ExportFlowTests.cs').is_file()
 assert 'ExportAndSaveNormally(' in (root / 'Tests/Editor/ExportFlowTests.cs').read_text(encoding='utf-8')
-assert 'recoveryOptions: options, recoveryReport: report' in window
-assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer)?.Unit' in recovery
+assert 'recoveryOptions: recoveryOptions, recoveryReport: recoveryReport' in export_settings
+assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit' in recovery
 assert 'code == "audio-link"' in recovery and 'Official(audio)' in recovery
 # Recovery compares partial solver output with the original capture separately
 # from the exact authored-input hash; it must not replace that baseline.
@@ -364,11 +371,11 @@ assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.
 assert 'LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);' in one_click
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
 assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
-assert 'fullSnapshot?.Bind(converter, model, storage);' in one_click
-assert 'blink.Bind(converter, model, storage);' in one_click
+assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
+assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
 assert 'var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);' in one_click
-assert 'var menu = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
+assert 'var read = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
 assert 'bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);' in one_click
 assert 'new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding)' in one_click
 assert 'VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,' in one_click
@@ -377,7 +384,8 @@ assert 'faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,\n      
 assert 'new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy)' in one_click
 assert 'SkipVrChatMenus' in recovery and 'ExcludeMenuBranch' in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
-assert 'VrmMenuExpressions.Add(exported, expressions)' in one_click
+assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
+assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click
 assert 'return avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar";' in window
 assert 'var name = AvatarName();' in window
 assert 'EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", DefaultFileName(), "vrm")' in window

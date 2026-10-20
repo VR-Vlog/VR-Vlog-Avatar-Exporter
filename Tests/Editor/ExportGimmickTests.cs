@@ -84,6 +84,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportGimmickDetection.Inspect(renderer).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
         }
 
+        [Test] public void MeshRendererWithoutMeshFilterIsReviewedAsMissingMesh()
+        {
+            // In the Editor, GetComponent returns a fake null for the absent
+            // MeshFilter; ?. on it threw MissingComponentException.
+            var renderer = Child("MeshRendererOnly").AddComponent<MeshRenderer>(); renderer.sharedMaterial = hidden;
+            List<ExportGimmickFinding> findings = null;
+            Assert.DoesNotThrow(() => findings = ExportGimmickDetection.Analyze(avatar));
+            var finding = findings.Single(f => f.Renderer == renderer);
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.EqualTo("メッシュまたは材質が不足しているため自動判定できません。"));
+            Assert.That(ExportGimmickDetection.PettingSystemUnsafeReason(avatar, renderer.transform, _ => false),
+                Is.EqualTo("メッシュまたは材質が不足しているため、システム全体は残します。"));
+        }
+
         [Test] public void InactiveAndDisabledRenderersAreNotCandidates()
         {
             var renderer = Render("effect", hidden); renderer.enabled = false;
@@ -225,7 +239,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ModularAvatarBoneProxy", "subPath")]
         public void MaPathBasedConnectionsProtectTheHierarchy(string componentName, string pathProperty)
         {
-            Type FindType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
             var type = FindType("nadena.dev.modular_avatar.core." + componentName);
             var descriptor = FindType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (type == null || descriptor == null) Assert.Ignore("Installed MA and VRChat SDK are required for this connection regression.");
@@ -281,6 +294,238 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(mixed.Error, Is.Null);
             Assert.That(mixed.Values.Single().Path, Is.EqualTo("body"));
             Assert.That(only.Error, Is.Not.Null);
+        }
+
+        static Type FindType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
+
+        static ExportGimmickRule AnchorRule(params string[] linked) => new ExportGimmickRule
+        {
+            Id = "test-anchor", Reason = "test anchor", AnchorTypes = new[] { typeof(GimmickSettingsProbe).FullName },
+            DedicatedTypes = new[] { "BoxCollider" }, LinkedObjectProperties = linked
+        };
+
+        List<ExportGimmickFinding> Matched(params ExportGimmickRule[] rules) =>
+            ExportGimmickDetection.Analyze(avatar, rules, null).Where(f => f.RuleId != null).ToList();
+
+        [Test] public void EveryTableRuleNeedsEvidenceBeyondNames()
+        {
+            var rules = ExportGimmickRules.All;
+            Assert.That(rules.Select(rule => rule.Id).Distinct().Count(), Is.EqualTo(rules.Count));
+            Assert.That(rules.All(rule => rule.HasEvidence && !string.IsNullOrEmpty(rule.Reason)), Is.True);
+            var namesOnly = new ExportGimmickRule { Id = "names", Reason = "names", RequiredChildren = new[] { "HeadSystem" } };
+            Child("HeadSystem", Child("system").transform);
+            Assert.That(Matched(namesOnly), Is.Empty);
+        }
+
+        [Test] public void OrdinaryAvatarPartsMatchNoTableRule()
+        {
+            Render("clothing", normal); Skin("body", normal);
+            Child("camera").AddComponent<Camera>();
+            Child("animated").AddComponent<Animator>();
+            Assert.That(ExportGimmickDetection.Analyze(avatar).Where(f => f.RuleId != null), Is.Empty);
+        }
+
+        [Test] public void DedicatedSettingsObjectLeavesWholeOtherwiseOnlyTheComponent()
+        {
+            var settings = Child("settings"); var probe = settings.AddComponent<GimmickSettingsProbe>();
+            settings.AddComponent<BoxCollider>();
+            settings.SetActive(false);
+            var finding = Matched(AnchorRule()).Single();
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            Assert.That(finding.Target, Is.SameAs(settings));
+            Assert.That(finding.RuleId, Is.EqualTo("test-anchor"));
+            // Kept for review, the object still loses its settings component.
+            var skin = Skin("body", normal); skin.bones = new[] { settings.transform };
+            var kept = Matched(AnchorRule());
+            Assert.That(kept.Select(f => f.Unit), Is.EquivalentTo(new[] { GimmickExclusionUnit.Review, GimmickExclusionUnit.Component }));
+            Assert.That(kept.Single(f => f.Unit == GimmickExclusionUnit.Component).Components, Is.EqualTo(new Component[] { probe }));
+            Object.DestroyImmediate(skin.gameObject);
+            Child("part", settings.transform);
+            finding = Matched(AnchorRule()).Single();
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Component));
+            Assert.That(finding.Components, Is.EqualTo(new Component[] { probe }));
+            Object.DestroyImmediate(settings);
+            var rootProbe = avatar.AddComponent<GimmickSettingsProbe>();
+            finding = Matched(AnchorRule()).Single();
+            Assert.That(finding.Target, Is.SameAs(avatar));
+            Assert.That(finding.Components, Is.EqualTo(new Component[] { rootProbe }));
+        }
+
+        [Test] public void SettingsComponentIsRemovedFromTheCopyOnly()
+        {
+            var probe = avatar.AddComponent<GimmickSettingsProbe>(); Render("clothing", normal);
+            var other = Child("other settings"); other.AddComponent<GimmickSettingsProbe>(); other.AddComponent<BoxCollider>();
+            var findings = Matched(AnchorRule());
+            Assert.That(findings.Count, Is.EqualTo(2));
+            var clone = Own(Object.Instantiate(avatar));
+            using (var session = new ExportGimmickSession(avatar, clone, null, findings)) session.Apply(null, null, null);
+            Assert.That(clone.GetComponent<GimmickSettingsProbe>(), Is.Null);
+            Assert.That(clone.GetComponentInChildren<MeshRenderer>(), Is.Not.Null);
+            Assert.That(avatar.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
+            // Keeping the root's component keeps that component only; the
+            // other gimmick still leaves.
+            var keep = new ExportGimmickOptions { IncludedComponents = new Component[] { probe } };
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, keep), Is.EqualTo(new[] { other }));
+            Assert.That(ExportGimmickDetection.AutomaticComponents(findings, keep), Is.Empty);
+            var kept = Own(Object.Instantiate(avatar));
+            using (var session = new ExportGimmickSession(avatar, kept, keep, findings))
+                session.Apply(null, null, null);
+            Assert.That(kept.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
+            var disabled = Own(Object.Instantiate(avatar));
+            using (var session = new ExportGimmickSession(avatar, disabled, new ExportGimmickOptions { AutoExclude = false }, findings))
+                session.Apply(null, null, null);
+            Assert.That(disabled.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
+        }
+
+        [Test] public void SettingsComponentIsFoundWhenTheCopyDroppedAnEarlierComponent()
+        {
+            // The export copy drops missing scripts and edit-mode behaviours,
+            // which moves every later component up by one.
+            avatar.AddComponent<BoxCollider>();
+            avatar.AddComponent<GimmickSettingsProbe>();
+            var findings = Matched(AnchorRule());
+            var clone = Own(Object.Instantiate(avatar));
+            Object.DestroyImmediate(clone.GetComponent<BoxCollider>());
+            using (var session = new ExportGimmickSession(avatar, clone, null, findings)) session.Apply(null, null, null);
+            Assert.That(clone.GetComponent<GimmickSettingsProbe>(), Is.Null);
+            Assert.That(avatar.GetComponent<GimmickSettingsProbe>(), Is.Not.Null);
+        }
+
+        [Test] public void LinkedGimmickObjectsLeaveTogetherAndAvatarPartsStay()
+        {
+            var probe = Child("settings").AddComponent<GimmickSettingsProbe>();
+            var camera = Child("camera"); Child("lens", camera.transform);
+            var toucher = Child("toucher", Child("hand").transform);
+            var clothing = Render("clothing", normal).gameObject;
+            probe.Linked = camera; probe.LinkedList = new[] { toucher, camera.transform.GetChild(0).gameObject }; probe.AvatarPart = clothing;
+            var findings = Matched(AnchorRule("Linked", "LinkedList"));
+            var roots = ExportGimmickDetection.AutomaticRoots(findings, null).ToArray();
+            Assert.That(roots, Is.EquivalentTo(new[] { probe.gameObject, camera, toucher }));
+            Assert.That(findings.All(f => f.Group == probe.gameObject), Is.True);
+            // Keeping one part keeps the whole gimmick, so nothing half-works.
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, new ExportGimmickOptions { IncludedObjects = new[] { toucher } }), Is.Empty);
+            // A linked object that an avatar part still uses stays.
+            var skin = Skin("body", normal); skin.bones = new[] { toucher.transform };
+            findings = Matched(AnchorRule("Linked", "LinkedList"));
+            Assert.That(findings.Single(f => f.Target == toucher).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null), Is.EquivalentTo(new[] { probe.gameObject, camera }));
+        }
+
+        GameObject RenderTextureLens(Transform parent = null)
+        {
+            var lens = Child("lens", parent); lens.AddComponent<Animator>();
+            var texture = Own(new RenderTexture(16, 16, 0));
+            // Owned after the texture so TearDown destroys the camera first.
+            Own(Child("capture", lens.transform)).AddComponent<Camera>().targetTexture = texture;
+            var display = Own(new Material(Shader.Find("Unlit/Texture"))); display.mainTexture = texture;
+            Render("display", display, lens.transform);
+            return lens;
+        }
+
+        [Test] public void CameraShownOnItsOwnMeshIsFoundByStructure()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var outfit = Child("outfit"); outfit.AddComponent<Animator>(); Render("dress", normal, outfit.transform);
+            var lens = RenderTextureLens(outfit.transform);
+            var finding = Matched(rule).Single();
+            Assert.That(finding.Target, Is.SameAs(lens));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            Assert.That(finding.Evidence, Is.EqualTo("structure"));
+            var display = lens.GetComponentInChildren<MeshRenderer>().sharedMaterial;
+            var capture = lens.GetComponentInChildren<Camera>();
+            display.mainTexture = Own(new Texture2D(2, 2));
+            Assert.That(Matched(rule), Is.Empty);
+            display.mainTexture = capture.targetTexture;
+            capture.targetTexture = null;
+            Assert.That(Matched(rule), Is.Empty);
+        }
+
+        [Test] public void TableFindsAModularAvatarRenderTextureCamera()
+        {
+            var merge = FindType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            if (merge == null) Assert.Ignore("Installed MA is required for the table rule.");
+            var lens = RenderTextureLens(); Object.DestroyImmediate(lens.GetComponent<Animator>()); lens.AddComponent(merge);
+            var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
+            Assert.That(finding.Target, Is.SameAs(lens));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
+        [Test] public void InactiveAvatarRootStillHasItsGimmicksFound()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var lens = RenderTextureLens(avatar.transform);
+            avatar.SetActive(false);
+            Assert.That(Matched(rule).Single().Target, Is.SameAs(lens));
+            avatar.SetActive(true);
+            lens.SetActive(false);
+            Assert.That(Matched(rule), Is.Empty);
+        }
+
+        [Test] public void GroupAroundAGimmickIsNotTakenForIt()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var outfit = Child("outfit"); outfit.AddComponent<Animator>(); Render("dress", normal, outfit.transform);
+            var lens = RenderTextureLens(outfit.transform);
+            // A rig without its own entry: only the outfit carries the structure.
+            Object.DestroyImmediate(lens.GetComponent<Animator>());
+            var settings = Child("settings"); settings.AddComponent<BoxCollider>();
+            settings.AddComponent<GimmickSettingsProbe>().Linked = lens;
+            // The rig is claimed by its settings; the outfit around it stays.
+            var findings = Matched(AnchorRule("Linked"), rule);
+            Assert.That(findings.Select(f => f.Target), Is.EquivalentTo(new[] { settings, lens }));
+            Assert.That(findings.All(f => f.RuleId == "test-anchor"), Is.True);
+            Object.DestroyImmediate(settings);
+            lens.AddComponent<Animator>();
+            // A camera and a display under different entries are not one loop.
+            lens.GetComponentInChildren<MeshRenderer>().transform.SetParent(outfit.transform, false);
+            Assert.That(Matched(rule), Is.Empty);
+        }
+
+        [Test] public void UnpackedPettingSystemIsFoundByItsContacts()
+        {
+            var receiver = FindType("VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver");
+            if (receiver == null) Assert.Ignore("Installed VRChat SDK is required for contact receivers.");
+            var root = Child("renamed"); Child("HeadSystem", root.transform); Child("Proxies", root.transform);
+            void Contact(string path, string parameter)
+            {
+                var parent = root.transform;
+                foreach (var name in path.Split('/')) parent = parent.Find(name) ?? Child(name, parent).transform;
+                using var serialized = new SerializedObject(parent.gameObject.AddComponent(receiver));
+                serialized.FindProperty("parameter").stringValue = parameter;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            Contact("RxHeadMain", "NadeRxHeadMain");
+            Contact("RightHandSystem/RxRight", "NadeRxRightHand");
+            Assert.That(ExportGimmickDetection.KnownNadeRoot(root), Is.False);
+            Contact("LeftHandSystem/RxLeft", "NadeRxLeftHand");
+            Assert.That(ExportGimmickDetection.KnownNadeRoot(root), Is.True);
+            var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.PettingSystem));
+            Assert.That(finding.Evidence, Is.EqualTo("structure"));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+        }
+
+        [Test] public void OmittedGimmickIsAResultLineWithItsRule()
+        {
+            var settings = Child("settings", Child("accessories").transform);
+            var report = new ExportRecoveryReport();
+            var warnings = new List<string>();
+            UniVrmOneClickExporter.RecordOmittedGimmick(avatar, new ExportGimmickFinding
+            {
+                Target = settings, Unit = GimmickExclusionUnit.Hierarchy, Reason = "test", RuleId = "test-anchor"
+            }, warnings, report);
+            var entry = report.Fallbacks.Results.Single();
+            Assert.That(entry.Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(entry.RuleId, Is.EqualTo("test-anchor"));
+            Assert.That(entry.Name, Is.EqualTo("accessories/settings"));
+            Assert.That(entry.Path, Is.EqualTo("accessories/settings"));
+            // Not a confirmation item: the dialog is for features that failed.
+            Assert.That(report.Fallbacks.Count, Is.Zero);
+            Assert.That(warnings, Is.Empty);
+            var list = ExportResultList.Build(report.Fallbacks, warnings);
+            Assert.That(list.Rows.Single().Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(list.NoticeCount, Is.Zero);
         }
 
         [Test] public void MeshReferencePruningKeepsBoneSpringAndOriginalVrmSettings()

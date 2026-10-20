@@ -822,7 +822,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));
                 Assert.That(warnings.Any(message => message.Contains(ExporterLocalization.T(FacialProjectionScope.Notice))), Is.True, string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name.StartsWith("VRChat / ", StringComparison.Ordinal) && item.name.EndsWith(" / Gesture", StringComparison.Ordinal));
+                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name == "Gesture");
                 var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Body");
                 var expected = reference.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
                 var materials = actual.sharedMaterials.Select(EditorJsonUtility.ToJson).ToArray();

@@ -15,7 +15,41 @@ namespace VRVlog.LilToonExporter
         // A collider of an unsupported type or shape was left out.
         ColliderSkipped,
         // No lilToon material; other materials became color-and-image MToon.
-        NonLilToonMaterials
+        NonLilToonMaterials,
+        // A stage failed and was left out; the export continued without it.
+        // Names are the stages (ExportStageGuard.Label).
+        StageOmitted,
+        // More items than the app accepts; the rest were left out.
+        LimitExceeded,
+        // A material could not be converted and became color-and-image MToon.
+        MaterialApproximated,
+        // A material on an unsupported shader was replaced by an official lilToon approximation.
+        ShaderSubstituted,
+        // An animated expression whose loop ends on the neutral face. Apps that
+        // only read the VRM expression show no change. Names are the expressions.
+        ExpressionEndsNeutral,
+        // A material whose shader is missing from the project. Names are the materials.
+        MissingShader
+    }
+
+    // One line of the export result: what happened to which item, and why.
+    internal sealed class ExportResultEntry
+    {
+        internal ExportOutcome Outcome;
+        // Short feature name shown in the result list (for example "揺れ物").
+        internal string Category;
+        // The object, material or stage concerned. Empty for whole features.
+        internal string Name;
+        // Transform path relative to the avatar root, when the item is an object.
+        internal string Path;
+        internal string Reason;
+        // Set for entries made by the stage guard.
+        internal ExportStage? Stage;
+        // Set for entries made by a gimmick rule (ExportGimmickRules).
+        internal string RuleId;
+        // Recovery diagnostics for a left-out stage (remedies the user can apply).
+        internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
+        internal int Count = 1;
     }
 
     internal sealed class ExportFallback
@@ -32,17 +66,71 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportFallbackReport
     {
         readonly List<ExportFallback> items = new List<ExportFallback>();
+        readonly List<ExportResultEntry> results = new List<ExportResultEntry>();
         internal IReadOnlyList<ExportFallback> Items => items;
+        // Every kept/baked/approximated/omitted item, for the result list.
+        internal IReadOnlyList<ExportResultEntry> Results => results;
         internal int Count => items.Count;
-        internal void Clear() => items.Clear();
+        // Materials whose shader is missing, counted by material: two materials
+        // with the same name are one entry in Names but two here.
+        internal int MissingShaderCount;
+        internal void Clear() { items.Clear(); results.Clear(); MissingShaderCount = 0; }
 
-        internal void Add(ExportFallbackKind kind, string name = null, Transform root = null, Transform target = null)
+        // Number of affected items per outcome. Outcomes without items are 0.
+        internal Dictionary<ExportOutcome, int> Summary()
         {
+            var summary = ((ExportOutcome[])Enum.GetValues(typeof(ExportOutcome))).ToDictionary(outcome => outcome, outcome => 0);
+            foreach (var entry in results) summary[entry.Outcome] += entry.Count;
+            return summary;
+        }
+
+        internal ExportResultEntry Record(ExportOutcome outcome, string category, string name = null, string reason = null, int count = 1)
+        {
+            var entry = new ExportResultEntry { Outcome = outcome, Category = category, Name = name ?? "", Reason = reason ?? "", Count = count };
+            results.Add(entry);
+            return entry;
+        }
+
+        internal static ExportOutcome Outcome(ExportFallbackKind kind)
+        {
+            switch (kind)
+            {
+                case ExportFallbackKind.Blink:
+                case ExportFallbackKind.ColliderSkipped:
+                case ExportFallbackKind.LimitExceeded:
+                    return ExportOutcome.Omitted;
+                default:
+                    return ExportOutcome.Approximated;
+            }
+        }
+
+        internal void Add(ExportFallbackKind kind, string name = null, Transform root = null, Transform target = null, string reason = null)
+        {
+            // StageOmitted entries come with their own result line (AddStage).
+            if (kind != ExportFallbackKind.StageOmitted)
+            {
+                var category = ExportFallbackConfirmation.Feature(kind);
+                var label = name ?? RelativePath(root, target) ?? "";
+                if (!results.Any(entry => entry.Stage == null && entry.Category == category && entry.Name == label))
+                    Record(Outcome(kind), category, label, reason ?? ExportFallbackConfirmation.Failure(kind)).Path = RelativePath(root, target);
+            }
             var item = items.FirstOrDefault(existing => existing.Kind == kind);
             if (item == null) items.Add(item = new ExportFallback { Kind = kind });
             if (!string.IsNullOrEmpty(name) && !item.Names.Contains(name)) item.Names.Add(name);
             var path = RelativePath(root, target);
             if (path != null && !item.Paths.Contains(path)) item.Paths.Add(path);
+        }
+
+        // A stage the guard left out: one dialog line plus one result line that
+        // keeps the cause and the recovery remedies found for it.
+        internal ExportResultEntry AddStage(ExportStage stage, string reason, IEnumerable<ExportRecoveryDiagnostic> diagnostics = null)
+        {
+            var label = ExportStageGuard.Label(stage);
+            Add(ExportFallbackKind.StageOmitted, ExportStageGuard.DisplayName(stage));
+            var entry = Record(ExportStageGuard.Outcome(stage), label, "", reason);
+            entry.Stage = stage;
+            if (diagnostics != null) entry.Diagnostics.AddRange(diagnostics);
+            return entry;
         }
 
         internal static string RelativePath(Transform root, Transform target)
@@ -61,32 +149,25 @@ namespace VRVlog.LilToonExporter
 
     internal interface IExportFallbackDialog
     {
-        // True continues the export, false stops it to change settings.
-        bool Confirm(string title, string message, string export, string changeSettings);
+        // Shows the finished export before it is written. Calls save to write
+        // it or changeSettings to go back; closing without either saves nothing.
+        void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings);
     }
 
     internal static class ExportFallbackConfirmation
     {
-        internal const string Title = "自動設定できなかった項目があります";
-        internal const string ExportButton = "書き出す";
-        internal const string ChangeSettingsButton = "設定を変更する";
-        internal const string Question = "{0}が使用できない状態でも書き出しますか？";
-        internal const string QuestionForSeveral = "これらの機能が使用できない状態でも書き出しますか？";
-        internal const string TargetFormat = "対象: {0}";
-        internal const string MoreFormat = "{0} ほか{1}件";
-        // The native dialog wraps at about 26 full-width characters. Every line
-        // stays below that so no sentence breaks in the middle.
-        const int ShownNames = 2;
-
         sealed class EditorDialog : IExportFallbackDialog
         {
-            public bool Confirm(string title, string message, string export, string changeSettings) =>
-                EditorUtility.DisplayDialog(title, message, export, changeSettings);
+            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings) =>
+                ExportResultWindow.ShowPending(result, avatar, save, changeSettings, openBlinkSettings);
         }
 
-        // Tests replace these two; batch runs and CI never reach the dialog.
+        // Tests replace these two; batch runs and CI never reach the window.
         internal static IExportFallbackDialog Dialog = new EditorDialog();
         internal static Func<bool> IsBatchMode = () => Application.isBatchMode;
+
+        internal const string ExpressionEndsNeutralText = "ループの最後が元の顔に戻る表情です。VR Vlogでは動きますが、ほかのアプリでは選んでも顔が変わりません";
+        internal const string MissingShaderReason = "シェーダーが見つからないため、元の見た目を再現できませんでした（Unity上でピンク色に表示されることがあります）";
 
         internal static string Failure(ExportFallbackKind kind)
         {
@@ -95,6 +176,12 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.Blink: return "瞬きの表情の自動設定ができませんでした";
                 case ExportFallbackKind.PlaneInsideBounds: return "平面のInside Boundsを変換できませんでした";
                 case ExportFallbackKind.ColliderSkipped: return "PhysBoneコライダーを変換できませんでした";
+                case ExportFallbackKind.StageOmitted: return "書き出しの一部を省略しました";
+                case ExportFallbackKind.LimitExceeded: return "上限を超えた分を省略しました";
+                case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
+                case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
+                case ExportFallbackKind.ExpressionEndsNeutral: return ExpressionEndsNeutralText;
+                case ExportFallbackKind.MissingShader: return MissingShaderReason;
                 default: return "lilToonのマテリアルが見つかりませんでした";
             }
         }
@@ -104,40 +191,31 @@ namespace VRVlog.LilToonExporter
             switch (kind)
             {
                 case ExportFallbackKind.Blink: return "瞬き";
-                case ExportFallbackKind.PlaneInsideBounds: return "Inside Bounds";
-                case ExportFallbackKind.ColliderSkipped: return "この衝突";
-                default: return "lilToonの表現";
+                case ExportFallbackKind.PlaneInsideBounds: return "揺れ物のコライダー";
+                case ExportFallbackKind.ColliderSkipped: return "揺れ物のコライダー";
+                case ExportFallbackKind.StageOmitted: return "省略した機能";
+                case ExportFallbackKind.LimitExceeded: return "上限を超えた項目";
+                case ExportFallbackKind.MaterialApproximated: return "マテリアル";
+                case ExportFallbackKind.ShaderSubstituted: return "マテリアル";
+                case ExportFallbackKind.ExpressionEndsNeutral: return "表情";
+                case ExportFallbackKind.MissingShader: return "マテリアル";
+                default: return "マテリアル";
             }
         }
 
-        // The sentence, then the object names on their own line.
-        static string Lines(ExportFallback item, string indent)
-        {
-            var line = ExporterLocalization.T(Failure(item.Kind));
-            if (item.Names.Count == 0) return line;
-            var names = string.Join(", ", item.Names.Take(ShownNames));
-            if (item.Names.Count > ShownNames)
-                names = string.Format(ExporterLocalization.T(MoreFormat), names, item.Names.Count - ShownNames);
-            return line + "\n" + indent + string.Format(ExporterLocalization.T(TargetFormat), names);
-        }
+        // True when the user has to decide before the file is written: the
+        // export worked around something, and someone is there to answer.
+        internal static bool NeedsAnswer(ExportFallbackReport report, bool interactive) =>
+            report != null && report.Count != 0 && interactive && !IsBatchMode();
 
-        internal static string Message(ExportFallbackReport report)
+        // Saves at once unless NeedsAnswer; then the result list decides. Going
+        // back selects the affected objects and opens the blink settings if needed.
+        internal static void Confirm(ExportFallbackReport report, IEnumerable<string> warnings, string destination,
+            GameObject avatar, bool interactive, Action save, Action openBlinkSettings = null)
         {
-            var items = report.Items.OrderBy(item => item.Kind).ToArray();
-            if (items.Length == 1)
-                return Lines(items[0], "") + "\n" + string.Format(ExporterLocalization.T(Question), ExporterLocalization.T(Feature(items[0].Kind)));
-            return string.Join("\n", items.Select(item => "・" + Lines(item, "　"))) + "\n\n" + ExporterLocalization.T(QuestionForSeveral);
-        }
-
-        // True when the export should be saved. Without fallbacks, without an
-        // interactive caller or in batch mode it never asks and continues.
-        internal static bool Confirm(ExportFallbackReport report, GameObject avatar, bool interactive, Action openBlinkSettings = null)
-        {
-            if (report == null || report.Count == 0 || !interactive || IsBatchMode()) return true;
-            if (Dialog.Confirm(ExporterLocalization.T(Title), Message(report),
-                    ExporterLocalization.T(ExportButton), ExporterLocalization.T(ChangeSettingsButton))) return true;
-            ShowTargets(report, avatar, openBlinkSettings);
-            return false;
+            if (!NeedsAnswer(report, interactive)) { save(); return; }
+            var result = ExportResultList.Build(report, warnings, destination);
+            Dialog.Show(result, avatar, save, () => ShowTargets(report, avatar, openBlinkSettings), openBlinkSettings);
         }
 
         internal static GameObject[] Targets(ExportFallbackReport report, GameObject avatar)

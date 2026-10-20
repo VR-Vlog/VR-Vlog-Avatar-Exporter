@@ -37,7 +37,7 @@ class UnityResultTests(unittest.TestCase):
             'DependencyEnvironmentTests': ('ActualInstalledPackagesMatchRequestedTestEnvironment', 1),
             'DependencyStartupTests': ('MenuResolvesBackendWithoutInitializationRegistration', 1),
             'DependencyRoundTripTests': ('SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport', 2),
-            'RendererSelectionTests': ('RendererCase', 4),
+            'RendererSelectionTests': ('RendererCase', 3),
             'SkinnedMeshFallbackWeightTests': ('SkinCase', 12),
             'LilToonStructureCheckTests': ('StructureCase', 11),
         }
@@ -51,7 +51,7 @@ class UnityResultTests(unittest.TestCase):
         return unity_runner.validate_result(self.xml, True)
 
     def test_all_required_suites_pass(self):
-        self.assertEqual(len(self.check()), 31)
+        self.assertEqual(len(self.check()), 30)
 
     def test_no_suite_can_disappear_from_a_passing_result(self):
         for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests']:
@@ -102,7 +102,7 @@ class ExporterProfileResultTests(unittest.TestCase):
         return removed
 
     def test_all_required_suites_pass(self):
-        expected = 31 + sum(sum(methods.values()) for methods in
+        expected = 30 + sum(sum(methods.values()) for methods in
                             [*unity_runner.BEHAVIOR_CASES.values(), *unity_runner.INTEGRATION_CASES.values()])
         self.assertEqual(len(self.check()), expected)
 
@@ -254,6 +254,19 @@ class UnityProfilePolicyTests(unittest.TestCase):
                 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests')])
         self.assertEqual(len(unity_runner.profile_filters(False, 'compatibility')), 2)
 
+    def test_every_release_of_the_patch_line_is_supported_and_listing_is_reported(self):
+        policy = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
+        support = unity_runner.unity_packages.univrm_support
+        self.assertEqual(support(policy, '0.131.2'), {'supported': True, 'listed': True})
+        for version in ('0.131.4', '0.131.10'):
+            with self.subTest(version=version):
+                self.assertNotIn(version, policy['uniVrm']['versions'])
+                self.assertEqual(support(policy, version), {'supported': True, 'listed': False})
+                unity_runner.profile_filters(True, 'exporter-behavior')
+        for version in ('0.132.0', '0.131.4-beta.1', '0.131.4+local', '0.130.9', '1.131.0', '0.131', '0.131.01', '', None):
+            with self.subTest(version=version):
+                self.assertEqual(support(policy, version), {'supported': False, 'listed': False})
+
     def test_missing_or_unsupported_dependencies_cannot_start_behavior_profiles(self):
         for profile in ['exporter-behavior', 'exporter-integration', 'unknown']:
             with self.subTest(profile=profile):
@@ -267,7 +280,7 @@ class UnityProfilePolicyTests(unittest.TestCase):
         # Additional-playable proof is an exporter behavior requirement in both
         # profiles; it cannot move behind an optional integration-only gate.
         for profile in ('exporter-behavior', 'exporter-integration'):
-            for suite, variants in (('AdditionalPlayableCallbackTests', 53), ('AdditionalParameterConstantTests', 78), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 76), ('SelectedLayerControlTests', 40), ('SelectedExpressionAppearanceTests', 61), ('HeldAutomaticExpressionTests', 102), ('FacialDepthEnvelopeTests', 30), ('ParameterDriverExpressionTests', 126), ('VrChatMenuExpressionTests', 75), ('GestureBlendTreeTests', 35)):
+            for suite, variants in (('AdditionalPlayableCallbackTests', 53), ('AdditionalParameterConstantTests', 78), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 76), ('SelectedLayerControlTests', 41), ('SelectedExpressionAppearanceTests', 61), ('HeldAutomaticExpressionTests', 102), ('FacialDepthEnvelopeTests', 30), ('ParameterDriverExpressionTests', 126), ('VrChatMenuExpressionTests', 77), ('GestureBlendTreeTests', 35)):
                 self.assertIn(unity_runner.NAMESPACE + suite,
                               unity_runner.profile_filters(True, profile))
                 self.assertEqual(sum(unity_runner.required_regressions(True, profile)[suite].values()), variants)
@@ -486,19 +499,23 @@ class LilToonExpectationTests(unittest.TestCase):
         self.assertEqual(unity_runner.installed_liltoon(self.project),
                          {'expected': None, 'installed': '2.0.0', 'source': 'embedded'})
 
-    def run_main(self, expected, unity_changes_to=None):
+    def run_main(self, expected, unity_changes_to=None, univrm='0.131.1', supported=True, profile=None):
         output = Path(self.temp.name) / 'out'
         argv = ['run-unity-compatibility.py', '--unity', 'Unity', '--project', str(self.project),
-                '--expect-univrm', '0.131.1', '--expect-unity', '2022.3.22f1', '--output', str(output)]
+                '--expect-univrm', univrm, '--expect-unity', '2022.3.22f1', '--output', str(output)]
         if expected:
             argv += ['--expect-liltoon', expected]
-        required = unity_runner.required_regressions(True, 'compatibility')
+        if profile:
+            argv += ['--profile', profile]
+        required = unity_runner.required_regressions(supported, 'compatibility')
         def unity(command, **_):
+            if profile:
+                return mock.Mock(returncode=1)  # Only whether Unity was launched matters.
             if unity_changes_to:
                 write_project(self.project, unity_changes_to)
             xml = Path(command[command.index('-testResults') + 1])
             root = ET.Element('test-run', result='Passed')
-            for suite, count in unity_runner.compatibility_counts(True).items():
+            for suite, count in unity_runner.compatibility_counts(supported).items():
                 name = unity_runner.NAMESPACE + suite
                 method = next(iter(required.get(suite, {'Case': 0})))
                 for index in range(count):
@@ -521,6 +538,34 @@ class LilToonExpectationTests(unittest.TestCase):
         reports = self.run_main('2.2.1')
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]['lilToon'], {'expected': '2.2.1', 'installed': '2.2.1', 'source': 'embedded'})
+
+    def test_unlisted_patch_of_the_line_runs_as_supported_and_is_recorded_as_unlisted(self):
+        write_project(self.project, '2.3.4')
+        reports = self.run_main(None, univrm='0.131.1')
+        self.assertEqual((reports[0]['uniVrmSupported'], reports[0]['uniVrmListed']), (True, True))
+        for path in (Path(self.temp.name) / 'out').glob('*.json'):
+            path.unlink()
+        reports = self.run_main(None, univrm='0.131.4')
+        self.assertEqual(len(reports), 1)
+        self.assertEqual((reports[0]['expectedUniVrm'], reports[0]['uniVrmSupported'], reports[0]['uniVrmListed']),
+                         ('0.131.4', True, False))
+        self.assertGreater(reports[0]['tests'], 2, 'The real-UniVRM suites run, not diagnostics only')
+
+    def test_behavior_profile_starts_unity_for_an_unlisted_patch_but_not_for_other_lines(self):
+        write_project(self.project, '2.3.4')
+        with self.assertRaisesRegex(SystemExit, 'Unity failed'):
+            self.run_main(None, univrm='0.131.4', profile='exporter-behavior')
+        self.assertEqual(self.unity_calls, 1)
+        for univrm in ('0.132.0', '0.131.4-beta.1'):
+            with self.subTest(univrm=univrm):
+                with self.assertRaisesRegex(SystemExit, 'require a supported'):
+                    self.run_main(None, univrm=univrm, supported=False, profile='exporter-behavior')
+                self.assertEqual(self.unity_calls, 0)
+                for path in (Path(self.temp.name) / 'out').glob('*.json'):
+                    path.unlink()
+                reports = self.run_main(None, univrm=univrm, supported=False)
+                self.assertEqual([(r['expectedUniVrm'], r['uniVrmSupported'], r['uniVrmListed'], r['tests']) for r in reports],
+                                 [(univrm, False, False, 2)])
 
     def test_mismatch_never_launches_unity_or_writes_a_receipt(self):
         write_project(self.project, '2.3.4')
@@ -603,6 +648,8 @@ class VersionProjectTests(unittest.TestCase):
         cases = [
             ({'com.vrmc.vrm': '0.131.1'}, 'one supported'),
             ({'com.vrmc.vrm': '0.132.0', 'com.vrmc.gltf': '0.132.0'}, 'one supported'),
+            ({'com.vrmc.vrm': '0.131.4-beta.1', 'com.vrmc.gltf': '0.131.4-beta.1'}, 'one supported'),
+            ({'com.vrmc.vrm': '0.131.4', 'com.vrmc.gltf': '0.131.3'}, 'one supported'),
             ({'jp.lilxyzw.liltoon': '2.3.4'}, 'Unexpected package'),
             ({'com.vrvlog.liltoon-vrm-exporter': '0.0.0'}, 'Unexpected package'),
             ({'com.vrmc.gltf': None}, 'missing com.vrmc.gltf'),
@@ -611,6 +658,11 @@ class VersionProjectTests(unittest.TestCase):
             with self.subTest(changes=changes):
                 with self.assertRaisesRegex(SystemExit, message):
                     version_projects.dependency_packages(self.dependencies('bad' + str(index), **changes), self.policy)
+
+    def test_unlisted_patch_of_the_line_can_be_verified(self):
+        self.assertNotIn('0.131.4', self.policy['uniVrm']['versions'])
+        folder = self.dependencies('unlisted', **{'com.vrmc.vrm': '0.131.4', 'com.vrmc.gltf': '0.131.4'})
+        self.assertEqual(version_projects.dependency_packages(folder, self.policy)['com.vrmc.vrm'][1], '0.131.4')
 
     def test_manifest_pins_test_packages_and_tests_the_referenced_exporter(self):
         manifest = version_projects.manifest(ROOT)
@@ -753,7 +805,7 @@ class UpstreamTests(unittest.TestCase):
 
 
 class LilToonRangeGeneratorTests(unittest.TestCase):
-    FILES = ['Compatibility/dependencies.json', 'Editor/LilToon234Catalogue.cs', 'package.json',
+    FILES = ['Compatibility/dependencies.json', 'Formats/Runtime/LilToon234Catalogue.cs', 'package.json',
              'Editor/VRVlog.LilToonExporter.Editor.asmdef', 'Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef']
 
     def setUp(self):
@@ -786,6 +838,16 @@ class LilToonRangeGeneratorTests(unittest.TestCase):
 
     def test_version_order_is_numeric(self):
         self.assertGreater(generator.version_tuple('2.10.0'), generator.version_tuple('2.3.4'))
+
+    def test_univrm_version_defines_stay_inside_the_patch_line(self):
+        # A half-open bound at the next minor would admit its prereleases.
+        outputs = generator.outputs(self.root)
+        for name in self.FILES[3:]:
+            with self.subTest(name=name):
+                asm = json.loads(outputs[name])
+                self.assertEqual({item['expression'] for item in asm['versionDefines']},
+                                 {'[0.131.0,0.131.' + str(generator.UNIVRM_PATCH_CEILING) + ']'})
+                self.assertEqual(asm['defineConstraints'], ['VRVLOG_VRM_0_131', 'VRVLOG_GLTF_0_131'])
 
 
 if __name__ == '__main__':

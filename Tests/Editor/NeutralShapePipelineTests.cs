@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
         [Serializable] public sealed class FixtureEvidence
         {
-            public string manualExpression = "VRChat / Authored endpoint";
+            public string manualExpression = "Authored endpoint";
             public FaceEvidence[] faces;
         }
         // This public test fixture uses artificial geometry and a generated
@@ -154,7 +154,7 @@ namespace VRVlog.LilToonExporter.Tests
             var imported = await Vrm10.LoadBytesAsync(ExportFixture(endpoint), canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
             try
             {
-                var expression = imported.Vrm.Expression.CustomClips.Single(c => c.name == "VRChat / Authored endpoint");
+                var expression = imported.Vrm.Expression.CustomClips.Single(c => c.name == "Authored endpoint");
                 var key = ExpressionKey.CreateCustom(expression.name);
                 foreach (var input in new[] { 0f, 1f, 0f })
                 {

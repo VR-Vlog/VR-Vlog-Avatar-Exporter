@@ -66,6 +66,12 @@ namespace VRVlog.LilToonExporter
         BlinkExportSession descriptorBlink;
         ExportObjectExclusions exclusions;
         ExportGimmickSession gimmicks;
+        // The ordinary routes pass these on, so they leave out what Copy leaves out.
+        GameObject[] manualExcluded = Array.Empty<GameObject>();
+        ExportGimmickOptions gimmickOptions = new ExportGimmickOptions();
+        internal IReadOnlyList<GameObject> ExcludedObjects => manualExcluded;
+        internal ExportGimmickOptions GimmickOptions => new ExportGimmickOptions { AutoExclude = gimmickOptions.AutoExclude,
+            IncludedObjects = gimmickOptions.IncludedObjects.ToArray(), IncludedComponents = gimmickOptions.IncludedComponents.ToArray() };
         ExperimentalExpressionControllerScope controllers;
         FaceEmoExpressions.BindingSnapshot faceEmoBindings;
         Hash128 sourceStamp;
@@ -100,13 +106,19 @@ namespace VRVlog.LilToonExporter
 
         internal ExperimentalExpressionCaptureSession(GameObject source) : this(source, true) { }
 
-        internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults)
+        // Manual exclusions and gimmick options follow the ordinary export:
+        // detection skips what is excluded by hand, and both leave Copy.
+        internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults,
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
         {
             Source = source;
             try
             {
-                ExportRendererSelection.RequireActiveRoot(source);
+                if (source == null) throw new ArgumentNullException(nameof(source));
+                using var steps = ExpressionBoardTimings.Sequence();
+                steps.Next("clipRoots");
                 CaptureClipRoots();
+                steps.Next("copy");
                 Copy = NdmfExportPreparation.InstantiateOwnedCopy(source);
                 Copy.name = source.name;
                 foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
@@ -115,16 +127,26 @@ namespace VRVlog.LilToonExporter
                     var index = Array.IndexOf(renderer.GetComponents<Renderer>().Where(item => item.GetType() == renderer.GetType()).ToArray(), renderer);
                     authoringRecoveryRenderers.Add(renderer, mapped.GetComponents<Renderer>().Where(item => item.GetType() == renderer.GetType()).ElementAt(index));
                 }
-                var gimmickOptions = new ExportGimmickOptions();
-                var findings = ExportGimmickDetection.Analyze(source);
-                var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions).ToArray();
-                exclusions = new ExportObjectExclusions(source, automaticRoots);
-                gimmicks = new ExportGimmickSession(source, Copy, gimmickOptions);
+                manualExcluded = (excludedObjects ?? Array.Empty<GameObject>()).ToArray();
+                this.gimmickOptions = new ExportGimmickOptions
+                {
+                    AutoExclude = gimmickOptions?.AutoExclude != false,
+                    IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
+                    IncludedComponents = (gimmickOptions?.IncludedComponents ?? Array.Empty<Component>()).ToArray()
+                };
+                steps.Next("gimmicks");
+                List<ExportGimmickFinding> findings;
+                using (var manual = new ExportObjectExclusions(source, manualExcluded))
+                    findings = this.gimmickOptions.AutoExclude ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();
+                var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, this.gimmickOptions).ToArray();
+                exclusions = new ExportObjectExclusions(source, manualExcluded.Concat(automaticRoots));
+                gimmicks = new ExportGimmickSession(source, Copy, this.gimmickOptions, findings);
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 authoredBindings = new PreparedExpressionBindings(Copy, null, source, ExcludedBinding);
                 foreach (var finding in findings.Where(value => value.Renderer == null))
                     if (automaticRoots.Contains(finding.Target)) Warnings.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
                     else if (finding.Unit == GimmickExclusionUnit.Review) Warnings.Add("自動除外せず保持: " + finding.Target.name + " — " + finding.Reason);
+                steps.Next("blink");
                 // Preserve descriptor shape names/identity before MA can move
                 // the renderer or reorder its channels. Missing automatic
                 // configuration must still permit manual/no-blink exports.
@@ -134,9 +156,11 @@ namespace VRVlog.LilToonExporter
                     if (configured.ConfiguredByDescriptor) descriptorBlink = configured.ForClone(source, Copy);
                 }
                 catch (InvalidOperationException) { }
+                steps.Next("maAppearance");
                 MaAppearanceSnapshot.Apply(source, Copy, ownedMeshes, exclusions, Warnings);
                 PoseExportSession.RemoveAplFromCopy(source, Copy);
                 gimmicks.Apply(null, null, Warnings);
+                steps.Next("faceEmo");
                 // As with the blink preview, keep Transforming's committed meshes and FX.
                 // Optimizing is deliberately deferred until generated expression targets exist.
                 faceEmoBindings = FaceEmoExpressions.Capture(source, Copy, ExcludedBinding,
@@ -146,7 +170,9 @@ namespace VRVlog.LilToonExporter
                 foreach (var group in Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true).GroupBy(renderer =>
                     AnimationUtility.CalculateTransformPath(renderer.transform, Copy.transform), StringComparer.Ordinal))
                     if (group.Count() == 1) authoringRenderers.Add(group.Key, group.Single());
+                steps.Next("authored");
                 authoredBindings.CaptureAuthoredExpressions();
+                steps.Next("ndmf");
                 preparation = NdmfExportPreparation.Prepare(source, Copy, Warnings, afterTransforming: transformed => {
                     authoredBindings.RebindPrepared(transformed.PreparedRendererFor);
                     authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
@@ -154,6 +180,7 @@ namespace VRVlog.LilToonExporter
                     faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
                     gimmicks.Apply(null, null, Warnings);
                 });
+                steps.Next("channels");
                 if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))
                     if (behaviour != null && !NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
@@ -171,6 +198,7 @@ namespace VRVlog.LilToonExporter
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),
                         MeshHash = MeshStamp(mesh) });
                 }
+                steps.Next("menu");
                 var installed = VrChatExpressionMenu.Read(Copy);
                 if (replayInstalledDefaults && installed.Controller != null)
                 {
@@ -178,31 +206,57 @@ namespace VRVlog.LilToonExporter
                     try
                     {
                         var neutral = Snapshot("FXの基準表情");
-                        foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>()))
+                        foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>(), warnings: Warnings))
                             Set(neutral, value.Path, value.Shape, value.Weight);
                         ValidatePose(neutral); ApplyUnchecked(neutral);
                     }
                     catch (InvalidOperationException error) { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
                 }
+                steps.Next("snapshot");
                 preparedRest = Snapshot("準備後の顔");
                 Baseline = Snapshot("基準の顔");
+                steps.Next("fingerprint");
                 // Settle source read caches before guarding subsequent edits.
                 sourceStamp = ExportSourceFingerprint.Compute(source);
+                // The stamps were just taken from the source as it is: the rest
+                // of this batch need not hash the whole avatar again.
+                if (batchDepth > 0) validatedBatch = batchId;
             }
             catch { Dispose(); throw; }
         }
 
         internal bool HasCurrentSource => !disposed && Source != null && ExportSourceFingerprint.Compute(Source) == sourceStamp;
 
-        void RequireValid()
+        // Hashing the whole source avatar and its meshes takes a long time on a
+        // real avatar, and preparing the board checks the session once per
+        // file and per slot. Inside one Batch nothing else in the editor runs,
+        // so the source cannot change: the hashes are checked once per batch.
+        // Export checks them again anyway, as it writes the file.
+        static int batchDepth, batchId;
+        int validatedBatch;
+        sealed class BatchScope : IDisposable
+        {
+            bool done;
+            public void Dispose() { if (!done) { done = true; batchDepth--; } }
+        }
+        internal static IDisposable Batch()
+        {
+            if (batchDepth++ == 0) batchId++;
+            return new BatchScope();
+        }
+
+        void RequireValid(bool always = false)
         {
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
-            if (Source == null || ExportSourceFingerprint.Compute(Source) != sourceStamp)
+            var hashed = !always && batchDepth > 0 && validatedBatch == batchId;
+            using var timing = hashed ? null : ExpressionBoardTimings.Step("validate");
+            if (Source == null || !hashed && ExportSourceFingerprint.Compute(Source) != sourceStamp)
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
             foreach (var channel in Channels)
                 if (channel.Renderer == null || !channel.Renderer.enabled || !channel.Renderer.gameObject.activeInHierarchy ||
-                    channel.Renderer.sharedMesh != channel.Mesh || MeshStamp(channel.Mesh) != channel.MeshHash)
+                    channel.Renderer.sharedMesh != channel.Mesh || !hashed && MeshStamp(channel.Mesh) != channel.MeshHash)
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用メッシュが変更されました。「変更」からアバターを指定し直してください。"));
+            if (batchDepth > 0) validatedBatch = batchId;
         }
 
         internal void DiscoverCandidates()
@@ -220,7 +274,12 @@ namespace VRVlog.LilToonExporter
                     if (entry.Error != null) continue;
                     if (EditorUtility.DisplayCancelableProgressBar("導入済みの表情を収録中", entry.Name,
                         (float)result.Entries.IndexOf(entry) / Mathf.Max(1, result.Entries.Count))) throw new OperationCanceledException();
-                    try { entry.Values.AddRange(ExperimentalInstalledExpressionPlayer.Sample(Copy, result, entry.Parameters)); }
+                    try
+                    {
+                        var settlement = new List<string>();
+                        entry.Values.AddRange(ExperimentalInstalledExpressionPlayer.Sample(Copy, result, entry.Parameters, warnings: settlement));
+                        foreach (var message in settlement) { entry.Messages.Add(message); Warnings.Add(entry.Name + ": " + message); }
+                    }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
                 // Registered FaceEmo branches can exist outside the avatar root,
@@ -395,10 +454,14 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < Channels.Count; i++)
             {
                 if (Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) continue;
+                // Copying a face mesh with all its BlendShapes takes a long time,
+                // and the board checks every slot. When the face moves a vertex
+                // and every delta is finite, the copy below would say the same.
+                if (MovesVertices(AvatarBaseShape.ExpressionDeltas(Channels[i].Mesh, Baseline.Rows[i].Weights, pose.Rows[i].Weights, clamp))) return true;
                 var mesh = Object.Instantiate(Channels[i].Mesh);
                 try
                 {
-                    AvatarBaseShape.AppendExpression(Channels[i].Mesh, mesh, "__CaptureProbe_" + Guid.NewGuid().ToString("N"),
+                    AvatarBaseShape.AppendExpression(Channels[i].Mesh, mesh, "__CaptureProbe_" + DeterministicNames.Hash("CaptureProbe", Channels[i].Path),
                         Baseline.Rows[i].Weights, pose.Rows[i].Weights, clamp);
                     if (AvatarBaseShape.HasUsableMorphEndpoint(mesh, mesh.blendShapeCount - 1, 0, 100)) return true;
                 }
@@ -406,6 +469,19 @@ namespace VRVlog.LilToonExporter
             }
             return false;
         }
+
+        static bool MovesVertices(AvatarBaseShape.Deltas delta)
+        {
+            var moves = false;
+            for (var vertex = 0; vertex < delta.Vertices.Length; vertex++)
+            {
+                if (!Finite(delta.Vertices[vertex]) || !Finite(delta.Normals[vertex]) || !Finite(delta.Tangents[vertex])) return false;
+                moves |= delta.Vertices[vertex].x != 0f || delta.Vertices[vertex].y != 0f || delta.Vertices[vertex].z != 0f;
+            }
+            return moves;
+        }
+
+        static bool Finite(Vector3 value) => Finite(value.x) && Finite(value.y) && Finite(value.z);
 
         internal string SaveSettings()
         {
@@ -460,27 +536,52 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Export(string avatarName, string author, ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
-            IEnumerable<PresetAssignment> presets = null)
+            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false)
         {
-            RequireValid();
+            // The export always hashes the source again, even inside a batch.
+            RequireValid(always: true);
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
             var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
-            var presetFaces = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray())
-                .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment))).ToArray();
+            // A chosen "none" is a face without a pose or morphs: an empty
+            // mouth preset, an empty blink slot.
+            var selectedPresets = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray());
+            var presetFaces = selectedPresets
+                .Where(item => !item.Assignment.IsNone || ChosenNone(item.Preset, item.Assignment))
+                .Select(item =>
+                {
+                    var pose = item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment);
+                    var morphs = pose == null ? new List<(string Path, string Shape, float Weight)>()
+                        : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
+                    return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
+                }).ToArray();
+            var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
+            var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
+            if (leftEye != null && !leftEye.IsNone && BlinkSideOverlap(ExpressionPreset.blinkLeft, leftEye, rightEye) is string overlap)
+                throw new InvalidOperationException(overlap);
+            // Blink presets are written by the blink export only. Automatic
+            // candidates repeat its own choice, so they leave blinkOptions as
+            // is. The user's choices, "none" included, replace their slots of
+            // that setting as a manual one, even when it is no blink.
+            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset) && !face.Automatic).ToArray();
+            if (blinkFaces.Length > 0) blinkOptions = AssignedBlink(blinkOptions, blinkFaces.Select(face => (face.Preset, face.Morphs)));
+            presetFaces = presetFaces.Where(face => !BlinkPresets.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
             // Without explicit faces, retain the ordinary exporter's VRChat
             // menu/FX, authored expressions, metadata and preparation route.
-            if (expressions.Length == 0 && presetFaces.Length == 0)
+            // replaceCustomFaces asks for exactly the recorded custom faces, even
+            // none, so both shortcuts that keep the menu faces are skipped.
+            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
                 return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
-                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport);
-            // Emotion presets alone keep that ordinary route. They enter its copy
+                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
+                    excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+            // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
-            if (expressions.Length == 0)
+            if (!replaceCustomFaces && expressions.Length == 0)
             {
                 var authored = new List<Object>();
                 try
@@ -490,7 +591,8 @@ namespace VRVlog.LilToonExporter
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
-                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored));
+                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
+                        inferEmotionPresets: false, excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
@@ -551,7 +653,7 @@ namespace VRVlog.LilToonExporter
                 settings.Prefab = null;
                 // Replace selectable custom faces, retaining authored functional
                 // and standard presets (mouth, gaze, blink, neutral and emotions).
-                if (expressions.Length > 0 || settings.Expression == null)
+                if (expressions.Length > 0 || replaceCustomFaces || settings.Expression == null)
                 {
                     var previous = settings.Expression;
                     settings.Expression = new VRM10ObjectExpression();
@@ -560,8 +662,6 @@ namespace VRVlog.LilToonExporter
                             if (preset != ExpressionPreset.custom) settings.Expression.AddClip(preset, clip);
                 }
                 instance.Vrm = settings;
-                var targetPrefix = "__VRVlog_Capture_" + Guid.NewGuid().ToString("N") + "_";
-                var serial = 0;
                 long addedBytes = 0;
                 for (var i = 0; i < Channels.Count; i++)
                 {
@@ -570,10 +670,16 @@ namespace VRVlog.LilToonExporter
                     for (var shape = 0; shape < Baseline.Rows[i].Weights.Length; shape++)
                         renderer.SetBlendShapeWeight(shape, Baseline.Rows[i].Weights[shape]);
                 }
+                // Recorded names and presets identify each target; _2, _3
+                // settle repeated renderer paths.
+                var usedNames = DeterministicNames.BlendShapeNames(exportCopy);
                 foreach (var pose in expressions)
                 {
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
-                    expression.name = "VRChat / 記録 / " + pose.Name;
+                    // The recorded name as is; a repeated, VRM preset or face
+                    // tracking name gets " (2)", " (3)"... like a menu face.
+                    expression.name = VrmMenuExpressions.UniqueName(pose.Name,
+                        name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
                     expression.IsBinary = true;
                     expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
                     var bindings = new List<MorphTargetBinding>();
@@ -581,7 +687,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) continue;
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[i].Path, pose.Name), usedNames);
                         addedBytes += Channels[i].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
@@ -595,7 +701,7 @@ namespace VRVlog.LilToonExporter
                         // target also keeps existing VRM/app morph-based catalogs
                         // aware of the entry and its override/reset semantics.
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[0].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[0].Path, pose.Name), usedNames);
                         addedBytes += Channels[0].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[0].Mesh, renderer.sharedMesh, target,
@@ -606,17 +712,19 @@ namespace VRVlog.LilToonExporter
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
                 }
-                // Emotion presets are separate clips. Recorded custom faces keep
-                // their names, so app-side animation references stay valid.
+                // Standard presets are separate clips. Recorded custom faces stay
+                // custom clips under their recorded names (numbered on a clash),
+                // so the animation extension still finds them.
                 foreach (var face in presetFaces)
                 {
                     var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
                     var bindings = new List<MorphTargetBinding>();
-                    for (var i = 0; i < Channels.Count; i++)
+                    // A chosen "none" stays an empty preset.
+                    for (var i = 0; i < (face.Pose != null ? Channels.Count : 0); i++)
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(face.Pose.Rows[i].Weights)) continue;
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = targetPrefix + serial++;
+                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("CapturePreset", Channels[i].Path, face.Preset.ToString()), usedNames);
                         addedBytes += Channels[i].Mesh.vertexCount * 36L;
                         if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
                         AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
@@ -659,8 +767,9 @@ namespace VRVlog.LilToonExporter
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
-                    descriptorVisemes: visemes);
-                return InjectSourcePoses(bytes, warnings, poses);
+                    inferEmotionPresets: false, descriptorVisemes: visemes);
+                // The exporter's clone keeps this root scale and bakes it into the VRM.
+                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
             }
             finally
             {

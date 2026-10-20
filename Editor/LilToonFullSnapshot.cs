@@ -249,6 +249,10 @@ namespace VRVlog.LilToonExporter
                 }
                 var ids = AddVertexIds(originalIds);
                 var bounds=renderer.localBounds;
+                // A negative extent is an authoring mistake Unity accepts; abs() is the same box and the contract rejects negatives.
+                var extents=bounds.extents;
+                if(extents.x<0||extents.y<0||extents.z<0)warnings?.Add(renderer.name+": 描画範囲（Bounds）の大きさが負の値だったため、絶対値にして保存しました。");
+                extents=new Vector3(Mathf.Abs(extents.x),Mathf.Abs(extents.y),Mathf.Abs(extents.z));
                 List<object> Vec(Vector3 v)=>new List<object>{v.x,v.y,v.z,0};
                 var anchor=renderer.probeAnchor;
                 var anchorNode=anchor!=null && converter.Nodes.TryGetValue(anchor.gameObject,out var anchorModel)?model.Nodes.IndexOf(anchorModel):-1;
@@ -256,7 +260,7 @@ namespace VRVlog.LilToonExporter
                 var state=new Dictionary<string,object>{{"receiveShadows",renderer.receiveShadows},{"shadowCasting",(int)renderer.shadowCastingMode},
                     {"lightProbes",(int)renderer.lightProbeUsage},{"reflectionProbes",(int)renderer.reflectionProbeUsage},{"probeAnchor",anchorNode},
                     {"sortingLayer",SortingLayer.GetLayerValueFromID(renderer.sortingLayerID)},{"sortingOrder",renderer.sortingOrder},
-                    {"boundsCenter",Vec(bounds.center)},{"boundsExtents",Vec(bounds.extents)}};
+                    {"boundsCenter",Vec(bounds.center)},{"boundsExtents",Vec(extents)}};
                 bindings.Add(new Dictionary<string, object> { {"node", node}, {"mesh", meshIndex}, {"vertexCount", originalIds.Count}, {"materials", materialIndices}, {"uv", attributes}, {"vertexIds", ids}, {"renderer",state} });
             }
         }

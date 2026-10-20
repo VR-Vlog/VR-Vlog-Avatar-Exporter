@@ -26,6 +26,7 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'FailureSnapshotKeepsEveryTargetSharingOneRecoveryActionAfterReload': 1,
         'ExceptionWithoutDiagnosticsIsStillAvailableInFull': 1,
+        'TheStageLineNamesItsPhaseWhenKnown': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 4,
@@ -37,6 +38,11 @@ BEHAVIOR_CASES = {
         'NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip': 12,
         'SharedStaticMeshRepairsEveryExportedMeshGroupWithoutSplittingSourceIdentity': 1,
         'SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings': 2,
+        'ZeroScaleBranchKeepsChildTransformsWithoutValidTrsAssertions': 4,
+    },
+    'MorphNormalExportTests': {
+        'AuthoredNormalTargetsKeepSourceIdentityAndSubmeshVertexOrder': 2,
+        'EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals': 1,
     },
     'AppearanceRecoveryTests': {
         'ActiveOrKeywordEnabledLayersKeepTheOriginalDynamicImageDiagnostic': 3,
@@ -56,6 +62,7 @@ BEHAVIOR_CASES = {
         'ACompleteUnifiedPairIncludesCompatibleOneSidedEyelashes': 4,
         'APartialEyelashPairCannotBeHiddenByAnotherRenderersBlink': 2,
         'AUnifiedPartialKeepsPriorityOverMultipleLegacyPartialFamilies': 1,
+        'ActualExportContinuesWithoutBlinkWhenTheClosingShapeIsAmbiguous': 2,
         'ActualExportPreservesAuthoredClipsIncludingExplicitEmpty': 2,
         'ActualUniVrmExportBindsGeneratedTargetsToTheirFinalNodes': 2,
         'AllBlinkRenderersMustSupportTheIndividualPair': 1,
@@ -104,21 +111,29 @@ BEHAVIOR_CASES = {
         'UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing': 3,
     },
     'ExportFallbackConfirmationTests': {
+        'AMaterialWithAMissingShaderIsFoundOnceAndOtherSlotsAreIgnored': 1,
         'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
+        'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
+        'AStageIsNamedWithItsPhase': 1,
+        'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
-        'BatchAndNonInteractiveCallersContinueWithoutADialog': 2,
-        'EveryShippedLocaleTranslatesTheDialog': 1,
+        'BatchAndNonInteractiveCallersSaveWithoutTheList': 2,
+        'EveryShippedLocaleTranslatesTheResultWords': 1,
+        'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,
-        'OneFallbackAsksWithItsOwnSentence': 1,
-        'SeveralFallbacksShareOneDialogInAFixedOrder': 1,
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
+        'TheListShowsEveryFallbackWithItsTargets': 1,
         'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+        'TheSavedTitleWarnsOnlyWhenAShaderIsMissing': 1,
+        'TwoMaterialsWithTheSameNameCountAsTwo': 1,
     },
     'LegacyBlinkMenuRoundTripTests': {
         'SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport': 2,
     },
     'NonLilToonExportTests': {
         'AMissingBehaviourIsNeverTreatedAsAnExportComponent': 1,
+        'AnAssignedNonLilToonMaterialKeepsTheLilToonMessage': 1,
+        'AvatarWhoseMaterialsAreAllMissingNamesTheRenderers': 1,
         'AvatarWithoutLilToonStillProducesASnapshot': 1,
         'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
     },
@@ -127,6 +142,8 @@ BEHAVIOR_CASES = {
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
         'ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance': 2,
         'ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal': 4,
+        'AllMotionImmobileDragNeverExceedsOne': 1,
+        'AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp': 2,
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,
@@ -140,6 +157,7 @@ BEHAVIOR_CASES = {
         'MalformedPhysBoneDataStillStopsConversion': 3,
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,
+        'PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem': 1,
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
@@ -215,6 +233,7 @@ BEHAVIOR_CASES = {
     },
     'NeutralShapeSamplerTests': {
         'UnknownComponentPropertyPreservesPreparedNeutralAndReportsTarget': 1,
+        'ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest': 1,
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 4,
         'ConstraintCoupledMorphKeepsPreparedWeightWhileIndependentFaceStillSamples': 2,
         'ConstraintEnabledSupportKeepsPreparedRestWithoutExecutingConstraint': 2,
@@ -325,6 +344,7 @@ BEHAVIOR_CASES = {
         'DirectBaseClipWithoutStateProvenanceCannotDiscardItsLayerControl': 1,
         'InactiveSelectedStateKeepsItsOwnWeightButExecutesAControlOfAnotherLayer': 1,
         'SelectedCallbackRetainsItsUpperNonEquivalentSelectorTarget': 2,
+        'AControlOnALateExitTimeTargetIsFollowed': 1,
     },
     'SelectedExpressionAppearanceTests': {
         'UnchangedPreparedAppearanceKeepsOnlyAuthoredMorphAnimation': 8,
@@ -366,8 +386,8 @@ BEHAVIOR_CASES = {
         'GestureClipKeepsChangingCurvesButRejectsPartialMaterialFaces': 1,
         'AnimatedExpressionDataContracts': 1,
         'BlendTreeUsesTheMenuValueInsteadOfPublishingItsIndividualShapes': 1,
-        'DelayedExitCannotMasqueradeAsAFixedExpression': 1,
-        'DelayedNonLoopingStepCannotMasqueradeAsAFixedExpression': 1,
+        'DelayedExitIsFollowedAndReported': 1,
+        'DelayedNonLoopingStepIsSavedAtItsLastKeyAndReported': 1,
         'DuplicateHierarchyPathsCannotCaptureTheWrongFace': 1,
         'GestureBlendTreeLeavesAreNotRegisteredAsSeparateExpressions': 1,
         'GestureClipKeepsTheAuthoredCombinationDespiteAutomaticBlink': 1,
@@ -381,6 +401,8 @@ BEHAVIOR_CASES = {
         'MenuTraversalKeepsLabelsAncestorGatesAndReportsPuppets': 1,
         'PortableCurveMatchesUnityWeightedAndSteppedAnimation': 1,
         'WriteDefaultsOffRetainsTheWholeEvaluatedFace': 1,
+        'RepeatedFxParameterDeclarationsKeepMenuExpressions': 1,
+        'ConflictingFxParameterDeclarationsAreLeftForStrictChecks': 1,
     },
     'ParameterDriverExpressionTests': {
         'FixedSelectorsRetainNativeSdkWritersAndEffectiveOverridesWithIndependentRandomRest': 6,
@@ -450,6 +472,39 @@ BEHAVIOR_CASES = {
         'UnrelatedRandomDriverDoesNotBlockTheMenu': 1,
         'UnwrittenFalseAndGuardProvesNeutralFxIndependentOfStationInput': 2,
         'WriteDefaultsCommandLayerDoesNotQualifyForFalseAndGuardProof': 1,
+    },
+    'ExpressionSettlementTests': {
+        'NativeClocksMatchTheSettlementConversion': 4,
+        'ANonLoopingClipLongerThanTheWarmUpIsSavedAtItsLastKey': 3,
+        'AStateReachedByALateExitTimeIsFollowed': 3,
+        'ALoopingClipIsSavedAtTheFirstFrameOfItsFinalState': 1,
+        'CyclicExitTimesStopAtTheFirstRevisitedState': 1,
+        'AHeldExitTimeIsReportedSeparatelyAndStillChecked': 1,
+        'AMovingClipOnAStoppedOrReversedClockIsNotSaved': 2,
+        'AnInterruptibleTransitionIsSteppedFrameByFrame': 1,
+        'ASelfTransitionIsFollowedOnceAndReported': 2,
+        'AMovingClipWithASelfTransitionIsNotSaved': 1,
+        'ASelfTransitionWithADurationFinishesBeforeSaving': 2,
+        'TheHopLimitIsCountedPerLayer': 1,
+        'TheStepLimitGrowsWithTheNumberOfLayers': 1,
+        'AnAnyStateEdgeThatCannotReachItsOwnStateIsNotFollowed': 1,
+        'AZeroDurationSelfTransitionOfAJustEnteredStateIsReported': 1,
+        'ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey': 2,
+        'LoopsOfDifferentLengthsAreReportedAsOverlapping': 1,
+        'AChainLongerThanTheHopLimitIsNotSaved': 1,
+        'AFaceAfterMoreThanAMinuteIsReported': 2,
+        'SettleDoesNotStepAStationaryFace': 1,
+        'AFaceThatSettlesInsideTheWarmUpKeepsItsValueWithoutMessages': 1,
+        'AnAddDriverOnAnExitTimeTargetRunsOnce': 1,
+        'AMotionTimeStateIsNotStepped': 1,
+        'ALoopingHandMuscleCurveBesideTheFaceIsSettled': 2,
+        'AGestureAboveALoopingHandIdleLayerIsExported': 1,
+        'AMenuItemFollowedThroughAnExitTimeIsListedAsApproximated': 1,
+        'AMenuItemSelectingAMovingTreeIsNotSettledToOneFrame': 1,
+        'AStillTreeIsSettledUnlessAClipMovesItsInput': 2,
+        'AMovingTreeReachedLateIsNotSettledToOneFrame': 1,
+        'TheExperimentalPlayerKeepsTheLastKeyOfALongClip': 1,
+        'TheExperimentalPlayerFollowsALateExitTime': 1,
     },
     'MergedFxDefaultsTests': {
         'DirectClipProbeAppliesOriginalAnimatorLayerControlUsingNativeWeights': 4,
@@ -763,6 +818,8 @@ BEHAVIOR_CASES = {
         'MalformedDirectEntryExitReportsBeforeNativePlayback': 1,
         'ChainedStateTransitionsKeepThePrecedingParameterGate': 1,
         'OneDimensionalTreePublishesAuthoredSelectionsThroughNativeBlending': 1,
+        'MovingTreeKnotIsNotSettledToOneFrame': 1,
+        'SyncedTreeOverrideIsNotSettledToOneFrame': 1,
         'NestedTreeRetainsBothAuthoredControlValues': 1,
         'NestedTreesSharingAControlRetainInnerKnotsBeyondTheParentRange': 1,
         'UserSelectionAroundARuntimeControlledInnerTreeUsesTheFixedEnvironment': 1,
@@ -794,6 +851,7 @@ BEHAVIOR_CASES = {
         'InstalledMaMarkerCannotMakeAnUnknownCallbackSafe': 1,
         'NativeProcessedControllerCanRetainAFiniteTransformCurveWithNoTarget': 2,
         'TheSameTransformCurveOnALiveOrInactiveTargetStillRejectsTheNativeExpression': 2,
+        'RepeatedFxParameterDeclarationsStillDiscoverFaces': 1,
     },
     'InferredStatePathTests': {
         'RenamedLayerDiscoversItsReachableFaceUsingTheNativeMachineRoot': 2,
@@ -1001,6 +1059,7 @@ INTEGRATION_CASES = {
     },
     'PhysBoneSpringExportTests': {
         'InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport': 2,
+        'InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid': 1,
     },
 }
 # Pin the new deletion combinations as well as their counts. A missing real
@@ -1025,7 +1084,7 @@ INTEGRATION_VARIANTS = {
 def compatibility_counts(supported):
     counts = {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1}
     if supported:
-        counts.update(DependencyRoundTripTests=2, RendererSelectionTests=4, SkinnedMeshFallbackWeightTests=12, LilToonStructureCheckTests=11)
+        counts.update(DependencyRoundTripTests=2, RendererSelectionTests=3, SkinnedMeshFallbackWeightTests=12, LilToonStructureCheckTests=11)
     return counts
 
 
@@ -1163,7 +1222,10 @@ def main():
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     config = json.loads((root / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-    supported = args.expect_univrm in config['uniVrm']['versions']
+    # Every release of the accepted patch line is supported, as at export time,
+    # so a new patch can be verified before it is added to uniVrm.versions.
+    univrm = unity_packages.univrm_support(config, args.expect_univrm)
+    supported = univrm['supported']
     filters = profile_filters(supported, args.profile)
     identity_before = source_identity(root)
     liltoon_before = installed_liltoon(args.project, args.expect_liltoon)
@@ -1193,7 +1255,8 @@ def main():
     # version that was readable beforehand can be compared.
     if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
-    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
+    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm,
+              'uniVrmSupported': supported, 'uniVrmListed': univrm['listed'], 'unity': args.expect_unity,
               'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}
     (output / (stamp + '.json')).write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

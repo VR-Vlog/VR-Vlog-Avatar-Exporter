@@ -90,7 +90,7 @@ namespace VRVlog.LilToonExporter
                 var reachable = ExpressionDependencies.Inspect(metadata.Controller, excludedPath,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues);
                 var needed = new HashSet<string>(reachable.SelectMany(layer => layer.Reads), StringComparer.Ordinal);
-                var types = ExpressionDependencies.Controller(metadata.Controller).parameters
+                var types = ExpressionDependencies.UniqueParameters(metadata.Controller)
                     .ToDictionary(parameter => parameter.name, parameter => parameter.type, StringComparer.Ordinal);
                 foreach (var program in reachable.SelectMany(layer => layer.DriverPrograms).Distinct())
                 {
@@ -246,7 +246,7 @@ namespace VRVlog.LilToonExporter
             if (VrChatExpressionMenu.Member(descriptor, "VisemeBlendShapes") is IEnumerable visemes)
                 foreach (var shape in visemes.OfType<string>()) Add(visemeRenderer, shape);
             Add(visemeRenderer, VrChatExpressionMenu.Member(descriptor, "MouthOpenBlendShapeName") as string);
-            var expressions = avatar.GetComponent<Vrm10Instance>()?.Vrm?.Expression;
+            var expressions = avatar.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
             foreach (var clip in new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight })
             {
                 if (clip == null) continue;

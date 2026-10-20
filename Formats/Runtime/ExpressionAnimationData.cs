@@ -2,25 +2,28 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-// Kept identical in the exporter and player. No Unity/Editor dependency.
+// Shared by the exporter and player through VRVlog.AvatarFormats. No Unity/Editor dependency.
 namespace VRVlog.Expressions
 {
-    internal sealed class ExpressionAnimationData
+    public sealed class ExpressionAnimationData
     {
-        internal const string Extension = "VRVLOG_expression_animations";
-        internal const string TargetPrefix = "__VRVlog_Anim_";
-        internal string Expression;
-        internal double Duration;
-        internal bool Loop;
-        internal readonly List<Channel> Channels = new List<Channel>();
+        public const string Extension = "VRVLOG_expression_animations";
+        public const string TargetPrefix = "__VRVlog_Anim_";
+        public string Expression;
+        public double Duration;
+        public bool Loop;
+        public readonly List<Channel> Channels = new List<Channel>();
 
-        internal sealed class Point { internal double Value; internal string Target; }
-        internal sealed class Channel
+        // Schema 1 points name a dedicated morph (Target); schema 2 points refer
+        // to a glTF node and morph target index (Morph). Null moves no morph.
+        public sealed class Point { public double Value; public string Target; public MorphReference Morph; }
+        public sealed class MorphReference { public int Node; public int Index; }
+        public sealed class Channel
         {
-            internal Curve Curve;
-            internal readonly List<Point> Points = new List<Point>();
+            public Curve Curve;
+            public readonly List<Point> Points = new List<Point>();
 
-            internal void Weights(double time, out int left, out int right, out float blend)
+            public void Weights(double time, out int left, out int right, out float blend)
             {
                 var value = Curve.Evaluate(time);
                 right = 1;
@@ -31,25 +34,25 @@ namespace VRVlog.Expressions
             }
         }
 
-        internal double TimeAt(double elapsed)
+        public double TimeAt(double elapsed)
         {
             elapsed = Math.Max(0, elapsed);
             return Loop ? elapsed % Duration : Math.Min(elapsed, Duration);
         }
 
-        internal sealed class Key
+        public sealed class Key
         {
-            internal double Time, Value, InWeight = 1.0 / 3, OutWeight = 1.0 / 3;
+            public double Time, Value, InWeight = 1.0 / 3, OutWeight = 1.0 / 3;
             // null denotes a stepped tangent; JSON never contains Infinity.
-            internal double? InTangent, OutTangent;
+            public double? InTangent, OutTangent;
         }
 
-        internal sealed class Curve
+        public sealed class Curve
         {
-            internal string PreWrap = "clamp", PostWrap = "clamp";
-            internal readonly List<Key> Keys = new List<Key>();
+            public string PreWrap = "clamp", PostWrap = "clamp";
+            public readonly List<Key> Keys = new List<Key>();
 
-            internal double Evaluate(double time)
+            public double Evaluate(double time)
             {
                 var first = Keys[0];
                 var last = Keys[Keys.Count - 1];
@@ -97,7 +100,7 @@ namespace VRVlog.Expressions
                 return u * u * u * a + 3 * u * u * t * b + 3 * u * t * t * c + t * t * t * d;
             }
 
-            internal void Range(out double minimum, out double maximum)
+            public void Range(out double minimum, out double maximum)
             {
                 minimum = Keys.Min(k => k.Value); maximum = Keys.Max(k => k.Value);
                 for (var i = 1; i < Keys.Count; i++)
@@ -111,7 +114,7 @@ namespace VRVlog.Expressions
                 }
             }
 
-            internal void Validate()
+            public void Validate()
             {
                 if (!Wrap(PreWrap) || !Wrap(PostWrap) || Keys.Count == 0 || Keys.Count > 16384) Bad();
                 var previous = double.NegativeInfinity;
@@ -131,35 +134,103 @@ namespace VRVlog.Expressions
             static bool Wrap(string value) => value == "clamp" || value == "loop" || value == "pingPong";
         }
 
-        internal static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
+        public static Dictionary<string, object> Write(IList<ExpressionAnimationData> animations)
         {
             var result = new Dictionary<string, object>
             {
                 ["schemaVersion"] = 1L,
-                ["animations"] = animations.Select(a => (object)new Dictionary<string, object>
-                {
-                    ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
-                    ["channels"] = a.Channels.Select(c => (object)new Dictionary<string, object>
-                    {
-                        ["preWrap"] = c.Curve.PreWrap, ["postWrap"] = c.Curve.PostWrap,
-                        ["keys"] = c.Curve.Keys.Select(k => (object)new List<object>
-                            { k.Time, k.Value, k.InTangent.HasValue ? (object)k.InTangent.Value : null,
-                                k.OutTangent.HasValue ? (object)k.OutTangent.Value : null, k.InWeight, k.OutWeight }).ToList(),
-                        ["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
-                            { ["value"] = p.Value, ["target"] = p.Target }).ToList()
-                    }).ToList()
-                }).ToList()
+                ["animations"] = WriteAnimations(animations, WriteName)
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
         }
 
-        internal static List<ExpressionAnimationData> Read(object value)
+        // Writes schema 2 only. Schema 1 files are still read by Read and ReadDocument.
+        public static Dictionary<string, object> WriteDocument(ExpressionAnimationDocument document)
+        {
+            if (document.SchemaVersion != 2) Bad();
+            var result = new Dictionary<string, object>
+            {
+                ["schemaVersion"] = 2L,
+                ["expressions"] = document.Expressions.Select(e => (object)new Dictionary<string, object>
+                    { ["expression"] = e.Expression, ["source"] = e.Source }).ToList(),
+                ["animations"] = WriteAnimations(document.Animations, WriteMorph)
+            };
+            ReadDocument(result); // The exporter and runtime enforce the same contract.
+            return result;
+        }
+
+        static List<object> WriteAnimations(IEnumerable<ExpressionAnimationData> animations, Func<Point, object> target) =>
+            animations.Select(a => (object)new Dictionary<string, object>
+            {
+                ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
+                ["channels"] = a.Channels.Select(c => (object)new Dictionary<string, object>
+                {
+                    ["preWrap"] = c.Curve.PreWrap, ["postWrap"] = c.Curve.PostWrap,
+                    ["keys"] = c.Curve.Keys.Select(k => (object)new List<object>
+                        { k.Time, k.Value, k.InTangent.HasValue ? (object)k.InTangent.Value : null,
+                            k.OutTangent.HasValue ? (object)k.OutTangent.Value : null, k.InWeight, k.OutWeight }).ToList(),
+                    ["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
+                        { ["value"] = p.Value, ["target"] = target(p) }).ToList()
+                }).ToList()
+            }).ToList();
+
+        static object WriteName(Point point)
+        {
+            // Schema 1 has no node/index references; dropping one would leave the morph unmoved.
+            if (point.Morph != null) Bad();
+            return point.Target;
+        }
+
+        static object WriteMorph(Point point)
+        {
+            // Schema 2 has no morph names; a named point belongs to schema 1.
+            if (point.Target != null) Bad();
+            return point.Morph == null ? null : new Dictionary<string, object>
+                { ["node"] = (long)point.Morph.Node, ["index"] = (long)point.Morph.Index };
+        }
+
+        public static List<ExpressionAnimationData> Read(object value)
         {
             var root = Obj(value);
             if (Number(root["schemaVersion"]) != 1) Bad();
             var array = Arr(root["animations"]);
             if (array.Count == 0 || array.Count > 512) Bad();
+            return ReadAnimations(array, 1);
+        }
+
+        // Reads schema 1 and 2. A schema 1 document has no expression sources,
+        // and its points use Target instead of Morph.
+        public static ExpressionAnimationDocument ReadDocument(object value)
+        {
+            var root = Obj(value);
+            var version = Number(root["schemaVersion"]);
+            var document = new ExpressionAnimationDocument();
+            if (version == 1)
+            {
+                document.SchemaVersion = 1;
+                document.Animations.AddRange(Read(value));
+                return document;
+            }
+            if (version != 2) Bad();
+            var expressions = Arr(root["expressions"]);
+            var array = Arr(root["animations"]);
+            if (expressions.Count > 1024 || array.Count > 512 || expressions.Count == 0 && array.Count == 0) Bad();
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var raw in expressions)
+            {
+                var obj = Obj(raw);
+                var expression = new ExpressionSource { Expression = Text(obj["expression"]), Source = Text(obj["source"]) };
+                if (!names.Add(expression.Expression) || !ExpressionSource.IsKnown(expression.Source)) Bad();
+                document.Expressions.Add(expression);
+            }
+            document.Animations.AddRange(ReadAnimations(array, 2));
+            if (document.Animations.Any(a => !names.Contains(a.Expression))) Bad();
+            return document;
+        }
+
+        static List<ExpressionAnimationData> ReadAnimations(List<object> array, int version)
+        {
             var result = new List<ExpressionAnimationData>();
             var names = new HashSet<string>(StringComparer.Ordinal);
             var channelCount = 0; var keyCount = 0; var pointCount = 0;
@@ -168,6 +239,7 @@ namespace VRVlog.Expressions
                 var obj = Obj(raw);
                 var animation = new ExpressionAnimationData { Expression = Text(obj["expression"]), Duration = Number(obj["duration"]) };
                 var targets = new HashSet<string>(StringComparer.Ordinal);
+                var morphs = new HashSet<(int, int)>();
                 if (!(obj["loop"] is bool)) Bad();
                 animation.Loop = (bool)obj["loop"];
                 if (!names.Add(animation.Expression) || animation.Duration <= 0 || animation.Duration > 600) Bad();
@@ -190,12 +262,24 @@ namespace VRVlog.Expressions
                     {
                         if (++pointCount > 4096) Bad();
                         var p = Obj(rawPoint);
-                        var point = new Point { Value = Number(p["value"]), Target = p["target"] == null ? null : Text(p["target"]) };
-                        // Null is the zero residual at the animation's first
-                        // pose. Identical basis morphs may be shared between
-                        // mutually exclusive animations, never within one face.
-                        if (point.Target == null ? point.Value != channel.Curve.Evaluate(0) :
-                            !point.Target.StartsWith(TargetPrefix, StringComparison.Ordinal) || !targets.Add(point.Target)) Bad();
+                        var point = new Point { Value = Number(p["value"]) };
+                        if (version == 1)
+                        {
+                            point.Target = p["target"] == null ? null : Text(p["target"]);
+                            // Null is the zero residual at the animation's first
+                            // pose. Identical basis morphs may be shared between
+                            // mutually exclusive animations, never within one face.
+                            if (point.Target == null ? point.Value != channel.Curve.Evaluate(0) :
+                                !point.Target.StartsWith(TargetPrefix, StringComparison.Ordinal) || !targets.Add(point.Target)) Bad();
+                        }
+                        else if (p["target"] != null)
+                        {
+                            // Null moves no morph at this value. A morph is written
+                            // by at most one point of one animation.
+                            var t = Obj(p["target"]);
+                            point.Morph = new MorphReference { Node = NonNegative(t["node"]), Index = NonNegative(t["index"]) };
+                            if (!morphs.Add((point.Morph.Node, point.Morph.Index))) Bad();
+                        }
                         if (point.Value < -10000 || point.Value > 10000 ||
                             channel.Points.Count > 0 && point.Value <= channel.Points[channel.Points.Count - 1].Value) Bad();
                         channel.Points.Add(point);
@@ -222,6 +306,34 @@ namespace VRVlog.Expressions
             if (!Finite(number)) Bad();
             return number;
         }
+        static int NonNegative(object value)
+        {
+            var number = Number(value);
+            if (number < 0 || number > int.MaxValue || number != Math.Floor(number)) Bad();
+            return (int)number;
+        }
         static void Bad() => throw new InvalidOperationException("Expression animation data is invalid or exceeds the supported limits.");
+    }
+
+    // A whole VRVLOG_expression_animations extension. Schema 2 lists every custom
+    // expression built from the avatar's VRChat setup, animated or not.
+    public sealed class ExpressionAnimationDocument
+    {
+        public int SchemaVersion = 2;
+        public readonly List<ExpressionSource> Expressions = new List<ExpressionSource>();
+        public readonly List<ExpressionAnimationData> Animations = new List<ExpressionAnimationData>();
+    }
+
+    // Where a custom expression came from. Expression names carry no source
+    // prefix, so the app tells them apart from tracking expressions here.
+    public sealed class ExpressionSource
+    {
+        public const string Menu = "menu";
+        public const string Gesture = "gesture";
+        public const string FaceEmo = "faceEmo";
+        public string Expression;
+        public string Source;
+
+        public static bool IsKnown(string source) => source == Menu || source == Gesture || source == FaceEmo;
     }
 }

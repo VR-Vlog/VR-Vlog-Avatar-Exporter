@@ -8,12 +8,17 @@ namespace VRVlog.LilToonExporter.Compatibility
         public const string LilToonMinimum = "2.0.0";
         public const string LilToonMaximum = "2.3.4";
         public const string UniVrmAdapter = "univrm-0.131";
-        public const string UniVrmVersions = "0.131.0, 0.131.1, 0.131.2";
+        public const string UniVrmRange = "0.131.x";
+        public const string UniVrmVersions = "0.131.0, 0.131.1, 0.131.2, 0.131.3";
         public const string NdmfMinimum = "1.8.3";
         public const string NdmfReference = "1.14.8";
         public const string ModularAvatarReference = "1.18.7";
+        public const string VrchatSdkMinimum = "3.5.2";
+        public const string VrchatSdkBelow = "3.11.0";
+        public const string ModularAvatarMinimum = "1.18.0";
+        public const string ModularAvatarBelow = "1.19.0";
         public const int NdmfMajor = 1;
-        public static bool SupportsUniVrm(string version) =>
-            version == "0.131.0" || version == "0.131.1" || version == "0.131.2";
+        public const int UniVrmMajor = 0;
+        public const int UniVrmMinor = 131;
     }
 }

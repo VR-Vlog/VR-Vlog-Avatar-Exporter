@@ -194,9 +194,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { RecoveryCallbackProbe.ResetCounters(); Object.DestroyImmediate(clip); }
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void ReimportRefreshesExplicitRowsAndRestoresTheirPreviousSelection(bool selected)
+        [Test]
+        public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>(); var clip = new AnimationClip { name = "Explicit edited face" };
@@ -209,21 +208,41 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
-                var input = inputs.Single(); input.Selected = selected;
+                var input = inputs.Single();
                 AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(input.Error, Is.Not.Null); Assert.That(input.Selected, Is.False);
+                Assert.That(input.Error, Is.Not.Null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.Expressions, Is.Empty, "An unsupported file stays on the board but is not exported.");
                 AnimationUtility.SetEditorCurve(clip, unsupported, null); AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 2, 90));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(input.Error, Is.Null); Assert.That(input.Selected, Is.EqualTo(selected)); Assert.That(input.Time, Is.EqualTo(2));
-                if (selected)
-                {
-                    type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
-                    var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
-                    Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(90));
-                }
+                Assert.That(input.Error, Is.Null); Assert.That(input.Time, Is.EqualTo(2));
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
+                session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(90));
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
+        public void ObjectsExcludedByHandLeaveThePreparedCopy()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var pet = new GameObject("Excluded pet"); pet.transform.SetParent(fixture.Source.transform, false);
+            var stamp = ExportSourceFingerprint.Compute(fixture.Source);
+            using (var kept = new ExperimentalExpressionCaptureSession(fixture.Source, false))
+            {
+                Assert.That(kept.Copy.transform.Find("Excluded pet"), Is.Not.Null);
+                Assert.That(kept.ExcludedObjects, Is.Empty);
+            }
+            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source, false, new[] { pet }, new ExportGimmickOptions()))
+            {
+                Assert.That(session.Copy.transform.Find("Excluded pet"), Is.Null, "The board previews what the export leaves out.");
+                Assert.That(session.ExcludedObjects, Is.EqualTo(new[] { pet }), "The ordinary export route gets the same objects.");
+            }
+            Assert.That(fixture.Source.transform.Find("Excluded pet"), Is.SameAs(pet.transform));
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
         }
 
         [Test]
@@ -271,7 +290,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var snapshot = session.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray(); session.Expressions.Clear();
                 var bytes = session.Export("Retry snapshot", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recordedExpressions: snapshot);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                Assert.That(imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray(), Is.EqualTo(new[] { "VRChat / 記録 / Captured face" }));
+                Assert.That(imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray(), Is.EqualTo(new[] { "Captured face" }));
                 Assert.That(authored.Expression.CustomClips.Single(), Is.SameAs(original));
             }
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(clip); Object.DestroyImmediate(authored); Object.DestroyImmediate(original); }
@@ -314,7 +333,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.Single(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(75));
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Count, Is.EqualTo(2));
             }
             finally { Object.DestroyImmediate(window); AssetDatabase.DeleteAsset(folder); Object.DestroyImmediate(retained); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
@@ -710,7 +729,7 @@ namespace VRVlog.LilToonExporter.Tests
                     canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.GetComponentsInChildren<Renderer>(true).Any(renderer => renderer.name == "Auxiliary fallback"), Is.False);
                 Assert.That(imported.GetComponentsInChildren<Renderer>(true), Is.Not.Empty);
-                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "VRChat / 記録 / Selected face"), Is.True);
+                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "Selected face"), Is.True);
                 Assert.That(hiddenSkin != null && hiddenSkin.sharedMaterial == hiddenMaterial, Is.True);
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(sourceBefore));
             }
@@ -824,7 +843,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = session.Export("Read only meshes", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
-                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(face => face.name == "VRChat / 記録 / Read only face"), Is.True);
+                if (recordFace) Assert.That(imported.Vrm.Expression.CustomClips.Any(face => face.name == "Read only face"), Is.True);
                 Assert.That(meshes.All(mesh => !mesh.isReadable), Is.True);
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(sourceBefore));
             }
@@ -853,7 +872,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(95));
                 inputs.Single().Time = 1; // Saving must refresh independently of preview.
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Single().Rows.First(row => row.Path == "Front").Weights[0], Is.EqualTo(95));
                 Assert.That(inputs.Single().Time, Is.EqualTo(newLength));
             }
@@ -996,11 +1015,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
 
-        [TestCase("ja", "VRM書き出し", "VRMを保存")]
-        [TestCase("en", "VRM Export", "Save VRM")]
-        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
+        [TestCase("ja", "VRM書き出し", "この割り当てでVRMを保存")]
+        [TestCase("en", "VRM Export", "Save VRM with this assignment")]
+        [TestCase("ko", "VRM 내보내기", "이 할당으로 VRM 저장")]
+        [TestCase("zh-Hans", "VRM 导出", "按此分配保存 VRM")]
+        [TestCase("zh-Hant", "VRM 匯出", "依此分配儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1013,9 +1032,9 @@ namespace VRVlog.LilToonExporter.Tests
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
-                Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
-                Assert.That(ExporterLocalization.T("候補ファイル"), Is.Not.Empty);
-                if (locale != "ja") Assert.That(ExporterLocalization.T("候補ファイル"), Is.Not.EqualTo("候補ファイル"));
+                Assert.That(ExporterLocalization.T("この割り当てでVRMを保存"), Is.EqualTo(save));
+                Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
+                if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
             finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
@@ -1115,7 +1134,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
-                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "VRChat / 記録 / Smile");
+                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "Smile");
                 Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(2));
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), 1);
                 imported.Runtime.Process();
@@ -1238,7 +1257,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(imported.Vrm.Meta.OtherLicenseUrl, Is.EqualTo("https://example.invalid/fixture-license"));
                 Assert.That(imported.Vrm.Meta.ThirdPartyLicenses, Is.EqualTo("Synthetic test fixture"));
                 Assert.That(imported.Vrm.Meta.Redistribution, Is.False);
-                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "VRChat / 記録 / 笑顔");
+                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "笑顔");
                 Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(2));
                 Assert.That(expression.IsBinary, Is.True, "Recorded faces use the existing fixed-expression selection contract.");
                 Assert.That(expression.OverrideBlink.ToString(), Is.EqualTo("block"));
@@ -1294,7 +1313,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (callback.StartsWith("audio", StringComparison.Ordinal)) smile.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio"));
                 if (callback == "unknown") Assert.That(smile.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);
                 var clip = new AnimationClip();
-                var expectedWeight = callback == "neutral" ? 35f : callback == "synced" ? 85f : 75f;
+                var expectedWeight = callback == "neutral" ? 35f : callback == "synced" ? 85f : callback == "delayed" ? 95f : 75f;
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, callback == "neutral" ? 35 : 75));
                 if (callback == "display") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
                 if (callback == "delayed") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
@@ -1370,7 +1389,10 @@ namespace VRVlog.LilToonExporter.Tests
                 session.DiscoverCandidates();
                 var candidate = session.Candidates.Entries.First(entry => entry.Name == "Smile");
                 Assert.That(smile.behaviours.Length, Is.EqualTo(callback == "audio" || callback == "unknown" ? 1 : 0), "Source callbacks remain on their original asset.");
-                if (callback == "unknown" || callback == "display" || callback == "delayed")
+                // A late change is now kept at the clip's last key and listed
+                // as approximated instead of dropping the face.
+                if (callback == "delayed") Assert.That(candidate.Messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
+                if (callback == "unknown" || callback == "display")
                 {
                     Assert.That(candidate.Error, Is.Not.Null, "Unknown callbacks must not be silently omitted.");
                     Assert.Throws<InvalidOperationException>(() => session.PreviewCandidate(candidate));
@@ -1523,15 +1545,11 @@ namespace VRVlog.LilToonExporter.Tests
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(70));
-                var toggles = (System.Collections.Generic.Dictionary<AnimationClip, Rect>)type.GetField("candidateToggleRects", flags).GetValue(window);
-                Click(window, toggles[clips[0]]); Click(window, toggles[clips[2]]);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Move(clips[1], ExpressionBoard.Place.Excluded), Is.True);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
-                Click(window, (Rect)type.GetField("addSelectedRect", flags).GetValue(window));
-                for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
-                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
-                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clips[0], clips[2] }));
-                Assert.That(inputs.All(input => input.Selected && input.Time == 1), Is.True);
-                type.GetMethod("RecordSelectedClips", flags).Invoke(window, null);
+                Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { clips[0], clips[2] }));
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 Assert.That(session.Expressions.Count, Is.EqualTo(2));
                 Assert.That(session.Expressions.Select(pose => pose.Rows.First(row => row.Path == "Front").Weights[0]), Is.EqualTo(new[] { 70f, 72f }));
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
@@ -1560,19 +1578,21 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70 + index));
             try
             {
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show restores the place the editor saved for this window, so the
+                // size is set after it; a shorter window would scroll the panels away.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var drop = (Rect)type.GetField("expressionDropRect", flags).GetValue(window);
-                Assert.That(drop.height, Is.EqualTo(42));
+                Assert.That(drop.height, Is.GreaterThan(0));
                 DragAndDrop.PrepareStartDrag(); DragAndDrop.objectReferences = clips.Cast<Object>().ToArray();
                 window.SendEvent(new Event { type = EventType.DragUpdated, mousePosition = drop.center });
                 window.SendEvent(new Event { type = EventType.DragPerform, mousePosition = drop.center });
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
                 Assert.That(inputs.Count, Is.EqualTo(count), "Actual IMGUI drag events must add the selected files.");
-                Assert.That(inputs.All(input => input.Error == null && input.Selected), Is.True);
+                Assert.That(inputs.All(input => input.Error == null), Is.True);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(70 + count - 1), "Adding a valid file previews it.");
                 Assert.That(session.ImportClips(inputs).Imported.Count, Is.EqualTo(count));
@@ -1663,7 +1683,273 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (File.Exists(path)) File.Delete(path); }
         }
 
+        // Leaving out every mesh leaves no preview: the list is neither applied nor
+        // saved, stays on screen with the reason, and the board keeps working.
+        [Test]
+        public void ExcludedObjectsThatLeaveNoPreviewAreNotSaved()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, meshes);
+                type.GetMethod("ApplyExcludedObjects", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Not.Null);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EqualTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { }),
+                    Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardNeedsFix)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // A saved list that leaves no preview does not lock the avatar out of the
+        // board: it opens with every object and the list waits to be fixed.
+        [Test]
+        public void SavedExcludedObjectsThatLeaveNoPreviewWaitInTheList()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToArray();
+                var settings = ExportSettingsStore.Load(fixture.Source);
+                settings.ExcludedObjects.AddRange(meshes);
+                ExportSettingsStore.Save(fixture.Source, settings);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.EquivalentTo(meshes));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EquivalentTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // An avatar edit that moves an excluded object out of the avatar rebuilds
+        // the preview with every object; the board stays and the list waits with the reason.
+        [Test]
+        public void ExcludedObjectsBrokenByAnAvatarEditWaitInTheList()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                var front = fixture.Source.transform.Find("Front").gameObject;
+                var settings = ExportSettingsStore.Load(fixture.Source);
+                settings.ExcludedObjects.Add(front);
+                ExportSettingsStore.Save(fixture.Source, settings);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.ExcludedObjects, Is.EquivalentTo(new[] { front }));
+                front.transform.SetParent(null, true);
+                Assert.That(session.HasCurrentSource, Is.False);
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Not.Null);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EquivalentTo(new[] { front }));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        [Test]
+        public void BottomBarNamesWhatBlocksTheSave()
+        {
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var presets = new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>();
+            var clips = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 2).Select(index => new AnimationClip { name = "Face " + index }).ToArray();
+            var twin = new AnimationClip { name = "Face 0" };
+            var board = new ExpressionBoard(presets, (preset, value) => { if (value == null) presets.Remove(preset); else presets[preset] = value; },
+                candidates => new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>(), null);
+            try
+            {
+                type.GetField("board", flags).SetValue(window, board);
+                type.GetField("author", flags).SetValue(window, "");
+                board.SetItems(null, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                Assert.That(window.BlocksExport, Is.False, "The author is asked at the save, not on the board.");
+                type.GetField("transferMode", flags).SetValue(window, true);
+                Assert.That(window.BlockReason(), Is.Null, "The transfer asks the author in the next window.");
+                type.GetField("transferMode", flags).SetValue(window, false);
+                type.GetField("author", flags).SetValue(window, "Author");
+                Assert.That(window.BlockReason(), Is.Null);
+                Assert.That(window.BlocksExport, Is.False);
+
+                board.SetItems(new[] { new ExpressionBoard.Item { Clip = twin, Added = true, Source = "Fixture" } }, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません"), 1) + ": Face 0"));
+                Assert.That(window.BlocksExport, Is.True);
+
+                board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                board.Move(clips[0], ExpressionBoard.Place.Excluded);
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません"), 1)));
+                Assert.That(window.BlocksExport, Is.True);
+
+                var errors = (System.Collections.Generic.Dictionary<ExpressionPreset, string>)type.GetField("presetErrors", flags).GetValue(window);
+                errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";
+                Assert.That(window.BlockReason(), Is.EqualTo("Angry reason"), "The first broken slot in board order gives its own reason.");
+                Assert.That(window.BlocksExport, Is.True);
+
+                type.GetField("excludedObjectEdits", flags).SetValue(window, new System.Collections.Generic.List<GameObject>());
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); Object.DestroyImmediate(twin);
+                foreach (var clip in clips) Object.DestroyImmediate(clip);
+            }
+        }
+
+        // BlocksExport and BlockReason read one condition, so a window without a
+        // board blocks the save and names why, instead of blocking in silence.
+        [Test]
+        public void AWindowWithoutABoardBlocksTheSaveAndSaysWhy()
+        {
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                type.GetField("author", flags).SetValue(window, "Author");
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Null);
+                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)));
+                type.GetField("transferMode", flags).SetValue(window, true);
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)), "The transfer is blocked for the same reason.");
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
         static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
+
+        // The quick geometry check skips the mesh copy only when a vertex moves;
+        // every face gets the answer the copy gives.
+        [Test]
+        public void TheGeometryCheckAgreesWithTheMeshCopy()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var mesh = new Mesh { name = "Face" };
+            mesh.vertices = new[] { new Vector3(-.1f, 1.7f, .1f), new Vector3(.1f, 1.7f, .1f), new Vector3(0, 1.8f, .1f) };
+            mesh.triangles = new[] { 0, 1, 2 };
+            mesh.normals = Enumerable.Repeat(Vector3.forward, 3).ToArray();
+            mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 3).ToArray();
+            mesh.bindposes = new[] { head.worldToLocalMatrix };
+            mesh.AddBlendShapeFrame("Moves", 100, Enumerable.Repeat(new Vector3(0, .01f, 0), 3).ToArray(), null, null);
+            mesh.AddBlendShapeFrame("Normals only", 100, new Vector3[3], Enumerable.Repeat(new Vector3(0, .1f, 0), 3).ToArray(), null);
+            mesh.AddBlendShapeFrame("Still", 100, new Vector3[3], null, null);
+            var material = new Material(Shader.Find("VRM10/MToon10"));
+            var face = new GameObject("Face"); face.transform.SetParent(fixture.Source.transform, false);
+            var skin = face.AddComponent<SkinnedMeshRenderer>(); skin.sharedMesh = mesh; skin.bones = new[] { head }; skin.rootBone = head; skin.sharedMaterials = new[] { material };
+            var check = typeof(ExperimentalExpressionCaptureSession).GetMethod("HasGeometryChange", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            try
+            {
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                var index = session.Channels.FindIndex(channel => channel.Path == "Face");
+                foreach (var (shape, expected) in new[] { ("Moves", true), ("Normals only", true), ("Still", false) })
+                {
+                    var pose = session.ThumbnailFace("Face", shape);
+                    var copy = Object.Instantiate(session.Channels[index].Mesh);
+                    try
+                    {
+                        AvatarBaseShape.AppendExpression(session.Channels[index].Mesh, copy, "Probe", session.Baseline.Rows[index].Weights, pose.Rows[index].Weights,
+                            PlayerSettings.legacyClampBlendShapeWeights);
+                        Assert.That(AvatarBaseShape.HasUsableMorphEndpoint(copy, copy.blendShapeCount - 1, 0, 100), Is.EqualTo(expected), shape + " with the mesh copy");
+                    }
+                    finally { Object.DestroyImmediate(copy); }
+                    Assert.That((bool)check.Invoke(session, new object[] { pose }), Is.EqualTo(expected), shape);
+                }
+            }
+            finally { Object.DestroyImmediate(face); Object.DestroyImmediate(mesh); Object.DestroyImmediate(material); }
+        }
+
+        // Inside one batch the source is hashed once; the next batch, and any
+        // call outside a batch, still sees an edit.
+        [Test]
+        public void ABatchChecksTheSourceOnceAndTheNextOneSeesAnEdit()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var front = fixture.Source.transform.Find("Front");
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                using (ExperimentalExpressionCaptureSession.Batch()) session.CaptureBaseline();
+                front.name = "Front edited";
+                Assert.DoesNotThrow(session.CaptureBaseline, "The inner batch ending leaves the outer one checked.");
+            }
+            Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+            front.name = "Front";
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
+        }
+
+        // Making the session hashes the source; the rest of that batch uses
+        // that hash, and the next batch still sees an edit.
+        [Test]
+        public void ASessionMadeInABatchCountsAsThatBatchsCheck()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var front = fixture.Source.transform.Find("Front");
+            ExperimentalExpressionCaptureSession session;
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                front.name = "Front edited";
+                Assert.DoesNotThrow(session.CaptureBaseline, "The batch the session was made in is already checked.");
+            }
+            using (session)
+            {
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+                front.name = "Front";
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
+            }
+        }
     }
 
 }

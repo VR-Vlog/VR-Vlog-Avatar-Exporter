@@ -32,7 +32,9 @@ Ordinary bug reports and proposals are public. Do not attach purchased or privat
 4. Add this checkout as a local package using Unity Package Manager's **Add package from disk**, selecting the root `package.json`. Avoid also installing a release copy of the exporter in that project.
 5. For Unity tests, add `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` to the test project's manifest and follow the compatibility guide's Test Framework, Collections and optional integration package requirements.
 
-Contributor Unity projects, local outputs and private fixtures belong outside tracked source. `Editor/` contains export logic and diagnostics; `Runtime/` contains avatar components; `Schema/` defines the custom data formats; `Tests/` and `Tools/` contain validation and packaging tools. See the [repository map](README.md#開発に参加する) for the remaining directories.
+Contributor Unity projects, local outputs and private fixtures belong outside tracked source. `Editor/` contains export logic and diagnostics; `Runtime/` contains avatar components; `Formats/Runtime/` contains the System-only format code shared with the app; `Schema/` defines the custom data formats; `Tests/` and `Tools/` contain validation and packaging tools. See the [repository map](README.md#開発に参加する) for the remaining directories.
+
+The app consumes `Formats/` as the separate package `com.vrvlog.avatar-formats` through a git URL pinned to a commit (`?path=/Formats#<commit>`). Keep it free of Unity Engine and Editor APIs. A change to it reaches the app only through an app PR that bumps the pinned commit, so prepare that PR together with the exporter change. See [Formats/README.md](Formats/README.md).
 
 ## Local checks
 

@@ -32,6 +32,12 @@ namespace VRVlog.LilToonExporter
             exclusions?.Apply(clone, warnings);
             components = components.Where(c => c != null).ToArray();
             if (components.Length == 0) return;
+            // The reflected preview API exists only in the supported MA range;
+            // name it before touching that API rather than failing on a missing member.
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(components[0].GetType().Assembly);
+            var installed = package?.name == "nadena.dev.modular-avatar" ? package.version : null;
+            var unsupported = Compatibility.DependencyPolicy.ModularAvatarAppearanceError(installed, ExporterLocalization.T);
+            if (unsupported != null) throw new InvalidOperationException(unsupported);
             try
             {
                 var contextType = Required("nadena.dev.ndmf.preview.ComputeContext");

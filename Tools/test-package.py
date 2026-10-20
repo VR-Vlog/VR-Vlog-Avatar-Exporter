@@ -57,7 +57,7 @@ class PackageTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.git("init", "--quiet")
-        for name in package.ROOT_FILES | package.LOCALE_FILES | {"Editor/Example.cs", "Editor/Example.cs.meta", "Editor/Test.asmdef", "Editor/Example.shader", "Runtime.meta", "Runtime/Tracking.cs", "Runtime/Tracking.cs.meta", "Runtime/Tracking.asmdef", "ThirdPartyNotices/Example.md"}:
+        for name in package.ROOT_FILES | package.LOCALE_FILES | package.DATA_FILES | {"Editor/Example.cs", "Editor/Example.cs.meta", "Editor/Test.asmdef", "Editor/Example.shader", "Runtime.meta", "Runtime/Tracking.cs", "Runtime/Tracking.cs.meta", "Runtime/Tracking.asmdef", "ThirdPartyNotices/Example.md"}:
             self.write(name, name)
         self.version("0.11.12-beta.1")
         self.write("Documentation~/CloudTransfer.md", "prerelease cloud transfer guide")
@@ -163,6 +163,7 @@ class PackageTests(unittest.TestCase):
         names = package.build(self.root, archive)
         self.assertTrue(package.ROOT_FILES <= set(names))
         self.assertTrue(package.LOCALE_FILES <= set(names))
+        self.assertTrue(package.DATA_FILES <= set(names))
         self.assertTrue(package.DEPENDENCY_PATCH_FILES <= set(names))
         self.assertIn("Editor/Example.cs.meta", names)
         self.assertIn("Editor/Example.shader", names)
@@ -176,11 +177,24 @@ class PackageTests(unittest.TestCase):
         with zipfile.ZipFile(archive) as built:
             self.assertEqual(names, built.namelist())
             self.assertEqual(built.read("Editor/Example.cs"), b"Editor/Example.cs")
-            for locale in package.LOCALE_ASSETS:
+            for locale in package.LOCALE_ASSETS | package.DATA_ASSETS:
                 self.assertEqual(built.read(locale), locale.encode("utf-8"))
         second = self.root / "second.zip"
         package.build(self.root, second)
         self.assertEqual(archive.read_bytes(), second.read_bytes())
+
+    def test_formats_sources_ship_without_their_nested_manifest(self):
+        shipped = ["Formats.meta", "Formats/README.md", "Formats/README.md.meta", "Formats/Runtime.meta",
+                   "Formats/Runtime/Format.cs", "Formats/Runtime/Format.cs.meta",
+                   "Formats/Runtime/Formats.asmdef", "Formats/Runtime/Formats.asmdef.meta"]
+        excluded = ["Formats/package.json", "Formats/package.json.meta", "Formats/Tools/debug.py", "Formats/notes.txt"]
+        for name in shipped + excluded:
+            self.write(name, name)
+        self.git("add", ".")
+        names = package.build(self.root, self.root / "package.zip")
+        self.assertTrue(set(shipped) <= set(names))
+        self.assertFalse(set(excluded) & set(names))
+        self.assertEqual([name for name in names if name.endswith("package.json")], ["package.json"])
 
     def test_missing_required_file_fails(self):
         self.git("rm", "--cached", "LICENSE")

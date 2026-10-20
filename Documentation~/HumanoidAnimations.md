@@ -38,7 +38,8 @@ Rootは `schemaVersion: 1`, `space: "vrm1AvatarRestDelta"`, `animations: [...]` 
 回転は親相対localRotationではなく、アバターroot空間のレスト姿勢からのワールド回転差分。
 `D = inverse(root.rotation) * sampled.rotation * inverse(rest.rotation) * root.rotation`。
 親から子へ `worldRotation = root.rotation * D * restAvatarRotation` を適用する。
-hipsOffsetはレストからのroot空間位置差分で単位m。アバターrootのシーン配置・回転・スケールは収録しない。
+hipsOffsetはレストからのroot空間位置差分で単位m。アバターrootのシーン配置・回転は収録しない。
+採取ではアバターrootのスケールを無視するが、書き出す値はVRMのモデル空間の値で、アバターrootのスケールを含む（書き出し時に軸ごとに掛ける。静止仕様と同じ）。
 VRM1の右手系への変換は位置 `(-x,y,z)`、Quaternion `(x,-y,-z,w)`。
 
 手動クリップは元アバターの独立コピーで評価し、元の骨・マスクの対応と回転軸を保持する。

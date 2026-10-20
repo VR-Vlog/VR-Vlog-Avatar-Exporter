@@ -348,8 +348,16 @@ namespace VRVlog.LilToonExporter.Tests
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
             var native = NativeSelectorPose(controller, fixture.Gate, selected);
             Assert.That(native.Entries, Is.EqualTo(1)); Assert.That(native.Recovery, Is.EqualTo(0).Within(.01));
-            Assert.Throws<InvalidOperationException>(() => SampleFixed(selected: selected));
-            Assert.That(metadata.Messages.Any(value => value.Contains("Random") && value.Contains("Independent idle")), Is.False);
+            if (kind == "timed empty escape")
+            {
+                // The later empty state is followed and reported.
+                var messages = new List<string>();
+                VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, selected, null, metadata, messages: messages);
+                Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            }
+            else Assert.Throws<InvalidOperationException>(() => SampleFixed(selected: selected));
+            // Only a successful sample records the independent Random rest.
+            Assert.That(metadata.Messages.Any(value => value.Contains("Random") && value.Contains("Independent idle")), Is.EqualTo(kind == "timed empty escape"));
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(serialized));
         }
 
@@ -1364,7 +1372,12 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = Clip("Moving face", 0);
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), AnimationCurve.Linear(0, 0, 10, 100));
             other.defaultState = State(other, "Moving face", clip);
-            Assert.That(Assert.Throws<InvalidOperationException>(() => Sample()).Message, Does.Contain("時間で変わる"));
+            // The higher layer still decides the face: it is kept at its last key.
+            var messages = new List<string>();
+            var values = VrChatExpressionSampler.Sample(avatar, controller, metadata.Defaults,
+                new Dictionary<string, float> { ["Menu"] = 1 }, null, metadata, messages: messages);
+            Assert.That(values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(100).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
         }
 
         [Test]
