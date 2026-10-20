@@ -28,6 +28,8 @@ namespace VRVlog.LilToonExporter
         // The window asks for the summary several times a second; the store is read again only after a save.
         private GameObject countedAvatar;
         private int countedRevision = -1, excludedCount;
+        // Materials whose shader was missing in the last saved export. The window warns under its QR.
+        private int lastMissingShaderCount;
 
         internal delegate ExportRecoverySession SaveNormallyHandler(GameObject source, string destination,
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
@@ -56,6 +58,10 @@ namespace VRVlog.LilToonExporter
         }
 
         public bool HasAuthor() => ExportAuthor.IsValid(author);
+
+        // The number of materials whose shader was missing in the export last saved
+        // by Export or ExportDetailed. 0 before a save and after a clean one.
+        public int LastMissingShaderCount() => lastMissingShaderCount;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -135,6 +141,7 @@ namespace VRVlog.LilToonExporter
             // The window keeps its button disabled without an author; a retry or
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
+            lastMissingShaderCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             // The report of the attempt that produced the bytes being saved.
@@ -142,6 +149,7 @@ namespace VRVlog.LilToonExporter
             var create = targetSettings.Creator(avatar, name, targetAuthor);
             void Completed(byte[] bytes, IEnumerable<string> warnings)
             {
+                lastMissingShaderCount = ExportResultList.MissingShaders(fallbacks);
                 // Like the export windows, the details of this export go to the Console.
                 // Nothing asked about what the export worked around, so the whole result list goes there once.
                 var details = (warnings ?? Array.Empty<string>()).ToArray();
@@ -172,10 +180,13 @@ namespace VRVlog.LilToonExporter
             var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
             if (board == null) return ExporterLocalization.T(BoardClosed);
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
+            lastMissingShaderCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             return board.TransferExport(name, targetAuthor, targetSettings.License.Copy(), destination, () =>
             {
+                // The board sets the count before it calls back.
+                lastMissingShaderCount = board.LastMissingShaderCount;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             });

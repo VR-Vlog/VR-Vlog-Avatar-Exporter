@@ -13,6 +13,8 @@ namespace VRVlog.LilToonExporter
         [SerializeField] GameObject source;
         [SerializeField] string author = "";
         SavedExpressionVrm saved;
+        // Materials whose shader was missing in the last save, the file or the transfer. Read by AppTransferExport.
+        internal int LastMissingShaderCount { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -1339,7 +1341,9 @@ namespace VRVlog.LilToonExporter
             if (saved == null) return;
             using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
             {
-                EditorGUILayout.LabelField(ExporterLocalization.T("VRMを保存しました"), EditorStyles.boldLabel);
+                EditorGUILayout.LabelField(ExporterLocalization.T(saved.MissingShaders > 0 ? ExportResultWindow.SavedWithWarningsTitle : ExportResultWindow.SavedTitle), EditorStyles.boldLabel);
+                if (saved.MissingShaders > 0)
+                    EditorGUILayout.HelpBox(string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), saved.MissingShaders), MessageType.Warning);
                 EditorGUILayout.LabelField(Path.GetFileName(saved.Path) + ExporterLocalization.T("　/　表情 ") + saved.Expressions + ExporterLocalization.T("件・ポーズ ") + saved.Poses + ExporterLocalization.T("件"), EditorStyles.wordWrappedLabel);
                 EditorGUILayout.LabelField(ExporterLocalization.T("下の転送は最後に保存したVRMを送ります。編集した内容を送るには、もう一度保存してください。"), EditorStyles.wordWrappedMiniLabel);
                 var transfer = LilToonExporterWindow.SavedVrmTransferMethod();
@@ -1581,8 +1585,13 @@ namespace VRVlog.LilToonExporter
             var expressionCount = expressions.Length;
             // The record route replaces the menu faces even when nothing is left to record.
             var replaceCustomFaces = board.UsesRecordRoute;
+            // The report of the attempt that produced the bytes being saved.
+            ExportFallbackReport savedReport = null;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
+                var missingShaders = ExportResultList.MissingShaders(savedReport);
+                // A plain field: still set when the recovery window saves after this board closed.
+                LastMissingShaderCount = missingShaders;
                 if (written != null)
                 {
                     // Like the quick transfer, the details of this export go to the Console.
@@ -1597,14 +1606,17 @@ namespace VRVlog.LilToonExporter
                     ? VRVlog.Poses.HumanoidPoseData.Read(poses).Count : 0;
                 if (extensions.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var animations))
                     poseCount += VRVlog.Poses.HumanoidAnimationData.Read(animations).Count;
-                saved = new SavedExpressionVrm(path, bytes, expressionCount, poseCount);
-                status = ExporterLocalization.T("VRMを保存しました。") + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
+                saved = new SavedExpressionVrm(path, bytes, expressionCount, poseCount, missingShaders);
+                status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
+                    : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 foreach (var warning in target.Warnings) warnings.Add(warning);
-                return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
+                var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
+                savedReport = report?.Fallbacks;
+                return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
             if (recovery != null)

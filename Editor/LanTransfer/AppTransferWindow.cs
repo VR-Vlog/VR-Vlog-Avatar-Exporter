@@ -28,6 +28,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
         private const float TransferChrome = 253f;
         private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // Above the QR once the export is saved, when materials lost their shader. Kept out of
+        // AppTransferText: that list holds one-line texts without punctuation or requests.
+        internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
+        // The height that warning adds to the QR screen: at the minimum width of 420 it wraps to 3 lines
+        // in every translation, plus the box's padding and its 8 bottom margin.
+        private const float MissingShadersHeight = 64f;
         // The layout and styles next to this script, found by their asset GUIDs.
         private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
 
@@ -48,6 +54,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private string transferName;
         [NonSerialized] private int placeholderSide;
         [NonSerialized] private int exportAttempt;
+        // Materials whose shader was missing in the export the current upload comes from.
+        [NonSerialized] private int missingShaders;
         [NonSerialized] private bool exportPainted;
         [NonSerialized] private double exportDeadline;
         [NonSerialized] private double nextRepaint;
@@ -57,7 +65,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         [NonSerialized] private bool built;
         [NonSerialized] private VisualElement content, form, formFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
-        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox;
+        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton;
         [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel;
@@ -183,6 +191,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             exportAttempt++;
             flow?.Stop();
             ClearQr();
+            missingShaders = 0;
             // A name left over from an avatar that no longer exists is not the user's choice for this one.
             var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name
                 || avatarName == RememberedName(avatar);
@@ -321,6 +330,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             exportPainted = false;
             var attempt = ++exportAttempt;
+            // A new export replaces the one the warning was about.
+            missingShaders = 0;
             string path;
             // Every folder that could hold the transfer copy refused it: give up before exporting.
             try { path = AppTransferFlow.NewSnapshotPath(); }
@@ -340,6 +351,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // The recovery window can save long after this attempt was replaced or the window closed.
                 if (this == null || flow == null || attempt != exportAttempt) { AppTransferFlow.Discard(path); return; }
                 saved = true;
+                missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
+                // Grow for the warning now, while the upload is shown, so the QR never moves once it is on screen.
+                if (missingShaders > 0) FitTransferSize();
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
@@ -378,7 +392,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void FitTransferSize()
         {
             var side = SlotSide;
-            var height = HeaderHeight + side + TransferChrome;
+            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
             var screen = EditorGUIUtility.GetMainWindowPosition().height;
             if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
             var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);
@@ -431,6 +445,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             problemBox = root.Q<HelpBox>("exporter-problem");
             diagnosticsButton = root.Q<Button>("diagnostics");
             playingBox = root.Q<HelpBox>("playing");
+            missingShadersBox = root.Q<HelpBox>("missing-shaders");
             formFields = root.Q("form-fields");
             avatarLabel = root.Q<Label>("avatar-label");
             avatarField = root.Q<ObjectField>("avatar-field");
@@ -625,6 +640,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void RefreshTransfer(AppTransferView view)
         {
+            // The saved export does not look like the avatar. Shown once per export, from its upload on,
+            // so it does not appear above a QR that is already on screen.
+            var warnShaders = missingShaders > 0 && view != AppTransferView.Exporting;
+            missingShadersBox.text = warnShaders ? string.Format(T(MissingShadersText), missingShaders) : "";
+            Show(missingShadersBox, warnShaders);
             // The area keeps the size of the QR through every state, so the rows below never move.
             slotRow.style.height = SlotSide;
             var showQr = view == AppTransferView.Waiting && qrTexture != null;
@@ -719,6 +739,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, bool> DetailedNeedsFix;
             internal Func<GameObject, bool> EditDetails;
             internal Func<GameObject, string, string, Action, string> ExportDetailed;
+            internal Func<int> LastMissingShaderCount;
 
             internal static ExportEntry Resolve()
             {
@@ -739,6 +760,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         DetailedNeedsFix = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "DetailedNeedsFix"),
                         EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
                         ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
+                        LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
                     };
                 }
                 catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException

@@ -64,6 +64,7 @@
         <ui:VisualElement name="transfer" class="fill">
             <ui:ScrollView name="transfer-scroll" class="fill">
                 <ui:VisualElement class="body">
+                    <ui:HelpBox name="missing-shaders" message-type="Warning" class="box" />
                     <ui:VisualElement name="slot-row" class="slot-row">
                         <ui:VisualElement name="slot" class="slot">
                             <ui:Image name="qr" class="qr" />

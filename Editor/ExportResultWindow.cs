@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter
         internal const string WindowTitle = "VR Vlog 書き出し結果";
         internal const string PendingTitle = "まだ保存していません";
         internal const string SavedTitle = "VRMを保存しました";
+        // Saved, but a material's shader is missing: the file does not look like the avatar.
+        internal const string SavedWithWarningsTitle = "VRMを保存しました（警告あり）";
         internal const string SaveButton = "保存する";
         internal const string ChangeSettingsButton = "設定を変更する";
         internal const string CloseButton = "閉じる";
@@ -159,9 +161,13 @@ namespace VRVlog.LilToonExporter
             DrawFooter(new Rect(0f, position.height - FooterHeight, width, FooterHeight));
         }
 
+        // The heading source text. Before saving the rows already show a missing shader.
+        internal static string Title(bool saved, ExportResultList result) =>
+            !saved ? PendingTitle : result != null && result.MissingShaderCount > 0 ? SavedWithWarningsTitle : SavedTitle;
+
         void DrawHeader(Rect area)
         {
-            var title = ExporterLocalization.T(saved ? SavedTitle : PendingTitle);
+            var title = ExporterLocalization.T(Title(saved, result));
             var titleWidth = titleStyle.CalcSize(new GUIContent(title)).x;
             var line = new Rect(area.x + 10f, area.y + 6f, area.width - 20f, 20f);
             var right = saved && File.Exists(destination) ? 104f : 0f;

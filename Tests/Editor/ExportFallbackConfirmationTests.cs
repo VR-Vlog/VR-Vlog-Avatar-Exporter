@@ -66,6 +66,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void EveryShippedLocaleTranslatesTheResultWords()
         {
             var sources = new[] { ExportResultWindow.WindowTitle, ExportResultWindow.PendingTitle, ExportResultWindow.SavedTitle,
+                    ExportResultWindow.SavedWithWarningsTitle,
                     ExportResultWindow.SaveButton, ExportResultWindow.ChangeSettingsButton, ExportResultWindow.AllTab,
                     ExportResultWindow.CloseButton, ExportResultWindow.SearchPlaceholder, ExportResultWindow.EmptyList,
                     ExportResultWindow.NoMatch, ExportResultWindow.ReloadedList, ExportResultWindow.ReloadedPending,
@@ -275,6 +276,152 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(dialog.Calls, Is.Empty, "Exporting itself never opens a dialog.");
             }
             finally { Object.DestroyImmediate(plain); }
+        }
+
+        [Test] public void AMaterialWithAMissingShaderIsFoundOnceAndOtherSlotsAreIgnored()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            var root = new GameObject("Avatar");
+            var missing = new Material(shader) { name = "Missing" };
+            var plain = new Material(Shader.Find("Standard")) { name = "Plain" };
+            var hidden = new Material(shader) { name = "Hidden" };
+            try
+            {
+                GameObject Cube(string name, params Material[] materials)
+                {
+                    var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    cube.name = name;
+                    cube.transform.SetParent(root.transform, false);
+                    cube.GetComponent<MeshRenderer>().sharedMaterials = materials;
+                    return cube;
+                }
+                var first = Cube("First", missing, plain, null);
+                Cube("Second", missing);
+                // Inactive objects are not exported, so their materials are not listed.
+                Cube("Inactive", hidden).SetActive(false);
+                var found = UniVrmOneClickExporter.MissingShaderMaterials(root);
+                Assert.That(found.Count, Is.EqualTo(1));
+                Assert.That(found[0].Material, Is.SameAs(missing));
+                Assert.That(found[0].Renderer, Is.SameAs(first.GetComponent<MeshRenderer>()));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(missing);
+                Object.DestroyImmediate(plain);
+                Object.DestroyImmediate(hidden);
+            }
+        }
+
+        [Test] public void ARealExportWithAMissingShaderSavesAndWarnsOnce()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var missing = new Material(shader) { name = "Missing" };
+            try
+            {
+                fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()[0].sharedMaterial = missing;
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
+                // The export is not blocked; the VRM is still written.
+                Assert.That(bytes, Is.Not.Empty);
+                var items = report.Fallbacks.Items.Where(item => item.Kind == ExportFallbackKind.MissingShader).ToArray();
+                Assert.That(items.Length, Is.EqualTo(1));
+                Assert.That(items[0].Names, Is.EqualTo(new[] { "Missing" }));
+                var summary = string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Missing";
+                Assert.That(warnings.Count(warning => warning == summary), Is.EqualTo(1));
+                Assert.That(warnings[0], Is.EqualTo(summary), "The summary comes before the other warnings.");
+                var result = ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
+                Assert.That(result.MissingShaderCount, Is.EqualTo(1));
+                Assert.That(result.Rows.Any(row => row.Content == ExportFallbackConfirmation.MissingShaderReason &&
+                    row.Targets.Any(target => target.Name == "Missing")), Is.True);
+            }
+            finally { Object.DestroyImmediate(missing); }
+        }
+
+        [Test] public void TheSavedTitleWarnsOnlyWhenAShaderIsMissing()
+        {
+            var clean = ExportResultList.Build(new ExportFallbackReport(), null);
+            var report = new ExportFallbackReport();
+            report.Add(ExportFallbackKind.MissingShader, "Missing");
+            report.MissingShaderCount = 1;
+            var missing = ExportResultList.Build(report, null);
+            Assert.That(missing.MissingShaderCount, Is.EqualTo(1));
+            Assert.That(ExportResultList.Build(null, null).MissingShaderCount, Is.Zero);
+            Assert.That(ExportResultWindow.Title(false, missing), Is.EqualTo(ExportResultWindow.PendingTitle));
+            Assert.That(ExportResultWindow.Title(true, clean), Is.EqualTo(ExportResultWindow.SavedTitle));
+            Assert.That(ExportResultWindow.Title(true, null), Is.EqualTo(ExportResultWindow.SavedTitle));
+            Assert.That(ExportResultWindow.Title(true, missing), Is.EqualTo(ExportResultWindow.SavedWithWarningsTitle));
+        }
+
+        [Test] public void AnExcludedRendererWithAMissingShaderIsNotCounted()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var missing = new Material(shader) { name = "Missing" };
+            var keptMaterial = new Material(shader) { name = "Kept" };
+            try
+            {
+                // The fixture has no lilToon material, so the mesh that stays also carries one; a copy of it
+                // carries the material that is left out.
+                var original = fixture.Source.transform.Find("Back");
+                original.GetComponent<SkinnedMeshRenderer>().sharedMaterial = keptMaterial;
+                var back = Object.Instantiate(original.gameObject, original.parent).transform;
+                back.name = "Extra";
+                back.GetComponent<SkinnedMeshRenderer>().sharedMaterial = missing;
+                ExportResultList Export(IEnumerable<GameObject> excluded, out List<string> warnings)
+                {
+                    var report = new ExportRecoveryReport();
+                    warnings = new List<string>();
+                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                        exporterVersion: "0.11.15", lilToonVersion: "2.3.4", excludedObjects: excluded, recoveryReport: report);
+                    Assert.That(bytes, Is.Not.Empty);
+                    Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(report.Fallbacks.MissingShaderCount));
+                    return ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
+                }
+                // Left out with 書き出さないオブジェクト: the material never reaches the VRM.
+                var excluded = Export(new[] { back.gameObject }, out var excludedWarnings);
+                Assert.That(excluded.MissingShaderCount, Is.EqualTo(1));
+                Assert.That(excludedWarnings[0], Is.EqualTo(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Kept"));
+                // The same renderer kept in the export is counted.
+                var kept = Export(null, out var keptWarnings);
+                Assert.That(kept.MissingShaderCount, Is.EqualTo(2));
+                Assert.That(ExportResultWindow.Title(true, kept), Is.EqualTo(ExportResultWindow.SavedWithWarningsTitle));
+                Assert.That(keptWarnings[0], Does.StartWith(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 2)).And.Contain("Missing"));
+            }
+            finally { Object.DestroyImmediate(missing); Object.DestroyImmediate(keptMaterial); }
+        }
+
+        [Test] public void TwoMaterialsWithTheSameNameCountAsTwo()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var first = new Material(shader) { name = "Material" };
+            var second = new Material(shader) { name = "Material" };
+            try
+            {
+                fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial = first;
+                fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().sharedMaterial = second;
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
+                Assert.That(bytes, Is.Not.Empty);
+                Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(2));
+                Assert.That(ExportResultList.Build(report.Fallbacks, warnings, "a.vrm").MissingShaderCount, Is.EqualTo(2));
+                Assert.That(warnings[0], Is.EqualTo(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 2) + "Material, Material"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
         }
     }
 }
