@@ -1823,12 +1823,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.BlocksExport, Is.False);
 
                 board.SetItems(new[] { new ExpressionBoard.Item { Clip = twin, Added = true, Source = "Fixture" } }, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
-                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません"), 1) + ": Face 0"));
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません"), 1) + ": Face 0"));
                 Assert.That(window.BlocksExport, Is.True);
 
                 board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 board.Move(clips[0], ExpressionBoard.Place.Excluded);
-                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません"), 1)));
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません"), 1)));
                 Assert.That(window.BlocksExport, Is.True);
 
                 var errors = (System.Collections.Generic.Dictionary<ExpressionPreset, string>)type.GetField("presetErrors", flags).GetValue(window);

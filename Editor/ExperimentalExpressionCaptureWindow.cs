@@ -592,8 +592,8 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        const string OverLimitFormat = "その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません";
-        const string DuplicateNamesFormat = "同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません";
+        const string OverLimitFormat = "その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません";
+        const string DuplicateNamesFormat = "同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません";
 
         // The two steps of the detailed transfer; this window is the first.
         void DrawTransferSteps()
@@ -953,7 +953,7 @@ namespace VRVlog.LilToonExporter
             for (var index = 0; index < items.Length; index++)
             {
                 var clip = items[index].Clip;
-                DrawPanelTile(PanelTile(index, columns, size), size, items[index], "書き出さないへ移す", () => MoveTo(clip, Place.Excluded));
+                DrawPanelTile(PanelTile(index, columns, size), size, items[index], "書き出さない表情へ移す", () => MoveTo(clip, Place.Excluded));
             }
             if (items.Length == 0)
                 GUI.Label(new Rect(Gap, Gap, view.width - Gap * 2, body.height - Gap * 2),
@@ -965,7 +965,7 @@ namespace VRVlog.LilToonExporter
 
         void DrawExcludedPanel(Rect rect)
         {
-            var body = DrawPanelFrame(rect, Place.Excluded, string.Format(ExporterLocalization.T("書き出さない {0}件"), board.ExcludedCount), null);
+            var body = DrawPanelFrame(rect, Place.Excluded, string.Format(ExporterLocalization.T("書き出さない表情 {0}件"), board.ExcludedCount), null);
             var items = board.ItemsIn(PlaceKind.Excluded).ToArray();
             var size = ExpressionSlotLayout.Thumb(LargeThumbnails);
             var columns = PanelColumns(body, size);
@@ -1101,7 +1101,7 @@ namespace VRVlog.LilToonExporter
                 menu.AddSeparator("");
             }
             Add(ExporterLocalization.T("その他の表情"), Place.Other);
-            Add(ExporterLocalization.T("書き出さない"), Place.Excluded);
+            Add(ExporterLocalization.T("書き出さない表情"), Place.Excluded);
             menu.ShowAsContext();
         }
 
@@ -1169,7 +1169,7 @@ namespace VRVlog.LilToonExporter
             var summaryRect = stacked ? new Rect(bar.x, bar.y + 5, bar.width, 20) : new Rect(bar.x, bar.y + 7, resetRect.x - 8 - bar.x, 28);
             // What stops the save takes the place of the summary.
             var reason = BlockReason();
-            var summary = reason ?? string.Format(ExporterLocalization.T("VRMの表情 {0}/{1}・その他の表情 {2}・書き出さない {3}"),
+            var summary = reason ?? string.Format(ExporterLocalization.T("VRMの表情 {0}/{1}・その他の表情 {2}・書き出さない表情 {3}"),
                 board.SlotCount(MainPresets), MainPresets.Length, board.OtherCount, board.ExcludedCount);
             var summaryStyle = reason != null ? errorText : dimText;
             GUI.Label(summaryRect, new GUIContent(Fit(summary, summaryStyle, summaryRect.width), summary), summaryStyle);
