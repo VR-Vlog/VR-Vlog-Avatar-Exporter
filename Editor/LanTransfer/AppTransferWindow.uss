@@ -142,6 +142,31 @@
     text-overflow: ellipsis;
 }
 
+/* What the export takes from elsewhere: one line, shortened to fit next to its button. */
+.summary {
+    margin-top: 4px;
+    margin-left: 64px;
+}
+
+.summary-text {
+    flex-grow: 1;
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.summary-button {
+    width: 150px;
+    height: 20px;
+    flex-shrink: 0;
+    margin: 0 0 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .link {
     flex-grow: 0;
     flex-shrink: 1;

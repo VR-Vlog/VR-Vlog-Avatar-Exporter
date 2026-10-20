@@ -21,6 +21,10 @@
                         <ui:Label name="avatar-label" class="t label-col" />
                         <uie:ObjectField name="avatar-field" class="field" />
                     </ui:VisualElement>
+                    <ui:VisualElement name="summary" class="row summary">
+                        <ui:Label name="summary-text" class="t mini grey summary-text" />
+                        <ui:Button name="summary-button" class="summary-button" />
+                    </ui:VisualElement>
                     <ui:VisualElement class="row row--spaced">
                         <ui:Label name="name-label" class="t label-col bold" />
                         <ui:TextField name="name-field" class="field" />

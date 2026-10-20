@@ -226,6 +226,26 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ObjectsExcludedByHandLeaveThePreparedCopy()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var pet = new GameObject("Excluded pet"); pet.transform.SetParent(fixture.Source.transform, false);
+            var stamp = ExportSourceFingerprint.Compute(fixture.Source);
+            using (var kept = new ExperimentalExpressionCaptureSession(fixture.Source, false))
+            {
+                Assert.That(kept.Copy.transform.Find("Excluded pet"), Is.Not.Null);
+                Assert.That(kept.ExcludedObjects, Is.Empty);
+            }
+            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source, false, new[] { pet }, new ExportGimmickOptions()))
+            {
+                Assert.That(session.Copy.transform.Find("Excluded pet"), Is.Null, "The board previews what the export leaves out.");
+                Assert.That(session.ExcludedObjects, Is.EqualTo(new[] { pet }), "The ordinary export route gets the same objects.");
+            }
+            Assert.That(fixture.Source.transform.Find("Excluded pet"), Is.SameAs(pet.transform));
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
+        }
+
+        [Test]
         public void MeshRendererRecoveryMapsTheOriginalRendererToThePreparedExportCopy()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1659,6 +1679,121 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(File.Exists(path), Is.EqualTo(!missing));
             }
             finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // Leaving out every mesh leaves no preview: the list is neither applied nor
+        // saved, stays on screen with the reason, and the board keeps working.
+        [Test]
+        public void ExcludedObjectsThatLeaveNoPreviewAreNotSaved()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, meshes);
+                type.GetMethod("ApplyExcludedObjects", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Not.Null);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EqualTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { }),
+                    Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardNeedsFix)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // A saved list that leaves no preview does not lock the avatar out of the
+        // board: it opens with every object and the list waits to be fixed.
+        [Test]
+        public void SavedExcludedObjectsThatLeaveNoPreviewWaitInTheList()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToArray();
+                var settings = ExportSettingsStore.Load(fixture.Source);
+                settings.ExcludedObjects.AddRange(meshes);
+                ExportSettingsStore.Save(fixture.Source, settings);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.EquivalentTo(meshes));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EquivalentTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // An avatar edit that moves an excluded object out of the avatar rebuilds
+        // the preview with every object; the board stays and the list waits with the reason.
+        [Test]
+        public void ExcludedObjectsBrokenByAnAvatarEditWaitInTheList()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                var front = fixture.Source.transform.Find("Front").gameObject;
+                var settings = ExportSettingsStore.Load(fixture.Source);
+                settings.ExcludedObjects.Add(front);
+                ExportSettingsStore.Save(fixture.Source, settings);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session.ExcludedObjects, Is.EquivalentTo(new[] { front }));
+                front.transform.SetParent(null, true);
+                Assert.That(session.HasCurrentSource, Is.False);
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                Assert.That(session, Is.Not.Null);
+                Assert.That(session.ExcludedObjects, Is.Empty);
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Not.Null);
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EquivalentTo(new[] { front }));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
         }
 
         static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);

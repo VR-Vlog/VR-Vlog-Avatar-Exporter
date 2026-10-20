@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AppTransferAsksBeforeSavingAnExportWithFallbacks()
+        public void QuickAppTransferSavesWithoutAskingAboutFallbacks()
         {
             var transfer = new AppTransferExport();
             typeof(AppTransferExport).GetField("author", Flags).SetValue(transfer, "SampleAuthor");
@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
             var saved = false;
             try
             {
-                // Declining the confirmation returns without a recovery session and without saving.
+                // An export that ends without a recovery session and without saving uploads nothing.
                 AppTransferExport.SaveNormally = (avatar, destination, create, completed, excluded, gimmicks, asks, openBlink) =>
                 {
                     interactive = asks;
@@ -152,7 +152,7 @@ namespace VRVlog.LilToonExporter.Tests
                     return null;
                 };
                 Assert.That(transfer.Export(source, "SampleAvatar", path, () => saved = true), Is.Null);
-                Assert.That(interactive, Is.True, "The upload path asks about fallbacks like the export window.");
+                Assert.That(interactive, Is.False, "The quick transfer does not stop to ask about fallbacks.");
                 Assert.That(saved, Is.False, "Nothing is uploaded when the export was not saved.");
             }
             finally
