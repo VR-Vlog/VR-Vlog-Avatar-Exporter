@@ -70,15 +70,34 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
+        // True for a menu path no level of which names one emotion, a face
+        // part, a side or a toggle, and whose leaf names no emotion at all: an
+        // item like "1" or "Face 3", maybe under a "喜怒哀楽" submenu. Only such
+        // items may be guessed from the shapes they move.
+        internal static bool SaysNothing(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return false;
+            var levels = path.Split(new[] { " / " }, StringSplitOptions.None);
+            for (var i = 0; i < levels.Length; i++)
+            {
+                if (Evaluate(levels[i], false, out var decided) != null || Vetoed(levels[i])) return false;
+                if (decided && i == levels.Length - 1) return false;
+            }
+            return true;
+        }
+
+        static bool Vetoed(string name) => !string.IsNullOrWhiteSpace(name) &&
+            (LatinWords(name).Any(VetoWords.Contains) || VetoParts.Any(part => name.IndexOf(part, StringComparison.Ordinal) >= 0));
+
         // decided is false only when the name has neither a veto word nor any
         // emotion word, i.e. it says nothing about an emotion.
         static (ExpressionPreset Preset, int Tier)? Evaluate(string name, bool latinOnly, out bool decided)
         {
             decided = false;
             if (string.IsNullOrWhiteSpace(name)) return null;
-            var words = LatinWords(name);
             decided = true;
-            if (words.Any(VetoWords.Contains) || VetoParts.Any(part => name.IndexOf(part, StringComparison.Ordinal) >= 0)) return null;
+            if (Vetoed(name)) return null;
+            var words = LatinWords(name);
             for (var tier = 0; tier <= 1; tier++)
             {
                 var found = Emotions.Where(entry => entry.Tier == tier && entry.Words.Any(word => IsLatin(word)

@@ -15,6 +15,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/GlbTextureDownsizer.cs'),
     (Join-Path $taskRepo 'Editor/BlinkShapeNames.cs'),
     (Join-Path $taskRepo 'Editor/ExpressionNameInference.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionShapeNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmExpressionBindings.cs'),
     (Join-Path $taskRepo 'Editor/UnifiedExpressionRegistry.cs'),
     (Join-Path $taskRepo 'Editor/VrmUnifiedExpressions.cs'),

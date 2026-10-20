@@ -110,10 +110,19 @@ namespace VRVlog.LilToonExporter.Tests
             Infer(bytes, (registered ?? CustomNames(bytes)).ToDictionary(name => name, name => name, StringComparer.Ordinal), warnings, filled, inferEmotions);
 
         // paths: final VRM name -> the text inference reads (the menu path).
+        // shapes/table: the source shapes each face moves and the name table.
         static byte[] Infer(byte[] bytes, IReadOnlyDictionary<string, string> paths, List<string> warnings = null,
-            List<(string Preset, string Source)> filled = null, bool inferEmotions = true) =>
-            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: filled,
-                emotionCandidates: paths);
+            List<(string Preset, string Source)> filled = null, bool inferEmotions = true,
+            IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> shapes = null, ExpressionShapeNames table = null,
+            List<string> formats = null)
+        {
+            var all = new List<(string Preset, string Source, string Format)>();
+            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: all,
+                emotionCandidates: paths, emotionShapes: shapes, shapeNames: table);
+            filled?.AddRange(all.Select(item => (item.Preset, item.Source)));
+            formats?.AddRange(all.Select(item => item.Format));
+            return output;
+        }
 
         static IEnumerable<string> CustomNames(byte[] bytes) =>
             Expressions(bytes).TryGetValue("custom", out var value) ? ((Dictionary<string, object>)value).Keys.ToArray() : Array.Empty<string>();
@@ -312,14 +321,17 @@ namespace VRVlog.LilToonExporter.Tests
         public void FilledEmotionsAreKeptLinesOfTheResultList()
         {
             var report = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔"), ("angry", "Fcl_ALL_Angry") }, report);
+            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat),
+                ("angry", "Fcl_ALL_Angry", VrmExpressionBindings.FilledFormat), ("sad", "3", VrmExpressionBindings.ShapeFilledFormat) }, report);
             var results = report.Fallbacks.Results;
-            Assert.That(results.Select(result => result.Name), Is.EqualTo(new[] { "happy", "angry" }));
+            Assert.That(results.Select(result => result.Name), Is.EqualTo(new[] { "happy", "angry", "sad" }));
             Assert.That(results.All(result => result.Outcome == ExportOutcome.Kept && result.Stage == null), Is.True);
             Assert.That(results.Select(result => result.Category).Distinct(),
                 Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredEmotionCategory) }));
             Assert.That(results[0].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "happy", "笑顔")));
-            Assert.That(report.Fallbacks.Summary()[ExportOutcome.Kept], Is.EqualTo(2));
+            Assert.That(results[2].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.ShapeFilledFormat), "sad", "3")),
+                "A face filled from its shapes says so in the same row.");
+            Assert.That(report.Fallbacks.Summary()[ExportOutcome.Kept], Is.EqualTo(3));
             Assert.That(report.Fallbacks.Count, Is.Zero, "Nothing is asked before saving.");
         }
 
@@ -331,6 +343,145 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Infer(bytes, filled: filled, inferEmotions: false), Is.EqualTo(bytes));
             Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false), Is.EqualTo(bytes), "The default leaves emotions alone.");
             Assert.That(filled, Is.Empty);
+        }
+
+        const string SmallTable = @"{""minWeight"":50,""labels"":[
+            {""label"":""eye.happy"",""names"":[""笑い"",""eye_smile""]},{""label"":""eye.gimmick"",""names"":[""星目""]},
+            {""label"":""eye.wide"",""names"":[""eye_surprised""]},{""label"":""eye.relaxed"",""names"":[""なごみ""]},
+            {""label"":""brow.angry"",""names"":[""怒り""]},{""label"":""brow.sad"",""names"":[""困る""]},
+            {""label"":""mouth.smile"",""names"":[""にやり""]},{""label"":""mouth.frown"",""names"":[""口角下げ"",""へ""]},
+            {""label"":""mouth.o"",""names"":[""mouth_○""]},{""label"":""mouth.other"",""names"":[""ω""]}]}";
+
+        static (string, float)[] Moves(params object[] pairs)
+        {
+            var result = new (string, float)[pairs.Length / 2];
+            for (var i = 0; i < result.Length; i++) result[i] = ((string)pairs[i * 2], Convert.ToSingle(pairs[i * 2 + 1], CultureInfo.InvariantCulture));
+            return result;
+        }
+
+        static Dictionary<string, IReadOnlyList<(string Shape, float Weight)>> Shapes(params (string Name, (string, float)[] Moves)[] faces) =>
+            faces.ToDictionary(face => face.Name, face => (IReadOnlyList<(string Shape, float Weight)>)face.Moves.Select(m => (m.Item1, m.Item2)).ToList(), StringComparer.Ordinal);
+
+        [Test]
+        public void ShippedTableLoadsWithRepresentativeNames()
+        {
+            var table = ExpressionShapeNames.Shipped;
+            Assert.That(table.Count, Is.GreaterThan(100));
+            Assert.That(table.MinWeight, Is.EqualTo(50f));
+            Assert.That(table.PartOf("笑い"), Is.EqualTo("eye.happy"));
+            Assert.That(table.PartOf("口角下げ"), Is.EqualTo("mouth.frown"));
+            Assert.That(table.PartOf("困る"), Is.EqualTo("brow.sad"));
+            Assert.That(table.PartOf("Eye_Smile_L"), Is.EqualTo("eye.happy"), "A one-side name reads through its plain form.");
+            Assert.That(table.PartOf("Fcl_ALL_Joy"), Is.EqualTo("whole.happy"), "A Latin whole-face name is the whole face.");
+            Assert.That(table.PartOf("Body_Height"), Is.Null);
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100))?.Preset, Is.EqualTo(ExpressionPreset.happy));
+            Assert.That(table.Classify(Moves("困る", 100, "口角下げ", 100))?.Preset, Is.EqualTo(ExpressionPreset.sad));
+        }
+
+        [TestCase("Eye Smile-L", "eye_smile_l")]
+        [TestCase("ＥＹＥ＿ＳＭＩＬＥ", "eye_smile")]
+        [TestCase(" 眉・怒り ", "眉_怒り")]
+        public void ShapeNamesAreNormalized(string name, string expected) =>
+            Assert.That(ExpressionShapeNames.Normalize(name), Is.EqualTo(expected));
+
+        [Test]
+        public void FaceShapesNameOneEmotionOnlyWhenPartsAgree()
+        {
+            var table = ExpressionShapeNames.Parse(SmallTable);
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 2)));
+            Assert.That(table.Classify(Moves("21_Eye_Smile_R", 100, "にやり", 80))?.Preset, Is.EqualTo(ExpressionPreset.happy));
+            Assert.That(table.Classify(Moves("困る", 100, "口角下げ", 100))?.Preset, Is.EqualTo(ExpressionPreset.sad));
+            Assert.That(table.Classify(Moves("怒り", 100, "へ", 100))?.Preset, Is.EqualTo(ExpressionPreset.angry));
+            Assert.That(table.Classify(Moves("eye_surprised", 100, "mouth_○", 100))?.Preset, Is.EqualTo(ExpressionPreset.surprised));
+            Assert.That(table.Classify(Moves("なごみ", 100, "ω", 100))?.Preset, Is.EqualTo(ExpressionPreset.relaxed));
+            Assert.That(table.Classify(Moves("Fcl_ALL_Angry", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 3)));
+            Assert.That(table.Classify(Moves("笑い", 100)), Is.Null, "One part alone is not a whole face.");
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 30)), Is.Null, "A weak shape is not part of the face.");
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100, "星目", 100)), Is.Null, "Gimmick eyes are not an emotion.");
+            Assert.That(table.Classify(Moves("笑い", 100, "口角下げ", 100)), Is.Null, "Parts that disagree say nothing.");
+            Assert.That(table.Classify(Moves("Fcl_ALL_Angry", 100, "Fcl_ALL_Joy", 100)), Is.Null);
+            Assert.That(table.Classify(Moves("unknown_a", 100, "unknown_b", 100)), Is.Null);
+        }
+
+        [Test]
+        public void EmptyTableOrShapesGuessNothing()
+        {
+            Assert.That(ExpressionShapeNames.Parse("").Count, Is.Zero);
+            Assert.That(ExpressionShapeNames.Parse(@"{""labels"":[]}").Classify(Moves("笑い", 100, "にやり", 100)), Is.Null);
+            Assert.That(ExpressionShapeNames.Parse(SmallTable).Classify(Moves()), Is.Null);
+            var bytes = Glb(null, Obj("1", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("a", "composite")));
+            var paths = new Dictionary<string, string> { { "1", "1" } };
+            var face = Shapes(("1", Moves("笑い", 100, "にやり", 100)));
+            Assert.That(Infer(bytes, paths, shapes: face, table: ExpressionShapeNames.Parse("")), Is.EqualTo(bytes));
+            Assert.That(Infer(bytes, paths, shapes: face), Is.EqualTo(bytes), "Without a table nothing is guessed from shapes.");
+            Assert.That(Infer(bytes, paths, shapes: Shapes(), table: ExpressionShapeNames.Parse(SmallTable)), Is.EqualTo(bytes));
+        }
+
+        [TestCase("1", true)]
+        [TestCase("Face 3", true)]
+        [TestCase("喜怒哀楽 / 1", true)]
+        [TestCase("Emotes / A", true)]
+        [TestCase("Eye / 1", false)]
+        [TestCase("Smile / 1", false)]
+        [TestCase("笑顔", false)]
+        [TestCase("ウィンク", false)]
+        [TestCase("Happy / smile_angry", false)]
+        public void OnlyLabelsThatSayNothingAreGuessedFromShapes(string path, bool expected) =>
+            Assert.That(ExpressionNameInference.SaysNothing(path), Is.EqualTo(expected));
+
+        [Test]
+        public void UnnamedMenuFaceFillsTheEmotionItsShapesShow()
+        {
+            var bytes = Glb(null, Obj("1", MenuFace(Bind(0, 1)), "2", MenuFace(Bind(0, 1)), "3", MenuFace(Bind(0, 1)), "Wink", MenuFace(Bind(0, 1))),
+                Arr(Obj("mesh", 0L)), Arr(Mesh("a", "composite")));
+            var paths = new Dictionary<string, string> { { "1", "喜怒哀楽 / 1" }, { "2", "喜怒哀楽 / 2" }, { "3", "喜怒哀楽 / 3" }, { "Wink", "ウィンク" } };
+            var shapes = Shapes(("1", Moves("笑い", 100, "にやり", 100)), ("2", Moves("笑い", 100)), ("3", Moves("困る", 100, "口角下げ", 100)),
+                ("Wink", Moves("怒り", 100, "へ", 100)));
+            var warnings = new List<string>();
+            var filled = new List<(string Preset, string Source)>();
+            var formats = new List<string>();
+            var presets = Presets(Infer(bytes, paths, warnings, filled, shapes: shapes, table: ExpressionShapeNames.Parse(SmallTable), formats: formats));
+            Assert.That(filled, Is.EquivalentTo(new[] { ("happy", "1"), ("sad", "3") }), "A part-only face and a named part are not used.");
+            Assert.That(formats.Distinct(), Is.EqualTo(new[] { VrmExpressionBindings.ShapeFilledFormat }));
+            Assert.That(warnings, Has.Some.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.ShapeFilledFormat), "happy", "1")));
+            Assert.That(presets.Keys, Is.EquivalentTo(new[] { "happy", "sad" }));
+            var happy = (Dictionary<string, object>)presets["happy"];
+            Assert.That(happy["isBinary"], Is.EqualTo(false));
+            Assert.That(Canonical(happy["morphTargetBinds"]), Is.EqualTo(Canonical(Arr(Bind(0, 1)))));
+            Assert.That(happy["overrideBlink"], Is.EqualTo("block"), "The menu face's overrides are copied as in the name tier.");
+        }
+
+        [Test]
+        public void ShapeGuessNeverReplacesAnEarlierFill()
+        {
+            var authored = Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false);
+            var bytes = Glb(Obj("happy", authored), Obj("笑顔", MenuFace(Bind(0, 1)), "1", MenuFace(Bind(0, 1)), "2", MenuFace(Bind(0, 1))),
+                Arr(Obj("mesh", 0L)), Arr(Mesh("a", "composite")));
+            var paths = new Dictionary<string, string> { { "笑顔", "笑顔" }, { "1", "1" }, { "2", "2" } };
+            var shapes = Shapes(("笑顔", Moves("困る", 100, "口角下げ", 100)), ("1", Moves("笑い", 100, "にやり", 100)), ("2", Moves("困る", 100, "口角下げ", 100)));
+            var table = ExpressionShapeNames.Parse(SmallTable);
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, paths, filled: filled, shapes: shapes, table: table));
+            Assert.That(Canonical(presets["happy"]), Is.EqualTo(Canonical(authored)), "An authored preset stays.");
+            Assert.That(filled, Is.EqualTo(new[] { ("sad", "2") }), "A named face is never guessed again from its shapes.");
+
+            // The name tier fills first; the shape guess only takes what is left.
+            var named = Glb(null, Obj("1", MenuFace(Bind(0, 1)), "Sad", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("a", "composite")));
+            filled.Clear();
+            Infer(named, new Dictionary<string, string> { { "1", "1" }, { "Sad", "Sad" } }, filled: filled,
+                shapes: Shapes(("1", Moves("困る", 100, "口角下げ", 100))), table: table);
+            Assert.That(filled, Is.EqualTo(new[] { ("sad", "Sad") }));
+        }
+
+        [Test]
+        public void BetterSupportedFaceWinsTheShapeGuess()
+        {
+            var bytes = Glb(null, Obj("1", MenuFace(Bind(0, 1)), "2", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("a", "composite")));
+            var paths = new Dictionary<string, string> { { "1", "1" }, { "2", "2" } };
+            var filled = new List<(string Preset, string Source)>();
+            Infer(bytes, paths, filled: filled, table: ExpressionShapeNames.Parse(SmallTable),
+                shapes: Shapes(("1", Moves("怒り", 100, "へ", 100)), ("2", Moves("Fcl_ALL_Angry", 100))));
+            Assert.That(filled, Is.EqualTo(new[] { ("angry", "2") }), "A whole-face shape beats two agreeing parts.");
         }
     }
 }
