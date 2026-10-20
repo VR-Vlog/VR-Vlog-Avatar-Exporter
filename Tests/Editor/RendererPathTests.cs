@@ -79,6 +79,18 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Outcome(() => VrChatExpressionSampler.FindRenderer(root, path)), Is.EqualTo(Outcome(() => FullScan(path))), path ?? "(null)");
         }
 
+        // Empty names below the root, where the path string alone may not tell the levels apart.
+        [Test] public void EmptyNamesBelowTheRootMatchTheFullScan()
+        {
+            var body = Child(root, "Body");
+            Child(Child(body, ""), "");
+            Child(Child(Child(root, "Arm", renderer: false), "", renderer: false), "Hand");
+
+            var paths = new List<string> { "Body", "Body/", "Body//", "Arm", "Arm/", "Arm/Hand", "Arm//Hand" };
+            foreach (var path in paths)
+                Assert.That(Outcome(() => VrChatExpressionSampler.FindRenderer(root, path)), Is.EqualTo(Outcome(() => FullScan(path))), path);
+        }
+
         [Test] public void RootRendererIsFoundByTheEmptyPath()
         {
             var renderer = root.AddComponent<SkinnedMeshRenderer>();
