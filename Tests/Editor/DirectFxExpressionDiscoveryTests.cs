@@ -1023,6 +1023,34 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void SyncedTreeOverrideIsNotSettledToOneFrame()
+        {
+            // A Synced Layer can replace a clip state with a moving tree. Its
+            // knot is not exported as one settled frame either. Today the
+            // dependency analysis refuses the synced layer before settlement;
+            // the tree guard follows the override if that refusal is lifted.
+            controller.AddParameter("ExpressionStrength", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Synced moving mix", blendType = BlendTreeType.Simple1D,
+                blendParameter = "ExpressionStrength", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            var moving = Clip("Synced moving", 0);
+            AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
+                AnimationCurve.Linear(0, 75, 30, 100));
+            tree.AddChild(Clip("Synced off", 0), 0); tree.AddChild(moving, 1);
+            controller.AddLayer("Synced face");
+            var layers = controller.layers; layers[1].syncedLayerIndex = 0; layers[1].defaultWeight = 1; controller.layers = layers;
+            controller.SetStateEffectiveMotion(neutral, tree, 1);
+            var entries = Read().Entries.Where(entry => entry.Parameters.ContainsKey("ExpressionStrength")).ToArray();
+            Assert.That(entries, Is.Not.Empty);
+            foreach (var entry in entries)
+            {
+                Assert.That(entry.Error, Is.Not.Null);
+                Assert.That(entry.Values, Is.Empty);
+                Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
+            }
+        }
+
+        [Test]
         public void NestedTreeRetainsBothAuthoredControlValues()
         {
             controller.AddParameter("ExpressionMix", AnimatorControllerParameterType.Float);
