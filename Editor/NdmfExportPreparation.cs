@@ -111,8 +111,11 @@ namespace VRVlog.LilToonExporter
 
         // The host protocol shim cannot clone Unity hierarchies; native tests
         // exercise staging, callback suppression and authored enabled states.
+        // VRChat constraints run in edit mode but are read by ConstraintExport
+        // on the copy; they only pose the copy as the source already is.
         internal static bool PreservesExportBehaviour(Behaviour behaviour) => behaviour != null && (
             behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint") ||
+            behaviour.GetType().FullName?.StartsWith("VRC.SDK3.Dynamics.Constraint.Components.", StringComparison.Ordinal) == true ||
             behaviour.GetType().FullName == PhysBoneSpringExport.PhysBoneType ||
             behaviour.GetType().FullName == "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
 
