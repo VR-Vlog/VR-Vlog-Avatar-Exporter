@@ -231,6 +231,20 @@ namespace VRVlog.LilToonExporter
             catch (InvalidOperationException error) { return error.Message; }
         }
 
+        // Whether PresetError of an eye slot is the shared closing shape, so the
+        // slot can say it in a few words.
+        internal bool BlinkSidesOverlap(ExpressionPreset preset, PresetAssignment assignment)
+        {
+            if (assignment == null || assignment.IsNone) return false;
+            try
+            {
+                BuildPresetPose(preset, assignment);
+                var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
+                return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null) != null;
+            }
+            catch (InvalidOperationException) { return false; }
+        }
+
         internal void PreviewPreset(ExpressionPreset preset, PresetAssignment assignment) => ApplyUnchecked(BuildPresetPose(preset, assignment));
 
         // Every given preset, "none" included; ChosenNone decides which of

@@ -45,6 +45,8 @@ namespace VRVlog.LilToonExporter
         string presetKey;
         int presetSkipped;
         readonly System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string>();
+        // Eye slots whose error is the closing shape shared with the other eye.
+        readonly System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset>();
         // Opened from "アプリに転送（通常）": the next window asks the name, author and license.
         [SerializeField] bool transferMode;
         // The objects left out of the VRM, as edited here; null while they match the preview.
@@ -710,6 +712,7 @@ namespace VRVlog.LilToonExporter
         {
             session.Presets.TryGetValue(preset, out var assignment);
             presetErrors.TryGetValue(preset, out var reason);
+            if (reason != null && eyeOverlaps.Contains(preset)) reason = ExporterLocalization.T("左右の目で同じ変形が重なっています");
             var target = Place.Slot(preset);
             var repaint = Event.current.type == EventType.Repaint;
             if (repaint) slotRects[target] = ScreenRect(rect);
@@ -1316,20 +1319,27 @@ namespace VRVlog.LilToonExporter
 
         void RefreshPresetErrors()
         {
-            presetErrors.Clear();
+            presetErrors.Clear(); eyeOverlaps.Clear();
             if (session == null) return;
-            foreach (var pair in session.Presets) presetErrors[pair.Key] = session.PresetError(pair.Key, pair.Value);
+            foreach (var pair in session.Presets) CheckPreset(pair.Key, pair.Value);
+        }
+
+        void CheckPreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        {
+            presetErrors[preset] = session.PresetError(preset, assignment);
+            if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
+            else eyeOverlaps.Remove(preset);
         }
 
         void ChoosePreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             session.SetPreset(preset, assignment);
             SaveChoices();
-            presetErrors[preset] = session.PresetError(preset, assignment);
+            CheckPreset(preset, assignment);
             // The left and right eye slots check each other for a shared closing shape.
             var otherEye = preset == UniVRM10.ExpressionPreset.blinkLeft ? UniVRM10.ExpressionPreset.blinkRight
                 : preset == UniVRM10.ExpressionPreset.blinkRight ? UniVRM10.ExpressionPreset.blinkLeft : (UniVRM10.ExpressionPreset?)null;
-            if (otherEye is UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) presetErrors[eye] = session.PresetError(eye, eyeValue);
+            if (otherEye is UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) CheckPreset(eye, eyeValue);
             if (assignment.IsNone) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); return; }
             if (presetErrors[preset] != null) throw new InvalidOperationException(presetErrors[preset]);
             session.PreviewPreset(preset, assignment);
@@ -1570,7 +1580,7 @@ namespace VRVlog.LilToonExporter
             session?.Dispose(); session = null; board = null;
             poseReview?.Close(); poseReview = null;
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
-            presetErrors.Clear(); presetKey = null; presetSkipped = 0;
+            presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null; showExcludedObjects = null;
             dropHover = dropHoverNext = null; dragMouse = null;
             ClearThumbnails(); slotRects.Clear(); closableTiles.Clear(); hoverTile = -1;
