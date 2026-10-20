@@ -717,6 +717,8 @@ namespace VRVlog.LilToonExporter
                 // Report the layers whose state, before or after settlement
                 // advances time, plays a BlendTree that still moves. The
                 // caller decides whether a time decision may stand for it.
+                // A tree left before the final state still counts: its values
+                // can remain on Write Defaults off layers, depending on time.
                 var resolveState = followTransitions && settledTreeLayers != null ? ExpressionSettlement.StateResolver(originalController) : null;
                 void ReportMovingTrees()
                 {
@@ -1096,8 +1098,10 @@ namespace VRVlog.LilToonExporter
                 }
             }
             Visit(tree);
+            var cache = ExpressionInspectCache.Current;
             bool Moves(AnimationClip clip, Func<EditorCurveBinding, bool> relevant) => clip != null &&
-                AnimationUtility.GetCurveBindings(clip).Any(binding => relevant(binding) && !IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+                (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Any(binding => relevant(binding) &&
+                    !(cache?.Constant(clip, binding) ?? IsConstant(AnimationUtility.GetEditorCurve(clip, binding))));
             return clips.Any(clip => Moves(clip, binding => binding.type == typeof(SkinnedMeshRenderer) &&
                     binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) && excludedPath?.Invoke(binding.path) != true)) ||
                 runtime.animationClips.Distinct().Any(clip => Moves(clip, binding => binding.type == typeof(Animator) && binding.path == "" &&
