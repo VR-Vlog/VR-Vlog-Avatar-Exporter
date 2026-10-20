@@ -780,6 +780,77 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(mesh); }
         }
 
+        // A face file that also records "Hair detail" (35 is the baseline on Front).
+        static AnimationClip EyeClip(string shape, float detail)
+        {
+            var clip = new AnimationClip { name = shape };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, detail));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape." + shape), AnimationCurve.Constant(0, 1, 100));
+            return clip;
+        }
+
+        [Test]
+        public void BlinkClipsUseOnlyWhatDiffersFromTheBaseline()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
+            var left = EyeClip("Blink_L", 35); var right = EyeClip("Blink_R", 35);
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var chosen = new[] { Session.PresetAssignment.ForClip(ExpressionPreset.blinkLeft, left), Session.PresetAssignment.ForClip(ExpressionPreset.blinkRight, right) };
+                foreach (var assignment in chosen) session.SetPreset(Session.ParsePreset(assignment.Preset), assignment);
+                Assert.That(session.PresetError(ExpressionPreset.blinkLeft, chosen[0]), Is.Null);
+                Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Null);
+                var bytes = session.Export("Test", "Tests", presets: chosen);
+                Assert.That(BoundShapes(bytes, "blinkLeft").Length, Is.EqualTo(1), "The unchanged 'Hair detail' is not part of the blink.");
+                Assert.That(BoundShapes(bytes, "blinkRight").Length, Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(left); Object.DestroyImmediate(right); }
+        }
+
+        [Test]
+        public void BlinkClipsSharingAShapeAreAnEyeSlotError()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = FrontMesh(fixture, Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
+            var left = EyeClip("Blink_L", 60); var right = EyeClip("Blink_R", 60);
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var chosen = new[] { Session.PresetAssignment.ForClip(ExpressionPreset.blinkLeft, left), Session.PresetAssignment.ForClip(ExpressionPreset.blinkRight, right) };
+                foreach (var assignment in chosen) session.SetPreset(Session.ParsePreset(assignment.Preset), assignment);
+                var error = session.PresetError(ExpressionPreset.blinkLeft, chosen[0]);
+                Assert.That(error, Is.Not.Null, "Both eyes move 'Hair detail' away from the baseline.");
+                Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Not.Null);
+                var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", presets: chosen));
+                Assert.That(thrown.Message, Is.EqualTo(error), "The export stops with the eye slot's own error.");
+            }
+            finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(left); Object.DestroyImmediate(right); }
+        }
+
+        [Test]
+        public void NoneOnAnEmptySlotKeepsTheSourceVrmBlink()
+        {
+            using var fixture = Fixture(smile: false);
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var blink = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                blink.IsBinary = true;
+                blink.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .6f) };
+                settings.Expression.Blink = blink;
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.HasAuthoredPreset(ExpressionPreset.blinkLeft), Is.False);
+                var automatic = session.Export("Test", "Tests");
+                var none = session.Export("Test", "Tests", presets: new[] { Session.PresetAssignment.None(ExpressionPreset.blinkLeft) });
+                Assert.That(((Dictionary<string, object>)Presets(none)["blink"])["isBinary"], Is.EqualTo(true), "The source VRM's own blink is kept.");
+                Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(automatic))), "\"None\" on a slot the VRM leaves empty changes nothing.");
+            }
+            finally { Object.DestroyImmediate(blink); Object.DestroyImmediate(settings); }
+        }
+
         [Test]
         public void EmptyVrmMouthAndBlinkPresetsAreAuthored()
         {

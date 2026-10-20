@@ -492,11 +492,20 @@ namespace VRVlog.LilToonExporter
             ValidatePose(Baseline);
             // A chosen "none" is a face without a pose or morphs: an empty
             // mouth preset, an empty blink slot.
-            var presetFaces = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray())
+            var selectedPresets = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray());
+            var presetFaces = selectedPresets
                 .Where(item => !item.Assignment.IsNone || ChosenNone(item.Preset, item.Assignment))
-                .Select(item => (item.Preset, Pose: item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment),
-                    Morphs: item.Assignment.IsNone ? new List<(string Path, string Shape, float Weight)>() : PresetMorphs(item.Assignment),
-                    Automatic: item.Assignment.Automatic && !item.Assignment.IsNone)).ToArray();
+                .Select(item =>
+                {
+                    var pose = item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment);
+                    var morphs = pose == null ? new List<(string Path, string Shape, float Weight)>()
+                        : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
+                    return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
+                }).ToArray();
+            var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
+            var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
+            if (leftEye != null && !leftEye.IsNone && BlinkSideOverlap(ExpressionPreset.blinkLeft, leftEye, rightEye) is string overlap)
+                throw new InvalidOperationException(overlap);
             // Blink presets are written by the blink export only. Automatic
             // candidates repeat its own choice, so they leave blinkOptions as
             // is. The user's choices, "none" included, replace their slots of

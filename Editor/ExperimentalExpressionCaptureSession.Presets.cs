@@ -222,7 +222,12 @@ namespace VRVlog.LilToonExporter
         internal string PresetError(ExpressionPreset preset, PresetAssignment assignment)
         {
             if (assignment == null || assignment.IsNone) return null;
-            try { BuildPresetPose(preset, assignment); return null; }
+            try
+            {
+                BuildPresetPose(preset, assignment);
+                var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
+                return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null);
+            }
             catch (InvalidOperationException error) { return error.Message; }
         }
 
@@ -302,8 +307,12 @@ namespace VRVlog.LilToonExporter
         // source VRM's own blink is kept. The chosen presets (an empty one for
         // "none") replace their slots; the others keep what the given blink
         // setting decides, closing amounts included. No slot left is no blink.
+        // "None" on slots the source VRM leaves empty, over its own blink that
+        // is kept, changes nothing: the given setting stays as it is.
         BlinkExportOptions AssignedBlink(BlinkExportOptions given, IEnumerable<(ExpressionPreset Preset, List<(string Path, string Shape, float Weight)> Morphs)> chosen)
         {
+            chosen = chosen.ToArray();
+            if (chosen.All(face => face.Morphs.Count == 0 && !HasAuthoredBindings(face.Preset)) && KeepsAuthoredBlink(given)) return given;
             var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
             var slots = new[] { options.Both, options.Left, options.Right };
             var inherited = InheritedBlinkSlots(given);
@@ -316,6 +325,48 @@ namespace VRVlog.LilToonExporter
                     new BlinkShapeBinding { Renderer = VrChatExpressionSampler.FindRenderer(Source, morph.Path), Shape = morph.Shape, Weight = morph.Weight }));
             }
             return slots.All(slot => slot.Count == 0) ? new BlinkExportOptions { Mode = BlinkExportMode.None } : options;
+        }
+
+        bool KeepsAuthoredBlink(BlinkExportOptions given)
+        {
+            if ((given?.Mode ?? BlinkExportMode.Auto) != BlinkExportMode.Auto) return false;
+            try
+            {
+                using var resolved = BlinkExportSession.Resolve(Source, given, exclusions != null ? exclusions.Contains : (Func<Transform, bool>)null);
+                return resolved.PreserveAuthored;
+            }
+            catch (InvalidOperationException) { return false; }
+        }
+
+        // What a blink slot gets from an assignment. A clip records the whole
+        // face, so only the morphs that differ from the baseline face close
+        // the eyes; the rest would be baked as blink channels.
+        List<(string Path, string Shape, float Weight)> BlinkMorphs(PresetAssignment assignment, Pose pose)
+        {
+            var morphs = PresetMorphs(assignment);
+            if (assignment.IsShape) return morphs;
+            return morphs.Where(morph =>
+            {
+                var path = AuthoringChannel(morph.Path).Path;
+                var baseline = Baseline.Rows.Single(row => row.Path == path);
+                var index = Array.IndexOf(baseline.Shapes, morph.Shape);
+                return index >= 0 && pose.Rows.Single(row => row.Path == path).Weights[index] != baseline.Weights[index];
+            }).ToList();
+        }
+
+        // The blink export stops when both eyes share a closing shape. Say so
+        // on the eye slot instead, before the export.
+        string BlinkSideOverlap(ExpressionPreset preset, PresetAssignment assignment, PresetAssignment other)
+        {
+            if (preset != ExpressionPreset.blinkLeft && preset != ExpressionPreset.blinkRight || other == null || other.IsNone) return null;
+            var otherPreset = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
+            List<(string Path, string Shape, float Weight)> otherMorphs;
+            try { otherMorphs = BlinkMorphs(other, BuildPresetPose(otherPreset, other)); }
+            catch (InvalidOperationException) { return null; } // The other slot shows its own error.
+            var shared = BlinkMorphs(assignment, BuildPresetPose(preset, assignment)).Where(morph => morph.Weight > 0)
+                .Select(morph => (morph.Path, morph.Shape))
+                .Intersect(otherMorphs.Where(morph => morph.Weight > 0).Select(morph => (morph.Path, morph.Shape)));
+            return shared.Any() ? PresetFullLabel(preset) + ": " + ExporterLocalization.T("左右別には異なる閉眼用の変形を指定してください。") : null;
         }
 
         // What the blink export would write per slot from the given setting:
@@ -524,16 +575,19 @@ namespace VRVlog.LilToonExporter
             try
             {
                 using var resolved = BlinkExportSession.Resolve(Source, options, exclusions != null ? exclusions.Contains : (Func<Transform, bool>)null);
-                return ExporterLocalization.T(resolved.Description);
+                return ExporterLocalization.T(resolved.Description) +
+                    (resolved.UnresolvedAutomatic && !string.IsNullOrEmpty(resolved.UnresolvedReason) ? " " + FixedPartTranslated(resolved.UnresolvedReason) : "");
             }
-            catch (InvalidOperationException error)
-            {
-                // Only the fixed sentence is translated; a mesh or shape name
-                // after its ": " stays as is.
-                var split = error.Message.IndexOf(": ", StringComparison.Ordinal);
-                return split < 0 ? ExporterLocalization.T(error.Message)
-                    : ExporterLocalization.T(error.Message.Substring(0, split + 2)) + error.Message.Substring(split + 2);
-            }
+            catch (InvalidOperationException error) { return FixedPartTranslated(error.Message); }
+        }
+
+        // Only the fixed sentence is translated; a mesh or shape name after
+        // its ": " stays as is.
+        static string FixedPartTranslated(string message)
+        {
+            var split = message.IndexOf(": ", StringComparison.Ordinal);
+            return split < 0 ? ExporterLocalization.T(message)
+                : ExporterLocalization.T(message.Substring(0, split + 2)) + message.Substring(split + 2);
         }
 
         // The source avatar's own VRM settings already fill this preset. As in
@@ -541,9 +595,19 @@ namespace VRVlog.LilToonExporter
         // one; an emotion has to move something.
         internal bool HasAuthoredPreset(ExpressionPreset preset)
         {
+            if (AuthoredClip(preset) != null && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset))) return true;
+            return HasAuthoredBindings(preset);
+        }
+
+        VRM10Expression AuthoredClip(ExpressionPreset preset)
+        {
             var expression = Source != null && Source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
-            var clip = expression?.Clips.Where(item => item.Preset == preset).Select(item => item.Clip).FirstOrDefault();
-            if (clip != null && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset))) return true;
+            return expression?.Clips.Where(item => item.Preset == preset).Select(item => item.Clip).FirstOrDefault();
+        }
+
+        bool HasAuthoredBindings(ExpressionPreset preset)
+        {
+            var clip = AuthoredClip(preset);
             return clip != null && (clip.MorphTargetBindings?.Length > 0 || clip.MaterialColorBindings?.Length > 0 || clip.MaterialUVBindings?.Length > 0);
         }
 
