@@ -95,8 +95,9 @@ namespace VRVlog.LilToonExporter
         // The emotion of a face from the shapes it moves and their weights
         // (0-100), with its support: 3 for a whole-face name, otherwise the
         // number of face parts that agree. Null when the parts do not name
-        // exactly one emotion, when only one part moves, or when the eyes are
-        // a gimmick (hearts, stars, spirals).
+        // exactly one emotion, when only one part moves, when the parts say
+        // sad or angry without a whole-face name, or when the eyes are a
+        // gimmick (hearts, stars, spirals).
         internal (ExpressionPreset Preset, int Support)? Classify(IEnumerable<(string Shape, float Weight)> shapes)
         {
             if (parts.Count == 0 || shapes == null) return null;
@@ -130,7 +131,13 @@ namespace VRVlog.LilToonExporter
             // One part alone (a mouth toggle, an eye variant) is not a whole face.
             var kinds = found.Select(part => part.Split('.')[0]).Where(kind => kind == "eye" || kind == "mouth" || kind == "brow" || kind == "tear").Distinct().Count();
             if (kinds < 2 || result.Count != 1) return null;
-            return Preset(result.First(), kinds);
+            // Sad and angry part combinations never looked sad or angry in the
+            // rendered faces the table was built from, so only a whole-face
+            // name decides them. Their rules stay above to make mixed faces
+            // ambiguous instead of happy.
+            var emotion = result.First();
+            if (emotion == "sad" || emotion == "angry") return null;
+            return Preset(emotion, kinds);
         }
 
         static (ExpressionPreset Preset, int Support)? Preset(string name, int support) =>
