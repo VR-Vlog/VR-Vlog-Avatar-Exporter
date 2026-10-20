@@ -45,8 +45,16 @@ namespace VRVlog.LilToonExporter
                         var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
                         // Settlement messages reach the export warnings and
                         // the result list through entry.Messages.
-                        entry.Values.AddRange(SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                            messages: entry.Messages));
+                        var settlement = new List<string>();
+                        var trees = new List<string>();
+                        var values = SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context,
+                            messages: settlement, settledTreeLayers: trees);
+                        // A Radial Puppet commonly selects a BlendTree state.
+                        // Like an FX tree knot, a moving child cannot become
+                        // one settled frame, and this path has no animated reading.
+                        if (settlement.Count > 0 && trees.Count > 0) throw new InvalidOperationException(VrChatFxExpressions.SettledFxTreeOmitted);
+                        entry.Values.AddRange(values);
+                        foreach (var message in settlement) if (!entry.Messages.Contains(message)) entry.Messages.Add(message);
                         if (context.UsedParameters.Count > 0)
                             entry.Messages.Add("外部入力は通常状態・設定済み初期値で固定表情として保存しました（自動切り替えは再現しません）: " +
                                 string.Join(", ", context.UsedParameters.OrderBy(name => name, StringComparer.Ordinal).Select(name => name + "=" +
@@ -68,11 +76,13 @@ namespace VRVlog.LilToonExporter
         internal static List<MorphValue> SampleFixed(GameObject avatar, RuntimeAnimatorController runtime,
             IDictionary<string, float> defaults, IDictionary<string, float> selected, Func<string, bool> excludedPath = null,
             VrChatExpressionMenu.Source metadata = null, IList<MorphValue> unevaluated = null, FixedExpressionContext fixedContext = null,
-            int? expectedLayer = null, string expectedStatePath = null, ICollection<string> messages = null)
+            int? expectedLayer = null, string expectedStatePath = null, ICollection<string> messages = null,
+            ICollection<string> settledTreeLayers = null)
             => Evaluate(avatar, runtime, defaults, selected, excludedPath, metadata, unevaluated,
                 StationaryBindings(avatar, runtime, excludedPath),
                 fixedContext: fixedContext ?? FixedExpressionContext.Create(runtime, defaults, metadata),
-                expectedLayer: expectedLayer, expectedStatePath: expectedStatePath, messages: messages, followTransitions: true);
+                expectedLayer: expectedLayer, expectedStatePath: expectedStatePath, messages: messages, followTransitions: true,
+                settledTreeLayers: settledTreeLayers);
 
         // Stable, discrete, morph-based FX expressions, including deterministic
         // parameter drivers. Each menu is evaluated from its own fresh defaults.
@@ -587,7 +597,8 @@ namespace VRVlog.LilToonExporter
             IDictionary<string, float> defaults, IDictionary<string, float> selected, Func<string, bool> excludedPath,
             VrChatExpressionMenu.Source metadata, IList<MorphValue> unevaluated, IEnumerable<EditorCurveBinding> initialMorphs,
             bool preserveNativeBasePose = false, FixedExpressionContext fixedContext = null, ISet<string> omittedDriverWrites = null,
-            int? expectedLayer = null, string expectedStatePath = null, ICollection<string> messages = null, bool followTransitions = false)
+            int? expectedLayer = null, string expectedStatePath = null, ICollection<string> messages = null, bool followTransitions = false,
+            ICollection<string> settledTreeLayers = null)
         {
             using var selectedRest = !preserveNativeBasePose && fixedContext != null && metadata != null && selected.Count > 0
                 ? SelectedRandomRestProbe.Create(avatar, runtime, metadata, selected, fixedContext) : null;
@@ -701,9 +712,18 @@ namespace VRVlog.LilToonExporter
                 // An expression the stationary proof accepts is not stepped.
                 var temporal = new List<string>();
                 HashSet<(int Layer, AnimationClip Clip, EditorCurveBinding Binding)> gateShadowed = null;
+                bool Settles(int layer) => !excludedLayers.Contains(layer) && !equivalentStates.Contains(layer) &&
+                    (layer == 0 || playable.GetLayerWeight(layer) > 0.00001f || dependencies.WeightControlLayers.Contains(layer));
+                // Report the layers whose state, before settlement advances
+                // time, plays a BlendTree. The caller decides whether a time
+                // decision may stand for that selection.
+                if (followTransitions && settledTreeLayers != null)
+                    for (var layer = 0; layer < controller.layers.Length; layer++)
+                        if (Settles(layer) && CurrentEffectiveMotion(originalController, layer,
+                            playable.GetCurrentAnimatorStateInfo(layer).fullPathHash) is BlendTree)
+                            settledTreeLayers.Add(controller.layers[layer].name);
                 var settled = followTransitions && ExpressionSettlement.Settle(graph, playable, controller,
-                    layer => !excludedLayers.Contains(layer) && !equivalentStates.Contains(layer) &&
-                        (layer == 0 || playable.GetLayerWeight(layer) > 0.00001f || dependencies.WeightControlLayers.Contains(layer)),
+                    Settles,
                     remember, temporal,
                     (layer, clip, binding) => binding.type == typeof(SkinnedMeshRenderer) &&
                         binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) && excludedPath?.Invoke(binding.path) != true &&
@@ -1021,6 +1041,39 @@ namespace VRVlog.LilToonExporter
             {
                 for (var index = owned.Count - 1; index >= 0; index--)
                     if (owned[index] != null) UnityEngine.Object.DestroyImmediate(owned[index]);
+            }
+        }
+
+        // The authored motion of a playing state, following a Synced Layer to
+        // its source machine and override like the FX candidate discovery.
+        private static Motion CurrentEffectiveMotion(AnimatorController controller, int layer, int fullPathHash)
+        {
+            var layers = controller.layers;
+            if (layer < 0 || layer >= layers.Length) return null;
+            var source = layer;
+            var visited = new HashSet<int>();
+            while (layers[source].syncedLayerIndex >= 0)
+            {
+                if (!visited.Add(source)) return null;
+                source = layers[source].syncedLayerIndex;
+                if (source < 0 || source >= layers.Length) return null;
+            }
+            var machine = layers[source].stateMachine;
+            if (machine == null) return null;
+            AnimatorState found = null;
+            void Visit(AnimatorStateMachine current, string path)
+            {
+                foreach (var child in current.states)
+                    if (Animator.StringToHash(path + "." + child.state.name) == fullPathHash) found = found ?? child.state;
+                foreach (var child in current.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name);
+            }
+            foreach (var root in new[] { layers[layer].name, layers[source].name, machine.name }.Distinct(StringComparer.Ordinal))
+                Visit(machine, root);
+            if (found == null) return null;
+            for (var index = layer; ; index = layers[index].syncedLayerIndex)
+            {
+                var motion = controller.GetStateEffectiveMotion(found, index);
+                if (motion != null || layers[index].syncedLayerIndex < 0) return motion ?? found.motion;
             }
         }
 

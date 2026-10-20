@@ -508,6 +508,61 @@ namespace VRVlog.LilToonExporter.Tests
                 .Select(row => row.Reason), Does.Contain(ExpressionSettlement.FollowedTransitions));
         }
 
+        // A Radial Puppet commonly selects a BlendTree state. A moving child
+        // must not be exported as one settled frame of its final key.
+        [Test]
+        public void AMenuItemSelectingAMovingTreeIsNotSettledToOneFrame()
+        {
+            controller.AddParameter("Blend", AnimatorControllerParameterType.Float);
+            var parameters = controller.parameters; parameters.Single(parameter => parameter.name == "Blend").defaultFloat = 1;
+            controller.parameters = parameters;
+            var tree = new BlendTree { name = "Moving tree", blendType = BlendTreeType.Simple1D, blendParameter = "Blend", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            tree.AddChild(Clip("Still", 0), 0); tree.AddChild(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)), 1);
+            Selected(null).motion = tree;
+            var source = AnalyzeToggle("Moving tree item");
+            var entry = source.Entries.Single(e => e.Name == "Moving tree item");
+            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
+            Assert.That(entry.Values, Is.Empty);
+            Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
+        }
+
+        // One Toggle (Menu = 1) on a VRChat descriptor whose FX is the fixture.
+        private VrChatExpressionMenu.Source AnalyzeToggle(string name)
+        {
+            Type Find(string typeName) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(type => type != null);
+            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (menuType == null || descriptorType == null) Assert.Ignore("Install the real VRChat SDK to run menu-analysis integration tests.");
+            var menu = ScriptableObject.CreateInstance(menuType);
+            AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
+            using (var data = new SerializedObject(menu))
+            {
+                var controls = data.FindProperty("controls"); controls.arraySize = 1;
+                var item = controls.GetArrayElementAtIndex(0);
+                item.FindPropertyRelative("name").stringValue = name;
+                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "Toggle");
+                item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
+                item.FindPropertyRelative("value").floatValue = 1;
+                data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var descriptor = avatar.AddComponent(descriptorType);
+            using (var data = new SerializedObject(descriptor))
+            {
+                data.FindProperty("customExpressions").boolValue = true;
+                data.FindProperty("expressionsMenu").objectReferenceValue = menu;
+                data.FindProperty("customizeAnimationLayers").boolValue = true;
+                var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
+                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
+                layer.FindPropertyRelative("isDefault").boolValue = false;
+                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                data.FindProperty("specialAnimationLayers").arraySize = 0;
+                data.ApplyModifiedPropertiesWithoutUndo();
+            }
+            return VrChatExpressionSampler.Analyze(avatar);
+        }
+
         [Test]
         public void TheExperimentalPlayerKeepsTheLastKeyOfALongClip()
         {
