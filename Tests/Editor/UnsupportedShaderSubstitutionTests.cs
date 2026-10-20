@@ -206,6 +206,127 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.yellow));
         }
 
+        static readonly Vector4 NeutralTone = new Vector4(0, 1, 1, 1);
+        Material ColorProbe(string name = "Adjusted") => Own(new Material(Shader.Find("Hidden/VRVlogTests/ToonColorAdjustProbe")) { name = name });
+
+        Material Substitute(Material source, out bool colorSkipped)
+        {
+            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped);
+            Assert.That(output, Is.Not.Null);
+            return Own(output);
+        }
+
+        static void AssertTone(Material output, Vector4 expected) =>
+            Assert.That(Vector4.Distance(output.GetVector("_MainTexHSVG"), expected), Is.LessThan(1e-6f), output.GetVector("_MainTexHSVG").ToString("F4"));
+
+        [Test] public void ABrightnessFactorBecomesTheValueOfTheToneCorrection()
+        {
+            var source = ColorProbe();
+            source.SetFloat("_Bright", .6f);
+            var output = Substitute(source, out var skipped);
+            AssertTone(output, new Vector4(0, 1, .6f, 1));
+            Assert.That(skipped, Is.False);
+            Assert.That(LilToonMainTextureBaker.NeedsBake(output), Is.True, "The existing baker bakes it into the exported image.");
+        }
+
+        [TestCase(-.25f, .75f)]
+        [TestCase(.5f, 1.5f)]
+        public void AColorAdjustBrightnessScalesTheValue(float brightness, float value)
+        {
+            var source = ColorProbe();
+            source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainBrightness", brightness);
+            var output = Substitute(source, out var skipped);
+            AssertTone(output, new Vector4(0, 1, value, 1));
+            Assert.That(skipped, Is.False);
+        }
+
+        [Test] public void AColorAdjustBrightnessIsIgnoredWhileItsSectionIsOff()
+        {
+            var source = ColorProbe();
+            source.SetFloat("_MainBrightness", -.5f); source.SetFloat("_Saturation", 1);
+            var output = Substitute(source, out var skipped);
+            AssertTone(output, NeutralTone);
+            Assert.That(skipped, Is.False);
+        }
+
+        [Test] public void NeutralAdjustmentsLeaveTheToneCorrectionAtTheOfficialDefault()
+        {
+            var official = Own(new Material(Shader.Find("lilToon")));
+            Assume.That((Vector4)official.GetVector("_MainTexHSVG"), Is.EqualTo(NeutralTone));
+            var source = ColorProbe();
+            source.SetFloat("_EnableGammaFix", 1); source.SetFloat("_EnableBlightFix", 1);
+            source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainHueShiftToggle", 1);
+            source.EnableKeyword("USE_HUE_SHIFT");
+            var output = Substitute(source, out var skipped);
+            Assert.That((Vector4)output.GetVector("_MainTexHSVG"), Is.EqualTo(official.GetVector("_MainTexHSVG")), "Not even rounded.");
+            Assert.That(skipped, Is.False);
+            Assert.That(LilToonMainTextureBaker.NeedsBake(output), Is.False, "No bake is added for neutral values.");
+            Assert.That(LilToonMainTextureBaker.NeedsBake(Substitute(Standard())), Is.False);
+        }
+
+        [TestCase("saturation")]
+        [TestCase("hue")]
+        [TestCase("gradation")]
+        [TestCase("maskedBrightness")]
+        [TestCase("gamma")]
+        [TestCase("brightnessFix")]
+        [TestCase("hueRadians")]
+        public void AdjustmentsWithoutAnHsvCounterpartAreLeftOutAndReported(string adjustment)
+        {
+            var source = ColorProbe();
+            switch (adjustment)
+            {
+                case "saturation": source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_Saturation", .5f); break;
+                case "hue": source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainHueShiftToggle", 1); source.SetFloat("_MainHueShift", .25f); break;
+                case "gradation": source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainGradationStrength", .5f); break;
+                case "maskedBrightness": source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainBrightness", -.5f); source.SetFloat("_MainBrightnessGlobalMask", 2); break;
+                case "gamma": source.SetFloat("_EnableGammaFix", 1); source.SetFloat("_GammaG", 2); break;
+                case "brightnessFix": source.SetFloat("_EnableBlightFix", 1); source.SetFloat("_BlightOffset", .2f); break;
+                case "hueRadians": source.EnableKeyword("USE_HUE_SHIFT"); source.SetFloat("_HueShift", 1); break;
+            }
+            var output = Substitute(source, out var skipped);
+            AssertTone(output, NeutralTone);
+            Assert.That(skipped, Is.True);
+        }
+
+        [Test] public void ApplyNamesTheMaterialsWhoseAdjustmentWasLeftOut()
+        {
+            var adjusted = ColorProbe();
+            adjusted.SetFloat("_MainColorAdjustToggle", 1); adjusted.SetFloat("_Saturation", .5f); adjusted.SetFloat("_MainBrightness", -.5f);
+            var plain = Standard();
+            var (avatar, renderers) = Build(adjusted, plain);
+            Own(avatar);
+            var created = new List<Material>(); var warnings = new List<string>();
+            UnsupportedShaderSubstitution.Apply(avatar, created, warnings, new ExportFallbackReport(), null);
+            owned.AddRange(created);
+            AssertTone(renderers[0].sharedMaterial, new Vector4(0, 1, .5f, 1));
+            Assert.That(warnings, Is.EqualTo(new[]
+            {
+                ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Adjusted, Plain",
+                ExporterLocalization.T(UnsupportedShaderSubstitution.ColorAdjustmentSkipped) + "Adjusted",
+            }));
+        }
+
+        [Test] public void LilToonMaterialsKeepTheirOwnToneCorrection()
+        {
+            var tone = new Vector4(.1f, .5f, .8f, 1.2f);
+            var official = Own(new Material(Shader.Find("lilToon")) { name = "Official" });
+            official.SetVector("_MainTexHSVG", tone);
+            var (avatar, renderers) = Build(official);
+            Own(avatar);
+            var created = new List<Material>(); var warnings = new List<string>();
+            UnsupportedShaderSubstitution.Apply(avatar, created, warnings, new ExportFallbackReport(), null);
+            Assert.That(created, Is.Empty);
+            Assert.That(renderers[0].sharedMaterial, Is.SameAs(official));
+            Assert.That((Vector4)official.GetVector("_MainTexHSVG"), Is.EqualTo(tone));
+            Assert.That(warnings, Is.Empty);
+
+            var derived = Own(new Material(Shader.Find("Hidden/VRVlogTests/lilToonDerivedProbe")) { name = "Derived" });
+            var output = Substitute(derived, out var skipped);
+            AssertTone(output, NeutralTone);
+            Assert.That(skipped, Is.False, "A derived build copies lilToon's own values instead.");
+        }
+
         static (GameObject Avatar, Renderer[] Renderers) Build(params Material[] materials)
         {
             var avatar = new GameObject("avatar");

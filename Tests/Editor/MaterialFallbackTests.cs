@@ -199,6 +199,99 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void MultiplyMatcapIsOmittedWhileAddedMatcapStays()
+        {
+            var shader = Shader.Find("lilToon");
+            Assume.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var matcap = new Texture2D(2, 2);
+            var created = new List<Material>();
+            try
+            {
+                source.SetFloat("_UseMatCap", 1f);
+                source.SetTexture("_MatCapTex", matcap);
+                source.SetColor("_MatCapColor", new Color(.8f, .6f, .4f, 1f));
+                source.SetFloat("_MatCapBlend", 1f);
+                source.SetFloat("_MatCapEnableLighting", .3f);
+                source.SetFloat("_MatCapBlendMode", 1f);
+                var added = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
+                Assert.AreSame(matcap, added.GetTexture("_MatcapTex"));
+                Assert.Greater(added.GetColor("_MatcapColor").maxColorComponent, 0f);
+                Assert.AreEqual(.3f, added.GetFloat("_RimLightingMix"), .00001f);
+
+                // lilToon blend mode 3 multiplies; MToon would add it and brighten.
+                source.SetFloat("_MatCapBlendMode", 3f);
+                var multiplied = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
+                Assert.IsNull(multiplied.GetTexture("_MatcapTex"));
+                Assert.AreEqual(UnityEngine.Color.black, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.matcapColor));
+                Assert.AreEqual(0f, multiplied.GetColor("_MatcapColor").maxColorComponent, .00001f);
+                Assert.AreEqual(1f, multiplied.GetFloat("_RimLightingMix"), .00001f, "Same as an unused MatCap.");
+                Assert.AreEqual(3f, source.GetFloat("_MatCapBlendMode"));
+                Assert.AreSame(matcap, source.GetTexture("_MatCapTex"));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(matcap);
+            }
+        }
+
+        [Test]
+        public void SecondShadowColorIsMixedIntoTheShadeColor()
+        {
+            var shader = Shader.Find("lilToon");
+            Assume.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var fixture = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));
+            var created = new List<Material>();
+            try
+            {
+                var main = new Color(.9f, .8f, .7f, 1f);
+                var shadow = new Color(.6f, .5f, .7f, 1f);
+                var second = new Color(.3f, .2f, .4f, 1f);
+                source.SetColor("_Color", main);
+                source.SetFloat("_UseShadow", 1f);
+                source.SetColor("_ShadowColor", shadow);
+                source.SetFloat("_ShadowStrength", .8f);
+                source.SetFloat("_ShadowBorder", .5f);
+                source.SetFloat("_Shadow2ndBorder", .25f);
+                var legacy = MobileMaterialMath.ShadeColor(main, shadow, .8f);
+
+                // An unused 2nd shadow (alpha 0) keeps the previous result exactly.
+                source.SetColor("_Shadow2ndColor", new Color(second.r, second.g, second.b, 0f));
+                Assert.AreEqual(legacy, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor));
+
+                source.SetColor("_Shadow2ndColor", second);
+                var mixed = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
+                // The 2nd border covers half of the 1st band.
+                var expected = MobileMaterialMath.ShadeColor(main, UnityEngine.Color.Lerp(shadow.linear, second.linear, .5f).gamma, .8f);
+                Assert.AreEqual(expected.r, mixed.r, .0001f);
+                Assert.AreEqual(expected.g, mixed.g, .0001f);
+                Assert.AreEqual(expected.b, mixed.b, .0001f);
+                Assert.Less(mixed.r, legacy.r);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
+                Assert.AreEqual(mixed.g, fallback.GetColor("_ShadeColor").g, .0001f);
+                Assert.AreEqual(second, source.GetColor("_Shadow2ndColor"));
+
+                // With the shadow off the shade stays the main color.
+                source.SetFloat("_UseShadow", 0f);
+                Assert.AreEqual(main, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor));
+
+                // A material without the 2nd shadow property keeps the previous formula.
+                fixture.SetFloat("_UseShadow", 1f);
+                Assert.AreEqual(MobileMaterialMath.ShadeColor(fixture.GetColor("_Color"), fixture.GetColor("_ShadowColor"), fixture.GetFloat("_ShadowStrength")),
+                    UniVrmOneClickExporter.FallbackColor(fixture, MaterialColorType.shadeColor));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(fixture);
+            }
+        }
+
+        [Test]
         public void OptOutRetainsEmissionInBothMaterialRepresentations()
         {
             var source = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));
