@@ -55,6 +55,9 @@ namespace VRVlog.LilToonExporter
             public List<string> ExcludedPoses = new List<string>();
             public List<PoseName> PoseNames = new List<PoseName>();
             public AvatarLicenseOptions License = new AvatarLicenseOptions();
+            // The name of the last successful "アプリに転送". It is not part of
+            // ExportSettings, so it never changes the settings' signature.
+            public string TransferName;
         }
 
         [Serializable]
@@ -71,6 +74,7 @@ namespace VRVlog.LilToonExporter
         // Avatars without a stable key (an unsaved scene) keep their settings
         // here until the editor reloads scripts.
         static readonly Dictionary<int, ExportSettings> Unsaved = new Dictionary<int, ExportSettings>();
+        static readonly Dictionary<int, string> UnsavedNames = new Dictionary<int, string>();
 
         // Increases on every save, so an open window can notice that another
         // window saved and reload what it shows.
@@ -98,9 +102,52 @@ namespace VRVlog.LilToonExporter
             var store = Read(out var foreign);
             if (foreign) { WarnOnce(ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。")); return; }
             store = store ?? new Store();
+            var transferName = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key)?.TransferName;
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
-            // Defaults are not written, so the file only lists adjusted avatars.
-            if (settings.Signature() != new ExportSettings().Signature()) store.Avatars.Add(Capture(key, avatar, settings));
+            // Defaults are not written, so the file only lists adjusted avatars
+            // and avatars with a remembered transfer name.
+            if (settings.Signature() != new ExportSettings().Signature() || !string.IsNullOrEmpty(transferName))
+            {
+                var entry = Capture(key, avatar, settings);
+                entry.TransferName = transferName;
+                store.Avatars.Add(entry);
+            }
+            Write(store);
+        }
+
+        internal static string LoadTransferName(GameObject avatar)
+        {
+            if (avatar == null) return null;
+            var key = ExpressionPresetStore.KeyFor(avatar);
+            if (key == null) return UnsavedNames.TryGetValue(avatar.GetInstanceID(), out var held) ? held : null;
+            var name = (Read(out _) ?? new Store()).Avatars.FirstOrDefault(item => item != null && item.Avatar == key)?.TransferName;
+            return string.IsNullOrWhiteSpace(name) ? null : name;
+        }
+
+        internal static void SaveTransferName(GameObject avatar, string name)
+        {
+            if (avatar == null) return;
+            name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+            var key = ExpressionPresetStore.KeyFor(avatar);
+            if (key == null)
+            {
+                if (name == null) UnsavedNames.Remove(avatar.GetInstanceID()); else UnsavedNames[avatar.GetInstanceID()] = name;
+                return;
+            }
+            var store = Read(out var foreign);
+            if (foreign) { WarnOnce(ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。")); return; }
+            store = store ?? new Store();
+            var entry = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key) ?? Capture(key, avatar, new ExportSettings());
+            store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
+            entry.TransferName = name;
+            // An entry that only held the name is dropped with it.
+            var skipped = 0;
+            if (name != null || Restore(avatar, entry, ref skipped).Signature() != new ExportSettings().Signature()) store.Avatars.Add(entry);
+            Write(store);
+        }
+
+        static void Write(Store store)
+        {
             if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
             // Remembering is a convenience: a file that cannot be written never stops an export.
             try

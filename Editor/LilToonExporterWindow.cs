@@ -620,14 +620,22 @@ namespace VRVlog.LilToonExporter
 
         // Stable packages omit this assembly. Resolve only its public optional
         // entry so exporting also works in packages without the transfer module.
-        internal static System.Reflection.MethodInfo SavedVrmTransferMethod()
+        internal static System.Reflection.MethodInfo SavedVrmTransferMethod() =>
+            TransferMethod(type => type, "OpenSavedVrmForDevelopment", typeof(string));
+
+        // The second step of the detailed "アプリに転送", in the same optional
+        // assembly and namespace as the entry above.
+        internal static System.Reflection.MethodInfo DetailedTransferMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferWindow", false), "OpenDetailed", typeof(GameObject));
+
+        private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, Type parameter)
         {
             try
             {
                 var type = Type.GetType("VRVlog.LilToonExporter.LanTransfer.CloudVrmTransferWindow, VRVlog.LanTransfer.Editor", false);
                 if (type == null || !Equals(type.GetProperty("IsAvailable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null), true)) return null;
-                return type.GetMethod("OpenSavedVrmForDevelopment", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                    null, new[] { typeof(string) }, null);
+                return owner(type)?.GetMethod(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    null, new[] { parameter }, null);
             }
             catch { return null; }
         }

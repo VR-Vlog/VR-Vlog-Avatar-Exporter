@@ -66,6 +66,12 @@ namespace VRVlog.LilToonExporter
         BlinkExportSession descriptorBlink;
         ExportObjectExclusions exclusions;
         ExportGimmickSession gimmicks;
+        // The ordinary routes pass these on, so they leave out what Copy leaves out.
+        GameObject[] manualExcluded = Array.Empty<GameObject>();
+        ExportGimmickOptions gimmickOptions = new ExportGimmickOptions();
+        internal IReadOnlyList<GameObject> ExcludedObjects => manualExcluded;
+        internal ExportGimmickOptions GimmickOptions => new ExportGimmickOptions { AutoExclude = gimmickOptions.AutoExclude,
+            IncludedObjects = gimmickOptions.IncludedObjects.ToArray(), IncludedComponents = gimmickOptions.IncludedComponents.ToArray() };
         ExperimentalExpressionControllerScope controllers;
         FaceEmoExpressions.BindingSnapshot faceEmoBindings;
         Hash128 sourceStamp;
@@ -100,7 +106,10 @@ namespace VRVlog.LilToonExporter
 
         internal ExperimentalExpressionCaptureSession(GameObject source) : this(source, true) { }
 
-        internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults)
+        // Manual exclusions and gimmick options follow the ordinary export:
+        // detection skips what is excluded by hand, and both leave Copy.
+        internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults,
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
         {
             Source = source;
             try
@@ -115,11 +124,19 @@ namespace VRVlog.LilToonExporter
                     var index = Array.IndexOf(renderer.GetComponents<Renderer>().Where(item => item.GetType() == renderer.GetType()).ToArray(), renderer);
                     authoringRecoveryRenderers.Add(renderer, mapped.GetComponents<Renderer>().Where(item => item.GetType() == renderer.GetType()).ElementAt(index));
                 }
-                var gimmickOptions = new ExportGimmickOptions();
-                var findings = ExportGimmickDetection.Analyze(source);
-                var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions).ToArray();
-                exclusions = new ExportObjectExclusions(source, automaticRoots);
-                gimmicks = new ExportGimmickSession(source, Copy, gimmickOptions, findings);
+                manualExcluded = (excludedObjects ?? Array.Empty<GameObject>()).ToArray();
+                this.gimmickOptions = new ExportGimmickOptions
+                {
+                    AutoExclude = gimmickOptions?.AutoExclude != false,
+                    IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
+                    IncludedComponents = (gimmickOptions?.IncludedComponents ?? Array.Empty<Component>()).ToArray()
+                };
+                List<ExportGimmickFinding> findings;
+                using (var manual = new ExportObjectExclusions(source, manualExcluded))
+                    findings = this.gimmickOptions.AutoExclude ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();
+                var automaticRoots = ExportGimmickDetection.AutomaticRoots(findings, this.gimmickOptions).ToArray();
+                exclusions = new ExportObjectExclusions(source, manualExcluded.Concat(automaticRoots));
+                gimmicks = new ExportGimmickSession(source, Copy, this.gimmickOptions, findings);
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 authoredBindings = new PreparedExpressionBindings(Copy, null, source, ExcludedBinding);
                 foreach (var finding in findings.Where(value => value.Renderer == null))
@@ -484,7 +501,8 @@ namespace VRVlog.LilToonExporter
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
-                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false);
+                    recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
+                    excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
             // Emotion presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
             if (!replaceCustomFaces && expressions.Length == 0)
@@ -498,7 +516,7 @@ namespace VRVlog.LilToonExporter
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
-                        inferEmotionPresets: false);
+                        inferEmotionPresets: false, excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
