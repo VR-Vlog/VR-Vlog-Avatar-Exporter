@@ -19,6 +19,11 @@ namespace VRVlog.LilToonExporter
             // Where the expression came from (ExpressionSource), listed in the
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
+            // Original BlendShape names this face moves away from rest, with
+            // the weight (0-100) it ends on. Emotion inference reads them when
+            // the menu label says nothing; the final binds may use baked or
+            // renamed targets instead.
+            internal readonly List<(string Shape, float Weight)> Shapes = new List<(string Shape, float Weight)>();
             internal readonly List<string> Targets = new List<string>();
             // Shapes on the export copies that reproduce a channel by
             // themselves: the final morph target scaled by Weight.
@@ -80,6 +85,11 @@ namespace VRVlog.LilToonExporter
         internal static Dictionary<string, string> EmotionCandidates(IEnumerable<Expression> expressions) =>
             (expressions ?? Enumerable.Empty<Expression>()).Where(e => e.RegisteredName != null)
                 .ToDictionary(e => e.RegisteredName, e => e.InferenceName ?? e.Name, StringComparer.Ordinal);
+
+        // The original shapes each registered expression moves, by final name.
+        internal static Dictionary<string, IReadOnlyList<(string Shape, float Weight)>> EmotionShapes(IEnumerable<Expression> expressions) =>
+            (expressions ?? Enumerable.Empty<Expression>()).Where(e => e.RegisteredName != null && e.Shapes.Count > 0)
+                .ToDictionary(e => e.RegisteredName, e => (IReadOnlyList<(string Shape, float Weight)>)e.Shapes, StringComparer.Ordinal);
 
         static IReadOnlyCollection<string> RegisteredNames(Dictionary<string, object> json)
         {

@@ -257,6 +257,20 @@ namespace VRVlog.LilToonExporter
             {
                 var entry = plan.Entry;
                 var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source };
+                // The source shapes and end weights, before any of them is
+                // baked into a menu target, for emotion inference.
+                foreach (var group in plan.Poses)
+                    foreach (var value in group.Channels.Where(value => value.Curve == null))
+                    {
+                        var index = group.Mesh.GetBlendShapeIndex(value.Shape);
+                        if (index >= 0 && value.Weight != group.Rest[index]) expression.Shapes.Add((value.Shape, value.Weight));
+                    }
+                foreach (var animated in plan.Animation)
+                {
+                    var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
+                    var end = animated.Curve.Evaluate(entry.Duration);
+                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)end));
+                }
                 // Binds that change the face at time = duration; a zero marker does not.
                 var moved = 0;
                 foreach (var group in plan.Poses)

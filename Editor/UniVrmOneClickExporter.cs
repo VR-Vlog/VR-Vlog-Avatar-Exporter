@@ -223,13 +223,14 @@ namespace VRVlog.LilToonExporter
 
         internal const string InferredEmotionCategory = "名前から自動で設定";
 
-        // Emotion presets filled from a name are kept output the user should check.
-        internal static void RecordInferredEmotions(IEnumerable<(string Preset, string Source)> filled, ExportRecoveryReport report)
+        // Emotion presets filled from a name or from the shapes a menu face
+        // moves are kept output the user should check.
+        internal static void RecordInferredEmotions(IEnumerable<(string Preset, string Source, string Format)> filled, ExportRecoveryReport report)
         {
             var category = ExporterLocalization.T(InferredEmotionCategory);
-            foreach (var (preset, source) in filled)
+            foreach (var (preset, source, format) in filled)
                 report.Fallbacks.Record(ExportOutcome.Kept, category, preset,
-                    string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), preset, source));
+                    string.Format(ExporterLocalization.T(format ?? VrmExpressionBindings.FilledFormat), preset, source));
         }
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
@@ -615,18 +616,20 @@ namespace VRVlog.LilToonExporter
                 // bytes it was given.
                 exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);
                 if (lookAt != null) exported = guard.Run(ExportStage.LookAt, () => lookAt.Apply(exported), () => exported);
-                // Empty emotion presets are filled from menu faces or whole-face names;
-                // each filled preset is listed in the warnings and the result list.
+                // Empty emotion presets are filled from menu faces, whole-face
+                // names, then the shapes an unnamed menu face moves; each filled
+                // preset is listed in the warnings and the result list.
                 exported = guard.Run(ExportStage.ExpressionOutput, () =>
                 {
-                    var filled = new List<(string Preset, string Source)>();
+                    var filled = new List<(string Preset, string Source, string Format)>();
                     // Only the faces Add registered may fill an empty emotion;
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
                         inferEmotions: inferEmotionPresets, filledEmotions: filled,
-                        emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions));
+                        emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
+                        emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped);
                     RecordInferredEmotions(filled, recoveryReport);
                     return output;
                 }, () => exported);
