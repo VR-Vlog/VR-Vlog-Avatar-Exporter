@@ -25,7 +25,7 @@
 
 次の補正は、lilToon の HSV の式で同じ結果にならないので写さない。
 
-- 色相: 色調補正の区画の色相 `_MainHueShift`・`_MainHueShiftSpeed`（`_MainHueShiftToggle` が 1 のとき）、`USE_HUE_SHIFT` のキーワードを持つ材質の `_HueShift`（ラジアン。2π の倍数以外）。灰色の軸のまわりの回転で、HSV の色相の加算とは結果が違う。
+- 色相: 色調補正の区画の色相 `_MainHueShift`・`_MainHueShiftSpeed`（`_MainHueShiftToggle` が 1 のとき）、`USE_HUE_SHIFT` のキーワードを持つ材質の `_HueShift`（ラジアン。2π の倍数以外。スライダーの最大値 6.283185 は 2π よりわずかに小さいので、2π の倍数との差が 0.0001 未満なら一周とみなす）。灰色の軸のまわりの回転で、HSV の色相の加算とは結果が違う。
 - 彩度 `_Saturation`（0 以外）: 輝度（0.3, 0.59, 0.11）との線形補間で、HSV の彩度の倍率とは違う。
 - グラデーション `_MainGradationStrength`（正で、`_ColorGradingToggle` が 1 のとき）: 対応する仕組みが lilToon の色調補正にない。
 - マスク付きの明るさ: `_MainColorAdjustTexture` を割り当てた材質、または `_MainBrightnessGlobalMask` が正の材質。`_MainColorAdjustMask` は lilToon ではすべての補正にかかるマスクで、チャンネルの意味も違う。
@@ -35,7 +35,7 @@
 
 ### 2. 乗算のマットキャップ（MToon 表示）
 
-MToon10 のマットキャップは加算だけなので、乗算のマットキャップは近い表現がない。`_UseMatCap` が 1 で `_MatCapBlendMode` が 3 の材質は、MToon のマットキャップを空にする（画像なし、`_MatcapColor` は黒）。リムライトの `_RimLightingMix` は、マットキャップがないときと同じ既定値（1）にする。乗算以外（通常・加算・スクリーン）は従来どおり。lilToon 表示は変えない。
+MToon10 のマットキャップは加算だけなので、乗算のマットキャップは近い表現がない。`_UseMatCap` が 1 で `_MatCapBlendMode` が 3 の材質は、MToon のマットキャップを空にする（画像なし、`_MatcapColor` は黒）。リムライトの `_RimLightingMix` は、マットキャップがないときと同じ既定値（1）にする。乗算以外（通常・加算・スクリーン）は従来どおり。lilToon 表示は変えない。この材質の VRM 表情に `matcapColor` の割り当てがあっても、MToon 表示では画像が無いので見た目は変わらない（lilToon 表示では従来どおり効く）。
 
 ### 3. 2 影（MToon 表示）
 
@@ -59,6 +59,7 @@ indirect  = lerp(1影の色, shadow2nd, lns.y)
 ### 変わらないことの保証
 
 - 色調補正: 元の値が既定（明るさ係数 1、明るさ 0、区画が無効、色相 0 など）なら z は 1 のままで、`_MainTexHSVG` に何も書かない。公式 lilToon の既定値（0, 1, 1, 1）のまま残り、焼き込みの判定（`NeedsBake`）も動かないので、書き出す画像は従来と同じになる。lilToon の材質と lilToon の派生版は `FromGeneric` を通らないので、この処理の対象外。
+- 焼き込み用シェーダーの構造の確認（`LilToonStructureCheck.Check`）: 書き出す前の元のアバターで動くので、置き換える前の材質しか見ていなかった。明るさを写した置き換え材質は焼き込みに乗るので、置き換えが要る材質は置き換えを試して `NeedsBake` を数える（試した材質はすぐ消す）。焼き込みが要らない材質だけのアバターでは従来どおり確認しない。
 - 乗算のマットキャップ: `_UseMatCap` が 0、または `_MatCapBlendMode` が 3 以外なら従来と同じ。
 - 2 影: `_Shadow2ndColor` のアルファが 0、2 影の境界が 0、または `_Shadow2ndColor` を持たない材質では重みが 0 になり、1 影の色をそのまま返す（変換もしない）。
 

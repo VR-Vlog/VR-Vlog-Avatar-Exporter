@@ -264,6 +264,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(LilToonMainTextureBaker.NeedsBake(Substitute(Standard())), Is.False);
         }
 
+        // The slider maximum is 6.283185, just under 2π: a whole turn.
+        [TestCase(6.283185f)]
+        [TestCase(12.566371f)]
+        public void AWholeTurnOfHueIsNotReported(float radians)
+        {
+            var source = ColorProbe();
+            source.EnableKeyword("USE_HUE_SHIFT"); source.SetFloat("_HueShift", radians);
+            Substitute(source, out var skipped);
+            Assert.That(skipped, Is.False);
+        }
+
         [TestCase("saturation")]
         [TestCase("hue")]
         [TestCase("gradation")]

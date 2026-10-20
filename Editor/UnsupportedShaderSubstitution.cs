@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter
     // treats them as ordinary lilToon materials.
     internal static class UnsupportedShaderSubstitution
     {
-        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・透過・法線・発光・影色のみ）: ";
+        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
         internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
         internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
@@ -302,8 +302,10 @@ namespace VRVlog.LilToonExporter
                     (values.Float("_MainHueShift", 0) != 0 || values.Float("_MainHueShiftSpeed", 0) != 0)) skipped = true;
                 if (values.Float("_MainGradationStrength", 0) > 0 && values.Float("_ColorGradingToggle", 1) > .5f) skipped = true;
             }
-            // Hue rotation in radians around the grey axis.
-            if (values.Keyword("USE_HUE_SHIFT") && values.Float("_HueShift", 0) % (2 * Mathf.PI) != 0) skipped = true;
+            // Hue rotation in radians around the grey axis. A whole turn (the
+            // slider maximum is 6.283185, just under 2π) changes nothing.
+            var turn = Mathf.Repeat(values.Float("_HueShift", 0), 2 * Mathf.PI);
+            if (values.Keyword("USE_HUE_SHIFT") && turn > 1e-4f && turn < 2 * Mathf.PI - 1e-4f) skipped = true;
             if (value != 1) material.SetVector("_MainTexHSVG", new Vector4(0, 1, value, 1));
             return skipped;
         }
