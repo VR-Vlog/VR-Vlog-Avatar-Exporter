@@ -93,9 +93,14 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
-            var label = EditorStyles.label.fontSize; var mini = EditorStyles.miniLabel.fontSize;
+            // EditorStyles exists only once some editor GUI has been drawn, so
+            // the sizes are read after the window's first frames.
+            int? label = null, mini = null;
             try
             {
+                // The fold and thumbnail size come from EditorPrefs; fix them so
+                // the result does not depend on how this PC last left the board.
+                type.GetField("showExtraPresets", flags).SetValue(window, false); type.GetField("largeThumbnails", flags).SetValue(window, false);
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 window.position = new Rect(40, 40, 700, 1100); window.Show();
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
@@ -103,6 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(before.Length, Is.EqualTo(ExperimentalExpressionCaptureWindow.ShownPresets(false).Length + 1), "Every main slot and the panel are drawn.");
                 var lineHeight = EditorStyles.label.CalcHeight(new GUIContent("Face"), 200);
 
+                label = EditorStyles.label.fontSize; mini = EditorStyles.miniLabel.fontSize;
                 EditorStyles.label.fontSize = 24; EditorStyles.miniLabel.fontSize = 20;
                 type.GetMethod("ReleaseStyles", flags).Invoke(window, null);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
@@ -111,7 +117,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                EditorStyles.label.fontSize = label; EditorStyles.miniLabel.fontSize = mini;
+                if (label.HasValue) EditorStyles.label.fontSize = label.Value;
+                if (mini.HasValue) EditorStyles.miniLabel.fontSize = mini.Value;
                 Object.DestroyImmediate(window);
             }
         }
