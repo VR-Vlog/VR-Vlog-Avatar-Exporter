@@ -234,6 +234,10 @@ namespace VRVlog.LilToonExporter
         float Endpoint(BlinkShapeBinding binding) => inferredEndpoints.TryGetValue((binding.Renderer, binding.Shape), out var weight)
             ? weight : binding.Weight;
 
+        // The closing amount this session bakes for one of its bindings, for a
+        // manual setting that has to reproduce it.
+        internal float ClosingAmount(BlinkShapeBinding binding) => Endpoint(binding);
+
         void CaptureInferredEndpoint(BlinkShapeBinding binding)
         {
             if (!VRVlog.FaceTracking.UnifiedExpressionRegistry.TryCanonicalize(binding.Shape, out var canonical) ||

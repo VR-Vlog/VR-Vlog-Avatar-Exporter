@@ -153,9 +153,7 @@ namespace VRVlog.LilToonExporter
                 {
                     if (session?.WasCanceled == true) EditorGUILayout.HelpBox(ExporterLocalization.T("書き出しをキャンセルしました。前に成功した結果があれば確認できます。"), MessageType.Info);
                     if (issues.Count == 0 && !string.IsNullOrEmpty(message)) EditorGUILayout.HelpBox(ExporterLocalization.T(message), MessageType.Error);
-                    if (session != null) EditorGUILayout.LabelField(ExporterLocalization.T(issues.Any(issue => issue.hasAction)
-                        ? "次に試すことを選んで、もう一度書き出してください。元のアバターは変更しません。"
-                        : "表示された設定を確認してください。元のアバターは変更しません。"), EditorStyles.wordWrappedLabel);
+                    if (session != null) EditorGUILayout.LabelField(ExporterLocalization.T("元のアバターは変更しません"), EditorStyles.wordWrappedLabel);
                     if (issues.Any(IsMenuIssue))
                     {
                         EditorGUILayout.HelpBox(ExporterLocalization.T("必要な表情を残し、取り込まないメニューを選んでください。メニューを分割するだけでは合計項目数は減りません。"), MessageType.Info);
@@ -190,9 +188,15 @@ namespace VRVlog.LilToonExporter
                     {
                         var count = session.AvailableDiagnostics.Count(issue => issue.Action != null && selected.Contains(issue.Action.Id));
                         if (count > 0 || session.SelectedOptions.Actions.Count > 0 || session.WasCanceled || !issues.Any(issue => issue.hasAction))
+                        {
                             if (GUILayout.Button(ExporterLocalization.T(count > 0 ? "選んだ対処で書き出す" : "設定を変えずにもう一度試す"), GUILayout.Height(36))) Schedule(false);
-                        if (count == 0 && issues.Any(issue => issue.hasAction))
-                            EditorGUILayout.LabelField(ExporterLocalization.T("試す対処にチェックを入れてください。変わる点を確認してから進めます。"), EditorStyles.wordWrappedMiniLabel);
+                        }
+                        else
+                        {
+                            // Shown disabled so the next button is visible before any fix is checked.
+                            using (new EditorGUI.DisabledScope(true))
+                                GUILayout.Button(ExporterLocalization.T("選んだ対処で書き出す"), GUILayout.Height(36));
+                        }
                     }
                     using (new EditorGUI.DisabledScope(stale || !session.HasCurrentSuccess || !session.HasPendingSave))
                         if (session.HasCurrentSuccess && session.HasPendingSave && GUILayout.Button(ExporterLocalization.T("前に成功したVRMを確認する"), GUILayout.Height(28)))
@@ -233,7 +237,7 @@ namespace VRVlog.LilToonExporter
                 }
                 EditorGUILayout.LabelField(ExporterLocalization.T("対象: ") + issue.target, EditorStyles.wordWrappedLabel);
                 EditorGUILayout.LabelField(ExporterLocalization.T("理由: ") + ExporterLocalization.T(issue.reason), EditorStyles.wordWrappedLabel);
-                if (!issue.hasAction) EditorGUILayout.LabelField(ExporterLocalization.T("次にすること: ") + ExporterLocalization.T(issue.remedy), EditorStyles.wordWrappedLabel);
+                if (!issue.hasAction) EditorGUILayout.LabelField(ExporterLocalization.T("対処: ") + ExporterLocalization.T(issue.remedy), EditorStyles.wordWrappedLabel);
                 if (!string.IsNullOrEmpty(issue.lostEffect)) EditorGUILayout.HelpBox(ExporterLocalization.T("変わる点: ") + ExporterLocalization.T(issue.lostEffect), MessageType.Warning);
                 using (new EditorGUI.DisabledScope(issue.source == null || busy))
                     if (GUILayout.Button(ExporterLocalization.T("Unityで対象を確認")))

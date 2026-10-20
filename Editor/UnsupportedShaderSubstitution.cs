@@ -19,9 +19,10 @@ namespace VRVlog.LilToonExporter
     // treats them as ordinary lilToon materials.
     internal static class UnsupportedShaderSubstitution
     {
-        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・透過・法線・発光・影色のみ）: ";
+        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
         internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
         internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
+        internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
 
         const string Opaque = "lilToon";
         const string Cutout = "Hidden/lilToonCutout";
@@ -45,6 +46,7 @@ namespace VRVlog.LilToonExporter
             var substituted = new List<string>();
             var kept = new List<string>();
             var failed = new List<string>();
+            var colorSkipped = new List<string>();
             foreach (var renderer in ExportRendererSelection.Enumerate(copy))
             {
                 // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
@@ -69,7 +71,8 @@ namespace VRVlog.LilToonExporter
                         }
                         else
                         {
-                            try { substitute = Create(source); }
+                            var skipped = false;
+                            try { substitute = Create(source, out skipped); }
                             catch (Exception) { substitute = null; }
                             if (substitute == null) { if (!failed.Contains(source.name)) failed.Add(source.name); }
                             else
@@ -77,6 +80,7 @@ namespace VRVlog.LilToonExporter
                                 created.Add(substitute);
                                 track?.Invoke(substitute, source);
                                 if (!substituted.Contains(source.name)) substituted.Add(source.name);
+                                if (skipped && !colorSkipped.Contains(source.name)) colorSkipped.Add(source.name);
                             }
                         }
                         replacements.Add(source, substitute);
@@ -90,6 +94,7 @@ namespace VRVlog.LilToonExporter
             }
             if (warnings == null) return;
             if (substituted.Count > 0) warnings.Add(ExporterLocalization.T(Warning) + string.Join(", ", substituted));
+            if (colorSkipped.Count > 0) warnings.Add(ExporterLocalization.T(ColorAdjustmentSkipped) + string.Join(", ", colorSkipped));
             if (kept.Count > 0) warnings.Add(ExporterLocalization.T(KeptForExpressions) + string.Join(", ", kept));
             if (failed.Count > 0) warnings.Add(ExporterLocalization.T(Failed) + string.Join(", ", failed));
         }
@@ -109,10 +114,15 @@ namespace VRVlog.LilToonExporter
         }
 
         // Returns null when no official lilToon shader is available.
-        internal static Material Create(Material source)
+        internal static Material Create(Material source) => Create(source, out _);
+
+        // colorSkipped tells that the source adjusted its main color in a way
+        // the substitute does not reproduce.
+        internal static Material Create(Material source, out bool colorSkipped)
         {
             var values = new SourceValues(source);
-            return LooksLikeLilToon(source) ? FromDerived(source, values) : FromGeneric(source, values);
+            colorSkipped = false;
+            return LooksLikeLilToon(source) ? FromDerived(source, values) : FromGeneric(source, values, out colorSkipped);
         }
 
         internal static bool LooksLikeLilToon(Material material) =>
@@ -188,8 +198,9 @@ namespace VRVlog.LilToonExporter
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
 
-        static Material FromGeneric(Material source, SourceValues values)
+        static Material FromGeneric(Material source, SourceValues values, out bool colorSkipped)
         {
+            colorSkipped = false;
             var mode = GenericMode(source, values);
             var material = New(source, mode, outline: false);
             if (material == null) return null;
@@ -207,6 +218,7 @@ namespace VRVlog.LilToonExporter
             foreach (var name in MainColors)
                 if (values.TryVector(name, out var vector) && Finite(vector)) { color = vector; break; }
             material.SetColor("_Color", color);
+            colorSkipped = ApplyColorAdjustment(values, material);
             if (mode == Mode.Cutout)
                 foreach (var name in Cutoffs)
                     if (values.TryFloat(name, out var cutoff)) { Set(material, "_Cutoff", Mathf.Clamp01(cutoff)); break; }
@@ -247,6 +259,55 @@ namespace VRVlog.LilToonExporter
             if (queue > 2500 && (!values.TryFloat("_DstBlend", out var destination) || destination != 0)) return Mode.Transparent;
             if (queue >= 2450 && queue <= 2500 && Cutoffs.Any(cutoff => values.TryFloat(cutoff, out _))) return Mode.Cutout;
             return Mode.Opaque;
+        }
+
+        // Main-color adjustments of other toon shaders. lilToon's tone
+        // correction (_MainTexHSVG: hue add, saturation and value multipliers,
+        // gamma) works in HSV, so only a uniform brightness factor has a
+        // faithful counterpart: scaling the HSV value multiplies every channel
+        // alike. LilToonMainTextureBaker bakes it into the exported image.
+        // Hue rotations around the grey axis, luma-based saturation, output
+        // gamma or brightness fixes, gradation maps and masked adjustments use
+        // other formulas; they are left out and reported (returns true).
+        // Neutral values leave _MainTexHSVG at its default, so nothing is baked.
+        static bool ApplyColorAdjustment(SourceValues values, Material material)
+        {
+            var value = 1f;
+            var skipped = false;
+            // Brightness factor 0-1 multiplied into the main color, in shaders
+            // that also carry output-stage gamma and brightness fixes.
+            if (values.TryFloat("_Bright", out var bright) &&
+                (values.TryFloat("_EnableGammaFix", out _) || values.TryFloat("_EnableBlightFix", out _)))
+            {
+                value *= Mathf.Clamp01(bright);
+                if (values.Float("_EnableGammaFix", 0) > .5f &&
+                    (values.Float("_GammaR", 1) != 1 || values.Float("_GammaG", 1) != 1 || values.Float("_GammaB", 1) != 1)) skipped = true;
+                if (values.Float("_EnableBlightFix", 0) > .5f &&
+                    (values.Float("_BlightOutput", 1) != 1 || values.Float("_BlightOffset", 0) != 0)) skipped = true;
+            }
+            // Color-adjust section applied after the main color:
+            // saturate(color * (1 + brightness)), with a luma-lerp saturation,
+            // a hue shift, a gradation map and optional masks.
+            if (values.Float("_MainColorAdjustToggle", 0) > .5f)
+            {
+                var masked = values.Texture("_MainColorAdjustTexture", out var mask, out _, out _) && mask != null ||
+                    values.Float("_MainBrightnessGlobalMask", 0) > 0;
+                if (values.TryFloat("_MainBrightness", out var brightness) && brightness != 0)
+                {
+                    if (masked) skipped = true;
+                    else value *= Mathf.Max(0, 1 + brightness);
+                }
+                if (values.Float("_Saturation", 0) != 0) skipped = true;
+                if (values.Float("_MainHueShiftToggle", 0) > .5f &&
+                    (values.Float("_MainHueShift", 0) != 0 || values.Float("_MainHueShiftSpeed", 0) != 0)) skipped = true;
+                if (values.Float("_MainGradationStrength", 0) > 0 && values.Float("_ColorGradingToggle", 1) > .5f) skipped = true;
+            }
+            // Hue rotation in radians around the grey axis. A whole turn (the
+            // slider maximum is 6.283185, just under 2π) changes nothing.
+            var turn = Mathf.Repeat(values.Float("_HueShift", 0), 2 * Mathf.PI);
+            if (values.Keyword("USE_HUE_SHIFT") && turn > 1e-4f && turn < 2 * Mathf.PI - 1e-4f) skipped = true;
+            if (value != 1) material.SetVector("_MainTexHSVG", new Vector4(0, 1, value, 1));
+            return skipped;
         }
 
         static void ApplyEmission(Material source, SourceValues values, Material material)
