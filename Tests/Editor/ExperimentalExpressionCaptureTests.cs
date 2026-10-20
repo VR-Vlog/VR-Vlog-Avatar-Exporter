@@ -1867,6 +1867,67 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
+
+        // The quick geometry check skips the mesh copy only when a vertex moves;
+        // every face gets the answer the copy gives.
+        [Test]
+        public void TheGeometryCheckAgreesWithTheMeshCopy()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var head = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head);
+            var mesh = new Mesh { name = "Face" };
+            mesh.vertices = new[] { new Vector3(-.1f, 1.7f, .1f), new Vector3(.1f, 1.7f, .1f), new Vector3(0, 1.8f, .1f) };
+            mesh.triangles = new[] { 0, 1, 2 };
+            mesh.normals = Enumerable.Repeat(Vector3.forward, 3).ToArray();
+            mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 3).ToArray();
+            mesh.bindposes = new[] { head.worldToLocalMatrix };
+            mesh.AddBlendShapeFrame("Moves", 100, Enumerable.Repeat(new Vector3(0, .01f, 0), 3).ToArray(), null, null);
+            mesh.AddBlendShapeFrame("Normals only", 100, new Vector3[3], Enumerable.Repeat(new Vector3(0, .1f, 0), 3).ToArray(), null);
+            mesh.AddBlendShapeFrame("Still", 100, new Vector3[3], null, null);
+            var material = new Material(Shader.Find("VRM10/MToon10"));
+            var face = new GameObject("Face"); face.transform.SetParent(fixture.Source.transform, false);
+            var skin = face.AddComponent<SkinnedMeshRenderer>(); skin.sharedMesh = mesh; skin.bones = new[] { head }; skin.rootBone = head; skin.sharedMaterials = new[] { material };
+            var check = typeof(ExperimentalExpressionCaptureSession).GetMethod("HasGeometryChange", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            try
+            {
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                var index = session.Channels.FindIndex(channel => channel.Path == "Face");
+                foreach (var (shape, expected) in new[] { ("Moves", true), ("Normals only", true), ("Still", false) })
+                {
+                    var pose = session.ThumbnailFace("Face", shape);
+                    var copy = Object.Instantiate(session.Channels[index].Mesh);
+                    try
+                    {
+                        AvatarBaseShape.AppendExpression(session.Channels[index].Mesh, copy, "Probe", session.Baseline.Rows[index].Weights, pose.Rows[index].Weights,
+                            PlayerSettings.legacyClampBlendShapeWeights);
+                        Assert.That(AvatarBaseShape.HasUsableMorphEndpoint(copy, copy.blendShapeCount - 1, 0, 100), Is.EqualTo(expected), shape + " with the mesh copy");
+                    }
+                    finally { Object.DestroyImmediate(copy); }
+                    Assert.That((bool)check.Invoke(session, new object[] { pose }), Is.EqualTo(expected), shape);
+                }
+            }
+            finally { Object.DestroyImmediate(face); Object.DestroyImmediate(mesh); Object.DestroyImmediate(material); }
+        }
+
+        // Inside one batch the source is hashed once; the next batch, and any
+        // call outside a batch, still sees an edit.
+        [Test]
+        public void ABatchChecksTheSourceOnceAndTheNextOneSeesAnEdit()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var front = fixture.Source.transform.Find("Front");
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                using (ExperimentalExpressionCaptureSession.Batch()) session.CaptureBaseline();
+                front.name = "Front edited";
+                Assert.DoesNotThrow(session.CaptureBaseline, "The inner batch ending leaves the outer one checked.");
+            }
+            Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
+            front.name = "Front";
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
+        }
     }
 
 }
