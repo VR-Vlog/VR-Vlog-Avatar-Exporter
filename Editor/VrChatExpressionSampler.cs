@@ -739,7 +739,6 @@ namespace VRVlog.LilToonExporter
                     dependencies.NativeSupportLayers, dependencies.Morphs, dependencies: dependencies, metadata: metadata,
                     restrictCapturedMorphs: projectionPlan != null, neutralPlan: projectionPlan, fixedMotionTimeInputs: selected,
                     motionTimeRuntime: runtime, shadowedNeutralCurves: shadowedCurves, temporalWarnings: followTransitions ? temporal : null);
-                settled |= temporal.Count > 0;
                 selectedRest?.Validate();
                 selectedRest?.ValidateNativeRest(clone);
                 var bindings = ActiveBindings(playable, affected, excludedPath, equivalentStates, neutralAvatar: avatar,
@@ -1143,7 +1142,7 @@ namespace VRVlog.LilToonExporter
                     dependencies.NativeSupportLayers, capturedMorphs, neutral: true,
                     neutralFixed: dependencies.NeutralFixedValues, dependencies: dependencies, metadata: metadata,
                     restrictCapturedMorphs: neutralPlan != null, neutralPlan: neutralPlan, shadowedNeutralCurves: shadowedCurves,
-                    requiredParameterCurves: requiredParameterCurves, motionTimeRuntime: runtime);
+                    requiredParameterCurves: requiredParameterCurves, motionTimeRuntime: runtime, restFace: preserveTemporalRest);
                 var stableWeights = evaluation.CaptureLayerWeights(playable);
                 var bindings = ActiveBindings(playable, affected, excludedPath, equivalentStates, neutral: true, neutralAvatar: avatar,
                     neutralPlan: neutralPlan, capturedMorphs: neutralPlan == null ? null : capturedMorphs, unchangedAppearanceClips: unchangedAppearance);
@@ -1627,12 +1626,11 @@ namespace VRVlog.LilToonExporter
             ExpressionDependencies dependencies = null, VrChatExpressionMenu.Source metadata = null, bool restrictCapturedMorphs = false,
             NeutralShapePlan neutralPlan = null, ISet<(int Layer, AnimationClip Clip, EditorCurveBinding Binding)> shadowedNeutralCurves = null,
             ISet<string> requiredParameterCurves = null, IDictionary<string, float> fixedMotionTimeInputs = null,
-            RuntimeAnimatorController motionTimeRuntime = null, ICollection<string> temporalWarnings = null)
+            RuntimeAnimatorController motionTimeRuntime = null, ICollection<string> temporalWarnings = null, bool restFace = false)
         {
             InvalidOperationException Unstable(string message) => neutral ?
                 new NeutralShapeSamplingException(message) : new InvalidOperationException(message);
             var timedValues = neutral ? NeutralCurveConditions.FixedTimedValues(playable, controller, neutralFixed, dependencies, metadata) : neutralFixed;
-            void Temporal(string message) { if (!temporalWarnings.Contains(message)) temporalWarnings.Add(message); }
             var layers = controller.layers;
             var fixedClocks = FixedMotionTimeInputs(motionTimeRuntime ?? controller, metadata, fixedMotionTimeInputs ?? neutralFixed, excludedPath);
             for (var layer = 0; layer < layers.Length; layer++)
@@ -1665,7 +1663,7 @@ namespace VRVlog.LilToonExporter
                         var state = child.state;
                         // Settlement only advances the state's own clock.
                         // Parameter-driven or offset clocks stay unproven.
-                        plainClock = !state.timeParameterActive && !state.speedParameterActive &&
+                        plainClock = !state.timeParameterActive && !state.speedParameterActive && state.speed > 0 &&
                             !state.cycleOffsetParameterActive && state.cycleOffset == 0;
                         fixedMotionTime = state.timeParameterActive && state.motion is AnimationClip &&
                             !state.speedParameterActive && state.speed == 1 && !state.cycleOffsetParameterActive && state.cycleOffset == 0 &&
@@ -1699,7 +1697,7 @@ namespace VRVlog.LilToonExporter
                             !t.mute && t.hasExitTime && !ExpressionDependencies.IsFalse(t, layerTimedValues))))
                         {
                             if (temporalWarnings == null) throw Unstable("時間で遷移するFX状態は固定表情に変換できません: " + path + "." + child.state.name);
-                            Temporal(ExpressionSettlement.FollowedTransitions);
+                            ExpressionSettlement.Held(temporalWarnings);
                         }
                     }
                     foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name, timed);
@@ -1736,9 +1734,10 @@ namespace VRVlog.LilToonExporter
                             }
                             // A humanoid muscle or root motion curve names no
                             // controller parameter. It drives no parameter or
-                            // BlendShape, so it never moves the rest face, even
-                            // when the dependency proof lists it or is absent.
-                            if (neutral && binding.type == typeof(Animator) &&
+                            // BlendShape, so it never moves a probed expression.
+                            // The default face itself keeps refusing it and
+                            // falls back to the prepared rest.
+                            if (neutral && !restFace && binding.type == typeof(Animator) &&
                                 !controller.parameters.Any(parameter => parameter.name == binding.propertyName))
                             {
                                 ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding),
@@ -1780,7 +1779,7 @@ namespace VRVlog.LilToonExporter
                                 binding.type == typeof(Animator) && !controller.parameters.Any(parameter => parameter.name == binding.propertyName)))
                             {
                                 ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
-                                Temporal(playable.GetCurrentAnimatorStateInfo(layer).loop ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FinalKeyOfClip);
+                                ExpressionSettlement.Clip(playable.GetCurrentAnimatorStateInfo(layer).loop, temporalWarnings);
                                 continue;
                             }
                             throw Unstable("時間で変わるBlendShape・パラメーター曲線は固定表情に変換できません: " +
