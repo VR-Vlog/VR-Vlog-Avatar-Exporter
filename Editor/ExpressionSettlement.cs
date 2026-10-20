@@ -65,6 +65,12 @@ namespace VRVlog.LilToonExporter
             int Entered(int layer) => playable.IsInTransition(layer) ? playable.GetNextAnimatorStateInfo(layer).fullPathHash :
                 playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
             float Clock(int layer) => playable.GetCurrentAnimatorStateInfo(layer).normalizedTime;
+            float Rate(int layer)
+            {
+                var info = playable.GetCurrentAnimatorStateInfo(layer);
+                var state = Resolve(layer, info.fullPathHash).State;
+                return state != null && !state.timeParameterActive && Advancing(info) ? 1 / info.length : 0;
+            }
             string Snapshot() => string.Join(";", Active().Select(layer => layer + ":" + playable.GetCurrentAnimatorStateInfo(layer).fullPathHash + ":" +
                 (playable.IsInTransition(layer) ? playable.GetNextAnimatorStateInfo(layer).fullPathHash.ToString() : "-")));
 
@@ -99,8 +105,11 @@ namespace VRVlog.LilToonExporter
                         // restarted the state's clock during the timed wait.
                         var running = playable.IsInTransition(layer) &&
                             playable.GetNextAnimatorStateInfo(layer).fullPathHash == playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
+                        // Compare with the time the clock should have reached,
+                        // so a state entered just before restarting is caught.
                         var self = running ? selfRunning.Add(layer) :
-                            due?.Timed == true && clocks.TryGetValue(layer, out var before) && Clock(layer) + .0001f < before;
+                            due?.Timed == true && clocks.TryGetValue(layer, out var before) &&
+                            Clock(layer) + .0001f < before + Math.Max(0, delta) * Rate(layer);
                         if (!running) selfRunning.Remove(layer);
                         if (self)
                         {
@@ -136,8 +145,10 @@ namespace VRVlog.LilToonExporter
                     if (next.HasValue) events[layer] = next.Value;
                 }
                 // Frame steps through an interruptible transition are bounded
-                // by its length; other steps by the number of state changes.
-                if (events.Values.Any(value => value.Stepped) ? ++frames > LongWaitSeconds / Frame : ++iterations > hopLimit * 4)
+                // by its length; other steps by the number of state changes, which
+                // grows with the number of layers changing at different times.
+                if (events.Values.Any(value => value.Stepped) ? ++frames > LongWaitSeconds / Frame :
+                    ++iterations > hopLimit * 4 * Math.Max(1, Active().Length))
                     throw new InvalidOperationException(UntraceableTransitions);
                 if (events.Count == 0)
                 {
@@ -198,20 +209,35 @@ namespace VRVlog.LilToonExporter
             // them natively while the clip runs to its end. That restarts
             // the state (and its callbacks), so the face is not the last key
             // or the loop start; leave the expression out as before.
+            // A layer counts when its clips write a relevant curve or its state
+            // runs callbacks; a restart elsewhere does not change the face.
+            // A clip that animates a controller parameter can change another
+            // layer's conditions, and a state we cannot resolve is unknown, so
+            // both count as before.
+            var parameterNames = new HashSet<string>(controller.parameters.Select(parameter => parameter.name), StringComparer.Ordinal);
+            bool Matters(int layer)
+            {
+                bool Callbacks(int hash) { var state = Resolve(layer, hash).State; return state == null || state.behaviours?.Length > 0; }
+                if (Callbacks(playable.GetCurrentAnimatorStateInfo(layer).fullPathHash)) return true;
+                var clips = playable.GetCurrentAnimatorClipInfo(layer).AsEnumerable();
+                if (playable.IsInTransition(layer))
+                {
+                    if (Callbacks(playable.GetNextAnimatorStateInfo(layer).fullPathHash)) return true;
+                    clips = clips.Concat(playable.GetNextAnimatorClipInfo(layer));
+                }
+                return clips.Select(value => value.clip).Where(clip => clip != null)
+                    .Any(clip => AnimationUtility.GetCurveBindings(clip).Any(binding => relevantCurve(layer, clip, binding) ||
+                        binding.type == typeof(Animator) && binding.path == "" && parameterNames.Contains(binding.propertyName)));
+            }
             void Final(float seconds)
             {
                 // A restart inside one long step can leave the clock past its
                 // old value, so compare with the time the clock should reach.
-                float Rate(int layer)
-                {
-                    var info = playable.GetCurrentAnimatorStateInfo(layer);
-                    var state = Resolve(layer, info.fullPathHash).State;
-                    return state != null && !state.timeParameterActive && Advancing(info) ? 1 / info.length : 0;
-                }
-                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer))).ToArray();
+                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer), Matters: Matters(layer))).ToArray();
                 Step(seconds);
-                foreach (var (layer, state, time, rate) in before)
-                    if (playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate)
+                foreach (var (layer, state, time, rate, matters) in before)
+                    if ((playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate) &&
+                        (matters || Matters(layer)))
                         throw new InvalidOperationException(UntraceableTransitions);
             }
             if (remaining > 0) { Final(remaining + Frame); Warn(FinalKeyOfClip); }
@@ -288,7 +314,10 @@ namespace VRVlog.LilToonExporter
             if (info.fullPathHash == 0 || !Advancing(info)) return null;
             var (state, ancestors) = resolve(layer, info.fullPathHash);
             if (state == null || state.timeParameterActive) return null;
-            var exits = state.transitions.Concat(ancestors.SelectMany(machine => machine.anyStateTransitions))
+            // An Any State edge into the current state fires only when it can
+            // transition to self.
+            var exits = state.transitions.Concat(ancestors.SelectMany(machine => machine.anyStateTransitions)
+                    .Where(value => value.destinationState != state || value.canTransitionToSelf))
                 .Where(value => !value.mute && value.hasExitTime && !ExpressionDependencies.IsFalse(value, parameters))
                 .Select(value => value.exitTime).Where(Finite).ToArray();
             if (exits.Length == 0) return null;
