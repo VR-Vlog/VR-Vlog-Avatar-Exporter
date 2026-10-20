@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -116,6 +117,73 @@ namespace VRVlog.LilToonExporter
             }
             foreach (var controller in controllers) Add(controller.animationClips, "アバターに登録されたController");
             return result.OrderBy(item => item.Clip.name, StringComparer.Ordinal).ToList();
+        }
+
+        // The VRChat Expressions Menu paths ("Face / Smile") of the Toggle and
+        // Button items that select each clip in the FX controller, in menu
+        // order. The board reads emotions from them as the quick export reads
+        // its menu faces. Nothing here may stop the board from opening.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar)
+        {
+            try
+            {
+                var menu = VrChatExpressionMenu.Read(avatar);
+                return MenuClipPaths(menu.Entries, menu.Controller, menu.Defaults);
+            }
+            catch (Exception) { return new Dictionary<AnimationClip, List<string>>(); }
+        }
+
+        // A clip is linked to an item only when the item alone decides it: a
+        // state playing the clip directly is entered by a transition (any
+        // state, state or entry) with a condition on the item's parameter that
+        // the item's value makes true and the parameter's default (off,
+        // released) makes false, and no condition the item's fixed values make
+        // false. Blend Trees and sub-machine destinations are not followed.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults)
+        {
+            var result = new Dictionary<AnimationClip, List<string>>();
+            if (entries == null || fx == null) return result;
+            var overrides = ExpressionDependencies.Overrides(fx);
+            var links = new List<(AnimatorTransitionBase Transition, AnimationClip Clip)>();
+            void Link(AnimatorTransitionBase transition)
+            {
+                if (transition == null || !(transition.destinationState?.motion is AnimationClip clip)) return;
+                links.Add((transition, overrides.TryGetValue(clip, out var replaced) ? replaced : clip));
+            }
+            void Walk(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen)
+            {
+                if (machine == null || !seen.Add(machine)) return;
+                foreach (var transition in machine.anyStateTransitions) Link(transition);
+                foreach (var transition in machine.entryTransitions) Link(transition);
+                foreach (var child in machine.states)
+                    foreach (var transition in child.state?.transitions ?? Array.Empty<AnimatorStateTransition>()) Link(transition);
+                foreach (var child in machine.stateMachines)
+                {
+                    foreach (var transition in machine.GetStateMachineTransitions(child.stateMachine)) Link(transition);
+                    Walk(child.stateMachine, seen);
+                }
+            }
+            var seenMachines = new HashSet<AnimatorStateMachine>();
+            foreach (var layer in ExpressionDependencies.Controller(fx).layers) Walk(layer.stateMachine, seenMachines);
+            foreach (var entry in entries)
+            {
+                if (entry == null || entry.Error != null || entry.ControlType != "Toggle" && entry.ControlType != "Button" ||
+                    string.IsNullOrEmpty(entry.ControlParameter) || !entry.Parameters.ContainsKey(entry.ControlParameter)) continue;
+                var parameter = entry.ControlParameter;
+                var off = new Dictionary<string, float>(StringComparer.Ordinal)
+                    { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
+                foreach (var link in links)
+                {
+                    var own = link.Transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
+                    // Off at the default: some condition on the parameter is false there.
+                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, entry.Parameters) ||
+                        !ExpressionDependencies.IsFalse(link.Transition, off)) continue;
+                    if (!result.TryGetValue(link.Clip, out var paths)) result.Add(link.Clip, paths = new List<string>());
+                    if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                }
+            }
+            return result;
         }
 
         internal string ClipError(AnimationClip clip, float time)

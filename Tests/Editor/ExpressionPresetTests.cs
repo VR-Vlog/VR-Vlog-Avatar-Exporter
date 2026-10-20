@@ -10,6 +10,7 @@ using NUnit.Framework;
 using UniGLTF;
 using UniVRM10;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using Session = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSession;
@@ -464,6 +465,179 @@ namespace VRVlog.LilToonExporter.Tests
                     "The avatar's own happy face is kept.");
             }
             finally { Object.DestroyImmediate(unnamed); Object.DestroyImmediate(authored); Object.DestroyImmediate(settings); Object.DestroyImmediate(mesh); }
+        }
+
+        // An FX controller with an Int "Face" whose Any State transitions play
+        // each clip under the given condition, as menu toggles drive a face layer.
+        static UnityEditor.Animations.AnimatorController FaceController(params (AnimationClip Clip, AnimatorConditionMode Mode, float Threshold)[] faces)
+        {
+            var controller = new UnityEditor.Animations.AnimatorController();
+            controller.AddParameter("Face", AnimatorControllerParameterType.Int);
+            var machine = new UnityEditor.Animations.AnimatorStateMachine();
+            machine.defaultState = machine.AddState("Idle");
+            foreach (var face in faces)
+            {
+                var state = machine.AddState(face.Clip.name); state.motion = face.Clip;
+                machine.AddAnyStateTransition(state).AddCondition(face.Mode, face.Threshold, "Face");
+            }
+            controller.layers = new[] { new UnityEditor.Animations.AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
+            return controller;
+        }
+
+        static void DestroyController(UnityEditor.Animations.AnimatorController controller)
+        {
+            foreach (var layer in controller.layers)
+            {
+                foreach (var child in layer.stateMachine.states) Object.DestroyImmediate(child.state);
+                Object.DestroyImmediate(layer.stateMachine);
+            }
+            Object.DestroyImmediate(controller);
+        }
+
+        static VrChatExpressionMenu.Entry MenuItem(string path, float value, string type = "Toggle")
+        {
+            var entry = new VrChatExpressionMenu.Entry { Name = path, ControlType = type, ControlParameter = "Face" };
+            entry.Parameters["Face"] = value;
+            return entry;
+        }
+
+        static readonly Dictionary<string, float> FaceOff = new Dictionary<string, float> { ["Face"] = 0 };
+
+        [Test]
+        public void GenericallyNamedClipIsSuggestedByTheMenuItemThatSelectsIt()
+        {
+            using var fixture = Fixture(smile: false);
+            var clip = FaceClip(80); clip.name = "Face 1";
+            var controller = FaceController((clip, AnimatorConditionMode.Equals, 1));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
+                Assert.That(paths.TryGetValue(clip, out var found), Is.True);
+                Assert.That(found, Is.EqualTo(new[] { "Face / Smile" }));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var suggested = session.SuggestPresets(new[] { clip }, menuPaths: paths);
+                Assert.That(suggested.TryGetValue(ExpressionPreset.happy, out var happy), Is.True, "The toggle labelled Smile says the clip is happy.");
+                Assert.That(happy.Clip, Is.SameAs(clip));
+                Assert.That(happy.Automatic, Is.True);
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
+        }
+
+        [Test]
+        public void ClipNameWinsOverMenuPathAndTheBoardKeepsRemovalsAndAuthoredPresets()
+        {
+            using var fixture = Fixture(smile: false);
+            var smile = FaceClip(80); smile.name = "Face 1";
+            var named = FaceClip(70); named.name = "Sad face";
+            var angry = FaceClip(60); angry.name = "Face 3";
+            var controller = FaceController((smile, AnimatorConditionMode.Equals, 1), (named, AnimatorConditionMode.Equals, 2), (angry, AnimatorConditionMode.Equals, 3));
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var authored = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                authored.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .5f) };
+                settings.Expression.Happy = authored;
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Face / Angry", 2), MenuItem("Face / Angry 2", 3) }, controller, FaceOff);
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var suggested = session.SuggestPresets(new[] { smile, named, angry }, menuPaths: paths);
+                Assert.That(suggested.ContainsKey(ExpressionPreset.happy), Is.False, "The avatar's own happy face is kept.");
+                Assert.That(suggested[ExpressionPreset.sad].Clip, Is.SameAs(named), "The clip's own name decides before its menu label.");
+                Assert.That(suggested[ExpressionPreset.angry].Clip, Is.SameAs(angry));
+                var board = new ExpressionBoard(session.Presets, session.SetPreset, clips => session.SuggestPresets(clips, menuPaths: paths), session.HasAuthoredPreset);
+                board.SetItems(null, new[] { smile, named, angry }.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
+                board.ApplyAutomatic();
+                Assert.That(session.Presets[ExpressionPreset.angry].Automatic, Is.True);
+                Assert.That(session.Presets[ExpressionPreset.angry].Clip, Is.SameAs(angry));
+                session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
+                board.ApplyAutomatic();
+                Assert.That(session.Presets[ExpressionPreset.angry].IsNone, Is.True, "A removed suggestion is not filled again.");
+                Assert.That(session.Presets.ContainsKey(ExpressionPreset.happy), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(smile); Object.DestroyImmediate(named); Object.DestroyImmediate(angry);
+                Object.DestroyImmediate(authored); Object.DestroyImmediate(settings); DestroyController(controller);
+            }
+        }
+
+        [Test]
+        public void ClipSelectedByNoMenuItemIsSuggestedAsBefore()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = SmileShapesMesh(fixture);
+            var unnamed = UnnamedSmileClip();
+            var generic = FaceClip(80); generic.name = "Face 1";
+            var other = FaceClip(70); other.name = "Face 2";
+            var controller = FaceController((other, AnimatorConditionMode.Equals, 2));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Sad", 2) }, controller, FaceOff);
+                Assert.That(paths.Keys, Is.EquivalentTo(new[] { other }));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var suggested = session.SuggestPresets(new[] { generic, unnamed }, menuPaths: paths);
+                Assert.That(suggested[ExpressionPreset.happy].Clip, Is.SameAs(unnamed), "Without a menu item the shapes still decide.");
+                Assert.That(suggested.ContainsKey(ExpressionPreset.sad), Is.False, "Only the clip the item selects takes its label.");
+                Assert.That(session.SuggestPresets(new[] { generic, unnamed }).Keys, Is.EquivalentTo(suggested.Keys),
+                    "An avatar without a VRChat menu gets the same suggestions.");
+                // A label that names a part, not an emotion, also stops the guess from shapes.
+                var vetoed = new Dictionary<AnimationClip, List<string>> { [unnamed] = new List<string> { "Face / Eye" } };
+                Assert.That(session.SuggestPresets(new[] { unnamed }, menuPaths: vetoed).ContainsKey(ExpressionPreset.happy), Is.False);
+            }
+            finally { Object.DestroyImmediate(unnamed); Object.DestroyImmediate(generic); Object.DestroyImmediate(other); Object.DestroyImmediate(mesh); DestroyController(controller); }
+        }
+
+        [Test]
+        public void TransitionFalseUnderTheItemValueDoesNotLink()
+        {
+            var clip = new AnimationClip { name = "Face 1" };
+            var controller = FaceController((clip, AnimatorConditionMode.Equals, 1));
+            try
+            {
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 2) }, controller, FaceOff), Is.Empty,
+                    "The item sets Face=2; the face needs Face==1.");
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1, "RadialPuppet") }, controller, FaceOff), Is.Empty,
+                    "Only toggles and buttons select one face.");
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
+        }
+
+        [Test]
+        public void TransitionAlsoTrueAtTheOffValueDoesNotLink()
+        {
+            var always = new AnimationClip { name = "Face 1" };
+            var pressed = new AnimationClip { name = "Face 2" };
+            var controller = FaceController((always, AnimatorConditionMode.Less, 2), (pressed, AnimatorConditionMode.Greater, .5f));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1, "Button") }, controller, FaceOff);
+                Assert.That(paths.Keys, Is.EquivalentTo(new[] { pressed }), "Face<2 also plays when the button is released, so the item does not decide it.");
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, new Dictionary<string, float>()).Keys,
+                    Is.EquivalentTo(new[] { pressed }), "A parameter without a declared default is off at 0.");
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, new Dictionary<string, float> { ["Face"] = 1 }), Is.Empty,
+                    "An item that only restates the default value decides nothing.");
+            }
+            finally { Object.DestroyImmediate(always); Object.DestroyImmediate(pressed); DestroyController(controller); }
+        }
+
+        [Test]
+        public void MenuPathsThatDisagreeGiveNoSuggestion()
+        {
+            using var fixture = Fixture(smile: false);
+            var clip = FaceClip(80); clip.name = "Face 1";
+            var controller = FaceController((clip, AnimatorConditionMode.Equals, 1));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Sad", 1) }, controller, FaceOff);
+                Assert.That(paths[clip], Is.EqualTo(new[] { "Face / Smile", "Favorite / Sad" }), "Every item that selects the clip is kept, in menu order.");
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var suggested = session.SuggestPresets(new[] { clip }, menuPaths: paths);
+                Assert.That(suggested.Keys.Intersect(Session.EmotionPresets), Is.Empty, "Two items naming different emotions say neither.");
+                var agreeing = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Happy", 1) }, controller, FaceOff);
+                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: agreeing)[ExpressionPreset.happy].Clip, Is.SameAs(clip),
+                    "Items naming the same emotion agree.");
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
         }
 
         [Test]
