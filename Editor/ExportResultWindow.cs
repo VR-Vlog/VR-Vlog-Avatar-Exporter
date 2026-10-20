@@ -315,7 +315,7 @@ namespace VRVlog.LilToonExporter
             foreach (var issue in row.Diagnostics)
             {
                 if (issue == null) continue;
-                Labelled("次にすること", ExporterLocalization.T(issue.Remedy), false);
+                Labelled("対処", ExporterLocalization.T(issue.Remedy), false);
                 Labelled("変わる点", ExporterLocalization.T(issue.LostEffect), false);
             }
             foreach (var target in row.Targets)
