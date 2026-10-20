@@ -626,10 +626,14 @@ namespace VRVlog.LilToonExporter
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    // Empty mouth presets take the VRChat Lip Sync shapes
+                    // before the known names, as the expression board does.
+                    var visemes = ExperimentalExpressionCaptureSession.DescriptorVisemes(source);
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
                         inferEmotions: inferEmotionPresets, filledEmotions: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
-                        emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped);
+                        emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
+                        visemeRenderer: visemes.Renderer != null ? visemes.Renderer.name : null, visemeShapes: visemes.Shapes);
                     RecordInferredEmotions(filled, recoveryReport);
                     return output;
                 }, () => exported);
