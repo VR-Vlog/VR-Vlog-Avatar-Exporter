@@ -269,7 +269,7 @@ namespace VRVlog.LilToonExporter
                 {
                     var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
                     var end = animated.Curve.Evaluate(entry.Duration);
-                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, end));
+                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)end));
                 }
                 // Binds that change the face at time = duration; a zero marker does not.
                 var moved = 0;
