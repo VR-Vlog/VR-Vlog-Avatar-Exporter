@@ -27,9 +27,12 @@ namespace VRVlog.LilToonExporter
         private bool showBlink;
         // The avatar's remembered choices; ExportSettingsStore saves them as
         // they change, so selecting the avatar again brings them back.
+        // ExportSettings is not serialized, so a script reload resets it while
+        // the avatar stays; OnEnable loads it again. Until then savedSignature
+        // is null and nothing is saved, so the defaults never replace the entry.
         private ExportSettings settings = new ExportSettings();
-        private string savedSignature;
-        private int loadedRevision;
+        [NonSerialized] private string savedSignature;
+        [NonSerialized] private int loadedRevision;
         private AvatarLicenseOptions licenseOptions => settings.License;
         private BlinkExportOptions blinkOptions { get => settings.Blink; set => settings.Blink = value; }
         private PoseExportOptions poseOptions => settings.Poses;
@@ -73,6 +76,11 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        private void OnEnable()
+        {
+            if (avatar != null) LoadSettings(avatar, reportSkipped: false);
+        }
+
         private void OnDisable()
         {
             SaveSettings();
@@ -83,7 +91,7 @@ namespace VRVlog.LilToonExporter
         // options), and otherwise picks up a save made by another window.
         private void OnInspectorUpdate()
         {
-            if (avatar == null || GUIUtility.hotControl != 0 || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            if (avatar == null || savedSignature == null || GUIUtility.hotControl != 0 || EditorApplication.isPlayingOrWillChangePlaymode) return;
             if (settings.Signature() != savedSignature) SaveSettings();
             else if (loadedRevision != ExportSettingsStore.Revision) ReloadSettings();
         }
@@ -104,7 +112,7 @@ namespace VRVlog.LilToonExporter
 
         private void SaveSettings()
         {
-            if (avatar == null) return;
+            if (avatar == null || savedSignature == null) return;
             var signature = settings.Signature();
             if (signature == savedSignature) return;
             ExportSettingsStore.Save(avatar, settings);
@@ -112,12 +120,14 @@ namespace VRVlog.LilToonExporter
             loadedRevision = ExportSettingsStore.Revision;
         }
 
-        private void LoadSettings(GameObject target)
+        // The skipped targets were already reported when the avatar was
+        // selected, so a script reload loads them again without a warning.
+        private void LoadSettings(GameObject target, bool reportSkipped = true)
         {
             settings = ExportSettingsStore.Load(target, out var skipped);
             savedSignature = settings.Signature();
             loadedRevision = ExportSettingsStore.Revision;
-            if (skipped > 0) Debug.LogWarning(string.Format(ExporterLocalization.T("保存していた書き出し設定のうち{0}件の対象が見つからないため外しました。"), skipped), target);
+            if (skipped > 0 && reportSkipped) Debug.LogWarning(string.Format(ExporterLocalization.T("保存していた書き出し設定のうち{0}件の対象が見つからないため外しました。"), skipped), target);
             InvalidateAvatarScan();
             Repaint();
         }

@@ -130,6 +130,69 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AFileThatCannotBeReadIsNeverOverwritten()
+        {
+            using var fixture = new SavedAvatar();
+            const string damaged = "{ not json";
+            File.WriteAllText(storePath, damaged, Encoding.UTF8);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "Avatar");
+            Assert.That(File.ReadAllText(storePath), Is.EqualTo(damaged), "Other avatars' entries may still be in the file.");
+            using (new FileStream(storePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            }
+            Assert.That(File.ReadAllText(storePath), Is.EqualTo(damaged), "A locked file is not replaced either.");
+        }
+
+        [Test]
+        public void BlinkBindingsToAMissingRendererAreDropped()
+        {
+            using var fixture = new SavedAvatar();
+            var other = new GameObject("Other");
+            other.transform.SetParent(fixture.Avatar.transform);
+            var lashes = other.AddComponent<SkinnedMeshRenderer>();
+            var settings = Adjusted(fixture);
+            settings.Blink.Left.Add(new BlinkShapeBinding { Renderer = lashes, Shape = "CloseLeft", Weight = 100f });
+            settings.Blink.Right.Add(new BlinkShapeBinding { Renderer = fixture.Face, Shape = "CloseRight", Weight = 100f });
+            ExportSettingsStore.Save(fixture.Avatar, settings);
+            Object.DestroyImmediate(other);
+            var loaded = ExportSettingsStore.Load(fixture.Avatar, out var skipped);
+            Assert.That(skipped, Is.EqualTo(1));
+            Assert.That(loaded.Blink.Left, Is.Empty, "A binding without its renderer would make the export leave out all blinking.");
+            Assert.That(loaded.Blink.Right.Single().Renderer, Is.SameAs(fixture.Face));
+            Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
+        }
+
+        [Test]
+        public void TheWindowKeepsTheStoredSettingsAfterAScriptReload()
+        {
+            using var fixture = new SavedAvatar();
+            var adjusted = Adjusted(fixture);
+            ExportSettingsStore.Save(fixture.Avatar, adjusted);
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(LilToonExporterWindow);
+            void Call(LilToonExporterWindow target, string name) => type.GetMethod(name, flags).Invoke(target, null);
+            var window = ScriptableObject.CreateInstance<LilToonExporterWindow>();
+            try
+            {
+                // After a reload the avatar is restored but the settings are the
+                // defaults and nothing has been loaded yet.
+                type.GetField("avatar", flags).SetValue(window, fixture.Avatar);
+                Call(window, "OnInspectorUpdate");
+                Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()),
+                    "The defaults never replace the stored entry before the settings are loaded.");
+                Call(window, "OnEnable");
+                var settings = (ExportSettings)type.GetField("settings", flags).GetValue(window);
+                Assert.That(settings.Signature(), Is.EqualTo(adjusted.Signature()));
+                Call(window, "OnInspectorUpdate");
+                Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()));
+            }
+            finally { Object.DestroyImmediate(window); }
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()), "Closing the window keeps them too.");
+        }
+
+        [Test]
         public void AvatarsInAnUnsavedSceneKeepSettingsForTheSession()
         {
             EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
