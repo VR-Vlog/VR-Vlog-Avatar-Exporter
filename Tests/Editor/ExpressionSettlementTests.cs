@@ -239,6 +239,60 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.HeldTransitions));
         }
 
+        // The self edge at 5 s restarts the 10 s clip natively, so it never
+        // reaches its last key. Running it to the end would fire the edge again.
+        [Test]
+        public void AMovingClipWithASelfTransitionIsNotSaved()
+        {
+            var wait = Selected(Clip("Wait", AnimationCurve.Linear(0, 0, 10, 100)));
+            Timed(wait, wait, .5f);
+            var error = Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
+        }
+
+        // A self transition with a duration runs over several frames. It is
+        // one self transition, and it is allowed to finish.
+        [TestCase(TransitionInterruptionSource.None)] [TestCase(TransitionInterruptionSource.Source)]
+        public void ASelfTransitionWithADurationFinishesBeforeSaving(TransitionInterruptionSource source)
+        {
+            var wait = Selected(Clip("Wait", 75, 10));
+            var edge = Timed(wait, wait, .5f, .25f); edge.interruptionSource = source;
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+        }
+
+        // Two layers changing state 38 and 36 times exceed the hop limit only
+        // together. Each layer is counted on its own.
+        [Test]
+        public void TheHopLimitIsCountedPerLayer()
+        {
+            var machine = controller.layers[0].stateMachine;
+            var previous = Selected(Clip("Step 0", 0));
+            for (var index = 1; index <= 40; index++)
+            {
+                var next = State(machine, "Step " + index, Clip("Step " + index, index));
+                Timed(previous, next, 1); previous = next;
+            }
+            var eyes = Layer("Eyes");
+            AnimatorState before = null;
+            for (var index = 0; index <= 40; index++)
+            {
+                var clip = new AnimationClip { name = "Eyes " + index };
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                    AnimationCurve.Constant(0, 1, index));
+                AssetDatabase.AddObjectToAsset(clip, controller);
+                var state = State(eyes, "Eyes " + index, clip);
+                if (before == null) eyes.defaultState = state; else Timed(before, state, 1);
+                before = state;
+            }
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(40).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+        }
+
         // Loops of 1 s and 0.7 s share one clock; only one starts its cycle.
         [Test]
         public void LoopsOfDifferentLengthsAreReportedAsOverlapping()

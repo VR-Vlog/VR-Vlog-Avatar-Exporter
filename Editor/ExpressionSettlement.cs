@@ -75,8 +75,13 @@ namespace VRVlog.LilToonExporter
             var stuck = new HashSet<int>();
             var cyclic = new HashSet<int>();
             var reentered = new HashSet<int>();
+            // A self transition with a duration is counted when it starts,
+            // not on every frame while it runs.
+            var selfRunning = new HashSet<int>();
             var followed = false;
-            var hops = 0;
+            // Hops are counted per layer: independent layers each changing
+            // state a few times are not a cycle.
+            var hops = new Dictionary<int, int>();
             var snapshot = Snapshot();
             // Record states entered by the last step. A due exit edge that did
             // not leave the state is held by its runtime conditions; do not
@@ -92,9 +97,11 @@ namespace VRVlog.LilToonExporter
                         // A self transition enters the state it leaves: it is
                         // running toward its own state, or a zero-duration one
                         // restarted the state's clock during the timed wait.
-                        var self = playable.IsInTransition(layer) ?
-                            playable.GetNextAnimatorStateInfo(layer).fullPathHash == playable.GetCurrentAnimatorStateInfo(layer).fullPathHash :
+                        var running = playable.IsInTransition(layer) &&
+                            playable.GetNextAnimatorStateInfo(layer).fullPathHash == playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
+                        var self = running ? selfRunning.Add(layer) :
                             due?.Timed == true && clocks.TryGetValue(layer, out var before) && Clock(layer) + .0001f < before;
+                        if (!running) selfRunning.Remove(layer);
                         if (self)
                         {
                             // Do not follow its exit edges again. A self edge
@@ -108,8 +115,10 @@ namespace VRVlog.LilToonExporter
                         continue;
                     }
                     entered[layer] = current;
+                    selfRunning.Remove(layer);
                     if (!visited.Add((layer, current))) { cyclic.Add(layer); Warn(CyclicTransitions); }
-                    if (++hops > hopLimit) throw new InvalidOperationException(UntraceableTransitions);
+                    hops[layer] = hops.TryGetValue(layer, out var count) ? count + 1 : 1;
+                    if (hops[layer] > hopLimit) throw new InvalidOperationException(UntraceableTransitions);
                 }
                 foreach (var layer in Active()) clocks[layer] = Clock(layer);
                 snapshot = Snapshot();
@@ -122,7 +131,7 @@ namespace VRVlog.LilToonExporter
                 var events = new Dictionary<int, (float Seconds, bool Timed, bool Stepped)>();
                 foreach (var layer in Active())
                 {
-                    if (stuck.Contains(layer)) continue;
+                    if (stuck.Contains(layer) && !playable.IsInTransition(layer)) continue;
                     var next = NextEvent(playable, controller, layer, parameters, !cyclic.Contains(layer), Resolve);
                     if (next.HasValue) events[layer] = next.Value;
                 }
@@ -185,13 +194,33 @@ namespace VRVlog.LilToonExporter
                 if (clips.Any(clip => Varies(layer, clip, phase * clip.length, false)))
                     remaining = Math.Max(remaining, (1 - phase) * info.length);
             }
-            if (remaining > 0) { Step(remaining + Frame); Warn(FinalKeyOfClip); }
+            // A layer whose exit edges are no longer followed can still fire
+            // them natively while the clip runs to its end. That restarts
+            // the state (and its callbacks), so the face is not the last key
+            // or the loop start; leave the expression out as before.
+            void Final(float seconds)
+            {
+                // A restart inside one long step can leave the clock past its
+                // old value, so compare with the time the clock should reach.
+                float Rate(int layer)
+                {
+                    var info = playable.GetCurrentAnimatorStateInfo(layer);
+                    var state = Resolve(layer, info.fullPathHash).State;
+                    return state != null && !state.timeParameterActive && Advancing(info) ? 1 / info.length : 0;
+                }
+                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer))).ToArray();
+                Step(seconds);
+                foreach (var (layer, state, time, rate) in before)
+                    if (playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate)
+                        throw new InvalidOperationException(UntraceableTransitions);
+            }
+            if (remaining > 0) { Final(remaining + Frame); Warn(FinalKeyOfClip); }
             if (looping.Count > 0)
             {
                 var layer = looping.Min();
                 var info = playable.GetCurrentAnimatorStateInfo(layer);
                 var fraction = info.normalizedTime - Mathf.Floor(info.normalizedTime);
-                if (fraction > .0001f && Advancing(info)) Step((1 - fraction) * info.length + Frame / 10);
+                if (fraction > .0001f && Advancing(info)) Final((1 - fraction) * info.length + Frame / 10);
                 // One shared clock aligns one loop. A loop of another length
                 // keeps its own phase, which is not its first frame.
                 bool Aligned(int other)
