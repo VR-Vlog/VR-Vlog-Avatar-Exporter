@@ -25,7 +25,11 @@ namespace VRVlog.LilToonExporter.Tests
                 .SelectMany(method => method.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>())
                 .Where(item => item.menuItem.StartsWith("VR Vlog/", StringComparison.Ordinal))
                 .Select(item => item.menuItem).ToArray();
-            Assert.That(entries, Is.EqualTo(new[] { "VR Vlog/VRMを書き出す" }));
+            // One export entry only. The app preview item (with its validate
+            // method) does not export; it lives in the main editor assembly,
+            // which an unsupported UniVRM leaves uncompiled.
+            Assert.That(entries.Count(entry => entry == "VR Vlog/VRMを書き出す"), Is.EqualTo(1));
+            Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/VRMを書き出す", "VR Vlog/アプリでの見え方を確認" }));
             var expected = Environment.GetEnvironmentVariable("VRVLOG_TEST_UNIVRM");
             if (string.IsNullOrEmpty(expected)) Assert.Ignore("Requires an explicit compatibility environment.");
             var supported = DependencyPolicy.SupportsUniVrm(expected);
