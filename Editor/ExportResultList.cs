@@ -190,7 +190,7 @@ namespace VRVlog.LilToonExporter
                     foreach (var issue in row.Diagnostics)
                     {
                         if (issue == null) continue;
-                        text.Append("  ").Append(ExporterLocalization.T("次にすること: ")).AppendLine(ExporterLocalization.T(issue.Remedy));
+                        text.Append("  ").Append(ExporterLocalization.T("対処: ")).AppendLine(ExporterLocalization.T(issue.Remedy));
                     }
                 }
             }

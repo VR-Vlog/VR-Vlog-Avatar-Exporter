@@ -143,9 +143,9 @@ public static class LilToonStructureCheckTests
         Expect(lines[0] == "導入済みのlilToon 2.1.0のシェーダー構成が2.3.4と一致しません", "Header names both versions: " + lines[0]);
         Expect(lines[1] == "lilToon: プロパティ_Invisibleの型がvectorです（2.3.4はfloat）", "Difference line: " + lines[1]);
         Expect(lines.Length == 1 + Check.ShownDifferences + 2 && lines[1 + Check.ShownDifferences] == "ほか2件", "Only the first differences are listed: " + message);
-        Expect(lines[lines.Length - 1] == "次の操作: VCC／ALCOMでlilToonを入れ直すか2.3.4に切り替える", "Remedy line: " + lines[lines.Length - 1]);
+        Expect(lines[lines.Length - 1] == "対処: VCC／ALCOMでlilToonを入れ直すか2.3.4に切り替える", "Remedy line: " + lines[lines.Length - 1]);
         var translated = Check.Message(all, "2.1.0", text => "[" + text + "]");
-        Expect(translated.StartsWith("[導入済み", StringComparison.Ordinal) && translated.Contains("[\n次の操作: ]"), "Every fixed text is translated");
+        Expect(translated.StartsWith("[導入済み", StringComparison.Ordinal) && translated.Contains("[\n対処: ]"), "Every fixed text is translated");
 
         Console.WriteLine("lilToon structure check tests passed: " + count);
     }

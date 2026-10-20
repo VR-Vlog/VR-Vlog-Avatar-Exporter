@@ -118,7 +118,7 @@ namespace VRVlog.LilToonExporter
             if (differences.Count > ShownDifferences)
                 text.Append('\n').Append(string.Format(translate("ほか{0}件"), differences.Count - ShownDifferences));
             foreach (var remedy in Remedies(differences))
-                text.Append(translate("\n次の操作: ")).Append(string.Format(translate(remedy), version));
+                text.Append(translate("\n対処: ")).Append(string.Format(translate(remedy), version));
             return text.ToString();
         }
 
