@@ -283,6 +283,24 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.OtherCount, Is.EqualTo(18), "Clearing a slot returns its face to the other expressions.");
         }
 
+        // The header counts the suggestions in the shown slots, and its button
+        // confirms exactly those; the folded slots keep their suggestions.
+        [TestCase(false, 13, 5)]
+        [TestCase(true, 18, 0)]
+        public void TheConfirmButtonConfirmsWhatTheHeaderCounts(bool extraOpen, int shown, int folded)
+        {
+            var all = ExperimentalExpressionCaptureSession.AssignablePresets;
+            var faces = all.ToDictionary(preset => preset, preset => Clip(preset + " face"));
+            var board = Board(null, all.Select(preset => Item(faces[preset])));
+            board.ApplyAutomatic();
+            var group = ExperimentalExpressionCaptureWindow.ShownPresets(extraOpen);
+            var counted = board.AutomaticCount(group);
+            Assert.That(counted, Is.EqualTo(shown));
+            Assert.That(board.ConfirmAutomatic(group), Is.EqualTo(counted));
+            Assert.That(board.AutomaticCount(group), Is.Zero);
+            Assert.That(board.AutomaticCount(), Is.EqualTo(folded));
+        }
+
         [Test]
         public void MoreThanTheLimitBlocksOnlyTheRecordRoute()
         {
