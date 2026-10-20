@@ -293,6 +293,76 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
         }
 
+        // Six layers changing state at different times each stay under the
+        // hop limit, but together take more steps than one layer may.
+        [Test]
+        public void TheStepLimitGrowsWithTheNumberOfLayers()
+        {
+            Selected(Clip("Smile", 30));
+            for (var chain = 0; chain < 6; chain++)
+            {
+                var machine = Layer("Chain " + chain);
+                AnimatorState before = null;
+                for (var index = 0; index <= 60; index++)
+                {
+                    var clip = new AnimationClip { name = "Chain " + chain + " " + index };
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                        AnimationCurve.Constant(0, 1 + chain * .05f, index));
+                    AssetDatabase.AddObjectToAsset(clip, controller);
+                    var state = State(machine, "Chain " + chain + " " + index, clip);
+                    if (before == null) machine.defaultState = state; else Timed(before, state, 1);
+                    before = state;
+                }
+            }
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(30).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+        }
+
+        // An Any State edge into the current state without Can Transition To
+        // Self never fires, so there is nothing to wait for.
+        [Test]
+        public void AnAnyStateEdgeThatCannotReachItsOwnStateIsNotFollowed()
+        {
+            var smile = Selected(Clip("Smile", 75, 10));
+            var edge = controller.layers[0].stateMachine.AddAnyStateTransition(smile);
+            edge.hasExitTime = true; edge.exitTime = .5f; edge.duration = 0; edge.canTransitionToSelf = false;
+            edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.FollowedTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.SelfTransition));
+        }
+
+        // B is entered by an exit time and restarts itself at once. Its clock
+        // is near zero both before and after, so compare with the time the
+        // clock should have reached.
+        [Test]
+        public void AZeroDurationSelfTransitionOfAJustEnteredStateIsReported()
+        {
+            var a = Selected(Clip("A", 0));
+            var b = State(controller.layers[0].stateMachine, "B", Clip("B", 60, 10));
+            Timed(a, b, 2); Timed(b, b, .3f);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(60).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
+        }
+
+        // A hand idle restarting itself does not change the face, so the
+        // face clip is still run to its last key.
+        [Test]
+        public void ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey()
+        {
+            Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
+            var hand = Layer("Left Hand");
+            var idle = State(hand, "Idle", HandIdle("Hands idle")); hand.defaultState = idle;
+            Timed(idle, idle, .5f);
+            Transition(idle, State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(100).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
+        }
+
         // Loops of 1 s and 0.7 s share one clock; only one starts its cycle.
         [Test]
         public void LoopsOfDifferentLengthsAreReportedAsOverlapping()
