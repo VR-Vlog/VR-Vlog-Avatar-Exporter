@@ -443,7 +443,10 @@ namespace VRVlog.LilToonExporter
         internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
         // Per emotion, the best tier wins; within a tier added/registered clips
-        // come before BlendShapes, in the given order. Unusable faces are skipped.
+        // come before BlendShapes, in the given order. Emotions still open then
+        // take a clip whose name says nothing ("1", "Face 3") by the shapes it
+        // moves, as the quick transfer reads a menu face: best supported
+        // first, then clip order. Unusable faces are skipped.
         // Mouth and blink candidates follow what the export would choose by
         // itself; gaze and neutral have none. blinkOptions is the blink setting
         // the export receives (null is automatic).
@@ -451,7 +454,8 @@ namespace VRVlog.LilToonExporter
         {
             var candidates = new List<(ExpressionPreset Preset, int Tier, int Order, Func<ExpressionPreset, PresetAssignment> Create)>();
             var order = 0;
-            foreach (var clip in (clips ?? Array.Empty<AnimationClip>()).Where(clip => clip != null).Distinct())
+            var given = (clips ?? Array.Empty<AnimationClip>()).Where(clip => clip != null).Distinct().ToArray();
+            foreach (var clip in given)
             {
                 var match = ExpressionNameInference.MatchEmotion(clip.name); order++;
                 if (match != null) candidates.Add((match.Value.Preset, match.Value.Tier, order, preset => PresetAssignment.ForClip(preset, clip)));
@@ -470,6 +474,26 @@ namespace VRVlog.LilToonExporter
                 // Faces the avatar's own VRM settings already define stay theirs.
                 if (result.ContainsKey(candidate.Preset) || HasAuthoredPreset(candidate.Preset)) continue;
                 var assignment = candidate.Create(candidate.Preset); assignment.Automatic = true;
+                if (PresetError(candidate.Preset, assignment) == null) result.Add(candidate.Preset, assignment);
+            }
+            // The shapes a clip moves away from the base face, at its last
+            // frame; a label that names an emotion, a part or a side is never
+            // overruled.
+            var byShape = new List<(ExpressionPreset Preset, int Support, int Order, AnimationClip Clip)>();
+            for (var index = 0; index < given.Length; index++)
+            {
+                var clip = given[index];
+                if (!ExpressionNameInference.SaysNothing(clip.name)) continue;
+                List<(string Path, string Shape, float Weight)> moved;
+                try { var probe = PresetAssignment.ForClip(ExpressionPreset.happy, clip); moved = BlinkMorphs(probe, BuildPresetPose(ExpressionPreset.happy, probe)); }
+                catch (InvalidOperationException) { continue; }
+                var guess = ExpressionShapeNames.Shipped.Classify(moved.Select(morph => (morph.Shape, morph.Weight)));
+                if (guess != null) byShape.Add((guess.Value.Preset, guess.Value.Support, index, clip));
+            }
+            foreach (var candidate in byShape.OrderByDescending(item => item.Support).ThenBy(item => item.Order))
+            {
+                if (result.ContainsKey(candidate.Preset) || HasAuthoredPreset(candidate.Preset)) continue;
+                var assignment = PresetAssignment.ForClip(candidate.Preset, candidate.Clip); assignment.Automatic = true;
                 if (PresetError(candidate.Preset, assignment) == null) result.Add(candidate.Preset, assignment);
             }
             var visemes = DescriptorVisemes(Source);
