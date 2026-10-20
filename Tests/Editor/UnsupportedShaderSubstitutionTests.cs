@@ -206,6 +206,48 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.yellow));
         }
 
+        Material MissingDerived(int declared)
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/lilToonDerivedProbe")) { name = "MissingDerived" });
+            source.SetFloat("_TransparentMode", declared); source.SetColor("_Color", Color.green); source.SetFloat("_Cutoff", .25f);
+            source.renderQueue = -1;
+            source.shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(source.shader, Is.Not.Null);
+            Assume.That(source.HasProperty("_TransparentMode"), Is.False);
+            return source;
+        }
+
+        // Render queue "From Shader" (-1) leaves only _TransparentMode to tell
+        // the rendering mode of a derived lilToon whose shader is missing.
+        [TestCase(1, "Hidden/lilToonCutout")]
+        [TestCase(2, "Hidden/lilToonTransparent")]
+        public void AMissingDerivedLilToonKeepsItsSavedRenderingMode(int declared, string expected)
+        {
+            var output = Substitute(MissingDerived(declared));
+            Assert.That(output.shader.name, Is.EqualTo(expected));
+            Assert.That(output.GetFloat("_TransparentMode"), Is.EqualTo((float)declared));
+            Assert.That(output.renderQueue, Is.EqualTo(output.shader.renderQueue));
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.green));
+            Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.25f).Within(1e-6));
+        }
+
+        [Test] public void AMissingShaderWithoutTheLilToonVersionStaysOnTheGenericRules()
+        {
+            var source = MissingDerived(1);
+            using (var serialized = new UnityEditor.SerializedObject(source))
+            {
+                var floats = serialized.FindProperty("m_SavedProperties.m_Floats");
+                var ints = serialized.FindProperty("m_SavedProperties.m_Ints");
+                foreach (var entries in new[] { floats, ints })
+                    for (var i = entries == null ? -1 : entries.arraySize - 1; i >= 0; i--)
+                        if (entries.GetArrayElementAtIndex(i).FindPropertyRelative("first").stringValue == "_lilToonVersion") entries.DeleteArrayElementAtIndex(i);
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("lilToon"), "Without the version, _TransparentMode is not read.");
+            Assert.That(output.GetColor("_Color"), Is.EqualTo(Color.green));
+        }
+
         static readonly Vector4 NeutralTone = new Vector4(0, 1, 1, 1);
         Material ColorProbe(string name = "Adjusted") => Own(new Material(Shader.Find("Hidden/VRVlogTests/ToonColorAdjustProbe")) { name = name });
 
