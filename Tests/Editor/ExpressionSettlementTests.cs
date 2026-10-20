@@ -149,6 +149,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Sample(messages), Is.EqualTo(60).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.LongWait));
         }
 
         [Test]
@@ -167,8 +168,201 @@ namespace VRVlog.LilToonExporter.Tests
             var b = State(controller.layers[0].stateMachine, "B", Clip("B", 30));
             Timed(a, b, 3); Timed(b, a, 3);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(10).Within(.01).Or.EqualTo(30).Within(.01));
+            // A is left at 3 s and B is left at 6 s, back into A. A is the
+            // first revisited state, so its exit edge is not followed again.
+            Assert.That(Sample(messages), Is.EqualTo(10).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.CyclicTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.SelfTransition));
+        }
+
+        // An exit edge whose conditions are false now cannot be followed.
+        // The face is kept, reported as held, and still checked over time.
+        [Test]
+        public void AHeldExitTimeIsReportedSeparatelyAndStillChecked()
+        {
+            var smile = Selected(Clip("Smile", 75));
+            var edge = Timed(smile, State(controller.layers[0].stateMachine, "Later", Clip("Later", 30)), 5);
+            edge.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.HeldTransitions }));
+        }
+
+        // A stopped or reversed clock never reaches the clip's last key.
+        [TestCase(0f)] [TestCase(-1f)]
+        public void AMovingClipOnAStoppedOrReversedClockIsNotSaved(float speed)
+        {
+            Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100))).speed = speed;
+            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            Assert.Catch<InvalidOperationException>(() => Play(new List<string>()));
+        }
+
+        // A -> B starts at 5 s and lasts 1 s. A -> C is due at 5.3 s and
+        // interrupts it natively; one long step would skip the interruption.
+        [Test]
+        public void AnInterruptibleTransitionIsSteppedFrameByFrame()
+        {
+            var a = Selected(Clip("A", 0));
+            var machine = controller.layers[0].stateMachine;
+            var toB = Timed(a, State(machine, "B", Clip("B", 60)), 5, 1);
+            toB.interruptionSource = TransitionInterruptionSource.Source; toB.orderedInterruption = false;
+            Timed(a, State(machine, "C", Clip("C", 30)), 5.3f);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(30).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+        }
+
+        // A self transition re-enters its state and runs its Add driver once
+        // per entry. Settlement follows it once and stops there.
+        [TestCase(false)] [TestCase(true)]
+        public void ASelfTransitionIsFollowedOnceAndReported(bool anyState)
+        {
+            var machine = controller.layers[0].stateMachine;
+            var wait = Selected(Clip("Wait", 0, 10));
+            AnimationUtility.SetEditorCurve((AnimationClip)wait.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), null);
+            if (anyState)
+            {
+                var edge = machine.AddAnyStateTransition(wait); edge.hasExitTime = true; edge.exitTime = .5f; edge.duration = 0;
+                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            }
+            else Timed(wait, wait, .5f);
+            ParameterDriverExpressionTests.Driver(wait, ParameterDriverExpressionTests.Op("Add", "Face", 1));
+            var face = Layer("Face layer");
+            var neutral = State(face, "Neutral", Clip("Neutral", 0)); face.defaultState = neutral;
+            var smile = State(face, "Smile", Clip("Smile", 75)); var other = State(face, "Other", Clip("Other", 40));
+            var third = State(face, "Third", Clip("Third", 10));
+            Transition(neutral, smile, "Face", 1); Transition(smile, other, "Face", 2); Transition(other, third, "Face", 3);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(40).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.HeldTransitions));
+        }
+
+        // The self edge at 5 s restarts the 10 s clip natively, so it never
+        // reaches its last key. Running it to the end would fire the edge again.
+        [Test]
+        public void AMovingClipWithASelfTransitionIsNotSaved()
+        {
+            var wait = Selected(Clip("Wait", AnimationCurve.Linear(0, 0, 10, 100)));
+            Timed(wait, wait, .5f);
+            var error = Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
+        }
+
+        // A self transition with a duration runs over several frames. It is
+        // one self transition, and it is allowed to finish.
+        [TestCase(TransitionInterruptionSource.None)] [TestCase(TransitionInterruptionSource.Source)]
+        public void ASelfTransitionWithADurationFinishesBeforeSaving(TransitionInterruptionSource source)
+        {
+            var wait = Selected(Clip("Wait", 75, 10));
+            var edge = Timed(wait, wait, .5f, .25f); edge.interruptionSource = source;
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+        }
+
+        // Two layers changing state 38 and 36 times exceed the hop limit only
+        // together. Each layer is counted on its own.
+        [Test]
+        public void TheHopLimitIsCountedPerLayer()
+        {
+            var machine = controller.layers[0].stateMachine;
+            var previous = Selected(Clip("Step 0", 0));
+            for (var index = 1; index <= 40; index++)
+            {
+                var next = State(machine, "Step " + index, Clip("Step " + index, index));
+                Timed(previous, next, 1); previous = next;
+            }
+            var eyes = Layer("Eyes");
+            AnimatorState before = null;
+            for (var index = 0; index <= 40; index++)
+            {
+                var clip = new AnimationClip { name = "Eyes " + index };
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                    AnimationCurve.Constant(0, 1, index));
+                AssetDatabase.AddObjectToAsset(clip, controller);
+                var state = State(eyes, "Eyes " + index, clip);
+                if (before == null) eyes.defaultState = state; else Timed(before, state, 1);
+                before = state;
+            }
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(40).Within(.01));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
+        }
+
+        // Loops of 1 s and 0.7 s share one clock; only one starts its cycle.
+        [Test]
+        public void LoopsOfDifferentLengthsAreReportedAsOverlapping()
+        {
+            Selected(Clip("Looping face", AnimationCurve.Linear(0, 20, 1, 80), loop: true));
+            var blink = new AnimationClip { name = "Blinking" };
+            AnimationUtility.SetEditorCurve(blink, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Linear(0, 0, .7f, 100));
+            var settings = AnimationUtility.GetAnimationClipSettings(blink); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(blink, settings);
+            AssetDatabase.AddObjectToAsset(blink, controller);
+            var eyes = Layer("Eyes");
+            var open = State(eyes, "Open", Clip("Open", 0)); eyes.defaultState = open;
+            AnimationUtility.SetEditorCurve((AnimationClip)open.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), null);
+            Transition(open, State(eyes, "Blinking", blink), "Menu", 1);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(20).Within(1.01));
+            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.OverlappingLoops }));
+        }
+
+        // More timed state changes than the hop limit leave the expression
+        // out, as before settlement, instead of saving a cyclic face.
+        [Test]
+        public void AChainLongerThanTheHopLimitIsNotSaved()
+        {
+            var machine = controller.layers[0].stateMachine;
+            var previous = Selected(Clip("Step 0", 0));
+            for (var index = 1; index <= 70; index++)
+            {
+                var next = State(machine, "Step " + index, Clip("Step " + index, index));
+                Timed(previous, next, 1); previous = next;
+            }
+            var error = Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
+        }
+
+        // A face reached only after a long wait is saved and reported.
+        [TestCase(false)] [TestCase(true)]
+        public void AFaceAfterMoreThanAMinuteIsReported(bool clip)
+        {
+            if (clip) Selected(Clip("Very slow face", AnimationCurve.Linear(0, 0, 90, 100)));
+            else Timed(Selected(Clip("A", 0)), State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 70);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(clip ? 100 : 60).Within(.01));
+            Assert.That(messages, Does.Contain(clip ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.FollowedTransitions));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.LongWait));
+        }
+
+        // A face the stationary proof accepts is never stepped, so its
+        // values stay exactly those of the warm-up.
+        [Test]
+        public void SettleDoesNotStepAStationaryFace()
+        {
+            Selected(Clip("Smile", 75));
+            var graph = PlayableGraph.Create("Settlement stationary probe");
+            try
+            {
+                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
+                var playable = AnimatorControllerPlayable.Create(graph, controller);
+                AnimationPlayableOutput.Create(graph, "Probe", avatar.GetComponent<Animator>()).SetSourcePlayable(playable);
+                graph.Play(); graph.Evaluate(0);
+                playable.SetInteger("Menu", 1);
+                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60);
+                var updates = 0;
+                var warnings = new List<string>();
+                Assert.That(ExpressionSettlement.Settle(graph, playable, controller, layer => true, () => updates++, warnings,
+                    alreadyFixed: () => true), Is.False);
+                Assert.That(updates, Is.Zero);
+                Assert.That(warnings, Is.Empty);
+            }
+            finally { if (graph.IsValid()) graph.Destroy(); }
         }
 
         [Test]
