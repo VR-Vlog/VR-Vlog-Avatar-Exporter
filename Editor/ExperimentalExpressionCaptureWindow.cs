@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter
         ExpressionBoard board;
         PreviewRenderUtility preview;
         Action pending;
-        bool candidateValidationPending;
+        bool candidateValidationPending, opening;
         string error, status;
         Vector2 pageScroll;
         Vector3 center;
@@ -209,14 +209,18 @@ namespace VRVlog.LilToonExporter
         {
             if (session == null || preview == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
             using var batch = ExperimentalExpressionCaptureSession.Batch();
-            if (blinkFallbackStale)
-            {
-                blinkFallbackStale = false;
-                try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
-                catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
-                Repaint();
-            }
-            if (thumbnailRequests.Count > 0) RenderThumbnails();
+            RefreshBlinkFallback();
+            if (thumbnailRequests.Count > 0) using (ExpressionBoardTimings.Step("thumbnails")) RenderThumbnails();
+        }
+
+        void RefreshBlinkFallback()
+        {
+            if (!blinkFallbackStale || session == null) return;
+            blinkFallbackStale = false;
+            using var timing = ExpressionBoardTimings.Step("blinkFallback");
+            try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
+            catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
+            Repaint();
         }
 
         // The key holds the drawn size in pixels, so a new size or display scale
@@ -490,14 +494,34 @@ namespace VRVlog.LilToonExporter
         // saved list waits in the object list with the reason, to be fixed here.
         void Prepare()
         {
+            ExpressionBoardTimings.Clear();
+            using var timing = ExpressionBoardTimings.Step("prepare");
             var stored = ExportSettingsStore.Load(source).Exclusions();
             using var batch = ExperimentalExpressionCaptureSession.Batch();
-            try { PrepareWith(stored); }
-            catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
+            opening = true;
+            try
             {
-                PrepareWith(Array.Empty<GameObject>());
-                excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
+                try { PrepareWith(stored); }
+                catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
+                {
+                    PrepareWith(Array.Empty<GameObject>());
+                    excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
+                }
+                // Inside this batch the session's check of the source is already
+                // done; on the next update the blink line would hash the avatar again.
+                RefreshBlinkFallback();
             }
+            finally { opening = false; EditorUtility.ClearProgressBar(); }
+        }
+
+        // Preparing holds the editor for a few seconds on a large avatar. Only
+        // opening can be cancelled: a rebuild would lose the files and
+        // assignments already on the board.
+        void PrepareProgress(string step, float progress)
+        {
+            var title = ExporterLocalization.T("書き出しを準備中");
+            if (!opening) EditorUtility.DisplayProgressBar(title, step, progress);
+            else if (EditorUtility.DisplayCancelableProgressBar(title, step, progress)) throw new OperationCanceledException();
         }
 
         void PrepareWith(GameObject[] objects)
@@ -505,13 +529,21 @@ namespace VRVlog.LilToonExporter
             Cleanup();
             try
             {
+                using var steps = ExpressionBoardTimings.Sequence();
+                steps.Next("session");
+                PrepareProgress(ExporterLocalization.T("アバターを読み込み"), 0);
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
+                steps.Next("recommend");
+                PrepareProgress(ExporterLocalization.T("表情ファイルを確認"), .45f);
                 recommendations = session.RecommendClips();
+                steps.Next("clipErrors");
                 foreach (var item in session.ClipErrors(recommendations.Select(item => item.Clip))) clipErrors[item.Key] = item.Value;
+                steps.Next("preview");
+                PrepareProgress(ExporterLocalization.T("プレビューを用意"), .7f);
                 preview = new PreviewRenderUtility();
                 NdmfExportPreparation.ShowOwnedCopyInPreview(session.Copy, preview);
                 var renderers = ExportRendererSelection.Enumerate(session.Copy).ToArray();
@@ -535,9 +567,13 @@ namespace VRVlog.LilToonExporter
                 status = null;
                 saved = null;
                 candidateValidationPending = false;
+                steps.Next("presets");
+                PrepareProgress(ExporterLocalization.T("割り当てを決める"), .75f);
                 LoadPresetChoices();
+                PrepareProgress(ExporterLocalization.T("割り当てを決める"), 1);
             }
             catch { Cleanup(); throw; }
+            finally { if (!opening) EditorUtility.ClearProgressBar(); }
         }
 
         void DrawPreview()
@@ -1466,13 +1502,17 @@ namespace VRVlog.LilToonExporter
         void LoadPresetChoices()
         {
             presetKey = ExpressionPresetStore.KeyFor(source);
+            using var steps = ExpressionBoardTimings.Sequence();
+            steps.Next("shapeOptions");
             session.PresetShapeOptions(); // Build the BlendShape list once, outside OnGUI.
+            steps.Next("stored");
             session.Presets.Clear();
             foreach (var assignment in ExpressionPresetStore.Load(presetKey, out presetSkipped))
                 session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(assignment.Preset), assignment);
             board.Excluded.Clear();
             board.Excluded.UnionWith(ExpressionPresetStore.LoadExcluded(presetKey, out var skippedExclusions));
             presetSkipped += skippedExclusions;
+            steps.Next("automatic");
             ApplyAutomaticPresets();
         }
 
