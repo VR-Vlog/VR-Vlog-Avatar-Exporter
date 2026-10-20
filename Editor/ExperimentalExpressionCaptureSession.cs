@@ -490,15 +490,19 @@ namespace VRVlog.LilToonExporter
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
+            // A chosen "none" is a face without a pose or morphs: an empty
+            // mouth preset, an empty blink slot.
             var presetFaces = SelectedPresets(presets?.Select(value => value?.Copy()).ToArray())
-                .Select(item => (item.Preset, Pose: BuildPresetPose(item.Preset, item.Assignment), Morphs: PresetMorphs(item.Assignment),
-                    item.Assignment.Automatic)).ToArray();
+                .Where(item => !item.Assignment.IsNone || ChosenNone(item.Preset, item.Assignment))
+                .Select(item => (item.Preset, Pose: item.Assignment.IsNone ? null : BuildPresetPose(item.Preset, item.Assignment),
+                    Morphs: item.Assignment.IsNone ? new List<(string Path, string Shape, float Weight)>() : PresetMorphs(item.Assignment),
+                    Automatic: item.Assignment.Automatic && !item.Assignment.IsNone)).ToArray();
             // Blink presets are written by the blink export only. Automatic
             // candidates repeat its own choice, so they leave blinkOptions as
-            // is; one choice of the user's makes every assigned blink preset
-            // the manual setting.
-            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset)).ToArray();
-            if (blinkFaces.Any(face => !face.Automatic)) blinkOptions = AssignedBlink(blinkFaces.Select(face => (face.Preset, face.Morphs)));
+            // is. The user's choices, "none" included, replace their slots of
+            // that setting as a manual one, even when it is no blink.
+            var blinkFaces = presetFaces.Where(face => BlinkPresets.Contains(face.Preset) && !face.Automatic).ToArray();
+            if (blinkFaces.Length > 0) blinkOptions = AssignedBlink(blinkOptions, blinkFaces.Select(face => (face.Preset, face.Morphs)));
             presetFaces = presetFaces.Where(face => !BlinkPresets.Contains(face.Preset) && !LeftToNameBinding(face.Preset, face.Automatic, face.Morphs)).ToArray();
             // Without explicit faces, retain the ordinary exporter's VRChat
             // menu/FX, authored expressions, metadata and preparation route.
@@ -648,7 +652,8 @@ namespace VRVlog.LilToonExporter
                 {
                     var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
                     var bindings = new List<MorphTargetBinding>();
-                    for (var i = 0; i < Channels.Count; i++)
+                    // A chosen "none" stays an empty preset.
+                    for (var i = 0; i < (face.Pose != null ? Channels.Count : 0); i++)
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(face.Pose.Rows[i].Weights)) continue;
                         var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);

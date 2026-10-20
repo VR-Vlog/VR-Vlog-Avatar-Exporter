@@ -228,6 +228,8 @@ namespace VRVlog.LilToonExporter
 
         internal void PreviewPreset(ExpressionPreset preset, PresetAssignment assignment) => ApplyUnchecked(BuildPresetPose(preset, assignment));
 
+        // Every given preset, "none" included; ChosenNone decides which of
+        // those the export writes.
         (ExpressionPreset Preset, PresetAssignment Assignment)[] SelectedPresets(IEnumerable<PresetAssignment> presets)
         {
             var result = new List<(ExpressionPreset, PresetAssignment)>();
@@ -238,10 +240,17 @@ namespace VRVlog.LilToonExporter
                 var preset = ParsePreset(assignment.Preset);
                 if (!seen.Add(preset))
                     throw new InvalidOperationException(ExporterLocalization.T("同じ標準の表情が2回指定されています: ") + PresetFullLabel(preset));
-                if (!assignment.IsNone) result.Add((preset, assignment));
+                result.Add((preset, assignment));
             }
             return result.OrderBy(item => Array.IndexOf(AssignablePresets, item.Item1)).ToArray();
         }
+
+        // "None" on a mouth or blink preset is a choice: an empty mouth preset
+        // stops the name binding, an empty blink slot stops the blink export's
+        // own choice. Over the source VRM's own preset it means "keep it", as
+        // the window shows; on emotions, gaze and neutral it writes nothing.
+        bool ChosenNone(ExpressionPreset preset, PresetAssignment assignment) =>
+            assignment.IsNone && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset)) && !HasAuthoredPreset(preset);
 
         static VRM10Expression CreatePresetExpression(ExpressionPreset preset)
         {
@@ -290,15 +299,53 @@ namespace VRVlog.LilToonExporter
 
         // Blink assignments go to the blink export as a manual setting, not as
         // authored clips: it replaces every authored blink preset unless the
-        // source VRM's own blink is kept. Unassigned blink presets stay unset.
-        BlinkExportOptions AssignedBlink(IEnumerable<(ExpressionPreset Preset, List<(string Path, string Shape, float Weight)> Morphs)> faces)
+        // source VRM's own blink is kept. The chosen presets (an empty one for
+        // "none") replace their slots; the others keep what the given blink
+        // setting decides, closing amounts included. No slot left is no blink.
+        BlinkExportOptions AssignedBlink(BlinkExportOptions given, IEnumerable<(ExpressionPreset Preset, List<(string Path, string Shape, float Weight)> Morphs)> chosen)
         {
             var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
             var slots = new[] { options.Both, options.Left, options.Right };
-            foreach (var face in faces)
-                slots[Array.IndexOf(BlinkPresets, face.Preset)].AddRange(face.Morphs.Where(morph => morph.Weight > 0).Select(morph =>
+            var inherited = InheritedBlinkSlots(given);
+            for (var slot = 0; slot < slots.Length; slot++) slots[slot].AddRange(inherited[slot]);
+            foreach (var face in chosen)
+            {
+                var slot = slots[Array.IndexOf(BlinkPresets, face.Preset)];
+                slot.Clear();
+                slot.AddRange(face.Morphs.Where(morph => morph.Weight > 0).Select(morph =>
                     new BlinkShapeBinding { Renderer = VrChatExpressionSampler.FindRenderer(Source, morph.Path), Shape = morph.Shape, Weight = morph.Weight }));
-            return options;
+            }
+            return slots.All(slot => slot.Count == 0) ? new BlinkExportOptions { Mode = BlinkExportMode.None } : options;
+        }
+
+        // What the blink export would write per slot from the given setting:
+        // a manual setting as is; the automatic one (the source VRM's own
+        // blink, the VRChat eyelid setting or names) at its resolved closing
+        // amounts. What it cannot decide, it does not guess: no blink there.
+        List<BlinkShapeBinding>[] InheritedBlinkSlots(BlinkExportOptions given)
+        {
+            var result = BlinkPresets.Select(_ => new List<BlinkShapeBinding>()).ToArray();
+            switch (given?.Mode ?? BlinkExportMode.Auto)
+            {
+                case BlinkExportMode.None: return result;
+                case BlinkExportMode.Manual:
+                    result[0].AddRange(given.Both.Select(binding => binding.Copy()));
+                    result[1].AddRange(given.Left.Select(binding => binding.Copy()));
+                    result[2].AddRange(given.Right.Select(binding => binding.Copy()));
+                    return result;
+            }
+            BlinkExportSession resolved;
+            try { resolved = BlinkExportSession.Resolve(Source, given, exclusions != null ? exclusions.Contains : (Func<Transform, bool>)null); }
+            catch (InvalidOperationException) { return result; }
+            using (resolved)
+            {
+                if (resolved.Disabled) return result;
+                for (var slot = 0; slot < result.Length; slot++)
+                    result[slot].AddRange(resolved.Slots[slot].Select(binding => {
+                        var copy = binding.Copy(); copy.Weight = resolved.ClosingAmount(binding); return copy;
+                    }));
+            }
+            return result;
         }
 
         List<PresetAssignment> SavePresets() => AssignablePresets.Where(Presets.ContainsKey).Select(preset => Presets[preset])
@@ -411,24 +458,31 @@ namespace VRVlog.LilToonExporter
         // preset by its known names; null when no mesh or several have one.
         (string Path, string Shape)? NameMouthShape(ExpressionPreset preset)
         {
-            var aliases = ExpressionNameInference.MouthShapes.First(item => item.Preset == preset.ToString()).Aliases;
             var options = new HashSet<(string Path, string Shape)>(PresetShapeOptions());
             var matches = new List<(string Path, string Shape)>();
             foreach (var path in options.Select(option => option.Path).Distinct())
-            {
-                var mesh = VrChatExpressionSampler.FindRenderer(Source, path).sharedMesh;
-                var names = Enumerable.Range(0, mesh.blendShapeCount).Select(index => (object)mesh.GetBlendShapeName(index)).ToList();
-                var found = ExpressionNameInference.FindExact(names, aliases);
-                if (found >= 0 && options.Contains((path, (string)names[found]))) matches.Add((path, (string)names[found]));
-            }
+                if (NamedMouthShapeOn(preset, path) is { } shape && options.Contains((path, shape))) matches.Add((path, shape));
             return matches.Count == 1 ? matches[0] : ((string, string)?)null;
         }
 
-        // An automatic mouth candidate found by name is what the ordinary
-        // export binds by itself; leaving it to that export keeps its output.
+        // The BlendShape the ordinary export binds on this mesh for the mouth
+        // preset by its known names, or null.
+        string NamedMouthShapeOn(ExpressionPreset preset, string path)
+        {
+            var aliases = ExpressionNameInference.MouthShapes.First(item => item.Preset == preset.ToString()).Aliases;
+            var mesh = VrChatExpressionSampler.FindRenderer(Source, path).sharedMesh;
+            var names = Enumerable.Range(0, mesh.blendShapeCount).Select(index => (object)mesh.GetBlendShapeName(index)).ToList();
+            var found = ExpressionNameInference.FindExact(names, aliases);
+            return found >= 0 ? (string)names[found] : null;
+        }
+
+        // An automatic mouth candidate (Lip Sync or name) that is the shape
+        // the ordinary export binds by name on its mesh is left to that
+        // export: it binds the same name on every mesh, so the output stays.
         bool LeftToNameBinding(ExpressionPreset preset, bool automatic, List<(string Path, string Shape, float Weight)> morphs) =>
             automatic && MouthPresets.Contains(preset) && morphs.Count == 1 && morphs[0].Weight == 100f &&
-            NameMouthShape(preset) is { } named && named.Path == morphs[0].Path && named.Shape == morphs[0].Shape;
+            PresetShapeOptions().Contains((morphs[0].Path, morphs[0].Shape)) &&
+            string.Equals(NamedMouthShapeOn(preset, morphs[0].Path), morphs[0].Shape, StringComparison.Ordinal);
 
         // Blink candidates are exactly the automatic blink export's choice: one
         // exported BlendShape per preset. Kept source VRM blink, a manual
@@ -472,14 +526,24 @@ namespace VRVlog.LilToonExporter
                 using var resolved = BlinkExportSession.Resolve(Source, options, exclusions != null ? exclusions.Contains : (Func<Transform, bool>)null);
                 return ExporterLocalization.T(resolved.Description);
             }
-            catch (InvalidOperationException error) { return ExporterLocalization.T(error.Message); }
+            catch (InvalidOperationException error)
+            {
+                // Only the fixed sentence is translated; a mesh or shape name
+                // after its ": " stays as is.
+                var split = error.Message.IndexOf(": ", StringComparison.Ordinal);
+                return split < 0 ? ExporterLocalization.T(error.Message)
+                    : ExporterLocalization.T(error.Message.Substring(0, split + 2)) + error.Message.Substring(split + 2);
+            }
         }
 
-        // The source avatar's own VRM settings already fill this emotion.
+        // The source avatar's own VRM settings already fill this preset. As in
+        // the ordinary export, any mouth or blink clip counts, even an empty
+        // one; an emotion has to move something.
         internal bool HasAuthoredPreset(ExpressionPreset preset)
         {
             var expression = Source != null && Source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
             var clip = expression?.Clips.Where(item => item.Preset == preset).Select(item => item.Clip).FirstOrDefault();
+            if (clip != null && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset))) return true;
             return clip != null && (clip.MorphTargetBindings?.Length > 0 || clip.MaterialColorBindings?.Length > 0 || clip.MaterialUVBindings?.Length > 0);
         }
 

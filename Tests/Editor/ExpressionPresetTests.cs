@@ -682,6 +682,127 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(mesh); }
         }
 
+        static int BindCount(byte[] bytes, string preset) =>
+            Presets(bytes).TryGetValue(preset, out var value) && ((Dictionary<string, object>)value).TryGetValue("morphTargetBinds", out var binds)
+                ? ((List<object>)binds).Count : 0;
+
+        [Test]
+        public void LipSyncCandidateOnAKnownNameKeepsTheNameBindingOnEveryMesh()
+        {
+            using var fixture = Fixture(smile: false);
+            // Back keeps the shared mesh and Front copies it: both have vrc.v_aa.
+            fixture.Mesh.AddBlendShapeFrame("vrc.v_aa", 100, Enumerable.Repeat(OpenDelta, 3).ToArray(), new Vector3[3], new Vector3[3]);
+            var mesh = FrontMesh(fixture);
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+                var visemes = new string[15]; visemes[10] = "vrc.v_aa";
+                var lipSync = session.SuggestMouthPresets(front, visemes);
+                Assert.That(lipSync.Keys, Is.EquivalentTo(new[] { ExpressionPreset.aa }));
+                Assert.That(lipSync[ExpressionPreset.aa].Automatic && lipSync[ExpressionPreset.aa].Path == "Front", Is.True);
+                var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
+                var before = session.Export("Test", "Tests", blinkOptions: blink);
+                var unconfirmed = session.Export("Test", "Tests", blinkOptions: blink, presets: lipSync.Values);
+                Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
+                    "An unconfirmed Lip Sync candidate on a known name exports what the name binding exports.");
+                Assert.That(BoundShapes(unconfirmed, "aa"), Is.EqualTo(new[] { "Back/vrc.v_aa@1", "Front/vrc.v_aa@1" }), "The other mesh keeps its mouth shape.");
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void NoneOnAMouthPresetStopsTheNameBinding(bool recordFace)
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("vrc.v_ih", RaiseDelta));
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
+                var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
+                var before = session.Export("Test", "Tests", blinkOptions: blink);
+                Assert.That(BindCount(before, "aa"), Is.EqualTo(1), "Without a choice the known name binds aa.");
+                var none = session.Export("Test", "Tests", blinkOptions: blink, presets: new[] { Session.PresetAssignment.None(ExpressionPreset.aa) });
+                Assert.That(BindCount(none, "aa"), Is.Zero, "\"None\" on aa writes no aa binding.");
+                Assert.That(BoundShapes(none, "ih"), Is.EqualTo(BoundShapes(before, "ih")), "The other mouth presets keep the name binding.");
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void NoneOnEveryBlinkPresetWritesNoBlink(bool recordFace)
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
+                var automatic = session.Export("Test", "Tests");
+                Assert.That(BindCount(automatic, "blink"), Is.EqualTo(1), "Without a choice the automatic blink binds 'Blink'.");
+                var none = session.Export("Test", "Tests", presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
+                var noBlink = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                // No blink still writes a no-op binding so viewers do not fall back to raw names.
+                Assert.That(Session.BlinkPresets.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
+                Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(noBlink))), "\"None\" on every blink preset is no blink.");
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
+        [Test]
+        public void ChoosingOneEyeKeepsTheAutomaticBlinkOnEveryMesh()
+        {
+            using var fixture = Fixture(smile: false);
+            // Back keeps the shared mesh and Front copies it: the automatic
+            // blink closes both eyes on two meshes, so it offers no candidate.
+            foreach (var shape in new[] { Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1) })
+                fixture.Mesh.AddBlendShapeFrame(shape.Name, 100, shape.Deltas, new Vector3[3], new Vector3[3]);
+            var mesh = FrontMesh(fixture);
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.SuggestPresets(Array.Empty<AnimationClip>()).Keys.Intersect(Session.BlinkPresets), Is.Empty);
+                // The blink export bakes each binding into a generated endpoint
+                // shape named from its mesh, source shape and slot.
+                static string[] Meshes(IEnumerable<string> bound) => bound.Select(value => value.Substring(0, value.IndexOf('/'))).ToArray();
+                var automatic = session.Export("Test", "Tests");
+                Assert.That(Meshes(BoundShapes(automatic, "blink")), Is.EqualTo(new[] { "Back", "Front" }));
+                var chosen = session.Export("Test", "Tests", presets: new[] {
+                    Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Front", "Blink_L"),
+                    Session.PresetAssignment.ForShape(ExpressionPreset.blinkRight, "Front", "Blink_R") });
+                Assert.That(BoundShapes(chosen, "blink"), Is.EqualTo(BoundShapes(automatic, "blink")), "The unchosen both-eyes slot keeps the automatic two meshes.");
+                Assert.That(Meshes(BoundShapes(chosen, "blinkLeft")), Is.EqualTo(new[] { "Front" }));
+                Assert.That(Meshes(BoundShapes(chosen, "blinkRight")), Is.EqualTo(new[] { "Front" }));
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
+        [Test]
+        public void EmptyVrmMouthAndBlinkPresetsAreAuthored()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("Blink", BlinkDelta));
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var aa = ScriptableObject.CreateInstance<VRM10Expression>();
+            var blink = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                settings.Expression.Aa = aa; settings.Expression.Blink = blink;
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.HasAuthoredPreset(ExpressionPreset.aa), Is.True, "An intentionally empty aa is the avatar's own.");
+                Assert.That(session.HasAuthoredPreset(ExpressionPreset.blink), Is.True);
+                Assert.That(session.HasAuthoredPreset(ExpressionPreset.ih), Is.False);
+                var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
+                Assert.That(suggested.ContainsKey(ExpressionPreset.aa), Is.False, "No candidate replaces the empty aa.");
+                Assert.That(suggested.Keys.Intersect(Session.BlinkPresets), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(aa); Object.DestroyImmediate(blink); Object.DestroyImmediate(settings); }
+        }
+
         [Test]
         public void MouthBlinkAndNeutralChoicesAreSavedLikeEmotions()
         {
