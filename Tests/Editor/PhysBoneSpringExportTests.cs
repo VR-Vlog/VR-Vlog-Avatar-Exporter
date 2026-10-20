@@ -298,6 +298,57 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
 
+        const string AllMotionImmobileWarning = ": Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。";
+        const string WorldImmobileWarning = ": Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。";
+
+        // World is left to the app, which centres exported springs on the
+        // model root; only All Motion raises the exported stiffness and drag.
+        [TestCase(0, 1.9f, .78f)]
+        [TestCase(1, 1.6f, .48f)]
+        public void AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp(int immobileType, float stiffness, float drag)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                Set(pb, "endpointPosition", Vector3.down * .1f);
+                Set(pb, "pull", .4f); Set(pb, "spring", .2f); Set(pb, "gravity", 0f);
+                Set(pb, "immobileType", immobileType); Set(pb, "immobile", .6f);
+                copy = Object.Instantiate(source);
+                var warnings = new List<string>();
+                PhysBoneSpringExport.Convert(source, copy, warnings);
+                var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
+                Assert.That(joint.m_stiffnessForce, Is.EqualTo(stiffness).Within(.001));
+                Assert.That(joint.m_dragForce, Is.EqualTo(drag).Within(.001));
+                Assert.That(warnings.Contains("Hair" + AllMotionImmobileWarning), Is.EqualTo(immobileType == 0));
+                Assert.That(warnings.Contains("Hair" + WorldImmobileWarning), Is.EqualTo(immobileType != 0));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
+        public void AllMotionImmobileDragNeverExceedsOne()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                Set(pb, "endpointPosition", Vector3.down * .1f);
+                Set(pb, "pull", .4f); Set(pb, "spring", 0f);
+                Set(pb, "immobileType", 0); Set(pb, "immobile", 1f);
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
+                Assert.That(joint.m_stiffnessForce, Is.EqualTo(2.1f).Within(.001));
+                Assert.That(joint.m_dragForce, Is.EqualTo(1f).Within(.001));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
         [TestCase(2, true)][TestCase(7, false)]
         public void PlaneInsideBoundsAndUnknownShapesDoNotStopConversion(int shape, bool inside)
         {

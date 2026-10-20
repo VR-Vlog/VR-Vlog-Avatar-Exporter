@@ -137,6 +137,8 @@ BEHAVIOR_CASES = {
         'AbsentSdkAndRigidModelsRemainValidWithoutInventedSprings': 1,
         'ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance': 2,
         'ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal': 4,
+        'AllMotionImmobileDragNeverExceedsOne': 1,
+        'AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp': 2,
         'AuthoredRootColliderSurvivesWithoutAnyPhysBoneOrSdkDependency': 1,
         'BranchesAndVirtualEndpointsHaveOneOwnerAndKeepSource': 3,
         'CurvesCollidersAndLimitsUseRealSdkSerializedValues': 1,

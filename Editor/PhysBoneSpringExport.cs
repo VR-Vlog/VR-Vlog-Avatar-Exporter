@@ -277,8 +277,19 @@ namespace VRVlog.LilToonExporter
             var spring = Mathf.Clamp01(Curve(source, "spring", depth, .2f));
             var gravity = Mathf.Clamp(Curve(source, "gravity", depth, 0), -1, 1);
             var falloff = Mathf.Clamp01(Curve(source, "gravityFalloff", depth, 0));
-            joint.m_stiffnessForce = 4f * pull;
-            joint.m_dragForce = .6f * (1f - spring);
+            var stiffness = 4f * pull;
+            var drag = .6f * (1f - spring);
+            // World Immobile is left to the app, which centres exported springs
+            // on the model root. All Motion has no VRM counterpart, so raise
+            // stiffness and drag to damp the motion instead.
+            if (EnumNumber(source, "immobileType", 0) == 0)
+            {
+                var immobile = Mathf.Clamp01(Curve(source, "immobile", depth, 0));
+                stiffness += .5f * immobile;
+                drag = Mathf.Clamp01(drag + .5f * immobile);
+            }
+            joint.m_stiffnessForce = stiffness;
+            joint.m_dragForce = drag;
             joint.m_gravityPower = Mathf.Abs(gravity) * (1f - falloff) * (EnumNumber(source, "version", 1) >= 1 ? 4f * pull : 1f);
             joint.m_gravityDir = gravity < 0 ? Vector3.up : Vector3.down;
             joint.m_jointRadius = Mathf.Max(0, Curve(source, "radius", depth, 0));
@@ -359,8 +370,12 @@ namespace VRVlog.LilToonExporter
             warnings?.Add(source.name + ": 揺れの力・減衰・重力はVRM向けの近似です。VRChatと同一の物理演算ではありません。");
             if (EnumNumber(source, "integrationType", 0) != 0 || Number(source, "stiffness", 0) != 0)
                 warnings?.Add(source.name + ": Advanced積分／Stiffnessの独立効果は再現せず、PullとSpringから近似しました。");
-            if (Number(source, "immobile", 0) != 0 || Number(source, "gravityFalloff", 0) != 0)
-                warnings?.Add(source.name + ": Immobileはアプリの安定化に委ね、Gravity Falloffは重力の減衰として近似しました。");
+            if (Number(source, "immobile", 0) != 0)
+                warnings?.Add(source.name + (EnumNumber(source, "immobileType", 0) == 0
+                    ? ": Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。"
+                    : ": Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。"));
+            if (Number(source, "gravityFalloff", 0) != 0)
+                warnings?.Add(source.name + ": Gravity Falloffは重力の減衰として近似しました。");
             if (Number(source, "maxStretch", 0) != 0 || Number(source, "maxSquish", 0) != 0 || Number(source, "stretchMotion", 0) != 0)
                 warnings?.Add(source.name + ": 伸縮は保存せず、元のボーン長を保持しました。");
             if (Read(source, "isAnimated", false)) warnings?.Add(source.name + ": Is Animatedは出力時の姿勢を基準とします。");
