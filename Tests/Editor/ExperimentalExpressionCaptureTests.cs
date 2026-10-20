@@ -1814,22 +1814,27 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("author", flags).SetValue(window, "");
                 board.SetItems(null, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                Assert.That(window.BlocksExport, Is.False, "The author is asked at the save, not on the board.");
                 type.GetField("transferMode", flags).SetValue(window, true);
                 Assert.That(window.BlockReason(), Is.Null, "The transfer asks the author in the next window.");
                 type.GetField("transferMode", flags).SetValue(window, false);
                 type.GetField("author", flags).SetValue(window, "Author");
                 Assert.That(window.BlockReason(), Is.Null);
+                Assert.That(window.BlocksExport, Is.False);
 
                 board.SetItems(new[] { new ExpressionBoard.Item { Clip = twin, Added = true, Source = "Fixture" } }, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さないへ移すまで保存しません"), 1) + ": Face 0"));
+                Assert.That(window.BlocksExport, Is.True);
 
                 board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 board.Move(clips[0], ExpressionBoard.Place.Excluded);
                 Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さないへ移すまで保存しません"), 1)));
+                Assert.That(window.BlocksExport, Is.True);
 
                 var errors = (System.Collections.Generic.Dictionary<ExpressionPreset, string>)type.GetField("presetErrors", flags).GetValue(window);
                 errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";
                 Assert.That(window.BlockReason(), Is.EqualTo("Angry reason"), "The first broken slot in board order gives its own reason.");
+                Assert.That(window.BlocksExport, Is.True);
 
                 type.GetField("excludedObjectEdits", flags).SetValue(window, new System.Collections.Generic.List<GameObject>());
                 Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
@@ -1840,6 +1845,25 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(window); Object.DestroyImmediate(twin);
                 foreach (var clip in clips) Object.DestroyImmediate(clip);
             }
+        }
+
+        // BlocksExport and BlockReason read one condition, so a window without a
+        // board blocks the save and names why, instead of blocking in silence.
+        [Test]
+        public void AWindowWithoutABoardBlocksTheSaveAndSaysWhy()
+        {
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                type.GetField("author", flags).SetValue(window, "Author");
+                Assert.That(type.GetField("board", flags).GetValue(window), Is.Null);
+                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)));
+                type.GetField("transferMode", flags).SetValue(window, true);
+                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)), "The transfer is blocked for the same reason.");
+            }
+            finally { Object.DestroyImmediate(window); }
         }
 
         static Type Sdk(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);

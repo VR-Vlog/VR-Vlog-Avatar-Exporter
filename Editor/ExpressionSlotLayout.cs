@@ -9,8 +9,12 @@ namespace VRVlog.LilToonExporter
     // the font, so a larger font cannot move a slot.
     internal static class ExpressionSlotLayout
     {
-        internal const float Gap = 6, GroupGap = 18, Caption = 16, Label = 16, Name = 16, State = 14, Fold = 20,
-            ScrollbarWidth = 14;
+        internal const float Gap = 6, GroupGap = 18, Caption = 16, Label = 16, Name = 16, State = 14, Fold = 20;
+
+        // The width a vertical scrollbar takes from a scroll view, as
+        // GUI.BeginScrollView takes it: the bar and its left margin.
+        internal static float ScrollbarWidth(GUIStyle verticalScrollbar) =>
+            verticalScrollbar == null ? 0 : verticalScrollbar.fixedWidth + verticalScrollbar.margin.left;
 
         // Groups 0-2 (emotions, blink, mouth) are always shown; 3-4 (gaze,
         // neutral) sit under the fold row.

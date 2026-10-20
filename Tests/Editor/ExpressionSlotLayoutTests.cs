@@ -1,7 +1,10 @@
+using System.Collections;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
+using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -10,7 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly int[] Sizes = ExperimentalExpressionCaptureSession.PresetGroups.Select(group => group.Presets.Length).ToArray();
 
         // The narrowest slot area: the window's minimum width less its margins and the page scrollbar.
-        const float NarrowWidth = 600 - 32 - ExpressionSlotLayout.ScrollbarWidth;
+        static readonly float NarrowWidth = 600 - 32 - ExpressionSlotLayout.ScrollbarWidth(EditorGUIUtility.GetBuiltinSkin(EditorSkin.Inspector).verticalScrollbar);
 
         static int[] RowsOf(ExpressionSlotLayout.Result layout) => layout.Groups.Select(group => group.Row).ToArray();
 
@@ -43,13 +46,15 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(open.Rows, Is.EqualTo(5));
         }
 
+        // A negative width stands for the narrowest window, which the skin decides.
         [TestCase(false, 1000f)]
         [TestCase(false, 760f)]
-        [TestCase(false, NarrowWidth)]
+        [TestCase(false, -1f)]
         [TestCase(true, 1000f)]
         [TestCase(true, 760f)]
         public void AGroupNeverWrapsWhenItFitsTheWidth(bool large, float width)
         {
+            if (width < 0) width = NarrowWidth;
             var layout = ExpressionSlotLayout.Compute(width, large, true, Sizes);
             foreach (var group in layout.Groups)
             {
@@ -80,24 +85,93 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(small.Groups.All(group => group.Slots.Select(slot => slot.y).Distinct().Count() == 1), Is.True);
         }
 
-        [Test]
-        public void TheFontSizeDoesNotMoveASlot()
+        // The real window, drawn with larger fonts, keeps every slot and the
+        // expression panel where they were relative to the first slot.
+        [UnityTest]
+        public IEnumerator TheFontSizeDoesNotMoveASlotInTheWindow()
         {
-            var before = new[] { false, true }.Select(large => ExpressionSlotLayout.Compute(760, large, true, Sizes)).ToArray();
-            var label = EditorStyles.label.fontSize; var mini = EditorStyles.miniLabel.fontSize;
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            // EditorStyles exists only once some editor GUI has been drawn, so
+            // the sizes are read after the window's first frames.
+            int? label = null, mini = null;
             try
             {
+                // The fold and thumbnail size come from EditorPrefs; fix them so
+                // the result does not depend on how this PC last left the board.
+                type.GetField("showExtraPresets", flags).SetValue(window, false); type.GetField("largeThumbnails", flags).SetValue(window, false);
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
+                var before = DrawnLayout(window, type, flags);
+                Assert.That(before.Length, Is.EqualTo(ExperimentalExpressionCaptureWindow.ShownPresets(false).Length + 1), "Every main slot and the panel are drawn.");
+                var lineHeight = EditorStyles.label.CalcHeight(new GUIContent("Face"), 200);
+
+                label = EditorStyles.label.fontSize; mini = EditorStyles.miniLabel.fontSize;
                 EditorStyles.label.fontSize = 24; EditorStyles.miniLabel.fontSize = 20;
-                var after = new[] { false, true }.Select(large => ExpressionSlotLayout.Compute(760, large, true, Sizes)).ToArray();
-                for (var index = 0; index < before.Length; index++)
-                {
-                    Assert.That(after[index].Height, Is.EqualTo(before[index].Height));
-                    Assert.That(after[index].Fold, Is.EqualTo(before[index].Fold));
-                    Assert.That(after[index].Groups.SelectMany(group => group.Slots.Prepend(group.Caption)),
-                        Is.EqualTo(before[index].Groups.SelectMany(group => group.Slots.Prepend(group.Caption))));
-                }
+                type.GetMethod("ReleaseStyles", flags).Invoke(window, null);
+                for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
+                Assert.That(EditorStyles.label.CalcHeight(new GUIContent("Face"), 200), Is.GreaterThan(lineHeight), "The larger font reaches the labels.");
+                Assert.That(DrawnLayout(window, type, flags), Is.EqualTo(before));
             }
-            finally { EditorStyles.label.fontSize = label; EditorStyles.miniLabel.fontSize = mini; }
+            finally
+            {
+                if (label.HasValue) EditorStyles.label.fontSize = label.Value;
+                if (mini.HasValue) EditorStyles.miniLabel.fontSize = mini.Value;
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        // The drawn slots in board order and the expression panel, measured from the first slot.
+        static Rect[] DrawnLayout(ExperimentalExpressionCaptureWindow window, System.Type type, System.Reflection.BindingFlags flags)
+        {
+            var slots = (System.Collections.Generic.Dictionary<ExpressionBoard.Place, Rect>)type.GetField("slotRects", flags).GetValue(window);
+            var panel = (Rect)type.GetField("expressionDropRect", flags).GetValue(window);
+            var ordered = slots.Values.OrderBy(rect => rect.y).ThenBy(rect => rect.x).Append(panel).ToArray();
+            var origin = ordered[0].position;
+            return ordered.Select(rect => new Rect(rect.position - origin, rect.size)).ToArray();
+        }
+
+        [Test]
+        public void TheScrollbarWidthComesFromTheSkin()
+        {
+            var style = new GUIStyle { fixedWidth = 11, margin = new RectOffset(3, 0, 0, 0) };
+            Assert.That(ExpressionSlotLayout.ScrollbarWidth(style), Is.EqualTo(14));
+            style.fixedWidth = 15;
+            Assert.That(ExpressionSlotLayout.ScrollbarWidth(style), Is.EqualTo(18));
+            Assert.That(ExpressionSlotLayout.ScrollbarWidth(null), Is.EqualTo(0));
+        }
+
+        static readonly Rect View = new Rect(0, 100, 600, 400);
+
+        [Test]
+        public void DragScrollMovesOnlyNearTheEdges()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 110), null, 200, 1000), Is.EqualTo(-ExperimentalExpressionCaptureWindow.DragScrollStep));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 490), null, 200, 1000), Is.EqualTo(ExperimentalExpressionCaptureWindow.DragScrollStep));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 300), null, 200, 1000), Is.EqualTo(0));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 90), null, 200, 1000), Is.EqualTo(0), "Outside the view nothing scrolls.");
+        }
+
+        [Test]
+        public void DragScrollStopsAtTheEndsOfThePage()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 110), null, 0, 1000), Is.EqualTo(0), "The top of the page does not scroll further.");
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 110), null, 3, 1000), Is.EqualTo(-3));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 490), null, 1000, 1000), Is.EqualTo(0));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(300, 490), null, 0, 0), Is.EqualTo(0), "A page that fits does not scroll.");
+        }
+
+        // A whole slot under the pointer at an edge stays put, so the slot does
+        // not run away from the pointer; a clipped one scrolls into view.
+        [Test]
+        public void DragScrollKeepsAWholeSlotUnderThePointer()
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(40, 110), new Rect(20, 104, 78, 98), 200, 1000), Is.EqualTo(0));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(40, 110), new Rect(20, 60, 78, 98), 200, 1000), Is.EqualTo(-ExperimentalExpressionCaptureWindow.DragScrollStep));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(40, 490), new Rect(20, 400, 78, 98), 200, 1000), Is.EqualTo(0));
+            Assert.That(ExperimentalExpressionCaptureWindow.DragScroll(View, new Vector2(40, 490), new Rect(20, 440, 78, 98), 200, 1000), Is.EqualTo(ExperimentalExpressionCaptureWindow.DragScrollStep));
         }
 
         // The slots scroll with the page, so the area is as tall as its slots;
