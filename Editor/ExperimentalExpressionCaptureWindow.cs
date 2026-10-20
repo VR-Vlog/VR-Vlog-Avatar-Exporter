@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter
         ExpressionBoard board;
         PreviewRenderUtility preview;
         Action pending;
-        bool candidateValidationPending;
+        bool candidateValidationPending, opening;
         string error, status;
         Vector2 pageScroll;
         Vector3 center;
@@ -498,22 +498,30 @@ namespace VRVlog.LilToonExporter
             using var timing = ExpressionBoardTimings.Step("prepare");
             var stored = ExportSettingsStore.Load(source).Exclusions();
             using var batch = ExperimentalExpressionCaptureSession.Batch();
-            try { PrepareWith(stored); }
-            catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
+            opening = true;
+            try
             {
-                PrepareWith(Array.Empty<GameObject>());
-                excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
+                try { PrepareWith(stored); }
+                catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
+                {
+                    PrepareWith(Array.Empty<GameObject>());
+                    excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
+                }
+                // Inside this batch the session's check of the source is already
+                // done; on the next update the blink line would hash the avatar again.
+                RefreshBlinkFallback();
             }
-            // Inside this batch the session's check of the source is already
-            // done; on the next update the blink line would hash the avatar again.
-            RefreshBlinkFallback();
+            finally { opening = false; EditorUtility.ClearProgressBar(); }
         }
 
-        // Preparing holds the editor for a few seconds on a large avatar.
-        static void PrepareProgress(string step, float progress)
+        // Preparing holds the editor for a few seconds on a large avatar. Only
+        // opening can be cancelled: a rebuild would lose the files and
+        // assignments already on the board.
+        void PrepareProgress(string step, float progress)
         {
-            if (EditorUtility.DisplayCancelableProgressBar(ExporterLocalization.T("書き出しを準備中"), step, progress))
-                throw new OperationCanceledException();
+            var title = ExporterLocalization.T("書き出しを準備中");
+            if (!opening) EditorUtility.DisplayProgressBar(title, step, progress);
+            else if (EditorUtility.DisplayCancelableProgressBar(title, step, progress)) throw new OperationCanceledException();
         }
 
         void PrepareWith(GameObject[] objects)
