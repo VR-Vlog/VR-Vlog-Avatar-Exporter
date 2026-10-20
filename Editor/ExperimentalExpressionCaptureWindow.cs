@@ -74,6 +74,10 @@ namespace VRVlog.LilToonExporter
         const string LargeThumbnailsPreference = "VRVlog.ExpressionBoard.LargeThumbnails";
         const string ExtraPresetsPreference = "VRVlog.ExpressionBoard.ShowExtraPresets";
         bool? largeThumbnails, showExtraPresets;
+        // Height of the other/excluded panels, dragged at their bottom edge.
+        const string PanelHeightPreference = "VRVlog.ExpressionBoard.PanelHeight";
+        float? panelHeight;
+        float panelDragStart, panelDragHeight;
         // The page view in window coordinates, from the last repaint.
         Rect pageView;
         // How tall the page is inside the view, from the last repaint.
@@ -102,7 +106,8 @@ namespace VRVlog.LilToonExporter
         bool blinkFallbackStale = true;
 
         // Fixed sizes: the board never follows the font size or the names.
-        const float Gap = ExpressionSlotLayout.Gap, PanelHeight = 300, PanelHeader = 26;
+        const float Gap = ExpressionSlotLayout.Gap, PanelHeader = 26;
+        internal const float PanelHeight = 300, MinPanelHeight = 160, MaxPanelHeight = 1000, PanelHandle = 6;
         // The skin's own scrollbar, read while drawing, not a fixed guess.
         static float ScrollbarWidth => ExpressionSlotLayout.ScrollbarWidth(GUI.skin.verticalScrollbar);
         // The mock colors are the dark skin; the light skin gets the same roles.
@@ -439,7 +444,6 @@ namespace VRVlog.LilToonExporter
                         DrawSlots();
                         EditorGUILayout.Space(8);
                         DrawPanels();
-                        EditorGUILayout.Space(6);
                         DrawAddRow();
                         EditorGUILayout.Space(12);
                         DrawExcludedObjects();
@@ -451,7 +455,13 @@ namespace VRVlog.LilToonExporter
                         if (current.type == EventType.Repaint) pageContentHeight = GUILayoutUtility.GetLastRect().yMax;
                         RestoreEvent(pageHidden);
                         EditorGUILayout.EndScrollView();
-                        if (current.type == EventType.Repaint) pageView = GUILayoutUtility.GetLastRect();
+                        if (current.type == EventType.Repaint)
+                        {
+                            // The panel height is clamped to the view: draw again when the view changed.
+                            var view = GUILayoutUtility.GetLastRect();
+                            if (view.height != pageView.height) Repaint();
+                            pageView = view;
+                        }
                         DrawBottomBar();
                     }
                 }
@@ -867,13 +877,56 @@ namespace VRVlog.LilToonExporter
 
         void DrawPanels()
         {
-            var area = GUILayoutUtility.GetRect(100, PanelHeight, GUILayout.ExpandWidth(true));
+            var height = ShownPanelHeight(panelHeight ??= EditorPrefs.GetFloat(PanelHeightPreference, PanelHeight), pageView.height);
+            var area = GUILayoutUtility.GetRect(100, height, GUILayout.ExpandWidth(true));
             var rightWidth = Mathf.Round(area.width * .25f);
             var left = new Rect(area.x, area.y, area.width - rightWidth - 8, area.height);
             var right = new Rect(left.xMax + 8, area.y, rightWidth, area.height);
             DrawOtherPanel(left);
             DrawExcludedPanel(right);
             if (Event.current.type == EventType.Repaint) { expressionDropRect = ScreenRect(left); excludedDropRect = ScreenRect(right); }
+            DrawPanelHandle(GUILayoutUtility.GetRect(100, PanelHandle, GUILayout.ExpandWidth(true)), height);
+        }
+
+        // The panels never grow past the page view, so their bottom edge stays
+        // reachable in a small window; the saved height is kept for a larger one.
+        // pageHeight: 0 before the first repaint.
+        internal static float ShownPanelHeight(float saved, float pageHeight)
+        {
+            var max = pageHeight > 0 ? Mathf.Clamp(pageHeight - PanelHandle - 30, MinPanelHeight, MaxPanelHeight) : MaxPanelHeight;
+            return Mathf.Clamp(saved, MinPanelHeight, max);
+        }
+
+        // The gap under the panels: dragging it sets their height.
+        void DrawPanelHandle(Rect handle, float shown)
+        {
+            var id = GUIUtility.GetControlID(FocusType.Passive);
+            var current = Event.current;
+            EditorGUIUtility.AddCursorRect(handle, MouseCursor.ResizeVertical);
+            // A short line in the middle, so the gap does not read as the edge of the footer.
+            if (current.type == EventType.Repaint)
+                EditorGUI.DrawRect(new Rect(Mathf.Round(handle.center.x - 16), Mathf.Round(handle.center.y - 1), 32, 2),
+                    GUIUtility.hotControl == id ? AccentColor : CardBorderColor);
+            switch (current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown when current.button == 0 && handle.Contains(current.mousePosition):
+                    GUIUtility.hotControl = id;
+                    panelDragStart = current.mousePosition.y;
+                    panelDragHeight = shown;
+                    current.Use();
+                    break;
+                case EventType.MouseDrag when GUIUtility.hotControl == id:
+                    // The same limit as the drawn height, so the saved height is the one on screen.
+                    panelHeight = ShownPanelHeight(panelDragHeight + current.mousePosition.y - panelDragStart, pageView.height);
+                    current.Use();
+                    Repaint();
+                    break;
+                case EventType.MouseUp when GUIUtility.hotControl == id:
+                    GUIUtility.hotControl = 0;
+                    EditorPrefs.SetFloat(PanelHeightPreference, panelHeight ?? shown);
+                    current.Use();
+                    break;
+            }
         }
 
         internal const float DragScrollBand = 24, DragScrollStep = 8;
