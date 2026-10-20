@@ -41,11 +41,15 @@ PhysBoneとSpringBoneは別のソルバーです。見た目が一致する保�
 カーブ評価後のPullをp、Spring / Momentumをs、Gravityをg、
 Gravity Falloffをfとすると、stiffness = 4p、dragForce = 0.6(1-s)、
 gravityPower = |g|(1-f)です。PhysBone 1.1ではgravityPowerに4pを掛けます。
+Immobile TypeがAll Motionのときは、カーブ評価後のImmobileをiとして
+stiffnessに0.5i、dragForceに0.5iを足します（dragForceは1が上限）。
+gravityPowerに掛ける4pは変えません。Worldのときは足さず、アプリの安定化
+（揺れの基準をモデルのルートにする）に委ねます。
 重力の符号は上下方向に反映します。半径は元値を使います。
 
-Advancedの独立したStiffness、Immobile、伸縮、動的なIs Animated追従、
+Advancedの独立したStiffness、伸縮、動的なIs Animated追従、
 Grab / Pose、他アバターとの衝突、PhysBoneパラメーターの連動は保存しません。
-Immobileはアプリの安定化設定に委ね、Is Animatedは出力時の姿勢を基準とします。
+Is Animatedは出力時の姿勢を基準とします。
 PolarのZ角度はUniVRMの対応範囲0〜90度に制限します。
 角度制限もソルバーの差を含む近似です。変換結果の「詳細を見る」で各警告を確認できます。
 
