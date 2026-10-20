@@ -57,10 +57,11 @@
 - 埋まった枠は、描画で顔を見分けられる 29 体で 53 → 56、40 体全体で 66 → 69。新しく埋まったのは同じ系統の 3 体の喜だけで、描画すると 3 体とも目が笑い口角が上がっていた。
 - 哀と怒の規則を入れる前の版では、確かめる側で哀が 1 枠埋まり、描画では哀に見えなかった。今の規則ではこの枠は埋まらない。
 
-EditMode テストは 169 件すべて通った。最初の版はホストの挙動テストが `VrChatExpressionBaker.cs` をコンパイルしないため、Unity で `double` から `float` への変換エラーが出ていた（4a83ef4 で直した）。
+EditMode テストは 169 件すべて通った。統合ブランチを取り込んだ後も、表情ボード・表情の候補・Renderer の探索のテストを足した 246 件がすべて通った。最初の版はホストの挙動テストが `VrChatExpressionBaker.cs` をコンパイルしないため、Unity で `double` から `float` への変換エラーが出ていた（4a83ef4 で直した）。
 
 ## テスト
 
 - `ExpressionNameInferenceTests`: 表の読み込みと代表の名前、名前のそろえ方、2 部位がそろわないと決めないこと、哀と怒は顔全体の名前でしか決めないこと、表やBlendShapeが空なら何もしないこと、何も言っていない項目名だけを読むこと、先の段で埋まった枠を置き換えないこと、そろった部位の多い表情が勝つこと。
 - `MenuExpressionFixture`・`ExportFallbackConfirmationTests`: 結果一覧の行の書式。
 - Unity を使わないホストの挙動テスト（`Tools/run-behavior-tests.ps1`）にも `ExpressionShapeNames.cs` を足した。
+- `Tools/test-package.py`: 表は実行時に TextAsset として読むので、配布パッケージに `Editor/ExpressionShapeNames.json` とその `.meta` が入っていることを確かめる。最初の版は `Tools/build-package.py` の許可リストに無く、パッケージから漏れていた。
