@@ -22,6 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
         const string OldGenerated = "__VRVlog_Menu_old";
         const string Renamed = "Face renamed";
         const string Missing = "Mouth missing";
+        const string Stripped = "Mouth stripped";
 
         static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
@@ -335,6 +336,50 @@ namespace VRVlog.LilToonExporter.Tests
                 bool Warned(string message) => warnings.Contains(message) || warnings.Contains(ExporterLocalization.T(message));
                 Assert.That(Warned(VrmExpressionBindings.UnexportedVisemeMeshWarning), Is.False, log);
                 Assert.That(Warned(VrmExpressionBindings.UnboundVisemeWarning), Is.EqualTo(missing), log);
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
+        // A pass strips one Lip Sync shape from the face but keeps its
+        // renderer. The other mouth shapes stay on that renderer and only the
+        // stripped one is left out; the Lip Sync mesh is still exported.
+        [Test]
+        public async Task LenientExportKeepsTheOtherMouthShapesWhenAPassStripsOne()
+        {
+            var installed = RequireInstalled();
+            var mouths = new[] { "Mouth a", "Mouth e", "Mouth i", "Mouth o", Stripped };
+            using var scene = new Scene("strip", installed.Descriptor, installed.Proxy, mouths);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report, VrChatVisemeExport.Read(scene.Fixture.Source));
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                var log = string.Join("\n", warnings);
+                var face = PathOf(imported, "Front");
+                var expression = imported.Vrm.Expression;
+                var bound = new[] { expression.Aa, expression.Ee, expression.Ih, expression.Oh, expression.Ou };
+                for (var index = 0; index < mouths.Length; index++)
+                {
+                    var binds = bound[index].MorphTargetBindings;
+                    if (mouths[index] == Stripped)
+                    {
+                        Assert.That(binds, Is.Null.Or.Empty, log);
+                        continue;
+                    }
+                    Assert.That(binds.Length, Is.EqualTo(1), mouths[index] + "\n" + log);
+                    Assert.That(binds[0].RelativePath, Is.EqualTo(face), mouths[index] + "\n" + log);
+                    var mesh = imported.transform.Find(face).GetComponent<SkinnedMeshRenderer>().sharedMesh;
+                    Assert.That(mesh.GetBlendShapeName(binds[0].Index), Is.EqualTo(mouths[index]), log);
+                    AssertShape(imported, binds[0], 1, mouths[index] + " must open the mouth");
+                }
+                bool Warned(string message) => warnings.Contains(message) || warnings.Contains(ExporterLocalization.T(message));
+                Assert.That(Warned(VrmExpressionBindings.UnexportedVisemeMeshWarning), Is.False, log);
             }
             finally
             {

@@ -496,9 +496,13 @@ namespace VRVlog.LilToonExporter
                         // A Lip Sync mesh that cannot be followed is treated as not exported.
                         // Only names the mesh had before the build passes are followed,
                         // so one stale Lip Sync name does not lose the other mouth
-                        // shapes, and a renderer a pass merged away is still followed.
+                        // shapes. A renderer that survived is checked against its
+                        // current mesh, so a shape a pass stripped is left out on its
+                        // own; one a pass destroyed or merged away is followed by the
+                        // names it had before.
                         capturedVisemes?.RebindPrepared(old => transformed.FollowShapes(old, capturedVisemes.Shapes.Values.Where(shape =>
-                            !string.IsNullOrEmpty(shape) && transformed.HadShape(old, shape))));
+                            !string.IsNullOrEmpty(shape) && transformed.HadShape(old, shape) &&
+                            (old == null || (old.sharedMesh != null && old.sharedMesh.GetBlendShapeIndex(shape) >= 0)))));
                         var unified = unifiedPreparation;
                         try
                         {
