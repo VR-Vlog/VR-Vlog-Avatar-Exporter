@@ -397,6 +397,75 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(happy); Object.DestroyImmediate(authored); Object.DestroyImmediate(settings); }
         }
 
+        // A clip named "1" that moves a happy eye and a smiling mouth, names
+        // listed in the shipped ExpressionShapeNames.json.
+        static AnimationClip UnnamedSmileClip()
+        {
+            var clip = new AnimationClip { name = "1" };
+            foreach (var shape in new[] { "eye_smile", "mouth_smile" })
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape." + shape), AnimationCurve.Constant(0, 1, 100));
+            return clip;
+        }
+
+        static Mesh SmileShapesMesh(AttachmentConnectionTests.Fixture fixture) =>
+            FrontMesh(fixture, Shape("eye_smile", BlinkDelta, 0), Shape("mouth_smile", OpenDelta, 1));
+
+        [Test]
+        public void UnnamedClipIsSuggestedByTheShapesItMoves()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = SmileShapesMesh(fixture);
+            var unnamed = UnnamedSmileClip();
+            try
+            {
+                Assert.That(ExpressionShapeNames.Shipped.Count, Is.GreaterThan(0));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var suggested = session.SuggestPresets(new[] { unnamed });
+                Assert.That(suggested.TryGetValue(ExpressionPreset.happy, out var happy), Is.True, "A happy eye and a smiling mouth say happy.");
+                Assert.That(happy.Clip, Is.SameAs(unnamed));
+                Assert.That(happy.Automatic, Is.True);
+                Assert.That(suggested.Keys.Intersect(new[] { ExpressionPreset.angry, ExpressionPreset.sad, ExpressionPreset.relaxed, ExpressionPreset.surprised }), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(unnamed); Object.DestroyImmediate(mesh); }
+        }
+
+        [Test]
+        public void EmotionNameWinsOverTheShapesAnUnnamedClipMoves()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = SmileShapesMesh(fixture);
+            var unnamed = UnnamedSmileClip();
+            var named = FaceClip(80); named.name = "Happy face";
+            try
+            {
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.SuggestPresets(new[] { unnamed, named })[ExpressionPreset.happy].Clip, Is.SameAs(named),
+                    "A clip whose name says happy fills happy before any guess from shapes.");
+            }
+            finally { Object.DestroyImmediate(unnamed); Object.DestroyImmediate(named); Object.DestroyImmediate(mesh); }
+        }
+
+        [Test]
+        public void AuthoredVrmPresetIsNotReplacedByAnUnnamedClip()
+        {
+            using var fixture = Fixture(smile: false);
+            var mesh = SmileShapesMesh(fixture);
+            var unnamed = UnnamedSmileClip();
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var authored = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                authored.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .5f) };
+                settings.Expression.Happy = authored;
+                fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.HasAuthoredPreset(ExpressionPreset.happy), Is.True);
+                Assert.That(session.SuggestPresets(new[] { unnamed }).ContainsKey(ExpressionPreset.happy), Is.False,
+                    "The avatar's own happy face is kept.");
+            }
+            finally { Object.DestroyImmediate(unnamed); Object.DestroyImmediate(authored); Object.DestroyImmediate(settings); Object.DestroyImmediate(mesh); }
+        }
+
         [Test]
         public void JapaneseBlendShapeNamesAreOfferedOnlyByHand()
         {
