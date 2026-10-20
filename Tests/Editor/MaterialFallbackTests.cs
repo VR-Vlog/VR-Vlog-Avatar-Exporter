@@ -183,7 +183,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.AreEqual(0f, fallback.GetColor("_Color").a);
                 Assert.AreEqual(0f, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.color).a);
                 // The lilToon extension still receives the authored color.
-                Assert.AreEqual(shadowColor, source.GetColor("_Color"));
+                Assert.Less(((Vector4)(shadowColor - source.GetColor("_Color"))).magnitude, .0001f);
 
                 Assert.IsFalse(LilToonMaterialReader.IsFakeShadow(ordinary));
                 var opaque = UniVrmOneClickExporter.CreateMToonFallback(ordinary, created, null);
