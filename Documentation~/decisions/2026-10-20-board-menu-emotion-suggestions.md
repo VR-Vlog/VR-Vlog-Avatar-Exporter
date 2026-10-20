@@ -13,11 +13,13 @@
 
 - アバターの VRChat Expressions Menu を `VrChatExpressionMenu.Read` で読み、Toggle と Button の項目ごとに、その項目が選ぶ FX のクリップを `MenuClipPaths` で求める。クリップ → メニューの経路（`A / B / C`）の対応で、同じクリップを選ぶ項目が複数あればメニューの順にすべて持つ。
   - 対象は、FX のレイヤー（サブステートマシンも再帰で読む）で `motion` が `AnimationClip` そのもののステート。そのステートへ入る遷移（Any State・ステートからの遷移・Entry の遷移・サブステートマシンからの遷移）が次をすべて満たすときだけ、項目とクリップを結ぶ。
-    1. 項目のパラメーターの条件があり、そのどれかは項目の値で真、パラメーターの既定値（Toggle を切った状態・Button を離した状態）で偽になる。既定値は Expression Parameters の `defaultValue`、無ければ 0。
-    2. 項目と親のサブメニューが決める値で偽になる条件が無い（`ExpressionDependencies.IsFalse`）。
+    1. 項目のパラメーターの条件があり、項目のパラメーターだけを既定値（Toggle を切った状態・Button を離した状態）に戻すと、そのどれかが偽になる。既定値は Expression Parameters の `defaultValue`、無ければ 0。
+    2. Expression Parameters の既定値に、項目と親のサブメニューが決める値を重ねた値で偽になる条件が無い（`ExpressionDependencies.IsFalse`）。`Face == 1 && Variant == 1` は、`Variant` の既定値が 0 で項目もサブメニューも `Variant` を 1 にしないなら結ばない。
+  - 1 つの項目が選ぶクリップが全レイヤーを通して 2 つ以上あるときは、その項目はどのクリップとも結ばない。`Face / Smile` が `Face = 1` にし、Eyes・Mouth・Brow の各レイヤーが `Face == 1` でそれぞれのクリップを出すアバターでは、どのクリップも顔の一部でしかないので、メニューの経路を持たせない。
   - 既定値でも真になる遷移（`Face < 2` のような、切っていても出る顔）は、その項目が決める顔ではないので結ばない。
   - 読めない・上限を超えるなど、途中で例外が出たときは対応なしとして扱い、画面は従来どおり開く。
-- `SuggestPresets` は、クリップ名で感情が決まらないクリップについて、そのクリップのメニューの経路を `MatchMenuPath` で読む。段（Tier）はかんたんと同じで、クリップ名で決まった候補と同じ並びに入る。
+  - 対応はセッションごとに 1 回だけ読む。元のアバターが変わるとセッション自体が使えなくなるので、作り直しは要らない。
+- `SuggestPresets` は、クリップ名が何も言っていない（`ExpressionNameInference.SaysNothing`）クリップについてだけ、そのクリップのメニューの経路を `MatchMenuPath` で読む。`Mouth_Smile`・`EyeSmile` のように部位の語で感情が打ち消された名前は、経路が `Face / Smile` でも感情を入れない。段（Tier）はかんたんと同じで、クリップ名で決まった候補と同じ並びに入る。
   - クリップ名で決まったものはメニューの経路より優先する。
   - 経路どうしで感情が食い違うとき（`Face / Smile` と `Favorite / Sad` が同じクリップを選ぶ）は、どれも使わない。同じ感情を指す経路が複数あるのはよい。
   - 動かす BlendShape の組み合わせから選ぶのは、クリップ名とすべてのメニューの経路が何も言っていないときだけにした。かんたんが「何も言っていないメニュー表情」だけを形から読むのに合わせた。
@@ -42,7 +44,7 @@
 
 次のメニュー表情は詳細の画面の候補（1 つのクリップ）にならないので、今回も初期値に入らない。こうしたアバターでは、かんたんのほうが喜怒哀楽を多く埋めることがある。
 
-- 複数のレイヤーを組み合わせて 1 つの顔になるもの
+- 複数のレイヤーを組み合わせて 1 つの顔になるもの（上の「1 つの項目が選ぶクリップが 2 つ以上」の規則で、部分のクリップにはメニューの経路を持たせない）
 - Blend Tree・サブステートマシンそのものへ入る遷移で出るもの
 - Radial Puppet など、連続調整の項目
 - BlendShape 以外（マテリアル・オブジェクトの表示など）も動かすクリップ（画面で「対応外」になる）
@@ -57,3 +59,7 @@
   - `TransitionFalseUnderTheItemValueDoesNotLink`
   - `TransitionAlsoTrueAtTheOffValueDoesNotLink`
   - `MenuPathsThatDisagreeGiveNoSuggestion`
+  - `FaceSplitOverLayersGivesNoMenuSuggestion`
+  - `ClipNamingAPartTakesNoEmotionFromItsMenuPath`
+  - `OtherParameterOffItsDefaultStopsTheLink`
+  - `BoolToggleLinksItsClip`

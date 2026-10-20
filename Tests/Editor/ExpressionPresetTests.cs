@@ -484,20 +484,48 @@ namespace VRVlog.LilToonExporter.Tests
             return controller;
         }
 
+        // One layer per clip, each entering its clip from Any State when all
+        // the given conditions hold. Parameters are added as Int, or Bool when
+        // a condition on them is If/IfNot.
+        static UnityEditor.Animations.AnimatorController LayeredController(params (AnimationClip Clip, (AnimatorConditionMode Mode, float Threshold, string Parameter)[] Conditions)[] faces)
+        {
+            var controller = new UnityEditor.Animations.AnimatorController();
+            foreach (var parameter in faces.SelectMany(face => face.Conditions).GroupBy(condition => condition.Parameter))
+                controller.AddParameter(parameter.Key, parameter.Any(condition => condition.Mode == AnimatorConditionMode.If || condition.Mode == AnimatorConditionMode.IfNot)
+                    ? AnimatorControllerParameterType.Bool : AnimatorControllerParameterType.Int);
+            var layers = new List<UnityEditor.Animations.AnimatorControllerLayer>();
+            foreach (var face in faces)
+            {
+                var machine = new UnityEditor.Animations.AnimatorStateMachine();
+                machine.defaultState = machine.AddState("Idle");
+                var state = machine.AddState(face.Clip.name); state.motion = face.Clip;
+                var transition = machine.AddAnyStateTransition(state);
+                foreach (var condition in face.Conditions) transition.AddCondition(condition.Mode, condition.Threshold, condition.Parameter);
+                layers.Add(new UnityEditor.Animations.AnimatorControllerLayer { name = face.Clip.name, defaultWeight = 1, stateMachine = machine });
+            }
+            controller.layers = layers.ToArray();
+            return controller;
+        }
+
         static void DestroyController(UnityEditor.Animations.AnimatorController controller)
         {
             foreach (var layer in controller.layers)
             {
-                foreach (var child in layer.stateMachine.states) Object.DestroyImmediate(child.state);
+                foreach (var transition in layer.stateMachine.anyStateTransitions) Object.DestroyImmediate(transition);
+                foreach (var child in layer.stateMachine.states)
+                {
+                    foreach (var transition in child.state.transitions) Object.DestroyImmediate(transition);
+                    Object.DestroyImmediate(child.state);
+                }
                 Object.DestroyImmediate(layer.stateMachine);
             }
             Object.DestroyImmediate(controller);
         }
 
-        static VrChatExpressionMenu.Entry MenuItem(string path, float value, string type = "Toggle")
+        static VrChatExpressionMenu.Entry MenuItem(string path, float value, string type = "Toggle", string parameter = "Face")
         {
-            var entry = new VrChatExpressionMenu.Entry { Name = path, ControlType = type, ControlParameter = "Face" };
-            entry.Parameters["Face"] = value;
+            var entry = new VrChatExpressionMenu.Entry { Name = path, ControlType = type, ControlParameter = parameter };
+            entry.Parameters[parameter] = value;
             return entry;
         }
 
@@ -636,6 +664,75 @@ namespace VRVlog.LilToonExporter.Tests
                 var agreeing = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1), MenuItem("Favorite / Happy", 1) }, controller, FaceOff);
                 Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: agreeing)[ExpressionPreset.happy].Clip, Is.SameAs(clip),
                     "Items naming the same emotion agree.");
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
+        }
+
+        [Test]
+        public void FaceSplitOverLayersGivesNoMenuSuggestion()
+        {
+            using var fixture = Fixture(smile: false);
+            var eyes = FaceClip(80); eyes.name = "Layer 1";
+            var mouth = FaceClip(70); mouth.name = "Layer 2";
+            var controller = LayeredController((eyes, new[] { (AnimatorConditionMode.Equals, 1f, "Face") }), (mouth, new[] { (AnimatorConditionMode.Equals, 1f, "Face") }));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
+                Assert.That(paths, Is.Empty, "Each layer's clip is only part of the smile, so the item is linked to neither.");
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.SuggestPresets(new[] { eyes, mouth }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(eyes); Object.DestroyImmediate(mouth); DestroyController(controller); }
+        }
+
+        [Test]
+        public void ClipNamingAPartTakesNoEmotionFromItsMenuPath()
+        {
+            using var fixture = Fixture(smile: false);
+            var clip = FaceClip(80); clip.name = "Mouth_Smile";
+            var controller = FaceController((clip, AnimatorConditionMode.Equals, 1));
+            try
+            {
+                Assert.That(ExpressionNameInference.MatchEmotion(clip.name), Is.Null);
+                Assert.That(ExpressionNameInference.SaysNothing(clip.name), Is.False);
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller, FaceOff);
+                Assert.That(paths.Keys, Is.EquivalentTo(new[] { clip }));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.SuggestPresets(new[] { clip }, menuPaths: paths).Keys.Intersect(Session.EmotionPresets), Is.Empty,
+                    "A clip named after a part of the face is not a whole emotion, whatever the item says.");
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
+        }
+
+        [Test]
+        public void OtherParameterOffItsDefaultStopsTheLink()
+        {
+            var clip = new AnimationClip { name = "Face 1" };
+            var controller = LayeredController((clip, new[] { (AnimatorConditionMode.Equals, 1f, "Face"), (AnimatorConditionMode.Equals, 1f, "Variant") }));
+            try
+            {
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller,
+                    new Dictionary<string, float> { ["Face"] = 0, ["Variant"] = 0 }), Is.Empty, "Variant is 0 by default, so Face==1 alone does not play the face.");
+                Assert.That(Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1) }, controller,
+                    new Dictionary<string, float> { ["Face"] = 0, ["Variant"] = 1 }).Keys, Is.EquivalentTo(new[] { clip }), "Variant is 1 by default.");
+                var underSubmenu = MenuItem("Variant / Smile", 1); underSubmenu.Parameters["Variant"] = 1;
+                Assert.That(Session.MenuClipPaths(new[] { underSubmenu }, controller,
+                    new Dictionary<string, float> { ["Face"] = 0, ["Variant"] = 0 }).Keys, Is.EquivalentTo(new[] { clip }), "The submenu sets Variant to 1.");
+            }
+            finally { Object.DestroyImmediate(clip); DestroyController(controller); }
+        }
+
+        [Test]
+        public void BoolToggleLinksItsClip()
+        {
+            var clip = new AnimationClip { name = "Face 1" };
+            var controller = LayeredController((clip, new[] { (AnimatorConditionMode.If, 0f, "Smile") }));
+            try
+            {
+                var paths = Session.MenuClipPaths(new[] { MenuItem("Face / Smile", 1, parameter: "Smile") }, controller,
+                    new Dictionary<string, float> { ["Smile"] = 0 });
+                Assert.That(paths.TryGetValue(clip, out var found), Is.True);
+                Assert.That(found, Is.EqualTo(new[] { "Face / Smile" }));
             }
             finally { Object.DestroyImmediate(clip); DestroyController(controller); }
         }

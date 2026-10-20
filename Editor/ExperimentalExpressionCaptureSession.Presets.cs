@@ -442,22 +442,26 @@ namespace VRVlog.LilToonExporter
         // and matching rules live in ExpressionNameInference.
         internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
+        Dictionary<AnimationClip, List<string>> sourceMenuPaths;
+
         // Per emotion, the best tier wins; within a tier added/registered clips
-        // come before BlendShapes, in the given order. A clip whose name names
-        // no emotion is read from the VRChat menu paths of the items that
-        // select it (MenuClipPaths), as the quick transfer reads its menu
-        // faces; paths naming different emotions give none. Emotions still
-        // open then take a clip whose name and menu paths say nothing ("1",
-        // "Face 3") by the shapes it moves, as the quick transfer reads a menu
-        // face: best supported first, then clip order. Unusable faces are skipped.
+        // come before BlendShapes, in the given order. A clip whose name says
+        // nothing (not "Mouth_Smile", which names a part) is read from the
+        // VRChat menu paths of the items that select it (MenuClipPaths), as
+        // the quick transfer reads its menu faces; paths naming different
+        // emotions give none. Emotions still open then take a clip whose name
+        // and menu paths say nothing ("1", "Face 3") by the shapes it moves,
+        // as the quick transfer reads a menu face: best supported first, then
+        // clip order. Unusable faces are skipped.
         // Mouth and blink candidates follow what the export would choose by
         // itself; gaze and neutral have none. blinkOptions is the blink setting
         // the export receives (null is automatic). menuPaths is
-        // MenuClipPaths(Source) when null.
+        // MenuClipPaths(Source) when null, read once per session: the session
+        // refuses to go on once Source changes.
         internal Dictionary<ExpressionPreset, PresetAssignment> SuggestPresets(IEnumerable<AnimationClip> clips, BlinkExportOptions blinkOptions = null,
             IReadOnlyDictionary<AnimationClip, List<string>> menuPaths = null)
         {
-            menuPaths = menuPaths ?? MenuClipPaths(Source);
+            menuPaths = menuPaths ?? (sourceMenuPaths = sourceMenuPaths ?? MenuClipPaths(Source));
             IEnumerable<string> PathsOf(AnimationClip clip) => menuPaths.TryGetValue(clip, out var paths) ? paths : Enumerable.Empty<string>();
             var candidates = new List<(ExpressionPreset Preset, int Tier, int Order, Func<ExpressionPreset, PresetAssignment> Create)>();
             var order = 0;
@@ -465,7 +469,7 @@ namespace VRVlog.LilToonExporter
             foreach (var clip in given)
             {
                 var match = ExpressionNameInference.MatchEmotion(clip.name); order++;
-                if (match == null)
+                if (match == null && ExpressionNameInference.SaysNothing(clip.name))
                 {
                     var byMenu = PathsOf(clip).Select(ExpressionNameInference.MatchMenuPath).Where(found => found != null).Select(found => found.Value).ToArray();
                     if (byMenu.Select(found => found.Preset).Distinct().Count() == 1) match = byMenu.OrderBy(found => found.Tier).First();

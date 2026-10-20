@@ -135,10 +135,13 @@ namespace VRVlog.LilToonExporter
 
         // A clip is linked to an item only when the item alone decides it: a
         // state playing the clip directly is entered by a transition (any
-        // state, state or entry) with a condition on the item's parameter that
-        // the item's value makes true and the parameter's default (off,
-        // released) makes false, and no condition the item's fixed values make
-        // false. Blend Trees and sub-machine destinations are not followed.
+        // state, state or entry) that no condition makes false under the menu
+        // defaults overlaid with the item's fixed values, and that some
+        // condition on the item's parameter makes false when only that
+        // parameter goes back to its default (off, released). An item that
+        // selects several clips (a face split over Eyes/Mouth/Brow layers) is
+        // linked to none: each clip is only part of the face. Blend Trees and
+        // sub-machine destinations are not followed.
         internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(IEnumerable<VrChatExpressionMenu.Entry> entries,
             RuntimeAnimatorController fx, IDictionary<string, float> defaults)
         {
@@ -171,17 +174,24 @@ namespace VRVlog.LilToonExporter
                 if (entry == null || entry.Error != null || entry.ControlType != "Toggle" && entry.ControlType != "Button" ||
                     string.IsNullOrEmpty(entry.ControlParameter) || !entry.Parameters.ContainsKey(entry.ControlParameter)) continue;
                 var parameter = entry.ControlParameter;
-                var off = new Dictionary<string, float>(StringComparer.Ordinal)
+                var on = new Dictionary<string, float>(StringComparer.Ordinal);
+                if (defaults != null) foreach (var pair in defaults) on[pair.Key] = pair.Value;
+                foreach (var pair in entry.Parameters) on[pair.Key] = pair.Value;
+                var off = new Dictionary<string, float>(on, StringComparer.Ordinal)
                     { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
+                var selected = new HashSet<AnimationClip>();
                 foreach (var link in links)
                 {
                     var own = link.Transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
                     // Off at the default: some condition on the parameter is false there.
-                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, entry.Parameters) ||
+                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, on) ||
                         !ExpressionDependencies.IsFalse(link.Transition, off)) continue;
-                    if (!result.TryGetValue(link.Clip, out var paths)) result.Add(link.Clip, paths = new List<string>());
-                    if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                    selected.Add(link.Clip);
                 }
+                if (selected.Count != 1) continue;
+                var clip = selected.Single();
+                if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
+                if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
             }
             return result;
         }
