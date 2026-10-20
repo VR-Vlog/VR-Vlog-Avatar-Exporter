@@ -27,7 +27,9 @@ namespace VRVlog.LilToonExporter
         ShaderSubstituted,
         // An animated expression whose loop ends on the neutral face. Apps that
         // only read the VRM expression show no change. Names are the expressions.
-        ExpressionEndsNeutral
+        ExpressionEndsNeutral,
+        // A material whose shader is missing from the project. Names are the materials.
+        MissingShader
     }
 
     // One line of the export result: what happened to which item, and why.
@@ -162,6 +164,7 @@ namespace VRVlog.LilToonExporter
         internal static Func<bool> IsBatchMode = () => Application.isBatchMode;
 
         internal const string ExpressionEndsNeutralText = "ループの最後が元の顔に戻る表情です。VR Vlogでは動きますが、ほかのアプリでは選んでも顔が変わりません";
+        internal const string MissingShaderReason = "シェーダーが見つからないため、元の見た目を再現できませんでした（Unity上でピンク色に表示されることがあります）";
 
         internal static string Failure(ExportFallbackKind kind)
         {
@@ -175,6 +178,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.MaterialApproximated: return "一部の材質を簡易表示にしました";
                 case ExportFallbackKind.ShaderSubstituted: return "非対応のシェーダーを公式lilToonで近似しました";
                 case ExportFallbackKind.ExpressionEndsNeutral: return ExpressionEndsNeutralText;
+                case ExportFallbackKind.MissingShader: return MissingShaderReason;
                 default: return "lilToonのマテリアルが見つかりませんでした";
             }
         }
@@ -191,6 +195,7 @@ namespace VRVlog.LilToonExporter
                 case ExportFallbackKind.MaterialApproximated: return "マテリアル";
                 case ExportFallbackKind.ShaderSubstituted: return "マテリアル";
                 case ExportFallbackKind.ExpressionEndsNeutral: return "表情";
+                case ExportFallbackKind.MissingShader: return "マテリアル";
                 default: return "マテリアル";
             }
         }

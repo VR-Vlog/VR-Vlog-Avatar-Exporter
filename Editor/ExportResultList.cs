@@ -69,6 +69,9 @@ namespace VRVlog.LilToonExporter
         internal readonly List<ExportResultGroup> Groups = new List<ExportResultGroup>();
         internal Dictionary<ExportOutcome, int> Summary = Order.ToDictionary(outcome => outcome, outcome => 0);
         internal int NoticeCount;
+        // Materials whose shader is missing from the project. The VRM is saved
+        // but does not look like the avatar, so the saved state warns.
+        internal int MissingShaderCount;
         internal string Destination = "";
         internal string FileName => string.IsNullOrEmpty(Destination) ? "" : System.IO.Path.GetFileName(Destination);
 
@@ -100,11 +103,16 @@ namespace VRVlog.LilToonExporter
         static string WithoutName(string reason, string name) =>
             !string.IsNullOrEmpty(name) && reason.StartsWith(name + ": ", StringComparison.Ordinal) ? reason.Substring(name.Length + 2) : reason;
 
+        // Number of materials the report lists as having a missing shader. 0 without a report.
+        internal static int MissingShaders(ExportFallbackReport report) =>
+            report?.Items.FirstOrDefault(item => item.Kind == ExportFallbackKind.MissingShader)?.Names.Count ?? 0;
+
         internal static ExportResultList Build(ExportFallbackReport report, IEnumerable<string> warnings, string destination = null)
         {
             var list = new ExportResultList { Destination = destination ?? "" };
             var entries = report?.Results ?? (IReadOnlyList<ExportResultEntry>)Array.Empty<ExportResultEntry>();
             if (report != null) list.Summary = report.Summary();
+            list.MissingShaderCount = MissingShaders(report);
             var known = new HashSet<string>();
             var rows = new List<ExportResultRow>();
             foreach (var entry in entries)

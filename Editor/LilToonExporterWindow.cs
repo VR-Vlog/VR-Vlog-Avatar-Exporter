@@ -10,6 +10,9 @@ namespace VRVlog.LilToonExporter
 {
     public sealed class LilToonExporterWindow : EditorWindow
     {
+        // The saved message when materials lost their shader. Also used by the expression board.
+        internal const string SavedWithMissingShadersFormat = "VRMを保存しましたが、シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください。";
+
         private GameObject avatar;
         private string author = "";
         private string outputPath = "";
@@ -230,7 +233,10 @@ namespace VRVlog.LilToonExporter
 
             if (!string.IsNullOrEmpty(lastSavedPath))
             {
-                EditorGUILayout.HelpBox(ExporterLocalization.T("VRMを保存しました。") + "\n" + System.IO.Path.GetFileName(lastSavedPath) + "\n" + lastSavedSummary, MessageType.Info);
+                // A material without its shader is saved but does not look like the avatar; the saved state says so.
+                var missingShaders = lastSavedResult?.MissingShaderCount ?? 0;
+                EditorGUILayout.HelpBox((missingShaders > 0 ? string.Format(ExporterLocalization.T(SavedWithMissingShadersFormat), missingShaders) : ExporterLocalization.T("VRMを保存しました。")) +
+                    "\n" + System.IO.Path.GetFileName(lastSavedPath) + "\n" + lastSavedSummary, missingShaders > 0 ? MessageType.Warning : MessageType.Info);
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     var sendSavedVrm = SavedVrmTransferMethod();
