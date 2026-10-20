@@ -535,7 +535,7 @@ namespace VRVlog.LilToonExporter.Tests
             var presets = Presets(Mouth(bytes, "Face", Visemes("Mouth.A1", "Mouth.E1", "Mouth.I1", "Mouth.O1", "Mouth.U1"), warnings));
             foreach (var (preset, index) in new[] { ("aa", 0L), ("ih", 1L), ("ou", 2L), ("ee", 3L), ("oh", 4L) })
                 Assert.That(Canonical(presets[preset]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(1, index)), "isBinary", false))), preset);
-            Assert.That(warnings, Does.Contain(string.Format(VrmExpressionBindings.VisemeFilledFormat, "aa")));
+            Assert.That(warnings, Does.Contain(string.Format(VrmExpressionBindings.VisemeFilledFormat, "aa", "Mouth.A1")));
         }
 
         [Test]
@@ -572,6 +572,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(1, 0)), "isBinary", false))), "Only the Lip Sync mesh is bound.");
             Assert.That(Presets(Mouth(bytes, "Merged", Visemes("Mouth.A1", "", "", "", ""))).ContainsKey("aa"), Is.False,
                 "With the Lip Sync mesh gone and two meshes having the shape, the known names decide.");
+            var faceWithout = Glb(null, null, nodes, Arr(Mesh("Mouth.A1"), Mesh("x")));
+            Assert.That(Presets(Mouth(faceWithout, "Face", Visemes("Mouth.A1", "", "", "", ""))).ContainsKey("aa"), Is.False,
+                "A Lip Sync mesh that lacks the shape is not replaced by another mesh that has it.");
 
             var merged = Glb(null, null, Arr(Obj("name", "Merged", "mesh", 0L)), Arr(Mesh("x", "Mouth.A1")));
             Assert.That(Canonical(Presets(Mouth(merged, "Face", Visemes("Mouth.A1", "", "", "", "")))["aa"]),

@@ -103,7 +103,7 @@ namespace VRVlog.LilToonExporter
                         { "morphTargetBinds", new List<object> { viseme } }, { "isBinary", false }
                     };
                     changed = true;
-                    Warn(warnings, string.Format(ExporterLocalization.T(VisemeFilledFormat), mapping.Preset));
+                    Warn(warnings, string.Format(ExporterLocalization.T(VisemeFilledFormat), mapping.Preset, visemeShapes[VisemeSlots[mapping.Preset]]));
                     continue;
                 }
                 var bindings = new List<object>();
@@ -155,7 +155,7 @@ namespace VRVlog.LilToonExporter
             return changed ? glb.Write() : bytes;
         }
 
-        internal const string VisemeFilledFormat = "{0}: VRChatのリップシンク設定からVRMの割り当てを追加しました。動作を確認してください。";
+        internal const string VisemeFilledFormat = "{0}: VRChatのリップシンク設定から自動で設定しました（{1}）。書き出したVRMで口の動きを確認してください。";
 
         // VRChat Lip Sync viseme slots (sil, PP, FF, TH, DD, kk, CH, SS, nn,
         // RR, aa, E, I, O, U) that name a VRM mouth preset.
@@ -164,9 +164,9 @@ namespace VRVlog.LilToonExporter
         };
 
         // The descriptor's Lip Sync shape for a mouth preset, bound on the node
-        // named like the Lip Sync mesh. When that node is missing, not unique or
-        // lacks the shape (an optimizer merged or renamed it), the one mesh that
-        // has the shape is used. Otherwise null, and the known names decide.
+        // named like the Lip Sync mesh. Only when no node has that name (an
+        // optimizer merged or renamed it) is the one mesh that has the shape
+        // used. Otherwise null, and the known names decide.
         private static Dictionary<string, object> VisemeBinding(List<object> nodes, List<object> meshes, string renderer,
             IReadOnlyList<string> shapes, string preset)
         {
@@ -187,7 +187,7 @@ namespace VRVlog.LilToonExporter
             }
             var named = all.Where(item => renderer != null && nodes[item.Node] is Dictionary<string, object> node &&
                 node.TryGetValue("name", out var name) && string.Equals(name as string, renderer, StringComparison.Ordinal)).ToList();
-            var candidates = named.Count == 1 && Target(named[0].Names) >= 0 ? named : all.Where(item => Target(item.Names) != -1).ToList();
+            var candidates = (named.Count > 0 ? named : all).Where(item => Target(item.Names) != -1).ToList();
             if (candidates.Count != 1) return null;
             var (nodeIndex, _, mesh, names) = candidates[0];
             var target = Target(names);
@@ -197,13 +197,12 @@ namespace VRVlog.LilToonExporter
             foreach (var rawPrimitive in primitives)
             {
                 var targets = List(rawPrimitive as Dictionary<string, object>, "targets");
-                if (targets == null || target >= targets.Count)
-                    throw new InvalidOperationException("表情名とmorph targetの対応が不正です。");
+                if (targets == null || target >= targets.Count) return null;
             }
             return new Dictionary<string, object> { { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 } };
         }
 
-        internal const string FilledFormat ="{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
+        internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。動作を確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
         private static readonly string[] BindKeys = { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" };
