@@ -29,6 +29,24 @@ namespace VRVlog.LilToonExporter
                 main.b + (shade.b - main.b) * weight, 1f).gamma;
         }
 
+        // lilToon blends _Shadow2ndColor over the 1st shadow color by its alpha
+        // where the light falls below _Shadow2ndBorder. MToon has one shade
+        // band, so the 2nd color is weighted by the share of the 1st band it
+        // covers and folded into the shade color passed to ShadeColor. The
+        // blend runs in linear space like the shader; an unused 2nd shadow
+        // (alpha 0 or border 0) returns the 1st color unchanged.
+        internal static Color Shadow2ndShade(Color shadow, Color shadow2nd, float border, float border2nd)
+        {
+            var coverage = Mathf.Clamp01(Mathf.Clamp01(border2nd) / Math.Max(Mathf.Clamp01(border), 0.0001f));
+            var weight = Mathf.Clamp01(shadow2nd.a) * coverage;
+            if (!(weight > 0f)) return shadow;
+            var first = shadow.linear;
+            var second = shadow2nd.linear;
+            return new Color(first.r + (second.r - first.r) * weight,
+                first.g + (second.g - first.g) * weight,
+                first.b + (second.b - first.b) * weight, shadow.a).gamma;
+        }
+
         internal static float RimPower(float border, float fresnel)
         {
             // Standard MToon has no independent rim border/blur. Match the
