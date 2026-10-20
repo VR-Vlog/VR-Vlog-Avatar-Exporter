@@ -70,7 +70,7 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 2. Select **VR Vlog → VRMを書き出す**.
 3. Assign the avatar's root object from the Hierarchy and select **書き出しを準備**.
 4. Every expression found on the avatar starts in **その他の表情**, which is exported as VRM custom expressions. Drag a face onto one of the five VRM expression slots (happy, angry, sad, relaxed, surprised), or right-click it to move it. Move faces you do not want into **書き出さない**. Click a face to preview it. Drop more .anim files from Project onto **その他の表情**. Expressions are optional; model-only export is supported.
-5. Slots filled from names are marked **自動**; confirm them all with **自動の○件をすべて確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
+5. Slots filled from names are marked **自動**; confirm them all with **自動の候補○件を確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
 6. Add optional body poses, set the author and original license terms under **ライセンス設定**, then select **この割り当てでVRMを保存**.
 
 The author is a required VRM field. While it is empty or only spaces, **この割り当てでVRMを保存** stays disabled and the line under the field reads "VRMには作者名が必要です". The author used for a save is remembered per avatar in this PC's Unity Editor preferences and filled in the next time you choose the same avatar. For an avatar without a remembered author, the field keeps what you typed. Only the author name is stored, and nothing is written to the avatar, the project or the VRM. Avatars in an unsaved scene are not remembered.
