@@ -15,10 +15,14 @@ namespace VRVlog.LilToonExporter
         // with shapeNames, a candidate whose label says nothing can still fill
         // an emotion its face clearly shows. Each filled emotion is added to
         // filledEmotions with the message format that explains it.
+        // visemeRenderer and visemeShapes are the VRChat descriptor's Lip Sync
+        // mesh name and its 15 viseme shapes; they fill an empty mouth preset
+        // before the known names do.
         public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
             bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledEmotions = null,
             IReadOnlyDictionary<string, string> emotionCandidates = null,
-            IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null)
+            IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null,
+            string visemeRenderer = null, IReadOnlyList<string> visemeShapes = null)
         {
             var glb = GlbDocument.Read(bytes);
             var vrm = Object(Object(glb.Json, "extensions"), "VRMC_vrm");
@@ -91,6 +95,17 @@ namespace VRVlog.LilToonExporter
                 // An authored preset, including an intentionally empty one,
                 // always wins over inferred raw mesh names.
                 if (presets != null && presets.ContainsKey(mapping.Preset)) continue;
+                if (VisemeBinding(nodes, meshes, visemeRenderer, visemeShapes, mapping.Preset) is { } viseme)
+                {
+                    if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
+                    if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
+                    presets[mapping.Preset] = new Dictionary<string, object> {
+                        { "morphTargetBinds", new List<object> { viseme } }, { "isBinary", false }
+                    };
+                    changed = true;
+                    Warn(warnings, string.Format(ExporterLocalization.T(VisemeFilledFormat), mapping.Preset, visemeShapes[VisemeSlots[mapping.Preset]]));
+                    continue;
+                }
                 var bindings = new List<object>();
                 for (var nodeIndex = 0; nodeIndex < nodes.Count; nodeIndex++)
                 {
@@ -138,6 +153,53 @@ namespace VRVlog.LilToonExporter
                 !(presets.ContainsKey("blinkLeft") && presets.ContainsKey("blinkRight")))))
                 Warn(warnings, "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。");
             return changed ? glb.Write() : bytes;
+        }
+
+        internal const string VisemeFilledFormat = "{0}: VRChatのリップシンク設定から自動で設定しました（{1}）。書き出したVRMで口の動きを確認してください。";
+
+        // VRChat Lip Sync viseme slots (sil, PP, FF, TH, DD, kk, CH, SS, nn,
+        // RR, aa, E, I, O, U) that name a VRM mouth preset.
+        private static readonly Dictionary<string, int> VisemeSlots = new Dictionary<string, int> {
+            { "aa", 10 }, { "ee", 11 }, { "ih", 12 }, { "oh", 13 }, { "ou", 14 }
+        };
+
+        // The descriptor's Lip Sync shape for a mouth preset, bound on the node
+        // named like the Lip Sync mesh. Only when no node has that name (an
+        // optimizer merged or renamed it) is the one mesh that has the shape
+        // used. Otherwise null, and the known names decide.
+        private static Dictionary<string, object> VisemeBinding(List<object> nodes, List<object> meshes, string renderer,
+            IReadOnlyList<string> shapes, string preset)
+        {
+            if (shapes == null || !VisemeSlots.TryGetValue(preset, out var slot) || slot >= shapes.Count || string.IsNullOrEmpty(shapes[slot]))
+                return null;
+            var shape = shapes[slot];
+            var all = MeshTargetNames(nodes, meshes).ToList();
+            int Target(List<object> names)
+            {
+                var found = -1;
+                for (var i = 0; i < names.Count; i++)
+                {
+                    if (!string.Equals(names[i] as string, shape, StringComparison.Ordinal)) continue;
+                    if (found >= 0) return -2;
+                    found = i;
+                }
+                return found;
+            }
+            var named = all.Where(item => renderer != null && nodes[item.Node] is Dictionary<string, object> node &&
+                node.TryGetValue("name", out var name) && string.Equals(name as string, renderer, StringComparison.Ordinal)).ToList();
+            var candidates = (named.Count > 0 ? named : all).Where(item => Target(item.Names) != -1).ToList();
+            if (candidates.Count != 1) return null;
+            var (nodeIndex, _, mesh, names) = candidates[0];
+            var target = Target(names);
+            if (target < 0) return null;
+            var primitives = List(mesh, "primitives");
+            if (primitives == null || primitives.Count == 0) return null;
+            foreach (var rawPrimitive in primitives)
+            {
+                var targets = List(rawPrimitive as Dictionary<string, object>, "targets");
+                if (targets == null || target >= targets.Count) return null;
+            }
+            return new Dictionary<string, object> { { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 } };
         }
 
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";

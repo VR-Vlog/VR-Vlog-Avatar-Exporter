@@ -506,7 +506,7 @@ namespace VRVlog.LilToonExporter
 
         // VRChat Lip Sync blend shapes, read like the eyelid settings: only the
         // VisemeBlendShape mode on a renderer of this avatar.
-        static (SkinnedMeshRenderer Renderer, string[] Shapes) DescriptorVisemes(GameObject source)
+        internal static (SkinnedMeshRenderer Renderer, string[] Shapes) DescriptorVisemes(GameObject source)
         {
             var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
                 c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
