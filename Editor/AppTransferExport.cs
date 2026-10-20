@@ -16,6 +16,8 @@ namespace VRVlog.LilToonExporter
         private const string TermsFoldoutPreference = "VRVlog.AppTransfer.ShowVrmTerms";
         // The detailed transfer exports what the expression board shows; without it there is nothing to export.
         internal const string BoardClosed = "表情の割り当て画面が開いていません";
+        // The board's next step names what to fix, as it does before saving a file.
+        internal const string BoardNeedsFix = "表情の割り当てを直すと作れます";
         private string author = "";
         // The avatar's remembered export settings, the same ones the export
         // window shows and saves. Only the license is edited here.
@@ -81,31 +83,19 @@ namespace VRVlog.LilToonExporter
         public string DetailedProblem(GameObject avatar) =>
             ExperimentalExpressionCaptureWindow.ForTransfer(avatar) == null ? ExporterLocalization.T(BoardClosed) : null;
 
+        // True while the open board has something to fix before it exports.
+        public bool DetailedNeedsFix(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.BlocksExport ?? false;
+
         // Opens the expression board for this avatar in the transfer mode. False
         // when the board kept another avatar.
         public bool EditDetails(GameObject avatar) => ExperimentalExpressionCaptureWindow.OpenForTransfer(avatar);
 
-        // The VRM meta fields of the export window, under this window's own foldout.
+        // The VRM meta fields of the export window. The author is required and
+        // always shown; the license is optional and starts folded, like the export
+        // windows, and this window remembers whether it was opened.
         public void DrawTerms()
         {
             if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
-            // A required field that is still empty is never left folded away.
-            if (!HasAuthor()) showTerms = true;
-            var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
-            if (open != showTerms && HasAuthor())
-            {
-                showTerms = open;
-                EditorPrefs.SetBool(TermsFoldoutPreference, open);
-            }
-            if (!showTerms)
-            {
-                // Folded, the section still says what the VRM will carry.
-                var rect = EditorGUILayout.GetControlRect(false, 16f);
-                rect.xMin += 14f;
-                GUI.Label(rect, author.Trim() + " / " + AvatarLicenseSettingsUi.Summary(license), summaryStyle);
-                return;
-            }
-            EditorGUILayout.Space(4f);
             var previousLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 164f;
             try
@@ -115,6 +105,20 @@ namespace VRVlog.LilToonExporter
             finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
             // The line is always reserved so typing does not move the rows below.
             EditorGUILayout.LabelField(HasAuthor() ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
+            var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
+            if (open != showTerms)
+            {
+                showTerms = open;
+                EditorPrefs.SetBool(TermsFoldoutPreference, open);
+            }
+            if (!showTerms)
+            {
+                // Folded, the section still says what the VRM will carry.
+                var rect = EditorGUILayout.GetControlRect(false, 16f);
+                rect.xMin += 14f;
+                GUI.Label(rect, AvatarLicenseSettingsUi.Summary(license), summaryStyle);
+                return;
+            }
             AvatarLicenseSettingsUi.DrawFields(license);
         }
 

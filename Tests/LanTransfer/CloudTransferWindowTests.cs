@@ -57,8 +57,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 49)]
-        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 50)]
+        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 48)]
+        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 49)]
         public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string path, int priority)
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
@@ -113,7 +113,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(9));
+            Assert.That(members.Length, Is.EqualTo(10));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 

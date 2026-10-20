@@ -19,9 +19,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QuickMenuPath = "GameObject/VR Vlog/アプリに転送（かんたん）";
         internal const string DetailedMenuPath = "GameObject/VR Vlog/アプリに転送（通常）";
         // The Hierarchy context menu lists the GameObject entries of the creation block,
-        // which ends at priority 49. These values put the two entries next to each other at
-        // its end, the quick one first, above Properties.
-        internal const int QuickMenuPriority = 49, DetailedMenuPriority = 50;
+        // which ends at priority 49; an entry at 50 or above is left out of it. These values
+        // put the two entries next to each other at its end, the quick one first.
+        internal const int QuickMenuPriority = 48, DetailedMenuPriority = 49;
         private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
         // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
@@ -114,10 +114,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
             foreach (var open in Resources.FindObjectsOfTypeAll<AppTransferWindow>())
             {
                 if (!open.Transferring) continue;
-                // The same avatar keeps its transfer; only the window comes forward.
-                if (open.avatar == target || !ConfirmEndingTransfer()) { open.Focus(); return; }
+                // The same quick transfer keeps its QR; only the window comes forward. The board's
+                // "次へ" or a switch between quick and detailed leaves that QR out of date, so it asks.
+                var same = open.avatar == target;
+                if (same && !detailedExport && !open.detailed || !(same ? ConfirmRedoingTransfer() : ConfirmEndingTransfer())) { open.Focus(); return; }
             }
             var window = GetWindow<AppTransferWindow>(false);
+            // Back from the board to the same form, the name, consent and terms typed there stay.
+            if (target != null && window.avatar == target && window.detailed == detailedExport && (window.flow == null || window.flow.View == AppTransferView.Form))
+            {
+                window.Focus();
+                return;
+            }
             window.detailed = detailedExport;
             window.Select(target, true);
             window.minSize = FormMinimumSize;
@@ -129,6 +137,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Another avatar cancels the upload or the QR on screen, so it is asked first.
         private static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
             T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
+
+        private static bool ConfirmRedoingTransfer() => EditorUtility.DisplayDialog(T("QRを作り直す"),
+            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
 
         private static string T(string source) => ExporterLocalization.T(source);
         private Texture2D Icon => icon != null ? icon : icon = AppTransferIcon.Create();
@@ -162,6 +173,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Whether the expression board this window exports from is open and prepared.
         private bool BoardReady => !detailed || avatar == null || Exporter?.DetailedProblem(avatar) == null;
+        // The open board has an error its next step names, such as a face that does not work.
+        private bool BoardNeedsFix => detailed && avatar != null && BoardReady && (Exporter?.DetailedNeedsFix(avatar) ?? false);
 
         private void Select(GameObject target, bool opened)
         {
@@ -253,6 +266,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private string Reason()
         {
             if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
+            if (BoardNeedsFix) return AppTransferText.NeedsBoardFix;
             return AppTransferFlow.BlockReason(avatar != null, BoardReady, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
                 CloudVrmTransferWindow.PrivacyConsentAccepted);
         }
@@ -701,6 +715,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, string> RememberedName;
             internal Func<GameObject, bool, string> SettingsSummary;
             internal Func<GameObject, string> DetailedProblem;
+            internal Func<GameObject, bool> DetailedNeedsFix;
             internal Func<GameObject, bool> EditDetails;
             internal Func<GameObject, string, string, Action, string> ExportDetailed;
 
@@ -720,6 +735,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
                         SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),
                         DetailedProblem = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "DetailedProblem"),
+                        DetailedNeedsFix = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "DetailedNeedsFix"),
                         EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
                         ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
                     };

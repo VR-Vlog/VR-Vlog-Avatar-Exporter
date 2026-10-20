@@ -153,7 +153,7 @@ namespace VRVlog.LilToonExporter
                 // Retain the user's explicit files and settings; save rebuilds their records.
                 if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                     throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-                RebuildKeepingAssignments();
+                RebuildKeepingAssignments(session.ExcludedObjects.ToArray());
             }
             clipErrors.Clear();
             foreach (var pair in session.ClipErrors((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
@@ -169,14 +169,22 @@ namespace VRVlog.LilToonExporter
         }
 
         // A new preview of the same avatar that keeps the added files, the board,
-        // the poses, the blink choice and the object list still being edited.
-        void RebuildKeepingAssignments()
+        // the poses, the blink choice and the object list still being edited. With
+        // objects that leave no preview, the previous objects are left out again and
+        // the reason is returned; null when the preview has the objects asked for.
+        string RebuildKeepingAssignments(GameObject[] objects, GameObject[] previous = null)
         {
             var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
             var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var previousSaved = saved;
             var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
             var edits = excludedObjectEdits; var editError = excludedObjectError; var showEdits = showExcludedObjects;
-            Prepare();
+            string problem = null;
+            try { PrepareWith(objects); }
+            catch (Exception exception) when (previous != null && !(exception is OperationCanceledException))
+            {
+                problem = exception.Message;
+                PrepareWith(previous);
+            }
             excludedObjectEdits = edits; excludedObjectError = editError; showExcludedObjects = showEdits;
             clipInputs.AddRange(inputs);
             board.Excluded.Clear(); board.Excluded.UnionWith(excluded);
@@ -185,6 +193,7 @@ namespace VRVlog.LilToonExporter
             session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
             foreach (var pair in poses.Names) session.PoseOptions.Names.Add(pair.Key, pair.Value);
             configuredBlink = blink; saved = previousSaved;
+            return problem;
         }
 
         void OnGUI()
@@ -262,14 +271,28 @@ namespace VRVlog.LilToonExporter
             else if (!string.IsNullOrEmpty(status)) EditorGUILayout.LabelField(status, EditorStyles.wordWrappedMiniLabel);
         }
 
+        // The objects left out follow the avatar's saved export settings. When the
+        // preview cannot be built without them, it opens with every object and the
+        // saved list waits in the object list with the reason, to be fixed here.
         void Prepare()
+        {
+            var stored = ExportSettingsStore.Load(source).Exclusions();
+            try { PrepareWith(stored); }
+            catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
+            {
+                PrepareWith(Array.Empty<GameObject>());
+                excludedObjectEdits = stored.ToList(); excludedObjectError = exception.Message; showExcludedObjects = true;
+            }
+        }
+
+        void PrepareWith(GameObject[] objects)
         {
             Cleanup();
             try
             {
-                // The objects and gimmicks left out follow the avatar's saved export settings.
+                // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
-                session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, stored.Exclusions(), stored.Gimmicks());
+                session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips), target.HasAuthoredPreset);
                 recommendations = session.RecommendClips();
@@ -339,8 +362,11 @@ namespace VRVlog.LilToonExporter
         }
 
         // The transfer asks the author in the next window.
-        bool CanSave => (transferMode || ExportAuthor.IsValid(author)) && excludedObjectEdits == null && !presetErrors.Values.Any(value => value != null) &&
-            board != null && !board.ExceedsLimit && !board.HasDuplicateNames;
+        bool CanSave => (transferMode || ExportAuthor.IsValid(author)) && !BlocksExport;
+
+        // What the next step asks to fix before any export, to a file or to the app.
+        internal bool BlocksExport => excludedObjectEdits != null || presetErrors.Values.Any(value => value != null) ||
+            board == null || board.ExceedsLimit || board.HasDuplicateNames;
 
         // Exactly one next step, derived from the current state.
         string NextStep()
@@ -414,22 +440,25 @@ namespace VRVlog.LilToonExporter
             if (!string.IsNullOrEmpty(excludedObjectError)) EditorGUILayout.HelpBox(excludedObjectError, MessageType.Error);
         }
 
-        // Checks the edited list like the export does, saves it to the avatar's
-        // settings and rebuilds the preview without them.
+        // Checks the edited list like the export does, rebuilds the preview without
+        // them and saves them to the avatar's settings. A list that leaves no preview
+        // stays unsaved and on screen with the reason; the previous preview comes back.
         void ApplyExcludedObjects()
         {
             if (excludedObjectEdits == null || session == null) return;
             var objects = excludedObjectEdits.Where(item => item != null).Distinct().ToArray();
             try { new ExportObjectExclusions(source, objects).Dispose(); }
             catch (InvalidOperationException exception) { excludedObjectError = ExporterLocalization.T(exception.Message); return; }
+            var edits = excludedObjectEdits;
+            excludedObjectEdits = null; excludedObjectError = null;
+            var problem = RebuildKeepingAssignments(objects, session.ExcludedObjects.ToArray());
+            // The rebuilt copy can change which faces work; check them on the next update.
+            candidateValidationPending = true;
+            if (problem != null) { excludedObjectEdits = edits; excludedObjectError = problem; return; }
             var settings = ExportSettingsStore.Load(source);
             settings.ExcludedObjects.Clear();
             settings.ExcludedObjects.AddRange(objects);
             ExportSettingsStore.Save(source, settings);
-            excludedObjectEdits = null; excludedObjectError = null;
-            RebuildKeepingAssignments();
-            // The rebuilt copy can change which faces work; check them on the next update.
-            candidateValidationPending = true;
         }
 
         void DrawNextStep()
@@ -1157,6 +1186,7 @@ namespace VRVlog.LilToonExporter
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
+            if (BlocksExport) return ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T(ExportAuthor.Required);
             var recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), true, saved);
             return recovery == null ? null : recovery.Failure?.Message ?? "";

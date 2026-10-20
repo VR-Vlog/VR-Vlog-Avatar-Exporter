@@ -30,6 +30,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string CreateHint = "スマホのカメラでQRを読み取るとVR Vlogが開いて取り込みが始まります";
         internal const string NeedsAvatar = "アバターを指定すると作れます";
         internal const string NeedsBoard = "表情の割り当て画面が開いていません";
+        internal const string NeedsBoardFix = "表情の割り当てを直すと作れます";
         internal const string NeedsName = "名前を入れると作れます";
         internal const string NeedsShorterName = "名前を短くすると作れます";
         internal const string NeedsAuthor = "作者名を入れると作れます";
