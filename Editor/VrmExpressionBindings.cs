@@ -11,9 +11,14 @@ namespace VRVlog.LilToonExporter
         // emotionCandidates maps each custom expression this export registered
         // (by its final VRM name) to the text emotion inference reads for it,
         // such as its menu path; only those may fill an empty emotion.
+        // emotionShapes lists the original BlendShapes each candidate moves;
+        // with shapeNames, a candidate whose label says nothing can still fill
+        // an emotion its face clearly shows. Each filled emotion is added to
+        // filledEmotions with the message format that explains it.
         public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
-            bool inferEmotions = false, ICollection<(string Preset, string Source)> filledEmotions = null,
-            IReadOnlyDictionary<string, string> emotionCandidates = null)
+            bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledEmotions = null,
+            IReadOnlyDictionary<string, string> emotionCandidates = null,
+            IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null)
         {
             var glb = GlbDocument.Read(bytes);
             var vrm = Object(Object(glb.Json, "extensions"), "VRMC_vrm");
@@ -124,7 +129,7 @@ namespace VRVlog.LilToonExporter
                 changed = true;
                 Warn(warnings, $"{mapping.Preset}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。");
             }
-            if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates))
+            if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates, emotionShapes, shapeNames))
             {
                 changed = true;
                 presets = Object(Object(vrm, "expressions"), "preset");
@@ -136,15 +141,18 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。動作を確認してください。";
+        internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。動作を確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
         private static readonly string[] BindKeys = { "morphTargetBinds", "materialColorBinds", "textureTransformBinds" };
         private static readonly string[] OverrideKeys = { "overrideBlink", "overrideLookAt", "overrideMouth" };
 
         // Fill only empty emotion presets. Whole VRChat menu faces come first;
-        // then a raw BlendShape whose Latin name names one whole emotion.
+        // then a raw BlendShape whose Latin name names one whole emotion; last,
+        // a menu face whose label says nothing, by the shapes it moves.
         // Authored presets that move anything are never changed.
         private static bool AddEmotions(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
-            ICollection<string> warnings, ICollection<(string Preset, string Source)> filled, IReadOnlyDictionary<string, string> candidates)
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyDictionary<string, string> candidates,
+            IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> shapes, ExpressionShapeNames shapeNames)
         {
             var expressions = Object(vrm, "expressions");
             var presets = Object(expressions, "preset");
@@ -152,15 +160,15 @@ namespace VRVlog.LilToonExporter
                 .Where(preset => IsEmpty(presets, preset.ToString())));
             if (open.Count == 0) return false;
             var changed = false;
-            void Fill(UniVRM10.ExpressionPreset preset, Dictionary<string, object> value, string source)
+            void Fill(UniVRM10.ExpressionPreset preset, Dictionary<string, object> value, string source, string format = FilledFormat)
             {
                 if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
                 if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
                 presets[preset.ToString()] = value;
                 open.Remove(preset);
                 changed = true;
-                Warn(warnings, string.Format(ExporterLocalization.T(FilledFormat), preset, source));
-                filled?.Add((preset.ToString(), source));
+                Warn(warnings, string.Format(ExporterLocalization.T(format), preset, source));
+                filled?.Add((preset.ToString(), source, format));
             }
 
             // Menu faces are whole faces the avatar author named, so Japanese
@@ -181,14 +189,7 @@ namespace VRVlog.LilToonExporter
                     if (match != null) menu.Add((match.Value.Preset, match.Value.Tier, order, pair.Key, value));
                 }
                 foreach (var candidate in menu.OrderBy(item => item.Tier).ThenBy(item => item.Order))
-                {
-                    if (!open.Contains(candidate.Preset)) continue;
-                    var copy = new Dictionary<string, object>();
-                    foreach (var key in BindKeys.Concat(OverrideKeys))
-                        if (candidate.Value.TryGetValue(key, out var value)) copy[key] = DeepCopy(value);
-                    copy["isBinary"] = false;
-                    Fill(candidate.Preset, copy, candidate.Name);
-                }
+                    if (open.Contains(candidate.Preset)) Fill(candidate.Preset, CopyFace(candidate.Value), candidate.Name);
             }
             if (open.Count == 0) return changed;
 
@@ -246,7 +247,34 @@ namespace VRVlog.LilToonExporter
                     break;
                 }
             }
+            if (open.Count == 0 || custom == null || candidates == null || shapes == null || shapeNames == null || shapeNames.Count == 0) return changed;
+
+            // Menu faces labeled "1" or "Face 3" say nothing by name. The
+            // shapes they move name the face parts; only a face whose parts
+            // agree on one emotion fills it, best supported first. A label
+            // that names an emotion, a part or a side is never overruled.
+            var byShape = new List<(UniVRM10.ExpressionPreset Preset, int Support, int Order, string Name, Dictionary<string, object> Value)>();
+            var shapeOrder = 0;
+            foreach (var pair in custom)
+            {
+                shapeOrder++;
+                if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
+                if (!shapes.TryGetValue(pair.Key, out var moved) || !ExpressionNameInference.SaysNothing(path ?? pair.Key)) continue;
+                var guess = shapeNames.Classify(moved);
+                if (guess != null && open.Contains(guess.Value.Preset)) byShape.Add((guess.Value.Preset, guess.Value.Support, shapeOrder, pair.Key, value));
+            }
+            foreach (var candidate in byShape.OrderByDescending(item => item.Support).ThenBy(item => item.Order))
+                if (open.Contains(candidate.Preset)) Fill(candidate.Preset, CopyFace(candidate.Value), candidate.Name, ShapeFilledFormat);
             return changed;
+        }
+
+        private static Dictionary<string, object> CopyFace(Dictionary<string, object> face)
+        {
+            var copy = new Dictionary<string, object>();
+            foreach (var key in BindKeys.Concat(OverrideKeys))
+                if (face.TryGetValue(key, out var value)) copy[key] = DeepCopy(value);
+            copy["isBinary"] = false;
+            return copy;
         }
 
         private static IEnumerable<(int Node, int Mesh, Dictionary<string, object> Value, List<object> Names)> MeshTargetNames(List<object> nodes, List<object> meshes)

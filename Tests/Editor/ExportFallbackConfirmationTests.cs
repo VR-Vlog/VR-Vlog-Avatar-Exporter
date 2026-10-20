@@ -144,7 +144,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void KeptItemsAreListedOnceWithoutAsking()
         {
             var recovery = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔") }, recovery);
+            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat) }, recovery);
             var warning = string.Format(VrmExpressionBindings.FilledFormat, "happy", "笑顔");
             Assert.That(ExportFallbackConfirmation.NeedsAnswer(recovery.Fallbacks, interactive: true), Is.False,
                 "Only kept output; nothing to decide before saving.");
