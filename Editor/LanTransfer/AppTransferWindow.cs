@@ -88,7 +88,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (selected == null) return;
             var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? ExportEntry.Resolve() : null;
             if (entry != null) entry.EditDetails(selected);
-            else Open(selected);
+            // Without the exporter the detailed window says why, under the item the user chose.
+            else OpenDetailed(selected);
         }
 
         [MenuItem(DetailedMenuPath, true)]

@@ -153,7 +153,12 @@ namespace VRVlog.LilToonExporter
                 // Retain the user's explicit files and settings; save rebuilds their records.
                 if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                     throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-                RebuildKeepingAssignments(session.ExcludedObjects.ToArray());
+                // An edit can leave the objects outside the avatar or make them hide
+                // every mesh; the preview then opens with every object and the list
+                // waits with the reason, as when the window opens.
+                var current = session.ExcludedObjects.ToArray();
+                var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
+                if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; showExcludedObjects = true; }
             }
             clipErrors.Clear();
             foreach (var pair in session.ClipErrors((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
