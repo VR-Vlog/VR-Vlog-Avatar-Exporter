@@ -122,7 +122,7 @@ namespace VRVlog.LilToonExporter
         {
             var values = new SourceValues(source);
             colorSkipped = false;
-            return LooksLikeLilToon(source) ? FromDerived(source, values) : FromGeneric(source, values, out colorSkipped);
+            return LooksLikeLilToon(source) || values.SavedLilToon(source) ? FromDerived(source, values) : FromGeneric(source, values, out colorSkipped);
         }
 
         internal static bool LooksLikeLilToon(Material material) =>
@@ -467,6 +467,12 @@ namespace VRVlog.LilToonExporter
             internal float Float(string name, float fallback) => TryFloat(name, out var value) ? value : fallback;
             internal bool TryVector(string name, out Vector4 value) => vectors.TryGetValue(name, out value);
             internal bool Keyword(string name) => keywords.Contains(name);
+
+            // A derived lilToon whose shader is missing still has lilToon's
+            // values in the saved data; its rendering mode is read from them.
+            internal bool SavedLilToon(Material material) =>
+                (material.shader == null || material.shader.name == MissingShader) &&
+                TryFloat("_lilToonVersion", out _) && TryFloat("_TransparentMode", out _);
 
             // A live shader tells whether the keyword exists; saved data only
             // lists keywords that were on, which is still the authored state.
