@@ -570,8 +570,10 @@ namespace VRVlog.LilToonExporter
                 steps.Next("presets");
                 PrepareProgress(ExporterLocalization.T("割り当てを決める"), .75f);
                 LoadPresetChoices();
+                PrepareProgress(ExporterLocalization.T("割り当てを決める"), 1);
             }
             catch { Cleanup(); throw; }
+            finally { if (!opening) EditorUtility.ClearProgressBar(); }
         }
 
         void DrawPreview()
