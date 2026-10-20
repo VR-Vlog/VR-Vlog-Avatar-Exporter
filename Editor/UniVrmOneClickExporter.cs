@@ -88,7 +88,7 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
-            bool inferEmotionPresets = true)
+            bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -117,7 +117,7 @@ namespace VRVlog.LilToonExporter
                     attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
                     return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                         suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard, inferEmotionPresets);
+                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes);
                 }, failure => report.Fallbacks.Clear());
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
@@ -352,7 +352,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets)
+            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -427,6 +427,9 @@ namespace VRVlog.LilToonExporter
                     target => exclusions.ContainsCopyTransform(clone, target)));
                 var recovery = recoveryOptions == null || recoveryOptions.Actions.Count == 0 ? null : new ExportRecoveryCopySession(source, clone, temporaryMaterials, recoveryOptions, recoveryReport, bakeOptions);
                 using var blink = guard.Watch(ExportStage.BlinkCapture, () => sourceBlink.ForClone(source, clone));
+                // Lip Sync captured before the caller removed the descriptor
+                // follows this copy and the optimizer the same way as blink.
+                var capturedVisemes = descriptorVisemes?.ForClone(source, clone);
                 using var gimmicks = guard.Watch(ExportStage.GimmickDetection, () => new ExportGimmickSession(source, clone, gimmickOptions, findings));
                 bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);
                 using var expressionBindings = new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding);
@@ -471,6 +474,7 @@ namespace VRVlog.LilToonExporter
                     if (!lenient)
                     {
                         guard.Watch(ExportStage.BlinkCapture, () => blink.RebindPrepared(transformed.PreparedRendererFor));
+                        capturedVisemes?.RebindPrepared(transformed.PreparedRendererFor);
                         unifiedPreparation?.RebindPrepared(transformed.PreparedRendererFor);
                         guard.Watch(ExportStage.BlinkCapture, () => blink.VerifyPreparedIdentity(clone));
                         unifiedPreparation?.VerifyIdentityAndDeformation();
@@ -489,6 +493,16 @@ namespace VRVlog.LilToonExporter
                             warnings?.Add(reason);
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "瞬き", "", reason);
                         }
+                        // A Lip Sync mesh that cannot be followed is treated as not exported.
+                        // Only names the mesh had before the build passes are followed,
+                        // so one stale Lip Sync name does not lose the other mouth
+                        // shapes. A renderer that survived is checked against its
+                        // current mesh, so a shape a pass stripped is left out on its
+                        // own; one a pass destroyed or merged away is followed by the
+                        // names it had before.
+                        capturedVisemes?.RebindPrepared(old => transformed.FollowShapes(old, capturedVisemes.Shapes.Values.Where(shape =>
+                            !string.IsNullOrEmpty(shape) && transformed.HadShape(old, shape) &&
+                            (old == null || (old.sharedMesh != null && old.sharedMesh.GetBlendShapeIndex(shape) >= 0)))));
                         var unified = unifiedPreparation;
                         try
                         {
@@ -557,7 +571,8 @@ namespace VRVlog.LilToonExporter
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
-                            .Concat(expression.DirectPoints.Values)));
+                            .Concat(expression.DirectPoints.Values)),
+                        keptMorphs: capturedVisemes?.Morphs(clone));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
@@ -571,6 +586,7 @@ namespace VRVlog.LilToonExporter
                     recovery?.Track(copiedMaterial, originalMaterial);
                 });
                 guard.Watch(ExportStage.BlinkCapture, () => blink.Remap(optimizerBindings));
+                capturedVisemes?.Remap(optimizerBindings);
                 // Direct references stay as captured; MenuBinding resolves them later.
                 guard.Step(ExportStage.Expressions, () => RemapMenuExpressions(expressions, optimizerBindings));
                 // Authoring passes may restore source material references. Reapply
@@ -647,6 +663,7 @@ namespace VRVlog.LilToonExporter
                 DisableEmptyMeshRenderers(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
+                VrmExpressionBindings.DescriptorVisemes visemes = null;
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -659,6 +676,8 @@ namespace VRVlog.LilToonExporter
                         guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));
                         guard.Watch(ExportStage.PoseCapture, () => poses.Bind(converter, model, storage));
                         optimizerBindings.Bind(converter, model, storage);
+                        int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
+                        visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
                     }, warnings: warnings);
                 recoveryReport.Stage = "出力検査";
                 recoveryReport.Phase = ExportPhase.Export;
@@ -678,12 +697,11 @@ namespace VRVlog.LilToonExporter
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
-                    var visemes = ExperimentalExpressionCaptureSession.DescriptorVisemes(source);
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
                         inferEmotions: inferEmotionPresets, filledEmotions: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
                         emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
-                        visemeRenderer: visemes.Renderer != null ? visemes.Renderer.name : null, visemeShapes: visemes.Shapes);
+                        descriptor: visemes);
                     RecordInferredEmotions(filled, recoveryReport);
                     return output;
                 }, () => exported);
@@ -1029,7 +1047,9 @@ namespace VRVlog.LilToonExporter
                 NormalTexture = normalEnabled ? Texture(source, "_BumpMap") : null,
                 NormalTextureScale = normalEnabled ? Float(source, "_BumpScale", 1f) : 0f,
                 EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionColor, suppressSharedTextureEmission),
-                EmissiveTexture = emissionEnabled ? Texture(source, "_EmissionMap") : null,
+                // MToon has no emission mask or main-color tint; bake them so a
+                // small mask does not light the whole mesh (lilToon 2.3.4).
+                EmissiveTexture = emissionEnabled ? EmissionMaskBaker.Create(source, textures) ?? Texture(source, "_EmissionMap") : null,
                 MatcapColorFactorSrgb = FallbackColor(source, MaterialColorType.matcapColor, suppressSharedTextureEmission),
                 MatcapTexture = matcapAdditive ? Texture(source, "_MatCapTex") : null,
                 // MToon has no directional backlight. When lilToon rim light is
@@ -1090,8 +1110,12 @@ namespace VRVlog.LilToonExporter
                             Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f)),
                         Float(source, "_ShadowStrength", 1f))
                     : Color(source, "_Color", UnityEngine.Color.white);
+                // lilToon 2.3.4 scales emission by lerp(1, invLighting, _EmissionFluorescence),
+                // and invLighting is 0 under normal light. MToon emission is not
+                // light-dependent, so use that lit-scene value: 1 - fluorescence.
                 case MaterialColorType.emissionColor: return EnabledOrTexture(source, "_UseEmission", "_EmissionMap") && !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission)
-                    ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f)) : UnityEngine.Color.black;
+                    ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f))
+                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return MatcapAdditive(source)
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f

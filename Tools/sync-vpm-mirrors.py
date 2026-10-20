@@ -262,7 +262,8 @@ def publisher_from_environment(environment=None):
             "Mirror publication requires the approved GitHub Actions repository context")
     event = environment.get("GITHUB_EVENT_NAME")
     ref = environment.get("GITHUB_REF")
-    allowed_ref = event == "workflow_dispatch" and ref == "refs/heads/main"
+    beta_tag = isinstance(ref, str) and bool(re.fullmatch(r"refs/tags/v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-beta\.(?:0|[1-9][0-9]*)", ref))
+    allowed_ref = event == "workflow_dispatch" and (ref == "refs/heads/main" or beta_tag)
     allowed_ref |= event == "release" and isinstance(ref, str) and bool(re.fullmatch(r"refs/tags/v[0-9A-Za-z][0-9A-Za-z.+-]*", ref))
     require(allowed_ref and environment.get("GITHUB_WORKFLOW_REF") ==
             f"{PUBLISHER_REPOSITORY}/{PUBLISHER_WORKFLOW}@{ref}", "Unexpected publication workflow or ref")

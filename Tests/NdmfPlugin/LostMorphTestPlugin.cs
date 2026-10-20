@@ -13,7 +13,8 @@ namespace VRVlog.LilToonExporter.Tests
     // like a generic mesh tool would. It acts only on avatars that carry a
     // child named Marker + mode, and removes that child. It does nothing until
     // a test sets Armed, so a project that only installs the package is safe.
-    //   strip  : rebuild "Front" without "Unused" and generated shapes
+    //   strip  : rebuild "Front" without "Unused", "Mouth stripped" and
+    //            generated shapes
     //   rename : rename "Front" and replace its SkinnedMeshRenderer
     //   merge  : append "Front" into "Back" and remove "Front"
     //   twin   : remove "Face blink" from "Front" and replace the
@@ -22,6 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
     {
         internal const string Marker = "__VRVlogLostMorphTest_";
         internal const string RenamedFront = "Face renamed";
+        internal const string StrippedMouth = "Mouth stripped";
         public static bool Armed;
 
         protected override void Configure()
@@ -41,7 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (front == null) throw new InvalidOperationException("The lost morph test needs a Front renderer.");
             switch (mode)
             {
-                case "strip": front.sharedMesh = Strip(front.sharedMesh, name => name == "Unused" || name.StartsWith("__VRVlog_", StringComparison.Ordinal)); break;
+                case "strip": front.sharedMesh = Strip(front.sharedMesh, name => name == "Unused" || name == StrippedMouth || name.StartsWith("__VRVlog_", StringComparison.Ordinal)); break;
                 case "rename": Replace(front, RenamedFront); break;
                 case "merge": Merge(front, Back(root)); break;
                 case "twin": front.sharedMesh = Strip(front.sharedMesh, name => name == "Face blink"); Replace(Back(root), null); break;

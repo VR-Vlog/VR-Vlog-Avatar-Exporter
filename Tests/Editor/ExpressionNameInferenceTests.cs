@@ -520,8 +520,15 @@ namespace VRVlog.LilToonExporter.Tests
         static string[] Visemes(string aa, string e, string i, string o, string u) =>
             new[] { "", "", "", "", "", "", "", "", "", "", aa, e, i, o, u };
 
-        static byte[] Mouth(byte[] bytes, string renderer, string[] visemes, List<string> warnings = null) =>
-            VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, visemeRenderer: renderer, visemeShapes: visemes);
+        // faceNode is the output node of the Lip Sync Face Mesh, -1 when it was
+        // not exported. Empty slots are left out, as VrChatVisemeExport.Read does.
+        static byte[] Mouth(byte[] bytes, int faceNode, string[] visemes, List<string> warnings = null)
+        {
+            var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = faceNode };
+            foreach (var (slot, preset) in VrmExpressionBindings.DescriptorVisemes.Slots)
+                if (!string.IsNullOrEmpty(visemes[slot])) descriptor.Shapes[preset] = visemes[slot];
+            return VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, descriptor: descriptor);
+        }
 
         [Test]
         public void DescriptorVisemesFillMouthWhenShapeNamesMatchNoKnownName()
@@ -532,10 +539,10 @@ namespace VRVlog.LilToonExporter.Tests
                 "These names match no known mouth name, so name inference alone leaves the lip-sync slots empty.");
 
             var warnings = new List<string>();
-            var presets = Presets(Mouth(bytes, "Face", Visemes("Mouth.A1", "Mouth.E1", "Mouth.I1", "Mouth.O1", "Mouth.U1"), warnings));
+            var presets = Presets(Mouth(bytes, 1, Visemes("Mouth.A1", "Mouth.E1", "Mouth.I1", "Mouth.O1", "Mouth.U1"), warnings));
             foreach (var (preset, index) in new[] { ("aa", 0L), ("ih", 1L), ("ou", 2L), ("ee", 3L), ("oh", 4L) })
                 Assert.That(Canonical(presets[preset]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(1, index)), "isBinary", false))), preset);
-            Assert.That(warnings, Does.Contain(string.Format(VrmExpressionBindings.VisemeFilledFormat, "aa", "Mouth.A1")));
+            Assert.That(warnings, Is.Empty, "The author's own Lip Sync shapes on the Face Mesh need no warning.");
         }
 
         [Test]
@@ -544,7 +551,7 @@ namespace VRVlog.LilToonExporter.Tests
             var authored = Obj("morphTargetBinds", Arr(Bind(0, 1)), "isBinary", false);
             var bytes = Glb(Obj("aa", Obj("morphTargetBinds", Arr(), "isBinary", false), "ee", authored), null,
                 Arr(Obj("name", "Face", "mesh", 0L)), Arr(Mesh("v_a", "v_e", "v_i")));
-            var presets = Presets(Mouth(bytes, "Face", Visemes("v_a", "v_e", "v_i", "", "")));
+            var presets = Presets(Mouth(bytes, 0, Visemes("v_a", "v_e", "v_i", "", "")));
             Assert.That(Canonical(presets["aa"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(), "isBinary", false))),
                 "An intentionally empty preset stays empty.");
             Assert.That(Canonical(presets["ee"]), Is.EqualTo(Canonical(authored)));
@@ -557,29 +564,31 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var bytes = Glb(null, null, Arr(Obj("name", "Face", "mesh", 0L)), Arr(Mesh("vrc.v_aa", "vrc.v_ih", "dup", "dup")));
             // aa names a shape the mesh lacks, ih is empty, oh appears twice on the mesh.
-            var presets = Presets(Mouth(bytes, "Face", Visemes("missing", "", "", "dup", "")));
+            var presets = Presets(Mouth(bytes, 0, Visemes("missing", "", "", "dup", "")));
             Assert.That(Canonical(presets["aa"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false))));
             Assert.That(Canonical(presets["ih"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1)), "isBinary", false))));
             Assert.That(presets.ContainsKey("oh"), Is.False);
         }
 
         [Test]
-        public void DescriptorVisemeBindsTheLipSyncMeshOrTheOneMeshThatHasTheShape()
+        public void DescriptorVisemeBindsOnlyTheLipSyncFaceMesh()
         {
             var nodes = Arr(Obj("name", "Body", "mesh", 0L), Obj("name", "Face", "mesh", 1L));
             var bytes = Glb(null, null, nodes, Arr(Mesh("x", "Mouth.A1"), Mesh("Mouth.A1")));
-            Assert.That(Canonical(Presets(Mouth(bytes, "Face", Visemes("Mouth.A1", "", "", "", "")))["aa"]),
+            Assert.That(Canonical(Presets(Mouth(bytes, 1, Visemes("Mouth.A1", "", "", "", "")))["aa"]),
                 Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(1, 0)), "isBinary", false))), "Only the Lip Sync mesh is bound.");
-            Assert.That(Presets(Mouth(bytes, "Merged", Visemes("Mouth.A1", "", "", "", ""))).ContainsKey("aa"), Is.False,
-                "With the Lip Sync mesh gone and two meshes having the shape, the known names decide.");
             var faceWithout = Glb(null, null, nodes, Arr(Mesh("Mouth.A1"), Mesh("x")));
-            Assert.That(Presets(Mouth(faceWithout, "Face", Visemes("Mouth.A1", "", "", "", ""))).ContainsKey("aa"), Is.False,
+            var warnings = new List<string>();
+            Assert.That(Presets(Mouth(faceWithout, 1, Visemes("Mouth.A1", "", "", "", ""), warnings)).ContainsKey("aa"), Is.False,
                 "A Lip Sync mesh that lacks the shape is not replaced by another mesh that has it.");
+            Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
 
+            // A Face Mesh missing from the output (an optimizer merged it away)
+            // binds nothing from the descriptor, even when one mesh has the shape.
             var merged = Glb(null, null, Arr(Obj("name", "Merged", "mesh", 0L)), Arr(Mesh("x", "Mouth.A1")));
-            Assert.That(Canonical(Presets(Mouth(merged, "Face", Visemes("Mouth.A1", "", "", "", "")))["aa"]),
-                Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1)), "isBinary", false))),
-                "When an optimizer merged the Lip Sync mesh, the one mesh with the shape is bound.");
+            warnings.Clear();
+            Assert.That(Presets(Mouth(merged, -1, Visemes("Mouth.A1", "", "", "", ""), warnings)).ContainsKey("aa"), Is.False);
+            Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnexportedVisemeMeshWarning));
         }
     }
 }

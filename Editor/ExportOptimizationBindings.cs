@@ -56,17 +56,19 @@ namespace VRVlog.LilToonExporter
 
         internal static ExportOptimizationBindings Capture(GameObject clone, VrmTrackingProfile trackingProfile = null,
             UnifiedExpressionPreparation preparation = null, object objectRegistry = null, NeutralShapeSnapshot neutral = null,
-            bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs = null)
+            bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs = null,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null)
         {
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             ExportRendererSelection.RequireActiveRoot(clone);
             if (EditorUtility.IsPersistent(clone)) throw new ArgumentException("An independent export copy is required.", nameof(clone));
-            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs);
+            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs);
         }
 
         ExportOptimizationBindings(GameObject clone, VrmTrackingProfile trackingProfile, UnifiedExpressionPreparation preparation,
             object objectRegistry, NeutralShapeSnapshot neutral, bool preservePreparedNeutral,
-            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs)
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs)
         {
             avatar = clone;
             this.objectRegistry = objectRegistry;
@@ -96,6 +98,10 @@ namespace VRVlog.LilToonExporter
                             if (Generated(name)) AddMorph(skin, name);
                         }
                 CaptureAuthored();
+                // Raw shapes the exporter binds after optimizing, such as the
+                // Lip Sync visemes of a copy whose descriptor was removed.
+                if (keptMorphs != null)
+                    foreach (var (skin, shape) in keptMorphs) AddMorph(skin, shape, requireUsableEndpoint: false);
                 if (trackingProfile != null) CaptureProfile(trackingProfile);
                 else
                 {
@@ -462,6 +468,16 @@ namespace VRVlog.LilToonExporter
             if (ReferenceEquals(renderer, null) || !morphs.TryGetValue((renderer.GetInstanceID(), shape), out var route))
                 throw new InvalidOperationException("最適化前の表情の参照がありません: " + shape);
             return (route.Renderer, route.Shape);
+        }
+
+        // For optional bindings: false when the shape was never declared.
+        internal bool TryMapMorph(SkinnedMeshRenderer renderer, string shape, out (SkinnedMeshRenderer Renderer, string Shape) mapped)
+        {
+            RequireApplied();
+            mapped = default;
+            if (ReferenceEquals(renderer, null) || !morphs.TryGetValue((renderer.GetInstanceID(), shape), out var route)) return false;
+            mapped = (route.Renderer, route.Shape);
+            return true;
         }
 
         internal void VerifyMaterialEvidence()
