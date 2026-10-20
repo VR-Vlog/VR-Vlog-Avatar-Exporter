@@ -180,7 +180,7 @@ namespace VRVlog.LilToonExporter
             if (pending == null && candidateValidationPending && session != null) pending = RefreshCandidateValidation;
             if (pending == null) { AdvanceIdle(); return; }
             var action = pending; pending = null;
-            try { action(); error = null; }
+            try { using (ExperimentalExpressionCaptureSession.Batch()) action(); error = null; }
             catch (OperationCanceledException) { status = ExporterLocalization.T("操作をキャンセルしました。"); }
             catch (Exception exception) { error = exception.Message; Debug.LogException(exception); }
             finally { EditorUtility.ClearProgressBar(); Repaint(); }
@@ -201,6 +201,7 @@ namespace VRVlog.LilToonExporter
         void AdvanceIdle()
         {
             if (session == null || preview == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            using var batch = ExperimentalExpressionCaptureSession.Batch();
             if (blinkFallbackStale)
             {
                 blinkFallbackStale = false;
@@ -478,6 +479,7 @@ namespace VRVlog.LilToonExporter
         void Prepare()
         {
             var stored = ExportSettingsStore.Load(source).Exclusions();
+            using var batch = ExperimentalExpressionCaptureSession.Batch();
             try { PrepareWith(stored); }
             catch (Exception exception) when (stored.Length > 0 && !(exception is OperationCanceledException))
             {

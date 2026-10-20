@@ -211,15 +211,35 @@ namespace VRVlog.LilToonExporter
 
         internal bool HasCurrentSource => !disposed && Source != null && ExportSourceFingerprint.Compute(Source) == sourceStamp;
 
-        void RequireValid()
+        // Hashing the whole source avatar and its meshes takes a long time on a
+        // real avatar, and preparing the board checks the session once per
+        // file and per slot. Inside one Batch nothing else in the editor runs,
+        // so the source cannot change: the hashes are checked once per batch.
+        // Export checks them again anyway, as it writes the file.
+        static int batchDepth, batchId;
+        int validatedBatch;
+        sealed class BatchScope : IDisposable
+        {
+            bool done;
+            public void Dispose() { if (!done) { done = true; batchDepth--; } }
+        }
+        internal static IDisposable Batch()
+        {
+            if (batchDepth++ == 0) batchId++;
+            return new BatchScope();
+        }
+
+        void RequireValid(bool always = false)
         {
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
-            if (Source == null || ExportSourceFingerprint.Compute(Source) != sourceStamp)
+            var hashed = !always && batchDepth > 0 && validatedBatch == batchId;
+            if (Source == null || !hashed && ExportSourceFingerprint.Compute(Source) != sourceStamp)
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
             foreach (var channel in Channels)
                 if (channel.Renderer == null || !channel.Renderer.enabled || !channel.Renderer.gameObject.activeInHierarchy ||
-                    channel.Renderer.sharedMesh != channel.Mesh || MeshStamp(channel.Mesh) != channel.MeshHash)
+                    channel.Renderer.sharedMesh != channel.Mesh || !hashed && MeshStamp(channel.Mesh) != channel.MeshHash)
                     throw new InvalidOperationException(ExporterLocalization.T("書き出し用メッシュが変更されました。「変更」からアバターを指定し直してください。"));
+            if (batchDepth > 0) validatedBatch = batchId;
         }
 
         internal void DiscoverCandidates()
@@ -417,6 +437,10 @@ namespace VRVlog.LilToonExporter
             for (var i = 0; i < Channels.Count; i++)
             {
                 if (Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) continue;
+                // Copying a face mesh with all its BlendShapes takes a long time,
+                // and the board checks every slot. When the face moves a vertex
+                // and every delta is finite, the copy below would say the same.
+                if (MovesVertices(AvatarBaseShape.ExpressionDeltas(Channels[i].Mesh, Baseline.Rows[i].Weights, pose.Rows[i].Weights, clamp))) return true;
                 var mesh = Object.Instantiate(Channels[i].Mesh);
                 try
                 {
@@ -428,6 +452,19 @@ namespace VRVlog.LilToonExporter
             }
             return false;
         }
+
+        static bool MovesVertices(AvatarBaseShape.Deltas delta)
+        {
+            var moves = false;
+            for (var vertex = 0; vertex < delta.Vertices.Length; vertex++)
+            {
+                if (!Finite(delta.Vertices[vertex]) || !Finite(delta.Normals[vertex]) || !Finite(delta.Tangents[vertex])) return false;
+                moves |= delta.Vertices[vertex].x != 0f || delta.Vertices[vertex].y != 0f || delta.Vertices[vertex].z != 0f;
+            }
+            return moves;
+        }
+
+        static bool Finite(Vector3 value) => Finite(value.x) && Finite(value.y) && Finite(value.z);
 
         internal string SaveSettings()
         {
@@ -484,7 +521,8 @@ namespace VRVlog.LilToonExporter
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
             IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false)
         {
-            RequireValid();
+            // The export always hashes the source again, even inside a batch.
+            RequireValid(always: true);
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
             var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
