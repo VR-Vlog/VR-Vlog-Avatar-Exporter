@@ -8,9 +8,9 @@ using PresetAssignment = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSes
 namespace VRVlog.LilToonExporter
 {
     // The expression board of the VRM export window. Every face that was
-    // found or added sits in exactly one place: one of the five emotion
-    // slots, the custom list (exported as VRM custom expressions) or the
-    // excluded list. Slots are the session's preset assignments; this class
+    // found or added sits in exactly one place: one of the assignable VRM
+    // preset slots (emotions, blink, mouth, gaze and neutral), the custom
+    // list (exported as VRM custom expressions) or the excluded list. Slots are the session's preset assignments; this class
     // only decides where a face goes and what the export receives.
     internal sealed class ExpressionBoard
     {
@@ -54,7 +54,11 @@ namespace VRVlog.LilToonExporter
             this.authored = authored ?? (_ => false);
         }
 
-        static IReadOnlyList<ExpressionPreset> Slots => ExperimentalExpressionCaptureSession.EmotionPresets;
+        static IReadOnlyList<ExpressionPreset> Slots => ExperimentalExpressionCaptureSession.AssignablePresets;
+
+        // A group of slots (for example the emotions), or every slot when null.
+        static IEnumerable<ExpressionPreset> SlotsIn(IEnumerable<ExpressionPreset> group) =>
+            group == null ? Slots : Slots.Where(group.Contains);
 
         // Files the user added come first, then the avatar's registered faces.
         internal void SetItems(IEnumerable<Item> added, IEnumerable<Item> found)
@@ -111,13 +115,14 @@ namespace VRVlog.LilToonExporter
 
         internal void ClearSlot(ExpressionPreset preset) => setPreset(preset, PresetAssignment.None(preset));
 
-        internal int AutomaticCount => Slots.Count(preset => SlotValue(preset) is PresetAssignment value && value.Automatic && !value.IsNone);
+        internal int AutomaticCount(IEnumerable<ExpressionPreset> group = null) =>
+            SlotsIn(group).Count(preset => SlotValue(preset) is PresetAssignment value && value.Automatic && !value.IsNone);
 
         // Automatic values become the user's own choices.
-        internal int ConfirmAutomatic()
+        internal int ConfirmAutomatic(IEnumerable<ExpressionPreset> group = null)
         {
             var count = 0;
-            foreach (var preset in Slots)
+            foreach (var preset in SlotsIn(group).ToArray())
             {
                 var value = SlotValue(preset);
                 if (value == null || !value.Automatic || value.IsNone) continue;
@@ -171,7 +176,7 @@ namespace VRVlog.LilToonExporter
         internal bool HasDuplicateNames => UsesRecordRoute && DuplicateNames().Length > 0;
 
         internal bool SlotFilled(ExpressionPreset preset) => SlotValue(preset) is PresetAssignment value && !value.IsNone || authored(preset);
-        internal int SlotCount => Slots.Count(SlotFilled);
+        internal int SlotCount(IEnumerable<ExpressionPreset> group = null) => SlotsIn(group).Count(SlotFilled);
         internal int OtherCount => ExportedCustom().Count;
         internal int ExcludedCount => Items.Count(item => Excluded.Contains(item.Clip) && PlaceOf(item.Clip).Kind == PlaceKind.Excluded);
         internal IEnumerable<Item> ItemsIn(PlaceKind kind) => Items.Where(item => PlaceOf(item.Clip).Kind == kind);

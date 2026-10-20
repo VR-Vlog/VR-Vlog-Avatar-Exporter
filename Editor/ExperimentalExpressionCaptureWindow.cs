@@ -77,7 +77,7 @@ namespace VRVlog.LilToonExporter
         internal string Author => author;
         internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
         internal bool TransferMode => transferMode;
-        internal int SlotCount => board?.SlotCount ?? 0;
+        internal int SlotCount => board?.SlotCount(ExperimentalExpressionCaptureSession.EmotionPresets) ?? 0;
         internal int ExcludedObjectCount => session?.ExcludedObjects.Count ?? 0;
 
         public static void Open()
@@ -299,7 +299,7 @@ namespace VRVlog.LilToonExporter
                 var stored = ExportSettingsStore.Load(source);
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
-                board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips), target.HasAuthoredPreset);
+                board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
                 recommendations = session.RecommendClips();
                 foreach (var item in session.ClipErrors(recommendations.Select(item => item.Clip))) clipErrors[item.Key] = item.Value;
                 preview = new PreviewRenderUtility();
@@ -377,13 +377,13 @@ namespace VRVlog.LilToonExporter
         string NextStep()
         {
             if (excludedObjectEdits != null) return ExporterLocalization.T("書き出さないオブジェクトをプレビューに反映する");
-            foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
+            foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
                 if (presetErrors.TryGetValue(preset, out var reason) && reason != null)
-                    return string.Format(ExporterLocalization.T("{0}の割り当てを直す"), ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
+                    return string.Format(ExporterLocalization.T("{0}の割り当てを直す"), ExperimentalExpressionCaptureSession.PresetFullLabel(preset));
             if (board.ExceedsLimit) return string.Format(ExporterLocalization.T("その他の表情から{0}件を書き出さないへ移す"), board.OverLimitBy);
             if (board.HasDuplicateNames) return DuplicateNamesText(ExporterLocalization.T("同じ名前の表情{0}組の片方を書き出さないへ移す"));
             if (board.Items.Count == 0) return ExporterLocalization.T("表情の.animを追加する");
-            if (board.AutomaticCount > 0) return string.Format(ExporterLocalization.T("名前で自動割り当てした{0}件を確認する"), board.AutomaticCount);
+            if (board.AutomaticCount(ExperimentalExpressionCaptureSession.EmotionPresets) > 0) return string.Format(ExporterLocalization.T("名前で自動割り当てした{0}件を確認する"), board.AutomaticCount(ExperimentalExpressionCaptureSession.EmotionPresets));
             if (transferMode) return ExporterLocalization.T("この割り当てで次の画面へ進む");
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T("作者名を入力する");
             return ExporterLocalization.T("この割り当てでVRMを保存する");
@@ -469,7 +469,7 @@ namespace VRVlog.LilToonExporter
         void DrawNextStep()
         {
             var row = GUILayoutUtility.GetRect(100, 24, GUILayout.ExpandWidth(true));
-            var automatic = board.AutomaticCount;
+            var automatic = board.AutomaticCount(ExperimentalExpressionCaptureSession.EmotionPresets);
             var buttonWidth = Mathf.Min(180, row.width * .32f);
             var buttonRect = new Rect(row.xMax - buttonWidth, row.y + 1, buttonWidth, 22);
             var prefix = ExporterLocalization.T("次にやること:");
@@ -490,7 +490,7 @@ namespace VRVlog.LilToonExporter
         void DrawSlots()
         {
             var caption = GUILayoutUtility.GetRect(100, 18, GUILayout.ExpandWidth(true));
-            GUI.Label(caption, Fit(string.Format(ExporterLocalization.T("VRMの表情 {0}/5・ドロップで入れ替え"), board.SlotCount), dimMini, caption.width), dimMini);
+            GUI.Label(caption, Fit(string.Format(ExporterLocalization.T("VRMの表情 {0}/5・ドロップで入れ替え"), board.SlotCount(ExperimentalExpressionCaptureSession.EmotionPresets)), dimMini, caption.width), dimMini);
             var row = GUILayoutUtility.GetRect(100, SlotHeader + SlotBody + SlotFooter, GUILayout.ExpandWidth(true));
             var presets = ExperimentalExpressionCaptureSession.EmotionPresets;
             var width = (row.width - Gap * (presets.Length - 1)) / presets.Length;
@@ -761,7 +761,7 @@ namespace VRVlog.LilToonExporter
         void ConfirmAutomatic()
         {
             RebuildBoard();
-            board.ConfirmAutomatic();
+            board.ConfirmAutomatic(ExperimentalExpressionCaptureSession.EmotionPresets);
             SaveChoices();
             RefreshPresetErrors();
         }
@@ -801,7 +801,7 @@ namespace VRVlog.LilToonExporter
             var saveRect = new Rect(bar.xMax - saveWidth, buttons, saveWidth, 28);
             var resetRect = new Rect(saveRect.x - 8 - resetWidth, buttons + 3, resetWidth, 22);
             var summaryRect = stacked ? new Rect(bar.x, bar.y + 5, bar.width, 20) : new Rect(bar.x, bar.y + 7, resetRect.x - 8 - bar.x, 28);
-            var summary = string.Format(ExporterLocalization.T("VRMの表情 {0}/5・その他の表情 {1}・書き出さない {2}"), board.SlotCount, board.OtherCount, board.ExcludedCount);
+            var summary = string.Format(ExporterLocalization.T("VRMの表情 {0}/5・その他の表情 {1}・書き出さない {2}"), board.SlotCount(ExperimentalExpressionCaptureSession.EmotionPresets), board.OtherCount, board.ExcludedCount);
             GUI.Label(summaryRect, new GUIContent(Fit(summary, dimText, summaryRect.width), summary), dimText);
             var reset = ExporterLocalization.T("割り当てをリセット");
             if (GUI.Button(resetRect, new GUIContent(Fit(reset, EditorStyles.miniButton, resetRect.width - 8), reset), EditorStyles.miniButton) &&
@@ -952,7 +952,9 @@ namespace VRVlog.LilToonExporter
             }
             using (new EditorGUILayout.HorizontalScope())
             {
-                automaticBlink = EditorGUILayout.Toggle(ExporterLocalization.T(configuredBlink?.Mode == BlinkExportMode.Manual ? "瞬き" : "瞬きを自動設定する"), automaticBlink);
+                var blinkOn = EditorGUILayout.Toggle(ExporterLocalization.T(configuredBlink?.Mode == BlinkExportMode.Manual ? "瞬き" : "瞬きを自動設定する"), automaticBlink);
+                // Blink candidates follow the blink setting the export receives.
+                if (blinkOn != automaticBlink) { automaticBlink = blinkOn; Queue(ApplyAutomaticPresets); }
                 if (GUILayout.Button(ExporterLocalization.T("確認・調整"), GUILayout.Width(100))) Queue(ShowBlinkConfiguration);
             }
             EditorGUILayout.Space(8);
@@ -1206,7 +1208,7 @@ namespace VRVlog.LilToonExporter
             RecordBoardClips();
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
-            var blink = automaticBlink ? configuredBlink?.Copy() : new BlinkExportOptions { Mode = BlinkExportMode.None };
+            var blink = ExportBlinkOptions();
             var expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
@@ -1280,9 +1282,12 @@ namespace VRVlog.LilToonExporter
             blinkConfiguration = BlinkConfigurationWindow.Show(source, options, selected => {
                 configuredBlink = selected.Mode == BlinkExportMode.Manual ? selected.Copy() : null;
                 automaticBlink = selected.Mode != BlinkExportMode.None;
-                Repaint();
+                Queue(ApplyAutomaticPresets);
             });
         }
+
+        // The blink setting the export receives (null is automatic).
+        BlinkExportOptions ExportBlinkOptions() => automaticBlink ? configuredBlink?.Copy() : new BlinkExportOptions { Mode = BlinkExportMode.None };
 
         internal static void AtomicWrite(string path, byte[] bytes)
         {

@@ -51,7 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var list = candidates.ToArray(); suggestedFrom.Add(list);
                     var result = new Dictionary<ExpressionPreset, Assignment>();
                     foreach (var clip in list)
-                        foreach (var preset in ExperimentalExpressionCaptureSession.EmotionPresets)
+                        foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
                             if (clip.name.StartsWith(preset.ToString()) && !result.ContainsKey(preset) && !authored.Contains(preset))
                             { var value = Assignment.ForClip(preset, clip); value.Automatic = true; result.Add(preset, value); }
                     return result;
@@ -142,7 +142,7 @@ namespace VRVlog.LilToonExporter.Tests
             board.ApplyAutomatic();
             Assert.That(presets[ExpressionPreset.happy].Clip, Is.SameAs(happy));
             Assert.That(presets[ExpressionPreset.happy].Automatic, Is.True);
-            Assert.That(board.AutomaticCount, Is.EqualTo(2));
+            Assert.That(board.AutomaticCount(), Is.EqualTo(2));
 
             // Moving the automatic face away leaves its slot explicitly empty.
             board.Move(happy, Place.Excluded);
@@ -168,7 +168,7 @@ namespace VRVlog.LilToonExporter.Tests
             var board = Board(null, new[] { Item(happy), Item(other) });
             board.ApplyAutomatic();
             Assert.That(board.ConfirmAutomatic(), Is.EqualTo(1));
-            Assert.That(board.AutomaticCount, Is.Zero);
+            Assert.That(board.AutomaticCount(), Is.Zero);
             Assert.That(presets[ExpressionPreset.happy].Automatic, Is.False);
             Assert.That(presets[ExpressionPreset.happy].Clip, Is.SameAs(happy));
 
@@ -191,7 +191,7 @@ namespace VRVlog.LilToonExporter.Tests
             board.Move(b, Place.Excluded);
             Assert.That(board.UsesRecordRoute, Is.True);
             Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { c }));
-            Assert.That(board.SlotCount, Is.EqualTo(1));
+            Assert.That(board.SlotCount(), Is.EqualTo(1));
             Assert.That(board.OtherCount, Is.EqualTo(1));
             Assert.That(board.ExcludedCount, Is.EqualTo(1));
 
@@ -207,7 +207,41 @@ namespace VRVlog.LilToonExporter.Tests
             board.ApplyAutomatic();
             Assert.That(presets.ContainsKey(ExpressionPreset.angry), Is.False);
             Assert.That(board.SlotFilled(ExpressionPreset.angry), Is.True);
-            Assert.That(board.SlotCount, Is.EqualTo(1));
+            Assert.That(board.SlotCount(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EveryAssignablePresetIsASlot()
+        {
+            Assert.That(ExperimentalExpressionCaptureSession.AssignablePresets.Length, Is.EqualTo(18));
+            var happy = Clip("happy one"); var blink = Clip("blink one"); var mouth = Clip("aa one"); var gaze = Clip("look");
+            var board = Board(null, new[] { Item(happy), Item(blink), Item(mouth), Item(gaze) });
+            board.ApplyAutomatic();
+            Assert.That(presets[ExpressionPreset.blink].Clip, Is.SameAs(blink));
+            Assert.That(presets[ExpressionPreset.aa].Clip, Is.SameAs(mouth));
+            Assert.That(board.AutomaticCount(), Is.EqualTo(3));
+            Assert.That(board.AutomaticCount(ExperimentalExpressionCaptureSession.EmotionPresets), Is.EqualTo(1));
+            Assert.That(board.AutomaticCount(ExperimentalExpressionCaptureSession.BlinkPresets), Is.EqualTo(1));
+
+            // Move between groups: a face leaves its slot explicitly empty.
+            Assert.That(board.Move(gaze, Place.Slot(ExpressionPreset.lookUp)), Is.True);
+            Assert.That(board.Move(mouth, Place.Slot(ExpressionPreset.neutral)), Is.True);
+            Assert.That(presets[ExpressionPreset.aa].IsNone, Is.True);
+            Assert.That(board.PlaceOf(mouth), Is.EqualTo(Place.Slot(ExpressionPreset.neutral)));
+            Assert.That(board.SlotCount(), Is.EqualTo(4));
+            Assert.That(board.SlotCount(ExperimentalExpressionCaptureSession.EmotionPresets), Is.EqualTo(1));
+            Assert.That(board.SlotCount(ExperimentalExpressionCaptureSession.LookAtPresets), Is.EqualTo(1));
+
+            // Confirming one group leaves the other groups automatic.
+            Assert.That(board.ConfirmAutomatic(ExperimentalExpressionCaptureSession.EmotionPresets), Is.EqualTo(1));
+            Assert.That(presets[ExpressionPreset.happy].Automatic, Is.False);
+            Assert.That(presets[ExpressionPreset.blink].Automatic, Is.True);
+            Assert.That(board.ConfirmAutomatic(), Is.EqualTo(1));
+            Assert.That(presets[ExpressionPreset.blink].Automatic, Is.False);
+
+            board.Reset();
+            Assert.That(presets.Keys, Is.EquivalentTo(new[] { ExpressionPreset.happy, ExpressionPreset.blink, ExpressionPreset.aa }));
+            Assert.That(presets.Values.All(value => value.Automatic), Is.True);
         }
 
         [Test]
