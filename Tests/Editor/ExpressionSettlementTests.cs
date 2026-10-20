@@ -349,16 +349,29 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A hand idle restarting itself does not change the face, so the
-        // face clip is still run to its last key.
-        [Test]
-        public void ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey()
+        // face clip is still run to its last key. An idle that also animates
+        // a controller parameter can change other layers, so it still counts.
+        [TestCase(false)] [TestCase(true)]
+        public void ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey(bool drivesParameter)
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
             var hand = Layer("Left Hand");
-            var idle = State(hand, "Idle", HandIdle("Hands idle")); hand.defaultState = idle;
+            var handIdle = HandIdle("Hands idle");
+            if (drivesParameter)
+            {
+                controller.AddParameter("Hand weight", AnimatorControllerParameterType.Float);
+                AnimationUtility.SetEditorCurve(handIdle, EditorCurveBinding.FloatCurve("", typeof(Animator), "Hand weight"), AnimationCurve.Constant(0, 1, 0));
+            }
+            var idle = State(hand, "Idle", handIdle); hand.defaultState = idle;
             Timed(idle, idle, .5f);
             Transition(idle, State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
             var messages = new List<string>();
+            if (drivesParameter)
+            {
+                var error = Assert.Catch<InvalidOperationException>(() => Sample(messages));
+                Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
+                return;
+            }
             Assert.That(Sample(messages), Is.EqualTo(100).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
         }

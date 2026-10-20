@@ -16,7 +16,7 @@
 
 1. Any State の遷移のうち、行き先が今のステートで Can Transition To Self がオフのものは、待つ遷移から外す。ステートの遷移（Any State 以外）は自分自身へ向けたものでも Unity が起こすので、そのまま待つ。
 2. 自己遷移は「待っていた exit time のあとで、時計が進めた時間の分だけ進んでいない」ときに見分ける。比べる値を「前の時計」から「前の時計 + 進めた秒数 ÷ ステートの長さ」に変えた。最後のキーまで進めたときの確認（`Final`）と同じ考え方。
-3. `Final` の確認は、そのレイヤーの今のクリップ（遷移中なら行き先のクリップも）が表情に関係するカーブ（`relevantCurve`。メニューの表情では表情のメッシュの BlendShape）を書くか、ステートに StateMachineBehaviour（Parameter Driver など）が付いているレイヤーにだけかける。進める前と後のどちらかで当てはまれば確認する。関係ないレイヤーがほかのステートへ移っても、そのステートが顔を書くなら外す。
+3. `Final` の確認は、そのレイヤーの今のクリップ（遷移中なら行き先のクリップも）が表情に関係するカーブ（`relevantCurve`。メニューの表情では表情のメッシュの BlendShape）を書くか、ステートに StateMachineBehaviour（Parameter Driver など）が付いているレイヤーにだけかける。進める前と後のどちらかで当てはまれば確認する。関係ないレイヤーがほかのステートへ移っても、そのステートが顔を書くなら外す。コントローラーのパラメーターを動かすクリップ（ほかのレイヤーの遷移の条件が変わりうる）と、引けなかったステートは、これまでどおり確認する。
 4. 繰り返しの上限を `hopLimit * 4 * 動いているレイヤーの数` にした。1 レイヤーあたりの遷移の回数の上限（64 回）は変えない。
 
 ## 入れなかったもの
@@ -37,7 +37,7 @@
 - `ExpressionSettlementTests` に次の 4 件を足し、修正前のコードで 4 件とも落ちる（1 は「時間遷移から確定しました」が付く、2 は「同じ状態へ戻る」が付かない、3 と 4 は「最後までたどれない」で外れる）ことと、修正後に通ることを確かめた。
   - `AnAnyStateEdgeThatCannotReachItsOwnStateIsNotFollowed`
   - `AZeroDurationSelfTransitionOfAJustEnteredStateIsReported`
-  - `ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey`
+  - `ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey`（待機アニメーションがパラメーターも動かす場合は、これまでどおり外れることも確かめる）
   - `TheStepLimitGrowsWithTheNumberOfLayers`（6 レイヤーがそれぞれ 60 回、別の時刻に遷移する）
 - 自分のステートで動くクリップを最初から再生し直す表情は、これまでどおり外れる（`AMovingClipWithASelfTransitionIsNotSaved`）。
 - EditMode の全件（3616 件）で 25 件が落ちた。内訳は、この PC に入っていない別パッケージの版に依存するもの（18 件）・テクスチャの縮小の精度（1 件）・起動時のメニュー（1 件）と、統合ブランチのままでも同じく落ちる `ExcludedLayerTests` の 6 件で、この変更で新しく落ちたものは無い。

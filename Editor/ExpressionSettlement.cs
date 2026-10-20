@@ -211,9 +211,13 @@ namespace VRVlog.LilToonExporter
             // or the loop start; leave the expression out as before.
             // A layer counts when its clips write a relevant curve or its state
             // runs callbacks; a restart elsewhere does not change the face.
+            // A clip that animates a controller parameter can change another
+            // layer's conditions, and a state we cannot resolve is unknown, so
+            // both count as before.
+            var parameterNames = new HashSet<string>(controller.parameters.Select(parameter => parameter.name), StringComparer.Ordinal);
             bool Matters(int layer)
             {
-                bool Callbacks(int hash) => Resolve(layer, hash).State?.behaviours?.Length > 0;
+                bool Callbacks(int hash) { var state = Resolve(layer, hash).State; return state == null || state.behaviours?.Length > 0; }
                 if (Callbacks(playable.GetCurrentAnimatorStateInfo(layer).fullPathHash)) return true;
                 var clips = playable.GetCurrentAnimatorClipInfo(layer).AsEnumerable();
                 if (playable.IsInTransition(layer))
@@ -222,7 +226,8 @@ namespace VRVlog.LilToonExporter
                     clips = clips.Concat(playable.GetNextAnimatorClipInfo(layer));
                 }
                 return clips.Select(value => value.clip).Where(clip => clip != null)
-                    .Any(clip => AnimationUtility.GetCurveBindings(clip).Any(binding => relevantCurve(layer, clip, binding)));
+                    .Any(clip => AnimationUtility.GetCurveBindings(clip).Any(binding => relevantCurve(layer, clip, binding) ||
+                        binding.type == typeof(Animator) && binding.path == "" && parameterNames.Contains(binding.propertyName)));
             }
             void Final(float seconds)
             {
