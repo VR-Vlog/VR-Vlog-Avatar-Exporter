@@ -98,9 +98,10 @@ namespace VRVlog.LilToonExporter
             var key = ExpressionPresetStore.KeyFor(avatar);
             Revision++;
             if (key == null) { Unsaved[avatar.GetInstanceID()] = settings.Copy(); return; }
-            // A file from another format version is left untouched.
-            var store = Read(out var foreign);
-            if (foreign) { WarnOnce(ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。")); return; }
+            // A file from another format version or one that cannot be read is
+            // left untouched, so other avatars' entries are never lost.
+            var store = Read(out var problem);
+            if (problem != null) { WarnOnce(problem); return; }
             store = store ?? new Store();
             var transferName = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key)?.TransferName;
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
@@ -134,8 +135,8 @@ namespace VRVlog.LilToonExporter
                 if (name == null) UnsavedNames.Remove(avatar.GetInstanceID()); else UnsavedNames[avatar.GetInstanceID()] = name;
                 return;
             }
-            var store = Read(out var foreign);
-            if (foreign) { WarnOnce(ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。")); return; }
+            var store = Read(out var problem);
+            if (problem != null) { WarnOnce(problem); return; }
             store = store ?? new Store();
             var entry = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key) ?? Capture(key, avatar, new ExportSettings());
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
@@ -217,8 +218,20 @@ namespace VRVlog.LilToonExporter
                 missing++;
                 return null;
             }
-            List<BlinkShapeBinding> Bindings(IEnumerable<Binding> values) => (values ?? Enumerable.Empty<Binding>()).Where(value => value != null)
-                .Select(value => new BlinkShapeBinding { Renderer = Inside<SkinnedMeshRenderer>(value.Renderer), Shape = value.Shape ?? "", Weight = Mathf.Clamp(value.Weight, 0f, 100f) }).ToList();
+            // A binding whose renderer is gone is dropped: it would fail the
+            // blink check and the export would then leave out all blinking.
+            List<BlinkShapeBinding> Bindings(IEnumerable<Binding> values)
+            {
+                var bindings = new List<BlinkShapeBinding>();
+                foreach (var value in values ?? Enumerable.Empty<Binding>())
+                {
+                    if (value == null) continue;
+                    var renderer = Inside<SkinnedMeshRenderer>(value.Renderer);
+                    if (renderer == null && !string.IsNullOrEmpty(value.Renderer)) continue;
+                    bindings.Add(new BlinkShapeBinding { Renderer = renderer, Shape = value.Shape ?? "", Weight = Mathf.Clamp(value.Weight, 0f, 100f) });
+                }
+                return bindings;
+            }
 
             var settings = new ExportSettings { AutoExcludeGimmicks = entry.AutoExcludeGimmicks };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
@@ -247,18 +260,31 @@ namespace VRVlog.LilToonExporter
             return settings;
         }
 
-        static Store Read(out bool foreign)
+        // problem is the warning to show instead of saving, when the file is
+        // there but from another format version or cannot be read.
+        static Store Read(out string problem)
         {
-            foreign = false;
+            problem = null;
+            var path = FilePath;
             try
             {
-                var path = FilePath;
-                if (!File.Exists(path) || new FileInfo(path).Length > 4 * 1024 * 1024) return null;
-                var store = JsonUtility.FromJson<Store>(File.ReadAllText(path));
-                if (store != null && store.Version != 1) { foreign = true; return null; }
-                return store != null && store.Avatars != null ? store : null;
+                if (!File.Exists(path)) return null;
+                if (new FileInfo(path).Length > 4 * 1024 * 1024) { problem = Unreadable(path); return null; }
+                var text = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(text)) return null;
+                var store = JsonUtility.FromJson<Store>(text);
+                if (store != null && store.Version != 1) { problem = ExporterLocalization.T("別の版の書き出し設定ファイルがあるため、書き出し設定を保存しませんでした。"); return null; }
+                if (store == null || store.Avatars == null) { problem = Unreadable(path); return null; }
+                return store;
             }
-            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is ArgumentException) { return null; }
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is ArgumentException)
+            {
+                problem = Unreadable(path);
+                return null;
+            }
         }
+
+        static string Unreadable(string path) =>
+            string.Format(ExporterLocalization.T("書き出し設定ファイルを読み込めないため、書き出し設定を保存しませんでした。ファイルを直すか削除すると、また保存できます: {0}"), path);
     }
 }
