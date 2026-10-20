@@ -103,9 +103,8 @@ namespace VRVlog.LilToonExporter
         static string WithoutName(string reason, string name) =>
             !string.IsNullOrEmpty(name) && reason.StartsWith(name + ": ", StringComparison.Ordinal) ? reason.Substring(name.Length + 2) : reason;
 
-        // Number of materials the report lists as having a missing shader. 0 without a report.
-        internal static int MissingShaders(ExportFallbackReport report) =>
-            report?.Items.FirstOrDefault(item => item.Kind == ExportFallbackKind.MissingShader)?.Names.Count ?? 0;
+        // Number of materials the report found with a missing shader. 0 without a report.
+        internal static int MissingShaders(ExportFallbackReport report) => report?.MissingShaderCount ?? 0;
 
         internal static ExportResultList Build(ExportFallbackReport report, IEnumerable<string> warnings, string destination = null)
         {

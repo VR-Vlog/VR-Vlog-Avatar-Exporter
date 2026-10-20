@@ -71,7 +71,10 @@ namespace VRVlog.LilToonExporter
         // Every kept/baked/approximated/omitted item, for the result list.
         internal IReadOnlyList<ExportResultEntry> Results => results;
         internal int Count => items.Count;
-        internal void Clear() { items.Clear(); results.Clear(); }
+        // Materials whose shader is missing, counted by material: two materials
+        // with the same name are one entry in Names but two here.
+        internal int MissingShaderCount;
+        internal void Clear() { items.Clear(); results.Clear(); MissingShaderCount = 0; }
 
         // Number of affected items per outcome. Outcomes without items are 0.
         internal Dictionary<ExportOutcome, int> Summary()

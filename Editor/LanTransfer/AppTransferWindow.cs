@@ -31,6 +31,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Above the QR once the export is saved, when materials lost their shader. Kept out of
         // AppTransferText: that list holds one-line texts without punctuation or requests.
         internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
+        // The height that warning adds to the QR screen: at the minimum width of 420 it wraps to 3 lines
+        // in every translation, plus the box's padding and its 8 bottom margin.
+        private const float MissingShadersHeight = 64f;
         // The layout and styles next to this script, found by their asset GUIDs.
         private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
 
@@ -349,6 +352,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 if (this == null || flow == null || attempt != exportAttempt) { AppTransferFlow.Discard(path); return; }
                 saved = true;
                 missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
+                // Grow for the warning now, while the upload is shown, so the QR never moves once it is on screen.
+                if (missingShaders > 0) FitTransferSize();
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
@@ -387,7 +392,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void FitTransferSize()
         {
             var side = SlotSide;
-            var height = HeaderHeight + side + TransferChrome;
+            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
             var screen = EditorGUIUtility.GetMainWindowPosition().height;
             if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
             var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);

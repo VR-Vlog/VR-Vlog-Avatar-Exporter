@@ -283,38 +283,47 @@ namespace VRVlog.LilToonExporter
             report.Fallbacks.Record(ExportOutcome.Kept, ExporterLocalization.T("非表示のアバター"), source.name, reason);
         }
 
-        internal const string MissingShaderWarningFormat = "シェーダーが見つからないマテリアルが{0}個あります。VRMは保存しますが、見た目を正しく再現できません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください: ";
+        internal const string MissingShaderWarningFormat = "シェーダーが見つからないマテリアルが{0}個あります。VRMは保存しましたが、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください。対象: ";
 
         const string MissingShaderName = "Hidden/InternalErrorShader";
 
         // Materials whose shader is missing from the project (Unity draws them
         // pink), each with the first renderer that uses it. Only renderers that
         // become glTF meshes count, as in UnsupportedShaderSubstitution. Empty
-        // slots are left to the check for unassigned materials.
-        internal static List<(Material Material, Renderer Renderer)> MissingShaderMaterials(GameObject source)
+        // slots are left to the check for unassigned materials. On the export
+        // copy, original maps a copied material back to the avatar's own, so
+        // copies of one material count once and keep its name.
+        internal static List<(Material Material, Renderer Renderer)> MissingShaderMaterials(GameObject root, Func<Material, Material> original = null)
         {
             var found = new List<(Material Material, Renderer Renderer)>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(source))
+            foreach (var renderer in ExportRendererSelection.Enumerate(root))
             {
                 var filter = renderer.GetComponent<MeshFilter>();
                 var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
                 if (!ExportRendererSelection.HasGeometry(mesh)) continue;
-                foreach (var material in renderer.sharedMaterials)
-                    if (material != null && (material.shader == null || material.shader.name == MissingShaderName) &&
-                        !found.Any(pair => pair.Material == material))
-                        found.Add((material, renderer));
+                foreach (var slot in renderer.sharedMaterials)
+                {
+                    if (slot == null || slot.shader != null && slot.shader.name != MissingShaderName) continue;
+                    var material = original?.Invoke(slot) ?? slot;
+                    if (!found.Any(pair => pair.Material == material)) found.Add((material, renderer));
+                }
             }
             return found;
         }
 
         // The export goes on, but the saved VRM will not look like the avatar:
         // one result line per material and one summary sentence at the top.
-        static void RecordMissingShaders(GameObject source, ICollection<string> warnings, ExportRecoveryReport report)
+        // Runs once per attempt on the export copy after exclusions and the
+        // build passes, before unsupported shaders are approximated, so only
+        // materials that become glTF materials count.
+        static void RecordMissingShaders(GameObject clone, ICollection<string> warnings, ExportRecoveryReport report)
         {
-            var missing = MissingShaderMaterials(source);
+            var missing = MissingShaderMaterials(clone, report.SourceMaterial);
+            // The one count every saved surface shows; names can repeat.
+            report.Fallbacks.MissingShaderCount = missing.Count;
             if (missing.Count == 0) return;
             foreach (var (material, renderer) in missing)
-                report.Fallbacks.Add(ExportFallbackKind.MissingShader, material.name, source.transform, renderer.transform);
+                report.Fallbacks.Add(ExportFallbackKind.MissingShader, material.name, clone.transform, renderer.transform);
             var warning = string.Format(ExporterLocalization.T(MissingShaderWarningFormat), missing.Count) +
                 string.Join(", ", missing.Select(pair => pair.Material.name));
             if (warnings is IList<string> list) list.Insert(0, warning);
@@ -356,7 +365,6 @@ namespace VRVlog.LilToonExporter
             if (ExportRendererSelection.HiddenInScene(source)) RecordHiddenRoot(source, warnings, recoveryReport);
             recoveryReport.Stage = "原本検査";
             recoveryReport.Phase = ExportPhase.Precheck;
-            RecordMissingShaders(source, warnings, recoveryReport);
             var trackingProfile = source.GetComponentInChildren<VrmTrackingMarker>(true)?.profile;
             var manualObjects = (excludedObjects ?? Array.Empty<GameObject>()).ToArray();
             gimmickOptions = new ExportGimmickOptions
@@ -574,6 +582,9 @@ namespace VRVlog.LilToonExporter
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
+                // Excluded objects are gone from the copy by now; the approximation
+                // below would hide which materials had lost their shader.
+                RecordMissingShaders(clone, warnings, recoveryReport);
                 // Unsupported shaders become official lilToon approximations so
                 // they follow the ordinary lilToon route instead of stopping.
                 if (exporterVersion != null) guard.Step(ExportStage.LilToonSnapshot, () => UnsupportedShaderSubstitution.Apply(clone, temporaryMaterials, warnings, recoveryReport.Fallbacks, (copy, original) =>
