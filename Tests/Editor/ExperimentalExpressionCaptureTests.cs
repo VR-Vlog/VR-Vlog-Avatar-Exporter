@@ -226,6 +226,26 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ObjectsExcludedByHandLeaveThePreparedCopy()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var pet = new GameObject("Excluded pet"); pet.transform.SetParent(fixture.Source.transform, false);
+            var stamp = ExportSourceFingerprint.Compute(fixture.Source);
+            using (var kept = new ExperimentalExpressionCaptureSession(fixture.Source, false))
+            {
+                Assert.That(kept.Copy.transform.Find("Excluded pet"), Is.Not.Null);
+                Assert.That(kept.ExcludedObjects, Is.Empty);
+            }
+            using (var session = new ExperimentalExpressionCaptureSession(fixture.Source, false, new[] { pet }, new ExportGimmickOptions()))
+            {
+                Assert.That(session.Copy.transform.Find("Excluded pet"), Is.Null, "The board previews what the export leaves out.");
+                Assert.That(session.ExcludedObjects, Is.EqualTo(new[] { pet }), "The ordinary export route gets the same objects.");
+            }
+            Assert.That(fixture.Source.transform.Find("Excluded pet"), Is.SameAs(pet.transform));
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
+        }
+
+        [Test]
         public void MeshRendererRecoveryMapsTheOriginalRendererToThePreparedExportCopy()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();

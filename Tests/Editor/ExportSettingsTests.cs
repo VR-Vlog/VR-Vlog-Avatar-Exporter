@@ -188,22 +188,97 @@ namespace VRVlog.LilToonExporter.Tests
             var original = AppTransferExport.SaveNormally;
             GameObject[] excluded = null;
             ExportGimmickOptions gimmicks = null;
+            bool? interactive = null;
             try
             {
                 AppTransferExport.SaveNormally = (avatar, destination, create, completed, previewExcluded, previewGimmicks, asks, openBlink) =>
                 {
                     excluded = previewExcluded?.ToArray();
                     gimmicks = previewGimmicks;
+                    interactive = asks;
                     return null;
                 };
                 transfer.Export(fixture.Avatar, "SampleAvatar", Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { });
             }
             finally { AppTransferExport.SaveNormally = original; }
+            Assert.That(interactive, Is.False, "The quick transfer does not stop to ask about fallbacks.");
             Assert.That(excluded, Is.EqualTo(new[] { fixture.Pet }), "The transfer leaves out what the export window leaves out.");
             Assert.That(gimmicks.AutoExclude, Is.False);
             Assert.That(gimmicks.IncludedObjects, Is.EqualTo(new[] { fixture.Gimmick }));
             Assert.That(ExportSettingsStore.Load(fixture.Avatar).License.CopyrightInformation, Is.EqualTo("Sample copyright"),
                 "The license shown in the transfer is the remembered one and stays remembered.");
+        }
+
+        [Test]
+        public void TransferNameComesBackAndSurvivesSavingTheSettings()
+        {
+            using var fixture = new SavedAvatar();
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Avatar), Is.Null);
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, " Avatar ");
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Avatar), Is.EqualTo("Avatar"));
+            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(new ExportSettings().Signature()),
+                "The name is not part of the export settings.");
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Avatar), Is.EqualTo("Avatar"), "Saving the settings keeps the name.");
+            ExportSettingsStore.Save(fixture.Avatar, new ExportSettings());
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Avatar), Is.EqualTo("Avatar"),
+                "An entry with default settings stays while it holds a name.");
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Outside), Is.Null, "Another avatar has no name.");
+            ExportSettingsStore.SaveTransferName(fixture.Avatar, "");
+            Assert.That(ExportSettingsStore.LoadTransferName(fixture.Avatar), Is.Null);
+            Assert.That(File.ReadAllText(storePath), Does.Not.Contain(ExpressionPresetStore.KeyFor(fixture.Avatar)),
+                "An entry that only held the name is removed with it.");
+        }
+
+        [Test]
+        public void AppTransferRemembersTheNameOnlyAfterASave()
+        {
+            using var fixture = new SavedAvatar();
+            var transfer = new AppTransferExport();
+            transfer.SelectAvatar(fixture.Avatar);
+            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(transfer, "SampleAuthor");
+            var original = AppTransferExport.SaveNormally;
+            var destination = Path.Combine(Path.GetTempPath(), "unused.vrm");
+            var saved = 0;
+            try
+            {
+                // Canceled: nothing was written, so nothing is remembered.
+                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) => null;
+                Assert.That(transfer.Export(fixture.Avatar, "Canceled", destination, () => saved++), Is.Null);
+                Assert.That(transfer.RememberedName(fixture.Avatar), Is.Null);
+                // Failed before saving.
+                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) => throw new IOException("Failed");
+                Assert.Throws<IOException>(() => transfer.Export(fixture.Avatar, "Failed", destination, () => saved++));
+                Assert.That(transfer.RememberedName(fixture.Avatar), Is.Null);
+                Assert.That(saved, Is.Zero);
+                // Saved.
+                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) =>
+                {
+                    completed(Array.Empty<byte>(), Array.Empty<string>());
+                    return null;
+                };
+                Assert.That(transfer.Export(fixture.Avatar, "Avatar", destination, () => saved++), Is.Null);
+            }
+            finally { AppTransferExport.SaveNormally = original; }
+            Assert.That(saved, Is.EqualTo(1));
+            Assert.That(transfer.RememberedName(fixture.Avatar), Is.EqualTo("Avatar"));
+        }
+
+        [Test]
+        public void DetailedAppTransferNeedsTheExpressionBoard()
+        {
+            using var fixture = new SavedAvatar();
+            var transfer = new AppTransferExport();
+            transfer.SelectAvatar(fixture.Avatar);
+            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(transfer, "SampleAuthor");
+            var saved = false;
+            var reason = ExporterLocalization.T(AppTransferExport.BoardClosed);
+            Assert.That(transfer.DetailedProblem(fixture.Avatar), Is.EqualTo(reason));
+            Assert.That(transfer.ExportDetailed(fixture.Avatar, "Avatar", Path.Combine(Path.GetTempPath(), "unused.vrm"), () => saved = true), Is.EqualTo(reason));
+            Assert.That(saved, Is.False);
+            Assert.That(transfer.RememberedName(fixture.Avatar), Is.Null);
         }
     }
 }
