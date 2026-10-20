@@ -115,7 +115,10 @@ namespace VRVlog.LilToonExporter
             try
             {
                 if (source == null) throw new ArgumentNullException(nameof(source));
+                using var steps = ExpressionBoardTimings.Sequence();
+                steps.Next("clipRoots");
                 CaptureClipRoots();
+                steps.Next("copy");
                 Copy = NdmfExportPreparation.InstantiateOwnedCopy(source);
                 Copy.name = source.name;
                 foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
@@ -131,6 +134,7 @@ namespace VRVlog.LilToonExporter
                     IncludedObjects = (gimmickOptions?.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
                     IncludedComponents = (gimmickOptions?.IncludedComponents ?? Array.Empty<Component>()).ToArray()
                 };
+                steps.Next("gimmicks");
                 List<ExportGimmickFinding> findings;
                 using (var manual = new ExportObjectExclusions(source, manualExcluded))
                     findings = this.gimmickOptions.AutoExclude ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();
@@ -142,6 +146,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var finding in findings.Where(value => value.Renderer == null))
                     if (automaticRoots.Contains(finding.Target)) Warnings.Add("補助ギミックを省略: " + finding.Target.name + " — " + finding.Reason);
                     else if (finding.Unit == GimmickExclusionUnit.Review) Warnings.Add("自動除外せず保持: " + finding.Target.name + " — " + finding.Reason);
+                steps.Next("blink");
                 // Preserve descriptor shape names/identity before MA can move
                 // the renderer or reorder its channels. Missing automatic
                 // configuration must still permit manual/no-blink exports.
@@ -151,9 +156,11 @@ namespace VRVlog.LilToonExporter
                     if (configured.ConfiguredByDescriptor) descriptorBlink = configured.ForClone(source, Copy);
                 }
                 catch (InvalidOperationException) { }
+                steps.Next("maAppearance");
                 MaAppearanceSnapshot.Apply(source, Copy, ownedMeshes, exclusions, Warnings);
                 PoseExportSession.RemoveAplFromCopy(source, Copy);
                 gimmicks.Apply(null, null, Warnings);
+                steps.Next("faceEmo");
                 // As with the blink preview, keep Transforming's committed meshes and FX.
                 // Optimizing is deliberately deferred until generated expression targets exist.
                 faceEmoBindings = FaceEmoExpressions.Capture(source, Copy, ExcludedBinding,
@@ -163,7 +170,9 @@ namespace VRVlog.LilToonExporter
                 foreach (var group in Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true).GroupBy(renderer =>
                     AnimationUtility.CalculateTransformPath(renderer.transform, Copy.transform), StringComparer.Ordinal))
                     if (group.Count() == 1) authoringRenderers.Add(group.Key, group.Single());
+                steps.Next("authored");
                 authoredBindings.CaptureAuthoredExpressions();
+                steps.Next("ndmf");
                 preparation = NdmfExportPreparation.Prepare(source, Copy, Warnings, afterTransforming: transformed => {
                     authoredBindings.RebindPrepared(transformed.PreparedRendererFor);
                     authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
@@ -171,6 +180,7 @@ namespace VRVlog.LilToonExporter
                     faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
                     gimmicks.Apply(null, null, Warnings);
                 });
+                steps.Next("channels");
                 if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))
                     if (behaviour != null && !NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
@@ -188,6 +198,7 @@ namespace VRVlog.LilToonExporter
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),
                         MeshHash = MeshStamp(mesh) });
                 }
+                steps.Next("menu");
                 var installed = VrChatExpressionMenu.Read(Copy);
                 if (replayInstalledDefaults && installed.Controller != null)
                 {
@@ -201,8 +212,10 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
                 }
+                steps.Next("snapshot");
                 preparedRest = Snapshot("準備後の顔");
                 Baseline = Snapshot("基準の顔");
+                steps.Next("fingerprint");
                 // Settle source read caches before guarding subsequent edits.
                 sourceStamp = ExportSourceFingerprint.Compute(source);
             }
@@ -233,6 +246,7 @@ namespace VRVlog.LilToonExporter
         {
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
             var hashed = !always && batchDepth > 0 && validatedBatch == batchId;
+            using var timing = hashed ? null : ExpressionBoardTimings.Step("validate");
             if (Source == null || !hashed && ExportSourceFingerprint.Compute(Source) != sourceStamp)
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
             foreach (var channel in Channels)

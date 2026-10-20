@@ -212,11 +212,12 @@ namespace VRVlog.LilToonExporter
             if (blinkFallbackStale)
             {
                 blinkFallbackStale = false;
+                using var timing = ExpressionBoardTimings.Step("blinkFallback");
                 try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
                 catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
                 Repaint();
             }
-            if (thumbnailRequests.Count > 0) RenderThumbnails();
+            if (thumbnailRequests.Count > 0) using (ExpressionBoardTimings.Step("thumbnails")) RenderThumbnails();
         }
 
         // The key holds the drawn size in pixels, so a new size or display scale
@@ -490,6 +491,8 @@ namespace VRVlog.LilToonExporter
         // saved list waits in the object list with the reason, to be fixed here.
         void Prepare()
         {
+            ExpressionBoardTimings.Clear();
+            using var timing = ExpressionBoardTimings.Step("prepare");
             var stored = ExportSettingsStore.Load(source).Exclusions();
             using var batch = ExperimentalExpressionCaptureSession.Batch();
             try { PrepareWith(stored); }
@@ -505,13 +508,18 @@ namespace VRVlog.LilToonExporter
             Cleanup();
             try
             {
+                using var steps = ExpressionBoardTimings.Sequence();
+                steps.Next("session");
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
+                steps.Next("recommend");
                 recommendations = session.RecommendClips();
+                steps.Next("clipErrors");
                 foreach (var item in session.ClipErrors(recommendations.Select(item => item.Clip))) clipErrors[item.Key] = item.Value;
+                steps.Next("preview");
                 preview = new PreviewRenderUtility();
                 NdmfExportPreparation.ShowOwnedCopyInPreview(session.Copy, preview);
                 var renderers = ExportRendererSelection.Enumerate(session.Copy).ToArray();
@@ -535,6 +543,7 @@ namespace VRVlog.LilToonExporter
                 status = null;
                 saved = null;
                 candidateValidationPending = false;
+                steps.Next("presets");
                 LoadPresetChoices();
             }
             catch { Cleanup(); throw; }
@@ -1466,13 +1475,17 @@ namespace VRVlog.LilToonExporter
         void LoadPresetChoices()
         {
             presetKey = ExpressionPresetStore.KeyFor(source);
+            using var steps = ExpressionBoardTimings.Sequence();
+            steps.Next("shapeOptions");
             session.PresetShapeOptions(); // Build the BlendShape list once, outside OnGUI.
+            steps.Next("stored");
             session.Presets.Clear();
             foreach (var assignment in ExpressionPresetStore.Load(presetKey, out presetSkipped))
                 session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(assignment.Preset), assignment);
             board.Excluded.Clear();
             board.Excluded.UnionWith(ExpressionPresetStore.LoadExcluded(presetKey, out var skippedExclusions));
             presetSkipped += skippedExclusions;
+            steps.Next("automatic");
             ApplyAutomaticPresets();
         }
 
