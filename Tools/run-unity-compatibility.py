@@ -492,6 +492,8 @@ BEHAVIOR_CASES = {
         'AGestureAboveALoopingHandIdleLayerIsExported': 1,
         'AMenuItemFollowedThroughAnExitTimeIsListedAsApproximated': 1,
         'AMenuItemSelectingAMovingTreeIsNotSettledToOneFrame': 1,
+        'AStillTreeIsSettledUnlessAClipMovesItsInput': 2,
+        'AMovingTreeReachedLateIsNotSettledToOneFrame': 1,
         'TheExperimentalPlayerKeepsTheLastKeyOfALongClip': 1,
         'TheExperimentalPlayerFollowsALateExitTime': 1,
     },

@@ -527,6 +527,61 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
         }
 
+        private BlendTree Tree(string name, AnimationClip low, AnimationClip high)
+        {
+            controller.AddParameter("Blend", AnimatorControllerParameterType.Float);
+            var parameters = controller.parameters; parameters.Single(parameter => parameter.name == "Blend").defaultFloat = 1;
+            controller.parameters = parameters;
+            var tree = new BlendTree { name = name, blendType = BlendTreeType.Simple1D, blendParameter = "Blend", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            tree.AddChild(low, 0); tree.AddChild(high, 1);
+            return tree;
+        }
+
+        // A tree of still clips at a fixed input is one exact frame, so a
+        // timed exit from it is settled like a clip state. A clip moving the
+        // tree's input makes it a moving tree again.
+        [TestCase(false)] [TestCase(true)]
+        public void AStillTreeIsSettledUnlessAClipMovesItsInput(bool driven)
+        {
+            var machine = controller.layers[0].stateMachine;
+            var selected = Selected(null);
+            selected.motion = Tree("Still tree", Clip("Still", 0), Clip("Smile", 75));
+            Timed(selected, State(machine, "Late", Clip("Late", 60)), 5);
+            if (driven)
+            {
+                var input = new AnimationClip { name = "Input" };
+                AnimationUtility.SetEditorCurve(input, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Linear(0, 0, 10, 1));
+                AssetDatabase.AddObjectToAsset(input, controller);
+                machine.AddState("Unused input").motion = input;
+            }
+            var source = AnalyzeToggle("Still tree item");
+            var entry = source.Entries.Single(e => e.Name == "Still tree item");
+            if (driven)
+            {
+                Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
+                return;
+            }
+            Assert.That(entry.Error, Is.Null, string.Join("\n", source.Messages));
+            Assert.That(entry.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(60).Within(.01));
+            Assert.That(entry.Messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
+        }
+
+        // A timed transition can reach a moving tree only while settlement
+        // advances time. The state after settlement is checked as well.
+        [Test]
+        public void AMovingTreeReachedLateIsNotSettledToOneFrame()
+        {
+            var machine = controller.layers[0].stateMachine;
+            var late = State(machine, "Late");
+            late.motion = Tree("Late moving tree", Clip("Still", 0), Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
+            Timed(Selected(Clip("A", 0)), late, 5);
+            var source = AnalyzeToggle("Late tree item");
+            var entry = source.Entries.Single(e => e.Name == "Late tree item");
+            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
+            Assert.That(entry.Values, Is.Empty);
+        }
+
         // One Toggle (Menu = 1) on a VRChat descriptor whose FX is the fixture.
         private VrChatExpressionMenu.Source AnalyzeToggle(string name)
         {

@@ -343,11 +343,18 @@ namespace VRVlog.LilToonExporter
                     }
                     foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name, current);
                 }
-                foreach (var root in new[] { layers[layer].name, layers[owner].stateMachine.name }.Distinct(StringComparer.Ordinal))
+                foreach (var root in new[] { layers[layer].name, layers[owner].name, layers[owner].stateMachine.name }.Distinct(StringComparer.Ordinal))
                     Visit(layers[owner].stateMachine, root, new List<AnimatorStateMachine>());
             }
             foreach (var key in ambiguous) index.Remove(key);
             return index;
+        }
+
+        // The same (layer, state hash) lookup for callers outside Settle.
+        internal static Func<int, int, AnimatorState> StateResolver(AnimatorController controller)
+        {
+            var index = StateIndex(controller);
+            return (layer, hash) => index.TryGetValue((layer, hash), out var found) ? found.State : null;
         }
     }
 }
