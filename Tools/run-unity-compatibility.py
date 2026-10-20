@@ -111,8 +111,11 @@ BEHAVIOR_CASES = {
         'UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing': 3,
     },
     'ExportFallbackConfirmationTests': {
+        'AMaterialWithAMissingShaderIsFoundOnceAndOtherSlotsAreIgnored': 1,
         'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
+        'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
         'AStageIsNamedWithItsPhase': 1,
+        'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
         'BatchAndNonInteractiveCallersSaveWithoutTheList': 2,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
@@ -121,6 +124,8 @@ BEHAVIOR_CASES = {
         'TargetsAreFoundAgainOnTheAvatarByPath': 1,
         'TheListShowsEveryFallbackWithItsTargets': 1,
         'TheAnswerDecidesBetweenSavingAndShowingWhatToChange': 2,
+        'TheSavedTitleWarnsOnlyWhenAShaderIsMissing': 1,
+        'TwoMaterialsWithTheSameNameCountAsTwo': 1,
     },
     'LegacyBlinkMenuRoundTripTests': {
         'SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport': 2,
