@@ -28,10 +28,11 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedRest = "VRMで近似すると基準の向きの差で元より大きくずれるため、今の姿勢のまま書き出しました";
         internal const string OmittedOutside = "アバターのルート・アバターの外・非表示のオブジェクトを参照しているため、今の姿勢のまま書き出しました";
         internal const string OmittedDuplicate = "同じオブジェクトに別のコンストレイントが既にあるため、今の姿勢のまま書き出しました";
+        internal const string OmittedCycle = "ソースのコンストレイントをたどるとこのオブジェクトに戻り、VRMはこの循環を書けないため、今の姿勢のまま書き出しました";
         internal static readonly string[] Reasons =
         {
             KeptRotation, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
-            OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate
+            OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -66,8 +67,14 @@ namespace VRVlog.LilToonExporter
             var plans = copy.GetComponentsInChildren<Component>(true).Select(c => ReadUnity(c) ?? ReadVrc(c)).Where(p => p != null).ToArray();
             if (plans.Length == 0) return result;
             // Authored VRM constraints win; VRM allows one per node.
-            var taken = new HashSet<Transform>(copy.GetComponentsInChildren<IVrm10Constraint>(true)
-                .Select(c => c.ConstraintTarget).Where(t => t != null));
+            var authored = copy.GetComponentsInChildren<IVrm10Constraint>(true);
+            var taken = new HashSet<Transform>(authored.Select(c => c.ConstraintTarget).Where(t => t != null));
+            // Target -> source edges of the VRM constraints in the file, so a
+            // new one never closes a cycle (VRMC_node_constraint forbids them).
+            var edges = new Dictionary<Transform, List<Transform>>();
+            foreach (var constraint in authored)
+                if (constraint.ConstraintTarget != null && constraint.ConstraintSource != null)
+                    AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var decisions = new List<(Plan Plan, ExportOutcome Outcome, string Reason)>();
             try
@@ -77,8 +84,8 @@ namespace VRVlog.LilToonExporter
                     var sources = plan.Sources.Where(s => s.Transform != null && s.Weight > 0 && !float.IsInfinity(s.Weight)).ToArray();
                     // Off, unlocked or weightless constraints never move anything.
                     if (!plan.Active || !(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
-                    var (outcome, reason) = Apply(plan, sources, copy.transform, taken, added);
-                    if (outcome != ExportOutcome.Omitted) taken.Add(plan.Target);
+                    var (outcome, reason) = Apply(plan, sources, copy.transform, taken, edges, added);
+                    if (outcome != ExportOutcome.Omitted) { taken.Add(plan.Target); AddEdge(edges, plan.Target, sources[0].Transform); }
                     decisions.Add((plan, outcome, reason));
                 }
             }
@@ -103,7 +110,8 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken, List<Component> added)
+        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken,
+            Dictionary<Transform, List<Transform>> edges, List<Component> added)
         {
             if (plan.Kind == Kind.Parent || plan.Kind == Kind.Position || plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
@@ -112,6 +120,7 @@ namespace VRVlog.LilToonExporter
             if (source == target) return (ExportOutcome.Omitted, OmittedSetting);
             if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
             if (taken.Contains(target)) return (ExportOutcome.Omitted, OmittedDuplicate);
+            if (Reaches(edges, source, target)) return (ExportOutcome.Omitted, OmittedCycle);
             var weight = Mathf.Clamp01(plan.Weight * Mathf.Min(1, sources[0].Weight));
             if (plan.Kind == Kind.Rotation)
             {
@@ -146,6 +155,28 @@ namespace VRVlog.LilToonExporter
         // UniVRM does not write the root as a node, so it can be neither end.
         static bool Inside(Transform root, Transform value) =>
             value != null && value != root && value.IsChildOf(root) && value.gameObject.activeInHierarchy;
+
+        static void AddEdge(Dictionary<Transform, List<Transform>> edges, Transform target, Transform source)
+        {
+            if (!edges.TryGetValue(target, out var sources)) edges.Add(target, sources = new List<Transform>());
+            sources.Add(source);
+        }
+
+        // Whether following the sources from `from` arrives at `to`.
+        static bool Reaches(Dictionary<Transform, List<Transform>> edges, Transform from, Transform to)
+        {
+            var visited = new HashSet<Transform>();
+            var pending = new Stack<Transform>();
+            pending.Push(from);
+            while (pending.Count > 0)
+            {
+                var current = pending.Pop();
+                if (current == to) return true;
+                if (!visited.Add(current) || !edges.TryGetValue(current, out var next)) continue;
+                foreach (var value in next) pending.Push(value);
+            }
+            return false;
+        }
 
         static bool TryAxis(Vector3 value, out AimAxis axis, out Vector3 vector)
         {

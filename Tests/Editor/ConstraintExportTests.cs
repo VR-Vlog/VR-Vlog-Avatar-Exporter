@@ -218,6 +218,37 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AConstraintThatClosesACycleWithAnAuthoredVrmConstraintKeepsThePose()
+        {
+            // VRMC_node_constraint forbids cycles; an authored A <- B plus a
+            // converted B <- A would make the file invalid.
+            using var f = new Fixture();
+            var authored = f.A.gameObject.AddComponent<Vrm10RotationConstraint>(); authored.Source = f.B; authored.Weight = 1;
+            f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.A.localRotation = f.B.localRotation = Quaternion.Euler(0, 0, 20);
+            var result = f.Convert();
+            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.EqualTo(new IVrm10Constraint[] { authored }));
+            Assert.That(result.Omitted, Is.EqualTo(1));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
+        }
+
+        [Test]
+        public void ConstraintsThatSourceEachOtherConvertOnlyOneSide()
+        {
+            using var f = new Fixture();
+            var c = Fixture.Child(f.Parent, "C", Vector3.zero);
+            f.Constraint<RotationConstraint>(f.A, 1, f.B);
+            f.Constraint<RotationConstraint>(f.B, 1, c);
+            f.Constraint<RotationConstraint>(c, 1, f.A);
+            f.A.localRotation = f.B.localRotation = c.localRotation = Quaternion.identity;
+            f.Convert();
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>().Length, Is.EqualTo(2));
+            Assert.That(f.Report.Results.Select(r => r.Reason),
+                Is.EquivalentTo(new[] { ConstraintExport.KeptRotation, ConstraintExport.KeptRotation, ConstraintExport.OmittedCycle }));
+        }
+
+        [Test]
         public void AReferenceOutsideTheCopyKeepsThePose()
         {
             using var f = new Fixture();
@@ -316,6 +347,54 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((string)nodes[Convert.ToInt32(rotation["source"])]["name"], Is.EqualTo("Constraint source"));
             Assert.That(report.Fallbacks.Results.Single(r => r.Category == ConstraintExport.Category).Outcome, Is.EqualTo(ExportOutcome.Kept));
             Assert.That(b.GetComponent<IVrm10Constraint>(), Is.Null, "Only the export copy gets the VRM constraint.");
+        }
+
+        [Test]
+        public void AFullExportWritesAVrchatRotationConstraint()
+        {
+            // The owned copy drops edit-mode scripts before activation; the
+            // VRChat constraints must survive it to be converted.
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCRotationConstraint.");
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(shader);
+            foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
+            var hips = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Hips);
+            var a = Fixture.Child(hips, "Constraint source", new Vector3(.1f, -.1f, 0));
+            var b = Fixture.Child(hips, "Constraint target", new Vector3(-.1f, -.1f, 0));
+            var component = b.gameObject.AddComponent(type);
+            using (var settings = new SerializedObject(component))
+            {
+                settings.FindProperty("IsActive").boolValue = true;
+                settings.FindProperty("Locked").boolValue = true;
+                settings.FindProperty("GlobalWeight").floatValue = 1;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = a;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            a.localRotation = b.localRotation = Quaternion.identity;
+            var report = new ExportRecoveryReport();
+            byte[] bytes;
+            try
+            {
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                    exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
+            }
+            finally { Object.DestroyImmediate(material); }
+            var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var target = nodes.Single(node => (string)node["name"] == "Constraint target");
+            Assert.That(target.ContainsKey("extensions"), Is.True, "The VRChat constraint is converted on the export copy.");
+            var extension = (Dictionary<string, object>)((Dictionary<string, object>)target["extensions"])["VRMC_node_constraint"];
+            var rotation = (Dictionary<string, object>)((Dictionary<string, object>)extension["constraint"])["rotation"];
+            Assert.That((string)nodes[Convert.ToInt32(rotation["source"])]["name"], Is.EqualTo("Constraint source"));
+            Assert.That(report.Fallbacks.Results.Single(r => r.Category == ConstraintExport.Category).Name, Does.Contain("VRCRotationConstraint"));
+            Assert.That(b.GetComponent<IVrm10Constraint>(), Is.Null, "Only the export copy gets the VRM constraint.");
+            Assert.That(b.GetComponent(type), Is.Not.Null, "The source avatar keeps its VRChat constraint.");
         }
 
         [Test]
