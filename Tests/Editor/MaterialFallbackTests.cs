@@ -272,7 +272,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Less(mixed.r, legacy.r);
                 var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
                 Assert.AreEqual(mixed.g, fallback.GetColor("_ShadeColor").g, .0001f);
-                Assert.AreEqual(second, source.GetColor("_Shadow2ndColor"));
+                // GetColor round-trips through the color space in linear projects, so compare with a tolerance.
+                Assert.Less(((Vector4)(second - source.GetColor("_Shadow2ndColor"))).magnitude, .0001f, "The source material must not change.");
 
                 // With the shadow off the shade stays the main color.
                 source.SetFloat("_UseShadow", 0f);
