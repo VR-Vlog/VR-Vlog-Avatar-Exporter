@@ -129,7 +129,8 @@ namespace VRVlog.LilToonExporter.Tests
             DelayedTransition(next);
             using var exclusions = new ExportObjectExclusions(avatar, new[] { pet });
             Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, controller, exclusions.ContainsPath).Contains(1), Is.False);
-            Assert.That(SampleTimed(controller, exclusions.ContainsPath).Single().Path, Is.EqualTo("Face"));
+            // The final WD-Off state moves only the pet, so the menu's 60 stays.
+            Assert.That(SampleTimed(controller, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
         }
 
         [Test]
@@ -152,7 +153,7 @@ namespace VRVlog.LilToonExporter.Tests
                 overrides[petClip] = faceClip;
                 Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, overrides, exclusions.ContainsPath).Contains(1), Is.False,
                     "Replacing an excluded clip with a retained face must restore timed-state validation.");
-                Assert.That(SampleTimed(overrides, exclusions.ContainsPath).Single().Path, Is.EqualTo("Face"));
+                Assert.That(SampleTimed(overrides, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
             }
             finally { Object.DestroyImmediate(overrides); }
         }
