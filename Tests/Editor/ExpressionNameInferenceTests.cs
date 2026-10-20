@@ -350,7 +350,8 @@ namespace VRVlog.LilToonExporter.Tests
             {""label"":""eye.wide"",""names"":[""eye_surprised""]},{""label"":""eye.relaxed"",""names"":[""なごみ""]},
             {""label"":""brow.angry"",""names"":[""怒り""]},{""label"":""brow.sad"",""names"":[""困る""]},
             {""label"":""mouth.smile"",""names"":[""にやり""]},{""label"":""mouth.frown"",""names"":[""口角下げ"",""へ""]},
-            {""label"":""mouth.o"",""names"":[""mouth_○""]},{""label"":""mouth.other"",""names"":[""ω""]},{""label"":""tear"",""names"":[""涙""]}]}";
+            {""label"":""mouth.o"",""names"":[""mouth_○""]},{""label"":""mouth.other"",""names"":[""ω""]},{""label"":""tear"",""names"":[""涙""]},
+            {""label"":""mouth.viseme"",""names"":[""あ""]},{""label"":""eye.close"",""names"":[""まばたき""]},{""label"":""whole.happy"",""names"":[""fcl_all_joy""]}]}";
 
         static (string, float)[] Moves(params object[] pairs)
         {
@@ -392,17 +393,40 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(table.Classify(Moves("21_Eye_Smile_R", 100, "にやり", 80))?.Preset, Is.EqualTo(ExpressionPreset.happy));
             Assert.That(table.Classify(Moves("困る", 100, "口角下げ", 100)), Is.Null, "Sad and angry need a whole-face name.");
             Assert.That(table.Classify(Moves("怒り", 100, "へ", 100)), Is.Null);
-            Assert.That(table.Classify(Moves("Fcl_ALL_Sorrow", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.sad, 3)));
+            Assert.That(table.Classify(Moves("Fcl_ALL_Sorrow", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.sad, 1)));
             Assert.That(table.Classify(Moves("笑い", 100, "困る", 100, "涙", 100)), Is.Null, "A crying smile is not happy.");
             Assert.That(table.Classify(Moves("eye_surprised", 100, "mouth_○", 100))?.Preset, Is.EqualTo(ExpressionPreset.surprised));
             Assert.That(table.Classify(Moves("なごみ", 100, "ω", 100))?.Preset, Is.EqualTo(ExpressionPreset.relaxed));
-            Assert.That(table.Classify(Moves("Fcl_ALL_Angry", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 3)));
+            Assert.That(table.Classify(Moves("Fcl_ALL_Angry", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 1)));
             Assert.That(table.Classify(Moves("笑い", 100)), Is.Null, "One part alone is not a whole face.");
             Assert.That(table.Classify(Moves("笑い", 100, "にやり", 30)), Is.Null, "A weak shape is not part of the face.");
             Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100, "星目", 100)), Is.Null, "Gimmick eyes are not an emotion.");
             Assert.That(table.Classify(Moves("笑い", 100, "口角下げ", 100)), Is.Null, "Parts that disagree say nothing.");
             Assert.That(table.Classify(Moves("Fcl_ALL_Angry", 100, "Fcl_ALL_Joy", 100)), Is.Null);
             Assert.That(table.Classify(Moves("unknown_a", 100, "unknown_b", 100)), Is.Null);
+        }
+
+        [Test]
+        public void UnlistedWholeFaceNameRanksBelowAListedOne()
+        {
+            var table = ExpressionShapeNames.Parse(SmallTable);
+            Assert.That(table.Classify(Moves("Fcl_ALL_Joy", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 3)));
+            Assert.That(table.Classify(Moves("smile2", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 1)),
+                "A name the table does not list only reads as an emotion.");
+            Assert.That(table.Classify(Moves("smile2", 100, "Fcl_ALL_Joy", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 3)));
+            Assert.That(table.Classify(Moves("smile2", 100, "Fcl_ALL_Angry", 100)), Is.Null);
+        }
+
+        [Test]
+        public void OnlyPartsThatShowTheEmotionSupportIt()
+        {
+            var table = ExpressionShapeNames.Parse(SmallTable);
+            Assert.That(table.Classify(Moves("笑い", 100, "あ", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 1)),
+                "A viseme mouth does not support the smile.");
+            Assert.That(table.Classify(Moves("にやり", 100, "まばたき", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 1)),
+                "A blink does not support the smile.");
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 2)));
+            Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100, "あ", 100)), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.happy, 2)));
         }
 
         [Test]
@@ -483,7 +507,13 @@ namespace VRVlog.LilToonExporter.Tests
             var filled = new List<(string Preset, string Source)>();
             Infer(bytes, paths, filled: filled, table: ExpressionShapeNames.Parse(SmallTable),
                 shapes: Shapes(("1", Moves("笑い", 100, "にやり", 100)), ("2", Moves("Fcl_ALL_Joy", 100))));
-            Assert.That(filled, Is.EqualTo(new[] { ("happy", "2") }), "A whole-face shape beats two agreeing parts.");
+            Assert.That(filled, Is.EqualTo(new[] { ("happy", "2") }), "A listed whole-face shape beats two agreeing parts.");
+
+            // A name the table does not list only reads as an emotion and ranks below agreeing parts.
+            filled.Clear();
+            Infer(bytes, paths, filled: filled, table: ExpressionShapeNames.Parse(SmallTable),
+                shapes: Shapes(("1", Moves("smile2", 100)), ("2", Moves("笑い", 100, "にやり", 100))));
+            Assert.That(filled, Is.EqualTo(new[] { ("happy", "2") }), "Two agreeing parts beat an unlisted whole-face name.");
         }
     }
 }
