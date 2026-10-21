@@ -404,12 +404,13 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face that fades in is saved at its final key. A layer beside it
         // that keeps restarting into a constant state does not change the
-        // face while the fade runs to its end.
-        [Test]
-        public void AFadeInBesideARestartingLayerReachesItsFinalKey()
+        // face while the fade runs to its end. A zero-length edge restarts
+        // without ever showing a transition.
+        [TestCase(.25f)] [TestCase(0f)]
+        public void AFadeInBesideARestartingLayerReachesItsFinalKey(float duration)
         {
             Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)));
-            RestartingLayer();
+            RestartingLayer(duration);
             var messages = new List<string>();
             Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
@@ -443,12 +444,13 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Each restart enters the state again and runs its callbacks, so a
         // driver there that changes a parameter the layer reads keeps writing.
-        // Such a layer is still refused.
-        [Test]
-        public void AStateRestartedEveryFrameWithADriverIsNotSaved()
+        // Such a layer is still refused, also when a zero-length edge shows no
+        // transition at the sample or a fade beside it is waited for.
+        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)] [TestCase(0f, true)]
+        public void AStateRestartedEveryFrameWithADriverIsNotSaved(float duration, bool fadeIn)
         {
-            Selected(Clip("Smile", 75));
-            var off = RestartingLayer();
+            Selected(fadeIn ? Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)) : Clip("Smile", 75));
+            var off = RestartingLayer(duration);
             controller.AddParameter("Count", AnimatorControllerParameterType.Int);
             foreach (var edge in controller.layers[controller.layers.Length - 1].stateMachine.anyStateTransitions)
                 if (edge.destinationState == off) edge.AddCondition(AnimatorConditionMode.Greater, -1, "Count");
@@ -474,7 +476,7 @@ namespace VRVlog.LilToonExporter.Tests
         // Bool stays false. Its clips hold a face morph, so the layer joins
         // the expression's evaluation, and On and Off differ, so the layer is
         // not one constant pose.
-        private AnimatorState RestartingLayer()
+        private AnimatorState RestartingLayer(float duration = .25f)
         {
             controller.AddParameter("Toggle", AnimatorControllerParameterType.Bool);
             var toggle = Layer("Toggle");
@@ -488,7 +490,7 @@ namespace VRVlog.LilToonExporter.Tests
             var on = State(toggle, "On", onClip);
             foreach (var (target, mode) in new[] { (off, AnimatorConditionMode.IfNot), (on, AnimatorConditionMode.If) })
             {
-                var edge = toggle.AddAnyStateTransition(target); edge.hasExitTime = false; edge.duration = .25f;
+                var edge = toggle.AddAnyStateTransition(target); edge.hasExitTime = false; edge.duration = duration;
                 edge.canTransitionToSelf = true; edge.AddCondition(mode, 0, "Toggle");
             }
             return off;

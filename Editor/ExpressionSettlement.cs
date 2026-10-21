@@ -347,7 +347,15 @@ namespace VRVlog.LilToonExporter
         }
 
         // Whether such an edge holds for the state, whether or not its
-        // transition is running at this instant.
+        // transition is running at this instant. A zero-length edge or a
+        // sample between two restarts shows no transition at all.
+        internal static bool RestartsInto(AnimatorControllerPlayable playable, AnimatorController controller, int layer)
+        {
+            var states = StateIndex(controller);
+            return RestartsInto(controller, layer, playable.GetCurrentAnimatorStateInfo(layer).fullPathHash, Parameters(playable, controller),
+                (index, hash) => states.TryGetValue((index, hash), out var found) ? found : (null, null));
+        }
+
         private static bool RestartsInto(AnimatorController controller, int layer, int hash,
             IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
         {

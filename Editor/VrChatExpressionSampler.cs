@@ -1785,7 +1785,10 @@ namespace VRVlog.LilToonExporter
                     dependencies.WeightControlLayers.Contains(layer) ?
                     NeutralCurveConditions.FixedTimedValues(playable, controller, timedValues, dependencies, null) : timedValues;
                 if (layer > 0 && playable.GetLayerWeight(layer) <= 0.00001f && dependencies?.WeightControlLayers.Contains(layer) != true) continue;
-                var selfTransition = InSelfTransition(playable, layer);
+                // Settlement judges a restarting layer by its edge, so the
+                // same layer is checked here even between two restarts.
+                var selfTransition = InSelfTransition(playable, layer) ||
+                    !playable.IsInTransition(layer) && ExpressionSettlement.RestartsInto(playable, controller, layer);
                 if (playable.IsInTransition(layer) && !selfTransition && equivalentStates?.Contains(layer) != true)
                     throw Unstable("FXの状態遷移が静止していません。");
                 var hash = playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
