@@ -1793,7 +1793,10 @@ namespace VRVlog.LilToonExporter
                 var found = false;
                 var fixedMotionTime = false;
                 var plainClock = false;
-                var terminalClip = NativeTerminalClip(playable, controller, layer);
+                // Each restart sends the state's clock back to its start, so a
+                // self transition never reaches a final key or settles a loop.
+                // Only constant curves or a fixed Motion Time hold there.
+                var terminalClip = selfTransition ? null : NativeTerminalClip(playable, controller, layer);
                 void Visit(AnimatorStateMachine machine, string path, bool timedAncestor, bool effectfulAncestor)
                 {
                     var timed = timedAncestor || machine.anyStateTransitions.Any(t => !t.mute && t.hasExitTime && !ExpressionDependencies.IsFalse(t, layerTimedValues));
@@ -1812,7 +1815,7 @@ namespace VRVlog.LilToonExporter
                             throw Unstable("FXの状態遷移が静止していません。");
                         // Settlement only advances the state's own clock.
                         // Parameter-driven or offset clocks stay unproven.
-                        plainClock = !state.timeParameterActive && !state.speedParameterActive && state.speed > 0 &&
+                        plainClock = !selfTransition && !state.timeParameterActive && !state.speedParameterActive && state.speed > 0 &&
                             !state.cycleOffsetParameterActive && state.cycleOffset == 0;
                         fixedMotionTime = state.timeParameterActive && state.motion is AnimationClip &&
                             !state.speedParameterActive && state.speed == 1 && !state.cycleOffsetParameterActive && state.cycleOffset == 0 &&

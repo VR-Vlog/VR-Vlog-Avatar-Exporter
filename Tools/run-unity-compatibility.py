@@ -497,6 +497,7 @@ BEHAVIOR_CASES = {
         'AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace': 2,
         'AStateRestartedEveryFrameWithADriverIsNotSaved': 1,
         'AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace': 1,
+        'AStateRestartedEveryFrameWithAMovingClipIsNotSaved': 2,
         'LoopsOfDifferentLengthsAreReportedAsOverlapping': 1,
         'AChainLongerThanTheHopLimitIsNotSaved': 1,
         'AFaceAfterMoreThanAMinuteIsReported': 2,

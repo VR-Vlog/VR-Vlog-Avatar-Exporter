@@ -402,6 +402,32 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
         }
 
+        // Each restart sends the clock back to the start, so a clip that moves
+        // the face over time never reaches its final key and the face keeps
+        // changing. Such a layer is refused.
+        [TestCase(false)] [TestCase(true)]
+        public void AStateRestartedEveryFrameWithAMovingClipIsNotSaved(bool ownLayer)
+        {
+            var rising = AnimationCurve.Linear(0, 0, 1, 100);
+            if (ownLayer)
+            {
+                var machine = controller.layers[0].stateMachine;
+                machine.defaultState = State(machine, "Idle");
+                var selected = State(machine, "Selected", Clip("Rise", rising));
+                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
+                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            }
+            else
+            {
+                Selected(Clip("Smile", 75));
+                var blink = new AnimationClip { name = "Toggle blink" };
+                AnimationUtility.SetEditorCurve(blink, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), rising);
+                AssetDatabase.AddObjectToAsset(blink, controller);
+                RestartingLayer().motion = blink;
+            }
+            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+        }
+
         // Each restart enters the state again and runs its callbacks, so a
         // driver there that changes a parameter the layer reads keeps writing.
         // Such a layer is still refused.
