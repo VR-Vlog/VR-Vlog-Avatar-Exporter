@@ -115,7 +115,6 @@ namespace VRVlog.LilToonExporter
         static Color LineColor => Skin(0x242424, 0x999999);
         static Color PanelColor => Skin(0x2e2e2e, 0xd6d6d6);
         static Color CardColor => Skin(0x383838, 0xe4e4e4);
-        static Color CardDisabledColor => Skin(0x313131, 0xcdcdcd);
         static Color CardBorderColor => Skin(0x585858, 0x9a9a9a);
         static Color DashColor => Skin(0x9a9a9a, 0x6a6a6a);
         static Color TextColor => Skin(0xd2d2d2, 0x1e1e1e);
@@ -125,7 +124,7 @@ namespace VRVlog.LilToonExporter
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
         GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, errorMini, boldText, badgeText, closeText, accentButton, centeredDim,
-            nameCenter, nameCenterDisabled;
+            nameCenter;
         bool stylesForProSkin;
         Texture2D accentNormal, accentHover, accentActive;
         readonly System.Collections.Generic.Dictionary<(string, GUIStyle, int), string> fitted = new System.Collections.Generic.Dictionary<(string, GUIStyle, int), string>();
@@ -841,14 +840,14 @@ namespace VRVlog.LilToonExporter
             var thumb = new Rect(tile.x + 7, tile.y + 4, size, size);
             var clip = assignment != null && !assignment.IsNone && !assignment.IsShape ? assignment.ResolveClip() : null;
             if (board.Find(clip) != null)
-                DrawTile(tile, thumb, clip.name, clip, Thumbnail(clip, null, null, size), assignment.Automatic, false, assignment.Automatic ? "自動" : null,
+                DrawTile(tile, thumb, clip.name, clip, Thumbnail(clip, null, null, size), assignment.Automatic, assignment.Automatic ? "自動" : null,
                     reason ?? AssetDatabase.GetAssetPath(clip), "その他の表情へ戻す", () => MoveTo(clip, Place.Other));
             else if (assignment != null && !assignment.IsNone)
             {
                 // A BlendShape, or a file no longer on the board: it can only be cleared.
                 var name = ExperimentalExpressionCaptureSession.PresetDisplayName(assignment);
                 var face = assignment.IsShape ? Thumbnail(null, assignment.Path, assignment.Shape, size) : Thumbnail(clip, null, null, size);
-                DrawTile(tile, thumb, assignment.IsShape ? assignment.Shape : name, null, face, assignment.Automatic, false, assignment.Automatic ? "自動" : null,
+                DrawTile(tile, thumb, assignment.IsShape ? assignment.Shape : name, null, face, assignment.Automatic, assignment.Automatic ? "自動" : null,
                     reason ?? name, "指定を外す", () => ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)));
             }
             else
@@ -1021,20 +1020,18 @@ namespace VRVlog.LilToonExporter
 
         void DrawPanelTile(Rect tile, float size, ExpressionBoard.Item item, string closeTooltip, Action close)
         {
-            var clip = item.Clip; var usable = ExpressionBoard.Usable(item);
-            DrawTile(tile, new Rect(tile.x + 7, tile.y + 4, size, size), clip.name, clip, usable ? Thumbnail(clip, null, null, size) : null, false, !usable,
-                usable ? null : "対応外", usable ? ItemTooltip(item) : item.Error, closeTooltip, close);
+            var clip = item.Clip;
+            DrawTile(tile, new Rect(tile.x + 7, tile.y + 4, size, size), clip.name, clip, Thumbnail(clip, null, null, size), false,
+                null, ItemTooltip(item), closeTooltip, close);
         }
 
-        // count: the items that are exported; unusable ones are counted apart.
-        internal static string OtherTitle(int count, int unusable) => unusable > 0
-            ? string.Format(ExporterLocalization.T("その他の表情 {0}件・対応外{1}件"), count, unusable)
-            : string.Format(ExporterLocalization.T("その他の表情 {0}件"), count);
+        // count: the faces that are exported. Unsupported ones are not shown.
+        internal static string OtherTitle(int count) => string.Format(ExporterLocalization.T("その他の表情 {0}件"), count);
 
         void DrawOtherPanel(Rect rect)
         {
             var items = board.ItemsIn(PlaceKind.Other).ToArray();
-            var body = DrawPanelFrame(rect, Place.Other, OtherTitle(board.OtherCount, items.Count(item => !ExpressionBoard.Usable(item))),
+            var body = DrawPanelFrame(rect, Place.Other, OtherTitle(board.OtherCount),
                 board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"));
             var size = ExpressionSlotLayout.Thumb(LargeThumbnails);
             var columns = PanelColumns(body, size);
@@ -1080,13 +1077,13 @@ namespace VRVlog.LilToonExporter
         // One tile: the thumbnail with the name under it. A tile with a clip can
         // be clicked to preview, right-clicked for the move menu and dragged
         // onto another place. Its × shows while the mouse is over it.
-        void DrawTile(Rect tile, Rect thumb, string name, AnimationClip clip, Texture2D face, bool automatic, bool unusable, string badge, string tooltip,
+        void DrawTile(Rect tile, Rect thumb, string name, AnimationClip clip, Texture2D face, bool automatic, string badge, string tooltip,
             string closeTooltip, Action close)
         {
             var current = Event.current;
             if (current.type == EventType.Repaint)
             {
-                EditorGUI.DrawRect(tile, unusable ? CardDisabledColor : CardColor);
+                EditorGUI.DrawRect(tile, CardColor);
                 if (automatic) Dashed(tile, DashColor); else Outline(tile, CardBorderColor);
                 if (face != null) GUI.DrawTexture(thumb, face, ScaleMode.ScaleToFit, false);
                 else EditorGUI.DrawRect(thumb, ThumbEmpty);
@@ -1094,12 +1091,12 @@ namespace VRVlog.LilToonExporter
             GUI.Label(tile, new GUIContent("", tooltip), GUIStyle.none);
             if (badge != null)
             {
-                var mark = new Rect(thumb.x + 2, thumb.y + 2, badge == "自動" ? 30 : 44, 14);
+                var mark = new Rect(thumb.x + 2, thumb.y + 2, 30, 14);
                 if (current.type == EventType.Repaint) EditorGUI.DrawRect(mark, BadgeColor);
                 GUI.Label(mark, new GUIContent(Fit(ExporterLocalization.T(badge), badgeText, mark.width - 2), tooltip), badgeText);
             }
             var nameRect = new Rect(tile.x + 2, thumb.yMax, tile.width - 4, ExpressionSlotLayout.Name);
-            var style = unusable ? nameCenterDisabled : nameCenter;
+            var style = nameCenter;
             GUI.Label(nameRect, new GUIContent(Fit(name, style, nameRect.width), tooltip), style);
             if (close != null)
             {
@@ -1343,7 +1340,6 @@ namespace VRVlog.LilToonExporter
             dimMiniRight = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleRight);
             errorMini = Label(EditorStyles.miniLabel, ErrorColor);
             nameCenter = Label(EditorStyles.label, TextColor, TextAnchor.MiddleCenter);
-            nameCenterDisabled = Label(EditorStyles.label, Hex(0x6e6e6e), TextAnchor.MiddleCenter);
             // The badge sits on the thumbnail, so it is light on both skins.
             badgeText = Label(EditorStyles.miniLabel, Hex(0xd2d2d2), TextAnchor.MiddleCenter);
             closeText = Label(EditorStyles.label, DimColor, TextAnchor.MiddleCenter);
@@ -1463,28 +1459,48 @@ namespace VRVlog.LilToonExporter
 
         void AddClips(AnimationClip[] clips)
         {
-            var additions = clips.Where(clip => clip != null && !clipInputs.Any(input => input.Clip == clip)).Distinct().ToArray();
-            if (clipInputs.Count + additions.Length > ExperimentalExpressionCaptureSession.MaximumExpressions)
+            var additions = clips.Where(clip => clip != null && !clipInputs.Any(input => input.Clip == clip)).Distinct().Select(Checked).ToArray();
+            // Only the files that are added count toward the limit.
+            var usable = additions.Where(input => input.Error == null).ToArray();
+            if (clipInputs.Count + usable.Length > ExperimentalExpressionCaptureSession.MaximumExpressions)
                 throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。選択を減らして追加してください。"));
-            foreach (var clip in additions) AddClipCore(clip, false);
-            if (additions.Length > 0) status = string.Format(ExporterLocalization.T("{0}件の表情を追加しました"), additions.Length);
+            foreach (var input in usable) Keep(input);
+            if (usable.Length > 0) status = string.Format(ExporterLocalization.T("{0}件の表情を追加しました"), usable.Length);
+            ApplyAutomaticPresets();
+            var rejected = additions.Where(input => input.Error != null).Select(input => (input.Name, input.Error)).ToArray();
+            // The error replaces the status line, so it also says what was added.
+            if (rejected.Length > 0) throw new InvalidOperationException(usable.Length > 0 ? status + "\n" + RejectedMessage(rejected) : RejectedMessage(rejected));
+        }
+
+        void AddClip(AnimationClip clip)
+        {
+            if (clip == null || clipInputs.Any(input => input.Clip == clip)) return;
+            var input = Checked(clip);
+            if (input.Error != null) throw new InvalidOperationException(RejectedMessage(new[] { (input.Name, input.Error) }));
+            if (clipInputs.Count >= ExperimentalExpressionCaptureSession.MaximumExpressions)
+                throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。"));
+            Keep(input);
+            status = ExporterLocalization.T("表情を追加しました");
             ApplyAutomaticPresets();
         }
 
-        void AddClip(AnimationClip clip) => AddClipCore(clip, true);
-
-        void AddClipCore(AnimationClip clip, bool suggest)
+        // Error is the reason the export cannot use the file; such a file is not added.
+        ExperimentalExpressionCaptureSession.ClipInput Checked(AnimationClip clip)
         {
-            if (clip == null || clipInputs.Any(input => input.Clip == clip)) return;
-            if (clipInputs.Count >= ExperimentalExpressionCaptureSession.MaximumExpressions)
-                throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。"));
             var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = DefaultTime(clip) };
             input.Error = session.ClipError(clip, input.Time);
-            clipInputs.Add(input);
-            if (input.Error == null) { session.PreviewClip(clip, input.Time); ShowFace(input.Name); }
-            status = input.Error == null ? ExporterLocalization.T("表情を追加しました") : ExporterLocalization.T("対応外のファイルはその他の表情に灰色で表示します");
-            if (suggest) ApplyAutomaticPresets();
+            return input;
         }
+
+        void Keep(ExperimentalExpressionCaptureSession.ClipInput input)
+        {
+            clipInputs.Add(input);
+            session.PreviewClip(input.Clip, input.Time); ShowFace(input.Name);
+        }
+
+        // One line per file that was not added: its name, then the reason.
+        internal static string RejectedMessage(System.Collections.Generic.IEnumerable<(string Name, string Reason)> rejected) =>
+            string.Join("\n", rejected.Select(item => string.Format(ExporterLocalization.T("「{0}」は追加できません。{1}"), item.Name, item.Reason)));
 
         void DropClips(string label, Action<AnimationClip[]> accept)
         {
