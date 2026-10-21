@@ -1872,7 +1872,12 @@ namespace VRVlog.LilToonExporter
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
             if (BlocksExport) return ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T(ExportAuthor.Required);
-            var recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), true, saved);
+            // The transfer window calls this outside Advance, so it opens the
+            // batch the save button runs in: the board's records check the
+            // source once, and Export hashes it again as it writes.
+            ExportRecoverySession recovery;
+            using (ExperimentalExpressionCaptureSession.Batch())
+                recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), true, saved);
             return recovery == null ? null : recovery.Failure?.Message ?? "";
         }
 
@@ -1927,6 +1932,9 @@ namespace VRVlog.LilToonExporter
                 Repaint();
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
+                // A retry from the recovery window runs outside any batch; in
+                // one attempt the standard faces use the hash Export has taken.
+                using var batch = ExperimentalExpressionCaptureSession.Batch();
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
