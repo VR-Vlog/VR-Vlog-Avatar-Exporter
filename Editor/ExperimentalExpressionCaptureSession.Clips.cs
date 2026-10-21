@@ -251,6 +251,7 @@ namespace VRVlog.LilToonExporter
             }
             var seenMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in ExpressionDependencies.Controller(fx).layers) Walk(layer.stateMachine, seenMachines);
+            var items = new List<(VrChatExpressionMenu.Entry Entry, string Parameter, float Value, Func<AnimatorTransitionBase, bool> Selects)>();
             foreach (var entry in entries)
             {
                 if (entry == null || entry.Error != null || entry.ControlType != "Toggle" && entry.ControlType != "Button" ||
@@ -261,12 +262,26 @@ namespace VRVlog.LilToonExporter
                 foreach (var pair in entry.Parameters) on[pair.Key] = pair.Value;
                 var off = new Dictionary<string, float>(on, StringComparer.Ordinal)
                     { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
-                bool Selects(AnimatorTransitionBase transition)
+                items.Add((entry, parameter, entry.Parameters[parameter], transition =>
                 {
                     var own = transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
                     // Off at the default: some condition on the parameter is false there.
                     return own.Length != 0 && !ExpressionDependencies.IsFalse(transition, on) && ExpressionDependencies.IsFalse(transition, off);
-                }
+                }));
+            }
+            // A face destination every item of a parameter selects, when the
+            // parameter has items for 2 or more values, is shared (a reset
+            // layer entered by Face NotEqual 0): it would give every item a
+            // second face. Only the board-less count ignores it.
+            var shared = new HashSet<(string Parameter, int Face)>();
+            foreach (var group in items.GroupBy(item => item.Parameter, StringComparer.Ordinal))
+            {
+                if (group.Select(item => item.Value).Distinct().Count() < 2) continue;
+                for (var index = 0; index < faces.Count; index++)
+                    if (group.All(item => item.Selects(faces[index].Transition))) shared.Add((group.Key, index));
+            }
+            foreach (var (entry, parameter, _, Selects) in items)
+            {
                 var selected = new HashSet<AnimationClip>();
                 foreach (var link in links)
                     if (Selects(link.Transition)) selected.Add(link.Clip);
@@ -280,13 +295,7 @@ namespace VRVlog.LilToonExporter
                 // An item linked to one clip has returned above, even when the
                 // same item also enters a Blend Tree face (a mixed item): the
                 // clip is on the board, so it is not counted here.
-                // Only destinations picked by an equality on the item's own
-                // parameter count. A shared layer entered by Face NotEqual 0,
-                // Greater or Less (a reset face) is selected by every value, so
-                // it would give every toggle a second face.
-                bool PicksThisValue(AnimatorTransitionBase transition) => transition.conditions.Any(condition => condition.parameter == parameter &&
-                    (condition.mode == AnimatorConditionMode.Equals || condition.mode == AnimatorConditionMode.If || condition.mode == AnimatorConditionMode.IfNot));
-                var moved = faces.Where(face => Selects(face.Transition) && PicksThisValue(face.Transition)).ToArray();
+                var moved = faces.Where((face, index) => Selects(face.Transition) && !shared.Contains((parameter, index))).ToArray();
                 if ((moved.Select(face => face.Face).Distinct().Count() > 1 || moved.Any(face => !face.Single)) && !outside.Contains(entry.Name))
                     outside.Add(entry.Name);
             }

@@ -152,17 +152,39 @@ namespace VRVlog.LilToonExporter.Tests
         public void ASharedResetLayerEnteredByNotEqualIsNotASecondFace()
         {
             var smile = FaceClip("Smile");
-            var controller = Controller((smile, 1));
+            var angry = FaceClip("Angry");
+            var controller = Controller((smile, 1), (angry, 2));
             var machine = Keep(new AnimatorStateMachine());
             machine.defaultState = machine.AddState("Idle");
             var reset = machine.AddState("Reset"); reset.motion = FaceClip("Reset");
             machine.AddAnyStateTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, 0, "Face");
             controller.layers = controller.layers.Append(new AnimatorControllerLayer { name = "Reset", defaultWeight = 1, stateMachine = machine }).ToArray();
-            var items = new[] { Item("Face / Smile", 1) };
+            var items = new[] { Item("Face / Smile", 1), Item("Face / Angry", 2) };
             Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty,
-                "The reset face is selected by every value, so it does not split this item.");
-            Assert.That(Session.MenuClipPaths(items, controller, FaceOff), Does.Not.ContainKey(smile),
-                "MenuClipPaths is unchanged: the item still selects two clips there.");
+                "Every item of Face selects the reset face, so it does not split either item.");
+            var paths = Session.MenuClipPaths(items, controller, FaceOff);
+            Assert.That(paths, Does.Not.ContainKey(smile).And.Not.ContainKey(angry),
+                "MenuClipPaths is unchanged: each item still selects two clips there.");
+        }
+
+        [Test]
+        public void AFloatToggleSplitOverLayersByGreaterIsListed()
+        {
+            var controller = Keep(new AnimatorController());
+            controller.AddParameter("Open", AnimatorControllerParameterType.Float);
+            controller.layers = new[] { FaceClip("Eyes"), FaceClip("Mouth") }.Select((clip, index) =>
+            {
+                var machine = Keep(new AnimatorStateMachine());
+                machine.defaultState = machine.AddState("Idle");
+                var state = machine.AddState("State " + index); state.motion = clip;
+                machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Greater, 0.5f, "Open");
+                return new AnimatorControllerLayer { name = "Layer " + index, defaultWeight = 1, stateMachine = machine };
+            }).ToArray();
+            var entry = new VrChatExpressionMenu.Entry { Name = "Face / Open", ControlType = "Toggle", ControlParameter = "Open" };
+            entry.Parameters["Open"] = 1;
+            var items = new[] { entry };
+            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, new Dictionary<string, float> { ["Open"] = 0 }),
+                Is.EqualTo(new[] { "Face / Open" }), "A face split over layers by Greater is still split.");
         }
 
         [Test]
