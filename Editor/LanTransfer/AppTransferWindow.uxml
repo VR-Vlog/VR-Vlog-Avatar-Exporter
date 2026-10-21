@@ -31,31 +31,33 @@
                     </ui:VisualElement>
                     <ui:Label name="name-hint" class="t mini grey field-line" />
                     <ui:VisualElement class="hairline section" />
-                    <ui:VisualElement class="row row--terms">
-                        <ui:Label name="terms-label" class="t label-col bold" />
-                        <ui:Label name="read-terms" class="t link" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="check-row">
-                        <ui:Toggle name="consent-toggle" class="check" />
-                        <ui:Label name="consent-text" class="t check-text" />
-                    </ui:VisualElement>
-                    <ui:VisualElement name="privacy" class="privacy">
-                        <ui:VisualElement class="row row--terms">
-                            <ui:VisualElement class="label-col" />
-                            <ui:Label name="privacy-link" class="t link" />
-                        </ui:VisualElement>
-                        <ui:VisualElement class="check-row">
-                            <ui:Toggle name="privacy-toggle" class="check" />
-                            <ui:Label name="privacy-text" class="t check-text" />
-                        </ui:VisualElement>
-                    </ui:VisualElement>
                     <ui:IMGUIContainer name="terms" class="terms" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:ScrollView>
-        <!-- Outside the scroll, so the reason and the button stay in view while the VRM terms are open. -->
+        <!-- Outside the scroll, so the terms, the consent, the reason and the button stay in view while the VRM terms are open. -->
         <ui:VisualElement class="hairline" />
         <ui:VisualElement class="form-footer">
+            <ui:VisualElement name="consent" class="consent">
+                <ui:VisualElement class="row row--terms">
+                    <ui:Label name="terms-label" class="t label-col bold" />
+                    <ui:Label name="read-terms" class="t link" />
+                </ui:VisualElement>
+                <ui:VisualElement class="check-row">
+                    <ui:Toggle name="consent-toggle" class="check" />
+                    <ui:Label name="consent-text" class="t check-text" />
+                </ui:VisualElement>
+                <ui:VisualElement name="privacy" class="privacy">
+                    <ui:VisualElement class="row row--terms">
+                        <ui:VisualElement class="label-col" />
+                        <ui:Label name="privacy-link" class="t link" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="check-row">
+                        <ui:Toggle name="privacy-toggle" class="check" />
+                        <ui:Label name="privacy-text" class="t check-text" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
             <ui:Label name="reason" class="t reason" />
             <ui:Button name="create" class="primary create" />
             <ui:Label name="create-hint" class="t mini grey create-hint" />

@@ -130,8 +130,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.CanMove(broken, Place.Excluded), Is.True);
             board.ApplyAutomatic();
             Assert.That(presets.ContainsKey(ExpressionPreset.happy), Is.False);
-            Assert.That(board.ExportedCustom(), Is.Empty, "An unsupported face is shown but never exported.");
+            Assert.That(board.ExportedCustom(), Is.Empty, "An unsupported face is never exported.");
             Assert.That(board.CanMove(Clip("unknown"), Place.Excluded), Is.False);
+        }
+
+        [Test]
+        public void UnsupportedFacesAreNeitherShownNorCounted()
+        {
+            var a = Clip("a"); var b = Clip("b"); var broken = Clip("broken"); var brokenAdded = Clip("broken added");
+            var board = Board(new[] { Item(brokenAdded, "unsupported") }, new[] { Item(a), Item(broken, "unsupported"), Item(b) });
+            Assert.That(board.ItemsIn(PlaceKind.Other).Select(item => item.Clip), Is.EqualTo(new[] { a, b }));
+            Assert.That(board.OtherCount, Is.EqualTo(2));
+
+            // An unsupported face excluded before it was hidden is not shown or
+            // counted there either, but the export still follows the exclusion.
+            var found = Board(null, new[] { Item(a), Item(broken, "unsupported") });
+            Assert.That(found.UsesRecordRoute, Is.False);
+            Assert.That(found.Move(broken, Place.Excluded), Is.True);
+            Assert.That(found.ItemsIn(PlaceKind.Excluded), Is.Empty);
+            Assert.That(found.ExcludedCount, Is.EqualTo(0));
+            Assert.That(found.UsesRecordRoute, Is.True, "Hiding a face does not change what is exported.");
+            Assert.That(found.ExportedCustom(), Is.EqualTo(new[] { a }));
         }
 
         [Test]

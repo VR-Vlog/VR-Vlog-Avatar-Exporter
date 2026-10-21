@@ -64,7 +64,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private float pixelsPerPoint;
 
         [NonSerialized] private bool built;
-        [NonSerialized] private VisualElement content, form, formFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
+        [NonSerialized] private VisualElement content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton;
         [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
@@ -447,6 +447,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             playingBox = root.Q<HelpBox>("playing");
             missingShadersBox = root.Q<HelpBox>("missing-shaders");
             formFields = root.Q("form-fields");
+            consentFields = root.Q("consent");
             avatarLabel = root.Q<Label>("avatar-label");
             avatarField = root.Q<ObjectField>("avatar-field");
             summaryText = root.Q<Label>("summary-text");
@@ -609,6 +610,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             playingBox.text = T("Playモードを終了すると編集できます。");
             Show(playingBox, playing);
             formFields.SetEnabled(!playing && entry != null);
+            // The terms and the consent sit above the button, outside the fields, and lock with them.
+            consentFields.SetEnabled(!playing && entry != null);
 
             avatarLabel.text = T("アバター");
             if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);

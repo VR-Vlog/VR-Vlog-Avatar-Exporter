@@ -159,13 +159,15 @@ namespace VRVlog.LilToonExporter
         }
 
         // Usable faces of the custom list, in board order. Unsupported faces
-        // are shown there but never exported.
+        // are neither shown nor exported.
         internal List<AnimationClip> ExportedCustom() =>
             Items.Where(item => Usable(item) && PlaceOf(item.Clip).Kind == PlaceKind.Other).Select(item => item.Clip).ToList();
 
         // Without exclusions or added files the ordinary export keeps the
         // avatar's own faces; otherwise the custom list is recorded exactly.
-        internal bool UsesRecordRoute => ExcludedCount > 0 || Items.Any(item => item.Added);
+        // A hidden unsupported face excluded earlier still counts, so hiding
+        // it does not change what is exported.
+        internal bool UsesRecordRoute => Items.Any(item => item.Added || PlaceOf(item.Clip).Kind == PlaceKind.Excluded);
         internal int OverLimitBy => Math.Max(0, ExportedCustom().Count - ExperimentalExpressionCaptureSession.MaximumExpressions);
         internal bool ExceedsLimit => UsesRecordRoute && OverLimitBy > 0;
 
@@ -181,7 +183,8 @@ namespace VRVlog.LilToonExporter
         internal bool SlotFilled(ExpressionPreset preset) => SlotValue(preset) is PresetAssignment value && !value.IsNone || authored(preset);
         internal int SlotCount(IEnumerable<ExpressionPreset> group = null) => SlotsIn(group).Count(SlotFilled);
         internal int OtherCount => ExportedCustom().Count;
-        internal int ExcludedCount => Items.Count(item => Excluded.Contains(item.Clip) && PlaceOf(item.Clip).Kind == PlaceKind.Excluded);
-        internal IEnumerable<Item> ItemsIn(PlaceKind kind) => Items.Where(item => PlaceOf(item.Clip).Kind == kind);
+        internal int ExcludedCount => ItemsIn(PlaceKind.Excluded).Count();
+        // The faces shown in a place. Unsupported faces are left out.
+        internal IEnumerable<Item> ItemsIn(PlaceKind kind) => Items.Where(item => Usable(item) && PlaceOf(item.Clip).Kind == kind);
     }
 }
