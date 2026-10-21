@@ -190,7 +190,11 @@ namespace VRVlog.LilToonExporter
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
                 AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))
-                .Where(morph => !skippedPaths.Contains(morph.Item1)).ToList(); // As the recorded face drops them.
+                .Where(morph => !skippedPaths.Contains(morph.Item1)) // As the recorded face drops them.
+                // The VRM clip binds the original mesh, so a shape it never had
+                // is dropped as the board's face drops it. A shape lost by
+                // preparation is kept and already failed the checks above.
+                .Where(morph => !authoringRenderers.TryGetValue(morph.Item1, out var original) || preparation.HadShape(original, morph.Item2)).ToList();
         }
 
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)
