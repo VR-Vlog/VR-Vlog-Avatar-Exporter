@@ -2210,9 +2210,9 @@ namespace VRVlog.LilToonExporter
                 // A retry from the recovery window runs outside any batch; in
                 // one attempt the standard faces use the hash Export has taken.
                 using var batch = ExperimentalExpressionCaptureSession.Batch();
-                // Nothing is asked in a non-interactive save, so a failing stage
-                // follows the project-wide choice as the old quick transfer did.
-                if (!interactive && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
+                // Nothing is asked in the quick transfer (a non-interactive transfer),
+                // so a failing stage follows the project-wide choice as it did before.
+                if (!interactive && written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
