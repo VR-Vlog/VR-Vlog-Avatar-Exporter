@@ -290,6 +290,43 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ADeletedAddedFileIsRemovedAndItsSlotStillShowsTheMissingFile()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var folder = "Assets/VRVlogDeletedAdded_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var clip = new AnimationClip { name = "Face" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
+                AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
+                Assert.That(board.UsesRecordRoute, Is.True, "An added file is recorded.");
+
+                Assert.That(AssetDatabase.DeleteAsset(folder + "/Face.anim"), Is.True);
+                Assert.That(clip == null, Is.True, "Deleting the asset leaves a null clip in the list.");
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                Assert.That(inputs, Is.Empty, "A deleted file does not stay counted toward the limit.");
+                Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
+                Assert.That((string)type.GetField("status", flags).GetValue(window), Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(
+                    new[] { ("Face", ExporterLocalization.T(ExperimentalExpressionCaptureWindow.DeletedClipReason)) })));
+                // The slot keeps the choice and names the file as missing, so the save stops with that reason.
+                var slot = board.SlotValue(ExpressionPreset.happy);
+                Assert.That(slot, Is.Not.Null); Assert.That(slot.IsNone, Is.False);
+                Assert.That(ExperimentalExpressionCaptureSession.PresetDisplayName(slot), Is.EqualTo(ExporterLocalization.T("見つからないファイル")));
+                Assert.That(window.BlocksExport, Is.True, "The kept slot stops the save.");
+            }
+            finally { Object.DestroyImmediate(window); if (clip != null) Object.DestroyImmediate(clip); AssetDatabase.DeleteAsset(folder); }
+        }
+
+        [Test]
         public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
