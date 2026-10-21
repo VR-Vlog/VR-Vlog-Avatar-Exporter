@@ -113,6 +113,35 @@ class CompareExportsTests(unittest.TestCase):
         self.assertEqual({'nodes': [{'name': 'A', 'extras': {}}, {'name': 'B', 'extras': {}}]}, stripped)
         self.assertEqual(doc, compare.strip_volatile(copy.deepcopy(doc), compare.volatile_patterns([])))
 
+    def emission_image_pair(self, name_a, name_b):
+        for directory, name in ((self.a, name_a), (self.b, name_b)):
+            doc = document()
+            doc['images'] = [{'name': 'Body_Main'}, {'name': name, 'mimeType': 'image/png'}]
+            write(directory, 'A1_1', result('A1', 1), doc)
+        return run_main([self.a, self.b])
+
+    def test_emission_guid_suffix_difference_is_ignored(self):
+        code, out, _ = self.emission_image_pair('Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                                                'Body_Main__VRVlog_Emission_' + 'fedcba9876543210' * 2)
+        self.assertEqual(0, code, out)
+        self.assertIn('2 pairs, 0 mismatched', out)
+
+    def test_emission_name_with_other_prefix_exit_1(self):
+        code, out, _ = self.emission_image_pair('Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                                                'Hair_Main__VRVlog_Emission_' + 'fedcba9876543210' * 2)
+        self.assertEqual(1, code, out)
+        self.assertIn('/images/1/name', out)
+        code, out, _ = self.emission_image_pair('Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                                                'Body_Main__VRVlog_Glow_' + 'fedcba9876543210' * 2)
+        self.assertEqual(1, code, out)
+        self.assertIn('/images/1/name', out)
+
+    def test_diff_paths_does_not_mask_volatile_sub(self):
+        self.emission_image_pair('Body_Main__VRVlog_Emission_' + '0123456789abcdef' * 2,
+                                 'Body_Main__VRVlog_Emission_' + 'fedcba9876543210' * 2)
+        code, out, _ = run_main(['--diff-paths', self.a / 'A1_1.vrm', self.b / 'A1_1.vrm'])
+        self.assertEqual((1, ['/images/1/name']), (code, out.split()))
+
     def test_missing_vrm_exit_1(self):
         (self.b / 'A1_1.vrm').unlink()
         code, out, _ = run_main([self.a, self.b])

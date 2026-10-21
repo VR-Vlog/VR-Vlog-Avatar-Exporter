@@ -11,7 +11,8 @@ Tools/run-export-regression.ps1 (with ExportRegressionRunner.cs) exports each jo
       run 2 of the same package, to confirm the base is deterministic).
   compare-exports.py --diff-paths <vrmA> <vrmB>
       Prints every glb JSON path that differs between two files. Use it on two runs of the
-      same package to find paths that change on every export (see VOLATILE).
+      same package to find paths that change on every export (see VOLATILE and VOLATILE_SUB).
+      The JSON is compared as is, without removing or masking anything.
 
 Checked for each pair:
   1. success or failure, and the failure text
@@ -20,7 +21,8 @@ Checked for each pair:
      (morphTargetBinds with node, index and weight, materialColorBinds, textureTransformBinds,
      isBinary, overrideBlink / overrideLookAt / overrideMouth and anything else). VRM 0.x
      blendShapeGroups are compared the same way.
-  4. sha256 of the glb JSON chunk after removing VOLATILE paths, and sha256 of the BIN chunk
+  4. sha256 of the glb JSON chunk after removing VOLATILE paths and masking the VOLATILE_SUB
+     parts of string values, and sha256 of the BIN chunk
 Whole-file byte equality is reported as information only.
 
 Exit codes: 0 = every pair matches, 1 = differences, missing results or no pairs,
@@ -43,6 +45,16 @@ MAX_PATHS = 8
 # running each avatar twice with the same package and comparing run 1 with run 2 using
 # --diff-paths; "*" matches any one key or index. Only these are removed before hashing.
 VOLATILE = []
+
+# (path, regex, replacement) for string values that only partly change on every export. The
+# regex is applied to the value before hashing, so only the part that changes is masked and the
+# rest of the value is still compared. Paths use the same "*" wildcard as VOLATILE.
+VOLATILE_SUB = [
+    # The baked emission texture gets a new random GUID at the end of its image name on every
+    # export, while the image bytes in BIN stay the same. Found with --diff-paths on two runs of
+    # one package.
+    ("/images/*/name", r"(__VRVlog_Emission)_[0-9a-f]{32}$", r"\1_<guid>"),
+]
 
 
 def read_glb(path):
@@ -98,15 +110,27 @@ def volatile_patterns(paths=None):
     return [pattern(p) for p in (VOLATILE if paths is None else paths)]
 
 
-def strip_volatile(value, patterns=None, path=""):
-    """Copy of value without the dictionary entries whose path matches a VOLATILE pattern."""
+def volatile_subs(entries=None):
+    return [(pattern(p), re.compile(regex), replacement)
+            for p, regex, replacement in (VOLATILE_SUB if entries is None else entries)]
+
+
+def strip_volatile(value, patterns=None, path="", subs=None):
+    """Copy of value without the dictionary entries whose path matches a VOLATILE pattern, and
+    with the VOLATILE_SUB replacements applied to matching string values."""
     if patterns is None:
         patterns = volatile_patterns()
+    if subs is None:
+        subs = volatile_subs()
     if isinstance(value, dict):
-        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key)) for key, item in value.items()
+        return {key: strip_volatile(item, patterns, "%s/%s" % (path, key), subs) for key, item in value.items()
                 if not any(p.match("%s/%s" % (path, key)) for p in patterns)}
     if isinstance(value, list):
-        return [strip_volatile(item, patterns, "%s/%d" % (path, index)) for index, item in enumerate(value)]
+        return [strip_volatile(item, patterns, "%s/%d" % (path, index), subs) for index, item in enumerate(value)]
+    if isinstance(value, str):
+        for path_pattern, regex, replacement in subs:
+            if path_pattern.match(path):
+                value = regex.sub(replacement, value)
     return value
 
 
@@ -175,9 +199,11 @@ def load_result(directory, stem):
     return result, (vrm if vrm.exists() else None)
 
 
-def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None):
+def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None, subs=None):
     if patterns is None:
         patterns = volatile_patterns()
+    if subs is None:
+        subs = volatile_subs()
     ra, va = load_result(dir_a, stem_a)
     rb, vb = load_result(dir_b, stem_b)
     row = {"a": stem_a, "b": stem_b, "issues": []}
@@ -206,7 +232,7 @@ def compare_pair(dir_a, stem_a, dir_b, stem_b, patterns=None):
     ea, eb = expressions(json_a), expressions(json_b)
     row["expressions"] = len(ea)
     issues += compare_expressions(ea, eb)
-    sa, sb = strip_volatile(json_a, patterns), strip_volatile(json_b, patterns)
+    sa, sb = strip_volatile(json_a, patterns, subs=subs), strip_volatile(json_b, patterns, subs=subs)
     ha, hb = normalized_json_hash(sa), normalized_json_hash(sb)
     row["json_hash"] = ha[:16]
     row["bin_hash"] = sha256(bin_a)[:16]
@@ -282,8 +308,8 @@ def main(argv=None):
             for path in paths:
                 print(path)
             return 1 if paths else 0
-        patterns = volatile_patterns()
-        rows = [compare_pair(*pair, patterns=patterns) for pair in plan_pairs(args)]
+        patterns, subs = volatile_patterns(), volatile_subs()
+        rows = [compare_pair(*pair, patterns=patterns, subs=subs) for pair in plan_pairs(args)]
     except (OSError, ValueError) as error:
         print("ERROR " + str(error), file=sys.stderr)
         return 2
