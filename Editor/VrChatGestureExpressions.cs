@@ -267,6 +267,10 @@ namespace VRVlog.LilToonExporter
                 if (!IsMorph(binding))
                 {
                     if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding) || NeutralShapePlan.IsInertDynamicsBinding(binding)) continue;
+                    // A hand pose beside the face cannot change a BlendShape;
+                    // the FX sampler already settles it. Animator parameter
+                    // curves can drive other layers and stay rejected.
+                    if (PoseSampling.IsHumanoidChannel(binding)) continue;
                     if (plan?.AllowsEvaluationBinding(clip, binding) == true) continue;
                     throw new InvalidOperationException("BlendShape以外の変化を含む表情アニメーションです: " + binding.propertyName);
                 }
