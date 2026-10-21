@@ -55,7 +55,7 @@ namespace VRVlog.LilToonExporter
             var idat = new IdatWriter(output);
             idat.Write(ZlibHeader, 0, ZlibHeader.Length);
             var adler = new Adler32();
-            using (var deflate = new DeflateStream(idat, CompressionLevel.Optimal, true))
+            using (var deflate = new DeflateStream(idat, System.IO.Compression.CompressionLevel.Optimal, true))
             {
                 var previous = new byte[rowBytes];
                 var current = new byte[rowBytes];
