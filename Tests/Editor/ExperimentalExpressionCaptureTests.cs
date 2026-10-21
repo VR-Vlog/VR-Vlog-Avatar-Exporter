@@ -2567,6 +2567,84 @@ namespace VRVlog.LilToonExporter.Tests
                 using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
             }
         }
+
+        static int SourceChecks() => ExpressionBoardTimings.Last.Count(step => step.Step == "validate" || step.Step.EndsWith("/validate", StringComparison.Ordinal));
+
+        // The transfer window calls the board outside its own batch. One
+        // transfer hashes the source for the board's records and again in
+        // Export, not once more per standard face.
+        [Test]
+        public void ATransferChecksTheSourceForTheRecordsAndTheExportOnly()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-checks-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+                session.SetPreset(ExpressionPreset.sad, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
+                session.SetPreset(ExpressionPreset.surprised, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.surprised, "Front", "Smile"));
+                var saved = false;
+                ExpressionBoardTimings.Clear();
+                Assert.That(window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(SourceChecks(), Is.InRange(1, 2), string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
+            }
+            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // An edit after the board opened still stops the transfer, as before.
+        [Test]
+        public void ATransferAfterAnEditOfTheSourceStops()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-edited-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                fixture.Source.transform.Find("Front").name = "Front edited";
+                var saved = false;
+                var exception = Assert.Throws<InvalidOperationException>(() => window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // Inside a batch the records and the standard faces use the batch's
+        // check, but Export hashes the source again and sees an edit.
+        [Test]
+        public void ExportInABatchStillSeesAnEditOfTheSource()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var assignment = ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                session.ReplaceClipRecords(Array.Empty<ExperimentalExpressionCaptureSession.ClipInput>(), null);
+                fixture.Source.transform.Find("Front").name = "Front edited";
+                Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, assignment), "The batch was checked already.");
+                var exception = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests"));
+                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+            }
+        }
     }
 
 }
