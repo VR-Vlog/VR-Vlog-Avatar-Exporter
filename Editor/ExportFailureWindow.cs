@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter
         private static ExportFailureWindow NewWindow()
         {
             var window = CreateInstance<ExportFailureWindow>();
-            window.titleContent = new GUIContent(ExporterLocalization.T("VRMの書き出しを続ける"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("VRMの書き出しを続ける"));
             window.minSize = new Vector2(520, 420);
             window.position = new Rect(120, 120, 620, 680);
             return window;

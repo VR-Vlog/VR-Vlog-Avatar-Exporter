@@ -94,7 +94,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // Validate the new owned copy before replacing an existing
                 // window/session. A failed selection leaves that session live.
                 prepared = new CloudVrmTransferSource(ownedSnapshotPath, name);
-                window = GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る"));
+                window = ExporterWindowIcon.Restore(GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る")));
                 var compact = window.source == null && !window.docked;
                 window.StopAndClean();
                 window.source = prepared;
@@ -113,6 +113,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             if (!CloudTransferAvailability.Enabled)
             {
                 StopAndClean();

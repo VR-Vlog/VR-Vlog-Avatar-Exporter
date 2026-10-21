@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter
         static AppPreviewWindow Window()
         {
             var window = GetWindow<AppPreviewWindow>();
-            window.titleContent = new GUIContent(T("アプリでの見え方"));
+            window.titleContent = ExporterWindowIcon.Title(T("アプリでの見え方"));
             window.minSize = new Vector2(900, 600);
             window.Show();
             return window;
@@ -206,6 +206,7 @@ namespace VRVlog.LilToonExporter
 
         void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
