@@ -33,6 +33,9 @@ namespace VRVlog.LilToonExporter
         internal string Id, Name, Category = "", Source, Error, Note = "", Conditions = "";
         internal bool SampledMotion;
         internal bool IsAnimation;
+        // A menu entry that provably cannot select a body pose. It stays in
+        // the review list but is not an export warning.
+        internal bool NotBodyPose;
         internal readonly List<PoseLayer> Layers = new List<PoseLayer>();
         internal HumanoidPoseData Data;
         internal HumanoidAnimationData Animation;
@@ -71,17 +74,17 @@ namespace VRVlog.LilToonExporter
         {
             var animator = root.GetComponent<Animator>();
             if (animator == null || !animator.isHuman) return new HashSet<string>();
-            return new HashSet<string>((includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => animator.GetBoneTransform(HumanBone(n)))
+            return new HashSet<string>((includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => HumanoidBones.Resolve(animator, HumanBone(n)))
                 .Where(t => t != null).Select(t => AnimationUtility.CalculateTransformPath(t, root.transform)));
         }
         internal static bool HasEffectiveBody(GameObject root, PoseLayer layer)
         {
             var animator = root.GetComponent<Animator>();
             if (layer.Clip == null || animator == null || !animator.isHuman) return false;
-            var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+            var hips = HumanoidBones.Resolve(animator, HumanBodyBones.Hips);
             return HumanoidPoseData.BoneNames.Any(name =>
             {
-                var bone = animator.GetBoneTransform(HumanBone(name));
+                var bone = HumanoidBones.Resolve(animator, HumanBone(name));
                 return bone != null && WritesBone(layer, name, bone, root);
             }) || hips != null && WritesHipsPosition(layer, AnimationUtility.CalculateTransformPath(hips, root.transform));
         }
@@ -89,7 +92,7 @@ namespace VRVlog.LilToonExporter
         {
             var animator = root.GetComponent<Animator>();
             if (layer.Clip == null || animator == null || !animator.isHuman) yield break;
-            var bones = (includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => (name: n, human: HumanBone(n), bone: animator.GetBoneTransform(HumanBone(n)))).Where(b => b.bone != null).ToArray();
+            var bones = (includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => (name: n, human: HumanBone(n), bone: HumanoidBones.Resolve(animator, HumanBone(n)))).Where(b => b.bone != null).ToArray();
             var paths = bones.ToDictionary(b => AnimationUtility.CalculateTransformPath(b.bone, root.transform), b => b.name);
             foreach (var binding in AnimationUtility.GetCurveBindings(layer.Clip))
             {
@@ -336,7 +339,7 @@ namespace VRVlog.LilToonExporter
                         {
                             var animator = copy.GetComponent<Animator>();
                             var name = data.Bones.First(b => AnimationUtility.CalculateTransformPath(
-                                animator.GetBoneTransform(HumanBone(b.Name)), copy.transform) == channel.binding.path).Name;
+                                HumanoidBones.Resolve(animator, HumanBone(b.Name)), copy.transform) == channel.binding.path).Name;
                             var previous = channel.curve.Evaluate((float)(start + probeTimes[0]));
                             for (var i = 1; i < probeTimes.Length; i++)
                             {
@@ -421,14 +424,14 @@ namespace VRVlog.LilToonExporter
                 var animator = copy.GetComponent<Animator>();
                 if (animator == null || !animator.isHuman || animator.avatar == null || !animator.avatar.isValid)
                     throw new InvalidOperationException("有効なHumanoid Animatorが必要です。");
-                var allBones = AnimationBoneNames.Select(name => (name, bone: animator.GetBoneTransform(HumanBone(name))))
+                var allBones = AnimationBoneNames.Select(name => (name, bone: HumanoidBones.Resolve(animator, HumanBone(name))))
                     .Where(b => b.bone != null).ToArray();
                 var bones = allBones.Where(b => HumanoidPoseData.BoneNames.Contains(b.name) || includeHead &&
                     candidate.Layers.Any(layer => layer.Clip != null && WritesBone(layer, b.name, b.bone, copy))).ToArray();
                 var rotations = bones.ToDictionary(b => b.name, b => b.bone.rotation);
                 var locals = allBones.ToDictionary(b => b.name, b => b.bone.localRotation);
                 var positions = allBones.ToDictionary(b => b.name, b => b.bone.localPosition);
-                var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
+                var hips = HumanoidBones.Resolve(animator, HumanBodyBones.Hips);
                 var hipPosition = hips.position;
                 animator.runtimeAnimatorController = null; animator.enabled = true;
                 animator.fireEvents = false; animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
@@ -568,7 +571,7 @@ namespace VRVlog.LilToonExporter
             // All events and non-pose curves are removed from this owned clip.
             AnimationUtility.SetAnimationEvents(result, Array.Empty<AnimationEvent>());
             var paths = BodyPaths(root, includeHead);
-            var hips = AnimationUtility.CalculateTransformPath(animator.GetBoneTransform(HumanBodyBones.Hips), root.transform);
+            var hips = AnimationUtility.CalculateTransformPath(HumanoidBones.Resolve(animator, HumanBodyBones.Hips), root.transform);
             foreach (var binding in AnimationUtility.GetCurveBindings(result))
             {
                 var p = binding.propertyName;
@@ -638,11 +641,11 @@ namespace VRVlog.LilToonExporter
         // layers in their authored order instead.
         static void EvaluateTransforms(GameObject root, Animator animator, List<PoseLayer> layers, bool includeHead = false)
         {
-            var bones = (includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => (name: n, t: animator.GetBoneTransform(HumanBone(n)))).Where(b => b.t != null).ToArray();
+            var bones = (includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames).Select(n => (name: n, t: HumanoidBones.Resolve(animator, HumanBone(n)))).Where(b => b.t != null).ToArray();
             foreach (var group in layers.GroupBy(l => l.Group))
             {
                 var before = bones.ToDictionary(b => b.t, b => b.t.localRotation);
-                var hips = animator.GetBoneTransform(HumanBodyBones.Hips); var beforeHip = hips.localPosition;
+                var hips = HumanoidBones.Resolve(animator, HumanBodyBones.Hips); var beforeHip = hips.localPosition;
                 foreach (var layer in group)
                 {
                     if (layer.Additive) throw new InvalidOperationException("加算レイヤーは未対応です。");
@@ -691,7 +694,7 @@ namespace VRVlog.LilToonExporter
             var clip = new AnimationClip();
             foreach (var name in includeHead ? AnimationBoneNames : HumanoidPoseData.BoneNames)
             {
-                var bone = animator.GetBoneTransform(HumanBone(name)); if (bone == null) continue;
+                var bone = HumanoidBones.Resolve(animator, HumanBone(name)); if (bone == null) continue;
                 var path = AnimationUtility.CalculateTransformPath(bone, root.transform);
                 for (var i = 0; i < 4; i++) AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalRotation." + "xyzw"[i]), AnimationCurve.Constant(0, 1, bone.localRotation[i]));
                 if (name == "hips") for (var i = 0; i < 3; i++) AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalPosition." + "xyz"[i]), AnimationCurve.Constant(0, 1, bone.localPosition[i]));

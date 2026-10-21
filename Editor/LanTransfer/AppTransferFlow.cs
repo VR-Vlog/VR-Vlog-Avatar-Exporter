@@ -16,7 +16,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
     {
         internal const string Title = "アプリに転送";
         internal const string TitleWithAvatar = "アプリに転送 — {0}";
-        internal const string Heading = "VR Vlogへ転送";
+        internal const string HeadingQuick = "アプリに転送（かんたん）";
+        internal const string HeadingDetailed = "アプリに転送（通常）";
+        internal const string EditDetails = "表情とオブジェクトを選ぶ";
+        internal const string BackToBoard = "戻って編集";
+        internal const string OpenBoard = "割り当て画面を開く";
         internal const string Sending = "{0}を送る";
         internal const string Name = "名前";
         internal const string NameHint = "アプリのアバター一覧での名前";
@@ -25,6 +29,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Create = "QRコードを作る";
         internal const string CreateHint = "スマホのカメラでQRを読み取るとVR Vlogが開いて取り込みが始まります";
         internal const string NeedsAvatar = "アバターを指定すると作れます";
+        internal const string NeedsBoard = "表情の割り当て画面が開いていません";
+        internal const string NeedsBoardFix = "表情の割り当てを直すと作れます";
         internal const string NeedsName = "名前を入れると作れます";
         internal const string NeedsShorterName = "名前を短くすると作れます";
         internal const string NeedsAuthor = "作者名を入れると作れます";
@@ -40,6 +46,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
         internal const string Regenerate = "QRを作り直す";
+        internal const string QrReadySound = "QRができたら音を鳴らす";
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
         internal const string Completed = "取り込みが終わりました";
@@ -79,6 +86,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string TermsUrl = "https://vrvlog.fun/terms/";
         internal const string Extension = ".vrm";
         private const int MaximumNameLength = 256;
+        // "QRができたら音を鳴らす" is on until the user turns it off.
+        internal const bool QrReadySoundByDefault = true;
 
         private readonly Func<CloudVrmTransferSource, CloudVrmTransferSession> createSession;
         private readonly Func<long> now;
@@ -99,13 +108,20 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Why the primary button is disabled, or null when it can be pressed.
         // privacyAccepted is the saved privacy policy choice shared with "スマホに送る".
-        internal static string BlockReason(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
+        // boardReady is false only for the detailed transfer while its expression board is not open.
+        internal static string BlockReason(bool hasAvatar, bool boardReady, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
             !hasAvatar ? AppTransferText.NeedsAvatar
+            : !boardReady ? AppTransferText.NeedsBoard
             : !HasListedName(name) ? AppTransferText.NeedsName
             : !nameFits ? AppTransferText.NeedsShorterName
             : !hasAuthor ? AppTransferText.NeedsAuthor
             : !consented ? AppTransferText.NeedsConsent
             : privacyAccepted ? null : AppTransferText.NeedsPrivacyConsent;
+
+        // The OS notification sound plays only when a QR has just appeared on screen; a QR
+        // that could not be drawn, a failed or canceled transfer and an ended wait stay silent.
+        internal static bool ShouldBeepForQr(AppTransferView view, bool qrShown, bool soundOn) =>
+            soundOn && qrShown && view == AppTransferView.Waiting;
 
         // The phone stores the transfer under this name and lists the avatar
         // without the extension. This string is also the QR and AAD name.
@@ -159,7 +175,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             catch (WriterException) { return false; }
         }
 
-        internal static string NewSnapshotPath() => Path.Combine(Path.GetTempPath(), "VRVlogCloudTransfers", Guid.NewGuid().ToString("N") + Extension);
+        internal static string NewSnapshotPath() => TransferTempDirectory.NewFile("VRVlogCloudTransfers", Extension);
         internal static void Discard(string snapshotPath) => LanVrmTransferServer.TryDelete(snapshotPath);
 
         internal AppTransferView View

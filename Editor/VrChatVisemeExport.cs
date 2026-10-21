@@ -29,10 +29,12 @@ namespace VRVlog.LilToonExporter
                 return copy;
             }
 
-            // A renderer that NDMF cannot follow is treated as not exported.
+            // A renderer that NDMF cannot follow is treated as not exported. A
+            // renderer a pass destroyed is still passed on, so its shapes can be
+            // followed to the renderer it was renamed or merged into.
             internal void RebindPrepared(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> replacement)
             {
-                if (Renderer != null) Renderer = replacement(Renderer);
+                if (!ReferenceEquals(Renderer, null)) Renderer = replacement(Renderer);
             }
 
             // Shapes the optimizer must keep and report. Only names on an

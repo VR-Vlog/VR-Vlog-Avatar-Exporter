@@ -37,6 +37,17 @@ namespace VRVlog.LilToonExporter.Tests
             return skin;
         }
 
+        // Automatic setup that cannot pick a closing shape exports without
+        // blink, reports why, and never guesses.
+        static void AssertUnresolved(BlinkExportSession resolved, string reason)
+        {
+            Assert.That(resolved.Disabled && resolved.UnresolvedAutomatic, Is.True, "An unresolved automatic blink falls back to no blink.");
+            Assert.That(resolved.MissingAutomatic, Is.False);
+            Assert.That(resolved.Slots.All(slot => slot.Count == 0), Is.True, "Nothing is guessed.");
+            Assert.That(resolved.Description, Is.EqualTo(BlinkExportSession.UnresolvedAutomaticDescription));
+            Assert.That(resolved.UnresolvedReason, Does.StartWith(reason));
+        }
+
         [Test] public void EyeSpacingNeverWinsOverAnEyelidShape()
         {
             var skin = Skin("eye_close", "vrc.Blink", "eye_blink_1", "eye_blink_1_L", "eye_blink_1_R");
@@ -73,22 +84,23 @@ namespace VRVlog.LilToonExporter.Tests
             var calls = 0;
             BlinkExportSession Resolve() { calls++; return BlinkExportSession.Resolve(root); }
             cache.Refresh(0, Resolve);
-            // A duplicate closing name is still an error. An avatar without any
-            // closing name now resolves to no blink instead (see the fallback tests).
+            // A duplicate closing name resolves to no blink with the reason kept
+            // for the blink settings (see the fallback tests).
             var valid = skin.sharedMesh;
             var duplicate = Object.Instantiate(valid); duplicate.ClearBlendShapes(); owned.Add(duplicate);
             foreach (var name in new[] { "Blink", "BLINK" })
                 duplicate.AddBlendShapeFrame(name, 100, new[] { Vector3.up * .2f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
             skin.sharedMesh = duplicate;
             cache.Refresh(1, Resolve);
-            Assert.That(cache.Resolved, Is.Null);
-            Assert.That(cache.Error, Is.Not.Empty);
+            Assert.That(cache.Error, Is.Null);
+            AssertUnresolved(cache.Resolved, BlinkExportSession.DuplicateClosingNames);
             cache.Refresh(1.1, Resolve);
-            Assert.That(calls, Is.EqualTo(2), "An invalid avatar must not be rescanned on every repaint either.");
+            Assert.That(calls, Is.EqualTo(2), "An unresolved avatar must not be rescanned on every repaint either.");
             skin.sharedMesh = valid;
             cache.Invalidate();
             cache.Refresh(1.2, Resolve);
-            Assert.That(cache.Resolved, Is.Not.Null);
+            Assert.That(cache.Resolved.UnresolvedAutomatic, Is.False);
+            Assert.That(cache.Resolved.Disabled, Is.False);
             Assert.That(cache.Error, Is.Null);
             cache.Invalidate();
         }
@@ -148,7 +160,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void LeftAndRightMustBelongToOneNameFamily()
         {
             Skin("Blink_L", "eye_blink_1_R");
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
         [Test] public void PartialUnifiedClosureDoesNotInventBilateralBlink()
@@ -191,13 +203,13 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void CrossRendererLegacyPairsDoNotHideAnUnmatchedThirdRenderer()
         {
             Skin("Blink_L"); Skin("Blink_R"); Skin("eye_blink_1_L");
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
         [Test] public void CrossRendererLegacySidesCannotMixNameFamilies()
         {
             Skin("Blink_L"); Skin("eye_blink_1_R");
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
         [TestCase(true, false)][TestCase(false, false)][TestCase(true, true)][TestCase(false, true)]
@@ -259,7 +271,7 @@ namespace VRVlog.LilToonExporter.Tests
                 skin.sharedMesh.AddBlendShapeFrame("JawOpen", 100f, new[] { Vector3.up * .2f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
                 foreach (var name in new[] { "EyeClosedLeft", "EyeClosedRight" }) skin.sharedMesh.AddBlendShapeFrame(name, 100f, new Vector3[3], new Vector3[3], new Vector3[3]);
             }
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnusableClosingShapes);
         }
 
         [Test] public void InertPreferredUnifiedAliasCannotSelectTheMovingLowerAlias()
@@ -277,7 +289,7 @@ namespace VRVlog.LilToonExporter.Tests
             Skin("EyeClosedLeft");
             var profile = ScriptableObject.CreateInstance<VrmTrackingProfile>(); owned.Add(profile);
             root.AddComponent<VrmTrackingMarker>().profile = profile;
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
         [Test] public void CompleteUnifiedBlinkPairWinsBeforeAnEarlierLegacySingleSide()
@@ -346,7 +358,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void DuplicateSemanticNamesAreNotGuessed()
         {
             Skin("Blink", "BLINK");
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.DuplicateClosingNames);
         }
         [TestCase("Blink", .2f)][TestCase("BLINK", .6f)]
         public void ExplicitManualChoiceResolvesCaseDistinctAliasesAndBakesTheSelectedChannel(string selected, float expected)
@@ -355,7 +367,7 @@ namespace VRVlog.LilToonExporter.Tests
             skin.sharedMesh.ClearBlendShapes();
             skin.sharedMesh.AddBlendShapeFrame("Blink", 100, new[] { Vector3.up * .2f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
             skin.sharedMesh.AddBlendShapeFrame("BLINK", 100, new[] { Vector3.up * .6f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.DuplicateClosingNames);
             var options = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
             options.Both.Add(new BlinkShapeBinding { Renderer = skin, Shape = selected });
             using var resolved = BlinkExportSession.Resolve(root, options);
@@ -387,7 +399,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var skin = Skin("Blink", "BLINK");
             var options = new BlinkExportOptions();
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root, options));
+            AssertUnresolved(BlinkExportSession.Resolve(root, options), BlinkExportSession.DuplicateClosingNames);
             options.SelectMode(BlinkExportMode.Manual);
             Assert.That(options.Mode, Is.EqualTo(BlinkExportMode.Manual));
             Assert.That(options.Both.Count, Is.EqualTo(1));
@@ -422,7 +434,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void APartialEyelashPairCannotBeHiddenByAnotherRenderersBlink(string shape)
         {
             Skin("Blink"); Skin(shape);
-            Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(root));
+            AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
         [Test] public void ACompleteBilateralShapeCanCoverAnIncompleteAlternativePair()
@@ -744,6 +756,34 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That((string)names[Convert.ToInt32(binding["index"])], Does.StartWith("__VRVlog_Blink_"));
             }
             Assert.That(fixture.Mesh.blendShapeCount, Is.EqualTo(2));
+        }
+
+        [TestCase(false)][TestCase(true)]
+        public void ActualExportContinuesWithoutBlinkWhenTheClosingShapeIsAmbiguous(bool duplicate)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")); owned.Add(material);
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+            var moved = Enumerable.Repeat(Vector3.down * .03f, fixture.Mesh.vertexCount).ToArray();
+            foreach (var name in duplicate ? new[] { "Blink", "BLINK" } : new[] { "Blink_L" })
+                fixture.Mesh.AddBlendShapeFrame(name, 100, moved, null, null);
+            var warnings = new List<string>();
+            var report = new ExportRecoveryReport();
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Ambiguous blink", "Tests", warnings, recoveryReport: report);
+            Assert.That(bytes, Is.Not.Empty);
+            Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning), StringComparison.Ordinal)), Is.True);
+            Assert.That(report.Fallbacks.Items.Select(item => item.Kind), Has.Member(ExportFallbackKind.Blink));
+            var glb = GlbDocument.Read(bytes);
+            var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
+            var preset = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["preset"];
+            foreach (Dictionary<string, object> binding in (List<object>)((Dictionary<string, object>)preset["blink"])["morphTargetBinds"])
+            {
+                var node = (Dictionary<string, object>)((List<object>)glb.Json["nodes"])[Convert.ToInt32(binding["node"])];
+                var mesh = (Dictionary<string, object>)((List<object>)glb.Json["meshes"])[Convert.ToInt32(node["mesh"])];
+                var names = (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"];
+                Assert.That((string)names[Convert.ToInt32(binding["index"])], Does.StartWith("__VRVlog_BlinkNone_"),
+                    "The blink preset only holds the no-op target, so viewers do not guess a closing shape.");
+            }
         }
 
         [TestCase(false)][TestCase(true)]

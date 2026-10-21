@@ -11,14 +11,15 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportFallbackConfirmationTests
     {
+        // Answers at once, as if the user pressed 保存する or 設定を変更する.
         sealed class RecordingDialog : IExportFallbackDialog
         {
             internal bool Answer;
-            internal readonly List<(string Title, string Message, string Export, string Change)> Calls = new List<(string, string, string, string)>();
-            public bool Confirm(string title, string message, string export, string changeSettings)
+            internal readonly List<ExportResultList> Calls = new List<ExportResultList>();
+            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
             {
-                Calls.Add((title, message, export, changeSettings));
-                return Answer;
+                Calls.Add(result);
+                if (Answer) save(); else changeSettings();
             }
         }
 
@@ -62,48 +63,19 @@ namespace VRVlog.LilToonExporter.Tests
             return report;
         }
 
-        [Test] public void OneFallbackAsksWithItsOwnSentence()
+        [Test] public void EveryShippedLocaleTranslatesTheResultWords()
         {
-            var report = new ExportFallbackReport();
-            report.Add(ExportFallbackKind.Blink);
-            Assert.That(ExportFallbackConfirmation.Message(report), Is.EqualTo(
-                "瞬きの表情の自動設定ができませんでした\n瞬きが使用できない状態でも書き出しますか？"));
-            report = new ExportFallbackReport();
-            report.Add(ExportFallbackKind.PlaneInsideBounds, "Collider_plane");
-            Assert.That(ExportFallbackConfirmation.Message(report), Is.EqualTo(
-                "平面のInside Boundsを変換できませんでした\n対象: Collider_plane\nInside Boundsが使用できない状態でも書き出しますか？"));
-            report = new ExportFallbackReport();
-            report.Add(ExportFallbackKind.ColliderSkipped, "Collider_box");
-            Assert.That(ExportFallbackConfirmation.Message(report), Is.EqualTo(
-                "PhysBoneコライダーを変換できませんでした\n対象: Collider_box\nこの衝突が使用できない状態でも書き出しますか？"));
-            report = new ExportFallbackReport();
-            report.Add(ExportFallbackKind.NonLilToonMaterials);
-            Assert.That(ExportFallbackConfirmation.Message(report), Is.EqualTo(
-                "lilToonのマテリアルが見つかりませんでした\nlilToonの表現が使用できない状態でも書き出しますか？"));
-        }
-
-        [Test] public void SeveralFallbacksShareOneDialogInAFixedOrder()
-        {
-            var report = AllFallbacks();
-            foreach (var name in new[] { "Collider_box", "A", "B", "C", "D" }) report.Add(ExportFallbackKind.ColliderSkipped, name);
-            Assert.That(report.Count, Is.EqualTo(3), "A kind is listed once however many objects it covers.");
-            Assert.That(ExportFallbackConfirmation.Message(report), Is.EqualTo(
-                "・瞬きの表情の自動設定ができませんでした\n" +
-                "・PhysBoneコライダーを変換できませんでした\n" +
-                "　対象: Collider_box, A ほか3件\n" +
-                "・lilToonのマテリアルが見つかりませんでした\n\n" +
-                "これらの機能が使用できない状態でも書き出しますか？"));
-            Assert.That(ExportFallbackConfirmation.Confirm(report, null, interactive: true), Is.False);
-            var call = dialog.Calls.Single();
-            Assert.That(call.Title, Is.EqualTo("自動設定できなかった項目があります"));
-            Assert.That(call.Export, Is.EqualTo("書き出す"));
-            Assert.That(call.Change, Is.EqualTo("設定を変更する"));
-        }
-
-        [Test] public void EveryShippedLocaleTranslatesTheDialog()
-        {
-            var sources = new[] { ExportFallbackConfirmation.Title, ExportFallbackConfirmation.ExportButton, ExportFallbackConfirmation.ChangeSettingsButton,
-                    ExportFallbackConfirmation.Question, ExportFallbackConfirmation.QuestionForSeveral, ExportFallbackConfirmation.TargetFormat, ExportFallbackConfirmation.MoreFormat }
+            var sources = new[] { ExportResultWindow.WindowTitle, ExportResultWindow.PendingTitle, ExportResultWindow.SavedTitle,
+                    ExportResultWindow.SavedWithWarningsTitle,
+                    ExportResultWindow.SaveButton, ExportResultWindow.ChangeSettingsButton, ExportResultWindow.AllTab,
+                    ExportResultWindow.CloseButton, ExportResultWindow.SearchPlaceholder, ExportResultWindow.EmptyList,
+                    ExportResultWindow.NoMatch, ExportResultWindow.ReloadedList, ExportResultWindow.ReloadedPending,
+                    ExportResultWindow.SelectButton, ExportResultWindow.MissingTarget, ExportResultWindow.BlinkButton,
+                    ExportResultList.CountFormat, ExportResultList.NoticeGroup,
+                    ExportResultList.StageOmittedContent, ExportResultList.StageApproximatedContent }
+                .Concat(ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome)))
+                .Concat(((ExportPhase[])Enum.GetValues(typeof(ExportPhase))).Select(ExportStageGuard.PhaseLabel))
+                .Concat(new[] { "基準形評価" })
                 .Concat(((ExportFallbackKind[])Enum.GetValues(typeof(ExportFallbackKind))).SelectMany(kind =>
                     new[] { ExportFallbackConfirmation.Failure(kind), ExportFallbackConfirmation.Feature(kind) })).Distinct().ToArray();
             var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
@@ -116,19 +88,75 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test] public void AStageIsNamedWithItsPhase()
+        {
+            Assert.That(ExportStageGuard.DisplayName(ExportStage.BlinkCapture), Is.EqualTo("表情: 瞬き"));
+            Assert.That(ExportStageGuard.DisplayName(ExportStage.PhysBone), Is.EqualTo("揺れ物"));
+        }
+
         [TestCase(false, false)][TestCase(true, true)]
-        public void BatchAndNonInteractiveCallersContinueWithoutADialog(bool interactive, bool batch)
+        public void BatchAndNonInteractiveCallersSaveWithoutTheList(bool interactive, bool batch)
         {
             ExportFallbackConfirmation.IsBatchMode = () => batch;
-            Assert.That(ExportFallbackConfirmation.Confirm(AllFallbacks(), null, interactive), Is.True);
+            var saved = 0;
+            ExportFallbackConfirmation.Confirm(AllFallbacks(), null, "a.vrm", null, interactive, () => saved++);
+            Assert.That(saved, Is.EqualTo(1));
             Assert.That(dialog.Calls, Is.Empty);
         }
 
         [Test] public void AnExportWithoutFallbacksNeverAsks()
         {
-            Assert.That(ExportFallbackConfirmation.Confirm(new ExportFallbackReport(), null, interactive: true), Is.True);
-            Assert.That(ExportFallbackConfirmation.Confirm(null, null, interactive: true), Is.True);
+            var saved = 0;
+            ExportFallbackConfirmation.Confirm(new ExportFallbackReport(), null, "a.vrm", null, interactive: true, () => saved++);
+            ExportFallbackConfirmation.Confirm(null, null, "a.vrm", null, interactive: true, () => saved++);
+            Assert.That(saved, Is.EqualTo(2));
             Assert.That(dialog.Calls, Is.Empty);
+        }
+
+        [Test] public void TheListShowsEveryFallbackWithItsTargets()
+        {
+            var report = AllFallbacks();
+            foreach (var name in new[] { "A", "B", "C", "D" }) report.Add(ExportFallbackKind.ColliderSkipped, name);
+            dialog.Answer = false;
+            ExportFallbackConfirmation.Confirm(report, new[] { "別の知らせ" }, "C:/out/avatar.vrm", null, interactive: true, () => Assert.Fail("Not saved."));
+            var list = dialog.Calls.Single();
+            Assert.That(list.FileName, Is.EqualTo("avatar.vrm"));
+            var collider = list.Rows.Single(row => row.Content == "PhysBoneコライダーを変換できませんでした");
+            Assert.That(collider.Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(collider.Targets.Select(target => target.Name), Is.EqualTo(new[] { "Collider_box", "A", "B", "C", "D" }),
+                "All five names are kept; nothing is cut at two.");
+            Assert.That(collider.TargetLabel, Is.EqualTo("5件"));
+            Assert.That(list.Rows.Single(row => row.Outcome == null).Content, Is.EqualTo("別の知らせ"));
+
+            // Default reasons are stored as Japanese source text and must follow the Editor language.
+            var messages = typeof(ExporterLocalization).GetField("_messages",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            try
+            {
+                LocaleField.SetValue(null, "en");
+                messages.SetValue(null, null);
+                var english = ExportResultList.Build(report, null).Rows.Select(row => row.Content).ToArray();
+                Assert.That(english, Has.No.Member("PhysBoneコライダーを変換できませんでした"));
+                Assert.That(english, Has.Member(ExporterLocalization.T("PhysBoneコライダーを変換できませんでした")));
+            }
+            finally { messages.SetValue(null, null); }
+        }
+
+        [Test] public void KeptItemsAreListedOnceWithoutAsking()
+        {
+            var recovery = new ExportRecoveryReport();
+            UniVrmOneClickExporter.RecordInferredPresets(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat) }, recovery);
+            var warning = string.Format(VrmExpressionBindings.FilledFormat, "happy", "笑顔");
+            Assert.That(ExportFallbackConfirmation.NeedsAnswer(recovery.Fallbacks, interactive: true), Is.False,
+                "Only kept output; nothing to decide before saving.");
+            var list = ExportResultList.Build(recovery.Fallbacks, new[] { warning });
+            var row = list.Rows.Single();
+            Assert.That(row.Outcome, Is.EqualTo(ExportOutcome.Kept));
+            Assert.That(row.Group, Is.EqualTo(UniVrmOneClickExporter.InferredPresetCategory));
+            Assert.That(row.TargetLabel, Is.EqualTo("happy"));
+            Assert.That(row.Content, Does.Not.StartWith("happy:"), "The target column already names it.");
+            Assert.That(list.NoticeCount, Is.Zero, "The warning with the same text is the kept line, not another notice.");
+            Assert.That(list.Text(), Does.Contain("保持1").And.Contain("[" + UniVrmOneClickExporter.InferredPresetCategory + "]"));
         }
 
         [TestCase(true)][TestCase(false)]
@@ -157,6 +185,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(recovery, Is.Null, "Neither answer is an export failure.");
                 Assert.That(calls, Is.EqualTo(1), "The dialog reuses the finished export; it never runs it again.");
                 Assert.That(dialog.Calls.Count, Is.EqualTo(1));
+                Assert.That(dialog.Calls[0].Rows.Count(row => row.Outcome != null), Is.EqualTo(3));
                 if (export)
                 {
                     Assert.That(File.ReadAllBytes(destination), Is.EqualTo(bytes));
@@ -235,16 +264,164 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
+                // An unsupported shader is now approximated by official lilToon
+                // instead of falling back to a flat MToon material.
                 Assert.That(report.Fallbacks.Items.Select(item => item.Kind), Is.EquivalentTo(
-                    new[] { ExportFallbackKind.Blink, ExportFallbackKind.NonLilToonMaterials }));
+                    new[] { ExportFallbackKind.Blink, ExportFallbackKind.ShaderSubstituted }));
                 Assert.That(ExportFallbackConfirmation.Targets(report.Fallbacks, fixture.Source), Is.EquivalentTo(
                     fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject)));
-                // The warnings of the non-interactive route are unchanged.
-                Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.NonLilToonWarning), StringComparison.Ordinal)), Is.True);
+                Assert.That(warnings, Has.Member(ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Plain"));
+                Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(UniVrmOneClickExporter.NonLilToonWarning), StringComparison.Ordinal)), Is.False);
                 Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));
                 Assert.That(dialog.Calls, Is.Empty, "Exporting itself never opens a dialog.");
             }
             finally { Object.DestroyImmediate(plain); }
+        }
+
+        [Test] public void AMaterialWithAMissingShaderIsFoundOnceAndOtherSlotsAreIgnored()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            var root = new GameObject("Avatar");
+            var missing = new Material(shader) { name = "Missing" };
+            var plain = new Material(Shader.Find("Standard")) { name = "Plain" };
+            var hidden = new Material(shader) { name = "Hidden" };
+            try
+            {
+                GameObject Cube(string name, params Material[] materials)
+                {
+                    var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                    cube.name = name;
+                    cube.transform.SetParent(root.transform, false);
+                    cube.GetComponent<MeshRenderer>().sharedMaterials = materials;
+                    return cube;
+                }
+                var first = Cube("First", missing, plain, null);
+                Cube("Second", missing);
+                // Inactive objects are not exported, so their materials are not listed.
+                Cube("Inactive", hidden).SetActive(false);
+                var found = UniVrmOneClickExporter.MissingShaderMaterials(root);
+                Assert.That(found.Count, Is.EqualTo(1));
+                Assert.That(found[0].Material, Is.SameAs(missing));
+                Assert.That(found[0].Renderer, Is.SameAs(first.GetComponent<MeshRenderer>()));
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(missing);
+                Object.DestroyImmediate(plain);
+                Object.DestroyImmediate(hidden);
+            }
+        }
+
+        [Test] public void ARealExportWithAMissingShaderSavesAndWarnsOnce()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var missing = new Material(shader) { name = "Missing" };
+            try
+            {
+                fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()[0].sharedMaterial = missing;
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
+                // The export is not blocked; the VRM is still written.
+                Assert.That(bytes, Is.Not.Empty);
+                var items = report.Fallbacks.Items.Where(item => item.Kind == ExportFallbackKind.MissingShader).ToArray();
+                Assert.That(items.Length, Is.EqualTo(1));
+                Assert.That(items[0].Names, Is.EqualTo(new[] { "Missing" }));
+                var summary = string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Missing";
+                Assert.That(warnings.Count(warning => warning == summary), Is.EqualTo(1));
+                Assert.That(warnings[0], Is.EqualTo(summary), "The summary comes before the other warnings.");
+                var result = ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
+                Assert.That(result.MissingShaderCount, Is.EqualTo(1));
+                Assert.That(result.Rows.Any(row => row.Content == ExportFallbackConfirmation.MissingShaderReason &&
+                    row.Targets.Any(target => target.Name == "Missing")), Is.True);
+            }
+            finally { Object.DestroyImmediate(missing); }
+        }
+
+        [Test] public void TheSavedTitleWarnsOnlyWhenAShaderIsMissing()
+        {
+            var clean = ExportResultList.Build(new ExportFallbackReport(), null);
+            var report = new ExportFallbackReport();
+            report.Add(ExportFallbackKind.MissingShader, "Missing");
+            report.MissingShaderCount = 1;
+            var missing = ExportResultList.Build(report, null);
+            Assert.That(missing.MissingShaderCount, Is.EqualTo(1));
+            Assert.That(ExportResultList.Build(null, null).MissingShaderCount, Is.Zero);
+            Assert.That(ExportResultWindow.Title(false, missing), Is.EqualTo(ExportResultWindow.PendingTitle));
+            Assert.That(ExportResultWindow.Title(true, clean), Is.EqualTo(ExportResultWindow.SavedTitle));
+            Assert.That(ExportResultWindow.Title(true, null), Is.EqualTo(ExportResultWindow.SavedTitle));
+            Assert.That(ExportResultWindow.Title(true, missing), Is.EqualTo(ExportResultWindow.SavedWithWarningsTitle));
+        }
+
+        [Test] public void AnExcludedRendererWithAMissingShaderIsNotCounted()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var missing = new Material(shader) { name = "Missing" };
+            var keptMaterial = new Material(shader) { name = "Kept" };
+            try
+            {
+                // The fixture has no lilToon material, so the mesh that stays also carries one; a copy of it
+                // carries the material that is left out.
+                var original = fixture.Source.transform.Find("Back");
+                original.GetComponent<SkinnedMeshRenderer>().sharedMaterial = keptMaterial;
+                var back = Object.Instantiate(original.gameObject, original.parent).transform;
+                back.name = "Extra";
+                back.GetComponent<SkinnedMeshRenderer>().sharedMaterial = missing;
+                ExportResultList Export(IEnumerable<GameObject> excluded, out List<string> warnings)
+                {
+                    var report = new ExportRecoveryReport();
+                    warnings = new List<string>();
+                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                        exporterVersion: "0.11.15", lilToonVersion: "2.3.4", excludedObjects: excluded, recoveryReport: report);
+                    Assert.That(bytes, Is.Not.Empty);
+                    Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(report.Fallbacks.MissingShaderCount));
+                    return ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
+                }
+                // Left out with 書き出さないオブジェクト: the material never reaches the VRM.
+                var excluded = Export(new[] { back.gameObject }, out var excludedWarnings);
+                Assert.That(excluded.MissingShaderCount, Is.EqualTo(1));
+                Assert.That(excludedWarnings[0], Is.EqualTo(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Kept"));
+                // The same renderer kept in the export is counted.
+                var kept = Export(null, out var keptWarnings);
+                Assert.That(kept.MissingShaderCount, Is.EqualTo(2));
+                Assert.That(ExportResultWindow.Title(true, kept), Is.EqualTo(ExportResultWindow.SavedWithWarningsTitle));
+                Assert.That(keptWarnings[0], Does.StartWith(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 2)).And.Contain("Missing"));
+            }
+            finally { Object.DestroyImmediate(missing); Object.DestroyImmediate(keptMaterial); }
+        }
+
+        [Test] public void TwoMaterialsWithTheSameNameCountAsTwo()
+        {
+            var shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(shader, Is.Not.Null);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var first = new Material(shader) { name = "Material" };
+            var second = new Material(shader) { name = "Material" };
+            try
+            {
+                fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial = first;
+                fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().sharedMaterial = second;
+                var report = new ExportRecoveryReport();
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
+                Assert.That(bytes, Is.Not.Empty);
+                Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(2));
+                Assert.That(ExportResultList.Build(report.Fallbacks, warnings, "a.vrm").MissingShaderCount, Is.EqualTo(2));
+                Assert.That(warnings[0], Is.EqualTo(string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 2) + "Material, Material"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(first);
+                Object.DestroyImmediate(second);
+            }
         }
     }
 }

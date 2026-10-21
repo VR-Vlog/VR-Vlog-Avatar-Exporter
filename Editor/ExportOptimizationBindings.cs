@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
     // Keeps expression routes by renderer identity while optimizers remove,
     // rename and merge meshes. All Unity assets created here belong to the
     // disposable clone; the profile and original VRM assets remain untouched.
-    internal sealed class ExportOptimizationBindings : IDisposable
+    internal sealed class ExportOptimizationBindings : IDisposable, VrmMenuExpressions.IDirectBindings
     {
         sealed class ClipSnapshot
         {
@@ -47,6 +47,7 @@ namespace VRVlog.LilToonExporter
             new List<(string, string, OptimizationMaterialRoute)>();
         readonly UnifiedExpressionPreparation materialEvidencePreparation;
         readonly List<ProfileExpression> profile = new List<ProfileExpression>();
+        readonly HashSet<OptimizationMorphRoute> menu = new HashSet<OptimizationMorphRoute>();
         readonly List<Object> owned = new List<Object>();
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
         readonly bool supportsUnified;
@@ -55,16 +56,18 @@ namespace VRVlog.LilToonExporter
 
         internal static ExportOptimizationBindings Capture(GameObject clone, VrmTrackingProfile trackingProfile = null,
             UnifiedExpressionPreparation preparation = null, object objectRegistry = null, NeutralShapeSnapshot neutral = null,
-            bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null)
+            bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs = null,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null)
         {
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             ExportRendererSelection.RequireActiveRoot(clone);
             if (EditorUtility.IsPersistent(clone)) throw new ArgumentException("An independent export copy is required.", nameof(clone));
-            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, keptMorphs);
+            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs);
         }
 
         ExportOptimizationBindings(GameObject clone, VrmTrackingProfile trackingProfile, UnifiedExpressionPreparation preparation,
             object objectRegistry, NeutralShapeSnapshot neutral, bool preservePreparedNeutral,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs,
             IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs)
         {
             avatar = clone;
@@ -115,6 +118,10 @@ namespace VRVlog.LilToonExporter
                         materialEvidence.Add((evidence.Canonical, evidence.Kind, route));
                     }
                 }
+                // Menu expressions bind these original shapes directly. A route
+                // keeps them mutable for AAO and follows renames and merges.
+                if (menuMorphs != null)
+                    foreach (var (renderer, shape) in menuMorphs) menu.Add(AddMorph(renderer, shape, requireUsableEndpoint: true));
                 marker.Morphs = morphs.Values.ToArray();
                 marker.Materials = materials.Values.ToArray();
                 if (neutral != null) ProtectRebasedNeutral(neutral, preservePreparedNeutral);
@@ -346,7 +353,11 @@ namespace VRVlog.LilToonExporter
                 skin = ExportRendererSelection.Enumerate(avatar).OfType<SkinnedMeshRenderer>().FirstOrDefault(candidate => candidate.sharedMesh != null && candidate.sharedMesh.vertexCount > 0);
             if (skin == null) throw new InvalidOperationException("変形しない表情の出力先メッシュがありません: " + route.Label);
             var mesh = Object.Instantiate(skin.sharedMesh); owned.Add(mesh); skin.sharedMesh = mesh;
-            var name = (route.SourceShape.StartsWith("__VRVlog_BlinkNone_", StringComparison.Ordinal) ? "__VRVlog_BlinkNone_" : "__VRVlog_Empty_") + Guid.NewGuid().ToString("N");
+            var blinkNone = route.SourceShape.StartsWith("__VRVlog_BlinkNone_", StringComparison.Ordinal);
+            // The label is the captured source path and shape; the new mesh
+            // location after optimization does not identify the route.
+            var name = DeterministicNames.Unique((blinkNone ? "__VRVlog_BlinkNone_" : "__VRVlog_Empty_") +
+                DeterministicNames.Hash(blinkNone ? "BlinkNone" : "Empty", route.Label), DeterministicNames.BlendShapeNames(avatar));
             var zeros = new Vector3[mesh.vertexCount]; mesh.AddBlendShapeFrame(name, 100, zeros, zeros, zeros);
             route.Renderer = skin; route.Shape = name; route.Removed = false;
         }
@@ -406,6 +417,8 @@ namespace VRVlog.LilToonExporter
             var settings = Object.Instantiate(instance.Vrm); settings.name = instance.Vrm.name; owned.Add(settings);
             var replacements = new Dictionary<VRM10Expression, VRM10Expression>();
             var materialNames = new Dictionary<OptimizationMaterialRoute, string>();
+            var usedMaterialNames = new HashSet<string>(avatar.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials)
+                .Where(material => material != null).Select(material => material.name), StringComparer.Ordinal);
             foreach (var route in materials.Values)
             {
                 var material = route.Renderer.sharedMaterials[route.Slot];
@@ -413,7 +426,10 @@ namespace VRVlog.LilToonExporter
                     .Where(candidate => candidate != null && string.Equals(candidate.name, material.name, StringComparison.Ordinal)).Distinct().ToArray();
                 if (sameName.Length > 1)
                 {
-                    var copy = Object.Instantiate(material); copy.name = material.name + "__VRVlog_Expression_" + Guid.NewGuid().ToString("N"); owned.Add(copy);
+                    var copy = Object.Instantiate(material); owned.Add(copy);
+                    copy.name = DeterministicNames.Unique(material.name + "__VRVlog_Expression_" + DeterministicNames.Hash("Expression",
+                        AnimationUtility.CalculateTransformPath(route.Renderer.transform, avatar.transform),
+                        route.Slot.ToString(System.Globalization.CultureInfo.InvariantCulture), material.name), usedMaterialNames);
                     assetCopyObserver?.Invoke(copy, material);
                     foreach (var renderer in avatar.GetComponentsInChildren<Renderer>(true))
                     {
@@ -499,6 +515,24 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException("追跡表情の対象が最終VRMにありません: " + skin.name);
                 nodes.Add(skin, index);
             }
+            // A missing menu node fails in the menu output stage instead,
+            // where generated menu targets are resolved as well.
+            foreach (var skin in menu.Select(route => route.Renderer).Distinct().Where(skin => !nodes.ContainsKey(skin)))
+            {
+                var index = nodeIndex(skin);
+                if (index >= 0) nodes.Add(skin, index);
+            }
+        }
+
+        // The final glb bind for a menu expression's direct reference, looked
+        // up by the export copy renderer and shape captured before optimization.
+        public Dictionary<string, object> MenuBinding(Dictionary<string, object> json, SkinnedMeshRenderer renderer, string shape, float weight)
+        {
+            RequireApplied();
+            if (ReferenceEquals(renderer, null) || !morphs.TryGetValue((renderer.GetInstanceID(), shape), out var route) || !menu.Contains(route))
+                throw new InvalidOperationException("最適化前の表情の参照がありません: " + shape);
+            if (!nodes.ContainsKey(route.Renderer)) throw new InvalidOperationException("表情の出力先がVRMにありません: " + route.Label);
+            return OutputBinding(json, route, weight);
         }
 
         internal byte[] ApplyTracking(byte[] bytes)

@@ -1907,7 +1907,8 @@ namespace VRVlog.LilToonExporter.Tests
                 bytes = VrmUnifiedExpressions.Add(VrmMenuExpressions.Add(glb.Write(), new List<VrmMenuExpressions.Expression> { entry }));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var menu = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "VRChat / JawOpen");
+                // A menu face named after a tracking channel is numbered apart from it.
+                var menu = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "JawOpen (2)");
                 var jaw = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == "UE/JawOpen");
                 Assert.That(menu.IsBinary, Is.True);
                 Assert.That(menu.OverrideMouth.ToString(), Is.EqualTo("block"));

@@ -14,10 +14,22 @@ namespace VRVlog.LilToonExporter
         // Only the open/closed state of the section. The author is remembered
         // per avatar through ExportAuthor, like the export windows.
         private const string TermsFoldoutPreference = "VRVlog.AppTransfer.ShowVrmTerms";
+        // The detailed transfer exports what the expression board shows; without it there is nothing to export.
+        internal const string BoardClosed = "表情の割り当て画面が開いていません";
+        // The board's next step names what to fix, as it does before saving a file.
+        internal const string BoardNeedsFix = "表情の割り当てを直すと作れます";
         private string author = "";
-        private AvatarLicenseOptions license = new AvatarLicenseOptions();
+        // The avatar's remembered export settings, the same ones the export
+        // window shows and saves. Only the license is edited here.
+        private ExportSettings settings = new ExportSettings();
+        private AvatarLicenseOptions license { get => settings.License; set => settings.License = value; }
         private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
         private GUIStyle summaryStyle;
+        // The window asks for the summary several times a second; the store is read again only after a save.
+        private GameObject countedAvatar;
+        private int countedRevision = -1, excludedCount;
+        // Materials whose shader was missing in the last saved export. The window warns under its QR.
+        private int lastMissingShaderCount;
 
         internal delegate ExportRecoverySession SaveNormallyHandler(GameObject source, string destination,
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
@@ -29,14 +41,16 @@ namespace VRVlog.LilToonExporter
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
-        // comes from an export window showing this avatar; like those windows,
-        // another avatar starts from the default license.
+        // comes from an export window showing this avatar, else the avatar's
+        // remembered settings; an avatar without any starts from the default.
         public void SelectAvatar(GameObject avatar)
         {
-            license = new AvatarLicenseOptions();
+            settings = ExportSettingsStore.Load(avatar);
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
+                // A board opened for the transfer hides its author and license; they are asked here.
+                if (window.TransferMode) continue;
                 if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
                 var shown = window.LicenseFor(avatar);
                 if (shown != null) license = shown;
@@ -45,27 +59,50 @@ namespace VRVlog.LilToonExporter
 
         public bool HasAuthor() => ExportAuthor.IsValid(author);
 
-        // The VRM meta fields of the export window, under this window's own foldout.
+        // The number of materials whose shader was missing in the export last saved
+        // by Export or ExportDetailed. 0 before a save and after a clean one.
+        public int LastMissingShaderCount() => lastMissingShaderCount;
+
+        // The name of the avatar's last successful transfer, or null.
+        public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
+
+        // The line above the form: what the export takes from elsewhere.
+        // Detailed without a board says nothing here; the reason line says why.
+        public string SettingsSummary(GameObject avatar, bool detailed)
+        {
+            if (avatar == null) return "";
+            if (!detailed)
+            {
+                if (avatar != countedAvatar || countedRevision != ExportSettingsStore.Revision)
+                {
+                    countedAvatar = avatar;
+                    countedRevision = ExportSettingsStore.Revision;
+                    excludedCount = ExportSettingsStore.Load(avatar).Exclusions().Length;
+                }
+                return string.Format(ExporterLocalization.T("表情は名前から自動・書き出さないオブジェクト{0}件"), excludedCount);
+            }
+            var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
+            return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/{1}・書き出さないオブジェクト{2}件"),
+                board.SlotCount, ExperimentalExpressionCaptureWindow.MainSlotCount, board.ExcludedObjectCount);
+        }
+
+        // Null when the detailed transfer can export this avatar.
+        public string DetailedProblem(GameObject avatar) =>
+            ExperimentalExpressionCaptureWindow.ForTransfer(avatar) == null ? ExporterLocalization.T(BoardClosed) : null;
+
+        // True while the open board has something to fix before it exports.
+        public bool DetailedNeedsFix(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.BlocksExport ?? false;
+
+        // Opens the expression board for this avatar in the transfer mode. False
+        // when the board kept another avatar.
+        public bool EditDetails(GameObject avatar) => ExperimentalExpressionCaptureWindow.OpenForTransfer(avatar);
+
+        // The VRM meta fields of the export window. The author is required and
+        // always shown; the license is optional and starts folded, like the export
+        // windows, and this window remembers whether it was opened.
         public void DrawTerms()
         {
             if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
-            // A required field that is still empty is never left folded away.
-            if (!HasAuthor()) showTerms = true;
-            var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
-            if (open != showTerms && HasAuthor())
-            {
-                showTerms = open;
-                EditorPrefs.SetBool(TermsFoldoutPreference, open);
-            }
-            if (!showTerms)
-            {
-                // Folded, the section still says what the VRM will carry.
-                var rect = EditorGUILayout.GetControlRect(false, 16f);
-                rect.xMin += 14f;
-                GUI.Label(rect, author.Trim() + " / " + AvatarLicenseSettingsUi.Summary(license), summaryStyle);
-                return;
-            }
-            EditorGUILayout.Space(4f);
             var previousLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 164f;
             try
@@ -75,11 +112,26 @@ namespace VRVlog.LilToonExporter
             finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
             // The line is always reserved so typing does not move the rows below.
             EditorGUILayout.LabelField(HasAuthor() ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
+            var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
+            if (open != showTerms)
+            {
+                showTerms = open;
+                EditorPrefs.SetBool(TermsFoldoutPreference, open);
+            }
+            if (!showTerms)
+            {
+                // Folded, the section still says what the VRM will carry.
+                var rect = EditorGUILayout.GetControlRect(false, 16f);
+                rect.xMin += 14f;
+                GUI.Label(rect, AvatarLicenseSettingsUi.Summary(license), summaryStyle);
+                return;
+            }
             AvatarLicenseSettingsUi.DrawFields(license);
         }
 
         // Writes the VRM to destination through the entry the export windows use,
-        // with the settings an export window has before anything is adjusted.
+        // with the avatar's remembered export settings (exclusions, gimmicks,
+        // blink, poses) and the license shown here.
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
@@ -89,30 +141,67 @@ namespace VRVlog.LilToonExporter
             // The window keeps its button disabled without an author; a retry or
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
+            lastMissingShaderCount = 0;
             var targetAuthor = author;
-            var targetLicense = license.Copy();
-            ExportAuthor.Remember(avatar, targetAuthor);
+            var targetSettings = RememberTerms(avatar, targetAuthor);
+            // The report of the attempt that produced the bytes being saved.
+            ExportFallbackReport fallbacks = null;
+            var create = targetSettings.Creator(avatar, name, targetAuthor);
             void Completed(byte[] bytes, IEnumerable<string> warnings)
             {
+                lastMissingShaderCount = ExportResultList.MissingShaders(fallbacks);
                 // Like the export windows, the details of this export go to the Console.
+                // Nothing asked about what the export worked around, so the whole result list goes there once.
                 var details = (warnings ?? Array.Empty<string>()).ToArray();
-                if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
+                if (fallbacks != null && fallbacks.Count > 0) Debug.LogWarning(ExportResultList.Build(fallbacks, details, destination).Text());
+                else if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
+                ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }
-            // Interactive like the export window: an export that had to work around
-            // something asks before it is saved, so nothing degraded is uploaded unasked.
-            // "設定を変更する" selects the objects concerned and cancels this transfer.
+            // The quick transfer does not stop to ask about what the export worked
+            // around; an export that cannot be saved still fails with its reason.
             var recovery = SaveNormally(avatar, destination, (options, report, warnings) =>
             {
-                if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
-                return UniVrmOneClickExporter.Export(avatar, name, targetAuthor, warnings,
-                    exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar),
-                    poseOptions: new PoseExportOptions(), licenseOptions: targetLicense, disableAudioLink: true,
-                    recoveryOptions: options, recoveryReport: report);
-            }, Completed, null, new ExportGimmickOptions(), true, null);
+                var exported = create(options, report, warnings);
+                fallbacks = report?.Fallbacks;
+                return exported;
+            }, Completed, targetSettings.Exclusions(), targetSettings.Gimmicks(), false, null);
             if (recovery == null) return null;
             ExportFailureWindow.Show(recovery, () => Completed(recovery.LastSuccess.Bytes, recovery.LastSuccess.Warnings));
             return recovery.Failure?.Message ?? "";
+        }
+
+        // Writes what the expression board for this avatar shows, with the name,
+        // author and license of this window. Returns like Export; without that
+        // board it returns why and writes nothing.
+        public string ExportDetailed(GameObject avatar, string name, string destination, Action saved)
+        {
+            if (saved == null) throw new ArgumentNullException(nameof(saved));
+            var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
+            if (board == null) return ExporterLocalization.T(BoardClosed);
+            if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
+            lastMissingShaderCount = 0;
+            var targetAuthor = author;
+            var targetSettings = RememberTerms(avatar, targetAuthor);
+            return board.TransferExport(name, targetAuthor, targetSettings.License.Copy(), destination, () =>
+            {
+                // The board sets the count before it calls back.
+                lastMissingShaderCount = board.LastMissingShaderCount;
+                ExportSettingsStore.SaveTransferName(avatar, name);
+                saved();
+            });
+        }
+
+        // The author and the license edited here are remembered for the next
+        // export. Choices saved by the export window since this avatar was
+        // selected apply too.
+        private ExportSettings RememberTerms(GameObject avatar, string targetAuthor)
+        {
+            ExportAuthor.Remember(avatar, targetAuthor);
+            var targetSettings = ExportSettingsStore.Load(avatar);
+            targetSettings.License = (license ?? new AvatarLicenseOptions()).Copy();
+            ExportSettingsStore.Save(avatar, targetSettings);
+            return targetSettings;
         }
     }
 }

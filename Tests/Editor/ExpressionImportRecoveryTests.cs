@@ -75,10 +75,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(entry.Animation, Is.Empty);
                 Assert.That(entry.Duration, Is.Zero);
             }
-            var output = clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh;
-            var delta = new Vector3[output.vertexCount];
+            // Face size 75 from rest 0 references its shape directly; only
+            // Blink lowered below rest 50 is baked as a target.
+            var renderer = clone.GetComponentInChildren<SkinnedMeshRenderer>(); var output = renderer.sharedMesh;
+            Assert.That(baked.All(expression => expression.Direct.Single() == (renderer, "Face size", .75f)), Is.True);
+            var delta = new Vector3[output.vertexCount]; var face = new Vector3[output.vertexCount];
             output.GetBlendShapeFrameVertices(output.GetBlendShapeIndex(baked[0].Targets.Single()), 0, delta, null, null);
-            Assert.That(output.vertices[0] + delta[0], Is.EqualTo(new Vector3(4, 0, 0)));
+            output.GetBlendShapeFrameVertices(output.GetBlendShapeIndex("Face size"), 0, face, null, null);
+            Assert.That(output.GetBlendShapeFrameWeight(output.GetBlendShapeIndex("Face size"), 0), Is.EqualTo(100));
+            Assert.That(Vector3.Distance(output.vertices[0] + delta[0] + face[0] * baked[0].Direct.Single().Weight, new Vector3(4, 0, 0)), Is.LessThan(.00001f));
             Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.EqualTo(50));
             Assert.That(mesh.blendShapeCount, Is.EqualTo(2));
             Assert.That(AnimationUtility.GetCurveBindings(clip).Length, Is.EqualTo(3));
@@ -185,6 +190,33 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
             }
             finally { AssetDatabase.DeleteAsset(folder); }
+        }
+
+        // The default face of a pattern is a menu item and takes the
+        // pattern's name in VRM; a branch is not, and takes its clip's name.
+        [Test]
+        public void FaceEmoDefaultFaceIsNamedByItsPatternAndBranchesByTheirClip()
+        {
+            var folderName = "__FaceEmoNames_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var branch = new AnimationClip { name = "Branch face" };
+            try
+            {
+                clip.name = "Default face";
+                Curve("Face size", AnimationCurve.Constant(0, 1, 75));
+                AnimationUtility.SetEditorCurve(branch, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                    AnimationCurve.Constant(0, 1, 100));
+                AssetDatabase.CreateAsset(clip, folder + "/Default face.anim");
+                AssetDatabase.CreateAsset(branch, folder + "/Branch face.anim");
+                string Reference(string name) => AssetDatabase.AssetPathToGUID(folder + "/" + name + ".anim");
+                var list = new { Modes = new[] { new { DisplayName = "Smile", ChangeDefaultFace = true, Animation = new { GUID = Reference("Default face") },
+                    Branches = new[] { new { BaseAnimation = new { GUID = Reference("Branch face") } } } } } };
+                var menu = new VrChatExpressionMenu.Source(); var serial = 0;
+                FaceEmoExpressions.ReadRegistered(avatar, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
+                Assert.That(menu.Entries.Select(entry => entry.Name.StartsWith("FaceEmo / Smile / ", StringComparison.Ordinal)), Is.All.True);
+                Assert.That(menu.Entries.Select(entry => entry.VrmName()), Is.EqualTo(new[] { "Smile", "Branch face" }));
+            }
+            finally { AssetDatabase.DeleteAsset(folder); if (branch != null) Object.DestroyImmediate(branch); }
         }
     }
 }

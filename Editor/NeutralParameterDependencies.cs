@@ -54,7 +54,7 @@ namespace VRVlog.LilToonExporter
             if (dependencies.IndependentTopOverrideLayer >= 0) return new HashSet<string>(StringComparer.Ordinal);
             var retained = dependencies.Layers.Concat(dependencies.NativeSupportLayers).Distinct().ToArray();
             var required = new HashSet<string>(StringComparer.Ordinal);
-            var internalFloats = new HashSet<string>(controller.parameters.GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+            var internalFloats = new HashSet<string>(ExpressionDependencies.UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
                 .Where(group => group.Count() == 1 && group.Single().type == AnimatorControllerParameterType.Float &&
                     !VrChatParameterDriver.BuiltIn.Contains(group.Key)).Select(group => group.Key), StringComparer.Ordinal);
             foreach (var index in retained)

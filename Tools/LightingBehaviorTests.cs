@@ -46,6 +46,17 @@ public static class ExporterLightingBehaviorTests
         Near(MobileMaterialMath.ShadeColor(main, shade, 0).b, main.b, "Disabled shadow retains the main tint.");
         Near(MobileMaterialMath.ShadeColor(main, shade, .5f).linear.g,
             (main.linear.g + shade.linear.g) * .5, "Shadow strength blends in linear light.");
+        var second = new Color(.9f, .1f, .3f, 1f);
+        var unused = MobileMaterialMath.Shadow2ndShade(shade, new Color(.9f, .1f, .3f, 0f), .5f, .15f);
+        Near(unused.r, shade.r, "A transparent 2nd shadow leaves the shade color unchanged.");
+        Near(unused.b, shade.b, "A transparent 2nd shadow leaves the shade color unchanged.");
+        Near(MobileMaterialMath.Shadow2ndShade(shade, second, .5f, 0f).g, shade.g, "A zero 2nd border leaves the shade color unchanged.");
+        Near(MobileMaterialMath.Shadow2ndShade(shade, second, .5f, .25f).linear.r,
+            shade.linear.r + (second.linear.r - shade.linear.r) * .5, "The 2nd shadow is weighted by the share of the 1st band it covers.");
+        Near(MobileMaterialMath.Shadow2ndShade(shade, new Color(.9f, .1f, .3f, .5f), .5f, .5f).linear.g,
+            shade.linear.g + (second.linear.g - shade.linear.g) * .5, "The 2nd shadow alpha scales its weight.");
+        Near(MobileMaterialMath.Shadow2ndShade(shade, second, .3f, .6f).linear.b, second.linear.b,
+            "A 2nd border beyond the 1st replaces the shade color.");
 
         var source = new Material { name = "lighting-fixture" };
         source.Properties["_UseShadow"] = 1f;

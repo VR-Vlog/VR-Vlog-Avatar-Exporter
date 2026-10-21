@@ -3,24 +3,28 @@ $ErrorActionPreference = 'Stop'
 $taskRepo = Split-Path -Parent $PSScriptRoot
 $taskSources = @(
     (Join-Path $taskRepo 'Editor/JsonDom.cs'),
-    (Join-Path $taskRepo 'Editor/LilToonFullContract.cs'),
-    (Join-Path $taskRepo 'Editor/LilToon234Catalogue.cs'),
+    (Join-Path $taskRepo 'Formats/Runtime/LilToonFullContract.cs'),
+    (Join-Path $taskRepo 'Formats/Runtime/LilToon234Catalogue.cs'),
     (Join-Path $taskRepo 'Editor/GlbDocument.cs'),
     (Join-Path $taskRepo 'Editor/GlbBinaryOptimizer.cs'),
     (Join-Path $taskRepo 'Editor/DeflatePayload.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/GlbBinaryFixture.cs'),
     (Join-Path $taskRepo 'Editor/ExportSkinRoots.cs'),
     (Join-Path $taskRepo 'Editor/TextureResizePolicy.cs'),
+    (Join-Path $taskRepo 'Editor/PngWriter.cs'),
     (Join-Path $taskRepo 'Editor/MobileTextureEncoder.cs'),
     (Join-Path $taskRepo 'Editor/GlbTextureDownsizer.cs'),
     (Join-Path $taskRepo 'Editor/BlinkShapeNames.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionNameInference.cs'),
+    (Join-Path $taskRepo 'Editor/ExpressionShapeNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmExpressionBindings.cs'),
     (Join-Path $taskRepo 'Editor/UnifiedExpressionRegistry.cs'),
     (Join-Path $taskRepo 'Editor/VrmUnifiedExpressions.cs'),
+    (Join-Path $taskRepo 'Editor/TrackingExpressionNames.cs'),
     (Join-Path $taskRepo 'Editor/VrmMenuExpressions.cs'),
     (Join-Path $taskRepo 'Editor/VrChatExpressionMenu.cs'),
     (Join-Path $taskRepo 'Editor/VrChatFixedExpressionCurve.cs'),
-    (Join-Path $taskRepo 'Editor/ExpressionAnimationData.cs'),
+    (Join-Path $taskRepo 'Formats/Runtime/ExpressionAnimationData.cs'),
     (Join-Path $taskRepo 'Editor/LilToonEmissionPolicy.cs'),
     (Join-Path $taskRepo 'Editor/LilToonMaterialReader.cs'),
     (Join-Path $taskRepo 'Editor/LilToonLightingProfile.cs'),
@@ -39,6 +43,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/FixedExpressionCurveFixture.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/AnimatedExpressionFixture.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/UnifiedExpressionFixture.cs'),
+    (Join-Path $taskRepo 'Editor/UnusedMorphTargets.cs'),
+    (Join-Path $taskRepo 'Tests/Editor/Fixtures/UnusedMorphTargetsFixture.cs'),
     (Join-Path $PSScriptRoot 'MeshTestShim.cs'),
     (Join-Path $PSScriptRoot 'MaterialTestShim.cs'),
     (Join-Path $PSScriptRoot 'LightingBehaviorTests.cs'),
@@ -52,4 +58,5 @@ Add-Type -Path $taskSources -CompilerOptions '/define:EXPORTER_BEHAVIOR_TESTS'
 [ExporterTextureResizeBehaviorTests]::Run()
 [ExporterSkinRootBehaviorTests]::Run()
 [VRVlog.LilToonExporter.Tests.GlbBinaryFixture]::Run({ param($condition, $message) if (-not $condition) { throw $message } })
+[VRVlog.LilToonExporter.Tests.UnusedMorphTargetsFixture]::Run({ param($condition, $message) if (-not $condition) { throw $message } })
 if ($LocalVrm) { [ExporterBehaviorTests]::VerifyLocalVrm($LocalVrm) }

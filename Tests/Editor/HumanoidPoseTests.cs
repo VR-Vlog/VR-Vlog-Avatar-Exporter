@@ -454,7 +454,7 @@ namespace VRVlog.LilToonExporter.Tests
                 f.PrepareMeshesForExport();
                 var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Copy, new BuiltInVrm10MaterialExporter(),
                     new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Pose fixture", Authors = new List<string> { "Test" } }, afterExport: session.Bind);
-                var legacy = bytes; bytes = session.Inject(bytes);
+                var legacy = bytes; bytes = session.Inject(bytes, f.Copy.transform.localScale);
                 var json = GlbDocument.Read(bytes).Json;
                 var data = HumanoidPoseData.Read(((Dictionary<string, object>)json["extensions"])[HumanoidPoseData.Extension]);
                 HumanoidPoseData.ValidateReferences(data, json);

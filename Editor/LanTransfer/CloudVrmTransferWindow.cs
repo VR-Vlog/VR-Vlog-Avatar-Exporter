@@ -38,6 +38,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             CloudTransferAvailability.RequireEnabled();
             var selected = EditorUtility.OpenFilePanel(ExporterLocalization.T("書き出し済みVRMを選択"), "", "vrm");
             try { OpenSavedVrmForDevelopment(selected); }
+            catch (InvalidOperationException exception) when (exception.Data[TransferTempDirectory.ShownAsIs] is bool asIs && asIs)
+            {
+                EditorUtility.DisplayDialog(ExporterLocalization.T("スマホに送る"), ExporterLocalization.T(exception.Message), ExporterLocalization.T("閉じる"));
+            }
             catch
             {
                 // File/provider exceptions can include private paths or values.
@@ -66,7 +70,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         public static string CreateSnapshotPath()
         {
             CloudTransferAvailability.RequireEnabled();
-            var path = Path.Combine(Path.GetTempPath(), "VRVlogCloudTransfers", Guid.NewGuid().ToString("N") + ".vrm");
+            var path = TransferTempDirectory.NewFile("VRVlogCloudTransfers", ".vrm");
             OwnedSnapshots.Add(path);
             return path;
         }
@@ -90,7 +94,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // Validate the new owned copy before replacing an existing
                 // window/session. A failed selection leaves that session live.
                 prepared = new CloudVrmTransferSource(ownedSnapshotPath, name);
-                window = GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る"));
+                window = ExporterWindowIcon.Restore(GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る")));
                 var compact = window.source == null && !window.docked;
                 window.StopAndClean();
                 window.source = prepared;
@@ -109,6 +113,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             if (!CloudTransferAvailability.Enabled)
             {
                 StopAndClean();

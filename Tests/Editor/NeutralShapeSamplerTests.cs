@@ -192,6 +192,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
         }
 
+        // A looping hand muscle curve beside the rest face is not one settled
+        // frame. The default face keeps the prepared rest, as before.
+        [Test]
+        public void ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest()
+        {
+            var clip = (AnimationClip)Open(75).motion;
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"),
+                new AnimationCurve(new Keyframe(0, 0), new Keyframe(.5f, 1), new Keyframe(1, 0)));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(clip, settings);
+            var warnings = new List<string>();
+            Assert.That(NeutralShapeSampler.Sample(avatar, warnings: warnings), Is.Empty);
+            Assert.That(warnings.Single(), Does.Contain("LeftHand.Index.1 Stretched"));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+        }
+
         [Test]
         public void DelayedAppearanceConfigurationKeepsItsPreparedMorphAndActivationTogether()
         {

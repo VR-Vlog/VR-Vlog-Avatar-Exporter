@@ -97,23 +97,41 @@ namespace VRVlog.LilToonExporter.Tests
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 var glb = GlbDocument.Read(bytes);
-                var animations = ExpressionAnimationData.Read(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
+                var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
+                var animations = document.Animations;
+                // The menu toggle and the FX gesture keep their sources.
+                Assert.That(document.Expressions.Single(value => value.Expression == "Face / Smile").Source, Is.EqualTo(ExpressionSource.Menu));
+                Assert.That(document.Expressions.Where(value => value.Expression != "Face / Smile").Select(value => value.Source),
+                    Is.EqualTo(new[] { ExpressionSource.Gesture }));
+                Assert.That(document.Expressions.Single(value => value.Source == ExpressionSource.Gesture).Expression, Is.EqualTo(animations.Single().Expression));
+                var asset = (Dictionary<string, object>)glb.Json["asset"];
+                var required = (Dictionary<string, object>)((Dictionary<string, object>)asset["extras"])[VRVlog.AvatarFormats.AvatarFormatVersions.RequiredAppVersionsKey];
+                Assert.That(required[ExpressionAnimationData.Extension], Is.EqualTo("1.0.5"));
                 Assert.That(animations.Single().Channels.Count, Is.EqualTo(1));
+                // Rest 35 up to the single 100 frame moves the original shape directly.
+                Assert.That(animations.Single().Channels[0].Points.Select(point => point.Value), Is.EqualTo(new[] { 35d, 100d }));
+                Assert.That(animations.Single().Channels[0].Points[0].Morph, Is.Null);
+                Assert.That(animations.Single().Channels[0].Points[1].Morph, Is.Not.Null);
                 Assert.That(animations.Single().Channels[0].Curve.Evaluate(.5), Is.EqualTo(67.5).Within(.001));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                const string expressionName = "VRChat / Face / Smile";
+                const string expressionName = "Face / Smile";
                 var expression = imported.Vrm.Expression.CustomClips.Single(c => c.name == expressionName);
                 Assert.That(expression.OverrideBlink.ToString(), Is.EqualTo("block"));
                 Assert.That(expression.OverrideMouth.ToString(), Is.EqualTo("block"));
                 Assert.That(expression.OverrideLookAt.ToString(), Is.EqualTo("block"));
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expressionName), 1);
                 imported.Runtime.Process();
+                // Raising the shape from rest 35 to 75 references the rebased
+                // shape directly at (75 - 35) / (100 - 35).
                 var binding = expression.MorphTargetBindings.Single();
+                Assert.That(binding.Weight, Is.EqualTo(40f / 65f).Within(.000001f));
                 var skinOut = imported.transform.Find(binding.RelativePath).GetComponent<SkinnedMeshRenderer>();
-                Assert.That(skinOut.GetBlendShapeWeight(binding.Index), Is.EqualTo(100).Within(.01));
+                Assert.That(skinOut.GetBlendShapeWeight(binding.Index), Is.EqualTo(100 * binding.Weight).Within(.01));
                 var delta = new Vector3[skinOut.sharedMesh.vertexCount];
                 skinOut.sharedMesh.GetBlendShapeFrameVertices(binding.Index, 0, delta, null, null);
-                Assert.That(Vector3.Distance(skinOut.sharedMesh.vertices[0] + delta[0], before[0] + new Vector3(.02f, .01f, 0) * .75f), Is.LessThan(.0001));
+                Assert.That(skinOut.sharedMesh.GetBlendShapeFrameCount(binding.Index), Is.EqualTo(1));
+                Assert.That(skinOut.sharedMesh.GetBlendShapeFrameWeight(binding.Index, 0), Is.EqualTo(100));
+                Assert.That(Vector3.Distance(skinOut.sharedMesh.vertices[0] + delta[0] * binding.Weight, before[0] + new Vector3(.02f, .01f, 0) * .75f), Is.LessThan(.0001));
                 Assert.That(fixture.Mesh.vertices, Is.EqualTo(before));
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(s => s.sharedMesh == fixture.Mesh && s.GetBlendShapeWeight(0) == 35), Is.True);
             }

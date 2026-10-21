@@ -1,0 +1,368 @@
+{
+ "schema": 1,
+ "unity": "2022.3.22f1",
+ "renderPipeline": "Built-in",
+ "sets": {
+  "U2": {
+   "uniVrm": "0.131.2",
+   "lilToon": "2.3.4",
+   "vrchatSdk": "3.10.5",
+   "ndmf": "1.14.8",
+   "modularAvatar": "1.18.7",
+   "aao": "1.9.20"
+  },
+  "U3": {
+   "uniVrm": "0.131.3",
+   "lilToon": "2.3.4",
+   "vrchatSdk": "3.10.5",
+   "ndmf": "1.14.8",
+   "modularAvatar": "1.18.7",
+   "aao": "1.9.20"
+  },
+  "E1": {
+   "uniVrm": "0.131.0",
+   "lilToon": "2.0.0",
+   "vrchatSdk": "3.7.0",
+   "ndmf": "1.8.3",
+   "modularAvatar": null,
+   "aao": "1.7.13"
+  },
+  "E2": {
+   "uniVrm": "0.131.3",
+   "lilToon": "2.3.4",
+   "vrchatSdk": "3.10.5",
+   "ndmf": "1.8.3",
+   "modularAvatar": "1.13.4",
+   "aao": "1.8.15"
+  }
+ },
+ "runs": [
+  {
+   "set": "U2",
+   "profile": "exporter-integration",
+   "commit": "fe1c336e1f36f24154fd3cc933ea9af91c79db98",
+   "total": 2128,
+   "passed": 2124,
+   "failed": 2,
+   "skipped": 2,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)"
+   ]
+  },
+  {
+   "set": "U3",
+   "profile": "exporter-integration",
+   "commit": "fe1c336e1f36f24154fd3cc933ea9af91c79db98",
+   "total": 2128,
+   "passed": 2118,
+   "failed": 8,
+   "skipped": 2,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,False,True,False)",
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,False,True,True)",
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,True,False,False)",
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,True,False,True)",
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,True,True,False)",
+    "VRVlog.LilToonExporter.Tests.MissingMeshAttributesTests.NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(True,True,True,True)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)"
+   ]
+  },
+  {
+   "set": "U2",
+   "profile": "exporter-integration",
+   "commit": "5d0f4fb4d195649a3ec73567e8ee30891da7530e",
+   "total": 2131,
+   "passed": 2126,
+   "failed": 3,
+   "skipped": 2,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.MorphNormalExportTests.EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)"
+   ]
+  },
+  {
+   "set": "U3",
+   "profile": "exporter-integration",
+   "commit": "5d0f4fb4d195649a3ec73567e8ee30891da7530e",
+   "total": 2131,
+   "passed": 2126,
+   "failed": 3,
+   "skipped": 2,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.MorphNormalExportTests.EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)"
+   ]
+  },
+  {
+   "set": "E1",
+   "profile": "exporter-integration",
+   "commit": "5d0f4fb4d195649a3ec73567e8ee30891da7530e + VRChat SDK range change",
+   "total": 2131,
+   "passed": 2022,
+   "failed": 9,
+   "skipped": 100,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.MorphNormalExportTests.EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.AParentTailCannotShareTheChildOwnersFirstJoint",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(True)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(False,False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(False,True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(True,False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(True,True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape(True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMeshCutterPreservesMorphsAndSourceMesh(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMeshCutterPreservesMorphsAndSourceMesh(True)",
+    "VRVlog.LilToonExporter.Tests.BlinkExportTests.ActualUniVrmExportBindsGeneratedTargetsToTheirFinalNodes(True)",
+    "VRVlog.LilToonExporter.Tests.DirectFxExpressionDiscoveryTests.InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling(\"machine\",False)",
+    "VRVlog.LilToonExporter.Tests.DirectFxExpressionDiscoveryTests.InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling(\"machine\",True)",
+    "VRVlog.LilToonExporter.Tests.DirectFxExpressionDiscoveryTests.InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling(\"state\",False)",
+    "VRVlog.LilToonExporter.Tests.DirectFxExpressionDiscoveryTests.InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling(\"state\",True)",
+    "VRVlog.LilToonExporter.Tests.DirectFxExpressionDiscoveryTests.InstalledMaMarkerCannotMakeAnUnknownCallbackSafe",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(False,False)",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(False,True)",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(True,False)",
+    "VRVlog.LilToonExporter.Tests.InstalledNdmfNeutralExportTests.InstalledModularAvatarProcessesAnInactiveMergeAnimatorForPreparedFx",
+    "VRVlog.LilToonExporter.Tests.InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute",
+    "VRVlog.LilToonExporter.Tests.InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm(False)",
+    "VRVlog.LilToonExporter.Tests.InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm(True)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,0)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,1)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,2)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,0)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,1)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,2)",
+    "VRVlog.LilToonExporter.Tests.MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(False,False)",
+    "VRVlog.LilToonExporter.Tests.MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(False,True)",
+    "VRVlog.LilToonExporter.Tests.MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(True,False)",
+    "VRVlog.LilToonExporter.Tests.MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(True,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape(False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape(True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Bool)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Float)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Int)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Bool)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Float)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Int)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(0,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(0,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(1,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(1,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(2,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(2,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ActiveMaPathReferenceRetainsTheRequiredInactiveAuthoringBeforeCanonicalBuild",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.EnclosingAvatarRelativePathIsNotReinterpretedAfterTheSelectedSubtreeIsDetached",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ExternalDirectTargetWithMissingPathRemainsRejectedWithoutEditingEitherAvatar(\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ExternalDirectTargetWithMissingPathRemainsRejectedWithoutEditingEitherAvatar(null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InactiveUnresolvedMaSceneReferenceIsRejectedWithoutSilentlyDroppingItsAuthoring",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesSelectedAvatarWithoutASourceRootMarker(False)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesSelectedAvatarWithoutASourceRootMarker(True)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy(False,\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy(False,null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy(True,\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy(True,null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar(False)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar(True)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InstalledMaUsesSelectedAvatarRelativePathWhenTheSourceHasAnEnclosingAvatarRoot",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.InternalSceneReferenceDoesNotPreventTraversalAndIsolationOfItsQueuedRenderer",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.MissingDirectTargetAndMissingPathRemainRejectedWithoutEditingTheSource(\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.MissingDirectTargetAndMissingPathRemainRejectedWithoutEditingTheSource(null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.NestedMaReferencesAreResolvedInEverySerializedArrayElementWithoutEditingTheSource",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.OrdinaryExternalComponentReferencesRemainRejectedWithTheExactField(False)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.OrdinaryExternalComponentReferencesRemainRejectedWithTheExactField(True)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.RecoveredDirectMergeTargetStillRespectsExportExclusions(\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.RecoveredDirectMergeTargetStillRespectsExportExclusions(null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.UnresolvedStaleMaPathRemainsRejectedBeforeAnyPass",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ValidDirectMergeTargetWithMissingPathPassesReadOnlySourceValidation(False,\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ValidDirectMergeTargetWithMissingPathPassesReadOnlySourceValidation(False,null)",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ValidDirectMergeTargetWithMissingPathPassesReadOnlySourceValidation(True,\"\")",
+    "VRVlog.LilToonExporter.Tests.MaSceneReferencePreparationTests.ValidDirectMergeTargetWithMissingPathPassesReadOnlySourceValidation(True,null)",
+    "VRVlog.LilToonExporter.Tests.MergedFxDefaultsTests.InstalledMaConstantParameterRelayKeepsMergedNeutralAndMenuPupilRemoval",
+    "VRVlog.LilToonExporter.Tests.MergedFxDefaultsTests.InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)",
+    "VRVlog.LilToonExporter.Tests.NdmfBlinkPreparationTests.InstalledAaoMergeKeepsTheSelectedRendererInCallbackFreeBlinkPreview",
+    "VRVlog.LilToonExporter.Tests.NdmfBlinkPreparationTests.InstalledAaoMergeStillOptimizesAndRemapsBlinkForTheExportCallback",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.ActiveMergePreservesAnInactiveTargetAttachmentChain",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.ActiveSkinRetainsItsInactiveRigTagAndAncestors(False)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.ActiveSkinRetainsItsInactiveRigTagAndAncestors(True)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.ExplicitExclusionCanOmitInvalidInactiveAuthoringWithoutEditingTheSource",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InactiveAuthoringIsRetainedRegardlessOfRendererVisibility(False)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InactiveAuthoringIsRetainedRegardlessOfRendererVisibility(True)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InjectedCopyRootRetainsInactiveAuthoringAcrossValidationAndPreparation",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning(False)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning(True)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InvalidInactiveRigIsValidatedRegardlessOfSkinVisibility(False)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InvalidInactiveRigIsValidatedRegardlessOfSkinVisibility(True)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InvalidInactiveWardrobeRequiresProcessingAndIsValidated(False)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.InvalidInactiveWardrobeRequiresProcessingAndIsValidated(True)",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf",
+    "VRVlog.LilToonExporter.Tests.NdmfPreparationTests.UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(True,True,False)"
+   ]
+  },
+  {
+   "set": "E2",
+   "profile": "exporter-integration",
+   "commit": "5d0f4fb4d195649a3ec73567e8ee30891da7530e + VRChat SDK range change",
+   "total": 2131,
+   "passed": 2091,
+   "failed": 27,
+   "skipped": 13,
+   "failed_cases": [
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(False,False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(False,True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(True,False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(True,True)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape(True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape(False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape(True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Bool)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Float)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(False,Int)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Bool)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Float)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(True,Int)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(0,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(0,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(1,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(1,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(2,False)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(2,True)",
+    "VRVlog.LilToonExporter.Tests.MaReactiveExpressionExportTests.MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion",
+    "VRVlog.LilToonExporter.Tests.MorphNormalExportTests.EveryMorphOfOneMeshKeepsItsOwnAuthoredNormals",
+    "VRVlog.LilToonExporter.Tests.NdmfBlinkPreparationTests.InstalledAaoMergeStillOptimizesAndRemapsBlinkForTheExportCallback",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+    "VRVlog.LilToonExporter.Tests.PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)"
+   ],
+   "skipped_cases": [
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMeshCutterPreservesMorphsAndSourceMesh(False)",
+    "VRVlog.LilToonExporter.Tests.AppearancePreparationTests.InstalledMeshCutterPreservesMorphsAndSourceMesh(True)",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(False,False)",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(False,True)",
+    "VRVlog.LilToonExporter.Tests.InstalledAaoNeutralEndpointExportTests.MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink(True,False)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,0)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,1)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(False,2)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,0)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,1)",
+    "VRVlog.LilToonExporter.Tests.MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(True,2)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,False)",
+    "VRVlog.LilToonExporter.Tests.MeshDeleterIntegrationTests.DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport(True,True)"
+   ]
+  }
+ ],
+ "focused": [
+  {
+   "set": "U2",
+   "commit": "441aff803a87f7c4ad5e238b7ef2ceedbd0ee784",
+   "suite": "MorphNormalExportTests",
+   "total": 3,
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "failed_cases": []
+  },
+  {
+   "set": "U3",
+   "commit": "441aff803a87f7c4ad5e238b7ef2ceedbd0ee784",
+   "suite": "MorphNormalExportTests",
+   "total": 3,
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "failed_cases": []
+  },
+  {
+   "set": "E1",
+   "commit": "441aff803a87f7c4ad5e238b7ef2ceedbd0ee784 + VRChat SDK range change",
+   "suite": "MorphNormalExportTests",
+   "total": 3,
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "failed_cases": []
+  },
+  {
+   "set": "E2",
+   "commit": "441aff803a87f7c4ad5e238b7ef2ceedbd0ee784 + VRChat SDK range change",
+   "suite": "MorphNormalExportTests",
+   "total": 3,
+   "passed": 3,
+   "failed": 0,
+   "skipped": 0,
+   "failed_cases": []
+  }
+ ],
+ "parity": [
+  {
+   "compared": "U2 vs U3",
+   "commit": "fe1c336e1f36f24154fd3cc933ea9af91c79db98",
+   "pairs": 63,
+   "jsonDifferencePaths": [
+    "asset.generator"
+   ],
+   "binaryDifferences": 0
+  },
+  {
+   "compared": "U2 vs U3",
+   "commit": "441aff803a87f7c4ad5e238b7ef2ceedbd0ee784",
+   "pairs": 63,
+   "jsonDifferencePaths": [
+    "asset.generator"
+   ],
+   "binaryDifferences": 0
+  },
+  {
+   "compared": "U2 before vs after fix",
+   "commit": "fe1c336e1f36f24154fd3cc933ea9af91c79db98 -> 441aff803a87f7c4ad5e238b7ef2ceedbd0ee784",
+   "pairs": 63,
+   "jsonDifferencePaths": [],
+   "binaryDifferences": 0
+  },
+  {
+   "compared": "U3 before vs after fix",
+   "commit": "fe1c336e1f36f24154fd3cc933ea9af91c79db98 -> 441aff803a87f7c4ad5e238b7ef2ceedbd0ee784",
+   "pairs": 63,
+   "jsonDifferencePaths": [],
+   "binaryDifferences": 0
+  }
+ ]
+}

@@ -31,6 +31,7 @@ $sources = @(
     (Join-Path $repoRoot 'Editor/LanTransfer/LanVrmTransferServer.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferProtocol.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferAvailability.cs'),
+    (Join-Path $repoRoot 'Editor/LanTransfer/TransferTempDirectory.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudDevelopmentSnapshot.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferEncryption.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudVrmTransferSession.cs'),

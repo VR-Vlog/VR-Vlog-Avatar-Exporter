@@ -32,7 +32,7 @@ namespace VRVlog.LilToonExporter
                         var item = group.First();
                         return new ExportRecoveryDiagnostic
                         {
-                            Id = item.Id, Code = item.Code, Stage = item.Stage, Target = item.Target,
+                            Id = item.Id, Code = item.Code, Stage = item.Stage, Phase = item.Phase, Target = item.Target,
                             Reason = item.Reason, Remedy = item.Remedy, LostEffect = item.LostEffect,
                             Source = item.Source, Action = Options.Actions.First(action => action.Id == item.Action.Id)
                         };
@@ -93,7 +93,8 @@ namespace VRVlog.LilToonExporter
             this.previewGimmicks = previewGimmicks == null ? null : new ExportGimmickOptions
             {
                 AutoExclude = previewGimmicks.AutoExclude,
-                IncludedObjects = (previewGimmicks.IncludedObjects ?? Array.Empty<GameObject>()).ToArray()
+                IncludedObjects = (previewGimmicks.IncludedObjects ?? Array.Empty<GameObject>()).ToArray(),
+                IncludedComponents = (previewGimmicks.IncludedComponents ?? Array.Empty<Component>()).ToArray()
             };
             stamp = ExportRecoverySourceStamp.Capture(source);
         }
@@ -112,7 +113,7 @@ namespace VRVlog.LilToonExporter
             var session = new ExportRecoverySession(source, destination, create, previewExcludedObjects, previewGimmicks);
             session.Failure = failure;
             session.Report = report != null && report.Diagnostics.Count > 0
-                ? report : ExportRecoveryReport.FromException(source, failure, report?.Stage);
+                ? report : ExportRecoveryReport.FromException(source, failure, report?.Stage, report?.Phase);
             session.Report.Succeeded = false;
             session.RememberDiagnostics(session.Report);
             return session;
@@ -173,7 +174,7 @@ namespace VRVlog.LilToonExporter
             {
                 Failure = exception;
                 Report = report.Diagnostics.Count > 0
-                    ? report : ExportRecoveryReport.FromException(Source, exception, report.Stage);
+                    ? report : ExportRecoveryReport.FromException(Source, exception, report.Stage, report.Phase);
                 RememberDiagnostics(Report);
                 return false;
             }

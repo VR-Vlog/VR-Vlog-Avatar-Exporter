@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter
             window.session = session;
             if (window.inputOwnership == null) window.inputOwnership = session.AcquireInputOwnership();
             window.saved = saved;
-            window.titleContent = new GUIContent(ExporterLocalization.T("書き出すVRMを確認"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("書き出すVRMを確認"));
             window.minSize = new Vector2(780, 580);
             window.ShowUtility();
             EditorApplication.delayCall += () => { if (window != null) window.StartRebuild(); };
@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private static PreviewRenderUtility CreateRenderer(GameObject copy)
+        internal static PreviewRenderUtility CreateRenderer(GameObject copy)
         {
             var preview = new PreviewRenderUtility();
             preview.AddSingleGO(copy);
@@ -189,7 +189,6 @@ namespace VRVlog.LilToonExporter
             {
             contentScroll = content.scrollPosition;
             EditorGUILayout.LabelField(ExporterLocalization.T("書き出せました。まだ保存していません。"), EditorStyles.boldLabel);
-            EditorGUILayout.LabelField(ExporterLocalization.T("見た目と変更点を確認し、下の「このVRMを保存する」で保存してください。"), EditorStyles.wordWrappedLabel);
             EditorGUILayout.LabelField(ExporterLocalization.T("保存するファイル: ") + System.IO.Path.GetFileName(session.Destination), EditorStyles.wordWrappedMiniLabel);
             var skipAllMenus = session.LastSuccess.Options.Actions.Any(action => action.Kind == ExportRecoveryActionKind.SkipVrChatMenus);
             var appliedActions = session.LastSuccess.Options.Actions.Where(action =>

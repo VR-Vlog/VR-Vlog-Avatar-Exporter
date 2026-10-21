@@ -31,6 +31,7 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryDiagnostic
     {
         internal string Id, Code, Stage, Target, Reason, Remedy, LostEffect;
+        internal ExportPhase? Phase;
         internal Object Source;
         internal ExportRecoveryAction Action;
     }
@@ -51,22 +52,32 @@ namespace VRVlog.LilToonExporter
     {
         internal GameObject DiagnosticSource;
         internal string Stage = "環境確認";
+        // The phase Stage belongs to, for display. Null when only Stage is known.
+        internal ExportPhase? Phase = ExportPhase.Precheck;
         internal bool Succeeded;
         internal readonly List<ExportRecoveryDiagnostic> Diagnostics = new List<ExportRecoveryDiagnostic>();
         // Features the export worked around instead of stopping. Read before saving.
         internal readonly ExportFallbackReport Fallbacks = new ExportFallbackReport();
+        // Set by the caller before exporting. A failing stage is then left out
+        // and listed in Fallbacks instead of stopping the export. Begin keeps it.
+        internal bool ContinueOnStageFailure;
         readonly Dictionary<Material, Material> originals = new Dictionary<Material, Material>();
         string errorType;
 
         internal void Begin()
         {
             Stage = "環境確認";
+            Phase = ExportPhase.Precheck;
             Succeeded = false;
             errorType = null;
             Diagnostics.Clear();
             Fallbacks.Clear();
             originals.Clear();
         }
+
+        // A lenient export that left stages out still succeeded; keep the
+        // support text from naming the error of a left-out stage.
+        internal void ClearError() => errorType = null;
 
         internal void Track(Material copy, Material original)
         {
@@ -76,10 +87,10 @@ namespace VRVlog.LilToonExporter
         internal Material SourceMaterial(Material material)
             => !ReferenceEquals(material, null) && originals.TryGetValue(material, out var original) ? original : material;
 
-        internal static ExportRecoveryReport FromException(GameObject source, Exception error, string stage = null)
+        internal static ExportRecoveryReport FromException(GameObject source, Exception error, string stage = null, ExportPhase? phase = null)
         {
             var report = new ExportRecoveryReport();
-            if (stage != null) report.Stage = stage;
+            if (stage != null) { report.Stage = stage; report.Phase = phase; }
             try { report.Fail(source, error); }
             catch
             {
@@ -106,11 +117,13 @@ namespace VRVlog.LilToonExporter
             if (error is VrChatMenuImportLimitException menuLimit)
             {
                 Stage = "表情メニュー読込";
+                Phase = ExportPhase.Expressions;
                 AddMenuLimit(source, menuLimit.Summary);
             }
             else if (error is VrChatMenuImportPolicyException)
             {
                 Stage = "表情メニュー読込";
+                Phase = ExportPhase.Expressions;
                 var root = source != null ? VrChatExpressionMenu.Root(source) as Object : null;
                 Add("menu-import-changed", root != null ? root : source, ExporterLocalization.T("VRChatメニュー全体"), error.Message,
                     "メニュー由来の表情・ポーズの取り込みをすべて省略して試せます。ジェスチャー・FaceEmo・APL・手動追加・既存VRM表情は保持します。",
@@ -247,7 +260,7 @@ namespace VRVlog.LilToonExporter
         void Add(string code, Object source, string target, string reason, string remedy, string effect, ExportRecoveryAction action)
         {
             Diagnostics.Add(new ExportRecoveryDiagnostic { Id = code + ":" + Diagnostics.Count, Code = code,
-                Stage = Stage, Source = source, Target = target, Reason = reason, Remedy = remedy, LostEffect = effect, Action = action });
+                Stage = Stage, Phase = Phase, Source = source, Target = target, Reason = reason, Remedy = remedy, LostEffect = effect, Action = action });
         }
 
         // Deliberately omit local labels, free-form exception text, paths, names,
@@ -275,6 +288,7 @@ namespace VRVlog.LilToonExporter
                 case "状態確定": return "appearance";
                 case "材質保存": return "material-snapshot";
                 case "揺れ物変換": return "physbone";
+                case "コンストレイント変換": return "constraint";
                 case "VRM変換": return "vrm";
                 case "出力検査": return "output-validation";
                 case "完了": return "complete";
@@ -432,7 +446,7 @@ namespace VRVlog.LilToonExporter
             if (action.Kind == ExportRecoveryActionKind.ExcludeHiddenRenderer)
             {
                 if (action.Renderer == null || !renderers.ContainsKey(action.Renderer) ||
-                    ExportGimmickDetection.Inspect(action.Renderer)?.Unit != GimmickExclusionUnit.Renderer)
+                    ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit != GimmickExclusionUnit.Renderer)
                     throw new InvalidOperationException("このRendererを安全な補助表示として確認できません。再検査してください。");
                 return;
             }
@@ -469,7 +483,6 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, MaterialBakeOptions bakeOptions = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            ExportRendererSelection.RequireActiveRoot(source);
             var preview = new ExportRecoveryPreview();
             try
             {
@@ -496,6 +509,8 @@ namespace VRVlog.LilToonExporter
                 session.Apply();
                 foreach (var behaviour in preview.Copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 foreach (var transform in preview.Copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
+                // Like the export copy, show only the display copy's own root.
+                if (!preview.Copy.activeSelf) preview.Copy.SetActive(true);
                 preview.Copy.transform.SetParent(null, false);
                 Object.DestroyImmediate(preview.inactiveHost);
                 preview.inactiveHost = null;

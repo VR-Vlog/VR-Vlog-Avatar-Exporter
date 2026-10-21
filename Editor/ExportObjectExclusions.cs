@@ -29,13 +29,13 @@ namespace VRVlog.LilToonExporter
             if (animator != null && animator.isHuman)
                 for (var bone = 0; bone < (int)HumanBodyBones.LastBone; bone++)
                 {
-                    var transform = animator.GetBoneTransform((HumanBodyBones)bone);
+                    var transform = HumanoidBones.Resolve(animator, (HumanBodyBones)bone);
                     if (transform != null && Contains(transform))
                         throw new InvalidOperationException("Humanoidの骨格を含むオブジェクトは除外できません: " + transform.name);
                 }
-            foreach (var skin in source.GetComponentsInChildren<SkinnedMeshRenderer>())
+            foreach (var skin in source.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                if (!skin.enabled || Contains(skin.transform)) continue;
+                if (!skin.enabled || !ExportRendererSelection.ActiveUnder(skin.gameObject, source.transform) || Contains(skin.transform)) continue;
                 if (skin.bones.Any(bone => bone != null && Contains(bone)) || skin.rootBone != null && Contains(skin.rootBone))
                     throw new InvalidOperationException(skin.name + ": 書き出すメッシュが使用している骨を除外することはできません。");
             }

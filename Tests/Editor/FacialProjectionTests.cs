@@ -109,6 +109,52 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
         }
 
+        // A hand-gesture entry for the same clip can also hold zeros for shapes outside the face; the contact
+        // copy is cut to the face, so it is a duplicate unless the face or a non-zero outside shape differs.
+        [TestCase(75f, 0f, false)]
+        [TestCase(50f, 0f, true)]
+        [TestCase(75f, 40f, true)]
+        public void AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice(float gestureWeight, float outsideWeight, bool added)
+        {
+            controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            var rest = State(machine, "Rest", Clip("Rest", 0, false)); machine.defaultState = rest;
+            var selected = State(machine, "Contact face", Clip("Shared face", 75, false));
+            var transition = rest.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
+            transition.AddCondition(AnimatorConditionMode.If, 0, "Sensor");
+            var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true; metadata.ExternalParameters.Add("Sensor");
+            var gesture = new VrChatExpressionMenu.Entry { Id = "gesture/0/Shared face", Name = "Shared face", ExportName = "Shared face" };
+            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[1], Weight = gestureWeight });
+            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[3], Weight = outsideWeight });
+            metadata.Entries.Add(gesture);
+            VrChatAuthoredFaces.Add(avatar, metadata);
+            Assert.That(metadata.Entries.Count(item => item.Name.EndsWith(" / Shared face", StringComparison.Ordinal)), Is.EqualTo(added ? 1 : 0));
+            Assert.That(metadata.Entries.Count, Is.EqualTo(added ? 2 : 1));
+        }
+
+        // A layer that mixes hand gestures and contact input reaches the same state from both. The state the
+        // gesture import already read is skipped before its face is read again; a contact-only state stays.
+        [Test]
+        public void AStateAlreadyReadAsAHandGestureIsSkippedButAContactOnlyStateIsKept()
+        {
+            controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("Other", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            var rest = State(machine, "Rest", Clip("Rest", 0, false)); machine.defaultState = rest;
+            var shared = State(machine, "Shared state", Clip("Shared face", 50, false));
+            var contact = State(machine, "Contact state", Clip("Contact face", 75, false));
+            var toShared = rest.AddTransition(shared); toShared.hasExitTime = false; toShared.duration = 0;
+            toShared.AddCondition(AnimatorConditionMode.If, 0, "Sensor");
+            var toContact = rest.AddTransition(contact); toContact.hasExitTime = false; toContact.duration = 0;
+            toContact.AddCondition(AnimatorConditionMode.If, 0, "Other");
+            var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true;
+            metadata.ExternalParameters.Add("Sensor"); metadata.ExternalParameters.Add("Other");
+            metadata.GestureStates.Add((0, shared));
+            VrChatAuthoredFaces.Add(avatar, metadata);
+            Assert.That(metadata.Entries.Select(item => item.Name), Is.EqualTo(new[] { "FXクリップ / Contact face" }));
+            Assert.That(metadata.Entries.Single().Error, Is.Null, metadata.Entries.Single().Error);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void HardwareFaceFallbackCannotPublishMutedOrOrphanStates(bool muted)
@@ -822,7 +868,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));
                 Assert.That(warnings.Any(message => message.Contains(ExporterLocalization.T(FacialProjectionScope.Notice))), Is.True, string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name.StartsWith("VRChat / ", StringComparison.Ordinal) && item.name.EndsWith(" / Gesture", StringComparison.Ordinal));
+                var expression = imported.Vrm.Expression.CustomClips.Single(item => item.name == "Gesture");
                 var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Body");
                 var expected = reference.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
                 var materials = actual.sharedMaterials.Select(EditorJsonUtility.ToJson).ToArray();

@@ -22,7 +22,7 @@ PhysBoneの重複は元の静止姿勢を残して担当を分け、左右別メ
 
 ## 必要な環境
 
-Unity 2022.3、lilToon **2.0.0〜2.3.4**（0.12.0-beta.1以降。安定版0.11.15は2.3.4だけ）、UniVRM **0.131.0／0.131.1／0.131.2**、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応版か確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。lilToon 1.x以前では書き出しの前に止まるので、lilToonを2.0.0〜2.3.4へ更新してください（lilToonの移行処理でマテリアルが移行され、そのまま書き出せます）。2.3.4より新しいlilToonとプレリリース版も止まります。新しい版は、lilToonを2.3.4に戻すか、対応したExporterの公開を待ってください。
+Unity 2022.3、lilToon **2.0.0〜2.3.4**（0.12.0-beta.1以降。安定版0.11.15は2.3.4だけ）、UniVRM **0.131.x**（0.131.0〜0.131.3で確認済み）、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応版か確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、VRChat SDK 3.5.2以上3.11.0未満が必要です。Modular AvatarのShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは、Modular Avatar 1.18.0以上1.19.0未満が必要です。lilToon 1.x以前では書き出しの前に止まるので、lilToonを2.0.0〜2.3.4へ更新してください（lilToonの移行処理でマテリアルが移行され、そのまま書き出せます）。2.3.4より新しいlilToonとプレリリース版も止まります。新しい版は、lilToonを2.3.4に戻すか、対応したExporterの公開を待ってください。
 
 ## 使い方
 

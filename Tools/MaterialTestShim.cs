@@ -25,6 +25,8 @@ namespace UnityEngine
         public Texture2D(int w, int h, TextureFormat format, bool mip, bool linear) => throw new System.NotSupportedException();
         public void ReadPixels(Rect rect, int x, int y, bool mip) => throw new System.NotSupportedException();
         public void Apply(bool mip, bool unreadable) => throw new System.NotSupportedException();
+        public TextureFormat format => TextureFormat.RGBA32;
+        public bool isReadable => throw new System.NotSupportedException("Image readback requires Unity.");
         public Color32[] GetPixels32() => throw new System.NotSupportedException("Image readback requires Unity.");
         public void SetPixels32(Color32[] pixels) => throw new System.NotSupportedException("Image writes require Unity.");
     }
@@ -33,6 +35,7 @@ namespace UnityEngine
     {
         public T[] GetComponents<T>() => throw new System.NotSupportedException("Unity descriptor lookup requires Editor tests.");
         public Transform transform;
+        public bool activeSelf = true;
         public bool activeInHierarchy = true;
         public readonly System.Collections.Generic.List<Renderer> Renderers = new System.Collections.Generic.List<Renderer>();
         public T[] GetComponentsInChildren<T>(bool includeInactive = false) => System.Linq.Enumerable.ToArray(System.Linq.Enumerable.OfType<T>(Renderers));
@@ -48,7 +51,7 @@ namespace UnityEngine
     }
     public enum FilterMode { Point, Bilinear, Trilinear }
     public enum TextureWrapMode { Clamp, Mirror, Repeat }
-    public enum TextureFormat { RGBA32 }
+    public enum TextureFormat { RGBA32, ARGB32, RGB24, BGRA32 }
     public enum RenderTextureFormat { ARGB32 }
     public enum RenderTextureReadWrite { sRGB, Linear }
     public enum ColorSpace { Gamma, Linear }
@@ -111,5 +114,15 @@ namespace UniGLTF
         public static UnityEngine.Texture2D CopyTexture(UnityEngine.Texture source, ColorSpace colorSpace, bool alpha, UnityEngine.Material material) =>
             throw new System.NotSupportedException("Texture conversion requires Unity and is not simulated.");
     }
+}
+namespace UniVRM10
+{
+    // Same member names as UniVRM 1.0; only the names are used here.
+    public enum ExpressionPreset { custom, happy, angry, sad, relaxed, surprised, aa, ih, ou, ee, oh, blink, blinkLeft, blinkRight, lookUp, lookDown, lookLeft, lookRight, neutral }
+}
+namespace VRVlog.LilToonExporter
+{
+    // The locale tables need AssetDatabase; the harness keeps the Japanese source.
+    public static class ExporterLocalization { public static string T(string source) => source; }
 }
 #endif

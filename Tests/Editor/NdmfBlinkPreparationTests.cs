@@ -26,6 +26,40 @@ namespace VRVlog.LilToonExporter.Tests
         static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
+        void AddHumanoidAnimator(GameObject root)
+        {
+            var human = new List<HumanBone>();
+            Transform Bone(HumanBodyBones kind, Transform parent, Vector3 position)
+            {
+                var bone = new GameObject(kind.ToString()).transform; bone.SetParent(parent, false); bone.position = position;
+                human.Add(new HumanBone { boneName = bone.name, humanName = HumanTrait.BoneName[(int)kind], limit = new HumanLimit { useDefaultValues = true } });
+                return bone;
+            }
+            var hips = Bone(HumanBodyBones.Hips, root.transform, new Vector3(0, 1, 0));
+            var spine = Bone(HumanBodyBones.Spine, hips, new Vector3(0, 1.2f, 0));
+            var chest = Bone(HumanBodyBones.Chest, spine, new Vector3(0, 1.4f, 0));
+            var neck = Bone(HumanBodyBones.Neck, chest, new Vector3(0, 1.6f, 0));
+            Bone(HumanBodyBones.Head, neck, new Vector3(0, 1.75f, 0));
+            foreach (var left in new[] { true, false })
+            {
+                var x = left ? -1f : 1f;
+                var arm = Bone(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm, chest, new Vector3(x * .25f, 1.5f, 0));
+                var forearm = Bone(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm, arm, new Vector3(x * .55f, 1.5f, 0));
+                Bone(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand, forearm, new Vector3(x * .8f, 1.5f, 0));
+                var leg = Bone(left ? HumanBodyBones.LeftUpperLeg : HumanBodyBones.RightUpperLeg, hips, new Vector3(x * .12f, .9f, 0));
+                var shin = Bone(left ? HumanBodyBones.LeftLowerLeg : HumanBodyBones.RightLowerLeg, leg, new Vector3(x * .12f, .45f, 0));
+                Bone(left ? HumanBodyBones.LeftFoot : HumanBodyBones.RightFoot, shin, new Vector3(x * .12f, .1f, .1f));
+            }
+            var avatar = Own(AvatarBuilder.BuildHumanAvatar(root, new HumanDescription
+            {
+                human = human.ToArray(),
+                skeleton = root.GetComponentsInChildren<Transform>().Select(t => new SkeletonBone { name = t.name, position = t.localPosition, rotation = t.localRotation, scale = t.localScale }).ToArray(),
+                upperArmTwist = .5f, lowerArmTwist = .5f, upperLegTwist = .5f, lowerLegTwist = .5f, armStretch = .05f, legStretch = .05f
+            }));
+            Assert.That(avatar.isValid && avatar.isHuman, Is.True);
+            root.AddComponent<Animator>().avatar = avatar;
+        }
+
         SkinnedMeshRenderer CreateFixture()
         {
             var mergeType = InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh");
@@ -36,6 +70,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Ignore("This fixture requires the AAO 1.8+ merge configuration API.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True);
             source = Own(new GameObject("blink preparation source"));
+            // A real VRChat avatar has a humanoid Animator at its root; AAO's
+            // animator parser reports an error without one.
+            AddHumanoidAnimator(source);
+            // Real VRChat avatars select NDMF's VRChat platform; AAO < 1.9
+            // does not run its passes on the generic platform.
+            PhysBoneSpringExportTests.AddVrChatAvatarDescriptor(source);
             var material = Own(new Material(Shader.Find("Unlit/Color")));
             SkinnedMeshRenderer Skin(string name)
             {

@@ -80,8 +80,24 @@ namespace VRVlog.LilToonExporter.Tests
             Transition(neutral, selected, "FaceChoice", 2);
             var entry = Read().Entries.Single();
             Assert.That(entry.Name, Is.EqualTo("FX / Authored smile"));
+            Assert.That(entry.VrmName(), Is.EqualTo("Smile"), "The VRM name is the clip the state plays, not the state name.");
             Assert.That(entry.Parameters["FaceChoice"], Is.EqualTo(2));
             Assert.That(entry.Error, Is.Null); Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
+        }
+
+        [Test]
+        public void RepeatedFxParameterDeclarationsStillDiscoverFaces()
+        {
+            // AddParameter renames duplicates; Unity still binds the repeated
+            // serialized name to one parameter.
+            controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Int);
+            controller.parameters = controller.parameters.Concat(Enumerable.Range(0, 3).Select(_ => new AnimatorControllerParameter
+                { name = "TrackingType", type = AnimatorControllerParameterType.Int })).ToArray();
+            var selected = State(controller.layers[0].stateMachine, "Authored smile", Clip("Smile", 75));
+            Transition(neutral, selected, "FaceChoice", 2);
+            var entry = Read().Entries.Single();
+            Assert.That(entry.Error, Is.Null); Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
+            Assert.That(controller.parameters.Count(parameter => parameter.name == "TrackingType"), Is.EqualTo(3));
         }
 
         [Test]
@@ -979,6 +995,59 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entries, Has.Count.EqualTo(2)); Assert.That(entries.Select(entry => entry.Error), Is.All.Null);
             Assert.That(entries.Select(entry => entry.Parameters["ExpressionStrength"]), Is.EqualTo(new[] { .5f, 1f }));
             Assert.That(entries.Select(Weight), Is.EqualTo(new[] { 40f, 80f }).Within(.01));
+            // A BlendTree has no single clip, so the VRM name keeps the state name and its value.
+            Assert.That(entries.Select(entry => entry.VrmName()), Is.EqualTo(entries.Select(entry => entry.Name.Substring("FX / ".Length))));
+            Assert.That(entries.Select(entry => entry.VrmName()), Is.All.StartsWith("Neutral ("));
+        }
+
+        [Test]
+        public void MovingTreeKnotIsNotSettledToOneFrame()
+        {
+            // An FX tree knot reaches settlement like a clip state does. The
+            // FX path has no animated tree reading, so it is left out instead
+            // of keeping the final key of one moving child.
+            controller.AddParameter("ExpressionStrength", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Moving face mix", blendType = BlendTreeType.Simple1D,
+                blendParameter = "ExpressionStrength", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            var moving = Clip("Moving", 0);
+            AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
+                AnimationCurve.Linear(0, 75, 30, 100));
+            tree.AddChild(Clip("Off", 0), 0); tree.AddChild(moving, 1);
+            neutral.motion = tree;
+            var entry = Read().Entries.Single();
+            Assert.That(entry.Parameters["ExpressionStrength"], Is.EqualTo(1));
+            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted));
+            Assert.That(entry.Values, Is.Empty); Assert.That(entry.Unevaluated, Is.Empty);
+            Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
+        }
+
+        [Test]
+        public void SyncedTreeOverrideIsNotSettledToOneFrame()
+        {
+            // A Synced Layer can replace a clip state with a moving tree. Its
+            // knot is not exported as one settled frame either. Today the
+            // dependency analysis refuses the synced layer before settlement;
+            // the tree guard follows the override if that refusal is lifted.
+            controller.AddParameter("ExpressionStrength", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Synced moving mix", blendType = BlendTreeType.Simple1D,
+                blendParameter = "ExpressionStrength", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            var moving = Clip("Synced moving", 0);
+            AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
+                AnimationCurve.Linear(0, 75, 30, 100));
+            tree.AddChild(Clip("Synced off", 0), 0); tree.AddChild(moving, 1);
+            controller.AddLayer("Synced face");
+            var layers = controller.layers; layers[1].syncedLayerIndex = 0; layers[1].defaultWeight = 1; controller.layers = layers;
+            controller.SetStateEffectiveMotion(neutral, tree, 1);
+            var entries = Read().Entries.Where(entry => entry.Parameters.ContainsKey("ExpressionStrength")).ToArray();
+            Assert.That(entries, Is.Not.Empty);
+            foreach (var entry in entries)
+            {
+                Assert.That(entry.Error, Is.Not.Null);
+                Assert.That(entry.Values, Is.Empty);
+                Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
+            }
         }
 
         [Test]
@@ -1467,6 +1536,14 @@ namespace VRVlog.LilToonExporter.Tests
                 kind == "moving curve" ? AnimationCurve.Linear(0, 75, 30, 100) : AnimationCurve.Constant(0, 1, 0));
             var entries = Read().Entries;
             var entry = entries.Single(value => value.Name == "FX / Smile");
+            if (kind != "visibility")
+            {
+                // A timed face is settled from the Animator and reported.
+                Assert.That(entry.Error, Is.Null);
+                Assert.That(Weight(entry), Is.EqualTo(kind == "moving curve" ? 100 : 75).Within(.01));
+                Assert.That(entry.Messages, Does.Contain(kind == "moving curve" ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.CyclicTransitions));
+                return;
+            }
             Assert.That(entry.Error, Is.Not.Null.And.Not.Empty); Assert.That(entry.Values, Is.Empty);
             Assert.That(entries.Where(value => value.Error == null), Is.Empty,
                 "Neither the authored face nor its automatic timed destination may become an isolated partial export.");

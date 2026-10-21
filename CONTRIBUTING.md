@@ -32,7 +32,9 @@ Ordinary bug reports and proposals are public. Do not attach purchased or privat
 4. Add this checkout as a local package using Unity Package Manager's **Add package from disk**, selecting the root `package.json`. Avoid also installing a release copy of the exporter in that project.
 5. For Unity tests, add `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` to the test project's manifest and follow the compatibility guide's Test Framework, Collections and optional integration package requirements.
 
-Contributor Unity projects, local outputs and private fixtures belong outside tracked source. `Editor/` contains export logic and diagnostics; `Runtime/` contains avatar components; `Schema/` defines the custom data formats; `Tests/` and `Tools/` contain validation and packaging tools. See the [repository map](README.md#開発に参加する) for the remaining directories.
+Contributor Unity projects, local outputs and private fixtures belong outside tracked source. `Editor/` contains export logic and diagnostics; `Runtime/` contains avatar components; `Formats/Runtime/` contains the System-only format code shared with the app; `Schema/` defines the custom data formats; `Tests/` and `Tools/` contain validation and packaging tools. See the [repository map](README.md#開発に参加する) for the remaining directories.
+
+The app consumes `Formats/` as the separate package `com.vrvlog.avatar-formats` through a git URL pinned to a commit (`?path=/Formats#<commit>`). Keep it free of Unity Engine and Editor APIs. A change to it reaches the app only through an app PR that bumps the pinned commit, so prepare that PR together with the exporter change. See [Formats/README.md](Formats/README.md).
 
 ## Local checks
 
@@ -83,6 +85,24 @@ For implementation changes, run the relevant pinned Unity profiles from the [com
 PR, main, release-candidate and publication host checks share `Tools/run-validation.py`. With Python 3.12 and PowerShell 7, install the hash-pinned parser using `python3 -m pip install --require-hashes --only-binary=:all: -r Tools/pipeline-requirements.txt`, then run `python3 Tools/run-validation.py --report work/validation.json`. This receipt covers host checks only. The [development pipeline](Documentation~/DevelopmentPipeline.md) explains triage, latest-head review, Unity acceptance, non-publishing candidates, publication approval, recovery and the Actions cost model.
 
 For documentation changes, verify relative links and examples and check that the documented behavior matches source. If a change is intended to preserve implementation, confirm that product source, dependency policy, version metadata and package tooling are unchanged.
+
+### Checking that a change keeps the export identical
+
+A change that must not alter the output, such as a performance change, needs evidence that the exported VRM files stay the same. Export the same avatars with the base package and with the changed package, then compare the results. Keep the job list and the results outside the repository.
+
+1. Write a job list with one avatar per line, `ID|prefab path|runs`, for example `A1|Assets/AvatarA/AvatarA.prefab|2`. Use generic IDs such as `A1`.
+2. Install the base package in a Unity project that no other Editor has open, and export:
+
+   ```sh
+   pwsh -File Tools/run-export-regression.ps1 -Unity /path/to/Unity.exe -Project /path/to/project -Jobs jobs.txt -Out /path/outside/base -Label base
+   ```
+
+   The script copies `Tools/ExportRegressionRunner.cs` into a temporary folder under the project's `Assets`, exports each avatar the way **GameObject > VR Vlog > アプリに転送（通常）** does (through the expression board) and removes the folder when Unity exits. The runner is not part of the package. Each job writes `<ID>_<run>.vrm` and `<ID>_<run>.json` (success or failure, warnings and the export time in seconds).
+3. Run each avatar at least twice and confirm that the base is deterministic: `python3 Tools/compare-exports.py --runs /path/outside/base 1 2`. If two runs of the same package differ, list the paths with `python3 Tools/compare-exports.py --diff-paths <run 1 .vrm> <run 2 .vrm>`, and add only paths that change on every export to `VOLATILE` in `compare-exports.py`, with the reason. When only part of a string value changes (for example a random GUID at the end of a name), add the path with a regex and a replacement to `VOLATILE_SUB` instead, so that only that part is masked and the rest of the value is still compared.
+4. Replace the package with the changed version in the same project, export again with `-Out /path/outside/changed -Label changed` and check `--runs` there too.
+5. Compare the two versions: `python3 Tools/compare-exports.py /path/outside/base /path/outside/changed`. Every pair must match (exit code 0). The script compares success or failure, the export details warnings, every field of every expression, and the SHA-256 of the glb JSON chunk (without `VOLATILE` paths and with the `VOLATILE_SUB` parts masked) and of the BIN chunk.
+
+Report the number of pairs and the result in the PR, without avatar names.
 
 ## Reproducing a package ZIP
 

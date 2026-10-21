@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mitsuya0077/VR-Vlog-lilToon-Exporter/VRVLOG_expression_animations/2/schema.json",
+  "title": "VRVLOG_expression_animations 2",
+  "description": "Sources of the custom expressions and their animations. The VRM custom expression with the same name as an animation holds the shape at the end of the animation (time = duration). While the expression is selected, the player evaluates each channel's curve every frame after the VRM expression update and, writes into the target morphs of that channel's points the weights interpolated between the two points around that value (0 to 1) and 0 into the channel's other target morphs, overwriting values written by others; when the selection ends it resets the targets it wrote to 0. Rules that span items are validated by the shared reader (ExpressionAnimationData.ReadDocument): expressions and animations are not both empty; expression names are unique (ordinal) in each list; every animation's expression is listed in expressions; the whole extension has at most 1024 channels, 16384 keys and 4096 points; key times strictly increase; the curve range including Bezier handles stays within -10000..10000; point values strictly increase and cover that range; a (node, index) target appears at most once per animation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "expressions",
+    "animations"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 2
+    },
+    "expressions": {
+      "description": "Every custom expression built from the avatar's VRChat setup, animated or not.",
+      "maxItems": 1024,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expression"
+      }
+    },
+    "animations": {
+      "maxItems": 512,
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/animation"
+      }
+    }
+  },
+  "anyOf": [
+    {
+      "properties": {
+        "expressions": {
+          "minItems": 1
+        }
+      }
+    },
+    {
+      "properties": {
+        "animations": {
+          "minItems": 1
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "expression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression",
+        "source"
+      ],
+      "properties": {
+        "expression": {
+          "description": "Name of the VRM custom expression.",
+          "maxLength": 1024,
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "description": "menu: the avatar's expression menu. gesture: a hand gesture in the FX layer. faceEmo: a FaceEmo expression.",
+          "enum": [
+            "menu",
+            "gesture",
+            "faceEmo"
+          ]
+        }
+      }
+    },
+    "key": {
+      "description": "[time, value, inTangent, outTangent, inWeight, outWeight]. A null tangent is stepped.",
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "prefixItems": [
+        {
+          "minimum": -3600,
+          "type": "number",
+          "maximum": 3600
+        },
+        {
+          "minimum": -10000,
+          "type": "number",
+          "maximum": 10000
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        },
+        {
+          "minimum": 0,
+          "type": "number",
+          "maximum": 1
+        }
+      ],
+      "items": false
+    },
+    "morph": {
+      "description": "A morph target of a glTF node's mesh: nodes[node], mesh.primitives[*].targets[index].",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node",
+        "index"
+      ],
+      "properties": {
+        "node": {
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 2147483647
+        },
+        "index": {
+          "minimum": 0,
+          "type": "integer",
+          "maximum": 2147483647
+        }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "target"
+      ],
+      "properties": {
+        "value": {
+          "minimum": -10000,
+          "type": "number",
+          "maximum": 10000
+        },
+        "target": {
+          "description": "The morph this point drives with weight 1 at its value. Null moves no morph at this value.",
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/morph"
+            }
+          ]
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preWrap",
+        "postWrap",
+        "keys",
+        "points"
+      ],
+      "properties": {
+        "preWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "postWrap": {
+          "enum": [
+            "clamp",
+            "loop",
+            "pingPong"
+          ]
+        },
+        "keys": {
+          "maxItems": 16384,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/key"
+          }
+        },
+        "points": {
+          "maxItems": 4096,
+          "minItems": 2,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/point"
+          }
+        }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression",
+        "duration",
+        "loop",
+        "channels"
+      ],
+      "properties": {
+        "expression": {
+          "description": "Name of a listed expression.",
+          "maxLength": 1024,
+          "type": "string",
+          "minLength": 1
+        },
+        "duration": {
+          "exclusiveMinimum": 0,
+          "type": "number",
+          "maximum": 600
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "channels": {
+          "maxItems": 1024,
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/channel"
+          }
+        }
+      }
+    }
+  }
+}

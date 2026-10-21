@@ -36,7 +36,7 @@ namespace VRVlog.LilToonExporter
             var window = CreateInstance<PoseReviewWindow>(); window.source = avatar; window.options = options;
             window.excluded = excluded; window.gimmicks = gimmicks;
             window.manualOnly = manualOnly;
-            window.titleContent = new GUIContent(ExporterLocalization.T("ポーズを確認・調整")); window.minSize = new Vector2(620, 600);
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("ポーズを確認・調整")); window.minSize = new Vector2(620, 600);
             window.RequestRebuild(); window.ShowUtility();
             return window;
         }

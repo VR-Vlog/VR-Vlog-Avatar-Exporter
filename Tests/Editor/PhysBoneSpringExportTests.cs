@@ -38,7 +38,10 @@ namespace VRVlog.LilToonExporter.Tests
         static void Set(Component component, string name, object value)
         {
             using var data = new SerializedObject(component);
-            var p = data.FindProperty(name); Assert.That(p, Is.Not.Null, name);
+            var p = data.FindProperty(name);
+            // VRChat SDK 3.7.x has no such field and always behaves as true, the exporter's fallback.
+            if (p == null && name == "ignoreOtherPhysBones") Assert.Ignore("ignoreOtherPhysBones needs VRChat SDK 3.8.0 or later.");
+            Assert.That(p, Is.Not.Null, name);
             if (value is Vector3 v) p.vector3Value = v;
             else if (value is float f) p.floatValue = f;
             else if (value is bool b) p.boolValue = b;
@@ -46,6 +49,161 @@ namespace VRVlog.LilToonExporter.Tests
             else if (value is AnimationCurve curve) p.animationCurveValue = curve;
             else if (value is Object reference) p.objectReferenceValue = reference;
             data.ApplyModifiedPropertiesWithoutUndo();
+        }
+
+        // Real VRChat avatars select NDMF's VRChat platform. Fill the playable
+        // layers as the SDK inspector does for a new avatar (all default), so
+        // AAO 1.7 reads its default controllers instead of a null layer.
+        internal static Component AddVrChatAvatarDescriptor(GameObject root)
+        {
+            var type = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var layerType = type.GetNestedType("AnimLayerType");
+            Assert.That(layerType, Is.Not.Null, "The installed VRChat SDK must expose its playable layer types.");
+            var descriptor = root.AddComponent(type);
+            using var data = new SerializedObject(descriptor);
+            void Layers(string name, params string[] types)
+            {
+                var list = data.FindProperty(name); Assert.That(list, Is.Not.Null, name);
+                list.arraySize = types.Length;
+                for (var i = 0; i < types.Length; i++)
+                {
+                    var layer = list.GetArrayElementAtIndex(i);
+                    layer.FindPropertyRelative("type").intValue = Convert.ToInt32(Enum.Parse(layerType, types[i]));
+                    layer.FindPropertyRelative("isDefault").boolValue = true;
+                    layer.FindPropertyRelative("isEnabled").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = null;
+                    layer.FindPropertyRelative("mask").objectReferenceValue = null;
+                }
+            }
+            data.FindProperty("customizeAnimationLayers").boolValue = false;
+            Layers("baseAnimationLayers", "Base", "Additive", "Gesture", "Action", "FX");
+            Layers("specialAnimationLayers", "Sitting", "TPose", "IKPose");
+            data.ApplyModifiedPropertiesWithoutUndo();
+            return descriptor;
+        }
+
+        // A real avatar body is skinned to its humanoid bones. Weight one
+        // triangle to each mapped bone so the body, not the test, owns them.
+        static SkinnedMeshRenderer AddWeightedBody(GameObject root, Material material)
+        {
+            var animator = root.GetComponent<Animator>();
+            var bones = Enumerable.Range(0, (int)HumanBodyBones.LastBone).Select(bone => animator.GetBoneTransform((HumanBodyBones)bone))
+                .Where(bone => bone != null).ToArray();
+            Assert.That(UniVrmOneClickExporter.RequiredHumanBones.All(bone => bones.Contains(animator.GetBoneTransform(bone))), Is.True);
+            var body = new GameObject("Body").AddComponent<SkinnedMeshRenderer>();
+            body.transform.SetParent(root.transform, false);
+            var vertices = new List<Vector3>(); var weights = new List<BoneWeight>(); var triangles = new List<int>();
+            for (var i = 0; i < bones.Length; i++)
+            {
+                var center = root.transform.InverseTransformPoint(bones[i].position);
+                triangles.AddRange(new[] { vertices.Count, vertices.Count + 1, vertices.Count + 2 });
+                vertices.AddRange(new[] { center + new Vector3(-.02f, 0, .02f), center + new Vector3(.02f, 0, .02f), center + new Vector3(0, .03f, .02f) });
+                weights.AddRange(Enumerable.Repeat(new BoneWeight { boneIndex0 = i, weight0 = 1 }, 3));
+            }
+            var mesh = new Mesh { name = "Weighted humanoid body" };
+            mesh.SetVertices(vertices); mesh.SetTriangles(triangles, 0);
+            mesh.SetNormals(Enumerable.Repeat(Vector3.forward, vertices.Count).ToList());
+            mesh.SetUVs(0, Enumerable.Repeat(Vector2.zero, vertices.Count).ToList());
+            mesh.boneWeights = weights.ToArray();
+            mesh.bindposes = bones.Select(bone => bone.worldToLocalMatrix * body.transform.localToWorldMatrix).ToArray();
+            body.sharedMesh = mesh; body.bones = bones; body.rootBone = bones[0];
+            body.sharedMaterials = new[] { material };
+            return body;
+        }
+
+        sealed class OwnedMesh : IDisposable
+        {
+            internal readonly Mesh Mesh;
+            internal OwnedMesh(Mesh mesh) => Mesh = mesh;
+            public void Dispose() { if (Mesh != null) Object.DestroyImmediate(Mesh); }
+        }
+
+        [Test]
+        public void PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidatePreparedHumanoid(fixture.Source, fixture.Copy));
+            var copyAnimator = fixture.Copy.GetComponent<Animator>();
+            Object.DestroyImmediate(copyAnimator.GetBoneTransform(HumanBodyBones.LeftUpperLeg).gameObject);
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidatePreparedHumanoid(fixture.Source, fixture.Copy));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.LostRequiredHumanBones + "LeftUpperLeg, LeftLowerLeg, LeftFoot"));
+            Assert.That(error.Message, Does.Contain("元のアバターは変更していません"));
+            Assert.That(fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.LeftFoot) != null, Is.True,
+                "Only the disposable copy may lose bones.");
+            Object.DestroyImmediate(copyAnimator);
+            error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidatePreparedHumanoid(fixture.Source, fixture.Copy));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.LostHumanoidAnimator));
+            Assert.That(error.Message, Does.Contain("元のアバターは変更していません"));
+        }
+
+        [Test]
+        public void NonHumanoidSourceStopsBeforeExportAndNamesMissingBones()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            var animator = fixture.Source.GetComponent<Animator>();
+            Object.DestroyImmediate(animator.GetBoneTransform(HumanBodyBones.LeftUpperLeg).gameObject);
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceMissingHumanBones + "LeftUpperLeg, LeftLowerLeg, LeftFoot"));
+            var avatar = animator.avatar;
+            animator.avatar = null;
+            error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceNotHumanoid));
+            animator.avatar = avatar;
+            Object.DestroyImmediate(animator);
+            error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceNotHumanoid));
+        }
+
+        // A humanoid whose only renderer has no MeshFilter used to be saved as a
+        // VRM with no mesh. ExportSettings.Export stops it before any stage runs.
+        [Test]
+        public void MeshRendererWithoutMeshFilterSourceStopsBeforeExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true)) Object.DestroyImmediate(skin);
+            var body = new GameObject("Body");
+            body.transform.SetParent(fixture.Source.transform, false);
+            body.AddComponent<MeshRenderer>();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
+            var warnings = new List<string>();
+            var error = Assert.Throws<InvalidOperationException>(() => new ExportSettings().Export(fixture.Source, "Empty", "Tests", warnings, null, null));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceHasNoMesh));
+            Assert.That(warnings, Is.Empty);
+        }
+
+        [Test]
+        public void NullSkinnedMeshSourceStopsBeforeExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Object.DestroyImmediate(skins[1]);
+            skins[0].sharedMesh = null;
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceHasNoMesh));
+        }
+
+        [Test]
+        public void MeshOnInactiveChildPassesSourceMeshCheck()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            Object.DestroyImmediate(skins[1]);
+            skins[0].gameObject.SetActive(false);
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
+        }
+
+        [Test]
+        public void OutputWithoutMeshIsRejected()
+        {
+            var asset = new Dictionary<string, object> { ["version"] = "2.0" };
+            var empty = GlbDocument.Create(new Dictionary<string, object> { ["asset"] = asset }, null).Write();
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateOutputHasMesh(empty));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.OutputHasNoMesh));
+            var withMesh = GlbDocument.Create(new Dictionary<string, object>
+                { ["asset"] = asset, ["meshes"] = new List<object> { new Dictionary<string, object>() } }, null).Write();
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateOutputHasMesh(withMesh));
         }
 
         // A generic AAO avatar uses its root Animator controller, unlike a
@@ -136,6 +294,58 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(output.transform.parent, Is.EqualTo(copy.transform));
                 Assert.That(output.transform.localToWorldMatrix, Is.EqualTo(copy.transform.localToWorldMatrix));
                 Assert.That(source.GetComponentsInChildren<VRM10SpringBoneCollider>(), Is.Empty);
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        const string AllMotionImmobileWarning = ": Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。";
+        const string WorldImmobileWarning = ": Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。";
+
+        // World is left to the app, which centres exported springs on the
+        // model root; only All Motion raises the exported stiffness and drag.
+        [TestCase(0, 1.9f, .78f)]
+        [TestCase(1, 1.6f, .48f)]
+        public void AllMotionImmobileRaisesStiffnessAndDragWhileWorldIsLeftToTheApp(int immobileType, float stiffness, float drag)
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                Set(pb, "endpointPosition", Vector3.down * .1f);
+                Set(pb, "pull", .4f); Set(pb, "spring", .2f); Set(pb, "gravity", 0f);
+                Set(pb, "immobileType", immobileType); Set(pb, "immobile", .6f); Set(pb, "gravityFalloff", .5f);
+                copy = Object.Instantiate(source);
+                var warnings = new List<string>();
+                PhysBoneSpringExport.Convert(source, copy, warnings);
+                var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
+                Assert.That(joint.m_stiffnessForce, Is.EqualTo(stiffness).Within(.001));
+                Assert.That(joint.m_dragForce, Is.EqualTo(drag).Within(.001));
+                Assert.That(warnings.Contains("Hair" + AllMotionImmobileWarning), Is.EqualTo(immobileType == 0));
+                Assert.That(warnings.Contains("Hair" + WorldImmobileWarning), Is.EqualTo(immobileType != 0));
+                Assert.That(warnings.Contains("Hair: Gravity Falloffは重力の減衰として近似しました。"), Is.True);
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
+        public void AllMotionImmobileDragNeverExceedsOne()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var root = Child(source.transform, "Hair", Vector3.zero);
+                Child(root, "HairTip", Vector3.down * .1f);
+                var pb = PhysBone(root.gameObject);
+                Set(pb, "endpointPosition", Vector3.down * .1f);
+                Set(pb, "pull", .4f); Set(pb, "spring", 0f);
+                Set(pb, "immobileType", 0); Set(pb, "immobile", 1f);
+                copy = Object.Instantiate(source);
+                PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                var joint = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Single().Joints[0];
+                Assert.That(joint.m_stiffnessForce, Is.EqualTo(2.1f).Within(.001));
+                Assert.That(joint.m_dragForce, Is.EqualTo(1f).Within(.001));
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
@@ -387,7 +597,44 @@ namespace VRVlog.LilToonExporter.Tests
                 var result = PhysBoneSpringExport.Convert(source, copy, new List<string>());
                 Assert.That(result.Converted, Is.EqualTo(1)); Assert.That(result.Skipped, Is.EqualTo(1));
                 Assert.That(result.Joints, Is.EqualTo(2)); AssertUniqueJoints(copy);
-                Assert.That(copy.GetComponentsInChildren<Transform>().Count(t => t.name == "VRVlog Spring Endpoint"), Is.EqualTo(1));
+                Assert.That(copy.GetComponentsInChildren<Transform>().Count(t => t.name.EndsWith(PhysBoneSpringExport.EndpointName)), Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
+        }
+
+        [Test]
+        public void GeneratedEndpointsGetUniqueDeterministicNamesWithoutRenamingTheAvatar()
+        {
+            var source = new GameObject("source"); GameObject copy = null;
+            try
+            {
+                var preferred = "Tip-" + PhysBoneSpringExport.EndpointName;
+                // Same-named leaves and an authored node that already holds the preferred name.
+                Child(source.transform, preferred, Vector3.zero);
+                var skirt = Child(source.transform, "Skirt.L", Vector3.up);
+                Child(Child(skirt, "Skirt_A.L", new Vector3(-.1f, -.1f, 0)), "Tip", Vector3.down * .1f);
+                Child(Child(skirt, "Skirt_B.L", new Vector3(.1f, -.1f, 0)), "Tip", Vector3.down * .1f);
+                var hair = Child(source.transform, "Hair_01", Vector3.up * 1.5f);
+                Set(PhysBone(skirt.gameObject), "endpointPosition", Vector3.down * .1f);
+                Set(PhysBone(hair.gameObject), "endpointPosition", Vector3.down * .1f);
+                copy = Object.Instantiate(source);
+                var authored = copy.GetComponentsInChildren<Transform>(true).Select(t => t.name).ToArray();
+                var result = PhysBoneSpringExport.Convert(source, copy, new List<string>());
+                Assert.That(result.Chains, Is.EqualTo(3)); AssertUniqueJoints(copy);
+                var tails = copy.GetComponent<Vrm10Instance>().SpringBone.Springs.Select(s => s.Joints.Last().transform).ToArray();
+                Assert.That(tails.Select(t => t.name), Is.EqualTo(new[] { preferred + " 2", preferred + " 3", "Hair_01-" + PhysBoneSpringExport.EndpointName }));
+                var names = copy.GetComponentsInChildren<Transform>(true).Select(t => t.name).ToArray();
+                Assert.That(names.Except(authored), Is.EquivalentTo(tails.Select(t => t.name)), "Only generated endpoints are new.");
+                Assert.That(names.Count(n => n.Contains(PhysBoneSpringExport.EndpointName)), Is.EqualTo(names.Where(n => n.Contains(PhysBoneSpringExport.EndpointName)).Distinct().Count()));
+                Assert.That(copy.transform.Find(preferred).GetComponent<VRM10SpringBoneJoint>(), Is.Null);
+                var again = Object.Instantiate(source);
+                try
+                {
+                    PhysBoneSpringExport.Convert(source, again, new List<string>());
+                    Assert.That(again.GetComponent<Vrm10Instance>().SpringBone.Springs.Select(s => s.Joints.Last().transform.name),
+                        Is.EqualTo(tails.Select(t => t.name)), "A second export names the endpoints the same way.");
+                }
+                finally { Object.DestroyImmediate(again); }
             }
             finally { Object.DestroyImmediate(copy); Object.DestroyImmediate(source); }
         }
@@ -598,7 +845,27 @@ namespace VRVlog.LilToonExporter.Tests
             await ExportImportsSpringsAndMovesHair(full, false, false, true);
         }
 
-        async Task ExportImportsSpringsAndMovesHair(bool full, bool modularAvatar, bool rootCollider, bool avatarOptimizer, bool nestedPhysBones = false)
+        [Test]
+        public async Task InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
+                value.name == "com.anatawa12.avatar-optimizer");
+            // Keep the async wrapper for the UTF 1.4.6 IgnoreException caveat above.
+            if (package == null) Assert.Ignore("Optional AAO integration requires the real registered Avatar Optimizer package.");
+            Assert.That(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"), Is.Not.Null, "The installed AAO package must load its real component assembly.");
+            Assert.That(Sdk("nadena.dev.ndmf.BuildContext"), Is.Not.Null, "Installed AAO requires its NDMF dependency.");
+            Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
+                "The installed AAO compatibility adapter must compile and register.");
+            Assert.That(Version.TryParse(package.version.Split('-', '+')[0], out var version), Is.True, "AAO must report a numeric package version.");
+            // Without a descriptor NDMF selects its generic platform. AAO 1.9+
+            // runs there and removes the root Animator; older AAO skips its
+            // passes, so the optimized expression mapping is never applied.
+            await ExportImportsSpringsAndMovesHair(false, false, false, true, expectedFailure: version >= new Version(1, 9)
+                ? UniVrmOneClickExporter.LostHumanoidAnimator : "最適化後の表情の移動情報を取得できませんでした。");
+        }
+
+        async Task ExportImportsSpringsAndMovesHair(bool full, bool modularAvatar, bool rootCollider, bool avatarOptimizer, bool nestedPhysBones = false,
+            string expectedFailure = null)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var controller = avatarOptimizer ? new StaticAnimatorController(fixture.Source.GetComponent<Animator>()) : null;
@@ -632,8 +899,13 @@ namespace VRVlog.LilToonExporter.Tests
             var collider = (rootCollider ? fixture.Source : head.gameObject).AddComponent(Sdk("VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider"));
             Set(collider, "radius", .025f); Set(collider, "position", Vector3.left);
             Component duplicateCollider = null;
+            SkinnedMeshRenderer body = null;
             if (avatarOptimizer)
             {
+                // Real VRChat avatars select NDMF's VRChat platform. On the
+                // generic platform AAO < 1.9 skips its passes and 1.9 can
+                // remove the root Animator before UniVRM reads the humanoid.
+                if (expectedFailure == null) AddVrChatAvatarDescriptor(fixture.Source);
                 duplicateCollider = head.gameObject.AddComponent(collider.GetType());
                 Set(duplicateCollider, "radius", .025f); Set(duplicateCollider, "position", Vector3.left);
                 fixture.Source.AddComponent(Sdk("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
@@ -642,7 +914,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(skin =>
                     skin.bones[0] == hair && skin.sharedMesh.boneWeights.All(weight => weight.boneIndex0 == 0 && weight.weight0 == 1)), Is.True,
                     "The PhysBone must drive weighted visible geometry, so AAO cannot discard it as unused.");
+                if (expectedFailure == null)
+                    body = AddWeightedBody(fixture.Source, fixture.Source.GetComponentInChildren<SkinnedMeshRenderer>().sharedMaterial);
             }
+            using var bodyMesh = new OwnedMesh(body != null ? body.sharedMesh : null);
             using (var data = new SerializedObject(pb))
             {
                 var list = data.FindProperty("colliders"); list.arraySize = avatarOptimizer ? 2 : 1;
@@ -660,8 +935,11 @@ namespace VRVlog.LilToonExporter.Tests
             }
             var positions = fixture.Source.GetComponentsInChildren<Transform>().Select(t => t.localPosition).ToArray();
             var originalParent = hair.parent.parent;
-            var sourceSkins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+            var sourceSkins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Where(skin => skin != body).ToArray();
             var sourceBones = sourceSkins.Select(skin => skin.bones).ToArray();
+            var bodyBones = body != null ? body.bones : null;
+            var bodyWeights = body != null ? body.sharedMesh.boneWeights : null;
+            var bodyVertices = body != null ? body.sharedMesh.vertices : null;
             var sourceVertices = fixture.Mesh.vertices;
             var sourceWeights = fixture.Mesh.boneWeights;
             var sourceBinds = fixture.Mesh.bindposes;
@@ -670,6 +948,23 @@ namespace VRVlog.LilToonExporter.Tests
             var sourceCollider = EditorJsonUtility.ToJson(collider);
             var sourceDuplicate = duplicateCollider != null ? EditorJsonUtility.ToJson(duplicateCollider) : null;
             var warnings = new List<string>(); Vrm10Instance imported = null;
+            if (expectedFailure != null)
+            {
+                string[] ExportFolders() => AssetDatabase.GetSubFolders("Assets")
+                    .Where(path => path.StartsWith("Assets/VRVlogExportTemp-", StringComparison.Ordinal)).ToArray();
+                var temporaryFolders = ExportFolders();
+                byte[] failed = null;
+                var error = Assert.Throws<InvalidOperationException>(() => failed = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
+                    exporterVersion: full ? "test" : null, lilToonVersion: full ? "2.3.4" : null,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+                Assert.That(failed, Is.Null, "An optimization that loses the humanoid must never produce an apparently usable VRM.");
+                Assert.That(error.Message, Is.EqualTo(expectedFailure));
+                Assert.That(fixture.Source.GetComponent<Animator>().runtimeAnimatorController, Is.SameAs(controller.Controller));
+                Assert.That(EditorJsonUtility.ToJson(pb), Is.EqualTo(sourcePhysBone));
+                Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
+                Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders), "A stopped export must release every exporter temporary asset folder.");
+                return;
+            }
             try
             {
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Spring test", "Tests", warnings,
@@ -736,6 +1031,10 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(fixture.Source.GetComponentsInChildren<Component>().Count(component => component != null &&
                         component.GetType() == collider.GetType()), Is.EqualTo(2), "Only the disposable clone may merge colliders.");
                     Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
+                    Assert.That(body.sharedMesh, Is.SameAs(bodyMesh.Mesh));
+                    Assert.That(body.bones, Is.EqualTo(bodyBones));
+                    Assert.That(bodyMesh.Mesh.boneWeights, Is.EqualTo(bodyWeights));
+                    Assert.That(bodyMesh.Mesh.vertices, Is.EqualTo(bodyVertices));
                 }
                 Assert.That(fixture.Source.GetComponentsInChildren<VRM10SpringBoneJoint>(), Is.Empty);
                 Assert.That(warnings.Any(w => w.Contains("PhysBone変換:")), Is.True);

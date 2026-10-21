@@ -334,10 +334,13 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Back", typeof(SkinnedMeshRenderer), "blendShape.UE/EyeClosed"),
                     AnimationCurve.Constant(0, 1, 0));
                 SetFx(fixture.Source.AddComponent(type), controller);
-                Assert.Throws<InvalidOperationException>(() => BlinkExportSession.Resolve(fixture.Source),
-                    "The retained closed face has no remaining closure range; skipping FX must not invent an open-eye baseline.");
-                Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.Export(fixture.Source,
-                    "Closed prepared face", "Tests"));
+                using (var plain = BlinkExportSession.Resolve(fixture.Source))
+                    Assert.That(plain.Disabled && plain.UnresolvedAutomatic, Is.True,
+                        "The retained closed face has no remaining closure range; skipping FX must not invent an open-eye baseline.");
+                var closedWarnings = new List<string>();
+                Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(fixture.Source, "Closed prepared face", "Tests", closedWarnings));
+                Assert.That(closedWarnings.Any(warning => warning.StartsWith(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning), StringComparison.Ordinal)), Is.True,
+                    "The closed rest exports without blink and says why.");
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Prepared closed rest without blink", "Tests",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     exporterVersion: fullLilToon ? "prepared-neutral-regression" : null,

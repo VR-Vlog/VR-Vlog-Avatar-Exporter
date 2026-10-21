@@ -18,15 +18,7 @@ namespace VRVlog.LilToonExporter
         internal static void Add(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath = null)
         {
             var runtime = source.Controller;
-            var controller = runtime as AnimatorController;
-            var replacements = new Dictionary<AnimationClip, AnimationClip>();
-            if (runtime is AnimatorOverrideController overrides)
-            {
-                controller = overrides.runtimeAnimatorController as AnimatorController;
-                var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
-                overrides.GetOverrides(pairs);
-                foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
-            }
+            var controller = Resolve(runtime, out var replacements);
             if (controller == null) return;
 
             var seen = new Dictionary<AnimationClip, List<VrChatExpressionMenu.Entry>>();
@@ -42,14 +34,17 @@ namespace VRVlog.LilToonExporter
                 var entry = new VrChatExpressionMenu.Entry
                 {
                     Id = "gesture/" + path,
-                    Name = "ジェスチャー / " + (clip != null ? clip.name : path)
+                    Name = "ジェスチャー / " + (clip != null ? clip.name : path),
+                    ExportName = clip != null ? clip.name : path.Substring(path.LastIndexOf('/') + 1),
+                    Source = ExpressionSource.Gesture,
+                    Clip = clip
                 };
                 try
                 {
                     if (motion is BlendTree || clip != null && target.State.timeParameterActive && HasChangingMorph(clip, excludedPath))
                     {
                         var composed = VrChatFxExpressions.ReadGestureState(avatar, source, target.Layer, target.State,
-                            entry.Name, excludedPath);
+                            entry.Name, excludedPath, entry.ExportName);
                         if (source.Entries.Count + composed.Count > 512) throw new InvalidOperationException("表情候補が512個を超えています。FXの表情登録を整理してください。");
                         source.Entries.AddRange(composed);
                         continue;
@@ -60,6 +55,7 @@ namespace VRVlog.LilToonExporter
                     ReadClip(avatar, clip, entry, excludedPath, source);
                     VrChatExpressionSampler.ApplyPermanentOverrides(avatar, runtime, entry, target.Layer, target.State.writeDefaultValues,
                         excludedPath, metadata: source, sourceState: target.State);
+                    source.GestureStates.Add((target.Layer, target.State));
                 }
                 catch (InvalidOperationException error) { entry.Error = error.Message; }
                 // Sharing a clip does not establish the same expression:
@@ -113,6 +109,28 @@ namespace VRVlog.LilToonExporter
             internal AnimatorState State;
             internal int Layer;
             internal string Path;
+        }
+
+        // The clips that Add reads as gesture faces, whatever they hold.
+        internal static HashSet<AnimationClip> TargetClips(RuntimeAnimatorController runtime)
+        {
+            var result = new HashSet<AnimationClip>();
+            var controller = Resolve(runtime, out var replacements);
+            if (controller == null) return result;
+            foreach (var target in Discover(controller))
+                if (EffectiveMotion(controller, target.State, target.Layer) is AnimationClip clip)
+                    result.Add(replacements.TryGetValue(clip, out var replacement) ? replacement : clip);
+            return result;
+        }
+
+        private static AnimatorController Resolve(RuntimeAnimatorController runtime, out Dictionary<AnimationClip, AnimationClip> replacements)
+        {
+            replacements = new Dictionary<AnimationClip, AnimationClip>();
+            if (!(runtime is AnimatorOverrideController overrides)) return runtime as AnimatorController;
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrides.GetOverrides(pairs);
+            foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
+            return overrides.runtimeAnimatorController as AnimatorController;
         }
 
         private static IEnumerable<Target> Discover(AnimatorController controller)
@@ -255,8 +273,9 @@ namespace VRVlog.LilToonExporter
                 if (projection != null && !projection.Morphs.Contains(binding)) continue;
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 if (curve == null) throw new InvalidOperationException("表情アニメーションの曲線を読み取れません: " + clip.name);
-                // The standard VRM expression is the first pose. The animated
-                // channels are exported separately and replayed by VR Vlog.
+                // The static value is the first pose. The animated channels
+                // are exported separately and replayed by VR Vlog; the VRM
+                // expression takes their last frame.
                 var weight = (float)ReadCurve(curve).Evaluate(0);
                 var renderer = VrChatExpressionSampler.FindRenderer(avatar, binding.path);
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy)

@@ -342,16 +342,18 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(F.Int(record, "height"), Is.EqualTo(2));
                 Assert.That(F.Bool(record, "normal"), Is.True);
                 Assert.That(F.Bool(record, "srgb"), Is.False);
-                Assert.That(F.Text(record, "format"), Is.EqualTo("rgbaHalf"));
+                // A flat 8-bit normal decodes the same from an RGBA8 copy.
+                Assert.That(F.Text(record, "format"), Is.EqualTo("rgba32"));
                 for (var mip = 0; mip < F.Int(record, "mips"); mip++)
                 {
                     var bytes = Pixels(snapshot, record, 0, mip);
-                    for (var pixel = 0; pixel < bytes.Length / 8; pixel++)
+                    Assert.That(bytes.Length, Is.EqualTo(Math.Max(1, 1024 >> mip) * Math.Max(1, 2 >> mip) * 4));
+                    for (var pixel = 0; pixel < bytes.Length / 4; pixel++)
                     {
-                        Assert.That(Mathf.HalfToFloat(BitConverter.ToUInt16(bytes, pixel * 8)), Is.EqualTo(.5f).Within(.02f));
-                        Assert.That(Mathf.HalfToFloat(BitConverter.ToUInt16(bytes, pixel * 8 + 2)), Is.EqualTo(.5f).Within(.02f));
-                        Assert.That(Mathf.HalfToFloat(BitConverter.ToUInt16(bytes, pixel * 8 + 4)), Is.GreaterThan(.99f));
-                        Assert.That(Mathf.HalfToFloat(BitConverter.ToUInt16(bytes, pixel * 8 + 6)), Is.EqualTo(1));
+                        Assert.That(bytes[pixel * 4] / 255f, Is.EqualTo(.5f).Within(.02f));
+                        Assert.That(bytes[pixel * 4 + 1] / 255f, Is.EqualTo(.5f).Within(.02f));
+                        Assert.That(bytes[pixel * 4 + 2] / 255f, Is.GreaterThan(.99f));
+                        Assert.That((int)bytes[pixel * 4 + 3], Is.EqualTo(255));
                     }
                 }
                 Assert.That(source.width, Is.EqualTo(4096));
@@ -366,7 +368,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(TextureImporterCompression.Uncompressed, FilterMode.Bilinear)]
         [TestCase(TextureImporterCompression.Compressed, FilterMode.Trilinear)]
-        public void ImportedLdrNormalPreservesAllMipsAndSamplerWithinHalfPrecision(
+        public void ImportedLdrNormalPreservesAllMipsAndSamplerWithinStoredPrecision(
             TextureImporterCompression compression, FilterMode filter)
         {
             var path = "Assets/__VRVlogFilterableNormal_" + Guid.NewGuid().ToString("N") + ".png";
@@ -396,7 +398,9 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Material.SetTexture("_BumpMap", source);
                 var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar);
                 var record = Texture(snapshot, source.name);
-                Assert.That(F.Text(record, "format"), Is.EqualTo("rgbaHalf"));
+                var halfReads = Enumerable.Range(0, source.mipmapCount).Select(mip => LilToonFullTexture.Read(source, mip, 0, true, false, true, true)).ToList();
+                var quantized = LilToonFullSnapshot.NormalFitsRgba32(halfReads, fixture.Material.GetFloat("_BumpScale"));
+                Assert.That(F.Text(record, "format"), Is.EqualTo(quantized ? "rgba32" : "rgbaHalf"));
                 Assert.That(F.Bool(record, "normal"), Is.True);
                 Assert.That(F.Bool(record, "srgb"), Is.False);
                 Assert.That(F.Int(record, "mips"), Is.EqualTo(source.mipmapCount));
@@ -409,10 +413,12 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var expected = LilToonFullTexture.Read(source, mip, 0, true, false, true);
                     var actual = Pixels(snapshot, record, 0, mip);
-                    Assert.That(actual.Length * 2, Is.EqualTo(expected.Length));
-                    for (var component = 0; component < actual.Length / 2; component++)
-                        Assert.That(Mathf.HalfToFloat(BitConverter.ToUInt16(actual, component * 2)),
-                            Is.EqualTo(BitConverter.ToSingle(expected, component * 4)).Within(1f / 2048f),
+                    var stride = quantized ? 1 : 2;
+                    Assert.That(actual.Length / stride * 4, Is.EqualTo(expected.Length));
+                    if (quantized) Assert.That(actual, Is.EqualTo(LilToonFullSnapshot.NormalToRgba32(halfReads[mip])));
+                    for (var component = 0; component < actual.Length / stride; component++)
+                        Assert.That(quantized ? actual[component] / 255f : Mathf.HalfToFloat(BitConverter.ToUInt16(actual, component * 2)),
+                            Is.EqualTo(BitConverter.ToSingle(expected, component * 4)).Within(quantized ? .5f / 255f + 1f / 2048f : 1f / 2048f),
                             "mip " + mip + " component " + component);
                 }
                 Assert.That(source.isReadable, Is.False);

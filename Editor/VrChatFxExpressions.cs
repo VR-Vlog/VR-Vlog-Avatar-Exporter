@@ -18,6 +18,12 @@ namespace VRVlog.LilToonExporter
         const int MaximumNodes = 8192, MaximumDepth = 16, MaximumCandidates = 256;
         const int MaximumConditionChecks = MaximumNodes * 32;
 
+        // A time-decided BlendTree is never one settled frame. The gesture
+        // path catches its message and reads the tree as an animation, so it
+        // is not shown; the FX path has no animated reading and omits it.
+        internal const string SettledTreeIsAnimated = "BlendTreeの表情は時間で決めた1フレームではなくアニメーションとして読みます。";
+        internal const string SettledFxTreeOmitted = "時間で変わるFXのBlendTreeは、時間で決めた1フレームの固定表情に変換できません。";
+
         sealed class Candidate
         {
             internal int Layer;
@@ -68,6 +74,8 @@ namespace VRVlog.LilToonExporter
             try
             {
                 var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
+                var controller = ExpressionDependencies.Controller(source.Controller);
+                var overrides = ExpressionDependencies.Overrides(source.Controller);
                 foreach (var candidate in Discover(source, context, excludedPath).ToArray())
                 {
                     // Recovery exclusions are authoritative even when the menu's
@@ -79,19 +87,35 @@ namespace VRVlog.LilToonExporter
                     if (!seen.Add(key)) continue;
                     if (candidate.Error == null && source.Entries.Any(entry => entry.Error == null &&
                         entry.Id?.StartsWith("fx/", StringComparison.Ordinal) != true && SameParameters(entry.Parameters, candidate.Values))) continue;
+                    // The VRM name is the clip the state plays. A BlendTree has
+                    // no single clip, so it keeps the state name and its values.
+                    var motion = EffectiveMotion(controller, candidate.State, candidate.Layer);
+                    if (motion is AnimationClip played && overrides.TryGetValue(played, out var replaced)) motion = replaced;
                     var entry = new VrChatExpressionMenu.Entry {
                         Id = "fx/" + key, Name = "FX / " + candidate.State.name +
                             (candidate.State.motion is BlendTree ? " (" + assignment + ")" : ""),
-                        Error = candidate.Error
+                        ExportName = motion is AnimationClip fxClip ? fxClip.name :
+                            candidate.State.name + (motion is BlendTree ? " (" + assignment + ")" : ""),
+                        Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Menu
                     };
                     foreach (var value in candidate.Values) entry.Parameters.Add(value.Key, value.Value);
                     if (entry.Error == null)
                     {
+                        source.Progress?.Invoke(entry.Name);
                         try
                         {
-                            entry.Values.AddRange(VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
+                            var settlement = new List<string>();
+                            var trees = new List<string>();
+                            var values = VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
                                 entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                                candidate.Layer, candidate.Path));
+                                candidate.Layer, candidate.Path, settlement, trees);
+                            // FX tree knots are candidates too. A tree still
+                            // moving after the warm-up has no animated reading
+                            // on this path, so one settled frame is not taken.
+                            // A tree of still clips is one exact frame and stays.
+                            if (settlement.Count > 0 && trees.Count > 0) throw new InvalidOperationException(SettledFxTreeOmitted);
+                            entry.Values.AddRange(values);
+                            foreach (var message in settlement) entry.Messages.Add(message);
                             if (candidate.DefaultValues != null)
                             {
                                 // A readonly parent may make an authored inner
@@ -138,7 +162,7 @@ namespace VRVlog.LilToonExporter
         // or turn a hand-controlled clock into an autoplaying animation.
         internal static List<VrChatExpressionMenu.Entry> ReadGestureState(GameObject avatar,
             VrChatExpressionMenu.Source source, int layer, AnimatorState state, string label,
-            Func<string, bool> excludedPath = null)
+            Func<string, bool> excludedPath = null, string exportLabel = null)
         {
             var handInputs = new HashSet<string>(new[] { "GestureLeft", "GestureRight", "GestureLeftWeight", "GestureRightWeight" }, StringComparer.Ordinal);
             var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
@@ -151,7 +175,7 @@ namespace VRVlog.LilToonExporter
             {
                 var entry = new VrChatExpressionMenu.Entry {
                     Id = "gesture-state/" + layer + "/" + candidate.Path + "/" + Assignment(candidate.Values),
-                    Name = label, Error = candidate.Error
+                    Name = label, ExportName = exportLabel, Error = candidate.Error, Source = VRVlog.Expressions.ExpressionSource.Gesture
                 };
                 foreach (var pair in candidate.Values)
                     entry.Parameters.Add(pair.Key, pair.Key == "GestureLeftWeight" || pair.Key == "GestureRightWeight" ? Mathf.Clamp01(pair.Value) : pair.Value);
@@ -161,6 +185,7 @@ namespace VRVlog.LilToonExporter
                         ExpressionDependencies.Controller(source.Controller).parameters.Any(parameter => parameter.name == "Gesture" + hand + "Weight"))
                         entry.Parameters.Add("Gesture" + hand + "Weight", 1);
                 entry.Name += " (" + Assignment(entry.Parameters) + ")";
+                if (entry.ExportName != null) entry.ExportName += " (" + Assignment(entry.Parameters) + ")";
                 // Some hand trees place knots slightly outside the hand's
                 // documented [0,1] domain to shape their native interpolation.
                 // Sample the reachable boundary with the original mixing.
@@ -171,8 +196,15 @@ namespace VRVlog.LilToonExporter
                 if (entry.Error == null)
                     try
                     {
-                        entry.Values.AddRange(VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
-                            entry.Parameters, excludedPath, source, entry.Unevaluated, context, candidate.Layer, candidate.Path));
+                        var settlement = new List<string>();
+                        var values = VrChatExpressionSampler.SampleFixed(avatar, source.Controller, source.Defaults,
+                            entry.Parameters, excludedPath, source, entry.Unevaluated, context, candidate.Layer, candidate.Path, settlement);
+                        // A moving BlendTree keeps its animated reading rather
+                        // than one settled frame.
+                        if (settlement.Count > 0 && ExpressionDependencies.Controller(source.Controller).GetStateEffectiveMotion(candidate.State, candidate.Layer) is BlendTree)
+                            throw new InvalidOperationException(SettledTreeIsAnimated);
+                        entry.Values.AddRange(values);
+                        foreach (var message in settlement) entry.Messages.Add(message);
                     }
                     catch (InvalidOperationException error)
                     {
@@ -197,7 +229,7 @@ namespace VRVlog.LilToonExporter
             Func<int, AnimatorState, bool> stateFilter = null, int? onlyLayer = null)
         {
             var controller = ExpressionDependencies.Controller(source.Controller);
-            var parameters = controller.parameters.ToDictionary(value => value.name, StringComparer.Ordinal);
+            var parameters = ExpressionDependencies.UniqueParameters(controller).ToDictionary(value => value.name, StringComparer.Ordinal);
             var defaults = parameters.Values.ToDictionary(value => value.name, value =>
                 value.type == AnimatorControllerParameterType.Bool ? (value.defaultBool ? 1f : 0f) :
                 value.type == AnimatorControllerParameterType.Int ? value.defaultInt : value.defaultFloat, StringComparer.Ordinal);
@@ -242,7 +274,7 @@ namespace VRVlog.LilToonExporter
             var declarations = new Dictionary<string, HashSet<AnimatorControllerParameterType>>(StringComparer.Ordinal);
             foreach (var runtime in new[] { source.Controller }.Concat(source.OtherControllers.Where(value => value != null)))
             {
-                foreach (var parameter in ExpressionDependencies.Controller(runtime).parameters)
+                foreach (var parameter in ExpressionDependencies.UniqueParameters(runtime))
                 {
                     if (!declarations.TryGetValue(parameter.name, out var types))
                         declarations.Add(parameter.name, types = new HashSet<AnimatorControllerParameterType>());

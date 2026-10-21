@@ -21,6 +21,7 @@ namespace UnityEngine
         public GameObject gameObject;
         public Transform transform => gameObject.transform;
         public T GetComponent<T>() where T : Component => gameObject.GetComponent<T>();
+        public bool TryGetComponent<T>(out T component) where T : Component => (component = GetComponent<T>()) != null;
     }
 
     public sealed class Transform : Component
@@ -66,6 +67,11 @@ namespace UnityEngine
         {
             if (!activeInHierarchy) return Array.Empty<T>();
             return components.OfType<T>().Concat(children.SelectMany(child => child.GetComponentsInChildren<T>())).ToArray();
+        }
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component
+        {
+            if (!includeInactive) return GetComponentsInChildren<T>();
+            return components.OfType<T>().Concat(children.SelectMany(child => child.GetComponentsInChildren<T>(true))).ToArray();
         }
     }
 
@@ -287,7 +293,7 @@ namespace VRVlog.LilToonExporter
     internal static class AlphaMaskBaker
     {
         internal static void CheckUvRange(UnityEngine.Renderer renderer, int slot, UnityEngine.Material material, ICollection<string> warnings) { }
-        internal static void Bake(UnityEngine.Material material, List<UnityEngine.Texture2D> owned, ICollection<string> warnings)
+        internal static void Bake(UnityEngine.Material material, List<UnityEngine.Texture2D> owned, ICollection<string> warnings, string origin = null)
         {
             if (material.HasProperty("_AlphaMaskMode") && material.GetFloat("_AlphaMaskMode") != 0)
                 UnityEngine.GpuForbidden.Fail("AlphaMaskBaker");

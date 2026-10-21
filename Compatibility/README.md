@@ -7,7 +7,7 @@ the installable package; development manifests and test tools are excluded.
 
 The independent Editor compatibility assembly references only Unity. It owns
 the menu and environment diagnostics. The UniVRM backend and its tests compile
-only when both VRM10 and UniGLTF match an explicitly listed version. The runtime
+only when both VRM10 and UniGLTF are in the accepted 0.131 patch line. The runtime
 guard also rejects mixed versions. Missing/unsupported packages therefore do
 not make this exporter's UniVRM references break compilation before diagnostics.
 Compilation errors inside another package can still prevent Unity from loading
@@ -23,11 +23,60 @@ without absolute paths or avatar data. A missing backend alone is not evidence
 of a compile error in another tool.
 
 The VPM requirement stays at `0.131.x` to avoid forcing changes to an existing
-creator project. Only the explicitly listed patches can export. A future patch
-selected by VPM requires review before it is enabled. Diagnostics never install,
-upgrade or downgrade packages. MA and NDMF remain optional; existing component,
+creator project. Every release of that patch line can export when UniGLTF and
+VRM have the same version (`[0.131.0,0.131.999999999]` version defines; prereleases,
+build metadata and other minor lines stop). `uniVrm.versions` lists the patches
+actually verified with their official source commit; a new 0.131 patch is
+accepted before it is listed, and VCC / ALCOM can install it into a creator
+project without anyone touching the exporter.
+
+Accepting unverified patches has a cost. When the version defines named each
+verified patch, an unlisted patch only left the backend out and diagnostics
+explained why. Now the backend compiles against every 0.131.Z. If a later patch
+changes the signature of a UniVRM API the exporter calls, the result is a
+compile error inside this package in the creator's project, not a diagnostics
+message: in an open editor the script reload stops, on the next project open
+Unity offers Safe Mode, and the VRChat SDK refuses to build while compile errors
+exist. Patches in this line do change public API: 0.131.2 to 0.131.3 changed
+the type of `GlbChunk.Bytes` from `ArraySegment` to `ReadOnlyMemory`, which the
+exporter does not use. A behavior change behind an unchanged signature compiles
+and is only found when that patch is verified. 0.131.3 is such a case:
+`NativeArrayManager.CreateNativeArray(T[])` wraps the managed array instead of
+copying it, so each morph's normal array must be a separate allocation.
+
+The mitigation is to verify each new 0.131 patch promptly, before or as soon as
+creators can install it: run the `compatibility`, `exporter-behavior` and
+`exporter-integration` profiles below with that patch (the runner accepts an
+unlisted 0.131 release), then add it to `uniVrm.versions` with its source
+commit (evidence: `Evidence/UniVrm0131x/README.md`). If it breaks, ship an
+exporter fix, or an exporter release whose accepted range excludes that patch.
+`Tools/check-upstream-dependencies.py` reports an upstream UniVRM release newer
+than the newest listed patch. A new minor line (0.132 and later) still requires
+review and a new adapter.
+Diagnostics never install, upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
+
+The VRChat SDK is optional as well. It matters only when an expression file uses
+VRC Animator Play Audio: the capture copy omits that behaviour, and the exporter
+accepts it when VRChat SDK Base and Avatars are the same release with
+`vrchatSdkMinimum <= version < vrchatSdkBelow` (3.5.2 to below 3.11.0). 3.5.2 is
+the first stable release with `VRCAnimatorPlayAudio`; its fields and members are
+identical through 3.10.5. Results:
+[Evidence/VrchatSdkRange](Evidence/VrchatSdkRange/README.md).
+
+Modular Avatar has its own range only for the appearance freeze, which runs
+when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
+to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
+`IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
+`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
+stable versions stop before that API is touched, naming the installed version and
+the range. When the version cannot be read (MA placed under `Assets`, a
+pre-release), the freeze tries the API and, if it is missing, stops saying the
+version was not read. Avatars without those components export with any MA version. MA 1.18.x
+itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
+`ndmfMinimum` (1.8.3).
 
 ## Supported lilToon versions
 
@@ -40,6 +89,14 @@ the structure hash of every tag from 2.0.0 to 2.3.4 matches (see
 [lilToon shader structure](#liltoon-shader-structure)). 1.x keeps 35 properties that 2.3.4 does not
 have and lacks 3 that it has. Shader Setting changes, encrypted materials and
 custom shaders were not measured.
+
+As of 2026-10-18, 2.3.4 is the newest lilToon release and the official VPM
+listing has no pre-release, so the range covers every stable 2.x release. 1.x
+is not accepted: the exporter requires the 2.3.4 property set exactly, 2.0.0
+changed the fur, lighting and Light Volumes shader code, and 1.x packages
+declare Unity 2018.3. Updating the project to lilToon 2.0.0-2.3.4 migrates 1.x
+materials so they export. See
+`Documentation~/decisions/2026-10-18-liltoon-range-review.md`.
 
 Before exporting, these versions stop with the reason and the next step:
 
@@ -84,7 +141,7 @@ per-version conversions that this project does not maintain.
 
 ## lilToon shader structure
 
-`Editor/LilToon234Catalogue.cs` is generated from the Built-in RP shader
+`Formats/Runtime/LilToon234Catalogue.cs` is generated from the Built-in RP shader
 declarations of the lilToon 2.3.4 tag by `Tools/generate-liltoon-catalogue.py`
 (`catalogue --fetch 2.3.4 --check` confirms it byte for byte). The same tool
 hashes the shader structure of each lilToon tag into `liltoon-structure.json`
@@ -118,7 +175,8 @@ A matching hash is not proof of visual equivalence.
    Setting at its defaults: `LilToonStructureCheckTests` compares every installed
    official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
-4. Run the focused test runner for every supported version:
+4. Run the focused test runner for every version in `uniVrm.versions`, and for
+   a new 0.131 patch before it is listed:
 
    ```text
    python3 Tools/run-unity-compatibility.py --unity UNITY_EXECUTABLE --project TEST_PROJECT --expect-univrm 0.131.1 --expect-unity 2022.3.22f1 --output TEST_RESULTS
@@ -130,6 +188,10 @@ A matching hash is not proof of visual equivalence.
    rejects missing/old results, skipped required tests and unexpected installed
    versions. It tests ordinary and full-lilToon export/reimport, meshes, morphs,
    material bindings, source preservation, renderer selection and skin weights.
+   Like the exporter, the runner treats every release of `uniVrm.vpmRange`
+   (0.131.x without prerelease or build labels) as supported, listed or not; its
+   JSON receipt records `uniVrmSupported` and `uniVrmListed`.
+   `create-liltoon-version-projects.py` accepts the same range.
 5. Repeat with no UniVRM (`--expect-univrm missing`) and an unsupported-package
    fixture to verify the independent diagnostics. A synthetic unsupported
    fixture proves exclusion/diagnostics only, never future API compatibility.
@@ -364,6 +426,10 @@ an absent package is a skip, while an installed but unloaded component is a fail
 Record the exact AAO version and any explicitly applied
 dependency patch; use the fixture's supported configuration API. Missing or
 unsupported integration packages cause required skips and therefore a failed run.
+The AAO spring fixtures carry a VRChat Avatar Descriptor and a weighted body, as
+real avatars do. The box-removal fixtures have no Descriptor, so NDMF picks the
+generic platform, where AAO runs only from 1.9.0; they skip on older AAO.
+`Compatibility/Evidence/AaoRange/` has the 1.7.13, 1.8.15 and 1.9.20 results.
 
 The runner runs each selected class and checks named critical regressions and their
 parameter counts. A missing class/case, duplicate identity, failed/skipped case,
