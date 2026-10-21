@@ -713,6 +713,22 @@ namespace VRVlog.LilToonExporter
                         throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
                     return tracked;
                 }, () => exported);
+                // After every expression is bound: BlendShapes that nothing
+                // binds and the app does not drive by name are left out.
+                exported = guard.Run(ExportStage.UnusedMorphs, () =>
+                {
+                    // Normal output, not a fallback: the Console only, no
+                    // warning and no result line.
+                    var skipped = new List<string>();
+                    var removed = new List<string>();
+                    var stripped = UnusedMorphTargets.Strip(exported, skipped, removed);
+                    foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
+                    // The first 20 names only: a real avatar leaves out hundreds.
+                    if (removed.Count > 0)
+                        Debug.Log($"VR Vlog: left {removed.Count} unused BlendShapes out of the VRM: " + string.Join(", ", removed.Take(20)) +
+                                  (removed.Count > 20 ? $" … (+{removed.Count - 20} more)" : ""));
+                    return stripped;
+                }, () => exported);
                 var marked = false;
                 if (fullSnapshot != null)
                 {
