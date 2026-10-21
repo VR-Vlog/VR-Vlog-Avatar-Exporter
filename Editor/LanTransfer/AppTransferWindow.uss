@@ -205,10 +205,15 @@
     margin-top: 8px;
 }
 
-/* Below the scrolling fields: what blocks the button and the button are always in view. */
+/* Below the scrolling fields: the terms and the consent, what blocks the button and the button are always in view. */
 .form-footer {
     flex-shrink: 0;
     padding: 8px 16px 12px 16px;
+}
+
+.consent {
+    flex-shrink: 0;
+    margin-bottom: 8px;
 }
 
 .reason {
