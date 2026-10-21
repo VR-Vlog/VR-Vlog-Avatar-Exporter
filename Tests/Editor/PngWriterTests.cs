@@ -92,6 +92,21 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(source); }
         }
 
+        // Large enough that the parallel path is used; 4096x5 has fewer rows than bands.
+        [TestCase(512, 512, "noisyGradient")]
+        [TestCase(300, 200, "gradientAlpha")]
+        [TestCase(257, 129, "alpha")]
+        [TestCase(4096, 5, "opaque")]
+        public void ParallelFilteringWritesTheSameBytesAsSequential(int width, int height, string pattern)
+        {
+            var pixels = new Color32[width * height];
+            var pixel = Pattern(pattern, width);
+            for (var i = 0; i < pixels.Length; i++) pixels[i] = pixel(i);
+            var parallel = PngWriter.Encode(pixels, width, height, true);
+            var sequential = PngWriter.Encode(pixels, width, height, false);
+            Assert.That(parallel, Is.EqualTo(sequential));
+        }
+
         [Test]
         public void WritesTheSameChunkTypesAsEncodeToPng()
         {

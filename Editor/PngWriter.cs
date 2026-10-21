@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -12,6 +14,8 @@ namespace VRVlog.LilToonExporter
     internal static class PngWriter
     {
         private const int IdatChunkBytes = 1 << 20;
+        // Below this many filtered bytes the rows are filtered on the calling thread.
+        private const int ParallelMinimumBytes = 1 << 16;
         private static readonly byte[] Signature = { 137, 80, 78, 71, 13, 10, 26, 10 };
         private static readonly byte[] Ihdr = { (byte)'I', (byte)'H', (byte)'D', (byte)'R' };
         private static readonly byte[] Idat = { (byte)'I', (byte)'D', (byte)'A', (byte)'T' };
@@ -33,7 +37,11 @@ namespace VRVlog.LilToonExporter
                 || texture.format == TextureFormat.RGB24 || texture.format == TextureFormat.BGRA32);
 
         // Pixels in Unity order (row 0 is the bottom row). PNG rows run top-down.
-        internal static byte[] Encode(Color32[] pixels, int width, int height)
+        internal static byte[] Encode(Color32[] pixels, int width, int height) => Encode(pixels, width, height, true);
+
+        // parallel: false filters every row on the calling thread; the output
+        // bytes are the same either way (tests compare the two).
+        internal static byte[] Encode(Color32[] pixels, int width, int height, bool parallel)
         {
             if (pixels == null) throw new ArgumentNullException(nameof(pixels));
             if (width <= 0 || height <= 0 || pixels.Length != checked(width * height)) throw new ArgumentException("画像の大きさと画素の数が合いません。");
@@ -52,26 +60,26 @@ namespace VRVlog.LilToonExporter
             header[9] = (byte)(opaque ? 2 : 6);
             WriteChunk(output, Ihdr, header, 0, header.Length);
 
+            // A row's filter depends only on its own raw bytes and the raw row
+            // above, so bands of rows are filtered in parallel into one buffer.
+            // The result does not depend on how the rows are split.
+            var filtered = new byte[checked((rowBytes + 1) * height)];
+            if (parallel && filtered.Length >= ParallelMinimumBytes)
+            {
+                var bands = Math.Min(height, Environment.ProcessorCount * 4);
+                var rowsPerBand = (height + bands - 1) / bands;
+                bands = (height + rowsPerBand - 1) / rowsPerBand;
+                Parallel.For(0, bands, band => FilterRows(pixels, width, height, bpp, filtered, band * rowsPerBand, Math.Min(height, (band + 1) * rowsPerBand)));
+            }
+            else FilterRows(pixels, width, height, bpp, filtered, 0, height);
+
+            var adler = parallel ? Task.Run(() => Adler32(filtered)) : null;
             var idat = new IdatWriter(output);
             idat.Write(ZlibHeader, 0, ZlibHeader.Length);
-            var adler = new Adler32();
             using (var deflate = new DeflateStream(idat, System.IO.Compression.CompressionLevel.Optimal, true))
-            {
-                var previous = new byte[rowBytes];
-                var current = new byte[rowBytes];
-                var filtered = new byte[5][];
-                for (var f = 0; f < filtered.Length; f++) { filtered[f] = new byte[rowBytes + 1]; filtered[f][0] = (byte)f; }
-                for (var y = 0; y < height; y++)
-                {
-                    FillRow(pixels, (height - 1 - y) * width, width, bpp, current);
-                    var best = filtered[Filter(current, previous, bpp, filtered)];
-                    deflate.Write(best, 0, best.Length);
-                    adler.Update(best, 0, best.Length);
-                    var swap = previous; previous = current; current = swap;
-                }
-            }
+                deflate.Write(filtered, 0, filtered.Length);
             var checksum = new byte[4];
-            WriteUInt32(checksum, 0, adler.Value);
+            WriteUInt32(checksum, 0, adler != null ? adler.Result : Adler32(filtered));
             idat.Write(checksum, 0, checksum.Length);
             idat.Finish();
 
@@ -102,29 +110,52 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Writes all five filters (None, Sub, Up, Average, Paeth) and returns the
-        // one with the smallest sum of the filtered bytes read as signed values
-        // (the libpng heuristic). Ties keep the lower filter number.
-        private static int Filter(byte[] row, byte[] prior, int bpp, byte[][] filtered)
+        // Filters PNG rows [from, to) into output (each row: filter type byte,
+        // then the filtered bytes). Reads the raw row above `from` itself.
+        private static void FilterRows(Color32[] pixels, int width, int height, int bpp, byte[] output, int from, int to)
         {
-            byte[] none = filtered[0], sub = filtered[1], up = filtered[2], average = filtered[3], paeth = filtered[4];
+            var rowBytes = width * bpp;
+            var previous = new byte[rowBytes];
+            var current = new byte[rowBytes];
+            // PNG row y is Unity row height - 1 - y.
+            if (from > 0) FillRow(pixels, (height - from) * width, width, bpp, previous);
+            for (var y = from; y < to; y++)
+            {
+                FillRow(pixels, (height - 1 - y) * width, width, bpp, current);
+                var offset = y * (rowBytes + 1);
+                var type = ChooseFilter(current, previous, bpp);
+                output[offset] = (byte)type;
+                ApplyFilter(type, current, previous, bpp, output, offset + 1);
+                var swap = previous; previous = current; current = swap;
+            }
+        }
+
+        // Returns the filter (None, Sub, Up, Average, Paeth) with the smallest sum
+        // of the filtered bytes read as signed values (the libpng heuristic).
+        // Ties keep the lower filter number.
+        private static int ChooseFilter(byte[] row, byte[] prior, int bpp)
+        {
             long sumNone = 0, sumSub = 0, sumUp = 0, sumAverage = 0, sumPaeth = 0;
-            for (var i = 0; i < row.Length; i++)
+            var length = row.Length;
+            // First pixel: a and c are 0, so Sub is None and Paeth predicts b.
+            for (var i = 0; i < bpp; i++)
             {
                 int x = row[i], b = prior[i];
-                int a = i >= bpp ? row[i - bpp] : 0;
-                int c = i >= bpp ? prior[i - bpp] : 0;
-                var o = i + 1;
-                none[o] = (byte)x;
-                sub[o] = (byte)(x - a);
-                up[o] = (byte)(x - b);
-                average[o] = (byte)(x - ((a + b) >> 1));
-                paeth[o] = (byte)(x - Paeth(a, b, c));
-                sumNone += Magnitude(none[o]);
-                sumSub += Magnitude(sub[o]);
-                sumUp += Magnitude(up[o]);
-                sumAverage += Magnitude(average[o]);
-                sumPaeth += Magnitude(paeth[o]);
+                var none = Magnitude(x);
+                sumNone += none;
+                sumSub += none;
+                sumUp += Magnitude(x - b);
+                sumAverage += Magnitude(x - (b >> 1));
+                sumPaeth += Magnitude(x - b);
+            }
+            for (var i = bpp; i < length; i++)
+            {
+                int x = row[i], a = row[i - bpp], b = prior[i], c = prior[i - bpp];
+                sumNone += Magnitude(x);
+                sumSub += Magnitude(x - a);
+                sumUp += Magnitude(x - b);
+                sumAverage += Magnitude(x - ((a + b) >> 1));
+                sumPaeth += Magnitude(x - Paeth(a, b, c));
             }
             var best = 0;
             var bestSum = sumNone;
@@ -135,14 +166,55 @@ namespace VRVlog.LilToonExporter
             return best;
         }
 
-        private static int Magnitude(byte value) => value < 128 ? value : 256 - value;
+        private static void ApplyFilter(int type, byte[] row, byte[] prior, int bpp, byte[] output, int offset)
+        {
+            var length = row.Length;
+            switch (type)
+            {
+                case 0:
+                    Buffer.BlockCopy(row, 0, output, offset, length);
+                    break;
+                case 1:
+                    for (var i = 0; i < bpp; i++) output[offset + i] = row[i];
+                    for (var i = bpp; i < length; i++) output[offset + i] = (byte)(row[i] - row[i - bpp]);
+                    break;
+                case 2:
+                    for (var i = 0; i < length; i++) output[offset + i] = (byte)(row[i] - prior[i]);
+                    break;
+                case 3:
+                    for (var i = 0; i < bpp; i++) output[offset + i] = (byte)(row[i] - (prior[i] >> 1));
+                    for (var i = bpp; i < length; i++) output[offset + i] = (byte)(row[i] - ((row[i - bpp] + prior[i]) >> 1));
+                    break;
+                default:
+                    for (var i = 0; i < bpp; i++) output[offset + i] = (byte)(row[i] - prior[i]);
+                    for (var i = bpp; i < length; i++) output[offset + i] = (byte)(row[i] - Paeth(row[i - bpp], prior[i], prior[i - bpp]));
+                    break;
+            }
+        }
 
+        // |filtered byte| with the byte read as signed (0..128), without branches.
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int Magnitude(int difference)
+        {
+            int value = (sbyte)difference;
+            var sign = value >> 31;
+            return (value ^ sign) - sign;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static int Abs(int value)
+        {
+            var sign = value >> 31;
+            return (value ^ sign) - sign;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static int Paeth(int a, int b, int c)
         {
-            var p = a + b - c;
-            var pa = Math.Abs(p - a);
-            var pb = Math.Abs(p - b);
-            var pc = Math.Abs(p - c);
+            // p = a + b - c; |p - a| = |b - c|, |p - b| = |a - c|, |p - c| = |a + b - 2c|.
+            var pa = Abs(b - c);
+            var pb = Abs(a - c);
+            var pc = Abs(a + b - c - c);
             if (pa <= pb && pa <= pc) return a;
             return pb <= pc ? b : c;
         }
@@ -186,26 +258,24 @@ namespace VRVlog.LilToonExporter
             buffer[offset + 3] = (byte)value;
         }
 
-        private sealed class Adler32
+        private static uint Adler32(byte[] data)
         {
-            // Largest n with 255n(n+1)/2 + (n+1)(65520) below 2^32 (zlib's NMAX).
-            private const int Block = 5552;
-            private const uint Modulus = 65521;
-            private uint a = 1, b;
-
-            internal uint Value => (b << 16) | a;
-
-            internal void Update(byte[] data, int offset, int count)
+            // 5552 is the largest n with 255n(n+1)/2 + (n+1)(65520) below 2^32 (zlib's NMAX),
+            // so the sums are reduced once per block instead of once per byte.
+            const int block = 5552;
+            const uint modulus = 65521;
+            uint a = 1, b = 0;
+            var offset = 0;
+            var count = data.Length;
+            while (count > 0)
             {
-                while (count > 0)
-                {
-                    var n = Math.Min(count, Block);
-                    count -= n;
-                    for (var end = offset + n; offset < end; offset++) { a += data[offset]; b += a; }
-                    a %= Modulus;
-                    b %= Modulus;
-                }
+                var n = Math.Min(count, block);
+                count -= n;
+                for (var end = offset + n; offset < end; offset++) { a += data[offset]; b += a; }
+                a %= modulus;
+                b %= modulus;
             }
+            return (b << 16) | a;
         }
 
         // Collects the zlib stream and writes it out as IDAT chunks of up to
