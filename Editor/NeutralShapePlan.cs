@@ -389,7 +389,7 @@ namespace VRVlog.LilToonExporter
 
         internal string EvaluationBindingRejection(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (HarmlessActivation(avatar, clip, binding) || unboundAppearanceBindings.Contains(binding)) return null;
+            if (HarmlessActivation(avatar, clip, binding) || IsInertDynamicsBinding(binding) || unboundAppearanceBindings.Contains(binding)) return null;
             if (!appearanceBindings.Contains(binding)) return existingProperties.Contains(binding)
                 ? ExporterLocalization.T("対象プロパティは存在しますが、通常入力での到達範囲外、またはBlendShapeへの影響が未対応です")
                 : "記録されていない見た目の曲線です（通常入力での到達範囲外、または未対応のプロパティ）";
@@ -434,6 +434,19 @@ namespace VRVlog.LilToonExporter
             var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
                 AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray();
             return matches.Length == 0 || matches.Length == 1 && matches[0].gameObject.activeSelf == (value != 0);
+        }
+
+        // AvatarDynamics components are collision and contact inputs. They
+        // contribute neither to the blend shape weights the probe reads nor to
+        // the exported appearance, and the probe disables every Behaviour, so
+        // enabling one runs nothing (none of them runs in edit mode either).
+        // Their enable curves pass as evaluation support.
+        internal static bool IsInertDynamicsBinding(EditorCurveBinding binding)
+        {
+            if (binding.isPPtrCurve || binding.propertyName != "m_Enabled") return false;
+            var name = binding.type?.FullName;
+            return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
+                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
         }
 
         private static bool IsMorph(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&

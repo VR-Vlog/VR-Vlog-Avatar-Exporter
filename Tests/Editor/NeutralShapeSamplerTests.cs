@@ -967,6 +967,38 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
         }
 
+        [TestCase(PhysBoneSpringExport.PhysBoneType, 0f)] [TestCase(PhysBoneSpringExport.PhysBoneType, 1f)]
+        [TestCase(PhysBoneSpringExport.ColliderType, 0f)] [TestCase(PhysBoneSpringExport.ColliderType, 1f)]
+        [TestCase(ExportGimmickRules.ContactReceiver, 0f)] [TestCase(ExportGimmickRules.ContactReceiver, 1f)]
+        [TestCase(ExportGimmickRules.ContactSender, 0f)] [TestCase(ExportGimmickRules.ContactSender, 1f)]
+        public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled)
+        {
+            Open(75); skin.SetBlendShapeWeight(0, 17);
+            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(value => value != null);
+            if (type == null) Assert.Ignore("Install the real VRChat SDK with " + typeName + ".");
+            var target = new GameObject("Ground collider"); target.transform.SetParent(avatar.transform, false);
+            var component = (Behaviour)target.AddComponent(type); component.enabled = false;
+            var clip = new AnimationClip { name = "Dynamics switch" };
+            var binding = EditorCurveBinding.FloatCurve(target.name, type, "m_Enabled");
+            AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, enabled));
+            AssetDatabase.AddObjectToAsset(clip, controller);
+            var support = Layer("Dynamics support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            Assert.That(values.Select(value => value.Shape), Is.EqualTo(new[] { "Open" }));
+            Assert.That(values.Single().Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(warnings.Any(value => value.Contains("m_Enabled")), Is.False, string.Join("\n", warnings));
+            Assert.That(component.enabled, Is.False); Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));
+            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
+            var plan = NeutralShapePlan.Create(avatar, controller, new[] { new[] {
+                EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Open") } },
+                source: metadata, fixedContext: FixedExpressionContext.Create(controller, metadata.Defaults, metadata));
+            Assert.That(plan.AllowsEvaluationBinding(clip, binding), Is.True);
+            Assert.That(plan.EvaluationBindingRejection(clip, binding), Is.Null);
+            Assert.That(component.enabled, Is.False); Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
+        }
+
         [Test]
         public void ConstraintCoupledExplicitEndpointKeepsPreparedNeutralForLaterEndpointBaking()
         {
