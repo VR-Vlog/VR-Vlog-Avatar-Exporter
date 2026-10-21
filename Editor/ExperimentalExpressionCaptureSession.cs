@@ -191,8 +191,17 @@ namespace VRVlog.LilToonExporter
                     var mesh = renderer.sharedMesh;
                     if (mesh == null || mesh.blendShapeCount == 0) continue;
                     var path = AnimationUtility.CalculateTransformPath(renderer.transform, Copy.transform);
-                    if (VrChatExpressionSampler.FindRenderer(Copy, path) != renderer)
-                        throw new InvalidOperationException(ExporterLocalization.T("表情のメッシュを一意に特定できません。"));
+                    // A mesh sharing its path with another cannot be bound by path:
+                    // leave it out of recording and say so, as the ordinary export still writes it.
+                    SkinnedMeshRenderer found;
+                    try { found = VrChatExpressionSampler.FindRenderer(Copy, path); }
+                    catch (InvalidOperationException) { found = null; }
+                    if (found != renderer)
+                    {
+                        var warning = string.Format(ExporterLocalization.T("同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: {0}"), path);
+                        if (!Warnings.Contains(warning)) Warnings.Add(warning);
+                        continue;
+                    }
                     renderer.forceMatrixRecalculationPerRender = true;
                     Channels.Add(new Channel { Renderer = renderer, Mesh = mesh, Path = path,
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),

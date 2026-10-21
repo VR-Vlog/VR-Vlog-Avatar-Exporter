@@ -306,6 +306,41 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ARepeatedRendererPathLeavesTheChannelsAndWarns()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            for (var i = 0; i < 2; i++)
+            {
+                var twin = new GameObject("Twin"); twin.transform.SetParent(fixture.Source.transform, false);
+                var skin = twin.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMesh = fixture.Mesh; skin.sharedMaterials = front.sharedMaterials;
+                skin.bones = front.bones; skin.rootBone = front.rootBone; skin.SetBlendShapeWeight(0, 35);
+            }
+            var clip = new AnimationClip { name = "Repeated path face" };
+            try
+            {
+                var stamp = ExportSourceFingerprint.Compute(fixture.Source);
+                ExperimentalExpressionCaptureSession session = null;
+                Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+                using (session)
+                {
+                    Assert.That(session.Channels.Any(channel => channel.Path.Contains("Twin")), Is.False);
+                    Assert.That(session.Channels.Select(channel => channel.Path), Does.Contain("Front"));
+                    Assert.That(session.Warnings.Count(warning => warning.Contains("Twin")), Is.EqualTo(1));
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
+                    session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                    Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(80));
+                    var bytes = session.Export("Repeated path export", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes));
+                }
+                Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
         public void MeshRendererRecoveryMapsTheOriginalRendererToThePreparedExportCopy()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
