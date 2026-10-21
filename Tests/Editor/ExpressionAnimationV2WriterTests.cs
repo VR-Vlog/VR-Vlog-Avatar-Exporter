@@ -416,6 +416,36 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(document.Animations.Single().Expression, Is.EqualTo("Smile (2)"));
         }
 
+        // (e2) One face registered twice (the same gesture on both hands)
+        // writes one expression, still or animated. A different face with the
+        // same name, or the same face from another source, keeps the suffix.
+        [Test]
+        public void IdenticalRegistrationsOfOneFaceAreWrittenOnce()
+        {
+            using var scene = new Scene();
+            var none = new (string, string, float)[0];
+            VrChatExpressionMenu.Entry Gesture(string name, string id, float weight, bool animated)
+            {
+                var entry = animated ? Entry(name, 1, false, none, ("Front", "Raise", Curve((0, 0), (1, weight))))
+                    : Entry(name, 1, false, new[] { ("Front", "Raise", weight) });
+                entry.Id = id; entry.Source = ExpressionSource.Gesture;
+                return entry;
+            }
+            var menu = Entry("Smile", 1, false, new[] { ("Front", "Raise", 40f) });
+            var expressions = scene.Bake(Gesture("Smile", "left", 40, false), Gesture("Smile", "right", 40, false), Gesture("Smile", "other", 60, false),
+                Gesture("Wave", "left wave", 80, true), Gesture("Wave", "right wave", 80, true), menu);
+            var bytes = scene.Export(expressions);
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            Assert.That(document.Expressions.Select(value => (value.Expression, value.Source)), Is.EqualTo(new[]
+            {
+                ("Smile", ExpressionSource.Gesture), ("Smile (2)", ExpressionSource.Gesture), ("Wave", ExpressionSource.Gesture),
+                ("Smile (3)", ExpressionSource.Menu)
+            }));
+            Assert.That(expressions.Select(value => value.RegisteredName), Is.EqualTo(new[] { "Smile", null, "Smile (2)", "Wave", null, "Smile (3)" }));
+            Assert.That(document.Animations.Select(value => value.Expression), Is.EqualTo(new[] { "Wave" }));
+            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(4));
+        }
+
         // (f) The final bytes name the lowest app version for each VRVLOG_
         // extension used; without one there is no key.
         [Test]
