@@ -636,9 +636,11 @@ namespace VRVlog.LilToonExporter
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
                 // So does the blink, as the blink settings window would set it.
+                // Automatic (also what an avatar without saved settings reads)
+                // leaves the board's own blink toggle as it is.
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
-                configuredBlink = storedBlink.Mode == BlinkExportMode.Manual ? storedBlink.Copy() : null;
-                automaticBlink = storedBlink.Mode != BlinkExportMode.None;
+                if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
+                else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);

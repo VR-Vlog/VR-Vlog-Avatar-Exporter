@@ -9,7 +9,7 @@
 
 かんたんは `AppTransferExport.Export` から `ExportSettings` と同じ作り方で `LilToonExporterWindow.ExportAndSaveNormally` を呼び、表情ボードを使っていなかった。表情ボードの保存（`ExperimentalExpressionCaptureWindow.Save`）にだけある次の 2 つが、かんたんには無かった。
 
-- 表情メニューから書き出せた表情が **その他の表情** の一覧より少ないときに、一覧のとおりに記録して書き出し直す処理（`ResolveMenuShort`）。
+- 表情メニューから書き出せた表情が **その他の表情** の一覧より少ないときに、一覧のとおりに記録して書き出し直す処理（`ResolveMenuShort`）。このアバターは表情メニューから 1 件も書き出せないので、この処理を 1 件も書き出せなかったときだけに絞った `2026-10-21-board-keeps-menu-animation.md` の後も、通常では一覧のとおりに書き出し直す。
 - 表情ボードで記録した喜怒哀楽などの枠の割り当て（`ExpressionPresetStore`）と、ボードを開いたときの自動の割り当て（`ApplyAutomaticPresets`）。
 
 かんたんは「通常の確認を省いたもの」として出しているので、書き出す内容が通常と違うのは不具合として扱う。
@@ -21,7 +21,7 @@
 - `TransferExport` に `interactive`（既定 `true`）を足し、`Save` に渡す。かんたんは `false` を渡し、自動設定できなかった項目の確認（書き出し結果の一覧）を出さずに保存する。通常はこれまでどおり確認を出す。
 - `AppTransferExport.Export` は、作者名の確認 → 利用条件の記録 → `PrepareHidden` → 書き出し、の順にする。準備のキャンセル（`OperationCanceledException`）は何もせず `null` を返し、それ以外の失敗はそのまま投げる。書き出しのあとは成否にかかわらず `DestroyImmediate` でボードを消す。`ExportDetailed` と共通の `ExportFrom` で、保存したときに転送の名前を記録して `saved` を呼ぶ。
 - これまでのかんたんが持っていて表情ボードの書き出しに無かったものは、ボードの側に足して、かんたんが退行しないようにする。新しい特別扱いは足さず、`ExportSettings.Export` と同じ既存の部品を使う。
-  - 表情ボードを準備するとき、まばたきの設定をアバターの書き出し設定（`ExportSettings.Blink`）から読む。手動ならその設定を、なしならまばたきなしを、自動ならこれまでどおり自動を初期値にする。まばたきの設定画面で選んだときと同じ対応にする。プレビューの作り直し（`RebuildKeepingAssignments`）では、その時点の選択を保つ。
+  - 表情ボードを準備するとき、まばたきの設定をアバターの書き出し設定（`ExportSettings.Blink`）から読む。手動ならその設定を、なしならまばたきなしにする。まばたきの設定画面で選んだときと同じ対応にする。自動（書き出し設定を保存していないアバターもこれになる）では、ボードのまばたきのオン・オフをそのままにする。新しく準備したボード（かんたん）では自動のまばたきになる。プレビューの作り直し（`RebuildKeepingAssignments`）では、その時点の選択を保つ。
   - `ExperimentalExpressionCaptureSession.Export` の最初で `UniVrmOneClickExporter.ValidateSourceHumanoid`・`ValidateSourceHasMesh` を呼び、`ExportRecoveryReport.ContinueOnStageFailure` をプロジェクトの選択（`ExportStageGuard.ContinueByDefault`）にする。書き出したバイト列は `ValidateOutputHasMesh` で確かめる。これまで表情ボードの書き出しは、失敗した段階で必ず止まっていた。
 - 書き出しの差し替え口だった `AppTransferExport.SaveNormally` は消す。テストは差し替えずに実際に書き出して確かめる。
 - かんたんの画面の上の行を「表情は名前から自動・書き出さないオブジェクト N件」から「表情は前回の割り当て（なければ自動）・書き出さないオブジェクト N件」に変える。各言語の訳も置き換える。
@@ -38,7 +38,7 @@
 - 保存した書き出さないオブジェクトでプレビューを作れないなど、表情ボードに直すところがあるときは、通常と同じく「表情の割り当てを直すと作れます」で止まる。
 - これまでのかんたんは、表情を名前から埋めた結果の一覧を Console に警告で出していた。今は通常と同じく書き出しの詳細だけを Console に出す。
 - 表情ボード（「VRM書き出し」と通常）も、アバターに保存したまばたきの設定で開き、失敗した段階はプロジェクトの選択に従って省いて続ける（既定は続ける）。Humanoid でないアバター・メッシュの無いアバター・メッシュが残らない書き出しは、どの段階にも入る前か保存の前に理由を出して止まる。
-- 一括書き出しは `ExportSettings` の経路のままで、名前から neutral と視線を埋める処理もそちらにだけ残る。
+- 一括書き出しは `ExportSettings` の経路のまま。名前から neutral と視線を埋める処理は、表情ボードの書き出しにも入っている（`2026-10-21-board-infers-gaze-neutral.md`）ので、かんたんでもこれまでどおり埋まる。喜怒哀楽を名前から埋める処理は一括書き出しにだけ残り、かんたんではボードの自動の割り当てが入る。
 
 ## 確認したこと
 
