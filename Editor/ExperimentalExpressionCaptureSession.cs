@@ -574,6 +574,12 @@ namespace VRVlog.LilToonExporter
                         : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
+            // Gaze and neutral the board leaves open are filled from names as in
+            // the quick export; only the user's own "none" keeps one empty.
+            var keepEmpty = selectedPresets
+                .Where(item => item.Assignment.IsNone && !item.Assignment.Automatic &&
+                    (LookAtPresets.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
+                .Select(item => item.Preset.ToString()).ToArray();
             var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
             var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
             if (leftEye != null && !leftEye.IsNone && BlinkSideOverlap(ExpressionPreset.blinkLeft, leftEye, rightEye) is string overlap)
@@ -595,6 +601,7 @@ namespace VRVlog.LilToonExporter
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
+                    inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
@@ -609,7 +616,8 @@ namespace VRVlog.LilToonExporter
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
-                        inferEmotionPresets: false, excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                        inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
+                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
@@ -784,7 +792,8 @@ namespace VRVlog.LilToonExporter
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
-                    inferEmotionPresets: false, descriptorVisemes: visemes);
+                    inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
+                    descriptorVisemes: visemes);
                 // The exporter's clone keeps this root scale and bakes it into the VRM.
                 return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
             }

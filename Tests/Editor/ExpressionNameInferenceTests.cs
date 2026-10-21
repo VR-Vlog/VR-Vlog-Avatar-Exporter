@@ -725,6 +725,30 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Presets(Infer(bytes, inferEmotions: false)), Is.Empty);
         }
 
+        // The expression board picks emotions itself but still takes neutral
+        // and gaze from names, as the quick export does.
+        [Test]
+        public void NeutralAndGazeAloneLeaveEmotionsAlone()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "eyeLookUpLeft", "eyeLookUpRight", "lookDown", "Fcl_ALL_Joy")));
+            var all = new List<(string Preset, string Source, string Format)>();
+            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, filledPresets: all, inferNeutralAndGaze: true));
+            Assert.That(presets.Keys, Is.EquivalentTo(new[] { "neutral", "lookUp", "lookDown" }));
+            Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1), Bind(0, 2)), "isBinary", false))));
+            Assert.That(all.Select(item => item.Preset), Is.EqualTo(new[] { "neutral", "lookUp", "lookDown" }));
+            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false), Is.EqualTo(bytes), "The default still fills no neutral or gaze.");
+        }
+
+        [Test]
+        public void KeptEmptyPresetsAreNotFilled()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "lookUp", "lookDown")));
+            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferNeutralAndGaze: true, keepEmptyPresets: new[] { "lookUp" }));
+            Assert.That(presets.Keys, Is.EquivalentTo(new[] { "neutral", "lookDown" }), "A preset the user set to none stays empty.");
+            presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferEmotions: true, keepEmptyPresets: new[] { "neutral" }));
+            Assert.That(presets.Keys, Is.EquivalentTo(new[] { "lookUp", "lookDown" }));
+        }
+
         [Test]
         public void MouthFilledFromAKnownNameIsAKeptLine()
         {

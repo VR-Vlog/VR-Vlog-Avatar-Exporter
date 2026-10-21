@@ -96,13 +96,15 @@ namespace VRVlog.LilToonExporter
         }
 
         // A face leaving a slot leaves it explicitly empty, so the name based
-        // suggestion does not put it straight back. A face entering an occupied
-        // slot sends the previous face back to the custom list.
+        // suggestion does not put it straight back. A gaze or neutral slot is
+        // left open instead: the export fills it from names, and only "none"
+        // the user picks keeps it empty. A face entering an occupied slot sends
+        // the previous face back to the custom list.
         internal bool Move(AnimationClip clip, Place target)
         {
             if (!CanMove(clip, target)) return false;
             foreach (var preset in Slots)
-                if (ClipOf(SlotValue(preset)) == clip) setPreset(preset, PresetAssignment.None(preset));
+                if (ClipOf(SlotValue(preset)) == clip) setPreset(preset, Emptied(preset));
             switch (target.Kind)
             {
                 case PlaceKind.Slot:
@@ -115,7 +117,10 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        internal void ClearSlot(ExpressionPreset preset) => setPreset(preset, PresetAssignment.None(preset));
+        internal void ClearSlot(ExpressionPreset preset) => setPreset(preset, Emptied(preset));
+
+        static PresetAssignment Emptied(ExpressionPreset preset) =>
+            ExperimentalExpressionCaptureSession.FilledFromNames(preset) ? null : PresetAssignment.None(preset);
 
         internal int AutomaticCount(IEnumerable<ExpressionPreset> group = null) =>
             SlotsIn(group).Count(preset => SlotValue(preset) is PresetAssignment value && value.Automatic && !value.IsNone);

@@ -21,6 +21,12 @@ namespace VRVlog.LilToonExporter
         internal static readonly ExpressionPreset[] LookAtPresets =
             { ExpressionPreset.lookUp, ExpressionPreset.lookDown, ExpressionPreset.lookLeft, ExpressionPreset.lookRight };
 
+        // Gaze and neutral the board leaves open are filled from names at
+        // export, as in the quick export; only the user's own "none" keeps one
+        // empty. So the board vacates these slots instead of writing "none".
+        internal static bool FilledFromNames(ExpressionPreset preset) =>
+            LookAtPresets.Contains(preset) || preset == ExpressionPreset.neutral;
+
         // Display groups, in display order. Labels are localization sources.
         internal static readonly (string Label, ExpressionPreset[] Presets)[] PresetGroups =
         {
@@ -280,7 +286,10 @@ namespace VRVlog.LilToonExporter
         // "None" on a mouth or blink preset is a choice: an empty mouth preset
         // stops the name binding, an empty blink slot stops the blink export's
         // own choice. Over the source VRM's own preset it means "keep it", as
-        // the window shows; on emotions, gaze and neutral it writes nothing.
+        // the window shows; on emotions it writes nothing. On gaze and neutral
+        // it writes no expression here, but Export passes the user's own
+        // "none" as keepEmptyPresets so the name based filling leaves it empty;
+        // an open gaze or neutral slot is filled from names instead.
         bool ChosenNone(ExpressionPreset preset, PresetAssignment assignment) =>
             assignment.IsNone && (MouthPresets.Contains(preset) || BlinkPresets.Contains(preset)) && !HasAuthoredPreset(preset);
 

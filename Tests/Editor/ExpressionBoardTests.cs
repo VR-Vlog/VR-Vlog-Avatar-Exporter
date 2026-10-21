@@ -301,7 +301,7 @@ namespace VRVlog.LilToonExporter.Tests
             // A drop on a filled slot in another group swaps the previous face out.
             Assert.That(board.Move(faces[ExpressionPreset.neutral], Place.Slot(ExpressionPreset.happy)), Is.True);
             Assert.That(board.PlaceOf(faces[ExpressionPreset.happy]), Is.EqualTo(Place.Other));
-            Assert.That(presets[ExpressionPreset.neutral].IsNone, Is.True);
+            Assert.That(presets.ContainsKey(ExpressionPreset.neutral), Is.False, "The neutral slot is left open to be filled from names.");
             Assert.That(board.Move(faces[ExpressionPreset.happy], Place.Slot(ExpressionPreset.neutral)), Is.True);
             Assert.That(board.PlaceOf(faces[ExpressionPreset.happy]), Is.EqualTo(Place.Slot(ExpressionPreset.neutral)));
             Assert.That(board.Move(faces[ExpressionPreset.blinkRight], Place.Slot(ExpressionPreset.lookDown)), Is.True);
@@ -309,10 +309,49 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.SlotCount(), Is.EqualTo(17));
 
             foreach (var preset in all) board.ClearSlot(preset);
-            Assert.That(all.All(preset => presets[preset].IsNone && !presets[preset].Automatic), Is.True);
+            var named = all.Where(ExperimentalExpressionCaptureSession.FilledFromNames).ToArray();
+            Assert.That(named.Length, Is.EqualTo(5));
+            Assert.That(named.Any(presets.ContainsKey), Is.False, "Cleared gaze and neutral slots are left open.");
+            Assert.That(all.Except(named).All(preset => presets[preset].IsNone && !presets[preset].Automatic), Is.True);
             Assert.That(board.SlotCount(), Is.Zero);
             Assert.That(board.AutomaticCount(), Is.Zero);
             Assert.That(board.OtherCount, Is.EqualTo(18), "Clearing a slot returns its face to the other expressions.");
+        }
+
+        // Gaze and neutral the board leaves open are filled from names at
+        // export, and only "none" the user picks keeps one empty. A face that
+        // leaves one of those slots, or a cleared one, leaves it open rather
+        // than "none"; the other slots stay explicitly empty as before.
+        [Test]
+        public void LeavingAGazeOrNeutralSlotLeavesItOpen()
+        {
+            var up = Clip("up"); var neutral = Clip("neutral"); var right = Clip("right"); var happy = Clip("happy");
+            var board = Board(null, new[] { Item(up), Item(neutral), Item(right), Item(happy) });
+            Assert.That(board.Move(up, Place.Slot(ExpressionPreset.lookUp)), Is.True);
+            Assert.That(board.Move(up, Place.Other), Is.True);
+            Assert.That(presets.ContainsKey(ExpressionPreset.lookUp), Is.False, "A face leaving a gaze slot leaves it open.");
+            Assert.That(board.Move(neutral, Place.Slot(ExpressionPreset.neutral)), Is.True);
+            Assert.That(board.Move(neutral, Place.Excluded), Is.True);
+            Assert.That(presets.ContainsKey(ExpressionPreset.neutral), Is.False, "A face leaving the neutral slot leaves it open.");
+            Assert.That(board.Move(right, Place.Slot(ExpressionPreset.lookRight)), Is.True);
+            Assert.That(board.Move(right, Place.Slot(ExpressionPreset.happy)), Is.True);
+            Assert.That(presets.ContainsKey(ExpressionPreset.lookRight), Is.False, "A face moving to another slot leaves the gaze slot open.");
+            Assert.That(presets[ExpressionPreset.happy].Clip, Is.EqualTo(right));
+
+            presets[ExpressionPreset.lookLeft] = Assignment.ForShape(ExpressionPreset.lookLeft, "Face", "LookLeft");
+            board.ClearSlot(ExpressionPreset.lookLeft);
+            Assert.That(presets.ContainsKey(ExpressionPreset.lookLeft), Is.False, "A cleared gaze slot is left open.");
+            // The user's own "none" on a gaze slot is kept.
+            presets[ExpressionPreset.lookDown] = Assignment.None(ExpressionPreset.lookDown);
+            board.ApplyAutomatic();
+            Assert.That(presets[ExpressionPreset.lookDown].IsNone, Is.True);
+
+            // Other slots are still left explicitly empty.
+            Assert.That(board.Move(happy, Place.Slot(ExpressionPreset.sad)), Is.True);
+            Assert.That(board.Move(happy, Place.Other), Is.True);
+            Assert.That(presets[ExpressionPreset.sad].IsNone && !presets[ExpressionPreset.sad].Automatic, Is.True);
+            board.ClearSlot(ExpressionPreset.happy);
+            Assert.That(presets[ExpressionPreset.happy].IsNone && !presets[ExpressionPreset.happy].Automatic, Is.True);
         }
 
         // The header counts the suggestions in the shown slots, and its button

@@ -30,8 +30,9 @@ namespace VRVlog.LilToonExporter
         // such as its menu path; only those may fill an empty emotion.
         // emotionShapes lists the original BlendShapes each candidate moves;
         // with shapeNames, a candidate whose label says nothing can still fill
-        // an emotion its face clearly shows. inferEmotions also fills empty
-        // neutral and gaze presets from names. Each preset filled from a name
+        // an emotion its face clearly shows. inferEmotions, or
+        // inferNeutralAndGaze alone, fills empty neutral and gaze presets from
+        // names, except those in keepEmptyPresets. Each preset filled from a name
         // or a menu face is added to filledPresets with the message format
         // that explains it. descriptor is the VRChat descriptor's Lip Sync; it
         // fills an empty mouth preset before the known names do and is not
@@ -40,7 +41,7 @@ namespace VRVlog.LilToonExporter
             bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledPresets = null,
             IReadOnlyDictionary<string, string> emotionCandidates = null,
             IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null,
-            DescriptorVisemes descriptor = null)
+            DescriptorVisemes descriptor = null, bool inferNeutralAndGaze = false, IReadOnlyCollection<string> keepEmptyPresets = null)
         {
             var glb = GlbDocument.Read(bytes);
             var vrm = Object(Object(glb.Json, "extensions"), "VRMC_vrm");
@@ -178,11 +179,11 @@ namespace VRVlog.LilToonExporter
             // before, and a known alias that bound the preset is enough.
             if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
                 Warn(warnings, ExporterLocalization.T(descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning));
-            if (inferEmotions)
+            if (inferEmotions || inferNeutralAndGaze)
             {
-                var filledHere = AddEmotions(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates, emotionShapes, shapeNames);
-                filledHere |= AddNeutral(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates);
-                filledHere |= AddGaze(vrm, nodes, meshes, warnings, filledPresets);
+                var filledHere = inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates, emotionShapes, shapeNames);
+                filledHere |= AddNeutral(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates, keepEmptyPresets);
+                filledHere |= AddGaze(vrm, nodes, meshes, warnings, filledPresets, keepEmptyPresets);
                 if (filledHere)
                 {
                     changed = true;
@@ -296,13 +297,14 @@ namespace VRVlog.LilToonExporter
             return changed;
         }
 
-        // Fill only an empty neutral preset: a menu face whose leaf says
-        // neutral, else a Latin BlendShape name that says neutral alone.
+        // Fill only an empty neutral preset not in keepEmpty: a menu face whose
+        // leaf says neutral, else a Latin BlendShape name that says neutral alone.
         private static bool AddNeutral(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
-            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyDictionary<string, string> candidates)
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyDictionary<string, string> candidates,
+            IReadOnlyCollection<string> keepEmpty)
         {
             const string preset = "neutral";
-            if (!IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) return false;
+            if (keepEmpty != null && keepEmpty.Contains(preset) || !IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) return false;
             var custom = Object(Object(vrm, "expressions"), "custom");
             if (custom != null && candidates != null)
                 foreach (var pair in custom)
@@ -327,16 +329,16 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        // Fill each empty gaze preset from the first name set in GazeShapes
-        // that some mesh has whole. A mesh with only part of a set leaves that
-        // set unused, since one eye would turn alone.
+        // Fill each empty gaze preset not in keepEmpty from the first name set
+        // in GazeShapes that some mesh has whole. A mesh with only part of a
+        // set leaves that set unused, since one eye would turn alone.
         private static bool AddGaze(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
-            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled)
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyCollection<string> keepEmpty)
         {
             var changed = false;
             foreach (var (preset, sets) in ExpressionNameInference.GazeShapes)
             {
-                if (!IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) continue;
+                if (keepEmpty != null && keepEmpty.Contains(preset) || !IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) continue;
                 foreach (var set in sets)
                 {
                     var matched = new List<string>();

@@ -88,7 +88,8 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
-            bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null)
+            bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
+            bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -117,7 +118,7 @@ namespace VRVlog.LilToonExporter
                     attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
                     return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                         suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes);
+                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets);
                 }, failure => report.Fallbacks.Clear());
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
@@ -352,7 +353,8 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes)
+            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
+            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -717,7 +719,7 @@ namespace VRVlog.LilToonExporter
                         inferEmotions: inferEmotionPresets, filledPresets: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
                         emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
-                        descriptor: visemes);
+                        descriptor: visemes, inferNeutralAndGaze: inferNeutralAndGazePresets, keepEmptyPresets: keepEmptyPresets);
                     RecordInferredPresets(filled, recoveryReport);
                     return output;
                 }, () => exported);
