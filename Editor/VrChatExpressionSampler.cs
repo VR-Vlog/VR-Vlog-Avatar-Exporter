@@ -1789,7 +1789,7 @@ namespace VRVlog.LilToonExporter
                 void Visit(AnimatorStateMachine machine, string path, bool timedAncestor, bool effectfulAncestor)
                 {
                     var timed = timedAncestor || machine.anyStateTransitions.Any(t => !t.mute && t.hasExitTime && !ExpressionDependencies.IsFalse(t, layerTimedValues));
-                    var effectful = effectfulAncestor || ExpressionDependencies.HasEffectfulBehaviours(machine.behaviours);
+                    var effectful = effectfulAncestor || !ExpressionDependencies.RepeatsWithoutEffect(machine.behaviours);
                     foreach (var child in machine.states)
                     {
                         if (Animator.StringToHash(path + "." + child.state.name) != hash) continue;
@@ -1797,9 +1797,10 @@ namespace VRVlog.LilToonExporter
                         found = true;
                         var state = child.state;
                         // Each restart enters the state again and runs its
-                        // callbacks; only a callback-free state stays put.
+                        // callbacks; the state stays put only when running
+                        // them again changes nothing.
                         if (selfTransition && equivalentStates?.Contains(layer) != true &&
-                            (effectful || ExpressionDependencies.HasEffectfulBehaviours(state.behaviours)))
+                            (effectful || !ExpressionDependencies.RepeatsWithoutEffect(state.behaviours)))
                             throw Unstable("FXの状態遷移が静止していません。");
                         // Settlement only advances the state's own clock.
                         // Parameter-driven or offset clocks stay unproven.

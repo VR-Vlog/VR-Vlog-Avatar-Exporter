@@ -412,6 +412,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
         }
 
+        // Running a tracking control or a driver without operations again
+        // changes nothing, so such a restarted state still holds the face.
+        [Test]
+        public void AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace()
+        {
+            Selected(Clip("Smile", 75));
+            var off = RestartingLayer();
+            ParameterDriverExpressionTests.Driver(off);
+            ParameterDriverExpressionTests.SdkBehaviour(off, "VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
+        }
+
         // A toggle layer whose Off state is re-entered every frame while its
         // Bool stays false. Its clips hold a face morph, so the layer joins
         // the expression's evaluation, and On and Off differ, so the layer is
