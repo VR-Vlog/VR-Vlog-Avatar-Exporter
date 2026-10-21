@@ -321,6 +321,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var slot = board.SlotValue(ExpressionPreset.happy);
                 Assert.That(slot, Is.Not.Null); Assert.That(slot.IsNone, Is.False);
                 Assert.That(ExperimentalExpressionCaptureSession.PresetDisplayName(slot), Is.EqualTo(ExporterLocalization.T("見つからないファイル")));
+                Assert.That(window.BlocksExport, Is.True, "The kept slot stops the save.");
             }
             finally { Object.DestroyImmediate(window); if (clip != null) Object.DestroyImmediate(clip); AssetDatabase.DeleteAsset(folder); }
         }

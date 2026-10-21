@@ -9,7 +9,6 @@
 表情ボードに自分で追加した `.anim` をプロジェクトから削除すると、クリップが null になる。`DropBrokenInputs` はクリップのある書き出せないファイルだけを外していたので、削除されたファイルは追加した一覧（`clipInputs`）に残り、次のことが起きていた。
 
 - 見えないファイルが 64 件の上限に数えられる。
-- `ExpressionBoard.UsesRecordRoute` が `item.Added` で真のままになり、記録して書き出す方に倒れたままになる。
 - 理由は「AnimationClipが指定されていません」で、利用者が何をしたら起きたのか分からない。
 
 ## 決定
@@ -20,5 +19,5 @@
 
 ## 確認したこと
 
-- `ExperimentalExpressionCaptureTests.ADeletedAddedFileIsRemovedAndItsSlotStillShowsTheMissingFile`: 追加して枠に置いたファイルを `AssetDatabase.DeleteAsset` で消して確かめ直すと、追加した一覧から外れ、`UsesRecordRoute` が偽になり、状態の行にファイル名と「ファイルが削除されました。」が出て、枠は残ること。
+- `ExperimentalExpressionCaptureTests.ADeletedAddedFileIsRemovedAndItsSlotStillShowsTheMissingFile`: 追加して枠に置いたファイルを `AssetDatabase.DeleteAsset` で消して確かめ直すと、追加した一覧から外れ、状態の行にファイル名と「ファイルが削除されました。」が出て、枠は残り保存が止まる（`BlocksExport`）こと。
 - `ExperimentalExpressionCaptureTests` と `ExpressionBoardTests` の 167 件中 163 件が通った。落ちた 4 件は、この PC のテスト用プロジェクトに無い外部パッケージを使う `RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(…,"APL",…)` で、開発ブランチでも同じく落ちる。
