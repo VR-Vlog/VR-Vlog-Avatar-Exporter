@@ -34,6 +34,10 @@ namespace VRVlog.LilToonExporter
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
         // Window-relative card rectangles, kept for tests that click a card.
         readonly System.Collections.Generic.Dictionary<AnimationClip, Rect> candidateRects = new System.Collections.Generic.Dictionary<AnimationClip, Rect>();
+        // The card whose rename box opens on the next repaint, and where.
+        (AnimationClip Clip, Rect At)? renameRequest;
+        // The board face the preview shows, so a rename updates its title.
+        AnimationClip previewClip;
         // AssetDatabase-backed localization must run after ScriptableObject construction.
         string previewName = "基準の顔";
         Vector2 otherScroll, excludedScroll;
@@ -480,6 +484,18 @@ namespace VRVlog.LilToonExporter
             }
             DrawDraggedName();
             if (repaint && boardDrawn) PruneThumbnails();
+            // The rename box opens from OnGUI, outside any scroll view, so its
+            // place (window space, like candidateRects) needs no conversion.
+            // A double-click first queues a preview of the face; the box waits for it.
+            if (repaint && renameRequest is (AnimationClip clip, Rect at))
+            {
+                if (pending != null) Repaint();
+                else
+                {
+                    renameRequest = null;
+                    if (board != null && board.CanRename(clip)) OpenRename(clip, at);
+                }
+            }
         }
 
         void DrawFeedback()
@@ -841,7 +857,7 @@ namespace VRVlog.LilToonExporter
             var thumb = new Rect(tile.x + 7, tile.y + 4, size, size);
             var clip = assignment != null && !assignment.IsNone && !assignment.IsShape ? assignment.ResolveClip() : null;
             if (board.Find(clip) != null)
-                DrawTile(tile, thumb, clip.name, clip, Thumbnail(clip, null, null, size), assignment.Automatic, assignment.Automatic ? "自動" : null,
+                DrawTile(tile, thumb, board.NameOf(clip), clip, Thumbnail(clip, null, null, size), assignment.Automatic, assignment.Automatic ? "自動" : null,
                     reason ?? AssetDatabase.GetAssetPath(clip), "その他の表情へ戻す", () => MoveTo(clip, Place.Other));
             else if (assignment != null && !assignment.IsNone)
             {
@@ -1022,7 +1038,7 @@ namespace VRVlog.LilToonExporter
         void DrawPanelTile(Rect tile, float size, ExpressionBoard.Item item, string closeTooltip, Action close)
         {
             var clip = item.Clip;
-            DrawTile(tile, new Rect(tile.x + 7, tile.y + 4, size, size), clip.name, clip, Thumbnail(clip, null, null, size), false,
+            DrawTile(tile, new Rect(tile.x + 7, tile.y + 4, size, size), board.NameOf(clip), clip, Thumbnail(clip, null, null, size), false,
                 null, ItemTooltip(item), closeTooltip, close);
         }
 
@@ -1072,8 +1088,11 @@ namespace VRVlog.LilToonExporter
             HandleDrop(rect, Place.Excluded);
         }
 
-        static string ItemTooltip(ExpressionBoard.Item item) =>
-            (item.Added ? item.Source : ExporterLocalization.T(item.Source ?? "")) + "\n" + AssetDatabase.GetAssetPath(item.Clip);
+        // A renamed face also names its file; the last line is how to rename.
+        string ItemTooltip(ExpressionBoard.Item item) =>
+            (board.Renamed(item.Clip) ? board.NameOf(item.Clip) + "\n" + ExporterLocalization.T("ファイル名") + "  " + item.Clip.name + "\n" : "") +
+            (item.Added ? item.Source : ExporterLocalization.T(item.Source ?? "")) + "\n" + AssetDatabase.GetAssetPath(item.Clip) +
+            "\n" + ExporterLocalization.T("ダブルクリックで名前を変更");
 
         // One tile: the thumbnail with the name under it. A tile with a clip can
         // be clicked to preview, right-clicked for the move menu and dragged
@@ -1114,7 +1133,10 @@ namespace VRVlog.LilToonExporter
             {
                 case EventType.MouseDown:
                     if (!tile.Contains(current.mousePosition)) break;
-                    if (current.button == 0) { GUIUtility.hotControl = id; pressStart = current.mousePosition; current.Use(); }
+                    // A double click on the card renames the face; the box opens under its name.
+                    if (current.button == 0 && current.clickCount == 2)
+                    { GUIUtility.hotControl = 0; RequestRename(clip, ScreenRect(nameRect)); current.Use(); }
+                    else if (current.button == 0) { GUIUtility.hotControl = id; pressStart = current.mousePosition; current.Use(); }
                     else if (current.button == 1) { ShowMoveMenu(clip); current.Use(); }
                     break;
                 case EventType.MouseDrag:
@@ -1168,7 +1190,7 @@ namespace VRVlog.LilToonExporter
         void DrawDraggedName()
         {
             if (Event.current.type != EventType.Repaint || dragMouse == null || !(DragAndDrop.GetGenericData(DragKey) is AnimationClip clip)) return;
-            var text = Fit(clip.name, cardText, 200);
+            var text = Fit(board != null ? board.NameOf(clip) : clip.name, cardText, 200);
             var rect = new Rect(dragMouse.Value.x + 14, dragMouse.Value.y + 6, Mathf.Min(216, cardText.CalcSize(new GUIContent(text)).x + 16), 22);
             EditorGUI.DrawRect(rect, CardColor); Outline(rect, AccentColor);
             GUI.Label(new Rect(rect.x + 8, rect.y, rect.width - 12, rect.height), text, cardText);
@@ -1191,13 +1213,49 @@ namespace VRVlog.LilToonExporter
             }
             Add(ExporterLocalization.T("その他の表情"), Place.Other);
             Add(ExporterLocalization.T("書き出さない表情"), Place.Excluded);
+            menu.AddSeparator("");
+            // A slot face is exported under the VRM preset name.
+            if (board.CanRename(clip))
+            {
+                var at = candidateRects.TryGetValue(clip, out var tile) ? new Rect(tile.x, tile.yMax - ExpressionSlotLayout.Name, tile.width, ExpressionSlotLayout.Name)
+                    : new Rect(Event.current.mousePosition, Vector2.zero);
+                menu.AddItem(new GUIContent(ExporterLocalization.T("名前を変更…")), false, () => RequestRename(clip, at));
+                if (board.Renamed(clip)) menu.AddItem(new GUIContent(ExporterLocalization.T("ファイル名に戻す")), false, () => Queue(() => RenameFace(clip, "")));
+            }
+            else if (place.Kind == PlaceKind.Slot)
+                menu.AddDisabledItem(new GUIContent(ExporterLocalization.T("名前を変更（標準の表情は名前が決まっています）")), false);
             menu.ShowAsContext();
+        }
+
+        // at: the card's name in window space. A slot face only says why it keeps its name.
+        void RequestRename(AnimationClip clip, Rect at)
+        {
+            if (board == null) return;
+            if (board.CanRename(clip)) { renameRequest = (clip, at); Repaint(); }
+            else if (board.PlaceOf(clip).Kind == PlaceKind.Slot) { status = ExporterLocalization.T("標準の表情は名前が決まっています"); Repaint(); }
+        }
+
+        void OpenRename(AnimationClip clip, Rect at) =>
+            PopupWindow.Show(at, new ExpressionRenamePopup(board.NameOf(clip), clip.name, board.Renamed(clip), name =>
+            {
+                // The file name is always accepted: it is how a face gets its own name back.
+                var key = board?.RenameError(clip, name);
+                if (key == null || name.Trim() == clip.name.Trim()) return null;
+                return string.Format(ExporterLocalization.T(key), name.Trim());
+            }, name => Queue(() => RenameFace(clip, name))));
+
+        void RenameFace(AnimationClip clip, string name)
+        {
+            RebuildBoard();
+            if (!board.Rename(clip, name)) return;
+            SaveChoices();
+            if (previewClip == clip) ShowFace(board.NameOf(clip));
         }
 
         void PreviewBoardClip(AnimationClip clip) => Queue(() => {
             RefreshCandidateValidation(); var currentReason = session.ClipError(clip, DefaultTime(clip));
             if (currentReason != null) throw new InvalidOperationException(currentReason);
-            session.PreviewClip(clip, DefaultTime(clip)); ShowFace(clip.name);
+            session.PreviewClip(clip, DefaultTime(clip)); ShowFace(board.NameOf(clip)); previewClip = clip;
         });
 
         void MoveTo(AnimationClip clip, Place target)
@@ -1230,7 +1288,7 @@ namespace VRVlog.LilToonExporter
             session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔"));
         }
 
-        void SaveChoices() => ExpressionPresetStore.Save(presetKey, session.Presets.Values, board?.Excluded);
+        void SaveChoices() => ExpressionPresetStore.Save(presetKey, session.Presets.Values, board?.Excluded, board?.Names);
 
         void DrawAddRow()
         {
@@ -1403,11 +1461,11 @@ namespace VRVlog.LilToonExporter
             if (!transferMode) DrawSavedResult();
         }
 
-        void ShowFace(string name) { previewName = name; Repaint(); }
+        void ShowFace(string name) { previewName = name; previewClip = null; Repaint(); }
 
         // Without exclusions or added files nothing is recorded and the
         // ordinary export keeps the avatar's own faces. Otherwise exactly the
-        // usable faces of the custom list are recorded under their file names.
+        // usable faces of the custom list are recorded under their board names.
         void RecordBoardClips()
         {
             RebuildBoard();
@@ -1419,7 +1477,7 @@ namespace VRVlog.LilToonExporter
             foreach (var input in clipInputs) input.Time = DefaultTime(input.Clip);
             var inputs = exported.Select(clip => clipInputs.FirstOrDefault(input => input.Clip == clip) is var added && added != null
                 ? added : new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Time = DefaultTime(clip) }).ToArray();
-            foreach (var input in inputs) input.Name = input.Clip.name;
+            foreach (var input in inputs) input.Name = board != null ? board.NameOf(input.Clip) : input.Clip.name;
             var poses = session.ReplaceClipRecords(inputs, fileRecords.Values);
             fileRecords.Clear();
             for (var index = 0; index < inputs.Length; index++) fileRecords.Add(inputs[index], poses[index]);
@@ -1533,6 +1591,10 @@ namespace VRVlog.LilToonExporter
             board.Excluded.Clear();
             board.Excluded.UnionWith(ExpressionPresetStore.LoadExcluded(presetKey, out var skippedExclusions));
             presetSkipped += skippedExclusions;
+            board.Names.Clear();
+            var names = ExpressionPresetStore.LoadNames(presetKey, out var skippedNames);
+            foreach (var pair in names) board.Names[pair.Key] = pair.Value;
+            presetSkipped += skippedNames;
             steps.Next("automatic");
             ApplyAutomaticPresets();
         }
@@ -1596,7 +1658,7 @@ namespace VRVlog.LilToonExporter
             {
                 var clip = item.Clip;
                 var group = item.Added ? ExporterLocalization.T("追加した表情") : item.Source == "FaceEmoの登録" ? "FaceEmo" : ExporterLocalization.T("アバターのController");
-                menu.AddItem(new GUIContent(group + "/" + Item(clip.name)), current?.ResolveClip() == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
+                menu.AddItem(new GUIContent(group + "/" + Item(board.NameOf(clip))), current?.ResolveClip() == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
             }
             System.Collections.Generic.IReadOnlyList<(string Path, string Shape)> options;
             try { options = session.PresetShapeOptions(); }

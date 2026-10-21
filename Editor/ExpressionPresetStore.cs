@@ -21,6 +21,8 @@ namespace VRVlog.LilToonExporter
             // Faces the user chose not to export. Older files have no such
             // field and read as an empty list.
             public List<ClipReference> Excluded = new List<ClipReference>();
+            // Names the user gave faces on the board; older files have none.
+            public List<ClipName> Names = new List<ClipName>();
         }
 
         [Serializable]
@@ -28,6 +30,14 @@ namespace VRVlog.LilToonExporter
         {
             public string Guid;
             public long LocalId;
+        }
+
+        [Serializable]
+        sealed class ClipName
+        {
+            public string Guid;
+            public long LocalId;
+            public string Name;
         }
 
         [Serializable]
@@ -81,29 +91,54 @@ namespace VRVlog.LilToonExporter
             var entry = (Read(out _) ?? new Store()).Avatars.FirstOrDefault(item => item != null && item.Avatar == key);
             foreach (var reference in entry?.Excluded ?? new List<ClipReference>())
             {
-                var clip = reference == null || string.IsNullOrEmpty(reference.Guid) ? null
-                    : AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(reference.Guid)).OfType<AnimationClip>().FirstOrDefault(candidate =>
-                        AssetDatabase.TryGetGUIDAndLocalFileIdentifier(candidate, out string guid, out long id) && id == reference.LocalId);
+                var clip = reference == null ? null : Resolve(reference.Guid, reference.LocalId);
                 if (clip == null) skipped++;
                 else if (!result.Contains(clip)) result.Add(clip);
             }
             return result;
         }
 
-        // Without an excluded list the stored exclusions are kept as they are.
-        internal static void Save(string key, IEnumerable<PresetAssignment> assignments, IEnumerable<AnimationClip> excluded = null)
+        // Names of clips no longer in the project, and names the board would
+        // not take (empty, over 128 characters, control characters), are skipped.
+        internal static Dictionary<AnimationClip, string> LoadNames(string key, out int skipped)
+        {
+            skipped = 0;
+            var result = new Dictionary<AnimationClip, string>();
+            if (string.IsNullOrEmpty(key)) return result;
+            var entry = (Read(out _) ?? new Store()).Avatars.FirstOrDefault(item => item != null && item.Avatar == key);
+            foreach (var named in entry?.Names ?? new List<ClipName>())
+            {
+                var clip = named == null ? null : Resolve(named.Guid, named.LocalId);
+                var name = named?.Name?.Trim();
+                if (clip == null || string.IsNullOrEmpty(name) || name.Length > 128 || name.Any(char.IsControl) || result.ContainsKey(clip)) skipped++;
+                else result.Add(clip, name);
+            }
+            return result;
+        }
+
+        static AnimationClip Resolve(string assetGuid, long localId) => string.IsNullOrEmpty(assetGuid) ? null
+            : AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(assetGuid)).OfType<AnimationClip>().FirstOrDefault(candidate =>
+                AssetDatabase.TryGetGUIDAndLocalFileIdentifier(candidate, out string guid, out long id) && id == localId);
+
+        // Without an excluded list or names the stored ones are kept as they are.
+        internal static void Save(string key, IEnumerable<PresetAssignment> assignments, IEnumerable<AnimationClip> excluded = null,
+            IEnumerable<KeyValuePair<AnimationClip, string>> names = null)
         {
             if (string.IsNullOrEmpty(key)) return;
             // A file from another format version is left untouched.
             var store = Read(out var foreign);
             if (foreign) return;
             store = store ?? new Store();
-            var previous = store.Avatars.LastOrDefault(item => item != null && item.Avatar == key)?.Excluded ?? new List<ClipReference>();
+            var stored = store.Avatars.LastOrDefault(item => item != null && item.Avatar == key);
+            var previous = stored?.Excluded ?? new List<ClipReference>();
+            var previousNames = stored?.Names ?? new List<ClipName>();
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
             var saved = (assignments ?? Array.Empty<PresetAssignment>()).Where(value => value != null && !value.Automatic)
                 .Select(value => value.ForSaving()).Where(value => value != null).ToList();
             var references = excluded == null ? previous.Where(item => item != null).ToList() : References(excluded);
-            if (saved.Count > 0 || references.Count > 0) store.Avatars.Add(new AvatarEntry { Avatar = key, Presets = saved, Excluded = references });
+            var named = names == null ? previousNames.Where(item => item != null).ToList() : Named(names);
+            if (saved.Count > 0 || references.Count > 0 || named.Count > 0)
+                store.Avatars.Add(new AvatarEntry { Avatar = key, Presets = saved, Excluded = references, Names = named });
             if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
             var path = FilePath;
             Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -117,6 +152,17 @@ namespace VRVlog.LilToonExporter
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
                 if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(clip, out string guid, out long id) && !string.IsNullOrEmpty(guid))
                     result.Add(new ClipReference { Guid = guid, LocalId = id });
+            return result;
+        }
+
+        static List<ClipName> Named(IEnumerable<KeyValuePair<AnimationClip, string>> names)
+        {
+            var result = new List<ClipName>();
+            foreach (var pair in names)
+                if (pair.Key != null && !string.IsNullOrWhiteSpace(pair.Value) &&
+                    AssetDatabase.TryGetGUIDAndLocalFileIdentifier(pair.Key, out string guid, out long id) && !string.IsNullOrEmpty(guid) &&
+                    !result.Any(item => item.Guid == guid && item.LocalId == id))
+                    result.Add(new ClipName { Guid = guid, LocalId = id, Name = pair.Value.Trim() });
             return result;
         }
 
