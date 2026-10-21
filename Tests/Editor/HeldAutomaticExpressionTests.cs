@@ -277,6 +277,104 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(serialized));
         }
 
+        (HashSet<int> Layers, HashSet<EditorCurveBinding> Preserved) UnownedRest(RuntimeAnimatorController runtime,
+            FixedExpressionContext context, ISet<string> selectedInputs)
+        {
+            var layers = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, runtime, source,
+                new HashSet<EditorCurveBinding>(AnimationUtility.GetCurveBindings(faceClip)), context, out var preserved, selectedInputs);
+            return (layers, preserved);
+        }
+
+        [Test]
+        public void OneAnalysisProvesTheSelectionIndependentRandomRestOnce()
+        {
+            UnownedRandomFixture();
+            var context = FixedExpressionContext.Create(controller, source.Defaults, source);
+            var writer = new HashSet<string>(StringComparer.Ordinal) { "Lottery" };
+            var unselected = UnownedRest(controller, context, null); var selectedWriter = UnownedRest(controller, context, writer);
+            Assert.That(unselected.Layers, Is.EquivalentTo(new[] { 2 }));
+            Assert.That(selectedWriter.Layers, Is.Empty, "The selected input still decides the result after the shared proof.");
+            using var cache = ExpressionInspectCache.Begin();
+            var first = UnownedRest(controller, context, writer);
+            Assert.That(first.Layers, Is.EquivalentTo(selectedWriter.Layers)); Assert.That(first.Preserved, Is.EquivalentTo(selectedWriter.Preserved));
+            var second = UnownedRest(controller, context, null);
+            Assert.That(second.Layers, Is.EquivalentTo(unselected.Layers)); Assert.That(second.Preserved, Is.EquivalentTo(unselected.Preserved));
+            second.Layers.Clear(); second.Preserved.Clear();
+            var third = UnownedRest(controller, context, null);
+            Assert.That(third.Layers, Is.EquivalentTo(unselected.Layers)); Assert.That(third.Preserved, Is.EquivalentTo(unselected.Preserved));
+            Assert.That(cache.RandomRestMisses, Is.EqualTo(1));
+            Assert.That(cache.RandomRestHits, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TheRandomRestMemoKeepsPrivateCopies()
+        {
+            UnownedRandomFixture();
+            var context = FixedExpressionContext.Create(controller, source.Defaults, source);
+            using var cache = ExpressionInspectCache.Begin();
+            var key = cache.RandomRestSignature(avatar, controller, source, context);
+            Assert.That(key, Is.Not.Null);
+            Assert.That(cache.TryRandomRest(key, source, out _), Is.False);
+            var stored = new HashSet<int> { 2 }; cache.StoreRandomRest(key, source, stored); stored.Add(5);
+            Assert.That(cache.TryRandomRest(key, source, out var first), Is.True); first.Add(7);
+            Assert.That(cache.TryRandomRest(key, source, out var second), Is.True);
+            Assert.That(second, Is.EquivalentTo(new[] { 2 })); Assert.That(second, Is.Not.SameAs(first));
+            // Another Source never reuses the entry, even under the same key.
+            Assert.That(cache.TryRandomRest(key, new VrChatExpressionMenu.Source(), out _), Is.False);
+        }
+
+        [Test]
+        public void TheRandomRestMemoIsKeyedByTheFixedInputs()
+        {
+            UnownedRandomFixture();
+            // A station gate makes the Random program dormant only under the
+            // fixed InStation input, independently of the selection.
+            controller.AddParameter("InStation", AnimatorControllerParameterType.Bool);
+            condition.transitions.Single().AddCondition(AnimatorConditionMode.IfNot, 0, "InStation");
+            var normal = FixedExpressionContext.Create(controller, source.Defaults, source);
+            var station = FixedExpressionContext.Create(controller, source.Defaults, source); station.Values["InStation"] = 1;
+            var expectedNormal = UnownedRest(controller, normal, null); var expectedStation = UnownedRest(controller, station, null);
+            Assert.That(expectedNormal.Layers, Is.EquivalentTo(new[] { 2 })); Assert.That(expectedStation.Layers, Is.Empty);
+            using var cache = ExpressionInspectCache.Begin();
+            Assert.That(UnownedRest(controller, normal, null).Layers, Is.EquivalentTo(expectedNormal.Layers));
+            Assert.That(UnownedRest(controller, station, null).Layers, Is.EquivalentTo(expectedStation.Layers));
+            Assert.That(cache.RandomRestMisses, Is.EqualTo(2)); Assert.That(cache.RandomRestHits, Is.Zero);
+        }
+
+        [Test]
+        public void TheRandomRestIsNotMemoisedOutsideAnAnalysis()
+        {
+            UnownedRandomFixture();
+            var context = FixedExpressionContext.Create(controller, source.Defaults, source);
+            var closed = ExpressionInspectCache.Begin(); closed.Dispose();
+            Assert.That(ExpressionInspectCache.Current, Is.Null);
+            Assert.That(UnownedRest(controller, context, null).Layers, Is.EquivalentTo(new[] { 2 }));
+            Assert.That(UnownedRest(controller, context, null).Layers, Is.EquivalentTo(new[] { 2 }));
+            Assert.That(closed.RandomRestHits + closed.RandomRestMisses, Is.Zero);
+        }
+
+        [TestCase("unsaved FX")]
+        [TestCase("unsaved other playable")]
+        public void UnsavedControllersDoNotMemoiseTheRandomRest(string kind)
+        {
+            UnownedRandomFixture();
+            var probe = new AnimatorController { name = "Unsaved probe", hideFlags = HideFlags.HideAndDontSave };
+            try
+            {
+                RuntimeAnimatorController runtime = controller;
+                if (kind == "unsaved FX") { probe.parameters = controller.parameters; probe.layers = controller.layers; runtime = probe; }
+                else { probe.AddLayer("Base"); probe.layers[0].stateMachine.AddState("Idle"); source.OtherControllers.Add(probe); }
+                var context = FixedExpressionContext.Create(runtime, source.Defaults, source);
+                var expected = UnownedRest(runtime, context, null);
+                Assert.That(expected.Layers, Is.EquivalentTo(new[] { 2 }), "The fixture must reach the random rest proof, not an earlier exit.");
+                using var cache = ExpressionInspectCache.Begin();
+                Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));
+                Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));
+                Assert.That(cache.RandomRestHits + cache.RandomRestMisses, Is.Zero);
+            }
+            finally { Object.DestroyImmediate(probe); }
+        }
+
         void IncomingRandomGate()
         {
             condition.transitions.Single().AddCondition(AnimatorConditionMode.If, 0, "Enable");

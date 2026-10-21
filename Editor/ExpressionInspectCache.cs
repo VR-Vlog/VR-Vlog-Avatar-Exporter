@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEditor;
 using UnityEngine;
@@ -27,10 +28,14 @@ namespace VRVlog.LilToonExporter
         private readonly Dictionary<int, EditorCurveBinding[]> objectBindings = new Dictionary<int, EditorCurveBinding[]>();
         private readonly Dictionary<(int Clip, EditorCurveBinding Binding), bool> constant = new Dictionary<(int Clip, EditorCurveBinding Binding), bool>();
         private readonly Dictionary<int, EditorCurveBinding[]> automatic = new Dictionary<int, EditorCurveBinding[]>();
+        private readonly Dictionary<string, (VrChatExpressionMenu.Source Source, int[] Layers)> randomRest =
+            new Dictionary<string, (VrChatExpressionMenu.Source Source, int[] Layers)>(StringComparer.Ordinal);
         private bool disposed;
 
         internal int Hits { get; private set; }
         internal int Misses { get; private set; }
+        internal int RandomRestHits { get; private set; }
+        internal int RandomRestMisses { get; private set; }
 
         private ExpressionInspectCache(ExpressionInspectCache previous) { this.previous = previous; }
 
@@ -150,6 +155,47 @@ namespace VRVlog.LilToonExporter
             if (!automatic.TryGetValue(id, out var result)) automatic.Add(id, result = NeutralShapeSampler.AutomaticChannels(avatar).ToArray());
             return new HashSet<EditorCurveBinding>(result);
         }
+
+        // Every menu entry proves the same neutral Random rest again. With an
+        // empty projection plan the proof reads only the persistent graphs, the
+        // menu metadata and the fixed input values: never the selection, the
+        // avatar's current pose or a warning list. Returns null when this call
+        // must not use the cache. Entries hold and return copies.
+        internal string RandomRestSignature(GameObject avatar, RuntimeAnimatorController runtime,
+            VrChatExpressionMenu.Source source, FixedExpressionContext context)
+        {
+            bool Saved(RuntimeAnimatorController value) =>
+                Persistent(value) && !(value is AnimatorOverrideController overrides && !Persistent(overrides.runtimeAnimatorController));
+            if (avatar == null || source == null || !Saved(runtime) || source.OtherControllers.Any(other => other != null && !Saved(other)))
+                return null;
+            var key = new StringBuilder();
+            key.Append(avatar.GetInstanceID().ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(runtime.GetInstanceID().ToString(CultureInfo.InvariantCulture)).Append('|')
+                .Append(RuntimeHelpers.GetHashCode(source).ToString(CultureInfo.InvariantCulture)).Append('|');
+            if (context == null) key.Append('-');
+            else
+                foreach (var name in context.Values.Keys.OrderBy(name => name, StringComparer.Ordinal))
+                    key.Append(name.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(name).Append('=')
+                        .Append(BitConverter.ToInt32(BitConverter.GetBytes(context.Values[name]), 0).ToString(CultureInfo.InvariantCulture)).Append(';');
+            return key.ToString();
+        }
+
+        internal bool TryRandomRest(string key, VrChatExpressionMenu.Source source, out HashSet<int> result)
+        {
+            // The hash code is not unique; the entry must name the same Source.
+            if (randomRest.TryGetValue(key, out var entry) && ReferenceEquals(entry.Source, source))
+            {
+                RandomRestHits++;
+                result = new HashSet<int>(entry.Layers);
+                return true;
+            }
+            RandomRestMisses++;
+            result = null;
+            return false;
+        }
+
+        internal void StoreRandomRest(string key, VrChatExpressionMenu.Source source, HashSet<int> result) =>
+            randomRest[key] = (source, result.ToArray());
 
         internal Trace Record(int layers) { Misses++; return new Trace(layers); }
 

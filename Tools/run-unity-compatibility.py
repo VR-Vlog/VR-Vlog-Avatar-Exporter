@@ -936,6 +936,11 @@ BEHAVIOR_CASES = {
         'KnownUnsavedReadOnlyRestGatesKeepTheirNativeAuthoredFace': 6,
         'SyncedRestGatesRequireAnUnchangedUnwrittenLocalPreview': 3,
         'AStoredGateCanRetainAnOriginalNativeFaceDespiteAnAuthoredZeroDefault': 1,
+        'OneAnalysisProvesTheSelectionIndependentRandomRestOnce': 1,
+        'TheRandomRestMemoKeepsPrivateCopies': 1,
+        'TheRandomRestMemoIsKeyedByTheFixedInputs': 1,
+        'TheRandomRestIsNotMemoisedOutsideAnAnalysis': 1,
+        'UnsavedControllersDoNotMemoiseTheRandomRest': 2,
     },
     'InvariantMorphOwnershipTests': {
         'ExplicitIdenticalFaceResetsDoNotOwnTheChangingWardrobeOption': 1,
