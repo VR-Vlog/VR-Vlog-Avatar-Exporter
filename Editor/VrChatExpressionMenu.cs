@@ -125,6 +125,8 @@ namespace VRVlog.LilToonExporter
             // Where the entry came from (VRVlog.Expressions.ExpressionSource):
             // menu, gesture or faceEmo. Every reader sets it explicitly.
             internal string Source = VRVlog.Expressions.ExpressionSource.Menu;
+            // The clip a gesture state plays; null for the other readers.
+            internal UnityEngine.AnimationClip Clip;
 
             // ExportName, or the last element of Name when it is blank.
             internal string VrmName()

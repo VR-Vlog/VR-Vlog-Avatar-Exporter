@@ -19,6 +19,8 @@ namespace VRVlog.LilToonExporter
             // Where the expression came from (ExpressionSource), listed in the
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
+            // The gesture clip this face plays, if any (VrChatExpressionMenu.Entry.Clip).
+            internal UnityEngine.AnimationClip Clip;
             // Original BlendShape names this face moves away from rest, with
             // the weight (0-100) it ends on. Emotion inference reads them when
             // the menu label says nothing; the final binds may use baked or
@@ -154,7 +156,7 @@ namespace VRVlog.LilToonExporter
             var nodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             var document = new ExpressionAnimationDocument();
-            var written = new List<(string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
+            var written = new List<(UnityEngine.AnimationClip Clip, string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
             foreach (var expression in expressions)
             {
                 // The name carries no source prefix; the extension lists the
@@ -245,15 +247,16 @@ namespace VRVlog.LilToonExporter
                     }
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
-                // One face registered twice (the same gesture on both hands)
-                // writes the same binds and motion under the same name; the
-                // app would list it as name and name (2). Keep the first; the
-                // other stays unregistered (RegisteredName null). Items in
-                // different menus keep their own inference text, so stay.
+                // One gesture clip registered twice (both hands) writes the
+                // same binds and motion under the same name; the app would
+                // list it as name and name (2). Keep the first; the other stays
+                // unregistered (RegisteredName null). Only the same clip: the
+                // board lists each clip once, and separate clips stay separate.
                 var inference = expression.InferenceName ?? expression.Name;
-                if (written.Any(previous => previous.Name == expression.Name && previous.Inference == inference && previous.Source == expression.Source &&
+                if (expression.Clip != null && written.Any(previous => previous.Clip == expression.Clip && previous.Name == expression.Name &&
+                    previous.Inference == inference && previous.Source == expression.Source &&
                     SameBinds(previous.Binds, binds) && SameAnimation(previous.Animation, animation))) continue;
-                written.Add((expression.Name, inference, expression.Source, binds, animation));
+                written.Add((expression.Clip, expression.Name, inference, expression.Source, binds, animation));
                 custom.Add(name, new Dictionary<string, object>
                 {
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
