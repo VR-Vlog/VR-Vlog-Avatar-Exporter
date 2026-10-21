@@ -16,7 +16,7 @@ Clip の曲線（`EditorCurveBinding`）が BlendShape の曲線かを見る式 
 ## 置き換えなかった箇所
 
 - `MaAppearanceSnapshot`（`name.StartsWith("blendShape.")`）と `ExportOptimizationMarkerInformation`（`property.Property.StartsWith("blendShape.")`）。`EditorCurveBinding` ではなく、型の確認も別の形で書いているので、そのままにした。
-- `ExperimentalExpressionCaptureSession.SelectCandidateByDefault` の中の 1 か所。このメソッドは使われていないので、別の変更（`2026-10-21-remove-unused-members.md`）で丸ごと消す。両方の変更が同じ行に触れないように、ここでは触らない。
+- `ExperimentalExpressionCaptureSession.SelectCandidateByDefault` の中の 1 か所。このメソッドは使われていないので、別の変更（#333・`2026-10-21-remove-unused-members.md`）で丸ごと消す。この PR は #333 のあとにマージする。両方の変更が同じ行に触れないように、ここでは触らない。
 - テスト（`Tests/Editor/FacialProjectionTests.cs`）の、接頭辞だけを見ている 1 か所。
 
 ## 書き出す内容が変わらない理由
