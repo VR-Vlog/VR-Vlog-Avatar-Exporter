@@ -79,7 +79,7 @@ namespace VRVlog.LilToonExporter
                         if (entry.Animation.Count == 0) { entry.Duration = 0; entry.Loop = false; }
                         VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, layer,
                             target.State.writeDefaultValues, excludedPath, metadata: source, sourceState: target.State);
-                        if (source.Entries.Any(previous => Equivalent(previous, entry, scope))) continue;
+                        if (source.Entries.Any(previous => Equivalent(previous, entry, scope, clip))) continue;
                         entry.Messages.Add("接触・外部入力で使う元の表情クリップを、顔の形状として保存しました。外部入力による自動切り替えは再現しません。");
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; entry.Values.Clear(); entry.Animation.Clear(); }
@@ -94,17 +94,23 @@ namespace VRVlog.LilToonExporter
 
         // Either entry can hold zeros for shapes outside the face (an earlier hand-gesture read, or permanent FX
         // added after the cut). Those change nothing, so they are left out; any other difference keeps both.
-        static bool Equivalent(VrChatExpressionMenu.Entry first, VrChatExpressionMenu.Entry second, FacialProjectionScope scope)
+        // A hand gesture that plays the same clip is the same face: this read is that clip cut to the face, so
+        // what the gesture read keeps outside the face is the cut, not a different face.
+        static bool Equivalent(VrChatExpressionMenu.Entry first, VrChatExpressionMenu.Entry second, FacialProjectionScope scope, AnimationClip clip)
         {
-            if (first.Error != null || first.Animation.Count != second.Animation.Count) return false;
-            if (first.Animation.Count > 0 && (first.Duration != second.Duration || first.Loop != second.Loop)) return false;
-            bool Counts(VrChatExpressionMenu.MorphValue value) => value.Weight != 0 || scope.Morphs.Contains(Binding(value.Path, value.Shape));
+            if (first.Error != null) return false;
+            var sameClip = first.Clip != null && ReferenceEquals(first.Clip, clip);
+            bool InFace(string path, string shape) => scope.Morphs.Contains(Binding(path, shape));
+            var animation = sameClip ? first.Animation.Where(value => InFace(value.Path, value.Shape)).ToList() : first.Animation;
+            if (animation.Count != second.Animation.Count) return false;
+            if (animation.Count > 0 && (first.Duration != second.Duration || first.Loop != second.Loop)) return false;
+            bool Counts(VrChatExpressionMenu.MorphValue value) => InFace(value.Path, value.Shape) || !sameClip && value.Weight != 0;
             var firstValues = first.Values.Where(Counts).ToList();
             var secondValues = second.Values.Where(Counts).ToList();
             if (firstValues.Count != secondValues.Count) return false;
             var values = firstValues.ToDictionary(value => (value.Path, value.Shape), value => value.Weight);
             if (secondValues.Any(value => !values.TryGetValue((value.Path, value.Shape), out var weight) || weight != value.Weight)) return false;
-            return second.Animation.All(value => first.Animation.Any(previous => previous.Path == value.Path && previous.Shape == value.Shape &&
+            return second.Animation.All(value => animation.Any(previous => previous.Path == value.Path && previous.Shape == value.Shape &&
                 VrChatExpressionBaker.SameCurve(previous.Curve, value.Curve)));
         }
 
