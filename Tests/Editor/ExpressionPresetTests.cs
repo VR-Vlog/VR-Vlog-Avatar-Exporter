@@ -177,14 +177,14 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The board takes a clip that also names a shape the avatar never had.
         // In a standard slot it must save too, binding only the shapes the
-        // mesh has; a shape lost by preparation still stops the slot.
+        // mesh has. ShapesLostByPreparationStayUnsupportedOnTheBoard covers
+        // a shape lost by preparation, which never reaches the slot.
         [Test]
         public void PresetFromAClipWithShapesTheAvatarNeverHadBindsOnlyTheRest()
         {
             using var fixture = Fixture();
             var clip = FaceClip(100);
             var absent = new AnimationClip { name = "Only missing" };
-            var frozen = new AnimationClip { name = "Partly frozen" };
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
@@ -200,16 +200,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(bound[0], Does.StartWith("Front/__VRVlog_Endpoint_").And.EndWith("@1"));
                 Assert.That(session.PresetError(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, absent)),
                     Does.Contain(ExporterLocalization.T("参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。")));
-                var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-                var preparation = (NdmfExportPreparation)typeof(Session).GetField("preparation", flags).GetValue(session);
-                var before = (Dictionary<SkinnedMeshRenderer, HashSet<string>>)typeof(NdmfExportPreparation).GetField("shapesBeforeProcessing", flags).GetValue(preparation);
-                foreach (var shapes in before.Values) shapes.Add("Frozen in build");
-                AnimationUtility.SetEditorCurve(frozen, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 100));
-                AnimationUtility.SetEditorCurve(frozen, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frozen in build"), AnimationCurve.Constant(0, 1, 100));
-                Assert.That(session.PresetError(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, frozen)),
-                    Does.Contain(ExporterLocalization.T("候補のBlendShapeが表示中のメッシュにありません: ")));
             }
-            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); Object.DestroyImmediate(frozen); }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); }
         }
 
         [Test]
