@@ -688,6 +688,53 @@ namespace VRVlog.LilToonExporter
         // The ordinary route kept menu faces the list does not show; nothing was left out.
         internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
 
+        // What a save does when the menu gives fewer faces than the list. The
+        // saved bytes, the list count it was decided with and the lines of the result.
+        internal sealed class MenuShortResult
+        {
+            public byte[] Exported;
+            public int ListedFaces;
+            public string Recorded;
+            public string Error;
+            public string Kept;
+        }
+
+        // rebuildBoard is null once the board closed; otherwise it rebuilds the
+        // board and gives its list count and whether the list can be recorded.
+        // A failed recordList is undone by exportMenuAgain, whose bytes are saved.
+        internal static MenuShortResult ResolveMenuShort(byte[] exported, int menuFaces, int listedFaces,
+            Func<(int Listed, bool CanRecord)> rebuildBoard, Func<byte[]> recordList, Func<byte[]> exportMenuAgain)
+        {
+            var result = new MenuShortResult { Exported = exported, ListedFaces = listedFaces };
+            // A recovery attempt after the board closed has no list to record.
+            if (rebuildBoard == null)
+            {
+                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
+                return result;
+            }
+            // The board may have changed before a recovery attempt.
+            var (listed, canRecord) = rebuildBoard();
+            result.ListedFaces = listed;
+            if (!canRecord)
+            {
+                result.Kept = string.Format(ExporterLocalization.T(MenuShortKeptFormat), menuFaces, listed);
+                return result;
+            }
+            try
+            {
+                result.Exported = recordList();
+                result.Recorded = string.Format(ExporterLocalization.T(MenuShortRecordedFormat), menuFaces, listed);
+            }
+            catch (Exception exception) when (!(exception is OperationCanceledException))
+            {
+                // The menu result saved before this change is saved again.
+                result.Exported = exportMenuAgain();
+                result.Error = exception.Message;
+                result.Kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listed);
+            }
+            return result;
+        }
+
         // The two steps of the detailed transfer; this window is the first.
         void DrawTransferSteps()
         {
@@ -1840,41 +1887,35 @@ namespace VRVlog.LilToonExporter
                 if (menuFaces < listedFaces)
                 {
                     var category = ExporterLocalization.T("その他の表情");
-                    string kept = null;
-                    // A recovery attempt after the board closed has no list to record.
-                    if (this == null || !ReferenceEquals(session, target))
-                        kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
-                    else
-                    {
-                        // The board may have changed before a recovery attempt.
-                        RebuildBoard();
-                        listedFaces = board.OtherCount;
-                        if (!board.CanRecordList) kept = string.Format(ExporterLocalization.T(MenuShortKeptFormat), menuFaces, listedFaces);
-                        else
-                        {
+                    var resolved = ResolveMenuShort(exported, menuFaces, listedFaces,
+                        this == null || !ReferenceEquals(session, target) ? null : (Func<(int, bool)>)(() => {
+                            RebuildBoard();
+                            // Set here: a later attempt compares with this count even when this one throws.
+                            listedFaces = board.OtherCount;
+                            return (listedFaces, board.CanRecordList);
+                        }),
+                        () => {
                             // Set first: a canceled attempt still leaves the list recorded.
                             recordedList = true;
-                            try
-                            {
-                                exported = ExportRecorded(board.ExportedCustom(), true);
-                                var recorded = string.Format(ExporterLocalization.T(MenuShortRecordedFormat), menuFaces, listedFaces);
-                                warnings.Add(recorded);
-                                report?.Fallbacks.Record(ExportOutcome.Approximated, category, reason: recorded, count: listedFaces);
-                            }
-                            catch (Exception exception) when (!(exception is OperationCanceledException))
-                            {
-                                // The menu result saved before this change is saved again.
-                                exported = ExportRecorded(new System.Collections.Generic.List<AnimationClip>(), false);
-                                recordedList = false;
-                                warnings.Add(exception.Message);
-                                kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
-                            }
-                        }
-                    }
-                    if (kept != null)
+                            return ExportRecorded(board.ExportedCustom(), true);
+                        },
+                        () => {
+                            var again = ExportRecorded(new System.Collections.Generic.List<AnimationClip>(), false);
+                            recordedList = false;
+                            return again;
+                        });
+                    exported = resolved.Exported;
+                    listedFaces = resolved.ListedFaces;
+                    if (resolved.Recorded != null)
                     {
-                        warnings.Add(kept);
-                        report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: kept, count: Math.Max(0, listedFaces - menuFaces));
+                        warnings.Add(resolved.Recorded);
+                        report?.Fallbacks.Record(ExportOutcome.Approximated, category, reason: resolved.Recorded, count: listedFaces);
+                    }
+                    if (resolved.Error != null) warnings.Add(resolved.Error);
+                    if (resolved.Kept != null)
+                    {
+                        warnings.Add(resolved.Kept);
+                        report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: resolved.Kept, count: Math.Max(0, listedFaces - menuFaces));
                     }
                 }
                 // More menu faces than the list: the VRM keeps them all, so the
