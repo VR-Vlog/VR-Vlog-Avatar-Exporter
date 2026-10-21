@@ -6,6 +6,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -143,6 +144,35 @@ namespace VRVlog.LilToonExporter.Tests
                 ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
             }
             Assert.That(File.ReadAllText(storePath), Is.EqualTo(damaged), "A locked file is not replaced either.");
+        }
+
+        [Test]
+        public void ASaveThatStoresNothingDoesNotTellOtherWindowsToReload()
+        {
+            using var fixture = new SavedAvatar();
+            var before = ExportSettingsStore.Revision;
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Revision, Is.EqualTo(before + 1), "A stored save tells other windows.");
+            File.WriteAllText(storePath, "{ not json", Encoding.UTF8);
+            before = ExportSettingsStore.Revision;
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Revision, Is.EqualTo(before), "A file that cannot be read is not saved.");
+            File.WriteAllText(storePath, "{\"Version\":2,\"Avatars\":[]}", Encoding.UTF8);
+            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
+            Assert.That(ExportSettingsStore.Revision, Is.EqualTo(before), "A file from another format version is not saved.");
+        }
+
+        [Test]
+        public void EachDifferentProblemIsShownOnce()
+        {
+            var first = "first problem " + Guid.NewGuid().ToString("N");
+            var second = "second problem " + Guid.NewGuid().ToString("N");
+            LogAssert.Expect(LogType.Warning, first);
+            LogAssert.Expect(LogType.Warning, second);
+            Assert.That(ExportSettingsStore.WarnOnce(first), Is.True);
+            Assert.That(ExportSettingsStore.WarnOnce(second), Is.True, "A second, different problem is shown too.");
+            Assert.That(ExportSettingsStore.WarnOnce(first), Is.False);
+            Assert.That(ExportSettingsStore.WarnOnce(second), Is.False);
         }
 
         [Test]
