@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.GetAnimationEvents(clip).Length != 0) return -1;
             foreach (var binding in capturedMorphs)
             {
-                if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                if (!PoseSampling.IsBlendShape(binding) ||
                     excludedPath?.Invoke(binding.path) == true) return -1;
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return -1;
@@ -117,7 +117,7 @@ namespace VRVlog.LilToonExporter
                     var bindings = AnimationUtility.GetCurveBindings(clip);
                     if (bindings.Length == 0 || bindings.Any(binding =>
                         !(binding.type == typeof(Animator) && binding.path == "" ||
-                            binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) &&
+                            PoseSampling.IsBlendShape(binding) &&
                             !capturedMorphs.Contains(binding))) ||
                         AnimationUtility.GetAnimationEvents(clip).Length != 0 || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length != 0) return false;
                     if (coverage == null) coverage = new HashSet<EditorCurveBinding>(bindings);

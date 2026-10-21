@@ -31,8 +31,7 @@ namespace VRVlog.LilToonExporter
                         if (overrides.TryGetValue(clip, out var replacement)) clip = replacement;
                         SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
                         if (AnimationUtility.GetAnimationEvents(clip).Length != 0 || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length != 0 ||
-                            AnimationUtility.GetCurveBindings(clip).Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                                !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)))
+                            AnimationUtility.GetCurveBindings(clip).Any(binding => !PoseSampling.IsBlendShape(binding)))
                             throw new InvalidOperationException("BlendTreeの合成アニメーションはBlendShapeだけを持つ子Clipが必要です: " + clip.name);
                         leaves.Add(clip); if (leaves.Count > 256) throw new InvalidOperationException("BlendTreeの子Clipが多すぎます。");
                     }

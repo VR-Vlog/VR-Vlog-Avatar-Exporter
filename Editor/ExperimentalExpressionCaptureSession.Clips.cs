@@ -108,7 +108,7 @@ namespace VRVlog.LilToonExporter
             {
                 foreach (var clip in clips.Where(clip => clip != null))
                     if (seen.Add(clip) && AnimationUtility.GetCurveBindings(clip).Any(binding =>
-                        binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)))
+                        PoseSampling.IsBlendShape(binding)))
                         result.Add(new ClipRecommendation { Clip = clip, Source = origin });
             }
             Add(faceEmoBindings.RegisteredClips, "FaceEmoの登録");
@@ -197,7 +197,7 @@ namespace VRVlog.LilToonExporter
             RuntimeAnimatorController fx, IDictionary<string, float> defaults) => MenuLinks(entries, fx, defaults).Outside;
 
         static bool MovesFace(AnimationClip clip) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(binding =>
-            binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+            PoseSampling.IsBlendShape(binding));
 
         // MenuClipPaths and MenuEntriesOutsideBoard from one walk of the FX
         // controller, with the same on/off rule for both.
@@ -352,8 +352,7 @@ namespace VRVlog.LilToonExporter
             if (AnimationUtility.GetAnimationEvents(clip).Length != 0)
                 throw new InvalidOperationException(ExporterLocalization.T("Animation Eventを含みます。この実験版ではイベント付きの表情は収録できません。"));
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            var unsupported = bindings.Where(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             if (unsupported.Length > 0)
                 throw new InvalidOperationException(ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ") +
