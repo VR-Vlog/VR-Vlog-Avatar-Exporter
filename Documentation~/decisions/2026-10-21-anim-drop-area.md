@@ -26,5 +26,5 @@
 - 4 つの言語のファイルに新しい文言の訳を足し、JSON として読めることと、追加した 1 件のほかは元と同じ書式であることを確かめた。
 - 変更の差分に `Tools/check-names.py --text -` をかけ、名前の一覧に当たる語が無いことを確かめた。
 - `Tools/validate.py` のうち言語のファイルの検査（4 言語で同じ原文が重複しないこと）を同じ手順で回し、通ることを確かめた。それ以外の検査は CI に任せた。
-- 検証PC の Unity 2022.3.22f1 で、.anim を 2 つ選んで枠の上へドラッグしたときに、カーソルが Copy になり枠の線の色が変わること、離れると元に戻ること、枠を足しても上の並びが動かないことを撮って確かめた。
-- EditMode テスト（`ExperimentalExpressionCaptureTests`・`ExpressionPresetTests`・`ExpressionSlotLayoutTests` の 253 件）を検証PC で回した。237 件が通り、失敗した 16 件は変更前の develop でも同じ名前で失敗するもの（検証PC のプロジェクトに、テストが使う外部のパッケージが入っていないため）だった。
+- 検証環境の Unity 2022.3.22f1 で、.anim を 2 つ選んで枠の上へドラッグしたときに、カーソルが Copy になり枠の線の色が変わること、離れると元に戻ること、枠を足しても上の並びが動かないことを撮って確かめた。
+- EditMode テスト（`ExperimentalExpressionCaptureTests`・`ExpressionPresetTests`・`ExpressionSlotLayoutTests` の 253 件）を検証環境で回した。237 件が通り、失敗した 16 件は変更前の develop でも同じ名前で失敗するもの（検証環境のプロジェクトに、テストが使う外部のパッケージが入っていないため）だった。
