@@ -60,6 +60,25 @@ namespace VRVlog.LilToonExporter
         System.Collections.Generic.List<GameObject> excludedObjectEdits;
         string excludedObjectError;
         bool? showExcludedObjects;
+        // The VRChat gimmicks of the avatar, analyzed again only when the avatar,
+        // the preview or the scene hierarchy changes. Choices save at once to the
+        // avatar's settings and wait for "プレビューに反映" like the object list.
+        System.Collections.Generic.List<ExportGimmickFinding> gimmickFindings;
+        System.Collections.Generic.List<(string Name, System.Collections.Generic.List<ExportGimmickFinding> Findings)> gimmickGroups =
+            new System.Collections.Generic.List<(string Name, System.Collections.Generic.List<ExportGimmickFinding> Findings)>();
+        System.Collections.Generic.HashSet<ExportGimmickFinding> gimmicksRemoved = new System.Collections.Generic.HashSet<ExportGimmickFinding>();
+        // What each row holds (the dim column), worked out with the analysis.
+        System.Collections.Generic.Dictionary<ExportGimmickFinding, string> gimmickContents = new System.Collections.Generic.Dictionary<ExportGimmickFinding, string>();
+        ExperimentalExpressionCaptureSession gimmickSession;
+        bool gimmicksStale = true;
+        double nextGimmickScan;
+        ExportSettings savedSettings;
+        GameObject savedSettingsSource;
+        int savedSettingsRevision = -1;
+        // Not kept between sessions: the section opens when it lists something.
+        bool? showGimmicks;
+        // Whether the closed object list still draws its apply row, fixed per layout.
+        bool gimmicksPendingAtLayout;
 
         // Board drag state. Cards carry the clip under a private key, so a
         // drag from the Project window is never mistaken for a card.
@@ -127,7 +146,7 @@ namespace VRVlog.LilToonExporter
         static Color ErrorColor => Skin(0xe0675f, 0xb3261e);
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
-        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, errorMini, boldText, badgeText, closeText, accentButton, centeredDim,
+        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim,
             nameCenter;
         bool stylesForProSkin;
         Texture2D accentNormal, accentHover, accentActive;
@@ -181,8 +200,18 @@ namespace VRVlog.LilToonExporter
         bool ConfirmChangeAvatar() => clipInputs.Count == 0 && (session == null || session.PoseOptions.Manual.Count == 0) ||
             EditorUtility.DisplayDialog(ExporterLocalization.T("アバターを変更"), ExporterLocalization.T("追加した表情・ポーズの一覧をリセットします。保存済みVRMは残ります。"), ExporterLocalization.T("変更する"), ExporterLocalization.T("戻る"));
 
-        void OnEnable() { wantsMouseMove = true; EditorApplication.update += Advance; EditorApplication.projectChanged += CandidateAssetsChanged; }
-        void OnDisable() { EditorApplication.update -= Advance; EditorApplication.projectChanged -= CandidateAssetsChanged; pending = null; Cleanup(); ReleaseStyles(); }
+        void OnEnable()
+        {
+            wantsMouseMove = true; EditorApplication.update += Advance; EditorApplication.projectChanged += CandidateAssetsChanged;
+            EditorApplication.hierarchyChanged += GimmicksChanged;
+        }
+
+        void OnDisable()
+        {
+            EditorApplication.update -= Advance; EditorApplication.projectChanged -= CandidateAssetsChanged;
+            EditorApplication.hierarchyChanged -= GimmicksChanged;
+            pending = null; Cleanup(); ReleaseStyles();
+        }
 
         void Advance()
         {
@@ -205,6 +234,9 @@ namespace VRVlog.LilToonExporter
 
         // A reimported file can draw a different face, so its thumbnail goes too.
         void CandidateAssetsChanged() { candidateValidationPending = true; ClearThumbnails(); Repaint(); }
+
+        // The next layout analyzes the gimmicks again.
+        void GimmicksChanged() { gimmicksStale = true; Repaint(); }
 
         // Work that waits for an update with nothing queued: the blink line of
         // unchosen blink slots and a few thumbnails.
@@ -483,6 +515,8 @@ namespace VRVlog.LilToonExporter
                         DrawPanels();
                         DrawAddRow();
                         EditorGUILayout.Space(12);
+                        DrawGimmicks();
+                        EditorGUILayout.Space(12);
                         DrawExcludedObjects();
                         EditorGUILayout.Space(12);
                         DrawPoseInputs();
@@ -544,6 +578,7 @@ namespace VRVlog.LilToonExporter
             var stored = ExportSettingsStore.Load(source).Exclusions();
             using var batch = ExperimentalExpressionCaptureSession.Batch();
             opening = true;
+            showGimmicks = null;
             try
             {
                 try { PrepareWith(stored); }
@@ -674,6 +709,7 @@ namespace VRVlog.LilToonExporter
         string BoardBlockReason()
         {
             if (excludedObjectEdits != null) return ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません");
+            if (GimmicksPending) return ExporterLocalization.T(GimmicksPendingReason);
             foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
                 if (presetErrors.TryGetValue(preset, out var reason) && reason != null) return reason;
             // A reason kept for a preset outside the board order still stops it.
@@ -764,7 +800,13 @@ namespace VRVlog.LilToonExporter
             var label = string.Format(ExporterLocalization.T("書き出さないオブジェクト（{0}件）"), count);
             var open = EditorGUI.Foldout(header, showExcludedObjects.Value, new GUIContent(Fit(label, EditorStyles.foldout, header.width - 16), label), true);
             if (open != showExcludedObjects.Value) { showExcludedObjects = open; EditorPrefs.SetBool(ExcludedObjectsPreference, open); }
-            if (!open) return;
+            // The gimmick choices above wait for the same button, so it stays
+            // reachable while this list is closed.
+            if (!open)
+            {
+                if (gimmicksPendingAtLayout) DrawApplyRow(null);
+                return;
+            }
             System.Collections.Generic.List<GameObject> Edits()
             {
                 excludedObjectError = null;
@@ -783,15 +825,167 @@ namespace VRVlog.LilToonExporter
                 }
             }
             if (removed >= 0) Edits().RemoveAt(removed);
+            DrawApplyRow(() => Edits().Add(null));
+            if (!string.IsNullOrEmpty(excludedObjectError)) EditorGUILayout.HelpBox(excludedObjectError, MessageType.Error);
+        }
+
+        // "プレビューに反映" applies the object list and the gimmick choices
+        // together; the mark beside it says that one of them is waiting. Its
+        // width is reserved so the buttons stay where they are.
+        void DrawApplyRow(Action add)
+        {
             using (new EditorGUILayout.HorizontalScope())
             {
-                var add = ExporterLocalization.T("除外するオブジェクトを追加");
+                const float markWidth = 96;
+                var addLabel = ExporterLocalization.T("除外するオブジェクトを追加");
                 var apply = ExporterLocalization.T("プレビューに反映");
-                if (GUILayout.Button(new GUIContent(Fit(add, GUI.skin.button, Mathf.Max(0, position.width - 200)), add))) Edits().Add(null);
-                using (new EditorGUI.DisabledScope(excludedObjectEdits == null))
-                    if (GUILayout.Button(new GUIContent(Fit(apply, GUI.skin.button, 112), apply), GUILayout.Width(120))) Queue(ApplyExcludedObjects);
+                if (add == null) GUILayout.FlexibleSpace();
+                else if (GUILayout.Button(new GUIContent(Fit(addLabel, GUI.skin.button, Mathf.Max(0, position.width - 200 - markWidth)), addLabel))) add();
+                var waiting = excludedObjectEdits != null || GimmicksPending;
+                var mark = GUILayoutUtility.GetRect(markWidth, EditorGUIUtility.singleLineHeight, GUILayout.Width(markWidth));
+                if (waiting)
+                {
+                    var text = ExporterLocalization.T("プレビュー未反映");
+                    GUI.Label(mark, new GUIContent(Fit(text, dimMiniRight, markWidth - 6), text), dimMiniRight);
+                }
+                using (new EditorGUI.DisabledScope(!waiting))
+                    if (GUILayout.Button(new GUIContent(Fit(apply, GUI.skin.button, 112), apply), GUILayout.Width(120))) Queue(ApplyPreview);
             }
-            if (!string.IsNullOrEmpty(excludedObjectError)) EditorGUILayout.HelpBox(excludedObjectError, MessageType.Error);
+        }
+
+        void ApplyPreview()
+        {
+            if (session == null) return;
+            // The rebuild reads the saved gimmick choices, so the object list
+            // applies them as well.
+            if (excludedObjectEdits != null) { ApplyExcludedObjects(); return; }
+            if (!GimmicksPending) return;
+            var current = session.ExcludedObjects.ToArray();
+            // As in RefreshCandidateValidation: objects that leave no preview
+            // wait in the list with the reason.
+            var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
+            candidateValidationPending = true;
+            if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; showExcludedObjects = true; }
+        }
+
+        // ---- VRChat gimmicks ----
+
+        const string GimmicksPendingReason = "VRChat用のギミックがプレビューに反映されていません";
+
+        // The avatar's saved settings, read again only after a save.
+        ExportSettings SavedSettings()
+        {
+            if (savedSettings == null || savedSettingsSource != source || savedSettingsRevision != ExportSettingsStore.Revision)
+            {
+                savedSettings = ExportSettingsStore.Load(source);
+                savedSettingsSource = source;
+                savedSettingsRevision = ExportSettingsStore.Revision;
+            }
+            return savedSettings;
+        }
+
+        // Saved gimmick choices that the preview (and so the export) does not use yet.
+        bool GimmicksPending => session != null && !ExportGimmickChoices.SameGimmicks(SavedSettings().Gimmicks(), session.GimmickOptions);
+
+        // Runs on Layout only, so the rows stay the same until the next layout.
+        void RefreshGimmicks()
+        {
+            if (Event.current.type != EventType.Layout || session == null) return;
+            gimmicksPendingAtLayout = GimmicksPending;
+            var changed = gimmickFindings == null || gimmickSession != session;
+            if (!changed && gimmicksStale)
+            {
+                // A busy scene changes the hierarchy often; analyze at most once a second.
+                if (EditorApplication.timeSinceStartup < nextGimmickScan) Repaint();
+                else changed = true;
+            }
+            if (changed)
+            {
+                gimmickFindings = ExportGimmickChoices.Analyze(source, session.ExcludedObjects);
+                gimmickGroups = ExportGimmickChoices.Groups(gimmickFindings);
+                gimmickContents = gimmickGroups.SelectMany(group => group.Findings).Where(f => f.Target != null)
+                    .ToDictionary(f => f, f => ExportGimmickChoices.Contents(f, ExporterLocalization.T));
+                gimmickSession = session; gimmicksStale = false;
+                nextGimmickScan = EditorApplication.timeSinceStartup + 1;
+            }
+            gimmicksRemoved = ExportGimmickChoices.Removed(gimmickFindings, SavedSettings().Gimmicks());
+        }
+
+        void DrawGimmicks()
+        {
+            RefreshGimmicks();
+            var (removedCount, includedCount) = ExportGimmickChoices.Counts(gimmickGroups, gimmicksRemoved);
+            if (showGimmicks == null && gimmickFindings != null) showGimmicks = removedCount + includedCount > 0;
+            var header = GUILayoutUtility.GetRect(100, 20, GUILayout.ExpandWidth(true));
+            var label = ExportGimmickChoices.Header(removedCount, includedCount);
+            var open = EditorGUI.Foldout(header, showGimmicks == true, new GUIContent(Fit(label, EditorStyles.foldout, header.width - 16), label), true);
+            if (open != (showGimmicks == true)) showGimmicks = open;
+            if (!open) return;
+            var line = EditorGUIUtility.singleLineHeight;
+            const float indent = 14, toggleWidth = 90, gap = 8;
+            var note = ExporterLocalization.T("VRMに入れてもVRChatの中の動きは再現されません");
+            var noteRect = GUILayoutUtility.GetRect(100, line, GUILayout.ExpandWidth(true));
+            noteRect.xMin += indent;
+            GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+            if (gimmickGroups.Count == 0)
+            {
+                var none = ExporterLocalization.T("見つかりませんでした");
+                var noneRect = GUILayoutUtility.GetRect(100, line, GUILayout.ExpandWidth(true));
+                noneRect.xMin += indent;
+                GUI.Label(noneRect, new GUIContent(Fit(none, dimText, noneRect.width), none), dimText);
+                return;
+            }
+            var settings = SavedSettings();
+            var autoExclude = settings.AutoExcludeGimmicks;
+            var toggleLabel = ExporterLocalization.T("VRMに入れる");
+            foreach (var (group, findings) in gimmickGroups)
+            {
+                EditorGUILayout.Space(4);
+                var groupRect = GUILayoutUtility.GetRect(100, line, GUILayout.ExpandWidth(true));
+                groupRect.xMin += indent;
+                var groupName = ExporterLocalization.T(group);
+                GUI.Label(groupRect, new GUIContent(Fit(groupName, dimMiniBold, groupRect.width), groupName), dimMiniBold);
+                foreach (var finding in findings)
+                {
+                    var row = GUILayoutUtility.GetRect(100, line, GUILayout.ExpandWidth(true));
+                    row.xMin += indent;
+                    if (finding.Target == null) continue;
+                    var rest = Mathf.Max(0, row.width - toggleWidth - gap * 2);
+                    var nameRect = new Rect(row.x, row.y, rest * .45f, line);
+                    var reasonRect = new Rect(nameRect.xMax + gap, row.y, rest * .55f, line);
+                    var toggleRect = new Rect(row.xMax - toggleWidth, row.y, toggleWidth, line);
+                    var rowName = ExportGimmickChoices.RowName(finding);
+                    var reason = ExporterLocalization.T(finding.Reason ?? "");
+                    var path = ExportGimmickChoices.PathOf(finding, source);
+                    EditorGUIUtility.AddCursorRect(nameRect, MouseCursor.Link);
+                    if (GUI.Button(nameRect, new GUIContent(Fit(rowName, cardText, nameRect.width), reason.Length == 0 ? path : path + "\n" + reason), cardText))
+                        EditorGUIUtility.PingObject(finding.Target);
+                    gimmickContents.TryGetValue(finding, out var contents);
+                    contents ??= "";
+                    GUI.Label(reasonRect, new GUIContent(Fit(contents, dimText, reasonRect.width), reason), dimText);
+                    var inherited = ExportGimmickChoices.Inherited(finding, settings);
+                    var kept = ExportGimmickChoices.Kept(finding, settings);
+                    var included = !gimmicksRemoved.Contains(finding);
+                    // Kept by a parent or by another part of the same gimmick:
+                    // the row shows it and the choice is made there.
+                    var editable = autoExclude && !inherited && (kept || !included);
+                    var tip = inherited ? ExporterLocalization.T("親の指定でVRMに入れる") : toggleLabel;
+                    using (new EditorGUI.DisabledScope(!editable))
+                    {
+                        var next = GUI.Toggle(toggleRect, included, new GUIContent(Fit(toggleLabel, GUI.skin.toggle, toggleWidth), tip));
+                        if (editable && next != included) SetGimmick(finding, next);
+                    }
+                }
+            }
+        }
+
+        // Saved at once, so the export window and the next export read it.
+        void SetGimmick(ExportGimmickFinding finding, bool include)
+        {
+            var settings = ExportSettingsStore.Load(source);
+            ExportGimmickChoices.SetKept(finding, settings, include);
+            ExportSettingsStore.Save(source, settings);
+            Repaint();
         }
 
         // Checks the edited list like the export does, rebuilds the preview without
@@ -1534,6 +1728,7 @@ namespace VRVlog.LilToonExporter
             boldText = Label(EditorStyles.boldLabel, TextColor);
             dimMini = Label(EditorStyles.miniLabel, DimColor);
             dimMiniRight = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleRight);
+            dimMiniBold = Label(EditorStyles.miniBoldLabel, DimColor);
             errorMini = Label(EditorStyles.miniLabel, ErrorColor);
             nameCenter = Label(EditorStyles.label, TextColor, TextAnchor.MiddleCenter);
             // The badge sits on the thumbnail, so it is light on both skins.
@@ -1886,6 +2081,7 @@ namespace VRVlog.LilToonExporter
         ExportRecoverySession Save(string path, string name, string targetAuthor, AvatarLicenseOptions license, bool interactive, Action written)
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
+            if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RequireWithinLimit();
             RecordBoardClips();
             var target = session;
@@ -2028,6 +2224,7 @@ namespace VRVlog.LilToonExporter
         void OpenTransferDetails()
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
+            if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RequireWithinLimit();
             var entry = LilToonExporterWindow.DetailedTransferMethod();
             if (entry == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
@@ -2077,6 +2274,7 @@ namespace VRVlog.LilToonExporter
             Cleanup();
             licenseOptions = new AvatarLicenseOptions();
             status = null;
+            showGimmicks = null;
         }
 
         void Cleanup()
