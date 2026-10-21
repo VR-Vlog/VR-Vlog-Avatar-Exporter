@@ -277,6 +277,23 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(serialized));
         }
 
+        [Test]
+        public void HeldProbeRunsTheSelectionAnalysesOnce()
+        {
+            UnownedRandomFixture();
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            VrChatExpressionSampler.ProbeAnalysisObserver = name => counts[name] = counts.TryGetValue(name, out var count) ? count + 1 : 1;
+            VrChatExpressionMenu.Entry entry;
+            try { entry = Hold(); }
+            finally { VrChatExpressionSampler.ProbeAnalysisObserver = null; }
+            Assert.That(counts.TryGetValue("randomRest", out var randomRest) ? randomRest : 0, Is.EqualTo(1));
+            Assert.That(counts.TryGetValue("dependencies", out var dependencies) ? dependencies : 0, Is.EqualTo(1));
+            Assert.That(entry.Values.Single(value => value.Shape == "Authored").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(entry.Values.Single(value => value.Shape == "Rest").Weight, Is.EqualTo(12).Within(.01));
+            Assert.That(entry.Values.Any(value => value.Shape == "Blink" || value.Shape == "Recovery channel"), Is.False);
+            Assert.That(entry.Messages.Count(value => value.Contains("Random") && value.Contains("Automatic blink")), Is.EqualTo(1));
+        }
+
         (HashSet<int> Layers, HashSet<EditorCurveBinding> Preserved) UnownedRest(RuntimeAnimatorController runtime,
             FixedExpressionContext context, ISet<string> selectedInputs)
         {

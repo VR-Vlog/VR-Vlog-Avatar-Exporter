@@ -15,6 +15,9 @@ namespace VRVlog.LilToonExporter
 {
     internal static class VrChatExpressionSampler
     {
+        // Tests count the override probe analyses that actually run.
+        internal static Action<string> ProbeAnalysisObserver;
+
         // Source exclusions name the original hierarchy. After authoring passes,
         // an active retained renderer can occupy an omitted object's old path.
         // The omission must not transfer to that unrelated retained identity.
@@ -406,6 +409,14 @@ namespace VRVlog.LilToonExporter
                         competingUpperLayers.Add(index);
             }
             var owned = new List<UnityEngine.Object>();
+            // The two native-slot probes differ only in the probe clip's
+            // constant value. The selection and dependency analyses only
+            // range/constant-check that clip, skip the probe layer, and the
+            // avatar is not written between the probes, so the first results
+            // are reused. The non-native branch rewrites shared layers per
+            // probe and still analyses each one.
+            (HashSet<int> Suspended, bool KnownAutomatic, HashSet<int> UnownedRest, HashSet<EditorCurveBinding> PreparedRest)? selection = null;
+            ExpressionDependencies probeDependencies = null;
             try
             {
                 List<MorphValue> Probe(float input)
@@ -500,14 +511,20 @@ namespace VRVlog.LilToonExporter
                     }
                     if (sourceState != null && nativeSlot)
                     {
-                        var suspended = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
-                            ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
-                            layerIndex.Value, explicitMorphs);
-                        var knownAutomatic = suspended.Count > 0;
-                        var unownedRest = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, probeRuntime, metadata,
-                            explicitMorphs, context, out var preparedRestMorphs);
+                        if (selection == null)
+                        {
+                            ProbeAnalysisObserver?.Invoke("randomRest");
+                            var found = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
+                                ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
+                                layerIndex.Value, explicitMorphs);
+                            var automatic = found.Count > 0;
+                            var rest = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, probeRuntime, metadata,
+                                explicitMorphs, context, out var prepared);
+                            found.UnionWith(rest);
+                            selection = (found, automatic, rest, prepared);
+                        }
+                        var (suspended, knownAutomatic, unownedRest, preparedRestMorphs) = selection.Value;
                         scalarPlan.CommittedMorphs.ExceptWith(preparedRestMorphs);
-                        suspended.UnionWith(unownedRest);
                         if (suspended.Count > 0)
                         {
                             foreach (var index in suspended) layers[index] = Layer(originalLayers[index], null, false, 0);
@@ -538,9 +555,14 @@ namespace VRVlog.LilToonExporter
                             throw new InvalidOperationException("選択したFXレイヤーのParameter Driverが他の表情レイヤーに影響するため、直接クリップとの合成を確定できません: " +
                                 string.Join(", ", omittedDriverWrites.Intersect(originalScope.Parameters).OrderBy(name => name, StringComparer.Ordinal)));
                     }
-                    var dependencies = ExpressionDependencies.AnalyzeNeutral(probeRuntime, scalarPlan.CommittedMorphs,
-                        excludedPath, metadata, fixedContext: context, preserveCommittedMorphs: true, evaluateLayerWeights: true,
-                        weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);
+                    ExpressionDependencies AnalyzeProbe()
+                    {
+                        ProbeAnalysisObserver?.Invoke("dependencies");
+                        return ExpressionDependencies.AnalyzeNeutral(probeRuntime, scalarPlan.CommittedMorphs,
+                            excludedPath, metadata, fixedContext: context, preserveCommittedMorphs: true, evaluateLayerWeights: true,
+                            weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);
+                    }
+                    var dependencies = nativeSlot ? (probeDependencies ??= AnalyzeProbe()) : AnalyzeProbe();
                     var values = SampleNeutral(avatar, probeRuntime, dependencies, metadata, excludedPath, context, scalarPlan);
                     context.UsedParameters.UnionWith(dependencies.Parameters.Where(context.Values.ContainsKey));
                     // A supplied input can establish that a gate is false,

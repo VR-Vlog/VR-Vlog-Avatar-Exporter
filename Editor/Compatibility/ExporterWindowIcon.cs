@@ -1,18 +1,39 @@
 using System;
+using System.Linq;
+using UnityEditor;
 using UnityEngine;
 
-namespace VRVlog.LilToonExporter.LanTransfer
+namespace VRVlog.LilToonExporter
 {
-    // The VR Vlog app icon (128px PNG, rounded corners) for the "アプリに転送" window.
-    // It is embedded because the package ships source files only, not image assets.
-    internal static class AppTransferIcon
+    // The VR Vlog app icon (128px PNG, rounded corners) shown on the tabs of
+    // the exporter's windows. It is embedded because the package ships source
+    // files only, not image assets.
+    public static class ExporterWindowIcon
     {
-        // The caller owns the texture and destroys it with its window.
-        internal static Texture2D Create()
+        private const string TextureName = "VRVlog.ExporterWindowIcon";
+        private static Texture2D texture;
+
+        // One texture shared by every window. It is not an asset, so it outlives
+        // script reloads; pick the existing one up again instead of making another.
+        public static Texture2D Texture => texture != null ? texture : texture =
+            Resources.FindObjectsOfTypeAll<Texture2D>().FirstOrDefault(item => item.name == TextureName) ?? Create();
+
+        public static GUIContent Title(string text) => new GUIContent(text, Texture);
+
+        // The saved window layout keeps the tab text but not this texture, so a
+        // window restored at Unity startup gets its icon back here (call from OnEnable).
+        // GetWindow(title) also sets the text only, so wrap those calls with it too.
+        public static T Restore<T>(T window) where T : EditorWindow
         {
-            var texture = new Texture2D(2, 2, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
-            texture.LoadImage(Convert.FromBase64String(Png), true);
-            return texture;
+            if (window.titleContent.image == null) window.titleContent = Title(window.titleContent.text);
+            return window;
+        }
+
+        private static Texture2D Create()
+        {
+            var created = new Texture2D(2, 2, TextureFormat.RGBA32, false) { name = TextureName, hideFlags = HideFlags.HideAndDontSave };
+            created.LoadImage(Convert.FromBase64String(Png), true);
+            return created;
         }
 
         private const string Png =

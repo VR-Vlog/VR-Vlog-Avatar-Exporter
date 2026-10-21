@@ -40,7 +40,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         public static void Show(string path, string name)
         {
             LanTransferAvailability.RequireEnabled();
-            var window = GetWindow<LanVrmTransferWindow>(false, "スマホに送る");
+            var window = ExporterWindowIcon.Restore(GetWindow<LanVrmTransferWindow>(false, "スマホに送る"));
             window.StopAndClean();
             window.snapshotPath = path;
             window.displayName = LanTransferProtocol.DisplayName(name);
@@ -52,6 +52,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             if (!LanTransferAvailability.Enabled)
             {
                 StopAndClean();

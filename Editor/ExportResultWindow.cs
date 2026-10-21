@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter
 
         static ExportResultWindow Open(ExportResultList result, GameObject avatar, Action openBlinkSettings)
         {
-            var window = GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true);
+            var window = ExporterWindowIcon.Restore(GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true));
             window.minSize = new Vector2(560f, 420f);
             window.result = result ?? new ExportResultList();
             window.avatar = avatar;

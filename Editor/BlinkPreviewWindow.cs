@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excluded, ExportGimmickOptions gimmickOptions)
         {
             var window = CreateInstance<BlinkPreviewWindow>();
-            window.titleContent = new GUIContent(ExporterLocalization.T("瞬きを確認"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("瞬きを確認"));
             window.minSize = new Vector2(360, 460);
             try
             {
