@@ -642,6 +642,8 @@ namespace VRVlog.LilToonExporter
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
         internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にする";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
+        // The ordinary route kept menu faces the list does not show; nothing was left out.
+        internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
 
         // The two steps of the detailed transfer; this window is the first.
         void DrawTransferSteps()
@@ -1698,6 +1700,9 @@ namespace VRVlog.LilToonExporter
             var recordedList = false;
             // The report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
+            // The custom faces of those bytes: the recorded ones, or on the
+            // ordinary route the menu faces registered in the VRM.
+            var savedFaces = expressionCount;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
@@ -1717,7 +1722,7 @@ namespace VRVlog.LilToonExporter
                     ? VRVlog.Poses.HumanoidPoseData.Read(poses).Count : 0;
                 if (extensions.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var animations))
                     poseCount += VRVlog.Poses.HumanoidAnimationData.Read(animations).Count;
-                saved = new SavedExpressionVrm(path, bytes, expressionCount, poseCount, missingShaders);
+                saved = new SavedExpressionVrm(path, bytes, savedFaces, poseCount, missingShaders);
                 status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
@@ -1726,7 +1731,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
-                var menuFaces = !replaceCustomFaces && listedFaces > 0 ? VrmMenuExpressions.CountRegistered(exported) : listedFaces;
+                var menuFaces = !replaceCustomFaces ? VrmMenuExpressions.CountRegistered(exported) : listedFaces;
                 if (menuFaces < listedFaces)
                 {
                     var category = ExporterLocalization.T("その他の表情");
@@ -1767,7 +1772,12 @@ namespace VRVlog.LilToonExporter
                         report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: kept, count: Math.Max(0, listedFaces - menuFaces));
                     }
                 }
+                // More menu faces than the list: the VRM keeps them all, so the
+                // result only says how many it has.
+                else if (menuFaces > listedFaces) warnings.Add(string.Format(ExporterLocalization.T(MenuExceedsListFormat), menuFaces, listedFaces));
                 savedReport = report?.Fallbacks;
+                // Recorded faces leave the menu out; without any the VRM has the menu faces.
+                savedFaces = replaceCustomFaces || expressionCount > 0 ? expressionCount : menuFaces;
                 return exported;
 
                 // Records the clips on the board and exports this save again;
