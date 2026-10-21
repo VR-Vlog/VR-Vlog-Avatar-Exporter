@@ -233,6 +233,20 @@ namespace VRVlog.LilToonExporter
                     string.Format(ExporterLocalization.T(format ?? VrmExpressionBindings.FilledFormat), preset, source));
         }
 
+        internal const string UnusedMorphCategory = "使われないBlendShape";
+        internal const string UnusedMorphFormat = "表情にも使われずアプリからも動かせないBlendShapeを{0}個、VRMに入れませんでした。";
+
+        // One warning with the count, and one result line that lists the
+        // left-out BlendShapes by name.
+        internal static void RecordUnusedMorphs(IReadOnlyCollection<string> removed, ICollection<string> warnings, ExportRecoveryReport report)
+        {
+            if (removed == null || removed.Count == 0) return;
+            var reason = string.Format(ExporterLocalization.T(UnusedMorphFormat), removed.Count);
+            warnings?.Add(reason);
+            var category = ExporterLocalization.T(UnusedMorphCategory);
+            foreach (var name in removed) report.Fallbacks.Record(ExportOutcome.Omitted, category, name, reason);
+        }
+
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
         internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
@@ -712,6 +726,15 @@ namespace VRVlog.LilToonExporter
                     if (blink.RequiresUnifiedEvidence && !VrmUnifiedExpressions.HasUsableEvidence(tracked))
                         throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
                     return tracked;
+                }, () => exported);
+                // After every expression is bound: BlendShapes that nothing
+                // binds and the app does not drive by name are left out.
+                exported = guard.Run(ExportStage.UnusedMorphs, () =>
+                {
+                    var removed = new List<string>();
+                    var stripped = UnusedMorphTargets.Strip(exported, warnings, removed);
+                    RecordUnusedMorphs(removed, warnings, recoveryReport);
+                    return stripped;
                 }, () => exported);
                 var marked = false;
                 if (fullSnapshot != null)

@@ -42,6 +42,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/FixedExpressionCurveFixture.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/AnimatedExpressionFixture.cs'),
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/UnifiedExpressionFixture.cs'),
+    (Join-Path $taskRepo 'Editor/UnusedMorphTargets.cs'),
+    (Join-Path $taskRepo 'Tests/Editor/Fixtures/UnusedMorphTargetsFixture.cs'),
     (Join-Path $PSScriptRoot 'MeshTestShim.cs'),
     (Join-Path $PSScriptRoot 'MaterialTestShim.cs'),
     (Join-Path $PSScriptRoot 'LightingBehaviorTests.cs'),
@@ -55,4 +57,5 @@ Add-Type -Path $taskSources -CompilerOptions '/define:EXPORTER_BEHAVIOR_TESTS'
 [ExporterTextureResizeBehaviorTests]::Run()
 [ExporterSkinRootBehaviorTests]::Run()
 [VRVlog.LilToonExporter.Tests.GlbBinaryFixture]::Run({ param($condition, $message) if (-not $condition) { throw $message } })
+[VRVlog.LilToonExporter.Tests.UnusedMorphTargetsFixture]::Run({ param($condition, $message) if (-not $condition) { throw $message } })
 if ($LocalVrm) { [ExporterBehaviorTests]::VerifyLocalVrm($LocalVrm) }
