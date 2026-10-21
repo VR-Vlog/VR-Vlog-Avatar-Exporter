@@ -727,6 +727,9 @@ namespace VRVlog.LilToonExporter
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
         internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にする";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
+        // The ordinary route kept the menu faces, fewer than the list; list faces
+        // the menu does not give were left out (menu faces and list clips share no key).
+        internal const string MenuShortKeptMenuFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧{1}件のうちメニューにない表情は書き出していません";
         // The ordinary route kept menu faces the list does not show; nothing was left out.
         internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
 
@@ -2127,8 +2130,9 @@ namespace VRVlog.LilToonExporter
             // The record route replaces the menu faces even when nothing is left to record.
             var replaceCustomFaces = board.UsesRecordRoute;
             // The ordinary route evaluates the menu again and can lose faces the
-            // board lists (a non-FX layer writing what a face reads). With fewer
-            // menu faces than the list, the same save records the list instead.
+            // board lists (a non-FX layer writing what a face reads). With no
+            // menu face at all, the same save records the list instead; with
+            // some, the menu faces (and their motion) are kept.
             var listedFaces = replaceCustomFaces ? 0 : board.OtherCount;
             var recordedList = false;
             // The report of the attempt that produced the bytes being saved.
@@ -2168,7 +2172,7 @@ namespace VRVlog.LilToonExporter
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
                 var menuFaces = !replaceCustomFaces ? VrmMenuExpressions.CountRegistered(exported) : listedFaces;
-                if (menuFaces < listedFaces)
+                if (menuFaces == 0 && listedFaces > 0)
                 {
                     var category = ExporterLocalization.T("その他の表情");
                     var resolved = ResolveMenuShort(exported, menuFaces, listedFaces,
@@ -2201,6 +2205,15 @@ namespace VRVlog.LilToonExporter
                         warnings.Add(resolved.Kept);
                         report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: resolved.Kept, count: Math.Max(0, listedFaces - menuFaces));
                     }
+                }
+                // Some menu faces but fewer than the list: recording the list would
+                // replace the animated menu faces with still ones, so the menu
+                // result is kept and the list faces it lacks are reported as left out.
+                else if (menuFaces < listedFaces)
+                {
+                    var kept = string.Format(ExporterLocalization.T(MenuShortKeptMenuFormat), menuFaces, listedFaces);
+                    warnings.Add(kept);
+                    report?.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T("その他の表情"), reason: kept, count: listedFaces - menuFaces);
                 }
                 // More menu faces than the list: the VRM keeps them all, so the
                 // result only says how many it has.

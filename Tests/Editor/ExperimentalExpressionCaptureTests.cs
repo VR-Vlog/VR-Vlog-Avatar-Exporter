@@ -1109,6 +1109,102 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }
 
+        // The expression menu gives two faces and the board lists them with a
+        // third face the menu does not have. Recording the list would replace
+        // the menu faces (and their motion) with still ones, so the ordinary
+        // route keeps the menu result and says the list faces it lacks were left out.
+        [Test]
+        public void OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces()
+        {
+            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var listOnly = new AnimationClip { name = "Listed only" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-menu-kept-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var names = new[] { "Face A", "Face B" };
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                controller.AddParameter("Face", AnimatorControllerParameterType.Int);
+                var machine = controller.layers[0].stateMachine;
+                var neutral = machine.AddState("Neutral"); neutral.writeDefaultValues = false; machine.defaultState = neutral;
+                var clips = new AnimationClip[names.Length];
+                for (var index = 0; index < names.Length; index++)
+                {
+                    var state = machine.AddState(names[index]); state.writeDefaultValues = false;
+                    clips[index] = new AnimationClip { name = names[index] };
+                    AnimationUtility.SetEditorCurve(clips[index], EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                        AnimationCurve.Constant(0, 1, 75 - index * 20));
+                    AssetDatabase.AddObjectToAsset(clips[index], controller); state.motion = clips[index];
+                    var transition = neutral.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
+                    transition.AddCondition(AnimatorConditionMode.Equals, index + 1, "Face");
+                }
+                // A face only the board lists; its weight differs from both menu faces.
+                AnimationUtility.SetEditorCurve(listOnly, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Constant(0, 1, 15));
+                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
+                using (var data = new SerializedObject(menu))
+                {
+                    var controls = data.FindProperty("controls"); controls.arraySize = names.Length;
+                    for (var index = 0; index < names.Length; index++)
+                    {
+                        var item = controls.GetArrayElementAtIndex(index); item.FindPropertyRelative("name").stringValue = names[index];
+                        var control = item.FindPropertyRelative("type"); control.enumValueIndex = Array.IndexOf(control.enumNames, "Toggle");
+                        item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Face";
+                        item.FindPropertyRelative("value").floatValue = index + 1;
+                    }
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var descriptor = fixture.Source.AddComponent(descriptorType);
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customExpressions").boolValue = true; data.FindProperty("expressionsMenu").objectReferenceValue = menu;
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                    var layer = list.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
+                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, clips.Append(listOnly).Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.UsesRecordRoute, Is.False);
+                Assert.That(board.OtherCount, Is.EqualTo(names.Length + 1));
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                // The menu faces stay with their animation extension: the list was not recorded in their place.
+                Assert.That(custom.Keys, Is.SupersetOf(names));
+                Assert.That(custom.Keys, Has.No.Member(listOnly.name));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
+                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
+                Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
+                var status = (string)type.GetField("status", flags).GetValue(window);
+                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 1);
+                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(1));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, names.Length + 1)));
+                var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
+                Assert.That(saved.Expressions, Is.EqualTo(names.Length), "The saved count is the menu faces the VRM has.");
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]
