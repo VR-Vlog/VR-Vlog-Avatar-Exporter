@@ -61,7 +61,7 @@ namespace VRVlog.LilToonExporter
             catch (InvalidOperationException error)
             {
                 var bindings = metadata.Controller.animationClips.SelectMany(AnimationUtility.GetCurveBindings)
-                    .Where(binding => binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) &&
+                    .Where(binding => PoseSampling.IsBlendShape(binding) &&
                         excludedPath?.Invoke(binding.path) != true);
                 throw WithAffected(error, bindings);
             }

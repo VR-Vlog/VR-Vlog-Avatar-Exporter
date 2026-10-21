@@ -739,6 +739,8 @@ namespace VRVlog.LilToonExporter
         }
         internal static bool IsHumanoidChannel(EditorCurveBinding binding) => binding.type == typeof(Animator) && binding.path == "" &&
             !binding.isPPtrCurve && HumanoidChannels.Contains(binding.propertyName);
+        internal static bool IsBlendShape(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&
+            binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal);
         internal static AvatarMaskBodyPart Part(string bone)
         {
             if (bone == "neck" || bone == "head") return AvatarMaskBodyPart.Head;

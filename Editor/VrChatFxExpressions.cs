@@ -885,7 +885,7 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("FXのMotion Timeは有限の長さを持つ非ループのClipが必要です: " + state.name + " / " + clip.name);
             var knots = new SortedSet<float> { 0, 1 };
             foreach (var binding in AnimationUtility.GetCurveBindings(clip).Where(binding => excludedPath?.Invoke(binding.path) != true &&
-                binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)))
+                PoseSampling.IsBlendShape(binding)))
             {
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 if (curve == null || curve.length == 0)
@@ -922,8 +922,7 @@ namespace VRVlog.LilToonExporter
                     if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
                     return AnimationUtility.GetCurveBindings(clip).Any(binding =>
                         binding.type == typeof(Animator) && faceInputs.Contains(binding.propertyName) ||
-                        excludedPath?.Invoke(binding.path) != true && binding.type == typeof(SkinnedMeshRenderer) &&
-                        binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+                        excludedPath?.Invoke(binding.path) != true && PoseSampling.IsBlendShape(binding));
                 }
                 return motion is BlendTree tree && tree.children.Any(child => HasFaceOutput(child.motion, replacements, excludedPath, faceInputs, stack, visit));
             }

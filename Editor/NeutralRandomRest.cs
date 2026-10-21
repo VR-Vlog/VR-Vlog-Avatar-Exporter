@@ -84,8 +84,7 @@ namespace VRVlog.LilToonExporter
                     {
                         // Inspect the original clip as a whole. A caller's
                         // exclusion must not hide geometry or parameter effects.
-                        if (binding.type != typeof(SkinnedMeshRenderer) ||
-                            !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) { safe = false; break; }
+                        if (!PoseSampling.IsBlendShape(binding)) { safe = false; break; }
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
                         VrChatGestureExpressions.ReadCurve(curve);
                         changing |= active.Clips.Contains(clip) && !VrChatExpressionSampler.IsConstant(curve);
