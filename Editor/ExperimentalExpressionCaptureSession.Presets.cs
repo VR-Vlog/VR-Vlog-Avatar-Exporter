@@ -189,7 +189,8 @@ namespace VRVlog.LilToonExporter
             return AnimationUtility.GetCurveBindings(clip).Select(binding => (
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
-                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length))).ToList();
+                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))
+                .Where(morph => !skippedPaths.Contains(morph.Item1)).ToList(); // As the recorded face drops them.
         }
 
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)

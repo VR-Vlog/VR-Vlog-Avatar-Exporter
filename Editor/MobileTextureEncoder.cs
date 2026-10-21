@@ -14,7 +14,7 @@ namespace VRVlog.LilToonExporter
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             var size = TextureResizePolicy.Size(source.width, source.height);
-            if (size.Item1 == source.width && size.Item2 == source.height) return RequirePng(ImageConversion.EncodeToPNG(source), source.name);
+            if (size.Item1 == source.width && size.Item2 == source.height) return RequirePng(PngWriter.Encode(source), source.name);
             var pixels = source.GetPixels32();
             var rgba = new byte[checked(pixels.Length * 4)];
             for (var i = 0; i < pixels.Length; i++)
@@ -30,7 +30,7 @@ namespace VRVlog.LilToonExporter
                 for (var i = 0; i < colors.Length; i++) colors[i] = new Color32(resized[i * 4], resized[i * 4 + 1], resized[i * 4 + 2], resized[i * 4 + 3]);
                 destination.SetPixels32(colors);
                 destination.Apply(false, false);
-                var png = RequirePng(ImageConversion.EncodeToPNG(destination), source.name);
+                var png = RequirePng(PngWriter.Encode(destination), source.name);
                 Warn(warnings, source.name, source.width, source.height, size.Item1, size.Item2);
                 return png;
             }

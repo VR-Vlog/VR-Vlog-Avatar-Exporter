@@ -25,6 +25,8 @@ namespace UnityEngine
         public Texture2D(int w, int h, TextureFormat format, bool mip, bool linear) => throw new System.NotSupportedException();
         public void ReadPixels(Rect rect, int x, int y, bool mip) => throw new System.NotSupportedException();
         public void Apply(bool mip, bool unreadable) => throw new System.NotSupportedException();
+        public TextureFormat format => TextureFormat.RGBA32;
+        public bool isReadable => throw new System.NotSupportedException("Image readback requires Unity.");
         public Color32[] GetPixels32() => throw new System.NotSupportedException("Image readback requires Unity.");
         public void SetPixels32(Color32[] pixels) => throw new System.NotSupportedException("Image writes require Unity.");
     }
@@ -49,7 +51,7 @@ namespace UnityEngine
     }
     public enum FilterMode { Point, Bilinear, Trilinear }
     public enum TextureWrapMode { Clamp, Mirror, Repeat }
-    public enum TextureFormat { RGBA32 }
+    public enum TextureFormat { RGBA32, ARGB32, RGB24, BGRA32 }
     public enum RenderTextureFormat { ARGB32 }
     public enum RenderTextureReadWrite { sRGB, Linear }
     public enum ColorSpace { Gamma, Linear }

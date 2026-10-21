@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using VRVlog.LilToonExporter.Compatibility;
 
@@ -426,6 +428,44 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return string.IsNullOrEmpty(script) ? null : AssetDatabase.LoadAssetAtPath<TAsset>(Path.ChangeExtension(script, extension));
         }
 
+        // Unity 2022.3's editor text remembers, per character, which fallback font drew it, without the
+        // weight: once any editor UI Toolkit panel has drawn a Japanese character in bold, that character
+        // comes from the bold Japanese font in normal-weight text too, so a few kana of a line look bold.
+        // The window draws its text from its own font asset instead, made from the OS font the editor
+        // uses for Japanese on Windows, so no other text shares its lookup. Korean and the Chinese
+        // characters Yu Gothic lacks come from its own fallbacks, made from the OS fonts the editor
+        // falls back to: through the editor's fallbacks, bold text in the window would leak the same way.
+        // Elsewhere it keeps the editor's font.
+        private const string TextFontName = "VR Vlog App Transfer Text";
+        private static readonly string[] TextFallbackFamilies = { "Malgun Gothic", "Microsoft JhengHei" };
+        private static FontAsset textFont;
+        private static bool textFontTried;
+
+        internal static FontAsset TextFont()
+        {
+            // Without the font the lookup would log once per window opening; try once per domain.
+            if (textFont != null || textFontTried || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
+            textFont = OsFont(TextFontName, "Yu Gothic UI", "Semilight");
+            textFontTried = textFont == null;
+            if (textFont != null && (textFont.fallbackFontAssetTable == null || textFont.fallbackFontAssetTable.Count == 0))
+            {
+                textFont.fallbackFontAssetTable = TextFallbackFamilies
+                    .Select(family => OsFont(TextFontName + " " + family, family, "Regular"))
+                    .Where(f => f != null).ToList();
+            }
+            return textFont;
+        }
+
+        // The asset outlives a domain reload; reuse it rather than make one more each time.
+        private static FontAsset OsFont(string name, string family, string style)
+        {
+            var font = Resources.FindObjectsOfTypeAll<FontAsset>().FirstOrDefault(f => f.name == name);
+            if (font != null) return font;
+            font = FontAsset.CreateFontAsset(family, style, 90);
+            if (font != null) { font.name = name; font.hideFlags = HideFlags.DontSave; }
+            return font;
+        }
+
         // The UXML holds the structure only; every text is set in Refresh through T.
         private void CreateGUI()
         {
@@ -445,6 +485,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             root.styleSheets.Add(sheet);
             root.AddToClassList("app-transfer");
             root.AddToClassList(EditorGUIUtility.isProSkin ? "app-transfer--dark" : "app-transfer--light");
+            var font = TextFont();
+            if (font != null) root.style.unityFontDefinition = FontDefinition.FromSDFFont(font);
 
             disabledBox = root.Q<HelpBox>("disabled");
             content = root.Q("content");

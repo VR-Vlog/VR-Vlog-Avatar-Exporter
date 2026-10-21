@@ -11,6 +11,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Tests/Editor/Fixtures/GlbBinaryFixture.cs'),
     (Join-Path $taskRepo 'Editor/ExportSkinRoots.cs'),
     (Join-Path $taskRepo 'Editor/TextureResizePolicy.cs'),
+    (Join-Path $taskRepo 'Editor/PngWriter.cs'),
     (Join-Path $taskRepo 'Editor/MobileTextureEncoder.cs'),
     (Join-Path $taskRepo 'Editor/GlbTextureDownsizer.cs'),
     (Join-Path $taskRepo 'Editor/BlinkShapeNames.cs'),
