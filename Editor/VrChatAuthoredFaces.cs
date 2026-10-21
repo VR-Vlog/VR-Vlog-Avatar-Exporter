@@ -51,6 +51,10 @@ namespace VRVlog.LilToonExporter
                 if (!inputs.Overlaps(source.ExternalParameters) && !inputs.Contains("AFK")) continue;
                 foreach (var target in reachable[layer])
                 {
+                    // A layer can mix hand gestures and contact input into the same
+                    // states. The gesture import already holds that face with its
+                    // permanent FX applied, so reading it again only costs time.
+                    if (source.GestureStates.Contains((layer, target.State))) continue;
                     var motion = controller.GetStateEffectiveMotion(target.State, layer) ?? target.State.motion;
                     if (!(motion is AnimationClip clip)) continue;
                     if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
