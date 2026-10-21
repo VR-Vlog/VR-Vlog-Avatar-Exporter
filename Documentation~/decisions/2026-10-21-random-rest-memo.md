@@ -44,4 +44,8 @@
   - スコープの外と、保存済みでない FX・ほかのプレイアブルのコントローラーでは使い回さないこと。
 - 複製せずに返す版と、キーに `context.Values` を含めない版に一時的に書き換えると、それぞれ対応するテストが失敗することを確かめた。
 - EditMode のテスト（`ExpressionInspectCacheTests`・`RandomNeutralRestTests`・`HeldAutomaticExpressionTests`・`ParameterDriverExpressionTests`・`VrChatMenuExpressionTests`・`NeutralShapeSamplerTests`・`ExperimentalExpressionCaptureTests`）は 655 件中 637 件が通り、2 件が飛ばされ、16 件が失敗した。失敗した 16 件は `ExperimentalExpressionCaptureTests` で、変更前と同じく外部パッケージが無いことによるもの。
-- 実際のアバターで書き出した VRM の一致と時間の比較は、計測してから追記する。
+- 手元のアバター 30 体（シード 20261021 で無作為に選択）を、変更前（開発ブランチ 0027a3a）と変更後で 2 回ずつ書き出し、`Tools/compare-exports.py` で突き合わせた。60 組とも、成否・失敗文・書き出し詳細の警告・表情の名前と数と全フィールド（値・割り当て先）・glb の JSON と BIN のハッシュが一致した。軽いアバターと重いアバターを 5 回続けて書き出した 10 組も一致した。
+- 同じ PC の Unity 2022.3（batchmode）で測った書き出し時間は次のとおり。変更前の重いアバターの 4・5 回目は、同じ PC で別の Unity が動いていて元のアバターのハッシュの時間も約 2 割伸びていたので、2・3 回目と比べた。
+  - 軽いアバター（表情の候補 32 個）: 中央値（2〜5 回目）12.5 秒 → 11.4 秒。Random の待機レイヤーの確認の合計は 1 回の書き出しあたり約 1.35 秒 → 約 0.2 秒。
+  - 重いアバター（表情の候補 77 個）: 2・3 回目 48.3〜50.2 秒 → 43.8〜44.6 秒。Random の待機レイヤーの確認は約 9.3 秒 → 約 4.8 秒（残りは `HasOnlyUnchangedUnitFxCommands` など、選んだ表情で結果が変わる部分）。
+  - 30 体の中で一番時間がかかったアバター: 201.7 秒 → 185.3 秒。
