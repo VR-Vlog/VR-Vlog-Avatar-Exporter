@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using NUnit.Framework;
+using UnityEditor;
 using UniVRM10;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -753,6 +754,31 @@ namespace VRVlog.LilToonExporter.Tests
             var filled = new List<(string Preset, string Source)>();
             Assert.That(Presets(Infer(bytes, filled: filled)), Is.Empty);
             Assert.That(filled, Is.Empty);
+        }
+
+        [Test]
+        public void EveryShippedLocaleTranslatesTheMouthWarningsAndTheFilledNotice()
+        {
+            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
+            var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var text = System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
+                foreach (var source in new[] {
+                    VrmExpressionBindings.FilledFormat,
+                    VrmExpressionBindings.UnboundVisemeWarning,
+                    VrmExpressionBindings.UnexportedVisemeMeshWarning })
+                {
+                    var key = "{\"source\":\"" + source + "\",\"translated\":\"";
+                    var start = text.IndexOf(key, StringComparison.Ordinal);
+                    Assert.That(start, Is.GreaterThanOrEqualTo(0), locale + ": " + source);
+                    var translated = text.Substring(start + key.Length, text.IndexOf('"', start + key.Length) - start - key.Length);
+                    Assert.That(translated, Is.Not.Empty.And.Not.EqualTo(source), locale + ": " + source);
+                    if (source == VrmExpressionBindings.FilledFormat)
+                        Assert.That(translated, Does.StartWith("{0}"), locale + ": the preset name stays in front.");
+                }
+                Assert.That(text, Does.Not.Contain("既知の表情名"), locale + ": the old mouth notice is gone.");
+            }
         }
     }
 }

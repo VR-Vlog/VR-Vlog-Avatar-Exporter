@@ -177,7 +177,7 @@ namespace VRVlog.LilToonExporter
             // Only slots that named a shape count. Empty slots stay silent as
             // before, and a known alias that bound the preset is enough.
             if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
-                Warn(warnings, descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning);
+                Warn(warnings, ExporterLocalization.T(descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning));
             if (inferEmotions)
             {
                 var filledHere = AddEmotions(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates, emotionShapes, shapeNames);
