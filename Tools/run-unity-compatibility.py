@@ -968,6 +968,7 @@ BEHAVIOR_CASES = {
         'InheritedHeldFaceCannotConcealACorruptPreviousMovingCurve': 1,
         'ContactAuthoredFacesKeepTheirCompositionTimelineAndPreparedAppearance': 2,
         'AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice': 3,
+        'AContactFaceCutFromTheSameHandGestureClipIsNotAddedTwice': 3,
         'AStateAlreadyReadAsAHandGestureIsSkippedButAContactOnlyStateIsKept': 1,
         'HardwareFaceFallbackCannotPublishMutedOrOrphanStates': 2,
         'AConstantHardwareFaceDoesNotNeedAnAutoplayClock': 2,
