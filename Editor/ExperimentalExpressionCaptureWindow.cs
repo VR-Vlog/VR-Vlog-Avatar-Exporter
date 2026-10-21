@@ -85,6 +85,8 @@ namespace VRVlog.LilToonExporter
         const string DragKey = "VRVlog.LilToonExporter.ExpressionBoardCard";
         Vector2 pressStart;
         Place? dropHover, dropHoverNext;
+        // The .anim drop area under a valid drag, keyed by its label.
+        string clipDropHover, clipDropHoverNext;
         Vector2? dragMouse;
         // Window-relative slot rectangles, kept for tests and screenshots.
         readonly System.Collections.Generic.Dictionary<Place, Rect> slotRects = new System.Collections.Generic.Dictionary<Place, Rect>();
@@ -146,7 +148,7 @@ namespace VRVlog.LilToonExporter
         static Color ErrorColor => Skin(0xe0675f, 0xb3261e);
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
-        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim,
+        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim, dropBox,
             nameCenter;
         bool stylesForProSkin;
         Texture2D accentNormal, accentHover, accentActive;
@@ -462,9 +464,9 @@ namespace VRVlog.LilToonExporter
             var current = Event.current;
             var dragUpdate = current.type == EventType.DragUpdated;
             var dragMousePosition = current.mousePosition;
-            if (dragUpdate) dropHoverNext = null;
+            if (dragUpdate) { dropHoverNext = null; clipDropHoverNext = null; }
             if (current.type == EventType.DragExited || current.type == EventType.DragPerform || current.type == EventType.MouseUp)
-            { dropHover = null; dragMouse = null; }
+            { dropHover = null; clipDropHover = null; dragMouse = null; }
             if (current.type == EventType.MouseMove)
             {
                 var hovered = closableTiles.FindIndex(tile => tile.Contains(current.mousePosition));
@@ -543,6 +545,7 @@ namespace VRVlog.LilToonExporter
             if (dragUpdate)
             {
                 if (!Nullable.Equals(dropHover, dropHoverNext)) { dropHover = dropHoverNext; Repaint(); }
+                if (clipDropHover != clipDropHoverNext) { clipDropHover = clipDropHoverNext; Repaint(); }
                 var dragging = DragAndDrop.GetGenericData(DragKey) is AnimationClip;
                 dragMouse = dragging ? dragMousePosition : (Vector2?)null;
                 if (dragging) Repaint();
@@ -659,6 +662,9 @@ namespace VRVlog.LilToonExporter
 
         void DrawPreview()
         {
+            // Same caption row as the VRM expression slots below.
+            var header = GUILayoutUtility.GetRect(100, 22, GUILayout.ExpandWidth(true));
+            GUI.Label(new Rect(header.x, header.y + 2, header.width, 18), ExporterLocalization.T("プレビュー"), dimMini);
             var rect = GUILayoutUtility.GetRect(100, 165, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint && rect.width > 0)
             {
@@ -675,12 +681,8 @@ namespace VRVlog.LilToonExporter
                 if (Event.current.type == EventType.ScrollWheel)
                 { zoom = Mathf.Clamp(zoom + Event.current.delta.y * .04f, .25f, 2); Event.current.Use(); Repaint(); }
             }
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
-                if (GUILayout.Button(new GUIContent(ExporterLocalization.T("元の顔"), ExporterLocalization.T("元の顔に戻す。画像をドラッグで回転、ホイールで拡大。")), GUILayout.Width(65)))
-                    Queue(() => { session.RestoreBaseline(); previewName = ExporterLocalization.T("基準の顔"); });
-            }
+            GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
+            EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
         }
 
         // ---- Expression board ----
@@ -1630,6 +1632,8 @@ namespace VRVlog.LilToonExporter
                 using (new EditorGUI.DisabledScope(clipToAdd == null))
                     if (GUILayout.Button(ExporterLocalization.T("追加"), GUILayout.Width(60))) { var clip = clipToAdd; Queue(() => AddClip(clip)); }
             }
+            EditorGUILayout.Space(4);
+            DropClips(ExporterLocalization.T("Projectから表情の.animをドロップして追加（複数可）"), AddClips);
             if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
             else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
         }
@@ -1737,6 +1741,10 @@ namespace VRVlog.LilToonExporter
             closeText = Label(EditorStyles.label, DimColor, TextAnchor.MiddleCenter);
             closeText.hover.textColor = TextColor;
             centeredDim = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleCenter);
+            // Drop areas: the hint is centred in the box and readable on both skins.
+            dropBox = Label(GUI.skin.box, DimColor, TextAnchor.MiddleCenter);
+            dropBox.wordWrap = true;
+            dropBox.padding = new RectOffset(6, 6, 2, 2);
             Texture2D Solid(Color color)
             {
                 var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
@@ -1903,12 +1911,14 @@ namespace VRVlog.LilToonExporter
         void DropClips(string label, Action<AnimationClip[]> accept)
         {
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
-            GUI.Box(area, label);
+            GUI.Box(area, label, dropBox);
             var current = Event.current;
+            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, AccentColor);
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
             var clips = DragAndDrop.objectReferences.OfType<AnimationClip>().Where(clip => clip != null).Distinct().ToArray();
             var valid = GUI.enabled && clips.Length > 0 && DragAndDrop.objectReferences.All(item => item is AnimationClip);
             DragAndDrop.visualMode = valid ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            if (valid && current.type == EventType.DragUpdated) clipDropHoverNext = label;
             if (valid && current.type == EventType.DragPerform) { DragAndDrop.AcceptDrag(); Queue(() => accept(clips)); }
             current.Use();
         }
@@ -2289,7 +2299,7 @@ namespace VRVlog.LilToonExporter
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null; showExcludedObjects = null;
-            dropHover = dropHoverNext = null; dragMouse = null;
+            dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;
             ClearThumbnails(); slotRects.Clear(); closableTiles.Clear(); hoverTile = -1;
             blinkFallback = null; blinkFallbackStale = true;
         }
