@@ -256,7 +256,7 @@ namespace VRVlog.LilToonExporter
             foreach (var plan in plans)
             {
                 var entry = plan.Entry;
-                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source };
+                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source, Clip = entry.Clip };
                 // The source shapes and end weights, before any of them is
                 // baked into a menu target, for emotion inference.
                 foreach (var group in plan.Poses)

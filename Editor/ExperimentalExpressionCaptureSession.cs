@@ -376,6 +376,9 @@ namespace VRVlog.LilToonExporter
             finally { ApplyUnchecked(current); }
         }
 
+        static bool HasShape(Pose pose, string path, string shape) =>
+            pose.Rows.SingleOrDefault(value => value.Path == path) is var row && row != null && Array.IndexOf(row.Shapes, shape) >= 0;
+
         static void Set(Pose pose, string path, string shape, float weight)
         {
             var row = pose.Rows.SingleOrDefault(value => value.Path == path);
