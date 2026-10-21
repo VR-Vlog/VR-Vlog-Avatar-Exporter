@@ -1706,12 +1706,10 @@ namespace VRVlog.LilToonExporter
             // menu faces than the list, the same save records the list instead.
             var listedFaces = replaceCustomFaces ? 0 : board.OtherCount;
             var recordedList = false;
-            var completed = false;
             // The report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
-                completed = true;
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
                 // A plain field: still set when the recovery window saves after this board closed.
                 LastMissingShaderCount = missingShaders;
@@ -1776,7 +1774,7 @@ namespace VRVlog.LilToonExporter
                     if (kept != null)
                     {
                         warnings.Add(kept);
-                        report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: kept, count: listedFaces - menuFaces);
+                        report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: kept, count: Math.Max(0, listedFaces - menuFaces));
                     }
                 }
                 savedReport = report?.Fallbacks;
@@ -1786,7 +1784,9 @@ namespace VRVlog.LilToonExporter
                 // later recovery attempts of the save take the same route.
                 byte[] ExportRecorded(System.Collections.Generic.List<AnimationClip> clips, bool replace)
                 {
+                    var shown = status;
                     RecordClips(clips);
+                    status = shown;
                     expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
                     expressionCount = expressions.Length;
                     replaceCustomFaces = replace;
@@ -1798,8 +1798,9 @@ namespace VRVlog.LilToonExporter
                 }
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
-            // A save that stopped without a file leaves the board's own records.
-            if (recovery == null && !completed && recordedList && this != null && ReferenceEquals(session, target)) RecordBoardClips();
+            // The bytes are made by now; the board keeps its own records again,
+            // whether the save finished, waits on the result list or stopped.
+            if (recovery == null && recordedList && this != null && ReferenceEquals(session, target)) RecordBoardClips();
             if (recovery != null)
             {
                 recovery.RetainInput(target.RetainForRecovery());

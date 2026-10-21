@@ -794,6 +794,9 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 1)));
                     var menuWarning = ExporterLocalization.T("VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。");
                     Assert.That(status.Split('\n').Count(line => line == menuWarning), Is.LessThanOrEqualTo(1), "The replaced menu result leaves its warnings out.");
+                    Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero,
+                        "After the save the board keeps its own records again.");
+                    Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
                 }
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
