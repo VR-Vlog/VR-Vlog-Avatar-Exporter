@@ -402,6 +402,8 @@ BEHAVIOR_CASES = {
         'MenuSelectionCapturesACombinationAndLeavesSourceUntouched': 1,
         'MenuTraversalKeepsLabelsAncestorGatesAndReportsPuppets': 1,
         'PortableCurveMatchesUnityWeightedAndSteppedAnimation': 1,
+        'GestureClipIgnoresHumanoidPoseButRejectsParameterCurves': 1,
+        'HumanoidChannelsComeFromUnityVocabulary': 1,
         'WriteDefaultsOffRetainsTheWholeEvaluatedFace': 1,
         'RepeatedFxParameterDeclarationsKeepMenuExpressions': 1,
         'ConflictingFxParameterDeclarationsAreLeftForStrictChecks': 1,

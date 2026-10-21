@@ -518,6 +518,35 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void GestureClipIgnoresHumanoidPoseButRejectsParameterCurves()
+        {
+            var clip = Clip("Fist smile", 75, 0);
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"),
+                AnimationCurve.Linear(0, -1, 1, 1));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Left Upper Leg Twist In-Out"),
+                AnimationCurve.Constant(0, 1, .5f));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "RootT.y"), AnimationCurve.Constant(0, 1, 1));
+            var values = VrChatGestureExpressions.ReadPose(avatar, clip);
+            Assert.That(values.Select(v => v.Shape), Is.EquivalentTo(new[] { "Face size", "Blink" }));
+            Assert.That(values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(75));
+            // A controller parameter can drive another layer, so it is not
+            // known to leave the face alone.
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BlinkOff"), AnimationCurve.Constant(0, 1, 1));
+            Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadPose(avatar, clip));
+        }
+
+        [Test]
+        public void HumanoidChannelsComeFromUnityVocabulary()
+        {
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "RightHand.Thumb.Spread")), Is.True);
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "Right Thumb Spread")), Is.True);
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftFootQ.w")), Is.True);
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "GestureLeft")), Is.False);
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("Armature", typeof(Animator), "RootT.x")), Is.False);
+            Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Transform), "RootT.x")), Is.False);
+        }
+
+        [Test]
         public void PortableCurveMatchesUnityWeightedAndSteppedAnimation()
         {
             var a = new Keyframe(0, -20, 0, 180, .25f, .8f) { weightedMode = WeightedMode.Both };
