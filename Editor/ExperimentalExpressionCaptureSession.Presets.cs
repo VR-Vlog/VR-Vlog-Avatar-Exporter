@@ -456,6 +456,11 @@ namespace VRVlog.LilToonExporter
         internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
         Dictionary<AnimationClip, List<string>> sourceMenuPaths;
+        VrChatMenuImportSummary sourceMenuOverLimit;
+
+        // Why no emotion comes from the menu item names, null when the menu
+        // was read (or not read yet, or read for a caller's menuPaths).
+        internal string MenuOverLimitMessage => MenuOverLimitNote(sourceMenuOverLimit);
 
         // Per emotion, the best tier wins; within a tier added/registered clips
         // come before BlendShapes, in the given order. A clip whose name says
@@ -474,7 +479,8 @@ namespace VRVlog.LilToonExporter
         internal Dictionary<ExpressionPreset, PresetAssignment> SuggestPresets(IEnumerable<AnimationClip> clips, BlinkExportOptions blinkOptions = null,
             IReadOnlyDictionary<AnimationClip, List<string>> menuPaths = null)
         {
-            menuPaths = menuPaths ?? (sourceMenuPaths = sourceMenuPaths ?? MenuClipPaths(Source));
+            if (menuPaths == null && sourceMenuPaths == null) sourceMenuPaths = MenuClipPaths(Source, out sourceMenuOverLimit);
+            menuPaths = menuPaths ?? sourceMenuPaths;
             IEnumerable<string> PathsOf(AnimationClip clip) => menuPaths.TryGetValue(clip, out var paths) ? paths : Enumerable.Empty<string>();
             var candidates = new List<(ExpressionPreset Preset, int Tier, int Order, Func<ExpressionPreset, PresetAssignment> Create)>();
             var order = 0;

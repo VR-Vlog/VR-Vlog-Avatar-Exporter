@@ -221,13 +221,13 @@ namespace VRVlog.LilToonExporter
                 if (expression.EndsNeutral) report.Fallbacks.Add(ExportFallbackKind.ExpressionEndsNeutral, expression.Name);
         }
 
-        internal const string InferredEmotionCategory = "名前から自動で設定";
+        internal const string InferredPresetCategory = "名前から自動で設定";
 
-        // Emotion presets filled from a name or from the shapes a menu face
-        // moves are kept output the user should check.
-        internal static void RecordInferredEmotions(IEnumerable<(string Preset, string Source, string Format)> filled, ExportRecoveryReport report)
+        // Presets filled from a name or from the shapes a menu face moves
+        // (emotions, mouth, neutral, gaze) are kept output the user should check.
+        internal static void RecordInferredPresets(IEnumerable<(string Preset, string Source, string Format)> filled, ExportRecoveryReport report)
         {
-            var category = ExporterLocalization.T(InferredEmotionCategory);
+            var category = ExporterLocalization.T(InferredPresetCategory);
             foreach (var (preset, source, format) in filled)
                 report.Fallbacks.Record(ExportOutcome.Kept, category, preset,
                     string.Format(ExporterLocalization.T(format ?? VrmExpressionBindings.FilledFormat), preset, source));
@@ -694,8 +694,9 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.SkinRepair, () => ExportSkinRoots.Repair(exported, warnings), () => exported);
                 if (lookAt != null) exported = guard.Run(ExportStage.LookAt, () => lookAt.Apply(exported), () => exported);
                 // Empty emotion presets are filled from menu faces, whole-face
-                // names, then the shapes an unnamed menu face moves; each filled
-                // preset is listed in the warnings and the result list.
+                // names, then the shapes an unnamed menu face moves; empty mouth,
+                // neutral and gaze presets from names. Each filled preset is
+                // listed in the warnings and the result list.
                 exported = guard.Run(ExportStage.ExpressionOutput, () =>
                 {
                     var filled = new List<(string Preset, string Source, string Format)>();
@@ -706,11 +707,11 @@ namespace VRVlog.LilToonExporter
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
-                        inferEmotions: inferEmotionPresets, filledEmotions: filled,
+                        inferEmotions: inferEmotionPresets, filledPresets: filled,
                         emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions),
                         emotionShapes: VrmMenuExpressions.EmotionShapes(expressions), shapeNames: ExpressionShapeNames.Shipped,
                         descriptor: visemes);
-                    RecordInferredEmotions(filled, recoveryReport);
+                    RecordInferredPresets(filled, recoveryReport);
                     return output;
                 }, () => exported);
                 exported = guard.Run(ExportStage.BlinkOutput, () => blink.Apply(exported), () => exported);

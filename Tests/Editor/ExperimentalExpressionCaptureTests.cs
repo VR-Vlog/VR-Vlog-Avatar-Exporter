@@ -923,6 +923,63 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
+        // Recording the list throws: the menu result is exported again and
+        // saved, with the error and the counts. A canceled save stays canceled.
+        [Test]
+        public void MenuShortSaveExportsTheMenuAgainWhenRecordingThrows()
+        {
+            var menu = new byte[] { 1 }; var again = new byte[] { 2 };
+            var restored = 0;
+            var result = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+                () => throw new InvalidOperationException("Recording failed"), () => { restored++; return again; });
+            Assert.That(result.Exported, Is.SameAs(again));
+            Assert.That(restored, Is.EqualTo(1));
+            Assert.That(result.ListedFaces, Is.EqualTo(3));
+            Assert.That(result.Recorded, Is.Null);
+            Assert.That(result.Error, Is.EqualTo("Recording failed"));
+            Assert.That(result.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 3)));
+
+            restored = 0;
+            Assert.Throws<OperationCanceledException>(() => ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+                () => throw new OperationCanceledException(), () => { restored++; return again; }));
+            Assert.That(restored, Is.Zero, "A canceled save is not exported again.");
+        }
+
+        // A recovery attempt decides the count and the record rules again from
+        // the board at that time; after the board closed it only gives the counts.
+        [Test]
+        public void MenuShortSaveDecidesAgainFromTheBoardAtThatTime()
+        {
+            var menu = new byte[] { 1 }; var recordedBytes = new byte[] { 2 };
+            var calls = 0;
+            byte[] Record() { calls++; return recordedBytes; }
+            byte[] Again() { calls++; return menu; }
+
+            var kept = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (65, false), Record, Again);
+            Assert.That(kept.Exported, Is.SameAs(menu));
+            Assert.That(kept.ListedFaces, Is.EqualTo(65));
+            Assert.That(kept.Recorded, Is.Null);
+            Assert.That(kept.Error, Is.Null);
+            Assert.That(kept.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptFormat), 1, 65)));
+            Assert.That(calls, Is.Zero);
+
+            var recorded = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (4, true), Record, Again);
+            Assert.That(recorded.Exported, Is.SameAs(recordedBytes));
+            Assert.That(recorded.ListedFaces, Is.EqualTo(4));
+            Assert.That(recorded.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 4)));
+            Assert.That(recorded.Kept, Is.Null);
+            Assert.That(calls, Is.EqualTo(1));
+
+            calls = 0;
+            var closed = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, null, Record, Again);
+            Assert.That(closed.Exported, Is.SameAs(menu));
+            Assert.That(closed.ListedFaces, Is.EqualTo(2));
+            Assert.That(closed.Recorded, Is.Null);
+            Assert.That(closed.Error, Is.Null);
+            Assert.That(closed.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 2)));
+            Assert.That(calls, Is.Zero, "A closed board records nothing.");
+        }
+
         // The expression menu gives two faces. The ordinary route keeps both
         // whatever the board lists; with fewer listed the result says how many
         // each has, and the saved count is the faces the VRM has.
