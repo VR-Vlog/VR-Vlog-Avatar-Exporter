@@ -1042,6 +1042,14 @@ BEHAVIOR_CASES = {
         'ASeamTouchingNonHeadGeometryCannotAuthorizeTheRemainingSurface': 1,
         'CurrentHeadAnimationDoesNotMoveTheOriginalMeshEnvelope': 1,
     },
+    # "アプリに転送（かんたん）" writes what "通常" writes with nothing on the board touched.
+    'QuickTransferMatchesDefaultNormalTests': {
+        'TheSavedExpressionsMatch': 1,
+        'TheGimmicksAndTheSavedExclusionsMatch': 1,
+        'APlainAvatarMatches': 1,
+        'AFailingStageMatches': 1,
+        'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
+    },
 }
 INTEGRATION_CASES = {
     # The integration project must install the official MeshDeleterWithTexture
