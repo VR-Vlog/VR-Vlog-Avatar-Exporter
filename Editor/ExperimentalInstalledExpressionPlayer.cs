@@ -163,7 +163,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static bool Relevant(ISet<string> includedPaths, EditorCurveBinding binding) => binding.type != typeof(AudioSource) &&
-            (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) || includedPaths.Contains(binding.path));
+            (!PoseSampling.IsBlendShape(binding) || includedPaths.Contains(binding.path));
 
         static void ValidateStationary(AnimatorControllerPlayable playable, AnimatorController controller, ISet<string> needed, ISet<string> includedPaths,
             ICollection<string> warnings = null)

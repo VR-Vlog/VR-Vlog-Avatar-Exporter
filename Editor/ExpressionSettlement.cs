@@ -55,8 +55,7 @@ namespace VRVlog.LilToonExporter
             }
             var elapsed = 0f;
             void Step(float seconds) { graph.Evaluate(seconds); afterUpdate?.Invoke(); elapsed += seconds; }
-            relevantCurve = relevantCurve ?? ((layer, clip, binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-                binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+            relevantCurve = relevantCurve ?? ((layer, clip, binding) => PoseSampling.IsBlendShape(binding));
             var layers = controller.layers;
             var states = StateIndex(controller);
             (AnimatorState State, List<AnimatorStateMachine> Ancestors) Resolve(int layer, int hash) =>

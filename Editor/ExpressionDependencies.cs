@@ -829,8 +829,7 @@ namespace VRVlog.LilToonExporter
                     .Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
                 var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
-                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding) ||
                     !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
                 result.Add(index, clip);
             }
@@ -1440,7 +1439,7 @@ namespace VRVlog.LilToonExporter
                     if (excluded) continue;
                 }
                 info.HasBindings = true;
-                if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                if (PoseSampling.IsBlendShape(binding))
                 {
                     info.Morphs.Add(binding);
                     if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;

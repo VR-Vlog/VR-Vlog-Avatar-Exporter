@@ -329,24 +329,6 @@ namespace VRVlog.LilToonExporter
             internal readonly List<string> Skipped = new List<string>();
         }
 
-        internal bool SelectCandidateByDefault(VrChatExpressionMenu.Entry entry)
-        {
-            if (entry.Error != null || entry.Unevaluated.Count != 0 || entry.Animation.Count != 0) return false;
-            foreach (var value in entry.Values)
-            {
-                var row = Baseline.Rows.SingleOrDefault(item => item.Path == value.Path);
-                var shape = row == null ? -1 : Array.IndexOf(row.Shapes, value.Shape);
-                if (shape >= 0 && Mathf.Abs(row.Weights[shape] - value.Weight) > .001f) return true;
-            }
-            // A named authored neutral face still belongs in the expression
-            // catalog; unchanged settings toggles remain unchecked by default.
-            var label = entry.Name.Split('/').Last().Trim();
-            return entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true ||
-                Candidates.Controller != null && Candidates.Controller.animationClips.Any(clip => clip.name == label &&
-                    AnimationUtility.GetCurveBindings(clip).Any(binding => binding.type == typeof(SkinnedMeshRenderer) &&
-                        binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)));
-        }
-
         internal ImportResult ImportCandidates(IEnumerable<VrChatExpressionMenu.Entry> entries)
         {
             RequireValid();

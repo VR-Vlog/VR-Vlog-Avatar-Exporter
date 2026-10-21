@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter
                     foreach (var binding in capturedMorphs)
                     {
                         if (excludedPath?.Invoke(binding.path) == true) continue;
-                        if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        if (!PoseSampling.IsBlendShape(binding))
                             throw new InvalidOperationException("BlendTreeの検証対象にBlendShape以外が含まれています。");
                         var renderer = VrChatExpressionSampler.FindRenderer(clone, binding.path);
                         var index = renderer.sharedMesh == null ? -1 : renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length));
@@ -517,7 +517,7 @@ namespace VRVlog.LilToonExporter
                     owned.Add(copy);
                     foreach (var binding in AnimationUtility.GetCurveBindings(original))
                     {
-                        if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        if (!PoseSampling.IsBlendShape(binding))
                             throw new InvalidOperationException("BlendTreeの係数検証にBlendShape以外の曲線があります: " + original.name);
                         var curve = AnimationUtility.GetEditorCurve(original, binding);
                         if (curve == null || curve.length == 0) throw new InvalidOperationException("BlendTreeの係数検証で子曲線を読めません: " + original.name);
