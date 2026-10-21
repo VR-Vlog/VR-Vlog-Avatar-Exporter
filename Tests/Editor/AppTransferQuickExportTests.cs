@@ -159,8 +159,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(board); }
         }
 
-        // The board's export keeps stopping on a failing stage, so the quick
-        // transfer opens the recovery window as the board does.
+        // The board session keeps the stage choice it is given; only the
+        // non-interactive save applies the project-wide continue setting.
         [Test]
         public void TheBoardExportKeepsTheStageChoiceItIsGiven()
         {
