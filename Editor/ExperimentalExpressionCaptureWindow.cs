@@ -952,9 +952,11 @@ namespace VRVlog.LilToonExporter
                     row.xMin += indent;
                     if (finding.Target == null) continue;
                     var rest = Mathf.Max(0, row.width - toggleWidth - gap * 3);
-                    var nameRect = new Rect(row.x, row.y, rest * .3f, line);
-                    var fieldRect = new Rect(nameRect.xMax + gap, row.y, rest * .35f, line);
-                    var reasonRect = new Rect(fieldRect.xMax + gap, row.y, rest * .35f, line);
+                    // A narrow window keeps the field readable and shortens the other two.
+                    var fieldWidth = Mathf.Max(rest * .35f, Mathf.Min(120, rest * .5f));
+                    var nameRect = new Rect(row.x, row.y, (rest - fieldWidth) * .55f, line);
+                    var fieldRect = new Rect(nameRect.xMax + gap, row.y, fieldWidth, line);
+                    var reasonRect = new Rect(fieldRect.xMax + gap, row.y, rest - fieldWidth - nameRect.width, line);
                     var toggleRect = new Rect(row.xMax - toggleWidth, row.y, toggleWidth, line);
                     var rowName = ExportGimmickChoices.RowName(finding);
                     var reason = ExporterLocalization.T(finding.Reason ?? "");
