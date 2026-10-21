@@ -30,12 +30,14 @@ namespace VRVlog.LilToonExporter
         // such as its menu path; only those may fill an empty emotion.
         // emotionShapes lists the original BlendShapes each candidate moves;
         // with shapeNames, a candidate whose label says nothing can still fill
-        // an emotion its face clearly shows. Each filled emotion is added to
-        // filledEmotions with the message format that explains it.
-        // descriptor is the VRChat descriptor's Lip Sync; it fills an empty
-        // mouth preset before the known names do.
+        // an emotion its face clearly shows. inferEmotions also fills empty
+        // neutral and gaze presets from names. Each preset filled from a name
+        // or a menu face is added to filledPresets with the message format
+        // that explains it. descriptor is the VRChat descriptor's Lip Sync; it
+        // fills an empty mouth preset before the known names do and is not
+        // listed, since the avatar author chose those shapes.
         public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
-            bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledEmotions = null,
+            bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledPresets = null,
             IReadOnlyDictionary<string, string> emotionCandidates = null,
             IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null,
             DescriptorVisemes descriptor = null)
@@ -112,6 +114,7 @@ namespace VRVlog.LilToonExporter
                 // always wins over inferred raw mesh names.
                 if (presets != null && presets.ContainsKey(mapping.Preset)) continue;
                 var bindings = new List<object>();
+                var sources = new List<string>();
                 // A Lip Sync shape the Face Mesh does not have falls back to
                 // the known names below.
                 if (descriptor != null && descriptor.Shapes.TryGetValue(mapping.Preset, out var shape))
@@ -142,7 +145,7 @@ namespace VRVlog.LilToonExporter
                     var target = ExpressionNameInference.FindExact(names, mapping.Aliases);
                     if (target == -2)
                     {
-                        Warn(warnings, $"{mapping.Preset}: mesh {meshIndex} に同名の表情が複数あるため自動設定を省略しました。");
+                        Warn(warnings, string.Format(ExporterLocalization.T(DuplicateExpressionFormat), mapping.Preset, meshIndex));
                         continue;
                     }
                     if (target < 0) continue;
@@ -158,6 +161,7 @@ namespace VRVlog.LilToonExporter
                     bindings.Add(new Dictionary<string, object> {
                         { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
                     });
+                    if (!sources.Contains((string)names[target])) sources.Add((string)names[target]);
                 }
                 if (bindings.Count == 0) continue;
                 if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
@@ -166,24 +170,33 @@ namespace VRVlog.LilToonExporter
                     { "morphTargetBinds", bindings }, { "isBinary", false }
                 };
                 changed = true;
-                Warn(warnings, string.Format(ExporterLocalization.T(KnownNameFormat), mapping.Preset));
+                var source = string.Join(", ", sources);
+                Warn(warnings, string.Format(ExporterLocalization.T(FilledFormat), mapping.Preset, source));
+                filledPresets?.Add((mapping.Preset, source, FilledFormat));
             }
             // Only slots that named a shape count. Empty slots stay silent as
             // before, and a known alias that bound the preset is enough.
             if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
                 Warn(warnings, ExporterLocalization.T(descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning));
-            if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates, emotionShapes, shapeNames))
+            if (inferEmotions)
             {
-                changed = true;
-                presets = Object(Object(vrm, "expressions"), "preset");
+                var filledHere = AddEmotions(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates, emotionShapes, shapeNames);
+                filledHere |= AddNeutral(vrm, nodes, meshes, warnings, filledPresets, emotionCandidates);
+                filledHere |= AddGaze(vrm, nodes, meshes, warnings, filledPresets);
+                if (filledHere)
+                {
+                    changed = true;
+                    presets = Object(Object(vrm, "expressions"), "preset");
+                }
             }
             if (inferBlink && (presets == null || (!presets.ContainsKey("blink") &&
                 !(presets.ContainsKey("blinkLeft") && presets.ContainsKey("blinkRight")))))
-                Warn(warnings, "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。");
+                Warn(warnings, ExporterLocalization.T(BlinkNotGeneratedWarning));
             return changed ? glb.Write() : bytes;
         }
 
-        internal const string KnownNameFormat = "{0}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。";
+        internal const string DuplicateExpressionFormat = "{0}: mesh {1} に同名の表情が複数あるため自動設定を省略しました。";
+        internal const string BlinkNotGeneratedWarning = "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。";
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
@@ -206,13 +219,9 @@ namespace VRVlog.LilToonExporter
             var changed = false;
             void Fill(UniVRM10.ExpressionPreset preset, Dictionary<string, object> value, string source, string format = FilledFormat)
             {
-                if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
-                if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
-                presets[preset.ToString()] = value;
+                SetFilled(vrm, preset.ToString(), value, source, format, warnings, filled);
                 open.Remove(preset);
                 changed = true;
-                Warn(warnings, string.Format(ExporterLocalization.T(format), preset, source));
-                filled?.Add((preset.ToString(), source, format));
             }
 
             // Menu faces are whole faces the avatar author named, so Japanese
@@ -254,35 +263,8 @@ namespace VRVlog.LilToonExporter
                 var preset = group.Key;
                 foreach (var name in group.OrderBy(item => item.Tier).ThenBy(item => item.Order).Select(item => item.Name).Distinct())
                 {
-                    var bindings = new List<object>();
-                    var ambiguous = false;
-                    foreach (var (nodeIndex, meshIndex, mesh, names) in MeshTargetNames(nodes, meshes))
-                    {
-                        var found = new List<int>();
-                        for (var i = 0; i < names.Count; i++)
-                            if (string.Equals(names[i] as string, name, StringComparison.Ordinal)) found.Add(i);
-                        if (found.Count == 0) continue;
-                        if (found.Count > 1)
-                        {
-                            // Binding the other meshes alone would move only part of the face.
-                            Warn(warnings, string.Format(ExporterLocalization.T(DuplicateNameFormat), preset, meshIndex, name));
-                            ambiguous = true;
-                            break;
-                        }
-                        var target = found[0];
-                        var primitives = List(mesh, "primitives");
-                        if (primitives == null || primitives.Count == 0) continue;
-                        foreach (var rawPrimitive in primitives)
-                        {
-                            var targets = List(rawPrimitive as Dictionary<string, object>, "targets");
-                            if (targets == null || target >= targets.Count)
-                                throw new InvalidOperationException("表情名とmorph targetの対応が不正です。");
-                        }
-                        bindings.Add(new Dictionary<string, object> {
-                            { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
-                        });
-                    }
-                    if (ambiguous || bindings.Count == 0) continue;
+                    var bindings = BindEverywhere(nodes, meshes, new[] { name }, StringComparison.Ordinal, preset.ToString(), warnings);
+                    if (bindings == null) continue;
                     // A whole-face shape already closes or shapes the eyes, so
                     // auto blink on top of it would push the eyelids twice.
                     Fill(preset, new Dictionary<string, object> {
@@ -304,6 +286,8 @@ namespace VRVlog.LilToonExporter
                 shapeOrder++;
                 if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
                 if (!shapes.TryGetValue(pair.Key, out var moved) || !ExpressionNameInference.SaysNothing(path ?? pair.Key)) continue;
+                // A face named neutral is the resting face, even when it smiles a little.
+                if (ExpressionNameInference.MatchNeutralMenuPath(path ?? pair.Key)) continue;
                 var guess = shapeNames.Classify(moved);
                 if (guess != null && open.Contains(guess.Value.Preset)) byShape.Add((guess.Value.Preset, guess.Value.Support, shapeOrder, pair.Key, value));
             }
@@ -312,10 +296,121 @@ namespace VRVlog.LilToonExporter
             return changed;
         }
 
-        private static Dictionary<string, object> CopyFace(Dictionary<string, object> face)
+        // Fill only an empty neutral preset: a menu face whose leaf says
+        // neutral, else a Latin BlendShape name that says neutral alone.
+        private static bool AddNeutral(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyDictionary<string, string> candidates)
+        {
+            const string preset = "neutral";
+            if (!IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) return false;
+            var custom = Object(Object(vrm, "expressions"), "custom");
+            if (custom != null && candidates != null)
+                foreach (var pair in custom)
+                {
+                    if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
+                    if (!ExpressionNameInference.MatchNeutralMenuPath(path ?? pair.Key)) continue;
+                    // neutral adds no face of its own, so it blocks no blink, mouth or gaze.
+                    SetFilled(vrm, preset, CopyFace(value, overrides: false), pair.Key, FilledFormat, warnings, filled);
+                    return true;
+                }
+            var tried = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var names in MeshTargetNames(nodes, meshes).Select(item => item.Names))
+                foreach (var name in names.OfType<string>())
+                {
+                    if (!tried.Add(name) || !ExpressionNameInference.MatchNeutral(name, latinOnly: true)) continue;
+                    var bindings = BindEverywhere(nodes, meshes, new[] { name }, StringComparison.Ordinal, preset, warnings);
+                    if (bindings == null) continue;
+                    SetFilled(vrm, preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } },
+                        name, FilledFormat, warnings, filled);
+                    return true;
+                }
+            return false;
+        }
+
+        // Fill each empty gaze preset from the first name set in GazeShapes
+        // that some mesh has whole. A mesh with only part of a set leaves that
+        // set unused, since one eye would turn alone.
+        private static bool AddGaze(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled)
+        {
+            var changed = false;
+            foreach (var (preset, sets) in ExpressionNameInference.GazeShapes)
+            {
+                if (!IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) continue;
+                foreach (var set in sets)
+                {
+                    var matched = new List<string>();
+                    var bindings = BindEverywhere(nodes, meshes, set, StringComparison.OrdinalIgnoreCase, preset, warnings, matched);
+                    if (bindings == null) continue;
+                    SetFilled(vrm, preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } },
+                        string.Join(" + ", matched), FilledFormat, warnings, filled);
+                    changed = true;
+                    break;
+                }
+            }
+            return changed;
+        }
+
+        // Binds of weight 1 for every mesh that has all of shapes, each once.
+        // Null when no mesh has them all, when a mesh has only some of them,
+        // or when a mesh has one of them twice (warned): binding the other
+        // meshes alone would move only part of the face.
+        private static List<object> BindEverywhere(List<object> nodes, List<object> meshes, string[] shapes, StringComparison comparison,
+            string preset, ICollection<string> warnings, List<string> matched = null)
+        {
+            var bindings = new List<object>();
+            foreach (var (nodeIndex, meshIndex, mesh, names) in MeshTargetNames(nodes, meshes))
+            {
+                var targets = new List<int>();
+                foreach (var shape in shapes)
+                {
+                    var found = new List<int>();
+                    for (var i = 0; i < names.Count; i++)
+                        if (string.Equals(names[i] as string, shape, comparison)) found.Add(i);
+                    if (found.Count > 1)
+                    {
+                        Warn(warnings, string.Format(ExporterLocalization.T(DuplicateNameFormat), preset, meshIndex, names[found[0]]));
+                        return null;
+                    }
+                    if (found.Count == 1) targets.Add(found[0]);
+                }
+                if (targets.Count == 0) continue;
+                if (targets.Count < shapes.Length) return null;
+                var primitives = List(mesh, "primitives");
+                if (primitives == null || primitives.Count == 0) continue;
+                foreach (var rawPrimitive in primitives)
+                {
+                    var morphTargets = List(rawPrimitive as Dictionary<string, object>, "targets");
+                    if (morphTargets == null || targets.Any(target => target >= morphTargets.Count))
+                        throw new InvalidOperationException("表情名とmorph targetの対応が不正です。");
+                }
+                foreach (var target in targets)
+                {
+                    bindings.Add(new Dictionary<string, object> {
+                        { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
+                    });
+                    if (matched != null && names[target] is string name && !matched.Contains(name)) matched.Add(name);
+                }
+            }
+            return bindings.Count > 0 ? bindings : null;
+        }
+
+        private static void SetFilled(Dictionary<string, object> vrm, string preset, Dictionary<string, object> value, string source, string format,
+            ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled)
+        {
+            var expressions = Object(vrm, "expressions");
+            if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
+            var presets = Object(expressions, "preset");
+            if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
+            presets[preset] = value;
+            Warn(warnings, string.Format(ExporterLocalization.T(format), preset, source));
+            filled?.Add((preset, source, format));
+        }
+
+        private static Dictionary<string, object> CopyFace(Dictionary<string, object> face, bool overrides = true)
         {
             var copy = new Dictionary<string, object>();
-            foreach (var key in BindKeys.Concat(OverrideKeys))
+            foreach (var key in overrides ? BindKeys.Concat(OverrideKeys) : BindKeys)
                 if (face.TryGetValue(key, out var value)) copy[key] = DeepCopy(value);
             copy["isBinary"] = false;
             return copy;

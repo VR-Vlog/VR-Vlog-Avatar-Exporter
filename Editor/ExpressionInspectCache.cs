@@ -26,6 +26,7 @@ namespace VRVlog.LilToonExporter
         private readonly Dictionary<int, EditorCurveBinding[]> curveBindings = new Dictionary<int, EditorCurveBinding[]>();
         private readonly Dictionary<int, EditorCurveBinding[]> objectBindings = new Dictionary<int, EditorCurveBinding[]>();
         private readonly Dictionary<(int Clip, EditorCurveBinding Binding), bool> constant = new Dictionary<(int Clip, EditorCurveBinding Binding), bool>();
+        private readonly Dictionary<int, EditorCurveBinding[]> automatic = new Dictionary<int, EditorCurveBinding[]>();
         private bool disposed;
 
         internal int Hits { get; private set; }
@@ -137,6 +138,17 @@ namespace VRVlog.LilToonExporter
             var key = (clip.GetInstanceID(), binding);
             if (!constant.TryGetValue(key, out var result)) constant.Add(key, result = VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
             return result;
+        }
+
+        // Every expression probe asks for the avatar's blink, viseme and VRM
+        // blink channels again. The analysis does not change the avatar's
+        // meshes or descriptor, and the blink alias check reads whole meshes.
+        // Hits return a new set, so a caller cannot change the cached entry.
+        internal HashSet<EditorCurveBinding> AutomaticChannels(GameObject avatar)
+        {
+            var id = avatar.GetInstanceID();
+            if (!automatic.TryGetValue(id, out var result)) automatic.Add(id, result = NeutralShapeSampler.AutomaticChannels(avatar).ToArray());
+            return new HashSet<EditorCurveBinding>(result);
         }
 
         internal Trace Record(int layers) { Misses++; return new Trace(layers); }

@@ -290,6 +290,43 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ADeletedAddedFileIsRemovedAndItsSlotStillShowsTheMissingFile()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var folder = "Assets/VRVlogDeletedAdded_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var clip = new AnimationClip { name = "Face" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
+                AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
+                Assert.That(board.UsesRecordRoute, Is.True, "An added file is recorded.");
+
+                Assert.That(AssetDatabase.DeleteAsset(folder + "/Face.anim"), Is.True);
+                Assert.That(clip == null, Is.True, "Deleting the asset leaves a null clip in the list.");
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                Assert.That(inputs, Is.Empty, "A deleted file does not stay counted toward the limit.");
+                Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
+                Assert.That((string)type.GetField("status", flags).GetValue(window), Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(
+                    new[] { ("Face", ExporterLocalization.T(ExperimentalExpressionCaptureWindow.DeletedClipReason)) })));
+                // The slot keeps the choice and names the file as missing, so the save stops with that reason.
+                var slot = board.SlotValue(ExpressionPreset.happy);
+                Assert.That(slot, Is.Not.Null); Assert.That(slot.IsNone, Is.False);
+                Assert.That(ExperimentalExpressionCaptureSession.PresetDisplayName(slot), Is.EqualTo(ExporterLocalization.T("見つからないファイル")));
+                Assert.That(window.BlocksExport, Is.True, "The kept slot stops the save.");
+            }
+            finally { Object.DestroyImmediate(window); if (clip != null) Object.DestroyImmediate(clip); AssetDatabase.DeleteAsset(folder); }
+        }
+
+        [Test]
         public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -921,6 +958,63 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // Recording the list throws: the menu result is exported again and
+        // saved, with the error and the counts. A canceled save stays canceled.
+        [Test]
+        public void MenuShortSaveExportsTheMenuAgainWhenRecordingThrows()
+        {
+            var menu = new byte[] { 1 }; var again = new byte[] { 2 };
+            var restored = 0;
+            var result = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+                () => throw new InvalidOperationException("Recording failed"), () => { restored++; return again; });
+            Assert.That(result.Exported, Is.SameAs(again));
+            Assert.That(restored, Is.EqualTo(1));
+            Assert.That(result.ListedFaces, Is.EqualTo(3));
+            Assert.That(result.Recorded, Is.Null);
+            Assert.That(result.Error, Is.EqualTo("Recording failed"));
+            Assert.That(result.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 3)));
+
+            restored = 0;
+            Assert.Throws<OperationCanceledException>(() => ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+                () => throw new OperationCanceledException(), () => { restored++; return again; }));
+            Assert.That(restored, Is.Zero, "A canceled save is not exported again.");
+        }
+
+        // A recovery attempt decides the count and the record rules again from
+        // the board at that time; after the board closed it only gives the counts.
+        [Test]
+        public void MenuShortSaveDecidesAgainFromTheBoardAtThatTime()
+        {
+            var menu = new byte[] { 1 }; var recordedBytes = new byte[] { 2 };
+            var calls = 0;
+            byte[] Record() { calls++; return recordedBytes; }
+            byte[] Again() { calls++; return menu; }
+
+            var kept = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (65, false), Record, Again);
+            Assert.That(kept.Exported, Is.SameAs(menu));
+            Assert.That(kept.ListedFaces, Is.EqualTo(65));
+            Assert.That(kept.Recorded, Is.Null);
+            Assert.That(kept.Error, Is.Null);
+            Assert.That(kept.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptFormat), 1, 65)));
+            Assert.That(calls, Is.Zero);
+
+            var recorded = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (4, true), Record, Again);
+            Assert.That(recorded.Exported, Is.SameAs(recordedBytes));
+            Assert.That(recorded.ListedFaces, Is.EqualTo(4));
+            Assert.That(recorded.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 4)));
+            Assert.That(recorded.Kept, Is.Null);
+            Assert.That(calls, Is.EqualTo(1));
+
+            calls = 0;
+            var closed = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, null, Record, Again);
+            Assert.That(closed.Exported, Is.SameAs(menu));
+            Assert.That(closed.ListedFaces, Is.EqualTo(2));
+            Assert.That(closed.Recorded, Is.Null);
+            Assert.That(closed.Error, Is.Null);
+            Assert.That(closed.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 2)));
+            Assert.That(calls, Is.Zero, "A closed board records nothing.");
         }
 
         // The expression menu gives two faces. The ordinary route keeps both
@@ -2471,6 +2565,84 @@ namespace VRVlog.LilToonExporter.Tests
                 using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.CaptureBaseline);
                 front.name = "Front";
                 using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.CaptureBaseline);
+            }
+        }
+
+        static int SourceChecks() => ExpressionBoardTimings.Last.Count(step => step.Step == "validate" || step.Step.EndsWith("/validate", StringComparison.Ordinal));
+
+        // The transfer window calls the board outside its own batch. One
+        // transfer hashes the source for the board's records and again in
+        // Export, not once more per standard face.
+        [Test]
+        public void ATransferChecksTheSourceForTheRecordsAndTheExportOnly()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-checks-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+                session.SetPreset(ExpressionPreset.sad, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
+                session.SetPreset(ExpressionPreset.surprised, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.surprised, "Front", "Smile"));
+                var saved = false;
+                ExpressionBoardTimings.Clear();
+                Assert.That(window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(SourceChecks(), Is.InRange(1, 2), string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
+            }
+            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // An edit after the board opened still stops the transfer, as before.
+        [Test]
+        public void ATransferAfterAnEditOfTheSourceStops()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-edited-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                fixture.Source.transform.Find("Front").name = "Front edited";
+                var saved = false;
+                var exception = Assert.Throws<InvalidOperationException>(() => window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // Inside a batch the records and the standard faces use the batch's
+        // check, but Export hashes the source again and sees an edit.
+        [Test]
+        public void ExportInABatchStillSeesAnEditOfTheSource()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var assignment = ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
+            using (ExperimentalExpressionCaptureSession.Batch())
+            {
+                session.ReplaceClipRecords(Array.Empty<ExperimentalExpressionCaptureSession.ClipInput>(), null);
+                fixture.Source.transform.Find("Front").name = "Front edited";
+                Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, assignment), "The batch was checked already.");
+                var exception = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests"));
+                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
             }
         }
     }
