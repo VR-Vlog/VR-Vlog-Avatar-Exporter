@@ -71,8 +71,10 @@ or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
 to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
 `IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
 `IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
-versions stop before that API is touched, naming the installed version and the
-range. Avatars without those components export with any MA version. MA 1.18.x
+stable versions stop before that API is touched, naming the installed version and
+the range. When the version cannot be read (MA placed under `Assets`, a
+pre-release), the freeze tries the API and, if it is missing, stops saying the
+version was not read. Avatars without those components export with any MA version. MA 1.18.x
 itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
 `ndmfMinimum` (1.8.3).
 
