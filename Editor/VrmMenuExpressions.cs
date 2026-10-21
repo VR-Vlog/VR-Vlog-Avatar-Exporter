@@ -72,10 +72,38 @@ namespace VRVlog.LilToonExporter
             var json = GlbDocument.Read(bytes).Json;
             var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
             if (custom == null) return 0;
-            return RegisteredNames(json).Count(name => custom.TryGetValue(name, out var value) &&
-                value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
-                binds is List<object> list && list.Count > 0);
+            return RegisteredNames(json).Count(name => BindsMorph(custom, name));
         }
+
+        // Counts the listed names among the expressions CountRegistered counts,
+        // each registered name covering one listed name: "X" and "X (2)" cover
+        // two listed "X". A menu item written as "X_ON" covers no listed "X".
+        internal static int CountListed(byte[] bytes, IEnumerable<string> listed)
+        {
+            var json = GlbDocument.Read(bytes).Json;
+            var custom = Path(json, "extensions", "VRMC_vrm", "expressions", "custom");
+            if (custom == null) return 0;
+            var left = RegisteredNames(json).Where(name => BindsMorph(custom, name)).ToList();
+            var count = 0;
+            foreach (var name in listed ?? Enumerable.Empty<string>())
+            {
+                var index = left.FindIndex(registered => string.Equals(registered, name, StringComparison.Ordinal));
+                if (index < 0) index = left.FindIndex(registered => Numbered(registered, name));
+                if (index < 0) continue;
+                left.RemoveAt(index);
+                count++;
+            }
+            return count;
+        }
+
+        // registered is name with the duplicate-name suffix UniqueName adds.
+        static bool Numbered(string registered, string name) =>
+            name != null && registered.Length > name.Length + 3 && registered.StartsWith(name + " (", StringComparison.Ordinal) &&
+            registered.EndsWith(")", StringComparison.Ordinal) && registered.Substring(name.Length + 2, registered.Length - name.Length - 3).All(char.IsDigit);
+
+        static bool BindsMorph(Dictionary<string, object> custom, string name) => custom.TryGetValue(name, out var value) &&
+            value is Dictionary<string, object> expression && expression.TryGetValue("morphTargetBinds", out var binds) &&
+            binds is List<object> list && list.Count > 0;
 
         // Names the expression animation extension lists as registered by this
         // exporter, with their final duplicate-name suffix. Empty without it.

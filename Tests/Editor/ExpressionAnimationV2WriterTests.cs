@@ -452,6 +452,25 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(smile); Object.DestroyImmediate(wave); Object.DestroyImmediate(copy); }
         }
 
+        // The board's ordinary save compares its listed names with the menu
+        // result: a menu item written under its own name covers no clip name,
+        // and a numbered duplicate covers one more listed face of that name.
+        [Test]
+        public void ListedNamesAreCountedAgainstTheRegisteredNames()
+        {
+            using var scene = new Scene();
+            var expressions = scene.Bake(Entry("Blush_ON", 1, false, new[] { ("Front", "Raise", 40f) }),
+                Entry("Smile", 1, false, new[] { ("Front", "Raise", 60f) }), Entry("Smile", 1, false, new[] { ("Front", "Raise", 80f) }));
+            var bytes = scene.Export(expressions);
+            Assert.That(expressions.Select(value => value.RegisteredName), Is.EqualTo(new[] { "Blush_ON", "Smile", "Smile (2)" }));
+            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(3));
+            Assert.That(VrmMenuExpressions.CountListed(bytes, new[] { "Blush", "Smile", "Smile" }), Is.EqualTo(2), "The menu item name is not the clip name.");
+            Assert.That(VrmMenuExpressions.CountListed(bytes, new[] { "Blush_ON", "Smile", "Smile" }), Is.EqualTo(3));
+            Assert.That(VrmMenuExpressions.CountListed(bytes, new[] { "Smile", "Smile", "Smile" }), Is.EqualTo(2), "Each registered name covers one listed face.");
+            Assert.That(VrmMenuExpressions.CountListed(bytes, new[] { "Smile (2)", "Smile" }), Is.EqualTo(2));
+            Assert.That(VrmMenuExpressions.CountListed(bytes, new string[0]), Is.Zero);
+        }
+
         // (f) The final bytes name the lowest app version for each VRVLOG_
         // extension used; without one there is no key.
         [Test]

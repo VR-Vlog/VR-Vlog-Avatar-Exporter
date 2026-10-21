@@ -1702,9 +1702,11 @@ namespace VRVlog.LilToonExporter
             // The record route replaces the menu faces even when nothing is left to record.
             var replaceCustomFaces = board.UsesRecordRoute;
             // The ordinary route evaluates the menu again and can lose faces the
-            // board lists (a non-FX layer writing what a face reads). With fewer
-            // menu faces than the list, the same save records the list instead.
-            var listedFaces = replaceCustomFaces ? 0 : board.OtherCount;
+            // board lists (a non-FX layer writing what a face reads), or write them
+            // under the menu item names. When the menu faces do not carry every
+            // name on the list, the same save records the list instead.
+            var listedNames = replaceCustomFaces ? new System.Collections.Generic.List<string>() : board.ExportedCustom().Select(clip => clip.name).ToList();
+            var listedFaces = listedNames.Count;
             var recordedList = false;
             // The report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
@@ -1736,7 +1738,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
-                var menuFaces = !replaceCustomFaces && listedFaces > 0 ? VrmMenuExpressions.CountRegistered(exported) : listedFaces;
+                var menuFaces = !replaceCustomFaces && listedFaces > 0 ? VrmMenuExpressions.CountListed(exported, listedNames) : listedFaces;
                 if (menuFaces < listedFaces)
                 {
                     var category = ExporterLocalization.T("その他の表情");
