@@ -59,7 +59,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private ExportEntry exporter;
         [NonSerialized] private bool exporterResolved;
         [NonSerialized] private string exporterProblem;
-        [NonSerialized] private Texture2D qrTexture, icon;
+        [NonSerialized] private Texture2D qrTexture;
         [NonSerialized] private string transferName;
         [NonSerialized] private int placeholderSide;
         [NonSerialized] private int exportAttempt;
@@ -160,7 +160,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
 
         private static string T(string source) => ExporterLocalization.T(source);
-        private Texture2D Icon => icon != null ? icon : icon = AppTransferIcon.Create();
         private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
 
         // The exporter assembly compiles only with a supported UniVRM. Bind it by
@@ -227,8 +226,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             EditorApplication.quitting -= StopAndClean;
             AssemblyReloadEvents.beforeAssemblyReload -= StopAndClean;
             StopAndClean();
-            if (icon != null) DestroyImmediate(icon);
-            icon = null;
         }
 
         // Closing cancels the transfer and deletes the exported copy. Nothing of
@@ -540,7 +537,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             closeButton = root.Q<Button>("close");
 
             var headerIcon = root.Q<Image>("header-icon");
-            headerIcon.image = Icon;
+            headerIcon.image = ExporterWindowIcon.Texture;
             headerIcon.scaleMode = ScaleMode.ScaleToFit;
             var warningIcon = root.Q<Image>("warning-icon");
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
@@ -640,7 +637,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 return;
             }
             var title = avatar != null ? string.Format(T(AppTransferText.TitleWithAvatar), avatar.name) : T(AppTransferText.Title);
-            if (titleContent.text != title || titleContent.image != Icon) titleContent = new GUIContent(title, Icon);
+            if (titleContent.text != title || titleContent.image != ExporterWindowIcon.Texture) titleContent = ExporterWindowIcon.Title(title);
             var view = shownView = Flow.View;
             var sending = view != AppTransferView.Form;
             heading.text = T(detailed ? AppTransferText.HeadingDetailed : AppTransferText.HeadingQuick);

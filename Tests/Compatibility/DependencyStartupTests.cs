@@ -57,6 +57,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var diagnostics = Resources.FindObjectsOfTypeAll<DependencyDiagnosticsWindow>();
                 Assert.That(exporter != null, Is.EqualTo(supported), DependencyDiagnostics.CreateReport());
                 if (exporter != null) Assert.That(exporter.titleContent.text, Is.EqualTo("VRM書き出し"));
+                if (exporter != null) Assert.That(exporter.titleContent.image, Is.SameAs(ExporterWindowIcon.Texture));
                 Assert.That(diagnostics.Length, Is.EqualTo(supported ? 0 : 1));
             }
             finally
