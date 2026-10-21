@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
                 source.Apply(false, false);
                 var snapshot = new LilToonFullSnapshot();
                 var hidden = BindingFlags.Instance | BindingFlags.NonPublic;
-                typeof(LilToonFullSnapshot).GetMethod("Texture", hidden).Invoke(snapshot, new object[] { source, false });
+                typeof(LilToonFullSnapshot).GetMethod("Texture", hidden).Invoke(snapshot, new object[] { source, false, float.PositiveInfinity });
                 var textures = (List<object>)typeof(LilToonFullSnapshot).GetField("textures", hidden).GetValue(snapshot);
                 var record = (Dictionary<string, object>)textures[0];
                 Assert.That(F.Bool(record, "srgb"), Is.EqualTo(srgb), "Pixel encoding must survive both Gamma and Linear Editor sampling");

@@ -21,6 +21,9 @@ namespace VRVlog.LilToonExporter
         internal bool IsEmpty => records.Count == 0;
         readonly List<object> textures = new List<object>();
         readonly Dictionary<(Texture, bool), int> textureIds = new Dictionary<(Texture, bool), int>();
+        // Strongest effective scale among the references to each 8-bit normal
+        // texture, by texture index. Infinity marks a reference without one.
+        readonly Dictionary<int, float> normalScales = new Dictionary<int, float>();
         readonly List<DeflatePayload> payloads = new List<DeflatePayload>();
         readonly List<object> bindings = new List<object>();
         readonly Dictionary<int, Dictionary<string, object>> indexedRecords = new Dictionary<int, Dictionary<string, object>>();
@@ -95,7 +98,7 @@ namespace VRVlog.LilToonExporter
                     // interprets an app-platform-specific bump texture as RG.
                     if(texture==null && normal)texture=Texture2D.normalTexture;
                     int id;
-                    try { id = texture == null ? -1 : Texture(texture, normal); }
+                    try { id = texture == null ? -1 : Texture(texture, normal, normal ? NormalScale(source, name) : float.PositiveInfinity); }
                     catch (NotSupportedException error) when (texture != null && !(texture is Texture2D) && !(texture is Cubemap) &&
                         (name.StartsWith("_Main2nd", StringComparison.Ordinal) || name.StartsWith("_Main3rd", StringComparison.Ordinal)))
                     {
@@ -140,18 +143,31 @@ namespace VRVlog.LilToonExporter
             return new Dictionary<string, object> { {"sourceShader", shader.name}, {"name", source.name}, {"renderQueue", source.renderQueue}, {"values", values}, {"textures", textureProperties}, {"passes", passes}, {"keywords", keywords}, {"clippingCanceller",clipping} };
         }
 
-        int Texture(Texture source, bool normal)
+        int Texture(Texture source, bool normal, float normalScale)
         {
-            if (textureIds.TryGetValue((source, normal), out var existing)) return existing;
+            if (textureIds.TryGetValue((source, normal), out var existing))
+            {
+                // The strongest reference decides an 8-bit normal. Read it
+                // again only when a later material raises that scale.
+                if (normalScales.TryGetValue(existing, out var strongest) && normalScale > strongest)
+                {
+                    normalScales[existing] = normalScale;
+                    var record = (Dictionary<string, object>)textures[existing];
+                    // Half holds the canonical values for any scale, so only an
+                    // image stored as rgba32 needs another decision.
+                    if ((string)record["format"] == "rgba32")
+                    {
+                        var stored = (List<object>)record["chunks"];
+                        record["format"] = StoreNormal(Pixels(source, true, false, true, true).ToList(), normalScale,
+                            (chunk, bytes) => payloads[(int)stored[chunk]] = new DeflatePayload(bytes));
+                    }
+                }
+                return existing;
+            }
             if (!(source is Texture2D) && !(source is Cubemap)) throw new NotSupportedException("動的テクスチャは保存できません: " + source.name);
             var chunks = new List<object>();
-            var size = TextureResizePolicy.Size(source.width, source.height);
-            var resized = size.Item1 != source.width || size.Item2 != source.height;
-            var sourceMipCount = source is Texture2D two ? two.mipmapCount : ((Cubemap)source).mipmapCount;
-            // Keep intentionally mipless inputs mipless. A resized mipmapped
-            // texture needs the chain for its new dimensions, not the old chain.
-            var count = resized && sourceMipCount > 1 ? LilToonFullTexture.MipCount(size.Item1, size.Item2) : sourceMipCount;
-            var faces = source is Cubemap ? 6 : 1;
+            var (width, height, count, faces) = Layout(source);
+            var resized = width != source.width || height != source.height;
             // Gamma rendering can expose an UNorm GPU view of sRGB pixels.
             // Preserve the stored pixel encoding, independent of this Editor's
             // sampling mode, so a Linear-space consumer decodes it correctly.
@@ -159,33 +175,141 @@ namespace VRVlog.LilToonExporter
             var storage = StorageFormat(source.graphicsFormat, normal);
             var hdr = storage != "rgba32";
             var half = storage == "rgbaHalf";
-            for (var face = 0; face < faces; face++)
-                for (var mip = 0; mip < count; mip++)
-                {
-                    var bytes = resized
-                        ? LilToonFullTexture.ReadResized(source, Math.Max(1, size.Item1 >> mip), Math.Max(1, size.Item2 >> mip), face, normal, srgb, hdr, half)
-                        : LilToonFullTexture.Read(source, mip, face, normal, srgb, hdr, half);
-                    chunks.Add(payloads.Count); payloads.Add(new DeflatePayload(bytes));
-                }
+            var format = half ? "rgbaHalf" : hdr ? "rgbaFloat" : "rgba32";
+            void Add(byte[] bytes) { chunks.Add(payloads.Count); payloads.Add(new DeflatePayload(bytes)); }
+            // StorageFormat chose Half for an 8-bit or block-compressed normal
+            // only because of its decode; the source itself is not Half.
+            var quantizable = normal && half && StorageFormat(source.graphicsFormat, false) != "rgbaHalf";
+            if (quantizable) format = StoreNormal(Pixels(source, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
+            else foreach (var bytes in Pixels(source, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add($"lilToon画像「{source.name}」を{source.width}×{source.height}から{size.Item1}×{size.Item2}に縮小しました（読み込み時のメモリ使用量を軽減）。");
+                warnings?.Add($"lilToon画像「{source.name}」を{source.width}×{source.height}から{width}×{height}に縮小しました（読み込み時のメモリ使用量を軽減）。");
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
-                {"name", source.name}, {"width", size.Item1}, {"height", size.Item2}, {"mips", count}, {"faces", faces},
-                {"format", half ? "rgbaHalf" : hdr ? "rgbaFloat" : "rgba32"}, {"srgb", srgb}, {"normal", normal},
+                {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},
+                {"format", format}, {"srgb", srgb}, {"normal", normal},
                 {"filter", (int)source.filterMode}, {"wrapU", (int)source.wrapModeU}, {"wrapV", (int)source.wrapModeV}, {"wrapW", (int)source.wrapModeW},
                 {"aniso", source.anisoLevel}, {"mipBias", source.mipMapBias}, {"chunks", chunks}
             });
             textureIds.Add((source, normal), index);
+            if (quantizable) normalScales.Add(index, normalScale);
             return index;
+        }
+
+        static (int width, int height, int mips, int faces) Layout(Texture source)
+        {
+            var size = TextureResizePolicy.Size(source.width, source.height);
+            var resized = size.Item1 != source.width || size.Item2 != source.height;
+            var sourceMipCount = source is Texture2D two ? two.mipmapCount : ((Cubemap)source).mipmapCount;
+            // Keep intentionally mipless inputs mipless. A resized mipmapped
+            // texture needs the chain for its new dimensions, not the old chain.
+            var count = resized && sourceMipCount > 1 ? LilToonFullTexture.MipCount(size.Item1, size.Item2) : sourceMipCount;
+            return (size.Item1, size.Item2, count, source is Cubemap ? 6 : 1);
+        }
+
+        // Every face and mip in chunk order, read one at a time.
+        static IEnumerable<byte[]> Pixels(Texture source, bool normal, bool srgb, bool hdr, bool half)
+        {
+            var (width, height, count, faces) = Layout(source);
+            var resized = width != source.width || height != source.height;
+            for (var face = 0; face < faces; face++)
+                for (var mip = 0; mip < count; mip++)
+                    yield return resized
+                        ? LilToonFullTexture.ReadResized(source, Math.Max(1, width >> mip), Math.Max(1, height >> mip), face, normal, srgb, hdr, half)
+                        : LilToonFullTexture.Read(source, mip, face, normal, srgb, hdr, half);
+        }
+
+        // Holds one texture's Half chain until the whole chain is measured,
+        // then stores each chunk and drops it.
+        static string StoreNormal(List<byte[]> halfPixels, float scale, Action<int, byte[]> store)
+        {
+            var quantize = NormalFitsRgba32(halfPixels, scale);
+            var format = quantize ? "rgba32" : "rgbaHalf";
+            for (var i = 0; i < halfPixels.Count; i++)
+            {
+                var bytes = quantize ? NormalToRgba32(halfPixels[i]) : halfPixels[i];
+                halfPixels[i] = null;
+                LilToonFullContract.ValidatePixels(bytes, format);
+                store(i, bytes);
+            }
+            return format;
+        }
+
+        // The scale lilToon 2.3.4 applies to each normal property's decoded RG.
+        // Other Normal properties (outline and fur vectors, anisotropy tangents)
+        // are not decoded this way, so their textures stay Half.
+        static readonly Dictionary<string, string> NormalScaleProperties = new Dictionary<string, string> {
+            {"_BumpMap", "_BumpScale"}, {"_Bump2ndMap", "_Bump2ndScale"}, {"_MatCapBumpMap", "_MatCapBumpScale"}, {"_MatCap2ndBumpMap", "_MatCap2ndBumpScale"}
+        };
+
+        // Effective scale of one reference, also when its feature toggle is off.
+        // Infinity means unknown and keeps the texture Half.
+        static float NormalScale(Material source, string property)
+        {
+            if (!NormalScaleProperties.TryGetValue(property, out var scale) || !source.HasProperty(scale)) return float.PositiveInfinity;
+            var value = Math.Abs(source.GetFloat(scale));
+            return float.IsNaN(value) || float.IsInfinity(value) ? float.PositiveInfinity : Math.Max(1f, value);
+        }
+
+        // Fixed before measuring exported avatars (Documentation~/NormalTextureFiltering.md).
+        // An 8-bit normal is stored as rgba32 only when, over every face and
+        // mip, the app's RG decode at the strongest material scale turns the
+        // quantized direction from the Half one by at most these angles:
+        // the nearest-rank 99th percentile and the maximum, in degrees.
+        internal const double NormalRgba32Percentile99Degrees = 0.5;
+        internal const double NormalRgba32MaximumDegrees = 2.0;
+
+        internal static bool NormalFitsRgba32(IReadOnlyList<byte[]> halfPixels, float scale)
+        {
+            if (float.IsNaN(scale) || float.IsInfinity(scale)) return false;
+            var effective = Math.Max(1.0, Math.Abs((double)scale));
+            long total = 0, over = 0;
+            foreach (var bytes in halfPixels)
+                for (var i = 0; i + 7 < bytes.Length; i += 8)
+                {
+                    var r = Half(bytes, i); var g = Half(bytes, i + 2);
+                    var error = NormalAngle(r, g, Quantize(r) / 255.0, Quantize(g) / 255.0, effective);
+                    if (error > NormalRgba32MaximumDegrees) return false;
+                    if (error > NormalRgba32Percentile99Degrees) over++;
+                    total++;
+                }
+            // The percentile is the ceil(0.99 N)-th smallest error.
+            return over <= total - (total * 99 + 99) / 100;
+        }
+
+        // The bytes an RGBA32 readback of the same canonical normal holds.
+        internal static byte[] NormalToRgba32(byte[] halfPixels)
+        {
+            var bytes = new byte[halfPixels.Length / 2];
+            for (var i = 0; i < bytes.Length; i++) bytes[i] = (byte)Quantize(Half(halfPixels, i * 2));
+            return bytes;
+        }
+
+        static int Quantize(float value) => (int)Math.Round(Math.Min(1f, Math.Max(0f, value)) * 255.0, MidpointRounding.AwayFromZero);
+
+        static float[] halfValues;
+        static float Half(byte[] bytes, int offset)
+            => (halfValues ??= Enumerable.Range(0, 65536).Select(bits => Mathf.HalfToFloat((ushort)bits)).ToArray())[bytes[offset] | bytes[offset + 1] << 8];
+
+        // Same as the app: xy = (rg * 2 - 1) * scale, z = sqrt(1 - saturate(dot(xy, xy))).
+        // atan2(|a x b|, a . b) does not need the normalized vectors.
+        static double NormalAngle(double r0, double g0, double r1, double g1, double scale)
+        {
+            double x0 = (r0 * 2 - 1) * scale, y0 = (g0 * 2 - 1) * scale, z0 = Math.Sqrt(1 - Math.Min(1, x0 * x0 + y0 * y0));
+            double x1 = (r1 * 2 - 1) * scale, y1 = (g1 * 2 - 1) * scale, z1 = Math.Sqrt(1 - Math.Min(1, x1 * x1 + y1 * y1));
+            double cx = y0 * z1 - z0 * y1, cy = z0 * x1 - x0 * z1, cz = x0 * y1 - y0 * x1;
+            return Math.Atan2(Math.Sqrt(cx * cx + cy * cy + cz * cz), x0 * x1 + y0 * y1 + z0 * z1) * 180 / Math.PI;
         }
 
         internal static string StorageFormat(UnityEngine.Experimental.Rendering.GraphicsFormat format, bool normal)
         {
-            // Canonical normals need more precision than an RGBA8 copy, but
+            // Canonical normals can need more precision than an RGBA8 copy, but
             // ordinary imported maps do not require full 32-bit components.
             // Half retains finer precision than their 8-bit source samples and
             // supports linear filtering on mobile GPUs without Float32 filtering.
+            // Texture() then stores an 8-bit or block-compressed normal as
+            // rgba32 when its measured RG-decode error stays within
+            // NormalRgba32Percentile99Degrees / NormalRgba32MaximumDegrees.
             // Keep authored HDR and >8-bit normalized source precision intact.
             var name = format.ToString();
             if (name.StartsWith("R16", StringComparison.Ordinal) && name.EndsWith("_SFloat", StringComparison.Ordinal)) return "rgbaHalf";
