@@ -68,7 +68,7 @@ namespace VRVlog.LilToonExporter
 
         static ExportResultWindow Open(ExportResultList result, GameObject avatar, Action openBlinkSettings)
         {
-            var window = ExporterWindowIcon.Restore(GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true));
+            var window = GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true);
             window.minSize = new Vector2(560f, 420f);
             window.result = result ?? new ExportResultList();
             window.avatar = avatar;
@@ -153,10 +153,12 @@ namespace VRVlog.LilToonExporter
         {
             EnsureStyles();
             var width = position.width;
-            DrawHeader(new Rect(0f, 0f, width, HeaderHeight));
-            DrawToolbar(new Rect(0f, HeaderHeight, width, ToolbarHeight));
-            DrawColumns(new Rect(0f, HeaderHeight + ToolbarHeight, width, ColumnHeight));
-            var top = HeaderHeight + ToolbarHeight + ColumnHeight;
+            var header = ExporterWindowHeader.Height;
+            ExporterWindowHeader.Draw(new Rect(0f, 0f, width, header), ExporterLocalization.T("書き出し結果"));
+            DrawHeader(new Rect(0f, header, width, HeaderHeight));
+            DrawToolbar(new Rect(0f, header + HeaderHeight, width, ToolbarHeight));
+            DrawColumns(new Rect(0f, header + HeaderHeight + ToolbarHeight, width, ColumnHeight));
+            var top = header + HeaderHeight + ToolbarHeight + ColumnHeight;
             DrawList(new Rect(0f, top, width, Mathf.Max(0f, position.height - top - FooterHeight)));
             DrawFooter(new Rect(0f, position.height - FooterHeight, width, FooterHeight));
         }

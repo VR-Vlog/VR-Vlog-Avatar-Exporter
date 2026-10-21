@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter
         private static ExportFailureWindow NewWindow()
         {
             var window = CreateInstance<ExportFailureWindow>();
-            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("VRMの書き出しを続ける"));
+            window.titleContent = new GUIContent(ExporterLocalization.T("VRMの書き出しを続ける"));
             window.minSize = new Vector2(520, 420);
             window.position = new Rect(120, 120, 620, 680);
             return window;
@@ -134,6 +134,7 @@ namespace VRVlog.LilToonExporter
 
         private void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("VRMの書き出しを続ける"));
             EditorGUILayout.Space(8);
             var stale = session?.IsInvalidated == true;
             EditorGUILayout.LabelField(ExporterLocalization.T(stale ? "アバターの変更を反映して書き出す" : session?.WasCanceled == true ? "キャンセル" : session != null && session.Failure == null ? "対処を変更する" : "この設定では書き出せませんでした"), EditorStyles.boldLabel);
