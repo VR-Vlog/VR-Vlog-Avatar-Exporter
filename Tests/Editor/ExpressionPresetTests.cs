@@ -175,6 +175,35 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The board takes a clip that also names a shape the avatar never had.
+        // In a standard slot it must save too, binding only the shapes the
+        // mesh has. ShapesLostByPreparationStayUnsupportedOnTheBoard covers
+        // a shape lost by preparation, which never reaches the slot.
+        [Test]
+        public void PresetFromAClipWithShapesTheAvatarNeverHadBindsOnlyTheRest()
+        {
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            var absent = new AnimationClip { name = "Only missing" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
+                AnimationUtility.SetEditorCurve(absent, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
+                session.SetPreset(ExpressionPreset.happy, assignment);
+                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                // A clip preset is baked into one generated target on the mesh it moves.
+                var bound = BoundShapes(bytes, "happy");
+                Assert.That(bound, Has.Length.EqualTo(1));
+                Assert.That(bound[0], Does.StartWith("Front/__VRVlog_Endpoint_").And.EndWith("@1"));
+                Assert.That(session.PresetError(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, absent)),
+                    Does.Contain(ExporterLocalization.T("参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。")));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); }
+        }
+
         [Test]
         public async Task CaptureRouteKeepsRecordedCustomFacesBesideThePreset()
         {
