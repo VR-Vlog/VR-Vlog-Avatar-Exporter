@@ -348,5 +348,95 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.ExceedsLimit, Is.False);
             Assert.That(board.ExportedCustom().Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
         }
+
+        [Test]
+        public void RenamingGivesACustomFaceItsOwnNameUntilItIsReverted()
+        {
+            var smile = Clip(" smile "); var wink = Clip("wink");
+            var board = Board(null, new[] { Item(smile), Item(wink) });
+            Assert.That(board.NameOf(smile), Is.EqualTo("smile"), "Without a name the face is named after its file.");
+            Assert.That(board.UsesRecordRoute, Is.False);
+
+            Assert.That(board.Rename(smile, "  grin  "), Is.True);
+            Assert.That(board.NameOf(smile), Is.EqualTo("grin"), "The name is trimmed.");
+            Assert.That(board.Renamed(smile), Is.True);
+            Assert.That(board.UsesRecordRoute, Is.True, "The ordinary route names faces after the menu, so a renamed face is recorded.");
+            Assert.That(board.Rename(smile, "grin"), Is.False, "The same name changes nothing.");
+
+            // Excluded faces can be renamed; they do not switch the route on their own.
+            Assert.That(board.Move(smile, Place.Excluded), Is.True);
+            Assert.That(board.CanRename(smile), Is.True);
+            Assert.That(board.Rename(smile, ""), Is.True, "An empty name gives the file name back.");
+            Assert.That(board.Renamed(smile), Is.False);
+            Assert.That(board.Move(smile, Place.Other), Is.True);
+            Assert.That(board.UsesRecordRoute, Is.False);
+
+            Assert.That(board.Rename(wink, "blink face"), Is.True);
+            Assert.That(board.Rename(wink, "wink"), Is.True, "The file name reverts the face too.");
+            Assert.That(board.Renamed(wink), Is.False);
+            Assert.That(board.Rename(wink, "wink"), Is.False);
+        }
+
+        [Test]
+        public void SlotFacesAndUnsupportedFacesCannotBeRenamed()
+        {
+            var happy = Clip("happy face"); var broken = Clip("broken");
+            var board = Board(null, new[] { Item(happy), Item(broken, "unsupported") });
+            Assert.That(board.Move(happy, Place.Slot(ExpressionPreset.happy)), Is.True);
+            Assert.That(board.CanRename(happy), Is.False, "A slot face is exported under the preset name.");
+            Assert.That(board.Rename(happy, "joy"), Is.False);
+            Assert.That(board.Renamed(happy), Is.False);
+            Assert.That(board.CanRename(broken), Is.False);
+            Assert.That(board.Rename(broken, "fixed"), Is.False);
+            Assert.That(board.CanRename(Clip("not on the board")), Is.False);
+        }
+
+        [Test]
+        public void RenameRefusesNamesTheExportCannotUse()
+        {
+            var smile = Clip("smile"); var wink = Clip("wink"); var excluded = Clip("hidden");
+            var board = Board(null, new[] { Item(smile), Item(wink), Item(excluded) });
+            board.Move(excluded, Place.Excluded);
+            Assert.That(board.RenameError(smile, "   "), Is.EqualTo(ExpressionBoard.EmptyName));
+            Assert.That(board.RenameError(smile, new string('a', 129)), Is.EqualTo(ExpressionBoard.NameTooLong));
+            Assert.That(board.RenameError(smile, new string('a', 128)), Is.Null);
+            Assert.That(board.RenameError(smile, "two\nlines"), Is.EqualTo(ExpressionBoard.NameHasControl));
+            Assert.That(board.RenameError(smile, "a\tb"), Is.EqualTo(ExpressionBoard.NameHasControl));
+            Assert.That(board.RenameError(smile, "happy"), Is.EqualTo(ExpressionBoard.NameReservedFormat), "Preset names are reserved.");
+            Assert.That(board.RenameError(smile, "Happy"), Is.Null, "Preset names are matched exactly.");
+            Assert.That(board.RenameError(smile, "wink"), Is.EqualTo(ExpressionBoard.NameTakenFormat));
+            Assert.That(board.RenameError(smile, " wink "), Is.EqualTo(ExpressionBoard.NameTakenFormat));
+            Assert.That(board.RenameError(smile, "hidden"), Is.Null, "An excluded face is not exported, so its name is free.");
+            Assert.That(board.RenameError(smile, "smile"), Is.Null);
+            Assert.That(board.Rename(smile, "wink"), Is.False);
+            Assert.That(board.Rename(smile, "happy"), Is.False);
+            Assert.That(board.Renamed(smile), Is.False);
+
+            // A renamed face takes its new name, and frees its file name.
+            Assert.That(board.Rename(wink, "closed eyes"), Is.True);
+            Assert.That(board.RenameError(smile, "closed eyes"), Is.EqualTo(ExpressionBoard.NameTakenFormat));
+            Assert.That(board.RenameError(smile, "wink"), Is.Null);
+        }
+
+        [Test]
+        public void RepeatedNamesFollowTheBoardNames()
+        {
+            var first = Clip("smile"); var second = Clip("smile"); var other = Clip("wink");
+            var board = Board(null, new[] { Item(first), Item(second), Item(other) });
+            Assert.That(board.Rename(second, "smile 2"), Is.True, "Renaming is the way out of a repeated file name.");
+            Assert.That(board.UsesRecordRoute, Is.True);
+            Assert.That(new[] { board.NameOf(first), board.NameOf(second), board.NameOf(other) }, Is.EqualTo(new[] { "smile", "smile 2", "wink" }));
+            Assert.That(board.RenameError(other, "smile 2"), Is.EqualTo(ExpressionBoard.NameTakenFormat));
+        }
+
+        [Test]
+        public void ResettingTheBoardKeepsTheNames()
+        {
+            var smile = Clip("smile");
+            var board = Board(null, new[] { Item(smile) });
+            board.Rename(smile, "grin");
+            board.Reset();
+            Assert.That(board.NameOf(smile), Is.EqualTo("grin"));
+        }
     }
 }

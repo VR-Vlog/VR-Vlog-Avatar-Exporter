@@ -175,6 +175,35 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The board takes a clip that also names a shape the avatar never had.
+        // In a standard slot it must save too, binding only the shapes the
+        // mesh has. ShapesLostByPreparationStayUnsupportedOnTheBoard covers
+        // a shape lost by preparation, which never reaches the slot.
+        [Test]
+        public void PresetFromAClipWithShapesTheAvatarNeverHadBindsOnlyTheRest()
+        {
+            using var fixture = Fixture();
+            var clip = FaceClip(100);
+            var absent = new AnimationClip { name = "Only missing" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
+                AnimationUtility.SetEditorCurve(absent, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MissingShape"), AnimationCurve.Constant(0, 1, 100));
+                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
+                session.SetPreset(ExpressionPreset.happy, assignment);
+                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                // A clip preset is baked into one generated target on the mesh it moves.
+                var bound = BoundShapes(bytes, "happy");
+                Assert.That(bound, Has.Length.EqualTo(1));
+                Assert.That(bound[0], Does.StartWith("Front/__VRVlog_Endpoint_").And.EndWith("@1"));
+                Assert.That(session.PresetError(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, absent)),
+                    Does.Contain(ExporterLocalization.T("参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。")));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(absent); }
+        }
+
         [Test]
         public async Task CaptureRouteKeepsRecordedCustomFacesBesideThePreset()
         {
@@ -1335,6 +1364,63 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(skipped, Is.Zero);
                 ExpressionPresetStore.Save("avatar-b", ExpressionPresetStore.Load("avatar-b", out _), new[] { kept });
                 Assert.That(ExpressionPresetStore.LoadExcluded("avatar-b", out _), Is.EqualTo(new[] { kept }));
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("angry"));
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
+        [Test]
+        public void StoreKeepsFaceNamesByAssetAndReadsFilesWithoutThem()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            var folder = "Assets/VRVlogNameStore_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                var kept = FaceClip(40); kept.name = "Kept"; AssetDatabase.CreateAsset(kept, folder + "/Kept.anim");
+                var removed = FaceClip(50); removed.name = "Removed"; AssetDatabase.CreateAsset(removed, folder + "/Removed.anim");
+                var memory = FaceClip(60);
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), null, new Dictionary<AnimationClip, string>
+                    { [kept] = " Grin ", [removed] = "Gone", [memory] = "Memory" });
+                var names = ExpressionPresetStore.LoadNames("avatar-a", out var skipped);
+                Assert.That(skipped, Is.Zero);
+                Assert.That(names.Count, Is.EqualTo(2), "Only assets are stored.");
+                Assert.That(names[kept], Is.EqualTo("Grin"));
+                Assert.That(names[removed], Is.EqualTo("Gone"));
+
+                ExpressionPresetStore.Save("avatar-a", new[] { Session.PresetAssignment.None(ExpressionPreset.angry) }, new[] { removed });
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _)[kept], Is.EqualTo("Grin"), "Saving without names keeps the stored names.");
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.EqualTo(new[] { removed }));
+
+                AssetDatabase.DeleteAsset(folder + "/Removed.anim");
+                names = ExpressionPresetStore.LoadNames("avatar-a", out skipped);
+                Assert.That(names.Keys, Is.EqualTo(new[] { kept }));
+                Assert.That(skipped, Is.EqualTo(1));
+
+                // Damaged names are skipped instead of reaching the board.
+                File.WriteAllText(path, File.ReadAllText(path).Replace("\"Grin\"", "\"two\\nlines\""), Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out skipped), Is.Empty);
+                Assert.That(skipped, Is.EqualTo(2));
+
+                // Names alone keep the avatar's entry; no names and no choices remove it.
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>(), new Dictionary<AnimationClip, string> { [kept] = "Grin" });
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _)[kept], Is.EqualTo("Grin"));
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>(), new Dictionary<AnimationClip, string>());
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _), Is.Empty);
+                Assert.That(File.ReadAllText(path), Does.Not.Contain("avatar-a"));
+                Object.DestroyImmediate(memory);
+
+                // A file written before names existed.
+                const string older = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"angry\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"\",\"Shape\":\"\"}],\"Excluded\":[]}]}";
+                File.WriteAllText(path, older, Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-b", out skipped), Is.Empty);
+                Assert.That(skipped, Is.Zero);
                 Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("angry"));
             }
             finally

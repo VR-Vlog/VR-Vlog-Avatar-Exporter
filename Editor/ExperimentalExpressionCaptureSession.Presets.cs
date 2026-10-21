@@ -190,7 +190,19 @@ namespace VRVlog.LilToonExporter
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
                 AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))
-                .Where(morph => !skippedPaths.Contains(morph.Item1)).ToList(); // As the recorded face drops them.
+                .Where(morph => !skippedPaths.Contains(morph.Item1)) // As the recorded face drops them.
+                .Where(morph => ShapeOnEitherMesh(morph.Item1, morph.Item2)).ToList();
+        }
+
+        // The board's rule for a clip reference: a shape neither the original
+        // nor the shown mesh has changes nothing and is dropped. A shape only
+        // the shown mesh has is kept, so binding it still fails loudly.
+        bool ShapeOnEitherMesh(string path, string shape)
+        {
+            if (!authoringRenderers.TryGetValue(path, out var original)) return true; // The checks above already stopped it.
+            if (preparation.HadShape(original, shape)) return true;
+            var renderer = preparation.PreparedRendererFor(original);
+            return Channels.Any(channel => channel.Renderer == renderer && Array.IndexOf(channel.Shapes, shape) >= 0);
         }
 
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)
