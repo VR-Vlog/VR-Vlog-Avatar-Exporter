@@ -1485,11 +1485,35 @@ namespace VRVlog.LilToonExporter.Tests
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
+                Assert.That(window.titleContent.image, Is.SameAs(ExporterWindowIcon.Texture));
                 Assert.That(ExporterLocalization.T("この割り当てでVRMを保存"), Is.EqualTo(save));
                 Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
                 if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
             finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
+        }
+
+        // A window restored from the saved layout has its tab text but no image;
+        // after a script reload the shared texture is found again, not made twice.
+        [Test]
+        public void WindowIconSurvivesLayoutRestoreAndScriptReload()
+        {
+            var icon = ExporterWindowIcon.Texture;
+            Assert.That(icon, Is.Not.Null);
+            Assert.That((icon.width, icon.height), Is.EqualTo((128, 128)));
+            ExperimentalExpressionCaptureWindow window = null;
+            try
+            {
+                ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
+                window.titleContent = new GUIContent("VRM書き出し");
+                ExporterWindowIcon.Restore(window);
+                Assert.That(window.titleContent.text, Is.EqualTo("VRM書き出し"));
+                Assert.That(window.titleContent.image, Is.SameAs(icon));
+            }
+            finally { window?.Close(); }
+            Assert.That(icon != null, "closing a window must not destroy the shared icon");
+            typeof(ExporterWindowIcon).GetField("texture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).SetValue(null, null);
+            Assert.That(ExporterWindowIcon.Texture, Is.SameAs(icon));
         }
 
         [Test]

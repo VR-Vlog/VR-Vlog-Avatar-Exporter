@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter
             window.session = session;
             if (window.inputOwnership == null) window.inputOwnership = session.AcquireInputOwnership();
             window.saved = saved;
-            window.titleContent = new GUIContent(ExporterLocalization.T("書き出すVRMを確認"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("書き出すVRMを確認"));
             window.minSize = new Vector2(780, 580);
             window.ShowUtility();
             EditorApplication.delayCall += () => { if (window != null) window.StartRebuild(); };

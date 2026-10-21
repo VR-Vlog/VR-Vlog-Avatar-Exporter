@@ -168,7 +168,7 @@ namespace VRVlog.LilToonExporter
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
             window.transferMode = false;
-            window.titleContent = new GUIContent(ExporterLocalization.T("VRM書き出し"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("VRM書き出し"));
             window.minSize = new Vector2(600, 760);
         }
 
@@ -183,7 +183,7 @@ namespace VRVlog.LilToonExporter
             var same = window.session != null && window.source == avatar;
             if (!same && window.session != null && !window.ConfirmChangeAvatar()) return false;
             window.transferMode = true;
-            window.titleContent = new GUIContent(ExporterLocalization.T("アプリに転送（通常）"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("アプリに転送（通常）"));
             window.minSize = new Vector2(600, 760);
             if (same || avatar == null) { window.Repaint(); return true; }
             window.Queue(() =>
@@ -204,6 +204,7 @@ namespace VRVlog.LilToonExporter
 
         void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             wantsMouseMove = true; EditorApplication.update += Advance; EditorApplication.projectChanged += CandidateAssetsChanged;
             EditorApplication.hierarchyChanged += GimmicksChanged;
         }

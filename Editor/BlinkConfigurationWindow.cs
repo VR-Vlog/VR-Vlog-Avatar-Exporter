@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter
         {
             var window = CreateInstance<BlinkConfigurationWindow>();
             window.source = source; window.Options = options.Copy(); window.apply = apply;
-            window.titleContent = new GUIContent(ExporterLocalization.T("瞬き"));
+            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("瞬き"));
             window.minSize = new Vector2(460, 400);
             window.ShowUtility();
             return window;
