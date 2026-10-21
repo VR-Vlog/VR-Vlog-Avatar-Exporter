@@ -212,10 +212,20 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void TheOtherTitleCountsUnsupportedFilesApart()
+        public void TheOtherTitleCountsOnlyExportedFaces()
         {
-            Assert.That(ExperimentalExpressionCaptureWindow.OtherTitle(3, 0), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情 {0}件"), 3)));
-            Assert.That(ExperimentalExpressionCaptureWindow.OtherTitle(3, 2), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情 {0}件・対応外{1}件"), 3, 2)));
+            Assert.That(ExperimentalExpressionCaptureWindow.OtherTitle(3), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情 {0}件"), 3)));
+        }
+
+        [Test]
+        public void ARejectedFileIsNamedWithItsReason()
+        {
+            var message = ExperimentalExpressionCaptureWindow.RejectedMessage(new[] { ("Tail", "reason one"), ("Toggle", "reason two") });
+            Assert.That(message.Split('\n'), Is.EqualTo(new[]
+            {
+                string.Format(ExporterLocalization.T("「{0}」は追加できません。{1}"), "Tail", "reason one"),
+                string.Format(ExporterLocalization.T("「{0}」は追加できません。{1}"), "Toggle", "reason two"),
+            }));
         }
 
         [TestCase("瞬きなし（閉眼用の変形が見つかりません）", "瞬きなし")]
