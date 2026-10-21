@@ -25,7 +25,9 @@
 
 - 表情を評価するプローブは、アバターの複製の Behaviour をすべて無効にしてから Animator だけを有効にする（`VrChatExpressionSampler` の 2 か所のプローブ）。曲線がコライダーや PhysBone を有効にしても、プローブの中で動く処理は無い。
 - プローブから読むのは `SkinnedMeshRenderer.GetBlendShapeWeight` の値だけで、姿勢・材質・Component の状態は書き出しに使わない。PhysBone・コライダー・Contact は揺れと接触の入力で、BlendShape の値にも見た目にも関わらない。
-- 書き出す揺れ物とコライダーは、表情とは別に `PhysBoneSpringExport` が元のアバターの Component から作る。表情のクリップの曲線は使わない。
+- 4 つの型には `ExecuteInEditMode`／`ExecuteAlways` が付いていないので、エディターでは有効にしても `OnEnable` などが動かない（`ExecuteInEditMode` の付いた Constraint は、これまでどおり評価を制限する）。
+- 書き出す揺れ物とコライダーは、表情とは別に `PhysBoneSpringExport` が書き出し用の複製の Component から作る。表情のクリップは複製に再生しないので、クリップの曲線は使わない。
+- 通すのは `m_Enabled` の曲線だけで、半径などほかのプロパティやオブジェクト参照の曲線はこれまでどおり拒否する。
 - Constraint の `m_Enabled` は、有効にすると SDK の処理や外部の参照が動きうるので、これまでどおり評価を制限する。今回の 4 つの型だけを通す。BoxCollider など、ほかの Component の未知の曲線も、これまでどおり拒否する。
 
 ## 採らなかった案

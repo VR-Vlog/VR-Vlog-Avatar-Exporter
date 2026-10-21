@@ -439,9 +439,11 @@ namespace VRVlog.LilToonExporter
         // AvatarDynamics components are collision and contact inputs. They
         // contribute neither to the blend shape weights the probe reads nor to
         // the exported appearance, and the probe disables every Behaviour, so
-        // enabling one runs nothing. Their curves pass as evaluation support.
+        // enabling one runs nothing (none of them runs in edit mode either).
+        // Their enable curves pass as evaluation support.
         internal static bool IsInertDynamicsBinding(EditorCurveBinding binding)
         {
+            if (binding.isPPtrCurve || binding.propertyName != "m_Enabled") return false;
             var name = binding.type?.FullName;
             return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
                 name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
