@@ -26,11 +26,11 @@
 - 外すときは、各 primitive の `targets`・メッシュとノードの `weights`・`extras.targetNames` を同じ並びで詰め、`morphTargetBinds` と表情のアニメーションの `index` を詰めたあとの番号に付け替える。BlendShape が 1 つも残らないメッシュは `targets`・`weights`・`targetNames` のキーごと消す。
 - 外した BlendShape だけが使っていた accessor と bufferView を消して番号を詰め、バイナリを 4 バイト境界を保ったまま詰め直す。残る BlendShape と共有している accessor は残す。書き出し前から使われていなかった accessor や bufferView には触らない。
 - 次のときはファイルをそのまま返す。
-  - 中身を確かめていない拡張がある。確かめたのは `VRMC_vrm`・`VRMC_springBone`・`VRMC_springBone_extended_collider`・`VRMC_springBone_limit`・`VRMC_node_constraint`・`VRMC_materials_mtoon`・`KHR_materials_unlit`・`KHR_texture_transform`・`KHR_materials_emissive_strength`・`VRVLOG_expression_animations` で、ほかの拡張は accessor や BlendShape の番号を持っているかもしれないので、警告を出して何もしない。
+  - 中身を確かめていない拡張がある。確かめたのは `VRMC_vrm`・`VRMC_springBone`・`VRMC_springBone_extended_collider`・`VRMC_springBone_limit`・`VRMC_node_constraint`・`VRMC_materials_mtoon`・`KHR_materials_unlit`・`KHR_texture_transform`・`KHR_materials_emissive_strength`・`VRVLOG_expression_animations` で、ほかの拡張は accessor や BlendShape の番号を持っているかもしれないので、何もしない。Unity の Console に警告（`Debug.LogWarning`）を 1 行出すだけで、書き出しの警告や結果一覧には出さない。ファイルはこれまでどおりなので、使う人が対応することは無い。
   - バッファが GLB のバイナリ 1 つでない、bufferView が範囲の外を指しているなど、詰め直してよいか確かめられない。
   - 表情のアニメーションの拡張が読めない。
 - メッシュ単位で次のときはそのメッシュを外さない。primitive ごとの BlendShape の数が違う、重みや名前の数が合わない、bind が範囲の外を指している、glTF のアニメーションが重みを動かしている。
-- 外した BlendShape は「表情にも使われずアプリからも動かせないBlendShapeを○個、VRMに入れませんでした。」として書き出し結果の一覧に件数を出し、名前は詳細に並べる。
+- 外した BlendShape の数と名前は Unity の Console に `Debug.Log` で 1 行出すだけで、書き出しの警告や結果一覧（`ExportOutcome.Omitted`）には出さない。外すのは書き出しの通常の結果で、代わりの手段に落ちた（フォールバックした）わけではないため。結果一覧に出すと、ほとんどの書き出しで「省略あり」と警告が付き、何かを失ったように見えてしまう。
 - 既定でオンにして、画面の切り替えは置かない。`UnusedMorphTargets.Enabled` を `false` にすれば、これまでどおりすべての BlendShape を書き出す。
 - この段が失敗したときは、段を飛ばしてすべての BlendShape を入れたまま書き出す（`ExportOutcome.Approximated`）。
 
@@ -44,6 +44,7 @@
 
 ## 入れなかったもの
 
+- 外した BlendShape を書き出し結果の一覧や警告に出すこと。理由は上の決定のとおり。
 - 外すかどうかを画面で切り替えること。アプリで使えないものだけを外すので、選ぶ場面が無い。
 - 書き出し前から使われていなかった accessor や bufferView を消すこと。この段で使われなくなったものだけを対象にして、ほかの段の結果に手を入れない。
 - 中身を確かめていない拡張があるときに、その拡張だけを避けて外すこと。どこに番号を持っているか分からない拡張は、ファイルごと触らないほうが安全なため。

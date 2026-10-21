@@ -40,15 +40,15 @@ namespace VRVlog.LilToonExporter.Tests
         public void KeepsTheFileWhenNothingIsUnused() => UnusedMorphTargetsFixture.KeepsTheFileWhenNothingIsUnused(Check);
 
         [Test]
-        public void EveryShippedLocaleTranslatesTheUnusedMorphResults()
+        public void EveryShippedLocaleTranslatesTheUnusedMorphStage()
         {
             var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
             var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
             foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
             {
                 var text = System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
-                foreach (var source in new[] { UniVrmOneClickExporter.UnusedMorphFormat, UniVrmOneClickExporter.UnusedMorphCategory, ExportStageGuard.Label(ExportStage.UnusedMorphs) })
-                    Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
+                var source = ExportStageGuard.Label(ExportStage.UnusedMorphs);
+                Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
             }
         }
     }

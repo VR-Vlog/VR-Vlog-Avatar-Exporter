@@ -17,7 +17,8 @@ namespace VRVlog.LilToonExporter
         // False writes every morph target as before.
         internal static readonly bool Enabled = true;
 
-        internal const string UnknownExtensionWarning = "使われないBlendShapeを外す処理は、中身を確かめていない拡張（{0}）があるため行いませんでした。";
+        // Logged to the Console only: the file is kept unchanged.
+        internal const string UnknownExtensionWarning = "Kept every BlendShape because the file has extensions this step has not checked: {0}";
 
         // Extensions checked to hold no accessor, bufferView or morph target
         // index other than the ones handled here. Any other extension keeps
@@ -65,9 +66,10 @@ namespace VRVlog.LilToonExporter
             internal int[] Map;
         }
 
-        // Returns the input array itself when nothing is removed. removed
-        // receives "mesh/shape" (or the shape alone for an unnamed mesh) for
-        // each target left out.
+        // Returns the input array itself when nothing is removed. warnings
+        // receives why the file was kept unchanged; removed receives
+        // "mesh/shape" (or the shape alone for an unnamed mesh) for each
+        // target left out.
         internal static byte[] Strip(byte[] bytes, ICollection<string> warnings, ICollection<string> removed = null)
         {
             if (!Enabled || bytes == null) return bytes;
