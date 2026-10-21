@@ -14,9 +14,9 @@ VRChatでも存在しないBlendShapeへのカーブは何も動かさないの�
 
 ## 決定
 
-- ボードの判定と記録でも、元のアバターのメッシュ（`authoringRenderers` の `sharedMesh`）にも表示中の書き出し用メッシュにも無いBlendShapeへの参照は省き、残りの変形で表情を作る。
+- ボードの判定と記録でも、書き出しの前の処理より前のメッシュ（`NdmfExportPreparation.HadShape`。書き出しの `OriginalShapes` と同じ控え）にも表示中の書き出し用メッシュにも無いBlendShapeへの参照は省き、残りの変形で表情を作る。
 - 省いた結果、適用する変形が1つも無いときは対応外にする。理由の文は書き出しが表情ごと省くときの文（「参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。」）を使い、新しい訳は足さない。
-- 元のメッシュにはあって書き出しの前の処理で消えたBlendShapeは、これまでどおり対応外にする。書き出しも同じ場合を `LostAfterPreparation` で止めている。
+- 元のメッシュにはあって書き出しの前の処理で消えたBlendShapeは、これまでどおり対応外にする。書き出しも同じ場合を `LostAfterPreparation` で止めている。処理後の Renderer の `sharedMesh` では見分けられず（処理はコピーをその場で書き換え、統合では元の Renderer が壊される）、処理前に控えた名前で判定する。
 
 ## 採らなかったもの
 
@@ -25,5 +25,5 @@ VRChatでも存在しないBlendShapeへのカーブは何も動かさないの�
 
 ## 確認したこと
 
-- EditMode: `ShapesTheAvatarNeverHadAreSkippedLikeTheMenuExport`（無い参照と有る参照を持つ表情が、判定・プレビュー・記録で有る参照だけを使う）と、`ExplicitClipErrorsNeverPartiallyRecordOrAlterThePreview("wrong-shape")`（無い参照だけの表情は対応外のまま）。
-- 一括検証で同じアバターを書き出し直し、ボードの件数とVRMの件数を比べた（結果はPR本文）。
+- EditMode: `ShapesTheAvatarNeverHadAreSkippedLikeTheMenuExport`（無い参照と有る参照を持つ表情が、判定・プレビュー・記録で有る参照だけを使う）と、`ExplicitClipErrorsNeverPartiallyRecordOrAlterThePreview("wrong-shape")`（無い参照だけの表情は対応外のまま）、`ShapesLostByPreparationStayUnsupportedOnTheBoard`（処理で消えた参照は有る参照と混ざっても対応外のまま）。
+- マージ後に一括検証で同じアバターを書き出し直し、ボードの件数とVRMの件数を比べる。

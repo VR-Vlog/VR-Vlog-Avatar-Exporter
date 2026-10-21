@@ -1581,6 +1581,29 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); }
         }
 
+        // A shape the renderer had before the build passes but lost in them is
+        // not skipped: the menu export stops on it, so the board must too, even
+        // when another reference in the clip still resolves.
+        [Test]
+        public void ShapesLostByPreparationStayUnsupportedOnTheBoard()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var preparation = (NdmfExportPreparation)typeof(ExperimentalExpressionCaptureSession).GetField("preparation", flags).GetValue(session);
+            var before = (System.Collections.Generic.Dictionary<SkinnedMeshRenderer, System.Collections.Generic.HashSet<string>>)typeof(NdmfExportPreparation).GetField("shapesBeforeProcessing", flags).GetValue(preparation);
+            foreach (var shapes in before.Values) shapes.Add("Frozen in build");
+            var clip = new AnimationClip { name = "Partly frozen" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frozen in build"), AnimationCurve.Constant(0, 1, 100));
+                Assert.That(session.ClipError(clip, clip.length), Is.Not.Null);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.Not.Null);
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName()
         {

@@ -259,7 +259,7 @@ namespace VRVlog.LilToonExporter
                 // A shape the original mesh never had changes nothing in VRChat,
                 // and the menu export drops it the same way, so the board must not
                 // reject the face for it. A shape lost by preparation still fails.
-                if (!HasShape(pose, channel.Path, shape) && (original.sharedMesh == null || original.sharedMesh.GetBlendShapeIndex(shape) < 0)) continue;
+                if (!HasShape(pose, channel.Path, shape) && !preparation.HadShape(original, shape)) continue;
                 Set(pose, channel.Path, shape, weight);
                 applied++;
             }
