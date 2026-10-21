@@ -1373,5 +1373,62 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.DeleteAsset(folder);
             }
         }
+
+        [Test]
+        public void StoreKeepsFaceNamesByAssetAndReadsFilesWithoutThem()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            var folder = "Assets/VRVlogNameStore_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                var kept = FaceClip(40); kept.name = "Kept"; AssetDatabase.CreateAsset(kept, folder + "/Kept.anim");
+                var removed = FaceClip(50); removed.name = "Removed"; AssetDatabase.CreateAsset(removed, folder + "/Removed.anim");
+                var memory = FaceClip(60);
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), null, new Dictionary<AnimationClip, string>
+                    { [kept] = " Grin ", [removed] = "Gone", [memory] = "Memory" });
+                var names = ExpressionPresetStore.LoadNames("avatar-a", out var skipped);
+                Assert.That(skipped, Is.Zero);
+                Assert.That(names.Count, Is.EqualTo(2), "Only assets are stored.");
+                Assert.That(names[kept], Is.EqualTo("Grin"));
+                Assert.That(names[removed], Is.EqualTo("Gone"));
+
+                ExpressionPresetStore.Save("avatar-a", new[] { Session.PresetAssignment.None(ExpressionPreset.angry) }, new[] { removed });
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _)[kept], Is.EqualTo("Grin"), "Saving without names keeps the stored names.");
+                Assert.That(ExpressionPresetStore.LoadExcluded("avatar-a", out _), Is.EqualTo(new[] { removed }));
+
+                AssetDatabase.DeleteAsset(folder + "/Removed.anim");
+                names = ExpressionPresetStore.LoadNames("avatar-a", out skipped);
+                Assert.That(names.Keys, Is.EqualTo(new[] { kept }));
+                Assert.That(skipped, Is.EqualTo(1));
+
+                // Damaged names are skipped instead of reaching the board.
+                File.WriteAllText(path, File.ReadAllText(path).Replace("\"Grin\"", "\"two\\nlines\""), Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out skipped), Is.Empty);
+                Assert.That(skipped, Is.EqualTo(2));
+
+                // Names alone keep the avatar's entry; no names and no choices remove it.
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>(), new Dictionary<AnimationClip, string> { [kept] = "Grin" });
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _)[kept], Is.EqualTo("Grin"));
+                ExpressionPresetStore.Save("avatar-a", Array.Empty<Session.PresetAssignment>(), Array.Empty<AnimationClip>(), new Dictionary<AnimationClip, string>());
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-a", out _), Is.Empty);
+                Assert.That(File.ReadAllText(path), Does.Not.Contain("avatar-a"));
+                Object.DestroyImmediate(memory);
+
+                // A file written before names existed.
+                const string older = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"angry\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"\",\"Shape\":\"\"}],\"Excluded\":[]}]}";
+                File.WriteAllText(path, older, Encoding.UTF8);
+                Assert.That(ExpressionPresetStore.LoadNames("avatar-b", out skipped), Is.Empty);
+                Assert.That(skipped, Is.Zero);
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("angry"));
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
     }
 }
