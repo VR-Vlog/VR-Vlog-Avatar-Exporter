@@ -251,7 +251,7 @@ namespace VRVlog.LilToonExporter.ExportRegression
                         {
                             Action onSaved = () => saved = true;
                             var license = Activator.CreateInstance(licenseType, true);
-                            failure = (string)transferExport.Invoke(window, new object[] { avatar.name, Author, license, dest, onSaved });
+                            failure = (string)transferExport.Invoke(window, new object[] { avatar.name, Author, license, dest, onSaved, true });
                         }
                         catch (Exception e)
                         {

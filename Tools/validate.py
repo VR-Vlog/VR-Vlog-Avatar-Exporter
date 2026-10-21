@@ -195,14 +195,17 @@ assert "RequireSupportedLilToon(GameObject avatar)" in window
 # Both export entries compare the shaders the avatar uses with the catalogue.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
 assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-# The export window, "アプリに転送" and batch callers export through ExportSettings,
-# which runs the same check.
+# The export window and batch callers export through ExportSettings, which runs
+# the same check ("アプリに転送" through the board's session, checked above).
 export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
 assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in export_settings
 assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
 assert "licenseOptions: License, disableAudioLink: true" in export_settings
 assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
-assert "targetSettings.Creator(avatar, name, targetAuthor)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+# Both "アプリに転送" exports go through the expression board's save; the quick
+# one prepares a board out of sight, so it writes what an untouched "通常" writes.
+assert "ExperimentalExpressionCaptureWindow.PrepareHidden(avatar)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
+assert "board.TransferExport(" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert "UniVrmOneClickExporter.Export" not in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
 assert f'? info.version : "{package["version"]}"' in window
