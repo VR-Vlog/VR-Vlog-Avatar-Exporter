@@ -433,15 +433,11 @@ namespace VRVlog.LilToonExporter
             if (GUILayout.Button(ExporterLocalization.T("検出一覧を更新"))) InvalidateAvatarScan();
             if (Event.current.type == EventType.Layout && EditorApplication.timeSinceStartup >= nextGimmickScan)
             {
-                bool Manual(Transform t) => excludedObjects.Any(go => go != null && go != avatar &&
-                    (t == go.transform || t.IsChildOf(go.transform)));
-                gimmickFindings = ExportGimmickDetection.Analyze(avatar, Manual);
+                gimmickFindings = ExportGimmickChoices.Analyze(avatar, excludedObjects);
                 nextGimmickScan = EditorApplication.timeSinceStartup + 1;
             }
-            var roots = gimmickFindings.Where(f => f.Target != null && f.Unit == GimmickExclusionUnit.Hierarchy).ToArray();
-            foreach (var finding in gimmickFindings)
+            foreach (var finding in ExportGimmickChoices.Listed(gimmickFindings))
             {
-                if (finding.Target == null || roots.Any(root => root != finding && finding.Target.transform.IsChildOf(root.Target.transform))) continue;
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 EditorGUILayout.ObjectField(finding.Target, typeof(GameObject), true);
                 EditorGUILayout.LabelField(ExporterLocalization.T(finding.Reason), EditorStyles.wordWrappedLabel);
@@ -455,28 +451,14 @@ namespace VRVlog.LilToonExporter
                 }
                 else
                 {
-                    var inherited = includedGimmicks.Any(go => go != null && go != finding.Target && finding.Target.transform.IsChildOf(go.transform));
+                    var inherited = ExportGimmickChoices.Inherited(finding, settings);
                     using (new EditorGUI.DisabledScope(!autoExcludeGimmicks || inherited))
                     {
-                        // A Component finding keeps only its components, not
-                        // the object (which can be the avatar root).
-                        var components = finding.Unit == GimmickExclusionUnit.Component;
-                        var keep = components
-                            ? finding.Components.Any(includedGimmickComponents.Contains)
-                            : includedGimmicks.Contains(finding.Target);
-                        var selected = EditorGUILayout.ToggleLeft(inherited ? ExporterLocalization.T("親の指定により含める") : ExporterLocalization.T("この対象は含める"), keep || inherited);
+                        var keep = ExportGimmickChoices.Kept(finding, settings);
+                        var selected = EditorGUILayout.ToggleLeft(inherited ? ExporterLocalization.T("親の指定でVRMに入れる") : ExporterLocalization.T("VRMに入れる"), keep || inherited);
                         if (!inherited && selected != keep)
                         {
-                            if (components)
-                            {
-                                foreach (var component in finding.Components)
-                                {
-                                    includedGimmickComponents.Remove(component);
-                                    if (selected && component != null) includedGimmickComponents.Add(component);
-                                }
-                            }
-                            else if (selected) includedGimmicks.Add(finding.Target);
-                            else includedGimmicks.Remove(finding.Target);
+                            ExportGimmickChoices.SetKept(finding, settings, selected);
                             blinkStatus.Invalidate();
                         }
                     }

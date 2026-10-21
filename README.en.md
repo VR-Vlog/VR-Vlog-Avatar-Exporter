@@ -27,7 +27,7 @@ With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, wh
 - Objects that a Modular Avatar Platform Filter leaves out of the generic (VRM) platform. Objects whose filters both include and exclude platforms are only listed for review.
 - Empty objects with no mesh and no bones, such as holders of VRChat menus or settings. The number left out is logged to the Console.
 
-Removed and reviewed objects appear in the export result list. Turn on **この対象は含める** (include this) in the gimmick list of the export window to keep one, or turn auto-exclude off to keep everything.
+Removed and reviewed objects appear in the export result list. To keep one, turn on **VRMに入れる** (include in VRM) in the **VRChat用のギミック** (VRChat gimmicks) section below the expression list of the expression board, or in the gimmick list of the **VRMを書き出す** window; or turn auto-exclude off to keep everything. Keeping a gimmick in the VRM does not reproduce how it works in VRChat. The choice is saved in the avatar's export settings and both windows show it. On the expression board, press **プレビューに反映** (apply to preview) after choosing; until then the board shows **プレビュー未反映** (not in preview) and does not save.
 
 ## Requirements
 
