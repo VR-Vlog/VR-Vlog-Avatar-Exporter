@@ -55,6 +55,7 @@ namespace VRVlog.LilToonExporter
                     ReadClip(avatar, clip, entry, excludedPath, source);
                     VrChatExpressionSampler.ApplyPermanentOverrides(avatar, runtime, entry, target.Layer, target.State.writeDefaultValues,
                         excludedPath, metadata: source, sourceState: target.State);
+                    source.GestureStates.Add((target.Layer, target.State));
                 }
                 catch (InvalidOperationException error) { entry.Error = error.Message; }
                 // Sharing a clip does not establish the same expression:

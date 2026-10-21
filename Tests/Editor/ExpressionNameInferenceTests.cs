@@ -118,7 +118,7 @@ namespace VRVlog.LilToonExporter.Tests
             List<string> formats = null)
         {
             var all = new List<(string Preset, string Source, string Format)>();
-            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: all,
+            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledPresets: all,
                 emotionCandidates: paths, emotionShapes: shapes, shapeNames: table);
             filled?.AddRange(all.Select(item => (item.Preset, item.Source)));
             formats?.AddRange(all.Select(item => item.Format));
@@ -294,7 +294,7 @@ namespace VRVlog.LilToonExporter.Tests
             var filled = new List<(string Preset, string Source)>();
             var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)),
                 "1", MenuFace(Bind(0, 2)), "Sad", MenuFace(Bind(0, 3)), "Wink", MenuFace(Bind(0, 4)));
-            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c", "d", "e")));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("s0", "s1", "s2", "s3", "s4")));
             var paths = new Dictionary<string, string> {
                 ["笑顔"] = "喜怒哀楽 / 笑顔", ["怒り"] = "喜怒哀楽 / 怒り", ["1"] = "喜怒哀楽 / 1", ["Sad"] = "Eye / Sad", ["Wink"] = "Smile / Wink" };
             var presets = Presets(Infer(bytes, paths, filled: filled));
@@ -322,13 +322,13 @@ namespace VRVlog.LilToonExporter.Tests
         public void FilledEmotionsAreKeptLinesOfTheResultList()
         {
             var report = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat),
+            UniVrmOneClickExporter.RecordInferredPresets(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat),
                 ("angry", "Fcl_ALL_Angry", VrmExpressionBindings.FilledFormat), ("sad", "3", VrmExpressionBindings.ShapeFilledFormat) }, report);
             var results = report.Fallbacks.Results;
             Assert.That(results.Select(result => result.Name), Is.EqualTo(new[] { "happy", "angry", "sad" }));
             Assert.That(results.All(result => result.Outcome == ExportOutcome.Kept && result.Stage == null), Is.True);
             Assert.That(results.Select(result => result.Category).Distinct(),
-                Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredEmotionCategory) }));
+                Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredPresetCategory) }));
             Assert.That(results[0].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "happy", "笑顔")));
             Assert.That(results[2].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.ShapeFilledFormat), "sad", "3")),
                 "A face filled from its shapes says so in the same row.");
@@ -592,8 +592,172 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnexportedVisemeMeshWarning));
         }
 
+        [TestCase("Neutral", false)]
+        [TestCase("neutral", true)]
+        [TestCase("Fcl_ALL_Neutral", true)]
+        [TestCase("faceNeutral", true)]
+        [TestCase("真顔", false)]
+        [TestCase("無表情", false)]
+        public void NeutralNamesNameNeutral(string name, bool latinOnly) =>
+            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly), Is.True);
+
+        // A face part, a side, a toggle or an emotion is not the neutral face.
+        [TestCase("Fcl_MTH_Neutral")]
+        [TestCase("Fcl_EYE_Neutral")]
+        [TestCase("Neutral_Closed")]
+        [TestCase("neutral_half")]
+        [TestCase("Neutral_Sleep")]
+        [TestCase("eye_neutral_L")]
+        [TestCase("Neutral_R")]
+        [TestCase("Neutral_Smile")]
+        [TestCase("NeutralOff")]
+        [TestCase("Default")]
+        [TestCase("口_真顔")]
+        public void PartialOrMixedNeutralNamesNameNothing(string name)
+        {
+            Assert.That(ExpressionNameInference.MatchNeutral(name), Is.False);
+            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly: true), Is.False);
+        }
+
         [Test]
-        public void EveryShippedLocaleTranslatesTheMouthAndKnownNameWarnings()
+        public void JapaneseNeutralNamesAreNotRawCandidates() =>
+            Assert.That(ExpressionNameInference.MatchNeutral("真顔", latinOnly: true), Is.False);
+
+        [TestCase("表情 / 真顔", true)]
+        [TestCase("喜怒哀楽 / Neutral", true)]
+        [TestCase("Neutral", true)]
+        [TestCase("Smile / Neutral", false)]
+        [TestCase("Eye / Neutral", false)]
+        [TestCase("Neutral / 1", false)]
+        public void NeutralMenuPathsAreDecidedByTheLeaf(string path, bool expected) =>
+            Assert.That(ExpressionNameInference.MatchNeutralMenuPath(path), Is.EqualTo(expected));
+
+        [Test]
+        public void NeutralMenuFaceFillsEmptyNeutralBeforeABlendShapeName()
+        {
+            var face = MenuFace(Bind(0, 0));
+            var bytes = Glb(null, Obj("Neutral", face), Arr(Obj("mesh", 0L)), Arr(Mesh("composite", "Fcl_ALL_Neutral")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false))),
+                "The menu face's overrides are dropped: neutral blocks no blink, mouth or gaze.");
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Neutral") }));
+        }
+
+        [Test]
+        public void NeutralMenuFaceIsNotGuessedAsAnEmotionFromItsShapes()
+        {
+            var bytes = Glb(null, Obj("Neutral", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("body", "composite")));
+            var paths = new Dictionary<string, string> { { "Neutral", "表情 / Neutral" } };
+            var shapes = Shapes(("Neutral", Moves("笑い", 100, "にやり", 100)));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, paths, filled: filled, shapes: shapes, table: ExpressionShapeNames.Parse(SmallTable)));
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Neutral") }), "A resting face that smiles a little is still neutral, not happy.");
+            Assert.That(presets.ContainsKey("happy"), Is.False);
+        }
+
+        [Test]
+        public void WholeFaceNeutralBlendShapeFillsEveryNodeThatHasIt()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L), Obj("mesh", 1L)),
+                Arr(Mesh("Fcl_MTH_Neutral", "Fcl_ALL_Neutral"), Mesh("other", "Fcl_ALL_Neutral")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1), Bind(1, 1)), "isBinary", false))),
+                "Neutral moves nothing extra, so blink, mouth and gaze are not overridden.");
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Fcl_ALL_Neutral") }));
+        }
+
+        [Test]
+        public void AuthoredNeutralAndGazeAreNeverChanged()
+        {
+            var authored = Obj("morphTargetBinds", Arr(Bind(0, 2)), "isBinary", false);
+            var bytes = Glb(Obj("neutral", authored, "lookUp", authored), null, Arr(Obj("mesh", 0L)),
+                Arr(Mesh("Fcl_ALL_Neutral", "lookUp", "body")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(authored)));
+            Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(authored)));
+            Assert.That(filled, Is.Empty);
+        }
+
+        [Test]
+        public void PerfectSyncPairsFillGazeWithBothEyes()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("EyeLookUpLeft", "EyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
+                "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            foreach (var (preset, a, b) in new[] { ("lookUp", 0L, 1L), ("lookDown", 2L, 3L), ("lookLeft", 6L, 5L), ("lookRight", 4L, 7L) })
+                Assert.That(Canonical(presets[preset]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, a), Bind(0, b)), "isBinary", false))), preset);
+            Assert.That(filled.Select(item => item.Preset), Is.EqualTo(new[] { "lookUp", "lookDown", "lookLeft", "lookRight" }));
+            Assert.That(filled[2].Source, Is.EqualTo("eyeLookOutLeft + eyeLookInRight"), "Looking left turns the left eye out and the right eye in.");
+            Assert.That(filled[0].Source, Is.EqualTo("EyeLookUpLeft + EyeLookUpRight"), "The line shows the names as the mesh has them.");
+        }
+
+        [Test]
+        public void GazeNamesFillOnlyWhenBothEyesMove()
+        {
+            var single = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("LookUp", "look_down", "eyeLookOutLeft", "eye_look_up_L")));
+            var presets = Presets(Infer(single));
+            Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false))));
+            Assert.That(Canonical(presets["lookDown"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1)), "isBinary", false))));
+            Assert.That(presets.ContainsKey("lookLeft") || presets.ContainsKey("lookRight"), Is.False, "One eye alone turns no gaze preset.");
+
+            // The other eye's half on another mesh still leaves the pair unused.
+            var split = Glb(null, null, Arr(Obj("mesh", 0L), Obj("mesh", 1L)), Arr(Mesh("eyeLookUpLeft", "eyeLookUpRight"), Mesh("eyeLookUpLeft")));
+            Assert.That(Presets(Infer(split)).ContainsKey("lookUp"), Is.False);
+        }
+
+        [Test]
+        public void DuplicateGazeNameFillsNothingAndWarns()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("lookUp", "LookUp")));
+            var warnings = new List<string>();
+            Assert.That(Presets(Infer(bytes, warnings)).ContainsKey("lookUp"), Is.False);
+            Assert.That(warnings, Does.Contain(string.Format(ExporterLocalization.T(VrmExpressionBindings.DuplicateNameFormat), "lookUp", 0, "lookUp")));
+        }
+
+        [Test]
+        public void DisabledInferenceFillsNoNeutralOrGaze()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "eyeLookUpLeft", "eyeLookUpRight")));
+            Assert.That(Presets(Infer(bytes, inferEmotions: false)), Is.Empty);
+        }
+
+        [Test]
+        public void MouthFilledFromAKnownNameIsAKeptLine()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("vrc.v_aa", "Fcl_MTH_I")));
+            var warnings = new List<string>();
+            var filled = new List<(string Preset, string Source)>();
+            var formats = new List<string>();
+            Infer(bytes, CustomNames(bytes).ToDictionary(name => name, name => name), warnings, filled, formats: formats);
+            Assert.That(filled, Is.EqualTo(new[] { ("aa", "vrc.v_aa"), ("ih", "Fcl_MTH_I") }));
+            Assert.That(formats.Distinct(), Is.EqualTo(new[] { VrmExpressionBindings.FilledFormat }));
+            Assert.That(warnings, Does.Contain(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "aa", "vrc.v_aa")));
+
+            // The descriptor's Lip Sync is the author's own choice, not a guess.
+            var all = new List<(string Preset, string Source, string Format)>();
+            var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = 0 };
+            descriptor.Shapes["aa"] = "vrc.v_aa";
+            VrmExpressionBindings.AddMissing(bytes, inferBlink: false, filledPresets: all, descriptor: descriptor);
+            Assert.That(all.Select(item => item.Preset), Is.EqualTo(new[] { "ih" }));
+        }
+
+        // Misleading names: a side, a part or one eye fills no preset at all.
+        [Test]
+        public void MisleadingNamesFillNothing()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("eye_smile_L", "Fcl_EYE_Joy", "Fcl_MTH_Neutral", "mouth_smile",
+                "eyeLookUpLeft", "eye_look_left_R", "smile_R", "怒り", "真顔")));
+            var filled = new List<(string Preset, string Source)>();
+            Assert.That(Presets(Infer(bytes, filled: filled)), Is.Empty);
+            Assert.That(filled, Is.Empty);
+        }
+
+        [Test]
+        public void EveryShippedLocaleTranslatesTheMouthWarningsAndTheFilledNotice()
         {
             var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
             var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
@@ -601,7 +765,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var text = System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
                 foreach (var source in new[] {
-                    VrmExpressionBindings.KnownNameFormat,
+                    VrmExpressionBindings.FilledFormat,
                     VrmExpressionBindings.UnboundVisemeWarning,
                     VrmExpressionBindings.UnexportedVisemeMeshWarning })
                 {
@@ -610,11 +774,47 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(start, Is.GreaterThanOrEqualTo(0), locale + ": " + source);
                     var translated = text.Substring(start + key.Length, text.IndexOf('"', start + key.Length) - start - key.Length);
                     Assert.That(translated, Is.Not.Empty.And.Not.EqualTo(source), locale + ": " + source);
-                    if (source == VrmExpressionBindings.KnownNameFormat)
+                    if (source == VrmExpressionBindings.FilledFormat)
                         Assert.That(translated, Does.StartWith("{0}"), locale + ": the preset name stays in front.");
                 }
-                Assert.That(text, Does.Not.Contain("{mapping.Preset}: 既知の表情名"), locale + ": an interpolated source never matches.");
+                Assert.That(text, Does.Not.Contain("既知の表情名"), locale + ": the old mouth notice is gone.");
             }
         }
+
+        [Test]
+        public void EveryShippedLocaleTranslatesTheDuplicateAndBlinkWarningsAsBlink()
+        {
+            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
+            var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
+            // The old machine translations read 瞬き as "instant".
+            var wrong = new Dictionary<string, string[]> {
+                { "en", new[] { "instant", "moment" } }, { "ko", new[] { "즉시", "즉석", "순간" } },
+                { "zh-Hans", new[] { "即时", "瞬间" } }, { "zh-Hant", new[] { "即時", "瞬間" } },
+            };
+            foreach (var locale in wrong.Keys)
+            {
+                var file = UnityEngine.JsonUtility.FromJson<LocaleFile>(System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json")));
+                var table = file.entries.ToDictionary(entry => entry.source, entry => entry.translated);
+                foreach (var (source, arguments) in new[] {
+                    (VrmExpressionBindings.DuplicateExpressionFormat, new object[] { "happy", 3 }),
+                    (VrmExpressionBindings.BlinkNotGeneratedWarning, new object[0]),
+                    (VrChatExpressionBaker.BakedFormat, new object[] { 4 }),
+                    (VrChatExpressionBaker.NoneBakedWarning, new object[0]) })
+                {
+                    Assert.That(table.TryGetValue(source, out var translated), Is.True, locale + ": " + source);
+                    Assert.That(translated, Is.Not.Empty.And.Not.EqualTo(source), locale + ": " + source);
+                    var formatted = string.Format(translated, arguments);
+                    foreach (var argument in arguments) Assert.That(formatted, Does.Contain(argument.ToString()), locale + ": " + source);
+                }
+                Assert.That(table.Keys.Where(source => source.StartsWith("{mapping.Preset}: mesh", StringComparison.Ordinal) ||
+                    source.StartsWith("VRChatから{result.Count}", StringComparison.Ordinal)), Is.Empty, locale + ": an interpolated source never matches.");
+                foreach (var entry in file.entries.Where(entry => entry.source.Contains("瞬き")))
+                    foreach (var word in wrong[locale])
+                        Assert.That(entry.translated, Does.Not.Contain(word).IgnoreCase, locale + ": " + entry.source);
+            }
+        }
+
+        [Serializable] class LocaleFile { public LocaleEntry[] entries; }
+        [Serializable] class LocaleEntry { public string source, translated; }
     }
 }

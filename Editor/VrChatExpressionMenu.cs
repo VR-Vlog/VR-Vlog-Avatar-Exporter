@@ -151,6 +151,10 @@ namespace VRVlog.LilToonExporter
             // The host runner checks menu traversal/serialization without
             // Unity geometry evaluation. This session belongs to native Unity.
             internal FacialProjectionScope.Session FacialProjectionSession;
+            // FX states the hand-gesture import already read without error.
+            // Authored faces skip them instead of reading the same face twice.
+            internal readonly HashSet<(int Layer, UnityEditor.Animations.AnimatorState State)> GestureStates =
+                new HashSet<(int Layer, UnityEditor.Animations.AnimatorState State)>();
 #endif
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
