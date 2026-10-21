@@ -99,7 +99,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 window.StopAndClean();
                 window.source = prepared;
                 window.minSize = new Vector2(360, 340);
-                if (compact) window.position = new Rect(window.position.x, window.position.y, 430, 460);
+                if (compact) window.position = new Rect(window.position.x, window.position.y, 430, 460 + ExporterWindowHeader.Height);
                 window.Show();
             }
             catch
@@ -335,7 +335,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (docked || qrTexture == null) return;
             var rect = position;
-            var height = Mathf.Max(rect.height, QrDisplaySize() + 360);
+            var height = Mathf.Max(rect.height, QrDisplaySize() + 360 + ExporterWindowHeader.Height);
             if (height <= rect.height) return;
             heightBeforeQr = rect.height; expandedQrHeight = height;
             position = new Rect(rect.x, rect.y, rect.width, height);
