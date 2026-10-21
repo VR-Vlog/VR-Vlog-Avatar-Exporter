@@ -240,6 +240,7 @@ namespace VRVlog.LilToonExporter
             var root = ClipRoot(clip);
             var pose = ClonePose(Baseline); pose.Name = ValidateName(name);
             var used = new HashSet<string>(StringComparer.Ordinal);
+            var applied = 0;
             foreach (var binding in bindings)
             {
                 var path = string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path;
@@ -255,8 +256,14 @@ namespace VRVlog.LilToonExporter
                 VrChatGestureExpressions.ReadCurve(nativeCurve); // Reuse the finite curve/weighted tangent limits.
                 var weight = nativeCurve.Evaluate(time);
                 if (!Finite(weight)) throw new InvalidOperationException(ExporterLocalization.T("表情の変形量が有限ではありません: ") + shape);
+                // A shape the original mesh never had changes nothing in VRChat,
+                // and the menu export drops it the same way, so the board must not
+                // reject the face for it. A shape lost by preparation still fails.
+                if (!HasShape(pose, channel.Path, shape) && (original.sharedMesh == null || original.sharedMesh.GetBlendShapeIndex(shape) < 0)) continue;
                 Set(pose, channel.Path, shape, weight);
+                applied++;
             }
+            if (applied == 0) throw new InvalidOperationException(ExporterLocalization.T("参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。"));
             pose.InstalledSourceId = ClipId(clip, time);
             ValidatePose(pose);
             return pose;

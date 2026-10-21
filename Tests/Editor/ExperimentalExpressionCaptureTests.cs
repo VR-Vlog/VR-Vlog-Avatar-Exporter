@@ -1539,6 +1539,8 @@ namespace VRVlog.LilToonExporter.Tests
             if (mode == "reference") AnimationUtility.SetObjectReferenceCurve(invalid, EditorCurveBinding.PPtrCurve("Front", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]"), new[] { new ObjectReferenceKeyframe { time = 0, value = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial } });
             if (mode == "missing" || mode == "wrong-shape") AnimationUtility.SetEditorCurve(invalid,
                 EditorCurveBinding.FloatCurve(mode == "missing" ? "Missing" : "Front", typeof(SkinnedMeshRenderer), mode == "wrong-shape" ? "blendShape.Missing" : "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65));
+            // Absent shapes are skipped next to real ones, so the face must have nothing else.
+            if (mode == "wrong-shape") AnimationUtility.SetEditorCurve(invalid, binding, null);
             if (mode == "event") AnimationUtility.SetAnimationEvents(invalid, new[] { new AnimationEvent { functionName = "MustNeverRun", time = .1f } });
             try
             {
@@ -1553,6 +1555,30 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.Channels[0].Renderer.GetBlendShapeWeight(0), Is.EqualTo(50));
             }
             finally { Object.DestroyImmediate(valid); Object.DestroyImmediate(invalid); }
+        }
+
+        // The menu export drops a reference to a shape the avatar never had and
+        // still writes the face, so the board must list and record that face too.
+        [Test]
+        public void ShapesTheAvatarNeverHadAreSkippedLikeTheMenuExport()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var clip = new AnimationClip { name = "Partly stale" };
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Removed long ago"), AnimationCurve.Constant(0, 1, 100));
+                Assert.That(session.ClipError(clip, clip.length), Is.Null);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.Null);
+                session.PreviewClip(clip, clip.length);
+                Assert.That(session.Channels[0].Renderer.GetBlendShapeWeight(0), Is.EqualTo(70));
+                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Partly stale", Time = clip.length } });
+                var row = session.Expressions.Single().Rows.Single(value => value.Path == session.Channels[0].Path);
+                Assert.That(row.Weights[Array.IndexOf(row.Shapes, "Hair detail")], Is.EqualTo(70));
+                Assert.That(row.Shapes, Does.Not.Contain("Removed long ago"));
+            }
+            finally { Object.DestroyImmediate(clip); }
         }
 
         [Test]
