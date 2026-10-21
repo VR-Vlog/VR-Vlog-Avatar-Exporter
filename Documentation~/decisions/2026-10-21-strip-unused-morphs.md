@@ -53,4 +53,4 @@
 ## 確認したこと
 
 - ホストのテスト（`Tools/run-behavior-tests.ps1`）で `UnusedMorphTargetsFixture` の 11 件（247 個の確認）が通過した。
-- Unity EditMode の結果: 前回の実行で、この段のテスト 70 件がすべて通過した（70/70）。疎な accessor（glTF の sparse accessor）のテストはこのあと追加し、追加後の結果は PR に書く。
+- Unity 2022.3 の EditMode で、この段と訳と書き出しの段に関係するテスト 98 件を回し、すべて通過した（疎な accessor のテストを含む）。
