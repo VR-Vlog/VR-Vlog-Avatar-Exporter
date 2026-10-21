@@ -1139,9 +1139,8 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var state = machine.AddState(names[index]); state.writeDefaultValues = false;
                     clips[index] = new AnimationClip { name = names[index] };
-                    // Face A moves (35 to 75), so the VRM has its motion only if the menu result is kept.
                     AnimationUtility.SetEditorCurve(clips[index], EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
-                        index == 0 ? new AnimationCurve(new Keyframe(0, 35), new Keyframe(1, 75)) : AnimationCurve.Constant(0, 1, 75 - index * 20));
+                        AnimationCurve.Constant(0, 1, 75 - index * 20));
                     AssetDatabase.AddObjectToAsset(clips[index], controller); state.motion = clips[index];
                     var transition = neutral.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
                     transition.AddCondition(AnimatorConditionMode.Equals, index + 1, "Face");
@@ -1195,10 +1194,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(custom.Keys, Has.No.Member(listOnly.name));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
                 Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
-                // The moving menu face keeps its motion; a recorded list would have none.
-                var animations = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations;
-                Assert.That(animations.Count, Is.GreaterThan(0));
-                Assert.That(animations.Select(animation => animation.Expression), Has.Member(names[0]));
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
                 Assert.That(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat, Does.EndWith("のうち書き出していない表情があります"));

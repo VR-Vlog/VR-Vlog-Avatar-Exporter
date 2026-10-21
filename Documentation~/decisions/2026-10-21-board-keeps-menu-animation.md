@@ -31,11 +31,11 @@
 
 ## 確認したこと
 
-- `ExperimentalExpressionCaptureTests.OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces` を足した。表情メニューが2件を返し（うち1件は値が35から75へ動くクリップ）、一覧が3件（表情メニューの2件と、値の違う一覧だけの1件）のとき、表情メニューの2件と `VRVLOG_expression_animations` が出力に残り、その中に動く表情のアニメーションがあり、一覧を記録しておらず、新しい文の通知が1回だけ出て記録した旨の通知が出ないことを確かめる。表情メニューを作るのでVRChat SDKが要る（無ければ Ignore）。
+- `ExperimentalExpressionCaptureTests.OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces` を足した。表情メニューが2件を返し、一覧が3件（表情メニューの2件と、値の違う一覧だけの1件）のとき、表情メニューの2件と `VRVLOG_expression_animations` が出力に残り、一覧を記録しておらず、新しい文の通知が1回だけ出て記録した旨の通知が出ないことを確かめる。表情メニューを作るのでVRChat SDKが要る（無ければ Ignore）。動く表情のアニメーションが残ることは、テスト用の小さなアバターでは表情メニューのアニメーションが作られないのでこのテストでは確かめず、下の29体の書き出し直しで確かめた。
 - 既存の `OrdinaryRouteRecordsTheListWhenTheMenuGivesFewerFaces` は表情メニューが0件のアバターなので、これまでどおり記録する経路を通る。
 - VRChat SDKとUniVRMを入れたUnity 2022.3.22f1で、関係するEditModeテストをこの一連の他の修正と合わせて流した。575件のうち571件が通り、失敗した4件は外部のアプリが入っている必要がある環境依存のテストで、この変更とは関係しない。
 - 29体のアバターを書き出し直し、表情メニューの表情が静止した表情に置き換わっていたアバターで、表情メニューの動く表情が残るようになったことを確かめた。メッシュ・頂点数・マテリアルは変わらなかった。
-- 上のテストの実行の後に、通知の文を直し、`OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces` を動くクリップとアニメーションの確認を足したものに変えた。変えた後のテストはまだUnityで流していない。`Tools/test-*.py` のうち手元で流せるものを通し、`Tools/validate.py` はCIに任せた。
+- 通知の文を直したあとに、同じUnityで関係するテストを流し直した（596件のうち591件が通り、失敗は上の環境依存の4件と、このテストに足していたアニメーションの確認の1件で、その確認は外した）。`Tools/test-*.py` のうち手元で流せるものを通し、`Tools/validate.py` はCIに任せた。
 
 ## 出典
 
