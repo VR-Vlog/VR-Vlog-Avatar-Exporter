@@ -495,7 +495,8 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { retained });
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show() restores the size saved for this window type; set ours after it.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var errors = (System.Collections.Generic.Dictionary<AnimationClip, string>)type.GetField("clipErrors", flags).GetValue(window);
                 Assert.That(errors[clip], Is.Not.Null);
@@ -2060,7 +2061,8 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Linear(0, 10, 1, 70 + index));
             try
             {
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show() restores the size saved for this window type; set ours after it.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetField("recommendations", flags).SetValue(window, clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
