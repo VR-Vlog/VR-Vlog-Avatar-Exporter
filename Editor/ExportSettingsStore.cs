@@ -76,8 +76,8 @@ namespace VRVlog.LilToonExporter
         static readonly Dictionary<int, ExportSettings> Unsaved = new Dictionary<int, ExportSettings>();
         static readonly Dictionary<int, string> UnsavedNames = new Dictionary<int, string>();
 
-        // Increases on every save, so an open window can notice that another
-        // window saved and reload what it shows.
+        // Increases on every save that stores something, so an open window can
+        // notice that another window saved and reload what it shows.
         internal static int Revision { get; private set; }
 
         internal static ExportSettings Load(GameObject avatar) => Load(avatar, out _);
@@ -96,8 +96,7 @@ namespace VRVlog.LilToonExporter
         {
             if (avatar == null || settings == null) return;
             var key = ExpressionPresetStore.KeyFor(avatar);
-            Revision++;
-            if (key == null) { Unsaved[avatar.GetInstanceID()] = settings.Copy(); return; }
+            if (key == null) { Unsaved[avatar.GetInstanceID()] = settings.Copy(); Revision++; return; }
             // A file from another format version or one that cannot be read is
             // left untouched, so other avatars' entries are never lost.
             var store = Read(out var problem);
@@ -113,7 +112,7 @@ namespace VRVlog.LilToonExporter
                 entry.TransferName = transferName;
                 store.Avatars.Add(entry);
             }
-            Write(store);
+            if (Write(store)) Revision++;
         }
 
         internal static string LoadTransferName(GameObject avatar)
@@ -147,7 +146,7 @@ namespace VRVlog.LilToonExporter
             Write(store);
         }
 
-        static void Write(Store store)
+        static bool Write(Store store)
         {
             if (store.Avatars.Count > MaximumAvatars) store.Avatars.RemoveRange(0, store.Avatars.Count - MaximumAvatars);
             // Remembering is a convenience: a file that cannot be written never stops an export.
@@ -156,20 +155,24 @@ namespace VRVlog.LilToonExporter
                 var path = FilePath;
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 ExperimentalExpressionCaptureWindow.AtomicWrite(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(store, true)));
+                return true;
             }
             catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
             {
                 WarnOnce(string.Format(ExporterLocalization.T("書き出し設定を保存できませんでした: {0}"), error.Message));
+                return false;
             }
         }
 
-        static bool warned;
+        // Each different problem is shown once, so a second problem is not
+        // hidden behind the first one.
+        static readonly HashSet<string> Warned = new HashSet<string>();
 
-        static void WarnOnce(string message)
+        internal static bool WarnOnce(string message)
         {
-            if (warned) return;
-            warned = true;
+            if (!Warned.Add(message)) return false;
             Debug.LogWarning(message);
+            return true;
         }
 
         static AvatarEntry Capture(string key, GameObject avatar, ExportSettings settings)
