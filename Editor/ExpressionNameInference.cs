@@ -48,6 +48,9 @@ namespace VRVlog.LilToonExporter
         };
 
         internal static readonly string[] NeutralWords = { "neutral", "真顔", "無表情", "ニュートラル" };
+        // A neutral name with one of these is a variant (eyes closed, half
+        // open, asleep), not the resting face.
+        internal static readonly string[] NeutralVetoWords = { "close", "closed", "half", "open", "sleep", "sleepy" };
 
         // Each entry is a set of shapes that together turn both eyes; the
         // first set found exactly (case-insensitive) fills the preset. Left
@@ -107,6 +110,7 @@ namespace VRVlog.LilToonExporter
         {
             if (string.IsNullOrWhiteSpace(name) || Vetoed(name) || Evaluate(name, latinOnly, out _) != null) return false;
             var words = LatinWords(name);
+            if (words.Any(NeutralVetoWords.Contains)) return false;
             return NeutralWords.Any(word => IsLatin(word) ? words.Contains(word) : !latinOnly && name.IndexOf(word, StringComparison.Ordinal) >= 0);
         }
 

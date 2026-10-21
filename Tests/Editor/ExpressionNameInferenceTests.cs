@@ -602,7 +602,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face part, a side, a toggle or an emotion is not the neutral face.
         [TestCase("Fcl_MTH_Neutral")]
-        [TestCase("Fcl_EYE_Natural")]
+        [TestCase("Fcl_EYE_Neutral")]
+        [TestCase("Neutral_Closed")]
+        [TestCase("neutral_half")]
+        [TestCase("Neutral_Sleep")]
         [TestCase("eye_neutral_L")]
         [TestCase("Neutral_R")]
         [TestCase("Neutral_Smile")]
@@ -635,9 +638,21 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = Glb(null, Obj("Neutral", face), Arr(Obj("mesh", 0L)), Arr(Mesh("composite", "Fcl_ALL_Neutral")));
             var filled = new List<(string Preset, string Source)>();
             var presets = Presets(Infer(bytes, filled: filled));
-            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false,
-                "overrideBlink", "block", "overrideMouth", "block", "overrideLookAt", "block"))));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false))),
+                "The menu face's overrides are dropped: neutral blocks no blink, mouth or gaze.");
             Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Neutral") }));
+        }
+
+        [Test]
+        public void NeutralMenuFaceIsNotGuessedAsAnEmotionFromItsShapes()
+        {
+            var bytes = Glb(null, Obj("Neutral", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("body", "composite")));
+            var paths = new Dictionary<string, string> { { "Neutral", "表情 / Neutral" } };
+            var shapes = Shapes(("Neutral", Moves("笑い", 100, "にやり", 100)));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, paths, filled: filled, shapes: shapes, table: ExpressionShapeNames.Parse(SmallTable)));
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Neutral") }), "A resting face that smiles a little is still neutral, not happy.");
+            Assert.That(presets.ContainsKey("happy"), Is.False);
         }
 
         [Test]
@@ -676,6 +691,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Canonical(presets[preset]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, a), Bind(0, b)), "isBinary", false))), preset);
             Assert.That(filled.Select(item => item.Preset), Is.EqualTo(new[] { "lookUp", "lookDown", "lookLeft", "lookRight" }));
             Assert.That(filled[2].Source, Is.EqualTo("eyeLookOutLeft + eyeLookInRight"), "Looking left turns the left eye out and the right eye in.");
+            Assert.That(filled[0].Source, Is.EqualTo("EyeLookUpLeft + EyeLookUpRight"), "The line shows the names as the mesh has them.");
         }
 
         [Test]

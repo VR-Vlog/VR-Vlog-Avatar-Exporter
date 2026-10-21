@@ -284,6 +284,8 @@ namespace VRVlog.LilToonExporter
                 shapeOrder++;
                 if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
                 if (!shapes.TryGetValue(pair.Key, out var moved) || !ExpressionNameInference.SaysNothing(path ?? pair.Key)) continue;
+                // A face named neutral is the resting face, even when it smiles a little.
+                if (ExpressionNameInference.MatchNeutralMenuPath(path ?? pair.Key)) continue;
                 var guess = shapeNames.Classify(moved);
                 if (guess != null && open.Contains(guess.Value.Preset)) byShape.Add((guess.Value.Preset, guess.Value.Support, shapeOrder, pair.Key, value));
             }
@@ -305,7 +307,8 @@ namespace VRVlog.LilToonExporter
                 {
                     if (!candidates.TryGetValue(pair.Key, out var path) || !(pair.Value is Dictionary<string, object> value) || !HasBinds(value)) continue;
                     if (!ExpressionNameInference.MatchNeutralMenuPath(path ?? pair.Key)) continue;
-                    SetFilled(vrm, preset, CopyFace(value), pair.Key, FilledFormat, warnings, filled);
+                    // neutral adds no face of its own, so it blocks no blink, mouth or gaze.
+                    SetFilled(vrm, preset, CopyFace(value, overrides: false), pair.Key, FilledFormat, warnings, filled);
                     return true;
                 }
             var tried = new HashSet<string>(StringComparer.Ordinal);
@@ -334,10 +337,11 @@ namespace VRVlog.LilToonExporter
                 if (!IsEmpty(Object(Object(vrm, "expressions"), "preset"), preset)) continue;
                 foreach (var set in sets)
                 {
-                    var bindings = BindEverywhere(nodes, meshes, set, StringComparison.OrdinalIgnoreCase, preset, warnings);
+                    var matched = new List<string>();
+                    var bindings = BindEverywhere(nodes, meshes, set, StringComparison.OrdinalIgnoreCase, preset, warnings, matched);
                     if (bindings == null) continue;
                     SetFilled(vrm, preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } },
-                        string.Join(" + ", set), FilledFormat, warnings, filled);
+                        string.Join(" + ", matched), FilledFormat, warnings, filled);
                     changed = true;
                     break;
                 }
@@ -350,7 +354,7 @@ namespace VRVlog.LilToonExporter
         // or when a mesh has one of them twice (warned): binding the other
         // meshes alone would move only part of the face.
         private static List<object> BindEverywhere(List<object> nodes, List<object> meshes, string[] shapes, StringComparison comparison,
-            string preset, ICollection<string> warnings)
+            string preset, ICollection<string> warnings, List<string> matched = null)
         {
             var bindings = new List<object>();
             foreach (var (nodeIndex, meshIndex, mesh, names) in MeshTargetNames(nodes, meshes))
@@ -379,9 +383,12 @@ namespace VRVlog.LilToonExporter
                         throw new InvalidOperationException("表情名とmorph targetの対応が不正です。");
                 }
                 foreach (var target in targets)
+                {
                     bindings.Add(new Dictionary<string, object> {
                         { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
                     });
+                    if (matched != null && names[target] is string name && !matched.Contains(name)) matched.Add(name);
+                }
             }
             return bindings.Count > 0 ? bindings : null;
         }
@@ -398,10 +405,10 @@ namespace VRVlog.LilToonExporter
             filled?.Add((preset, source, format));
         }
 
-        private static Dictionary<string, object> CopyFace(Dictionary<string, object> face)
+        private static Dictionary<string, object> CopyFace(Dictionary<string, object> face, bool overrides = true)
         {
             var copy = new Dictionary<string, object>();
-            foreach (var key in BindKeys.Concat(OverrideKeys))
+            foreach (var key in overrides ? BindKeys.Concat(OverrideKeys) : BindKeys)
                 if (face.TryGetValue(key, out var value)) copy[key] = DeepCopy(value);
             copy["isBinary"] = false;
             return copy;

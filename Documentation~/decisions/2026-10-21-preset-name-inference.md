@@ -16,9 +16,9 @@
 
 名前の語彙と照合の規則は `ExpressionNameInference` に置き、埋めるのは `VrmExpressionBindings.AddMissing` の 1 か所にした。まばたきの名前は `BlinkShapeNames` に残す（瞬きの書き出し処理が同じ表を使うため）。
 
-- **neutral**: 語は `neutral`・`真顔`・`無表情`・`ニュートラル`。感情と同じく、目・口・眉・左右・解除などの語を含む名前や、感情の語も含む名前は使わない。表情メニューの表情は、いちばん下の階層の名前で決め、上の階層に感情・部位・左右の語があれば使わない。メニューの表情を先に、次に英語の BlendShape 名（`Fcl_ALL_Neutral` など）を使う。BlendShape から埋めるときはまばたき・口・視線を止めない（neutral は顔を足さないため）。
-- **視線**: 両目が動く名前の組がそろったときだけ埋める。組は `lookUp`・`look_up`・`eyeLookUp`・`eye_look_up` のような 1 つの名前か、Perfect Sync の左右の組（lookUp = `eyeLookUpLeft` + `eyeLookUpRight`、lookLeft = `eyeLookOutLeft` + `eyeLookInRight`、lookRight = `eyeLookInLeft` + `eyeLookOutRight`）。左右はアバター自身の左右で、VRM の lookLeft とそろう。大文字・小文字は区別しない。片目だけの名前や、組の片方しか無いメッシュがあるときは使わない。
-- **口の形**: 埋め方は変えない。Lip Sync 以外の名前から埋めたときの通知を、ほかの自動設定と同じ「`<表情>: 名前から自動で設定しました（<名前>）。書き出したVRMで表情の動きを確認してください。`」にし、書き出し結果の「名前から自動で設定」に 1 行ずつ出す。Lip Sync から入れたものは作者の設定なので出さない。
+- **neutral**: 語は `neutral`・`真顔`・`無表情`・`ニュートラル`。感情と同じく、目・口・眉・左右・解除などの語を含む名前や、感情の語も含む名前は使わない。`closed`・`half`・`open`・`sleep` を含む名前（目を閉じた顔など）も使わない。表情メニューの表情は、いちばん下の階層の名前で決め、上の階層に感情・部位・左右の語があれば使わない。メニューの表情を先に、次に英語の BlendShape 名（`Fcl_ALL_Neutral` など）を使う。どちらから埋めるときもまばたき・口・視線を止めない（neutral は顔を足さないため。メニューの表情の `block` は写さない）。neutral の名前のメニューの表情は、動かす BlendShape から感情を推定する対象からも外す（少し微笑んだ待機顔が happy に入らないように）。
+- **視線**: 両目が動く名前の組がそろったときだけ埋める。組は `lookUp`・`look_up`・`eyeLookUp`・`eye_look_up` のような 1 つの名前か、Perfect Sync の左右の組（lookUp = `eyeLookUpLeft` + `eyeLookUpRight`、lookLeft = `eyeLookOutLeft` + `eyeLookInRight`、lookRight = `eyeLookInLeft` + `eyeLookOutRight`）。左右はアバター自身の左右で、VRM の lookLeft とそろう。大文字・小文字は区別しない。片目だけの名前や、組の片方しか無いメッシュがあるときは使わない。左目と右目が別のメッシュで組の名前が分かれているアバターも埋めない（片目だけ動かすおそれがあるより、空のままにする）。通知にはメッシュにある名前をそのまま出す。
+- **口の形**: 埋め方は変えない。Lip Sync 以外の名前から埋めたときの通知を、ほかの自動設定と同じ「`<表情>: 名前から自動で設定しました（<名前>）。書き出したVRMで表情の動きを確認してください。`」にし、書き出し結果の「名前から自動で設定」に 1 行ずつ出す。Lip Sync から入れたものは作者の設定なので出さない。表情ボードからの書き出しでも、口の枠を空にしたときは以前から名前で埋めていたので、同じように一覧に出る。
 - neutral と視線は、喜怒哀楽と同じく `inferEmotions` のときだけ埋める（表情ボードの書き出しは埋めない）。どれも空の表情（無いか、何も動かさない）だけを埋め、表情メニューや作者が設定した表情は変えない。
 - 同じメッシュに同じ名前が 2 つあるときは、その名前を使わず通知する（喜怒哀楽と同じ）。
 - 引数 `filledEmotions` を `filledPresets` に、`RecordInferredEmotions` を `RecordInferredPresets` に改名した。
