@@ -109,11 +109,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
         }
 
-        // A hand-gesture entry for the same clip is read whole and also holds zeros for shapes outside the
-        // face; the contact copy is cut to the face, so it is a duplicate unless the face itself differs.
-        [TestCase(75f, false)]
-        [TestCase(50f, true)]
-        public void AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice(float gestureWeight, bool added)
+        // A hand-gesture entry for the same clip can also hold zeros for shapes outside the face; the contact
+        // copy is cut to the face, so it is a duplicate unless the face or a non-zero outside shape differs.
+        [TestCase(75f, 0f, false)]
+        [TestCase(50f, 0f, true)]
+        [TestCase(75f, 40f, true)]
+        public void AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice(float gestureWeight, float outsideWeight, bool added)
         {
             controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
             var machine = controller.layers[0].stateMachine;
@@ -124,7 +125,7 @@ namespace VRVlog.LilToonExporter.Tests
             var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true; metadata.ExternalParameters.Add("Sensor");
             var gesture = new VrChatExpressionMenu.Entry { Id = "gesture/0/Shared face", Name = "Shared face", ExportName = "Shared face" };
             gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[1], Weight = gestureWeight });
-            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[3], Weight = 0 });
+            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[3], Weight = outsideWeight });
             metadata.Entries.Add(gesture);
             VrChatAuthoredFaces.Add(avatar, metadata);
             Assert.That(metadata.Entries.Count(item => item.Name.EndsWith(" / Shared face", StringComparison.Ordinal)), Is.EqualTo(added ? 1 : 0));
