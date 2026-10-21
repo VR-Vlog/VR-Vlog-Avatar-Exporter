@@ -404,7 +404,8 @@ namespace VRVlog.LilToonExporter
         // An added file that can no longer be exported (edited, or the avatar
         // changed) is hidden from the board, so it is removed like a file that
         // could not be added: it stops counting toward the limit and the
-        // recorded route, a slot the user gave it is emptied, and the reason
+        // recorded route, a slot the user gave it is emptied (a gaze or neutral
+        // slot is left open to be filled from names), and the reason
         // is shown. Automatic values are suggested again from the usable faces.
         // A file that is also one of the avatar's faces keeps its slot, as the
         // avatar's other unusable faces do. A deleted file is removed too; its
@@ -1161,7 +1162,11 @@ namespace VRVlog.LilToonExporter
                 var name = ExperimentalExpressionCaptureSession.PresetDisplayName(assignment);
                 var face = assignment.IsShape ? Thumbnail(null, assignment.Path, assignment.Shape, size) : Thumbnail(clip, null, null, size);
                 DrawTile(tile, thumb, assignment.IsShape ? assignment.Shape : name, null, face, assignment.Automatic, assignment.Automatic ? "自動" : null,
-                    reason ?? name, "指定を外す", () => ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)));
+                    reason ?? name, "指定を外す", () => {
+                        // Like a face leaving the slot, gaze and neutral are left open.
+                        if (!ExperimentalExpressionCaptureSession.FilledFromNames(preset)) { ChoosePreset(preset, ExperimentalExpressionCaptureSession.PresetAssignment.None(preset)); return; }
+                        session.SetPreset(preset, null); SaveChoices(); ApplyAutomaticPresets();
+                    });
             }
             else
             {
@@ -1203,6 +1208,8 @@ namespace VRVlog.LilToonExporter
             // A blink slot nobody chose follows the blink setting; "none" chosen
             // on it leaves it empty.
             if ((assignment == null || assignment.Automatic) && ExperimentalExpressionCaptureSession.BlinkPresets.Contains(preset)) return blinkFallback ?? "";
+            // An open gaze or neutral slot is filled from names at export.
+            if (assignment == null && ExperimentalExpressionCaptureSession.FilledFromNames(preset)) return ExporterLocalization.T("名前から埋める");
             return ExporterLocalization.T("空のまま保存");
         }
 
@@ -2004,9 +2011,13 @@ namespace VRVlog.LilToonExporter
             string Item(string value) => value.Replace("/", "／");
             void Add(string label, ExperimentalExpressionCaptureSession.PresetAssignment assignment, bool on) =>
                 menu.AddItem(new GUIContent(label), on, () => Queue(() => ChoosePreset(preset, assignment)));
-            Add(ExporterLocalization.T(session.HasAuthoredPreset(preset) ? "元のVRM設定" : "なし"), ExperimentalExpressionCaptureSession.PresetAssignment.None(preset), current == null || current.IsNone);
-            if (current != null && !current.Automatic)
-                menu.AddItem(new GUIContent(ExporterLocalization.T("自動の候補に戻す")), false, () => Queue(() => {
+            // Gaze and neutral have no automatic suggestion; an open slot is
+            // filled from names at export, which "none" stops.
+            var named = ExperimentalExpressionCaptureSession.FilledFromNames(preset) && !session.HasAuthoredPreset(preset);
+            Add(ExporterLocalization.T(session.HasAuthoredPreset(preset) ? "元のVRM設定" : "なし"), ExperimentalExpressionCaptureSession.PresetAssignment.None(preset),
+                named ? current != null && current.IsNone : current == null || current.IsNone);
+            if (named || current != null && !current.Automatic)
+                menu.AddItem(new GUIContent(ExporterLocalization.T(named ? "名前から埋める" : "自動の候補に戻す")), named && current == null, () => Queue(() => {
                     session.SetPreset(preset, null); SaveChoices(); ApplyAutomaticPresets();
                 }));
             menu.AddSeparator("");
