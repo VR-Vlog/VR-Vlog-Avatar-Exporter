@@ -37,6 +37,9 @@ namespace VRVlog.LilToonExporter.Tests
         public void KeepsAnAccessorAKeptTargetShares() => UnusedMorphTargetsFixture.KeepsAnAccessorAKeptTargetShares(Check);
 
         [Test]
+        public void RemovesSparseTargetsOfSeveralPrimitives() => UnusedMorphTargetsFixture.RemovesSparseTargetsOfSeveralPrimitives(Check);
+
+        [Test]
         public void KeepsTheFileWhenNothingIsUnused() => UnusedMorphTargetsFixture.KeepsTheFileWhenNothingIsUnused(Check);
 
         [Test]

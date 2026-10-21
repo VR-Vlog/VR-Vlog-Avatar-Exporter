@@ -723,8 +723,10 @@ namespace VRVlog.LilToonExporter
                     var removed = new List<string>();
                     var stripped = UnusedMorphTargets.Strip(exported, skipped, removed);
                     foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
+                    // The first 20 names only: a real avatar leaves out hundreds.
                     if (removed.Count > 0)
-                        Debug.Log($"VR Vlog: left {removed.Count} unused BlendShapes out of the VRM: " + string.Join(", ", removed));
+                        Debug.Log($"VR Vlog: left {removed.Count} unused BlendShapes out of the VRM: " + string.Join(", ", removed.Take(20)) +
+                                  (removed.Count > 20 ? $" … (+{removed.Count - 20} more)" : ""));
                     return stripped;
                 }, () => exported);
                 var marked = false;

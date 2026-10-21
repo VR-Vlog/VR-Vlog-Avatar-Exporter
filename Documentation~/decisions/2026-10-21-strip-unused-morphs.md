@@ -25,12 +25,12 @@
   - 名前が無い（何に使われているか分からないので残す）
 - 外すときは、各 primitive の `targets`・メッシュとノードの `weights`・`extras.targetNames` を同じ並びで詰め、`morphTargetBinds` と表情のアニメーションの `index` を詰めたあとの番号に付け替える。BlendShape が 1 つも残らないメッシュは `targets`・`weights`・`targetNames` のキーごと消す。
 - 外した BlendShape だけが使っていた accessor と bufferView を消して番号を詰め、バイナリを 4 バイト境界を保ったまま詰め直す。残る BlendShape と共有している accessor は残す。書き出し前から使われていなかった accessor や bufferView には触らない。
-- 次のときはファイルをそのまま返す。
-  - 中身を確かめていない拡張がある。確かめたのは `VRMC_vrm`・`VRMC_springBone`・`VRMC_springBone_extended_collider`・`VRMC_springBone_limit`・`VRMC_node_constraint`・`VRMC_materials_mtoon`・`KHR_materials_unlit`・`KHR_texture_transform`・`KHR_materials_emissive_strength`・`VRVLOG_expression_animations` で、ほかの拡張は accessor や BlendShape の番号を持っているかもしれないので、何もしない。Unity の Console に警告（`Debug.LogWarning`）を 1 行出すだけで、書き出しの警告や結果一覧には出さない。ファイルはこれまでどおりなので、使う人が対応することは無い。
+- 次のときはファイルをそのまま返し、理由を Unity の Console に警告（`Debug.LogWarning`）で 1 行出す。書き出しの警告や結果一覧には出さない。ファイルはこれまでどおりなので、使う人が対応することは無い。
+  - 中身を確かめていない拡張がある。確かめたのは `VRMC_vrm`・`VRMC_springBone`・`VRMC_springBone_extended_collider`・`VRMC_springBone_limit`・`VRMC_node_constraint`・`VRMC_materials_mtoon`・`KHR_materials_unlit`・`KHR_texture_transform`・`KHR_materials_emissive_strength`・`VRVLOG_expression_animations` で、ほかの拡張は accessor や BlendShape の番号を持っているかもしれないので、何もしない。
   - バッファが GLB のバイナリ 1 つでない、bufferView が範囲の外を指しているなど、詰め直してよいか確かめられない。
   - 表情のアニメーションの拡張が読めない。
 - メッシュ単位で次のときはそのメッシュを外さない。primitive ごとの BlendShape の数が違う、重みや名前の数が合わない、bind が範囲の外を指している、glTF のアニメーションが重みを動かしている。
-- 外した BlendShape の数と名前は Unity の Console に `Debug.Log` で 1 行出すだけで、書き出しの警告や結果一覧（`ExportOutcome.Omitted`）には出さない。外すのは書き出しの通常の結果で、代わりの手段に落ちた（フォールバックした）わけではないため。結果一覧に出すと、ほとんどの書き出しで「省略あり」と警告が付き、何かを失ったように見えてしまう。
+- 外した BlendShape の数と名前（名前は先頭の 20 個まで）は Unity の Console に `Debug.Log` で 1 行出すだけで、書き出しの警告や結果一覧（`ExportOutcome.Omitted`）には出さない。外すのは書き出しの通常の結果で、代わりの手段に落ちた（フォールバックした）わけではないため。結果一覧に出すと、ほとんどの書き出しで「省略あり」と警告が付き、何かを失ったように見えてしまう。
 - 既定でオンにして、画面の切り替えは置かない。`UnusedMorphTargets.Enabled` を `false` にすれば、これまでどおりすべての BlendShape を書き出す。
 - この段が失敗したときは、段を飛ばしてすべての BlendShape を入れたまま書き出す（`ExportOutcome.Approximated`）。
 
@@ -48,8 +48,9 @@
 - 外すかどうかを画面で切り替えること。アプリで使えないものだけを外すので、選ぶ場面が無い。
 - 書き出し前から使われていなかった accessor や bufferView を消すこと。この段で使われなくなったものだけを対象にして、ほかの段の結果に手を入れない。
 - 中身を確かめていない拡張があるときに、その拡張だけを避けて外すこと。どこに番号を持っているか分からない拡張は、ファイルごと触らないほうが安全なため。
+- 設定ファイルを手で書き換えて、任意の BlendShape の名前をアプリの表情に対応させる使い方。アプリの既定の対応で使う名前は、残す名前（`A`・`Joy`・`Blink_L` など）にすべて入っていて、アプリには対応を書き換える画面が無い。
 
 ## 確認したこと
 
-- ホストのテスト（`Tools/run-behavior-tests.ps1`）で `UnusedMorphTargetsFixture` の 10 件（192 個の確認）が通過した。
-- Unity EditMode の結果: （実行後に追記）
+- ホストのテスト（`Tools/run-behavior-tests.ps1`）で `UnusedMorphTargetsFixture` の 11 件（247 個の確認）が通過した。
+- Unity EditMode の結果: 前回の実行で、この段のテスト 70 件がすべて通過した（70/70）。疎な accessor（glTF の sparse accessor）のテストはこのあと追加し、追加後の結果は PR に書く。

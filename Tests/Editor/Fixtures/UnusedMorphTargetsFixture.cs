@@ -42,6 +42,21 @@ namespace VRVlog.LilToonExporter.Tests
 
             static byte Fill(int view) => (byte)(view + 1);
 
+            // True writes the targets as UniVRM mostly does: sparse accessors
+            // with no bufferView of their own.
+            internal bool Sparse;
+
+            // Two of four vertices moved: the indices and the values each
+            // have their own view.
+            internal long SparseAccessor()
+            {
+                var indices = View(8);
+                var values = View(24);
+                accessors.Add(D("componentType", 5126L, "count", 4L, "type", "VEC3", "name", "sparse" + accessors.Count,
+                    "sparse", D("count", 2L, "indices", D("bufferView", indices, "componentType", 5125L), "values", D("bufferView", values))));
+                return accessors.Count - 1;
+            }
+
             // One node per mesh, so the node index is the mesh index. Each
             // primitive has its own targets; counts default to one primitive
             // with a target per name.
@@ -49,7 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if (counts.Length == 0) counts = new[] { names.Count };
                 var primitives = counts.Select(count => (object)D("attributes", D("POSITION", Accessor()), "indices", Accessor(6),
-                    "targets", Enumerable.Range(0, count).Select(t => (object)D("POSITION", Accessor())).ToList())).ToList();
+                    "targets", Enumerable.Range(0, count).Select(t => (object)D("POSITION", Sparse ? SparseAccessor() : Accessor())).ToList())).ToList();
                 var mesh = D("name", name, "primitives", primitives, "extras", D("targetNames", names.Cast<object>().ToList()));
                 if (weights != null) mesh["weights"] = weights.Cast<object>().ToList();
                 meshes.Add(mesh);
@@ -58,6 +73,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
 
             internal Dictionary<string, object> MeshAt(int index) => (Dictionary<string, object>)meshes[index];
+
+            internal Dictionary<string, object> NodeAt(int index) => (Dictionary<string, object>)nodes[index];
 
             internal void Use(string extension)
             {
@@ -116,6 +133,9 @@ namespace VRVlog.LilToonExporter.Tests
             check(Int(((Dictionary<string, object>)L(doc.Json, "buffers")[0])["byteLength"]) == doc.Binary.Length, "The buffer length matches the binary chunk");
             foreach (Dictionary<string, object> accessor in accessors)
             {
+                // A sparse accessor has no view of its own; its test compares
+                // the bytes of its indices and values.
+                if (!accessor.ContainsKey("bufferView")) continue;
                 var index = Int(accessor["bufferView"]);
                 check(index < views.Count, "Every accessor points at an existing bufferView");
                 if (index >= views.Count) continue;
@@ -153,6 +173,13 @@ namespace VRVlog.LilToonExporter.Tests
                 check(Int(bind["index"]) < Targets(doc, mesh), "Every bind points at an existing target");
             }
             return doc;
+        }
+
+        static byte[] SparseBytes(GlbDocument doc, Dictionary<string, object> accessor, string part)
+        {
+            var view = (Dictionary<string, object>)L(doc.Json, "bufferViews")[Int(O(O(accessor, "sparse"), part)["bufferView"])];
+            var offset = view.TryGetValue("byteOffset", out var raw) ? Int(raw) : 0;
+            return doc.Binary.Skip(offset).Take(Int(view["byteLength"])).ToArray();
         }
 
         static IEnumerable<Dictionary<string, object>> AllBinds(object value)
@@ -312,6 +339,62 @@ namespace VRVlog.LilToonExporter.Tests
             check(Equals(position["name"], ((Dictionary<string, object>)original[Int(shared)])["name"]), "The kept target still reads the shared accessor");
         }
 
+        // UniVRM writes most targets as sparse accessors without a bufferView,
+        // and every primitive of a mesh has the same targets.
+        public static void RemovesSparseTargetsOfSeveralPrimitives(Action<bool, string> check)
+        {
+            var names = new[] { "u0", "smile", "u2", "wink", "Blink" };
+            var kept = new[] { 1, 3, 4 };
+            var builder = new Builder { Sparse = true };
+            var face = builder.Mesh("Face", names, new[] { 0.0, 0.0, 0.0, 0.0, 0.0 }, 5, 5);
+            builder.NodeAt(face)["weights"] = new List<object> { 0.0, 0.0, 0.0, 0.0, 0.0 };
+            foreach (Dictionary<string, object> primitive in (List<object>)builder.MeshAt(0)["primitives"])
+                primitive["extras"] = D("targetNames", names.Cast<object>().ToList());
+            builder.Bind("happy", face, 1);
+            builder.Bind("Wink", face, 3, "custom");
+            var input = builder.Build();
+            var before = GlbDocument.Read(input);
+            var removed = new List<string>();
+            var doc = Valid(UnusedMorphTargets.Strip(input, new List<string>(), removed), check);
+            var keptNames = kept.Select(t => names[t]).ToList();
+            check(removed.SequenceEqual(new[] { "Face/u0", "Face/u2" }), "Two sparse targets go");
+            check(Names(doc, face).SequenceEqual(keptNames), "The mesh's names follow the kept targets");
+            check(Names(doc, face)[Int(Binds(doc, "preset", "happy")[0]["index"])] == "smile" &&
+                  Names(doc, face)[Int(Binds(doc, "custom", "Wink")[0]["index"])] == "wink", "Binds still name their targets");
+            check(L(Mesh(doc, face), "weights").Count == kept.Length, "The mesh weights match the kept targets");
+            check(L((Dictionary<string, object>)L(doc.Json, "nodes")[face], "weights").Count == kept.Length, "The node weights match the kept targets");
+            check(L(doc.Json, "accessors").Count == L(before.Json, "accessors").Count - 4, "The removed targets' accessors go");
+            check(L(doc.Json, "bufferViews").Count == L(before.Json, "bufferViews").Count - 8, "Their indices and values views go");
+            check(doc.Binary.Length == before.Binary.Length - 128, "The binary chunk shrinks by their bytes");
+
+            var beforeAccessors = L(before.Json, "accessors");
+            var accessors = L(doc.Json, "accessors");
+            var remaining = new HashSet<object>(accessors.Cast<Dictionary<string, object>>().Select(accessor => accessor["name"]));
+            var beforePrimitives = L(Mesh(before, face), "primitives");
+            var primitives = L(Mesh(doc, face), "primitives");
+            for (var p = 0; p < primitives.Count; p++)
+            {
+                var primitive = (Dictionary<string, object>)primitives[p];
+                var beforeTargets = L((Dictionary<string, object>)beforePrimitives[p], "targets");
+                var targets = L(primitive, "targets");
+                check(targets.Count == kept.Length, "Every primitive keeps the same targets");
+                check(L(O(primitive, "extras"), "targetNames").Cast<string>().SequenceEqual(keptNames), "Every primitive's names follow its targets");
+                for (var k = 0; k < kept.Length && k < targets.Count; k++)
+                {
+                    var was = (Dictionary<string, object>)beforeAccessors[Int(((Dictionary<string, object>)beforeTargets[kept[k]])["POSITION"])];
+                    var now = (Dictionary<string, object>)accessors[Int(((Dictionary<string, object>)targets[k])["POSITION"])];
+                    check(Equals(now["name"], was["name"]) && !now.ContainsKey("bufferView"), "A kept target reads its own sparse accessor: " + was["name"]);
+                    foreach (var part in new[] { "indices", "values" })
+                        check(SparseBytes(doc, now, part).SequenceEqual(SparseBytes(before, was, part)), "A kept target's sparse " + part + " keep their bytes: " + was["name"]);
+                }
+                foreach (var t in new[] { 0, 2 })
+                {
+                    var gone = ((Dictionary<string, object>)beforeAccessors[Int(((Dictionary<string, object>)beforeTargets[t])["POSITION"])])["name"];
+                    check(!remaining.Contains(gone), "A removed target's sparse accessor goes: " + gone);
+                }
+            }
+        }
+
         public static void KeepsTheFileWhenNothingIsUnused(Action<bool, string> check)
         {
             var builder = new Builder();
@@ -331,6 +414,7 @@ namespace VRVlog.LilToonExporter.Tests
             KeepsAMeshWhosePrimitivesDisagree(check);
             KeepsTheFileWithAnUnknownExtension(check);
             KeepsAnAccessorAKeptTargetShares(check);
+            RemovesSparseTargetsOfSeveralPrimitives(check);
             KeepsTheFileWhenNothingIsUnused(check);
         }
     }

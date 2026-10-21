@@ -19,6 +19,8 @@ namespace VRVlog.LilToonExporter
 
         // Logged to the Console only: the file is kept unchanged.
         internal const string UnknownExtensionWarning = "Kept every BlendShape because the file has extensions this step has not checked: {0}";
+        internal const string StorageWarning = "Kept every BlendShape because the file's binary data is not one GLB chunk this step can pack again";
+        internal const string AnimationWarning = "Kept every BlendShape because the expression animations could not be read: {0}";
 
         // Extensions checked to hold no accessor, bufferView or morph target
         // index other than the ones handled here. Any other extension keeps
@@ -83,7 +85,12 @@ namespace VRVlog.LilToonExporter
                 return bytes;
             }
             var meshes = List(json, "meshes");
-            if (meshes == null || meshes.Count == 0 || !StorageIsPlain(glb)) return bytes;
+            if (meshes == null || meshes.Count == 0) return bytes;
+            if (!StorageIsPlain(glb))
+            {
+                warnings?.Add(StorageWarning);
+                return bytes;
+            }
             var nodes = List(json, "nodes") ?? new List<object>();
             var accessors = List(json, "accessors") ?? new List<object>();
 
@@ -120,7 +127,11 @@ namespace VRVlog.LilToonExporter
             {
                 ExpressionAnimationDocument document;
                 try { document = ExpressionAnimationData.ReadDocument(rawAnimations); }
-                catch (Exception) { return bytes; }
+                catch (Exception exception)
+                {
+                    warnings?.Add(string.Format(AnimationWarning, exception.Message));
+                    return bytes;
+                }
                 // Schema 1 points name their morph target instead.
                 foreach (var point in document.Animations.SelectMany(a => a.Channels).SelectMany(c => c.Points))
                     if (point.Target != null) animationNames.Add(point.Target);
