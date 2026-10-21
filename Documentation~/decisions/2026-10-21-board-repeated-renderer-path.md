@@ -1,7 +1,7 @@
 # 同じ階層パスのメッシュが2つあるアバターでも表情ボードを開く
 
 - 日付: 2026-10-21
-- 対象: `Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
 
 ## 背景
 
@@ -11,7 +11,9 @@
 
 ## 決定
 
-- コンストラクタで、`FindRenderer` が例外を投げたとき（パスが2つ以上に当たる）と、見つかったメッシュが今のメッシュと違うときは、そのメッシュを記録対象に入れず、`Warnings` に「同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: <パス>」を1行足して次のメッシュへ進む。これまでは2つ目の場合も例外で止めていた。
+- コンストラクタで、書き出し用のコピーにある SkinnedMeshRenderer を `AnimationUtility.CalculateTransformPath` の階層パスでまとめ、同じパスに2つ以上あるメッシュは記録対象に入れない。外したパスはセッションの `skippedPaths` に覚え、パスごとに1回だけ `Warnings` に「同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: <パス>」を足す。
+- パスが重ならないメッシュは、これまでどおり `FindRenderer` で同じメッシュに戻れることを確かめる。祖先の名前に `/` を含む場合などは、`FindRenderer` がこれまでと同じ例外を投げ、表情ボードは開かない（この場合の扱いは変えていない）。`FindRenderer` の例外をまとめて受けて「同じ名前」と通知すると、`/` の場合まで同じ名前の通知になってしまうため、重なりは `FindRenderer` に頼らず直接数える。
+- 外したメッシュを動かすカーブを含む表情は、そのカーブだけを読み飛ばして記録する。AnimationClip から表情を作る `BuildClipPoseUnchecked` では、メッシュを探す前に `skippedPaths` のパスを読み飛ばし、適用した数にも数えない（元のメッシュにない BlendShape を読み飛ばすのと同じ扱い）。ほかのメッシュのカーブが1つも残らないときは、これまでどおり「有効な顔のBlendShapeがない」理由で使えない表情になる。標準の表情の枠に入れたクリップ（`PresetMorphs`）、表情メニューの候補のプレビューと取り込み（`PreviewCandidate`）、FXの基準表情の収録でも、外したパスの値は読み飛ばす。
 - `FindRenderer` 自体は変えない。ほかの呼び出し元は1つに決まることを前提にしているため。
 - 通知の文は英語・韓国語・中国語（簡体・繁体）の訳を足した。
 
@@ -24,12 +26,14 @@
 ## 影響
 
 - 同じ階層パスのメッシュが2つあるアバターでも表情ボードが開く。
-- 外したメッシュは、表情ボードで記録した表情では動かない（記録した表情を使う経路で書き出したとき）。書き出し結果の一覧に通知が出るので、どのメッシュかが分かる。
+- 外したメッシュも動かす表情は、表情ボードから消えずに使える表情として並び、記録・書き出しもできる。外したメッシュの分だけが落ち、ほかのメッシュの動きは記録される。外したメッシュは、表情ボードで記録した表情では動かない（記録した表情を使う経路で書き出したとき）。
+- 通知は表情ボードを開いたときではなく、保存したときの書き出し結果の一覧に出る（ほかの補助ギミックを省略した通知と同じ）。どのメッシュを外したかはそこで分かる。
+- 祖先の名前に `/` を含むメッシュなど、重なり以外の理由でパスから戻れない場合は、これまでどおり例外で止まる。
 - パスが重ならないメッシュの記録と、通常の書き出しの経路は変わらない。
 
 ## 確認したこと
 
-- `ExperimentalExpressionCaptureTests.ARepeatedRendererPathLeavesTheChannelsAndWarns` で、同じ名前の SkinnedMeshRenderer を2つ並べたアバターでも準備が例外なく終わり、そのパスが記録対象に入らず通知が1行出ること、ほかのメッシュの表情を記録して書き出せることを確かめた。
+- `ExperimentalExpressionCaptureTests.ARepeatedRendererPathLeavesTheChannelsAndWarns` で、同じ名前の SkinnedMeshRenderer を2つ並べたアバターでも準備が例外なく終わり、そのパスが記録対象に入らず通知が1行出ることを確かめた。あわせて、ほかのメッシュと重なったメッシュの両方を動かすクリップが使える表情として扱われ（`ClipError` が null、ウィンドウに追加したときの `Error` も null）、記録した表情に重なったパスの行がなく、書き出した VRM の表情の参照がほかのメッシュだけを指すことを確かめた。
 
 ## 出典
 

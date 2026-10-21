@@ -306,7 +306,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ARepeatedRendererPathLeavesTheChannelsAndWarns()
+        public async Task ARepeatedRendererPathLeavesTheChannelsAndWarns()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
@@ -319,6 +319,11 @@ namespace VRVlog.LilToonExporter.Tests
                 skin.bones = front.bones; skin.rootBone = front.rootBone; skin.SetBlendShapeWeight(0, 35);
             }
             var clip = new AnimationClip { name = "Repeated path face" };
+            // The face also moves the repeated mesh: only that part is dropped.
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Twin", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            Vrm10Instance imported = null;
             try
             {
                 var stamp = ExportSourceFingerprint.Compute(fixture.Source);
@@ -329,15 +334,27 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(session.Channels.Any(channel => channel.Path.Contains("Twin")), Is.False);
                     Assert.That(session.Channels.Select(channel => channel.Path), Does.Contain("Front"));
                     Assert.That(session.Warnings.Count(warning => warning.Contains("Twin")), Is.EqualTo(1));
-                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
+                    Assert.That(session.ClipError(clip, clip.length), Is.Null, "A face touching the repeated mesh stays usable.");
                     session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
-                    Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(80));
+                    var recorded = session.Expressions.Single();
+                    Assert.That(recorded.Rows.Select(row => row.Path).Where(path => path.Contains("Twin")), Is.Empty);
+                    Assert.That(recorded.Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(80));
                     var bytes = session.Export("Repeated path export", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                     Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes));
+                    imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                    var face = imported.Vrm.Expression.CustomClips.Single(item => item.name == clip.name);
+                    Assert.That(face.MorphTargetBindings, Is.Not.Empty);
+                    Assert.That(face.MorphTargetBindings.Select(binding => binding.RelativePath), Is.All.EqualTo("Front"));
                 }
+                // The board lists the face as usable, so it is shown and exported.
+                var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+                Assert.That(inputs.Single().Error, Is.Null);
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
             }
-            finally { Object.DestroyImmediate(clip); }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
 
         [Test]

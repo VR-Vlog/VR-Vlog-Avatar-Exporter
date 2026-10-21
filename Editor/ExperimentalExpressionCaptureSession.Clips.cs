@@ -244,6 +244,8 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in bindings)
             {
                 var path = string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path;
+                // A mesh left out of recording drops only its own part of the face.
+                if (skippedPaths.Contains(path)) continue;
                 if (!authoringRenderers.TryGetValue(path, out var original))
                     throw new InvalidOperationException(ExporterLocalization.T("元のアバターに対象メッシュがないか、同じ階層に複数あります: ") + path);
                 var renderer = preparation.PreparedRendererFor(original);

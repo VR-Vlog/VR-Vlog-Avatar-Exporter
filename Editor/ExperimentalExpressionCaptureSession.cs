@@ -58,6 +58,9 @@ namespace VRVlog.LilToonExporter
         internal readonly PoseExportOptions PoseOptions = new PoseExportOptions();
         readonly Dictionary<string, SkinnedMeshRenderer> authoringRenderers = new Dictionary<string, SkinnedMeshRenderer>(StringComparer.Ordinal);
         readonly Dictionary<Renderer, Renderer> authoringRecoveryRenderers = new Dictionary<Renderer, Renderer>();
+        // Meshes left out of recording because another mesh shares their path.
+        // A face's curves on them are dropped; the rest of the face is kept.
+        readonly HashSet<string> skippedPaths = new HashSet<string>(StringComparer.Ordinal);
         internal VrChatExpressionMenu.Source Candidates { get; private set; }
         internal Pose Baseline { get; private set; }
         readonly List<Mesh> ownedMeshes = new List<Mesh>();
@@ -186,6 +189,9 @@ namespace VRVlog.LilToonExporter
                     if (behaviour != null && !NdmfExportPreparation.PreservesExportBehaviour(behaviour)) behaviour.enabled = false;
                 foreach (var skin in Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true))
                 { skin.updateWhenOffscreen = true; skin.forceMatrixRecalculationPerRender = true; }
+                var repeatedPaths = new HashSet<string>(Copy.GetComponentsInChildren<SkinnedMeshRenderer>(true).GroupBy(renderer =>
+                    AnimationUtility.CalculateTransformPath(renderer.transform, Copy.transform), StringComparer.Ordinal)
+                    .Where(group => group.Count() > 1).Select(group => group.Key), StringComparer.Ordinal);
                 foreach (var renderer in ExportRendererSelection.Enumerate(Copy).OfType<SkinnedMeshRenderer>())
                 {
                     var mesh = renderer.sharedMesh;
@@ -193,15 +199,14 @@ namespace VRVlog.LilToonExporter
                     var path = AnimationUtility.CalculateTransformPath(renderer.transform, Copy.transform);
                     // A mesh sharing its path with another cannot be bound by path:
                     // leave it out of recording and say so, as the ordinary export still writes it.
-                    SkinnedMeshRenderer found;
-                    try { found = VrChatExpressionSampler.FindRenderer(Copy, path); }
-                    catch (InvalidOperationException) { found = null; }
-                    if (found != renderer)
+                    if (repeatedPaths.Contains(path))
                     {
-                        var warning = string.Format(ExporterLocalization.T("同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: {0}"), path);
-                        if (!Warnings.Contains(warning)) Warnings.Add(warning);
+                        if (skippedPaths.Add(path))
+                            Warnings.Add(string.Format(ExporterLocalization.T("同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: {0}"), path));
                         continue;
                     }
+                    if (VrChatExpressionSampler.FindRenderer(Copy, path) != renderer)
+                        throw new InvalidOperationException(ExporterLocalization.T("表情のメッシュを一意に特定できません。"));
                     renderer.forceMatrixRecalculationPerRender = true;
                     Channels.Add(new Channel { Renderer = renderer, Mesh = mesh, Path = path,
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),
@@ -216,7 +221,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var neutral = Snapshot("FXの基準表情");
                         foreach (var value in ExperimentalInstalledExpressionPlayer.Sample(Copy, installed, new Dictionary<string, float>(), warnings: Warnings))
-                            Set(neutral, value.Path, value.Shape, value.Weight);
+                            if (!skippedPaths.Contains(value.Path)) Set(neutral, value.Path, value.Shape, value.Weight);
                         ValidatePose(neutral); ApplyUnchecked(neutral);
                     }
                     catch (InvalidOperationException error) { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
@@ -312,8 +317,8 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(ExporterLocalization.T("表情の時刻が範囲外です。"));
             // Build and validate first. A missing channel must not partially change the preview.
             var pose = ClonePose(preparedRest);
-            foreach (var value in entry.Values) Set(pose, value.Path, value.Shape, value.Weight);
-            foreach (var value in entry.Animation) Set(pose, value.Path, value.Shape, (float)value.Curve.Evaluate(time));
+            foreach (var value in entry.Values.Where(value => !skippedPaths.Contains(value.Path))) Set(pose, value.Path, value.Shape, value.Weight);
+            foreach (var value in entry.Animation.Where(value => !skippedPaths.Contains(value.Path))) Set(pose, value.Path, value.Shape, (float)value.Curve.Evaluate(time));
             ValidatePose(pose);
             ApplyUnchecked(pose);
         }
