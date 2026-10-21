@@ -266,7 +266,7 @@ namespace VRVlog.LilToonExporter
                 if (excludedPath?.Invoke(binding.path) == true) continue;
                 if (!IsMorph(binding))
                 {
-                    if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)) continue;
+                    if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding) || NeutralShapePlan.IsInertDynamicsBinding(binding)) continue;
                     if (plan?.AllowsEvaluationBinding(clip, binding) == true) continue;
                     throw new InvalidOperationException("BlendShape以外の変化を含む表情アニメーションです: " + binding.propertyName);
                 }

@@ -1550,6 +1550,11 @@ namespace VRVlog.LilToonExporter
         private static bool HarmlessAppearance(GameObject avatar, AnimationClip clip, EditorCurveBinding binding,
             ISet<AnimationClip> unchangedAppearanceClips, Func<string, bool> excludedPath)
         {
+            if (NeutralShapePlan.IsInertDynamicsBinding(binding))
+            {
+                SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
+                return true;
+            }
             if (SelectedExpressionAppearance.IsUnboundTransform(avatar, clip, binding))
             {
                 SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
