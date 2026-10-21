@@ -229,14 +229,20 @@ namespace VRVlog.LilToonExporter
                     .Any(clip => AnimationUtility.GetCurveBindings(clip).Any(binding => relevantCurve(layer, clip, binding) ||
                         binding.type == typeof(Animator) && binding.path == "" && parameterNames.Contains(binding.propertyName)));
             }
+            // A layer that keeps restarting into its state shows that state
+            // throughout; the fixed pose check requires its curves to be
+            // constant and its callbacks to change nothing.
+            bool Restarts(int layer) => Restarting(playable, controller, layer, Parameters(playable, controller), Resolve);
             void Final(float seconds)
             {
                 // A restart inside one long step can leave the clock past its
                 // old value, so compare with the time the clock should reach.
-                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer), Matters: Matters(layer))).ToArray();
+                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer), Matters: Matters(layer),
+                    Restarts: Restarts(layer))).ToArray();
                 Step(seconds);
-                foreach (var (layer, state, time, rate, matters) in before)
-                    if ((playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate) &&
+                foreach (var (layer, state, time, rate, matters, restarts) in before)
+                    if (!(restarts && Entered(layer) == state && Restarts(layer)) &&
+                        (playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate) &&
                         (matters || Matters(layer)))
                         throw new InvalidOperationException(UntraceableTransitions);
             }

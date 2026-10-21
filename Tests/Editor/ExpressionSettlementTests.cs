@@ -402,6 +402,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
         }
 
+        // A face that fades in is saved at its final key. A layer beside it
+        // that keeps restarting into a constant state does not change the
+        // face while the fade runs to its end.
+        [Test]
+        public void AFadeInBesideARestartingLayerReachesItsFinalKey()
+        {
+            Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 1, 75)));
+            RestartingLayer();
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
+        }
+
         // Each restart sends the clock back to the start, so a clip that moves
         // the face over time never reaches its final key and the face keeps
         // changing. Such a layer is refused.
