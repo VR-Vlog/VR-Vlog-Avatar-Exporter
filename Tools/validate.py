@@ -115,7 +115,7 @@ assert 'var warningText' not in window
 assert 'VrmMenuExpressions.CountRegistered(bytes)' in window
 assert "glb.AppendBinary(png)" in injector
 texture_encoder = (root / "Editor/MobileTextureEncoder.cs").read_text(encoding="utf-8")
-assert "ImageConversion.EncodeToPNG(destination)" in texture_encoder
+assert "PngWriter.Encode(destination)" in texture_encoder
 assert "UnityEngine.Object.DestroyImmediate(destination)" in texture_encoder
 assert "addedTextures.TryGetValue" in injector
 assert "fallbackTextureCount" in injector
