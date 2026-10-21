@@ -104,7 +104,8 @@ namespace VRVlog.LilToonExporter.Tests
                 // the result does not depend on how this PC last left the board.
                 type.GetField("showExtraPresets", flags).SetValue(window, false); type.GetField("largeThumbnails", flags).SetValue(window, false);
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show() restores the size saved for this window type; set ours after it.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var before = DrawnLayout(window, type, flags);
                 Assert.That(before.Length, Is.EqualTo(ExperimentalExpressionCaptureWindow.ShownPresets(false).Length + 1), "Every main slot and the panel are drawn.");
