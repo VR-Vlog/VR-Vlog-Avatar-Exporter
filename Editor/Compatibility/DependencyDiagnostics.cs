@@ -137,7 +137,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             else OpenDiagnostics();
         }
 
-        public static void OpenDiagnostics() => ExporterWindowIcon.Restore(EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境")));
+        public static void OpenDiagnostics() => EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境"));
     }
 
     public sealed class DependencyDiagnosticsWindow : EditorWindow
@@ -152,6 +152,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         void OnGUI()
         {
             if (packages == null) OnEnable();
+            ExporterWindowHeader.Layout(T("動作環境"));
             EditorGUILayout.LabelField("Unity", Application.unityVersion);
             foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "com.vrmc.vrm", "com.vrmc.gltf", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
                 EditorGUILayout.LabelField(name, DependencyPolicy.Display(DependencyDiagnostics.Version(packages, name)));
