@@ -90,6 +90,42 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
+        // Our own steps that run inside the build callback must name their
+        // stage; otherwise their failure is blamed on the build passes and the
+        // file is written again without them (and without the outfits).
+        // These stages had no step inside the callback before, so the fault
+        // only fires there once the steps name them.
+        [TestCase(nameof(ExportStage.OptimizerEvidence))]
+        [TestCase(nameof(ExportStage.TrackingOutput))]
+        public void AFailureInsideTheBuildCallbackKeepsTheBuildPasses(string stageName)
+        {
+            var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")) { name = "Callback" };
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                var fired = 0;
+                ExportStageGuard.FaultInjection = current =>
+                {
+                    if (current != stage || fired > 0) return;
+                    if (!Environment.StackTrace.Contains(nameof(NdmfExportPreparation) + ".")) return;
+                    fired++;
+                    throw new InvalidOperationException("injected " + current);
+                };
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = Export(fixture.Source, report, new List<string>());
+
+                Assert.That(fired, Is.EqualTo(1), "The stage must be reached inside the build callback.");
+                Assert.That(bytes, Is.Not.Null.And.Not.Empty);
+                Assert.That(report.Succeeded, Is.True);
+                var stages = report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage).ToList();
+                Assert.That(stages, Is.EqualTo(new ExportStage?[] { stage }));
+                Assert.That(stages.Contains(ExportStage.BuildProcess), Is.False, "The build passes must not be left out.");
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
         [Test]
         public void EveryStageBelongsToAPhase()
         {
