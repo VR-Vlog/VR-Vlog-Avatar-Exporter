@@ -15,8 +15,6 @@ namespace VRVlog.LilToonExporter
             internal AnimationClip Clip;
             internal string Name;
             internal float Time;
-            internal bool Selected = true;
-            internal bool SelectionBeforeError = true;
             internal string Error;
         }
 
