@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter
         {
             var window = CreateInstance<BlinkConfigurationWindow>();
             window.source = source; window.Options = options.Copy(); window.apply = apply;
-            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("瞬き"));
+            window.titleContent = new GUIContent(ExporterLocalization.T("瞬き"));
             window.minSize = new Vector2(460, 400);
             window.ShowUtility();
             return window;
@@ -28,6 +28,7 @@ namespace VRVlog.LilToonExporter
         void OnGUI()
         {
             if (source == null) { Close(); return; }
+            ExporterWindowHeader.Layout(ExporterLocalization.T("瞬き"));
             using (new EditorGUILayout.VerticalScope(new GUIStyle { padding = new RectOffset(16, 16, 12, 12) }))
             using (var scrolling = new EditorGUILayout.ScrollViewScope(scroll))
             {

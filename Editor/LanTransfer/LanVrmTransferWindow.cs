@@ -40,7 +40,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         public static void Show(string path, string name)
         {
             LanTransferAvailability.RequireEnabled();
-            var window = ExporterWindowIcon.Restore(GetWindow<LanVrmTransferWindow>(false, "スマホに送る"));
+            var window = GetWindow<LanVrmTransferWindow>(false, "スマホに送る");
             window.StopAndClean();
             window.snapshotPath = path;
             window.displayName = LanTransferProtocol.DisplayName(name);
@@ -52,7 +52,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
-            ExporterWindowIcon.Restore(this);
             if (!LanTransferAvailability.Enabled)
             {
                 StopAndClean();
@@ -182,6 +181,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("スマホに送る"));
             if (!LanTransferAvailability.Enabled)
             {
                 StopAndClean();
@@ -193,7 +193,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 scroll = scrolling.scrollPosition;
                 EditorGUILayout.HelpBox("アバターはPCからスマホへ直接転送され、この転送でクラウドに送信・保存されません", MessageType.Info);
                 EditorGUILayout.LabelField(displayName ?? "アバターを選んで、Exporterの「スマホに送る」を押してください。", EditorStyles.wordWrappedLabel);
-                EditorGUILayout.HelpBox("PCとiPhoneを同じLANに接続してください。PCは有線LANでも利用できます。VRVlogのカメラ・ローカルネットワーク権限とWindowsの通信を許可してください。QRには受取用の秘密情報が含まれます。共有・撮影しないでください。", MessageType.None);
+                EditorGUILayout.HelpBox("PCとiPhoneを同じLANに接続してください。PCは有線LANでも利用できます。VR Vlogのカメラ・ローカルネットワーク権限とWindowsの通信を許可してください。QRには受取用の秘密情報が含まれます。共有・撮影しないでください。", MessageType.None);
                 if (!string.IsNullOrEmpty(error)) EditorGUILayout.HelpBox(error, MessageType.Error);
                 using (new EditorGUI.DisabledScope(server != null || starting != null))
                 {

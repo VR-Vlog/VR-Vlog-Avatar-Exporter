@@ -36,7 +36,7 @@ namespace VRVlog.LilToonExporter
             var window = CreateInstance<PoseReviewWindow>(); window.source = avatar; window.options = options;
             window.excluded = excluded; window.gimmicks = gimmicks;
             window.manualOnly = manualOnly;
-            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("ポーズを確認・調整")); window.minSize = new Vector2(620, 600);
+            window.titleContent = new GUIContent(ExporterLocalization.T("ポーズを確認・調整")); window.minSize = new Vector2(620, 600);
             window.RequestRebuild(); window.ShowUtility();
             return window;
         }
@@ -113,6 +113,7 @@ namespace VRVlog.LilToonExporter
         }
         void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("ポーズを確認・調整"));
             if (options == null) return;
             if (manualOnly) { DrawSimple(); return; }
             EditorGUILayout.HelpBox(ExporterLocalization.T("静止ポーズと手動追加した動くポーズを含めます。動くポーズは開始秒から再生し、頭・首はクリップに指定がある場合だけ含めます。"), MessageType.Info);
