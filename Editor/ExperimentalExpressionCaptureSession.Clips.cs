@@ -321,19 +321,25 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string NoFaceChange = "元から0のBlendShapeを0にするだけで、顔を何も変えないアニメーションです。";
+        internal const string ZeroOnlyNotExported = "BlendShapeを0にするだけのアニメーションはVRMの表情に入りません。";
 
-        // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
-        // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
-        // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
-        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at 0, often in
+        // the default state that plays at rest. The VRM leaves them out (VrChatAuthoredFaces reads no face
+        // from a clip of zeros), so the board treats them as unsupported: they are not shown, and an
+        // exclusion saved before still counts. That holds when the shapes rest away from 0 too. A FaceEmo
+        // face and a clip a gesture enters stay faces, and so does a clip a menu item selects when it changes
+        // the face on the board: the menu import samples that item and exports the change. A menu that
+        // cannot be read keeps those clips.
         string NoFaceError(AnimationClip clip, Pose pose)
         {
             if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
             if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
                 .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
-            for (var i = 0; i < Baseline.Rows.Count; i++)
-                if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
-            return ExporterLocalization.T(NoFaceChange);
+            if (Enumerable.Range(0, Baseline.Rows.Count).All(i => Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)))
+                return ExporterLocalization.T(NoFaceChange);
+            ReadSourceMenu();
+            if (sourceMenuOutside == null || sourceMenuPaths.ContainsKey(clip)) return null;
+            return ExporterLocalization.T(ZeroOnlyNotExported);
         }
 
         // Read only the explicitly authored morph curves. No Animator graph,

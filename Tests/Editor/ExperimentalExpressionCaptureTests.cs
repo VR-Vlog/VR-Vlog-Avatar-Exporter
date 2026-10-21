@@ -589,16 +589,18 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
-        // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
-        // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
-        // whose gestures cannot be read keeps its clips and does not stop the board from opening.
-        [TestCase(0f, 0f, "plain", false)]
-        [TestCase(0f, 35f, "plain", true)]
-        [TestCase(75f, 0f, "plain", true)]
-        [TestCase(0f, 0f, "gesture", true)]
-        [TestCase(0f, 0f, "unreadable", true)]
-        public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, bool usable)
+        // A lip-sync or blink switch holds shapes at 0, so the board treats it as unsupported and does not
+        // show it: the VRM has no face for a clip of zeros. One that resets a shape resting away from 0 says
+        // so rather than that it changes nothing. A clip that moves a shape, or is entered by a gesture (the
+        // gesture route exports it), stays a face. A controller whose gestures cannot be read keeps its clips
+        // and does not stop the board from opening.
+        [TestCase(0f, 0f, "plain", ExperimentalExpressionCaptureSession.NoFaceChange)]
+        [TestCase(0f, 35f, "plain", ExperimentalExpressionCaptureSession.ZeroOnlyNotExported)]
+        [TestCase(75f, 0f, "plain", null)]
+        [TestCase(0f, 0f, "gesture", null)]
+        [TestCase(0f, 35f, "gesture", null)]
+        [TestCase(0f, 0f, "unreadable", null)]
+        public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, string error)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
@@ -622,11 +624,67 @@ namespace VRVlog.LilToonExporter.Tests
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
                 // Still a candidate, so an exclusion saved before keeps counting.
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
-                var expected = usable ? null : ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange);
+                var expected = error == null ? null : ExporterLocalization.T(error);
                 Assert.That(session.ClipErrors(new[] { clip })[clip], Is.EqualTo(expected));
                 Assert.That(session.ClipError(clip, 0), Is.EqualTo(expected));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
+        // A menu item that selects a clip of zeros is sampled by the menu import, which exports the change
+        // when the shapes rest away from 0, so the board keeps it as a face then. Resting at 0, it changes
+        // nothing and stays unsupported.
+        [TestCase(35f, null)]
+        [TestCase(0f, ExperimentalExpressionCaptureSession.NoFaceChange)]
+        public void AZeroClipAMenuItemSelectsStaysAFaceWhenItChangesTheFace(float restWeight, string error)
+        {
+            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
+            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            try
+            {
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                controller.AddParameter("Reset", AnimatorControllerParameterType.Bool);
+                var machine = controller.layers[0].stateMachine;
+                var idle = machine.AddState("Idle"); idle.writeDefaultValues = false; machine.defaultState = idle;
+                var clip = new AnimationClip { name = "Reset face" };
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 0));
+                AssetDatabase.AddObjectToAsset(clip, controller);
+                var state = machine.AddState("Reset"); state.writeDefaultValues = false; state.motion = clip;
+                var transition = idle.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
+                transition.AddCondition(AnimatorConditionMode.If, 0, "Reset");
+                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
+                using (var data = new SerializedObject(menu))
+                {
+                    var controls = data.FindProperty("controls"); controls.arraySize = 1;
+                    var item = controls.GetArrayElementAtIndex(0); item.FindPropertyRelative("name").stringValue = "Reset";
+                    var control = item.FindPropertyRelative("type"); control.enumValueIndex = Array.IndexOf(control.enumNames, "Toggle");
+                    item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Reset";
+                    item.FindPropertyRelative("value").floatValue = 1;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var descriptor = fixture.Source.AddComponent(descriptorType);
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customExpressions").boolValue = true; data.FindProperty("expressionsMenu").objectReferenceValue = menu;
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                    var layer = list.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
+                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                Assert.That(session.RecommendClips().Any(entry => entry.Clip == clip), Is.True);
+                var expected = error == null ? null : ExporterLocalization.T(error);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.EqualTo(expected));
+            }
+            finally { AssetDatabase.DeleteAsset(folder); }
         }
 
         [TestCase(false)]
