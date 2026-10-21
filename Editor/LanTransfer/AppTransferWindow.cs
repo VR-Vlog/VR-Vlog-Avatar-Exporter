@@ -1,8 +1,10 @@
 using System;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.UIElements;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 using VRVlog.LilToonExporter.Compatibility;
 
@@ -426,6 +428,26 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return string.IsNullOrEmpty(script) ? null : AssetDatabase.LoadAssetAtPath<TAsset>(Path.ChangeExtension(script, extension));
         }
 
+        // Unity 2022.3's editor text remembers, per character, which fallback font drew it, without the
+        // weight: once any editor UI Toolkit panel has drawn a Japanese character in bold, that character
+        // comes from the bold Japanese font in normal-weight text too, so a few kana of a line look bold.
+        // The window draws its text from its own font asset instead, made from the OS font the editor
+        // uses for Japanese on Windows, so no other text shares its lookup. Elsewhere it keeps the
+        // editor's font.
+        private const string TextFontName = "VR Vlog App Transfer Text";
+        private static FontAsset textFont;
+
+        internal static FontAsset TextFont()
+        {
+            if (textFont != null || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
+            // The asset outlives a domain reload; reuse it rather than make one more each time.
+            textFont = Resources.FindObjectsOfTypeAll<FontAsset>().FirstOrDefault(f => f.name == TextFontName);
+            if (textFont != null) return textFont;
+            textFont = FontAsset.CreateFontAsset("Yu Gothic UI", "Semilight", 90);
+            if (textFont != null) { textFont.name = TextFontName; textFont.hideFlags = HideFlags.DontSave; }
+            return textFont;
+        }
+
         // The UXML holds the structure only; every text is set in Refresh through T.
         private void CreateGUI()
         {
@@ -445,6 +467,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             root.styleSheets.Add(sheet);
             root.AddToClassList("app-transfer");
             root.AddToClassList(EditorGUIUtility.isProSkin ? "app-transfer--dark" : "app-transfer--light");
+            var font = TextFont();
+            if (font != null) root.style.unityFontDefinition = FontDefinition.FromSDFFont(font);
 
             disabledBox = root.Q<HelpBox>("disabled");
             content = root.Q("content");
