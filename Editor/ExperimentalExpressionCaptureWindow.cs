@@ -635,14 +635,12 @@ namespace VRVlog.LilToonExporter
             if (other != null) return other;
             if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
             if (board.ExceedsLimit) return string.Format(ExporterLocalization.T(OverLimitFormat), board.OverLimitBy);
-            if (board.HasDuplicateNames) return DuplicateNamesText(ExporterLocalization.T(DuplicateNamesFormat));
             return null;
         }
 
         const string OverLimitFormat = "その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません";
-        const string DuplicateNamesFormat = "同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません";
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
-        internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にして同じ名前をなくす";
+        internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にする";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
 
         // The two steps of the detailed transfer; this window is the first.
@@ -1655,14 +1653,6 @@ namespace VRVlog.LilToonExporter
             RebuildBoard();
             if (board != null && board.ExceedsLimit)
                 throw new InvalidOperationException(string.Format(ExporterLocalization.T(OverLimitFormat), board.OverLimitBy));
-            if (board != null && board.HasDuplicateNames)
-                throw new InvalidOperationException(DuplicateNamesText(ExporterLocalization.T(DuplicateNamesFormat)));
-        }
-
-        string DuplicateNamesText(string format)
-        {
-            var names = board.DuplicateNames();
-            return string.Format(format, names.Length) + ": " + string.Join(" / ", names);
         }
 
         internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
