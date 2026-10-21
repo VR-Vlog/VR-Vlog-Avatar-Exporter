@@ -186,6 +186,14 @@ namespace VRVlog.LilToonExporter.Tests
             var settings = new ExportSettings();
             settings.IncludedGimmicks.Add(container);
             Assert.That(ExportGimmickChoices.Inherited(finding, settings), Is.True);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.EqualTo(container));
+            // The row names the nearest kept parent.
+            var inner = Child("inner", container.transform);
+            effect.transform.SetParent(inner.transform, false);
+            settings.IncludedGimmicks.Add(inner);
+            Assert.That(ExportGimmickChoices.InheritedFrom(finding, settings), Is.EqualTo(inner));
+            settings.IncludedGimmicks.Remove(inner);
+            effect.transform.SetParent(container.transform, false);
             Assert.That(ExportGimmickChoices.Kept(finding, settings), Is.False);
             Assert.That(ExportGimmickChoices.Removed(new[] { finding }, settings.Gimmicks()), Is.Empty);
             // Objects left out by hand are not listed again.

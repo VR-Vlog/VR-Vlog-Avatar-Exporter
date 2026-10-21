@@ -1616,11 +1616,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
 
-        [TestCase("ja", "VRM書き出し", "この割り当てでVRMを保存")]
-        [TestCase("en", "VRM Export", "Save VRM with this assignment")]
-        [TestCase("ko", "VRM 내보내기", "이 할당으로 VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "按此分配保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "依此分配儲存 VRM")]
+        [TestCase("ja", "VRM書き出し", "VRMを保存")]
+        [TestCase("en", "VRM Export", "Save VRM")]
+        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
+        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
+        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1634,7 +1634,7 @@ namespace VRVlog.LilToonExporter.Tests
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
                 Assert.That(window.titleContent.image, Is.Null);
-                Assert.That(ExporterLocalization.T("この割り当てでVRMを保存"), Is.EqualTo(save));
+                Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
                 Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
                 if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
@@ -2502,6 +2502,82 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.BlocksExport, Is.True);
                 Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { }),
                     Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardNeedsFix)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // The pages move by 戻る and 次へ. Leaving the objects page applies its
+        // edits first; a list the preview cannot take keeps the user on the page
+        // with the edits and the reason, and the next try moves on once it is fixed.
+        [Test]
+        public void LeavingTheObjectsPageAppliesItsEditsFirst()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            void Drain()
+            {
+                for (var step = 0; step < 10 && type.GetField("pending", flags).GetValue(window) != null; step++)
+                    type.GetMethod("Advance", flags).Invoke(window, null);
+                Assert.That(type.GetField("pending", flags).GetValue(window), Is.Null);
+            }
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ExpressionsPage));
+                window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, meshes);
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビュー未反映　ページを移るときに反映します")));
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EqualTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビューに反映できませんでした・理由は一覧の下にあります")));
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.Empty);
+
+                var kept = meshes.Skip(1).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, kept);
+                type.GetField("excludedObjectError", flags).SetValue(window, null);
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.Null);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.EquivalentTo(kept));
+
+                // The status line (here a save report) stays with the page it came from.
+                type.GetField("status", flags).SetValue(window, "saved");
+                window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(type.GetField("status", flags).GetValue(window), Is.Null);
+                window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ExpressionsPage));
+
+                // An apply still waiting that another action replaces does not leave the board blocked.
+                type.GetField("excludedObjectEdits", flags).SetValue(window, kept.ToList());
+                type.GetMethod("ApplyThen", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.True);
+                type.GetMethod("Queue", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
+                Drain();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, null);
+
+                // The transfer has no information page: its third step is the next window.
+                type.GetField("transferMode", flags).SetValue(window, true);
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
             }
             finally
             {
