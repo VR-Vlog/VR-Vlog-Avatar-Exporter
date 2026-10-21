@@ -967,6 +967,7 @@ BEHAVIOR_CASES = {
         'ImplicitHeldFaceHistoryCannotImportAnAppearanceOwnedMorph': 1,
         'InheritedHeldFaceCannotConcealACorruptPreviousMovingCurve': 1,
         'ContactAuthoredFacesKeepTheirCompositionTimelineAndPreparedAppearance': 2,
+        'AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice': 3,
         'HardwareFaceFallbackCannotPublishMutedOrOrphanStates': 2,
         'AConstantHardwareFaceDoesNotNeedAnAutoplayClock': 2,
         'ARecoveryExclusionCannotBeReintroducedByHardwareFaceFallback': 1,
