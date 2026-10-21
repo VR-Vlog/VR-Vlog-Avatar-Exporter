@@ -557,6 +557,12 @@ namespace VRVlog.LilToonExporter
         {
             // The export always hashes the source again, even inside a batch.
             RequireValid(always: true);
+            // The same checks and stage guard as the other user-facing exports
+            // (ExportSettings.Export): stop before any stage on a source VRM
+            // cannot carry, and follow the project-wide choice on failing stages.
+            UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
+            UniVrmOneClickExporter.ValidateSourceHasMesh(Source);
+            if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
             var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
@@ -596,13 +602,17 @@ namespace VRVlog.LilToonExporter
             // replaceCustomFaces asks for exactly the recorded custom faces, even
             // none, so both shortcuts that keep the menu faces are skipped.
             if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
-                return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
+            {
+                var ordinary = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
                     inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                UniVrmOneClickExporter.ValidateOutputHasMesh(ordinary);
+                return ordinary;
+            }
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
             if (!replaceCustomFaces && expressions.Length == 0)
@@ -610,7 +620,7 @@ namespace VRVlog.LilToonExporter
                 var authored = new List<Object>();
                 try
                 {
-                    return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
+                    var authoredVrm = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                         exporterVersion: LilToonExporterWindow.PackageVersion(),
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
@@ -618,6 +628,8 @@ namespace VRVlog.LilToonExporter
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
                         inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                         excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                    UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
+                    return authoredVrm;
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
@@ -794,6 +806,7 @@ namespace VRVlog.LilToonExporter
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     descriptorVisemes: visemes);
+                UniVrmOneClickExporter.ValidateOutputHasMesh(bytes);
                 // The exporter's clone keeps this root scale and bakes it into the VRM.
                 return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
             }

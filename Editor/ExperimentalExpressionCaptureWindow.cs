@@ -195,6 +195,23 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // The quick "アプリに転送": a board prepared for the avatar as opening
+        // "通常" would, never shown. Its export is what "通常" exports when
+        // nothing on the board is touched. The caller destroys it; a failed
+        // or canceled preparation destroys it here and throws.
+        internal static ExperimentalExpressionCaptureWindow PrepareHidden(GameObject avatar)
+        {
+            var window = CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                window.transferMode = true;
+                window.SelectSource(avatar);
+                window.Prepare();
+                return window;
+            }
+            catch { DestroyImmediate(window); throw; }
+        }
+
         // The open board prepared for this avatar, or null.
         internal static ExperimentalExpressionCaptureWindow ForTransfer(GameObject avatar) => avatar == null ? null :
             Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().FirstOrDefault(window => window != null && window.source == avatar && window.session != null);
@@ -437,7 +454,7 @@ namespace VRVlog.LilToonExporter
         string RebuildKeepingAssignments(GameObject[] objects, GameObject[] previous = null)
         {
             var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
-            var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var previousSaved = saved;
+            var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var automatic = automaticBlink; var previousSaved = saved;
             var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
             var edits = excludedObjectEdits; var editError = excludedObjectError; var showEdits = showExcludedObjects;
             string problem = null;
@@ -454,7 +471,7 @@ namespace VRVlog.LilToonExporter
             foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
             session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
             foreach (var pair in poses.Names) session.PoseOptions.Names.Add(pair.Key, pair.Value);
-            configuredBlink = blink; saved = previousSaved;
+            configuredBlink = blink; automaticBlink = automatic; saved = previousSaved;
             return problem;
         }
 
@@ -618,6 +635,10 @@ namespace VRVlog.LilToonExporter
                 PrepareProgress(ExporterLocalization.T("アバターを読み込み"), 0);
                 // The gimmicks left out follow the avatar's saved export settings.
                 var stored = ExportSettingsStore.Load(source);
+                // So does the blink, as the blink settings window would set it.
+                var storedBlink = stored.Blink ?? new BlinkExportOptions();
+                configuredBlink = storedBlink.Mode == BlinkExportMode.Manual ? storedBlink.Copy() : null;
+                automaticBlink = storedBlink.Mode != BlinkExportMode.None;
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
@@ -2098,7 +2119,9 @@ namespace VRVlog.LilToonExporter
         // author and license of the transfer window. Returns null when it saved
         // (saved has run) or was canceled, and the reason when it failed; the
         // recovery window then saves the same destination and runs saved.
-        internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved)
+        // The quick transfer passes interactive false: what the export worked
+        // around is not asked about before saving.
+        internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved, bool interactive = true)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
@@ -2109,7 +2132,7 @@ namespace VRVlog.LilToonExporter
             // source once, and Export hashes it again as it writes.
             ExportRecoverySession recovery;
             using (ExperimentalExpressionCaptureSession.Batch())
-                recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), true, saved);
+                recovery = Save(destination, name, author, (license ?? new AvatarLicenseOptions()).Copy(), interactive, saved);
             return recovery == null ? null : recovery.Failure?.Message ?? "";
         }
 
@@ -2148,7 +2171,7 @@ namespace VRVlog.LilToonExporter
                 LastMissingShaderCount = missingShaders;
                 if (written != null)
                 {
-                    // Like the quick transfer, the details of this export go to the Console.
+                    // For a transfer, the details of this export go to the Console.
                     var details = (warnings ?? Enumerable.Empty<string>()).ToArray();
                     if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
                     written();

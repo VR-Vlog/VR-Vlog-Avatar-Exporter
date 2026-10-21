@@ -1,0 +1,205 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using NUnit.Framework;
+using UniVRM10;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using Object = UnityEngine.Object;
+
+namespace VRVlog.LilToonExporter.Tests
+{
+    // The quick "アプリに転送" writes what "通常" writes when nothing on the
+    // expression board is touched, through the same board save.
+    public sealed class AppTransferQuickExportTests
+    {
+        string settingsPath, previousSettingsPath, presetPath, previousPresetPath;
+
+        [SetUp]
+        public void UseTemporaryStores()
+        {
+            previousSettingsPath = ExportSettingsStore.PathOverride;
+            settingsPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-settings-" + Guid.NewGuid().ToString("N") + ".json");
+            ExportSettingsStore.PathOverride = settingsPath;
+            previousPresetPath = ExpressionPresetStore.PathOverride;
+            presetPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            ExpressionPresetStore.PathOverride = presetPath;
+        }
+
+        [TearDown]
+        public void RestoreStores()
+        {
+            ExportSettingsStore.PathOverride = previousSettingsPath;
+            ExpressionPresetStore.PathOverride = previousPresetPath;
+            if (File.Exists(settingsPath)) File.Delete(settingsPath);
+            if (File.Exists(presetPath)) File.Delete(presetPath);
+        }
+
+        // An avatar that the board can prepare and export, in a saved scene so
+        // its choices and transfer name are remembered.
+        internal sealed class SavedFixture : IDisposable
+        {
+            internal readonly AttachmentConnectionTests.Fixture Fixture;
+            internal GameObject Source => Fixture.Source;
+            readonly string scenePath;
+
+            internal SavedFixture()
+            {
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                Fixture = new AttachmentConnectionTests.Fixture();
+                foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                scenePath = "Assets/AppTransferQuick-" + Guid.NewGuid().ToString("N") + ".unity";
+                Assert.That(EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                Assert.That(ExpressionPresetStore.KeyFor(Fixture.Source), Is.Not.Null);
+            }
+
+            public void Dispose()
+            {
+                Fixture.Dispose();
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        static AppTransferExport Transfer(GameObject avatar)
+        {
+            var transfer = new AppTransferExport();
+            transfer.SelectAvatar(avatar);
+            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(transfer, "SampleAuthor");
+            return transfer;
+        }
+
+        static Dictionary<string, object> Expressions(string path)
+        {
+            var extensions = (Dictionary<string, object>)GlbDocument.Read(File.ReadAllBytes(path)).Json["extensions"];
+            return (Dictionary<string, object>)((Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+        }
+
+        static string[] Names(Dictionary<string, object> expressions, string kind) =>
+            expressions.TryGetValue(kind, out var group) ? ((Dictionary<string, object>)group).Keys.OrderBy(key => key, StringComparer.Ordinal).ToArray() : new string[0];
+
+        static int MorphBinds(Dictionary<string, object> expressions, string preset)
+        {
+            var presets = (Dictionary<string, object>)expressions["preset"];
+            if (!presets.TryGetValue(preset, out var value)) return 0;
+            return ((Dictionary<string, object>)value).TryGetValue("morphTargetBinds", out var binds) ? ((List<object>)binds).Count : 0;
+        }
+
+        [Test]
+        public void QuickTransferWritesTheExpressionsOfAnUntouchedBoard()
+        {
+            using var fixture = new SavedFixture();
+            // A choice the name inference would not make, saved on the board earlier.
+            ExpressionPresetStore.Save(ExpressionPresetStore.KeyFor(fixture.Source),
+                new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
+            var quickPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var boardPath = Path.Combine(Path.GetTempPath(), "vrvlog-quick-board-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                var saved = 0;
+                Assert.That(Transfer(fixture.Source).Export(fixture.Source, "Avatar", quickPath, () => saved++), Is.Null);
+                Assert.That(saved, Is.EqualTo(1));
+
+                // The board opened for the same avatar and saved without a change.
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var boardSaved = false;
+                Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), boardPath, () => boardSaved = true, false), Is.Null);
+                Assert.That(boardSaved, Is.True);
+
+                var quick = Expressions(quickPath);
+                var board = Expressions(boardPath);
+                Assert.That(Names(quick, "preset"), Is.EqualTo(Names(board, "preset")));
+                Assert.That(Names(quick, "custom"), Is.EqualTo(Names(board, "custom")));
+                Assert.That(MorphBinds(quick, "happy"), Is.GreaterThan(0), "The saved choice is in the quick transfer too.");
+                Assert.That(MorphBinds(quick, "happy"), Is.EqualTo(MorphBinds(board, "happy")));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+                if (File.Exists(quickPath)) File.Delete(quickPath);
+                if (File.Exists(boardPath)) File.Delete(boardPath);
+            }
+        }
+
+        // The board starts from the blink saved for the avatar, as the old quick
+        // transfer took it from the export settings.
+        [TestCase(BlinkExportMode.Auto)]
+        [TestCase(BlinkExportMode.Manual)]
+        [TestCase(BlinkExportMode.None)]
+        public void TheHiddenBoardUsesTheSavedBlink(BlinkExportMode mode)
+        {
+            using var fixture = new SavedFixture();
+            var settings = new ExportSettings();
+            settings.Blink.Mode = mode;
+            if (mode == BlinkExportMode.Manual)
+                settings.Blink.Both.Add(new BlinkShapeBinding { Renderer = fixture.Source.GetComponentInChildren<SkinnedMeshRenderer>(), Shape = "Hair detail", Weight = 80f });
+            ExportSettingsStore.Save(fixture.Source, settings);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                var blink = (BlinkExportOptions)typeof(ExperimentalExpressionCaptureWindow)
+                    .GetMethod("ExportBlinkOptions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(board, null);
+                if (mode == BlinkExportMode.Auto) Assert.That(blink, Is.Null, "Automatic, as the board starts without a saved blink.");
+                else Assert.That(blink.Mode, Is.EqualTo(mode));
+                if (mode == BlinkExportMode.Manual)
+                {
+                    Assert.That(blink.Both.Single().Shape, Is.EqualTo("Hair detail"));
+                    Assert.That(blink.Both.Single().Weight, Is.EqualTo(80f));
+                }
+            }
+            finally { Object.DestroyImmediate(board); }
+        }
+
+        // The board's export follows the project-wide choice on failing stages,
+        // as the old quick transfer and the export window do.
+        [Test]
+        public void TheBoardExportFollowsTheStageGuardChoice()
+        {
+            using var fixture = new SavedFixture();
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                var session = (ExperimentalExpressionCaptureSession)typeof(ExperimentalExpressionCaptureWindow)
+                    .GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(board);
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = !ExportStageGuard.ContinueByDefault };
+                var bytes = session.Export("Avatar", "SampleAuthor", new List<string>(), recoveryReport: report);
+                Assert.That(report.ContinueOnStageFailure, Is.EqualTo(ExportStageGuard.ContinueByDefault));
+                Assert.That(bytes, Is.Not.Empty);
+            }
+            finally { Object.DestroyImmediate(board); }
+        }
+
+        [Test]
+        public void QuickTransferLeavesNoBoardBehind()
+        {
+            using var fixture = new SavedFixture();
+            var plain = new GameObject("Plain");
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-left-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var before = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Length;
+            try
+            {
+                Assert.That(Transfer(fixture.Source).Export(fixture.Source, "Avatar", path, () => { }), Is.Null);
+                Assert.That(Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Length, Is.EqualTo(before));
+                Assert.That(ExperimentalExpressionCaptureWindow.ForTransfer(fixture.Source), Is.Null);
+                // A board that cannot be prepared is gone as well.
+                Assert.Catch<Exception>(() => Transfer(plain).Export(plain, "Plain", path + ".plain", () => { }));
+                Assert.That(Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Length, Is.EqualTo(before));
+                Assert.That(ExperimentalExpressionCaptureWindow.ForTransfer(plain), Is.Null);
+            }
+            finally
+            {
+                ExportAuthor.Forget(ExportAuthor.Identity(plain));
+                Object.DestroyImmediate(plain);
+                if (File.Exists(path)) File.Delete(path);
+                if (File.Exists(path + ".plain")) File.Delete(path + ".plain");
+            }
+        }
+    }
+}

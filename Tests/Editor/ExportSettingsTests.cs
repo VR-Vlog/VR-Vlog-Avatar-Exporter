@@ -13,7 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportSettingsTests
     {
-        string storePath, previousPath;
+        string storePath, previousPath, presetPath, previousPresetPath;
 
         [SetUp]
         public void UseTemporaryStore()
@@ -21,13 +21,19 @@ namespace VRVlog.LilToonExporter.Tests
             previousPath = ExportSettingsStore.PathOverride;
             storePath = Path.Combine(Path.GetTempPath(), "vrvlog-export-settings-" + Guid.NewGuid().ToString("N") + ".json");
             ExportSettingsStore.PathOverride = storePath;
+            // The app transfer prepares an expression board, which reads and saves the avatar's choices.
+            previousPresetPath = ExpressionPresetStore.PathOverride;
+            presetPath = Path.Combine(Path.GetTempPath(), "vrvlog-export-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            ExpressionPresetStore.PathOverride = presetPath;
         }
 
         [TearDown]
         public void RestoreStore()
         {
             ExportSettingsStore.PathOverride = previousPath;
+            ExpressionPresetStore.PathOverride = previousPresetPath;
             if (File.Exists(storePath)) File.Delete(storePath);
+            if (File.Exists(presetPath)) File.Delete(presetPath);
         }
 
         sealed class SavedAvatar : IDisposable
@@ -272,33 +278,47 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferExportsWithTheAvatarsRememberedSettings()
         {
-            using var fixture = new SavedAvatar();
-            ExportSettingsStore.Save(fixture.Avatar, Adjusted(fixture));
-            var transfer = new AppTransferExport();
-            transfer.SelectAvatar(fixture.Avatar);
-            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                .SetValue(transfer, "SampleAuthor");
-            var original = AppTransferExport.SaveNormally;
-            GameObject[] excluded = null;
-            ExportGimmickOptions gimmicks = null;
-            bool? interactive = null;
+            // The quick transfer exports from a board prepared out of sight, so
+            // the avatar needs a mesh the board can show.
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var pet = new GameObject("Pet");
+            pet.transform.SetParent(fixture.Source.transform);
+            var gimmick = new GameObject("Gimmick");
+            gimmick.transform.SetParent(fixture.Source.transform);
+            Assert.That(EditorSceneManager.SaveScene(fixture.Source.scene), Is.True);
+            var settings = new ExportSettings { AutoExcludeGimmicks = false };
+            settings.ExcludedObjects.Add(pet);
+            settings.IncludedGimmicks.Add(gimmick);
+            settings.License.CopyrightInformation = "Sample copyright";
+            ExportSettingsStore.Save(fixture.Source, settings);
+
+            // The board prepared for the quick transfer leaves out what the export window leaves out.
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
             try
             {
-                AppTransferExport.SaveNormally = (avatar, destination, create, completed, previewExcluded, previewGimmicks, asks, openBlink) =>
-                {
-                    excluded = previewExcluded?.ToArray();
-                    gimmicks = previewGimmicks;
-                    interactive = asks;
-                    return null;
-                };
-                transfer.Export(fixture.Avatar, "SampleAvatar", Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { });
+                var session = (ExperimentalExpressionCaptureSession)typeof(ExperimentalExpressionCaptureWindow)
+                    .GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(board);
+                Assert.That(session.ExcludedObjects, Is.EqualTo(new[] { pet }), "The transfer leaves out what the export window leaves out.");
+                var gimmicks = session.GimmickOptions;
+                Assert.That(gimmicks.AutoExclude, Is.False);
+                Assert.That(gimmicks.IncludedObjects, Is.EqualTo(new[] { gimmick }));
             }
-            finally { AppTransferExport.SaveNormally = original; }
-            Assert.That(interactive, Is.False, "The quick transfer does not stop to ask about fallbacks.");
-            Assert.That(excluded, Is.EqualTo(new[] { fixture.Pet }), "The transfer leaves out what the export window leaves out.");
-            Assert.That(gimmicks.AutoExclude, Is.False);
-            Assert.That(gimmicks.IncludedObjects, Is.EqualTo(new[] { fixture.Gimmick }));
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).License.CopyrightInformation, Is.EqualTo("Sample copyright"),
+            finally { Object.DestroyImmediate(board); }
+
+            var transfer = new AppTransferExport();
+            transfer.SelectAvatar(fixture.Source);
+            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                .SetValue(transfer, "SampleAuthor");
+            var destination = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-settings-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                Assert.That(transfer.Export(fixture.Source, "Avatar", destination, () => { }), Is.Null);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(File.ReadAllBytes(destination)).Json["extensions"];
+                var meta = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["meta"];
+                Assert.That(meta["copyrightInformation"], Is.EqualTo("Sample copyright"), "The VRM carries the remembered license.");
+            }
+            finally { if (File.Exists(destination)) File.Delete(destination); }
+            Assert.That(ExportSettingsStore.Load(fixture.Source).License.CopyrightInformation, Is.EqualTo("Sample copyright"),
                 "The license shown in the transfer is the remembered one and stays remembered.");
         }
 
@@ -326,36 +346,36 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AppTransferRemembersTheNameOnlyAfterASave()
         {
-            using var fixture = new SavedAvatar();
-            var transfer = new AppTransferExport();
-            transfer.SelectAvatar(fixture.Avatar);
-            typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-                .SetValue(transfer, "SampleAuthor");
-            var original = AppTransferExport.SaveNormally;
-            var destination = Path.Combine(Path.GetTempPath(), "unused.vrm");
+            static AppTransferExport Transfer(GameObject avatar)
+            {
+                var transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                typeof(AppTransferExport).GetField("author", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .SetValue(transfer, "SampleAuthor");
+                return transfer;
+            }
+            var destination = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-name-" + Guid.NewGuid().ToString("N") + ".vrm");
             var saved = 0;
             try
             {
-                // Canceled: nothing was written, so nothing is remembered.
-                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) => null;
-                Assert.That(transfer.Export(fixture.Avatar, "Canceled", destination, () => saved++), Is.Null);
-                Assert.That(transfer.RememberedName(fixture.Avatar), Is.Null);
-                // Failed before saving.
-                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) => throw new IOException("Failed");
-                Assert.Throws<IOException>(() => transfer.Export(fixture.Avatar, "Failed", destination, () => saved++));
-                Assert.That(transfer.RememberedName(fixture.Avatar), Is.Null);
-                Assert.That(saved, Is.Zero);
-                // Saved.
-                AppTransferExport.SaveNormally = (avatar, path, create, completed, previewExcluded, previewGimmicks, asks, openBlink) =>
+                // Failed before saving: the board cannot be prepared for an avatar without a mesh.
+                using (var empty = new SavedAvatar())
                 {
-                    completed(Array.Empty<byte>(), Array.Empty<string>());
-                    return null;
-                };
-                Assert.That(transfer.Export(fixture.Avatar, "Avatar", destination, () => saved++), Is.Null);
+                    var failing = Transfer(empty.Avatar);
+                    Assert.Catch<Exception>(() => failing.Export(empty.Avatar, "Failed", destination, () => saved++));
+                    Assert.That(failing.RememberedName(empty.Avatar), Is.Null);
+                    Assert.That(saved, Is.Zero);
+                    Assert.That(File.Exists(destination), Is.False);
+                }
+                // Saved.
+                using var fixture = new AppTransferQuickExportTests.SavedFixture();
+                var transfer = Transfer(fixture.Source);
+                Assert.That(transfer.RememberedName(fixture.Source), Is.Null);
+                Assert.That(transfer.Export(fixture.Source, "Avatar", destination, () => saved++), Is.Null);
+                Assert.That(saved, Is.EqualTo(1));
+                Assert.That(transfer.RememberedName(fixture.Source), Is.EqualTo("Avatar"));
             }
-            finally { AppTransferExport.SaveNormally = original; }
-            Assert.That(saved, Is.EqualTo(1));
-            Assert.That(transfer.RememberedName(fixture.Avatar), Is.EqualTo("Avatar"));
+            finally { if (File.Exists(destination)) File.Delete(destination); }
         }
 
         [Test]
