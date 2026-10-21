@@ -376,6 +376,58 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
         }
 
+        // An Any State edge with Can Transition To Self and a condition that
+        // stays true restarts its state every frame, so the layer is always in
+        // a transition into the state it is already in. Both sides play the
+        // same constant clip; the face is the same as in the settled state.
+        // ownLayer: the selected layer itself restarts; otherwise another
+        // layer beside it does.
+        [TestCase(false)] [TestCase(true)]
+        public void AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace(bool ownLayer)
+        {
+            var messages = new List<string>();
+            if (ownLayer)
+            {
+                var machine = controller.layers[0].stateMachine;
+                machine.defaultState = State(machine, "Idle");
+                var selected = State(machine, "Selected", Clip("Smile", 75));
+                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
+                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            }
+            else
+            {
+                Selected(Clip("Smile", 75));
+                RestartingLayer();
+            }
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+        }
+
+        // Each restart enters the state again and runs its callbacks, so a
+        // driver there keeps writing. Such a layer is still refused.
+        [Test]
+        public void AStateRestartedEveryFrameWithADriverIsNotSaved()
+        {
+            Selected(Clip("Smile", 75));
+            ParameterDriverExpressionTests.Driver(RestartingLayer(), ParameterDriverExpressionTests.Op("Add", "Face", 1));
+            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+        }
+
+        // A toggle layer whose Off state is re-entered every frame while its
+        // Bool stays false. The clip holds a face morph, so the layer joins
+        // the expression's evaluation.
+        private AnimatorState RestartingLayer()
+        {
+            controller.AddParameter("Toggle", AnimatorControllerParameterType.Bool);
+            var toggle = Layer("Toggle");
+            var clip = new AnimationClip { name = "Toggle off" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 0));
+            AssetDatabase.AddObjectToAsset(clip, controller);
+            var off = State(toggle, "Off", clip); toggle.defaultState = off;
+            var edge = toggle.AddAnyStateTransition(off); edge.hasExitTime = false; edge.duration = .25f;
+            edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle");
+            return off;
+        }
+
         // Loops of 1 s and 0.7 s share one clock; only one starts its cycle.
         [Test]
         public void LoopsOfDifferentLengthsAreReportedAsOverlapping()

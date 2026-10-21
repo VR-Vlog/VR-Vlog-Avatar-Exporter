@@ -494,6 +494,8 @@ BEHAVIOR_CASES = {
         'AnAnyStateEdgeThatCannotReachItsOwnStateIsNotFollowed': 1,
         'AZeroDurationSelfTransitionOfAJustEnteredStateIsReported': 1,
         'ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey': 2,
+        'AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace': 2,
+        'AStateRestartedEveryFrameWithADriverIsNotSaved': 1,
         'LoopsOfDifferentLengthsAreReportedAsOverlapping': 1,
         'AChainLongerThanTheHopLimitIsNotSaved': 1,
         'AFaceAfterMoreThanAMinuteIsReported': 2,
