@@ -366,6 +366,7 @@ namespace VRVlog.LilToonExporter.Tests
                 else { probe.AddLayer("Base"); probe.layers[0].stateMachine.AddState("Idle"); source.OtherControllers.Add(probe); }
                 var context = FixedExpressionContext.Create(runtime, source.Defaults, source);
                 var expected = UnownedRest(runtime, context, null);
+                Assert.That(expected.Layers, Is.EquivalentTo(new[] { 2 }), "The fixture must reach the random rest proof, not an earlier exit.");
                 using var cache = ExpressionInspectCache.Begin();
                 Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));
                 Assert.That(UnownedRest(runtime, context, null).Layers, Is.EquivalentTo(expected.Layers));

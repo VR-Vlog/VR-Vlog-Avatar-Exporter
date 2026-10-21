@@ -1,7 +1,7 @@
 # 表情の読み込み中は、選んだ表情に関係しない Random の待機レイヤーの判定を使い回す
 
 - 日付: 2026-10-21
-- 対象: `Editor/ExpressionInspectCache.cs`・`Editor/HeldAutomaticExpressionLayers.cs`・`Tests/Editor/HeldAutomaticExpressionTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/ExpressionInspectCache.cs`・`Editor/HeldAutomaticExpressionLayers.cs`・`Tests/Editor/HeldAutomaticExpressionTests.cs`・`Tools/run-unity-compatibility.py`・`Tools/test-compatibility-tooling.py`・`CHANGELOG.md`
 
 ## 背景
 
@@ -17,8 +17,8 @@
 この 2 つは、選んだ表情（`selectedMorphs`・`selectedInputs`）を受け取らない。コードを読んで次のことを確かめた。
 
 - `CreateProjection` に渡す BlendShape とクリップは空なので、作られる計画の `CommittedMorphs` は空になる。アバターの階層は読むが、値の検証も階層の保護も空の集合に対してしか行わない。オブジェクトの作成・削除やメッセージの追加は無い。
-- `Preserve` が読むのは、FX のコントローラー、`source` の `OtherControllers`・`ExternalParameters`・`Defaults`・`ExpressionParameters`・`ParameterPersistence`・`ExpressionParameterTypes`（`FixedNeutralValues` と `AdditionalParameterConstants.Prove` を通して）、`context.Values` だけだった。`warnings` は null で、計画の `CommittedMorphs` が空なので `PreserveTemporalRest` も警告の追加も通らない。`context.UsedParameters` も書き換えない。
-- `source` のこれらの値を書き換えるのは `VrChatExpressionMenu.Read` と `NeutralInputProof.Read` だけで、どちらも Analyze の項目のループより前に終わる。
+- `Preserve` が読むのは、FX のコントローラー、`source` の `OtherControllers`・`ExternalParameters`・`Defaults`・`ExpressionParameters`・`MenuInputs`・`ParameterPersistence`・`ExpressionParameterTypes`・`NeutralInputInventoryComplete`（`FixedNeutralValues` と `AdditionalParameterConstants.Prove` を通して）、`context.Values` だけだった。`warnings` は null で、計画の `CommittedMorphs` が空なので `PreserveTemporalRest` も警告の追加も通らない。`context.UsedParameters` も書き換えない。
+- `source` のこれらの値を書き換えるのは `VrChatExpressionMenu.Read` と `NeutralInputProof.Read` だけで、どちらも Analyze の項目のループより前に呼ばれる。`NeutralInputInventoryComplete` が false のときは、FX・作者が作った表情・ジェスチャーの取り込みの途中で `NeutralInputProof.Read` がもう一度呼ばれるが、同じ descriptor から作り直すので中身は同じになる。
 - `FixedExpressionContext` は項目ごとに作り直すが、`Values` は FX のパラメーターと `source.Defaults` から同じ手順で作るので、同じ Analyze の中では同じ中身になる。
 
 ## 決定
