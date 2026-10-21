@@ -27,9 +27,10 @@
 
 ## 確認したこと
 
-- この変更を作った PC には Unity がなく、C# のコンパイルと EditMode テストは回していない（件数と結果は PR 本文と CI）。足したテストは次の 3 つ。
+- VRChat SDK と UniVRM の入った Unity 2022.3.22f1 で、メニューの表情を残す修正と合わせた状態で `ExperimentalExpressionCaptureTests`・`ExpressionBoardTests`・`ExpressionNameInferenceTests`・`ExpressionPresetTests`・`NeutralShapeSamplerTests`・`SelectedExpressionAppearanceTests` を回した。596 件のうち 591 件が通った。失敗した 5 件は、外部のアプリを入れていないと動かない 4 件と、メニューの表情を残す修正の側のテスト 1 件（そちらの PR で直した）で、この変更とは関係しない。足したテストは次の 3 つで、どれも通った。
   - `NeutralAndGazeAloneLeaveEmotionsAlone`: `inferEmotions` を偽、`inferNeutralAndGaze` を真にすると、`neutral`・`lookUp`・`lookDown` が埋まり、`Fcl_ALL_Joy` があっても `happy` は埋まらない。既定の引数では何も埋めない。
   - `KeptEmptyPresetsAreNotFilled`: `keepEmptyPresets` に `lookUp` を入れると、`lookUp` だけ空のまま `neutral` と `lookDown` が埋まる。`inferEmotions` が真のときも `neutral` を入れればそれだけ空のまま残る。
   - `LeavingAGazeOrNeutralSlotLeavesItOpen`（`ExpressionBoardTests`）: 視線・neutral の枠から表情をその他の表情・書き出さない表情・ほかの枠へ動かすと枠に割り当てが残らず、BlendShape の視線を `ClearSlot` で外しても同じ。使う人が書いた「なし」の視線は自動の候補で消えない。喜怒哀楽の枠はこれまでどおり自動でない「なし」になる。
 - 既存の `ConfirmClearAndSwapReachAllThirteenAndFiveSlots` は、neutral の枠から表情を動かしたあとと全部の枠を `ClearSlot` したあとの視線・neutral を「なし」から「割り当てなし」に直した。
 - `Tools/test-compatibility-tooling.py` と `Tools/check-names.py` を回した。
+- 29 体を通常の書き出しで書き出し直すと、視線の表情が名前から入るアバターが 3 体、neutral が入るアバターが 2 体増えた。メッシュの数・頂点数・材質は変わらない。
