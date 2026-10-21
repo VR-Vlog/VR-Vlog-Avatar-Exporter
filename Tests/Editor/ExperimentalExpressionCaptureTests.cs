@@ -755,7 +755,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The fixture has no expression menu, so the ordinary route gives no
         // menu face for a face the board lists. The same save then records the
-        // list; a list the record route refuses keeps the ordinary result.
+        // list; a repeated name is numbered like a repeated menu face.
         [TestCase(false)]
         [TestCase(true)]
         public void OrdinaryRouteRecordsTheListWhenTheMenuGivesFewerFaces(bool repeatedName)
@@ -785,8 +785,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var status = (string)type.GetField("status", flags).GetValue(window);
                 if (repeatedName)
                 {
-                    Assert.That(custom.Keys, Has.None.StartsWith("Listed face"), "Repeated names are not recorded.");
-                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptFormat), 0, 2)));
+                    Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")), Is.EquivalentTo(new[] { "Listed face", "Listed face (2)" }));
+                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 2)));
                 }
                 else
                 {
@@ -798,6 +798,42 @@ namespace VRVlog.LilToonExporter.Tests
                         "After the save the board keeps its own records again.");
                     Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
                 }
+            }
+            finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // With a face moved to the excluded list the board records its list;
+        // two files with the same name are both saved, the second numbered.
+        [Test]
+        public void RecordRouteSavesRepeatedNamesNumbered()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var clips = new[] { new AnimationClip { name = "Twin face" }, new AnimationClip { name = "Twin face" }, new AnimationClip { name = "Other face" } };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-repeated-names-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                for (var index = 0; index < clips.Length; index++) AnimationUtility.SetEditorCurve(clips[index],
+                    EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65 + index * 10));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, clips.Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Move(clips[2], ExpressionBoard.Place.Excluded), Is.True);
+                Assert.That(board.UsesRecordRoute, Is.True);
+                Assert.That(window.BlockReason(), Is.Null, "A repeated name does not stop the save.");
+                window.SaveVrm(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(File.ReadAllBytes(path)).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                Assert.That(custom.Keys.Where(key => key.EndsWith(" face") || key.Contains(" face (")), Is.EquivalentTo(new[] { "Twin face", "Twin face (2)" }));
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
@@ -1753,9 +1789,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void InvalidOrDuplicateUpdatesPreserveEveryPreviouslyRecordedFace(bool duplicate)
+        [Test]
+        public void InvalidUpdatesPreserveEveryPreviouslyRecordedFace()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
@@ -1767,11 +1802,37 @@ namespace VRVlog.LilToonExporter.Tests
                 var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "File" };
                 var previous = session.ReplaceClipRecords(new[] { input }, null);
                 var all = session.Expressions.ToArray();
-                if (duplicate) input.Name = "Manual"; else input.Time = float.NaN;
+                input.Time = float.NaN;
                 Assert.Throws<InvalidOperationException>(() => session.ReplaceClipRecords(new[] { input }, previous));
                 Assert.That(session.Expressions, Is.EqualTo(all));
             }
             finally { Object.DestroyImmediate(clip); }
+        }
+
+        // A repeated name is numbered in list order, the same rule as the
+        // final VRM names; a retained record keeps its name.
+        [Test]
+        public void ReplaceClipRecordsNumbersRepeatedNames()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var clips = new[] { new AnimationClip(), new AnimationClip() };
+            for (var index = 0; index < clips.Length; index++) AnimationUtility.SetEditorCurve(clips[index],
+                EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70 + index * 10));
+            try
+            {
+                var inputs = clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "x" }).ToArray();
+                var both = session.ReplaceClipRecords(inputs, null);
+                Assert.That(both.Select(pose => pose.Name), Is.EqualTo(new[] { "x", "x (2)" }));
+                Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(new[] { "x", "x (2)" }));
+                session.ReplaceClipRecords(Array.Empty<ExperimentalExpressionCaptureSession.ClipInput>(), both);
+
+                session.SetWeight(0, 0, 60); session.Capture("x");
+                var staged = session.ReplaceClipRecords(new[] { inputs[0] }, null);
+                Assert.That(staged.Single().Name, Is.EqualTo("x (2)"));
+                Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(new[] { "x", "x (2)" }));
+            }
+            finally { foreach (var clip in clips) Object.DestroyImmediate(clip); }
         }
 
         [TestCase(false)]
@@ -1932,8 +1993,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.BlocksExport, Is.False);
 
                 board.SetItems(new[] { new ExpressionBoard.Item { Clip = twin, Added = true, Source = "Fixture" } }, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
-                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません"), 1) + ": Face 0"));
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.Null, "A repeated name is numbered when recorded, so it does not stop the save.");
+                Assert.That(window.BlocksExport, Is.False);
 
                 board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 board.Move(clips[0], ExpressionBoard.Place.Excluded);

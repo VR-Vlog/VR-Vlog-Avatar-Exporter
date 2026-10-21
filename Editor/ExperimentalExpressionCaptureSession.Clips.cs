@@ -289,6 +289,8 @@ namespace VRVlog.LilToonExporter
 
         // Replace only records owned by this window's file list. Validate the
         // complete batch before changing any record; manual/loaded faces stay.
+        // A repeated name gets " (2)", " (3)"... in list order, the same rule
+        // as the final VRM names, so two files named alike are both recorded.
         internal Pose[] ReplaceClipRecords(IEnumerable<ClipInput> inputs, IEnumerable<Pose> previous)
         {
             RequireValid();
@@ -299,7 +301,10 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(ExporterLocalization.T("記録できる表情は64件までです。"));
             var names = new HashSet<string>(retained.Select(pose => pose.Name), StringComparer.Ordinal);
             foreach (var pose in staged)
-                if (!names.Add(pose.Name)) throw new InvalidOperationException(ExporterLocalization.T("表情名が重複しています。別の名前を付けてください: ") + pose.Name);
+            {
+                if (names.Contains(pose.Name)) pose.Name = VrmMenuExpressions.UniqueName(pose.Name, names.Contains);
+                names.Add(pose.Name);
+            }
             Expressions.Clear(); Expressions.AddRange(retained); Expressions.AddRange(staged);
             return staged;
         }
