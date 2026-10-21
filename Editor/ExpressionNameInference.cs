@@ -10,8 +10,9 @@ namespace VRVlog.LilToonExporter
     // - Emotions (happy/angry/sad/relaxed/surprised): word vocabulary below.
     // - Mouth (aa/ih/ou/ee/oh): exact aliases in MouthShapes.
     // - Blink: exact names in BlinkShapeNames.
-    // - Gaze (lookUp/lookDown/lookLeft/lookRight) and neutral have no name
-    //   inference; they come only from authored settings.
+    // - Neutral: NeutralWords, under the same vetoes as the emotions.
+    // - Gaze (lookUp/lookDown/lookLeft/lookRight): exact names in
+    //   GazeShapes, either one shape or a pair moving both eyes.
     internal static class ExpressionNameInference
     {
         // Latin words must match a whole word (split at symbols, digits and
@@ -44,6 +45,20 @@ namespace VRVlog.LilToonExporter
             ("ou", new[] { "vrc.v.ou", "vrc.v_ou", "vrc.v.u", "vrc.v_u", "mouth_u", "Ou", "U", "Fcl_MTH_U" }),
             ("ee", new[] { "vrc.v.e", "vrc.v_e", "mouth_e", "Ee", "E", "Fcl_MTH_E" }),
             ("oh", new[] { "vrc.v.oh", "vrc.v_oh", "mouth_o", "Oh", "O", "Fcl_MTH_O" }),
+        };
+
+        internal static readonly string[] NeutralWords = { "neutral", "真顔", "無表情", "ニュートラル" };
+
+        // Each entry is a set of shapes that together turn both eyes; the
+        // first set found exactly (case-insensitive) fills the preset. Left
+        // and right are the avatar's own, as in VRM and ARKit: looking left
+        // turns the left eye out and the right eye in. A shape that moves one
+        // eye alone never fills a preset.
+        internal static readonly (string Preset, string[][] Sets)[] GazeShapes = {
+            ("lookUp", new[] { new[] { "lookUp" }, new[] { "look_up" }, new[] { "eyeLookUp" }, new[] { "eye_look_up" }, new[] { "eyeLookUpLeft", "eyeLookUpRight" } }),
+            ("lookDown", new[] { new[] { "lookDown" }, new[] { "look_down" }, new[] { "eyeLookDown" }, new[] { "eye_look_down" }, new[] { "eyeLookDownLeft", "eyeLookDownRight" } }),
+            ("lookLeft", new[] { new[] { "lookLeft" }, new[] { "look_left" }, new[] { "eyeLookLeft" }, new[] { "eye_look_left" }, new[] { "eyeLookOutLeft", "eyeLookInRight" } }),
+            ("lookRight", new[] { new[] { "lookRight" }, new[] { "look_right" }, new[] { "eyeLookRight" }, new[] { "eye_look_right" }, new[] { "eyeLookInLeft", "eyeLookOutRight" } }),
         };
 
         static string[] LatinWords(string name) => Regex.Matches(name ?? "", "[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
@@ -84,6 +99,26 @@ namespace VRVlog.LilToonExporter
                 if (decided && i == levels.Length - 1) return false;
             }
             return true;
+        }
+
+        // True for a name that says neutral and nothing else: no emotion, no
+        // face part, side or toggle. latinOnly as in MatchEmotion.
+        internal static bool MatchNeutral(string name, bool latinOnly = false)
+        {
+            if (string.IsNullOrWhiteSpace(name) || Vetoed(name) || Evaluate(name, latinOnly, out _) != null) return false;
+            var words = LatinWords(name);
+            return NeutralWords.Any(word => IsLatin(word) ? words.Contains(word) : !latinOnly && name.IndexOf(word, StringComparison.Ordinal) >= 0);
+        }
+
+        // A menu path names neutral only by its leaf, and only when no level
+        // above it names an emotion, a face part, a side or a toggle.
+        internal static bool MatchNeutralMenuPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return false;
+            var levels = path.Split(new[] { " / " }, StringSplitOptions.None);
+            for (var i = 0; i < levels.Length - 1; i++)
+                if (Vetoed(levels[i]) || Evaluate(levels[i], false, out _) != null) return false;
+            return MatchNeutral(levels[levels.Length - 1]);
         }
 
         static bool Vetoed(string name) => !string.IsNullOrWhiteSpace(name) &&

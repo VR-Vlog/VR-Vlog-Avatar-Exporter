@@ -117,7 +117,7 @@ namespace VRVlog.LilToonExporter.Tests
             List<string> formats = null)
         {
             var all = new List<(string Preset, string Source, string Format)>();
-            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledEmotions: all,
+            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledPresets: all,
                 emotionCandidates: paths, emotionShapes: shapes, shapeNames: table);
             filled?.AddRange(all.Select(item => (item.Preset, item.Source)));
             formats?.AddRange(all.Select(item => item.Format));
@@ -321,13 +321,13 @@ namespace VRVlog.LilToonExporter.Tests
         public void FilledEmotionsAreKeptLinesOfTheResultList()
         {
             var report = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat),
+            UniVrmOneClickExporter.RecordInferredPresets(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat),
                 ("angry", "Fcl_ALL_Angry", VrmExpressionBindings.FilledFormat), ("sad", "3", VrmExpressionBindings.ShapeFilledFormat) }, report);
             var results = report.Fallbacks.Results;
             Assert.That(results.Select(result => result.Name), Is.EqualTo(new[] { "happy", "angry", "sad" }));
             Assert.That(results.All(result => result.Outcome == ExportOutcome.Kept && result.Stage == null), Is.True);
             Assert.That(results.Select(result => result.Category).Distinct(),
-                Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredEmotionCategory) }));
+                Is.EqualTo(new[] { ExporterLocalization.T(UniVrmOneClickExporter.InferredPresetCategory) }));
             Assert.That(results[0].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "happy", "笑顔")));
             Assert.That(results[2].Reason, Is.EqualTo(string.Format(ExporterLocalization.T(VrmExpressionBindings.ShapeFilledFormat), "sad", "3")),
                 "A face filled from its shapes says so in the same row.");
@@ -589,6 +589,154 @@ namespace VRVlog.LilToonExporter.Tests
             warnings.Clear();
             Assert.That(Presets(Mouth(merged, -1, Visemes("Mouth.A1", "", "", "", ""), warnings)).ContainsKey("aa"), Is.False);
             Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnexportedVisemeMeshWarning));
+        }
+
+        [TestCase("Neutral", false)]
+        [TestCase("neutral", true)]
+        [TestCase("Fcl_ALL_Neutral", true)]
+        [TestCase("faceNeutral", true)]
+        [TestCase("真顔", false)]
+        [TestCase("無表情", false)]
+        public void NeutralNamesNameNeutral(string name, bool latinOnly) =>
+            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly), Is.True);
+
+        // A face part, a side, a toggle or an emotion is not the neutral face.
+        [TestCase("Fcl_MTH_Neutral")]
+        [TestCase("Fcl_EYE_Natural")]
+        [TestCase("eye_neutral_L")]
+        [TestCase("Neutral_R")]
+        [TestCase("Neutral_Smile")]
+        [TestCase("NeutralOff")]
+        [TestCase("Default")]
+        [TestCase("口_真顔")]
+        public void PartialOrMixedNeutralNamesNameNothing(string name)
+        {
+            Assert.That(ExpressionNameInference.MatchNeutral(name), Is.False);
+            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly: true), Is.False);
+        }
+
+        [Test]
+        public void JapaneseNeutralNamesAreNotRawCandidates() =>
+            Assert.That(ExpressionNameInference.MatchNeutral("真顔", latinOnly: true), Is.False);
+
+        [TestCase("表情 / 真顔", true)]
+        [TestCase("喜怒哀楽 / Neutral", true)]
+        [TestCase("Neutral", true)]
+        [TestCase("Smile / Neutral", false)]
+        [TestCase("Eye / Neutral", false)]
+        [TestCase("Neutral / 1", false)]
+        public void NeutralMenuPathsAreDecidedByTheLeaf(string path, bool expected) =>
+            Assert.That(ExpressionNameInference.MatchNeutralMenuPath(path), Is.EqualTo(expected));
+
+        [Test]
+        public void NeutralMenuFaceFillsEmptyNeutralBeforeABlendShapeName()
+        {
+            var face = MenuFace(Bind(0, 0));
+            var bytes = Glb(null, Obj("Neutral", face), Arr(Obj("mesh", 0L)), Arr(Mesh("composite", "Fcl_ALL_Neutral")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false,
+                "overrideBlink", "block", "overrideMouth", "block", "overrideLookAt", "block"))));
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Neutral") }));
+        }
+
+        [Test]
+        public void WholeFaceNeutralBlendShapeFillsEveryNodeThatHasIt()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L), Obj("mesh", 1L)),
+                Arr(Mesh("Fcl_MTH_Neutral", "Fcl_ALL_Neutral"), Mesh("other", "Fcl_ALL_Neutral")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1), Bind(1, 1)), "isBinary", false))),
+                "Neutral moves nothing extra, so blink, mouth and gaze are not overridden.");
+            Assert.That(filled, Is.EqualTo(new[] { ("neutral", "Fcl_ALL_Neutral") }));
+        }
+
+        [Test]
+        public void AuthoredNeutralAndGazeAreNeverChanged()
+        {
+            var authored = Obj("morphTargetBinds", Arr(Bind(0, 2)), "isBinary", false);
+            var bytes = Glb(Obj("neutral", authored, "lookUp", authored), null, Arr(Obj("mesh", 0L)),
+                Arr(Mesh("Fcl_ALL_Neutral", "lookUp", "body")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            Assert.That(Canonical(presets["neutral"]), Is.EqualTo(Canonical(authored)));
+            Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(authored)));
+            Assert.That(filled, Is.Empty);
+        }
+
+        [Test]
+        public void PerfectSyncPairsFillGazeWithBothEyes()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("EyeLookUpLeft", "EyeLookUpRight", "eyeLookDownLeft", "eyeLookDownRight",
+                "eyeLookInLeft", "eyeLookInRight", "eyeLookOutLeft", "eyeLookOutRight")));
+            var filled = new List<(string Preset, string Source)>();
+            var presets = Presets(Infer(bytes, filled: filled));
+            foreach (var (preset, a, b) in new[] { ("lookUp", 0L, 1L), ("lookDown", 2L, 3L), ("lookLeft", 6L, 5L), ("lookRight", 4L, 7L) })
+                Assert.That(Canonical(presets[preset]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, a), Bind(0, b)), "isBinary", false))), preset);
+            Assert.That(filled.Select(item => item.Preset), Is.EqualTo(new[] { "lookUp", "lookDown", "lookLeft", "lookRight" }));
+            Assert.That(filled[2].Source, Is.EqualTo("eyeLookOutLeft + eyeLookInRight"), "Looking left turns the left eye out and the right eye in.");
+        }
+
+        [Test]
+        public void GazeNamesFillOnlyWhenBothEyesMove()
+        {
+            var single = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("LookUp", "look_down", "eyeLookOutLeft", "eye_look_up_L")));
+            var presets = Presets(Infer(single));
+            Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 0)), "isBinary", false))));
+            Assert.That(Canonical(presets["lookDown"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1)), "isBinary", false))));
+            Assert.That(presets.ContainsKey("lookLeft") || presets.ContainsKey("lookRight"), Is.False, "One eye alone turns no gaze preset.");
+
+            // The other eye's half on another mesh still leaves the pair unused.
+            var split = Glb(null, null, Arr(Obj("mesh", 0L), Obj("mesh", 1L)), Arr(Mesh("eyeLookUpLeft", "eyeLookUpRight"), Mesh("eyeLookUpLeft")));
+            Assert.That(Presets(Infer(split)).ContainsKey("lookUp"), Is.False);
+        }
+
+        [Test]
+        public void DuplicateGazeNameFillsNothingAndWarns()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("lookUp", "LookUp")));
+            var warnings = new List<string>();
+            Assert.That(Presets(Infer(bytes, warnings)).ContainsKey("lookUp"), Is.False);
+            Assert.That(warnings, Does.Contain(string.Format(ExporterLocalization.T(VrmExpressionBindings.DuplicateNameFormat), "lookUp", 0, "lookUp")));
+        }
+
+        [Test]
+        public void DisabledInferenceFillsNoNeutralOrGaze()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "eyeLookUpLeft", "eyeLookUpRight")));
+            Assert.That(Presets(Infer(bytes, inferEmotions: false)), Is.Empty);
+        }
+
+        [Test]
+        public void MouthFilledFromAKnownNameIsAKeptLine()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("vrc.v_aa", "Fcl_MTH_I")));
+            var warnings = new List<string>();
+            var filled = new List<(string Preset, string Source)>();
+            var formats = new List<string>();
+            Infer(bytes, CustomNames(bytes).ToDictionary(name => name, name => name), warnings, filled, formats: formats);
+            Assert.That(filled, Is.EqualTo(new[] { ("aa", "vrc.v_aa"), ("ih", "Fcl_MTH_I") }));
+            Assert.That(formats.Distinct(), Is.EqualTo(new[] { VrmExpressionBindings.FilledFormat }));
+            Assert.That(warnings, Does.Contain(string.Format(ExporterLocalization.T(VrmExpressionBindings.FilledFormat), "aa", "vrc.v_aa")));
+
+            // The descriptor's Lip Sync is the author's own choice, not a guess.
+            var all = new List<(string Preset, string Source, string Format)>();
+            var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = 0 };
+            descriptor.Shapes["aa"] = "vrc.v_aa";
+            VrmExpressionBindings.AddMissing(bytes, inferBlink: false, filledPresets: all, descriptor: descriptor);
+            Assert.That(all.Select(item => item.Preset), Is.EqualTo(new[] { "ih" }));
+        }
+
+        // Misleading names: a side, a part or one eye fills no preset at all.
+        [Test]
+        public void MisleadingNamesFillNothing()
+        {
+            var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("eye_smile_L", "Fcl_EYE_Joy", "Fcl_MTH_Neutral", "mouth_smile",
+                "eyeLookUpLeft", "eye_look_left_R", "smile_R", "怒り", "真顔")));
+            var filled = new List<(string Preset, string Source)>();
+            Assert.That(Presets(Infer(bytes, filled: filled)), Is.Empty);
+            Assert.That(filled, Is.Empty);
         }
     }
 }
