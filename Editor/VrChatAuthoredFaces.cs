@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter
                         if (entry.Animation.Count == 0) { entry.Duration = 0; entry.Loop = false; }
                         VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, layer,
                             target.State.writeDefaultValues, excludedPath, metadata: source, sourceState: target.State);
-                        if (source.Entries.Any(previous => Equivalent(previous, entry))) continue;
+                        if (source.Entries.Any(previous => Equivalent(previous, entry, scope))) continue;
                         entry.Messages.Add("接触・外部入力で使う元の表情クリップを、顔の形状として保存しました。外部入力による自動切り替えは再現しません。");
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; entry.Values.Clear(); entry.Animation.Clear(); }
@@ -88,12 +88,18 @@ namespace VRVlog.LilToonExporter
         static EditorCurveBinding Binding(string path, string shape) =>
             EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
-        static bool Equivalent(VrChatExpressionMenu.Entry first, VrChatExpressionMenu.Entry second)
+        // Either entry can hold zeros for shapes outside the face (an earlier hand-gesture read, or permanent FX
+        // added after the cut). Those change nothing, so they are left out; any other difference keeps both.
+        static bool Equivalent(VrChatExpressionMenu.Entry first, VrChatExpressionMenu.Entry second, FacialProjectionScope scope)
         {
-            if (first.Error != null || first.Values.Count != second.Values.Count || first.Animation.Count != second.Animation.Count ||
-                first.Duration != second.Duration || first.Loop != second.Loop) return false;
-            var values = first.Values.ToDictionary(value => (value.Path, value.Shape), value => value.Weight);
-            if (second.Values.Any(value => !values.TryGetValue((value.Path, value.Shape), out var weight) || weight != value.Weight)) return false;
+            if (first.Error != null || first.Animation.Count != second.Animation.Count) return false;
+            if (first.Animation.Count > 0 && (first.Duration != second.Duration || first.Loop != second.Loop)) return false;
+            bool Counts(VrChatExpressionMenu.MorphValue value) => value.Weight != 0 || scope.Morphs.Contains(Binding(value.Path, value.Shape));
+            var firstValues = first.Values.Where(Counts).ToList();
+            var secondValues = second.Values.Where(Counts).ToList();
+            if (firstValues.Count != secondValues.Count) return false;
+            var values = firstValues.ToDictionary(value => (value.Path, value.Shape), value => value.Weight);
+            if (secondValues.Any(value => !values.TryGetValue((value.Path, value.Shape), out var weight) || weight != value.Weight)) return false;
             return second.Animation.All(value => first.Animation.Any(previous => previous.Path == value.Path && previous.Shape == value.Shape &&
                 VrChatExpressionBaker.SameCurve(previous.Curve, value.Curve)));
         }
