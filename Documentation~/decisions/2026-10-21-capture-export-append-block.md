@@ -28,4 +28,4 @@
 ## 確認したこと
 
 - 確認: 検証用の PC での書き出し突き合わせと EditMode テスト（PR 本文に記載）
-- テスト: 2 の分を `Export` から直接確かめるテスト `ExperimentalExpressionCaptureTests.AFaceEqualToTheBaselineExportsOneZeroDeltaShapeOnTheFirstMesh` を足した。基準の表情と同じ値の表情を書き出し、その表情の `MorphTargetBinding` が `Channels[0]` の 1 件だけで、BlendShape の名前が `"Capture"` と表情名から作る名前で、差分が 0 であることを見る
+- テスト: 2 の分を `Export` から直接確かめるテストは足していない。試しに書いたところ、差分 0 の形状は書き出しの最後で「使われていない BlendShape」として VRM から外され、表情のバインド先は別の形状になった。この形状は出力から見えないので、2 の分は書き出し突き合わせで変わらないことを確かめた
