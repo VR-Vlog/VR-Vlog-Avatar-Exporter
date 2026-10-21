@@ -154,16 +154,56 @@ namespace VRVlog.LilToonExporter
         // linked to none: each clip is only part of the face. Blend Trees and
         // sub-machine destinations are not followed.
         internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults) => MenuLinks(entries, fx, defaults).Paths;
+
+        // The menu paths, in menu order, of the Toggle and Button items that
+        // move the face but are linked to no single clip: the item selects
+        // several face destinations (a face split over layers), or a Blend
+        // Tree or sub-machine that moves the face. The record route records
+        // only the board, which has no item for them. An item linked to one
+        // clip and an item that moves no BlendShape (clothing) are not listed.
+        internal static List<string> MenuEntriesOutsideBoard(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults) => MenuLinks(entries, fx, defaults).Outside;
+
+        static bool MovesFace(AnimationClip clip) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(binding =>
+            binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+
+        // MenuClipPaths and MenuEntriesOutsideBoard from one walk of the FX
+        // controller, with the same on/off rule for both.
+        internal static (Dictionary<AnimationClip, List<string>> Paths, List<string> Outside) MenuLinks(IEnumerable<VrChatExpressionMenu.Entry> entries,
             RuntimeAnimatorController fx, IDictionary<string, float> defaults)
         {
             var result = new Dictionary<AnimationClip, List<string>>();
-            if (entries == null || fx == null) return result;
+            var outside = new List<string>();
+            if (entries == null || fx == null) return (result, outside);
             var overrides = ExpressionDependencies.Overrides(fx);
+            AnimationClip Replaced(AnimationClip clip) => overrides.TryGetValue(clip, out var replaced) ? replaced : clip;
+            bool TreeMovesFace(Motion motion, HashSet<Motion> seen)
+            {
+                if (motion is AnimationClip clip) return MovesFace(Replaced(clip));
+                return motion is BlendTree tree && seen.Add(tree) && tree.children.Any(child => TreeMovesFace(child.motion, seen));
+            }
+            bool MachineMovesFace(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen) =>
+                machine != null && seen.Add(machine) && (machine.states.Any(child => TreeMovesFace(child.state?.motion, new HashSet<Motion>())) ||
+                    machine.stateMachines.Any(child => MachineMovesFace(child.stateMachine, seen)));
             var links = new List<(AnimatorTransitionBase Transition, AnimationClip Clip)>();
+            // Destinations that move the face; Single is false for a Blend Tree or a sub-machine.
+            var faces = new List<(AnimatorTransitionBase Transition, UnityEngine.Object Face, bool Single)>();
             void Link(AnimatorTransitionBase transition)
             {
-                if (transition == null || !(transition.destinationState?.motion is AnimationClip clip)) return;
-                links.Add((transition, overrides.TryGetValue(clip, out var replaced) ? replaced : clip));
+                if (transition == null) return;
+                if (transition.destinationState?.motion is AnimationClip clip)
+                {
+                    links.Add((transition, Replaced(clip)));
+                    if (MovesFace(Replaced(clip))) faces.Add((transition, Replaced(clip), true));
+                }
+                else if (transition.destinationState?.motion is BlendTree tree)
+                {
+                    if (TreeMovesFace(tree, new HashSet<Motion>())) faces.Add((transition, tree, false));
+                }
+                else if (transition.destinationState == null && transition.destinationStateMachine != null &&
+                    MachineMovesFace(transition.destinationStateMachine, new HashSet<AnimatorStateMachine>()))
+                    faces.Add((transition, transition.destinationStateMachine, false));
             }
             void Walk(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen)
             {
@@ -190,21 +230,27 @@ namespace VRVlog.LilToonExporter
                 foreach (var pair in entry.Parameters) on[pair.Key] = pair.Value;
                 var off = new Dictionary<string, float>(on, StringComparer.Ordinal)
                     { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
+                bool Selects(AnimatorTransitionBase transition)
+                {
+                    var own = transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
+                    // Off at the default: some condition on the parameter is false there.
+                    return own.Length != 0 && !ExpressionDependencies.IsFalse(transition, on) && ExpressionDependencies.IsFalse(transition, off);
+                }
                 var selected = new HashSet<AnimationClip>();
                 foreach (var link in links)
+                    if (Selects(link.Transition)) selected.Add(link.Clip);
+                if (selected.Count == 1)
                 {
-                    var own = link.Transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
-                    // Off at the default: some condition on the parameter is false there.
-                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, on) ||
-                        !ExpressionDependencies.IsFalse(link.Transition, off)) continue;
-                    selected.Add(link.Clip);
+                    var clip = selected.Single();
+                    if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
+                    if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                    continue;
                 }
-                if (selected.Count != 1) continue;
-                var clip = selected.Single();
-                if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
-                if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                var moved = faces.Where(face => Selects(face.Transition)).ToArray();
+                if ((moved.Select(face => face.Face).Distinct().Count() > 1 || moved.Any(face => !face.Single)) && !outside.Contains(entry.Name))
+                    outside.Add(entry.Name);
             }
-            return result;
+            return (result, outside);
         }
 
         internal string ClipError(AnimationClip clip, float time)

@@ -1121,11 +1121,51 @@ namespace VRVlog.LilToonExporter
         // count: the faces that are exported. Unsupported ones are not shown.
         internal static string OtherTitle(int count) => string.Format(ExporterLocalization.T("その他の表情 {0}件"), count);
 
+        internal const string MenuLossFormat = "表情メニューの{0}項目はVRMに入らないことがあります";
+        internal const string MenuLossListHeader = "ボードに無い表情メニューの項目";
+        internal const string MenuLossMoreFormat = "ほか{0}項目";
+        internal const string MenuUnreadable = "表情メニューを読み取れないためVRMに入らない項目を確認できません";
+        const float MenuLossBandHeight = 22;
+        const int MenuLossListed = 20;
+
+        // The line above the custom list in the record route: the menu items
+        // that route leaves out (outside: MenuEntriesOutsideBoard, null when
+        // the menu could not be read). Null when nothing is shown.
+        internal static (string Text, string Tooltip)? MenuLossBand(bool recordRoute, System.Collections.Generic.IReadOnlyList<string> outside)
+        {
+            if (!recordRoute) return null;
+            if (outside == null) { var unreadable = ExporterLocalization.T(MenuUnreadable); return (unreadable, unreadable); }
+            if (outside.Count == 0) return null;
+            var text = string.Format(ExporterLocalization.T(MenuLossFormat), outside.Count);
+            var lines = new System.Collections.Generic.List<string> { text, ExporterLocalization.T(MenuLossListHeader) };
+            lines.AddRange(outside.Take(MenuLossListed));
+            if (outside.Count > MenuLossListed) lines.Add(string.Format(ExporterLocalization.T(MenuLossMoreFormat), outside.Count - MenuLossListed));
+            return (text, string.Join("\n", lines));
+        }
+
         void DrawOtherPanel(Rect rect)
         {
             var items = board.ItemsIn(PlaceKind.Other).ToArray();
             var body = DrawPanelFrame(rect, Place.Other, OtherTitle(board.OtherCount),
                 board.UsesRecordRoute ? ExporterLocalization.T("この一覧を記録して書き出し") : ExporterLocalization.T("アバターの表情メニューをそのまま書き出し"));
+            // A fixed band, so the tiles move only when it appears or goes.
+            var band = MenuLossBand(board.UsesRecordRoute, board.UsesRecordRoute ? session?.SourceMenuEntriesOutsideBoard : null);
+            if (band != null)
+            {
+                var line = new Rect(body.x, body.y, body.width, MenuLossBandHeight);
+                if (Event.current.type == EventType.Repaint)
+                {
+                    EditorGUI.DrawRect(line, CardColor);
+                    EditorGUI.DrawRect(new Rect(line.x, line.yMax - 1, line.width, 1), LineColor);
+                }
+                var icon = EditorGUIUtility.IconContent("console.warnicon.sml").image;
+                if (icon != null && Event.current.type == EventType.Repaint)
+                    GUI.DrawTexture(new Rect(line.x + Gap, line.y + 3, 16, 16), icon, ScaleMode.ScaleToFit);
+                var textRect = new Rect(line.x + Gap + 20, line.y, Mathf.Max(0, line.width - Gap * 2 - 20), line.height - 1);
+                GUI.Label(textRect, new GUIContent(Fit(band.Value.Text, dimMini, textRect.width), band.Value.Tooltip), dimMini);
+                GUI.Label(line, new GUIContent("", band.Value.Tooltip), GUIStyle.none);
+                body = new Rect(body.x, body.y + MenuLossBandHeight, body.width, Mathf.Max(0, body.height - MenuLossBandHeight));
+            }
             var size = ExpressionSlotLayout.Thumb(LargeThumbnails);
             var columns = PanelColumns(body, size);
             var view = new Rect(0, 0, body.width - ScrollbarWidth, Mathf.Max(body.height, PanelRows(items.Length, columns, size)));

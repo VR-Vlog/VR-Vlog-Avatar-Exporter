@@ -456,6 +456,31 @@ namespace VRVlog.LilToonExporter
         internal static ExpressionPreset? SuggestPreset(string name) => ExpressionNameInference.MatchEmotion(name)?.Preset;
 
         Dictionary<AnimationClip, List<string>> sourceMenuPaths;
+        List<string> sourceMenuOutside;
+        bool sourceMenuRead;
+
+        // Reads Source's VRChat menu once per session for both MenuClipPaths
+        // and MenuEntriesOutsideBoard. Nothing here may stop the board from
+        // opening: a menu that cannot be read gives no paths and a null list.
+        // An avatar without a VRChat menu reads as no items.
+        void ReadSourceMenu()
+        {
+            if (sourceMenuRead) return;
+            sourceMenuRead = true;
+            try
+            {
+                var menu = VrChatExpressionMenu.Read(Source);
+                (sourceMenuPaths, sourceMenuOutside) = MenuLinks(menu.Entries, menu.Controller, menu.Defaults);
+            }
+            catch (Exception) { sourceMenuPaths = new Dictionary<AnimationClip, List<string>>(); sourceMenuOutside = null; }
+        }
+
+        // The menu paths of the items the record route leaves out (see the
+        // static MenuEntriesOutsideBoard); null when the menu could not be read.
+        internal IReadOnlyList<string> SourceMenuEntriesOutsideBoard
+        {
+            get { ReadSourceMenu(); return sourceMenuOutside; }
+        }
 
         // Per emotion, the best tier wins; within a tier added/registered clips
         // come before BlendShapes, in the given order. A clip whose name says
@@ -474,7 +499,7 @@ namespace VRVlog.LilToonExporter
         internal Dictionary<ExpressionPreset, PresetAssignment> SuggestPresets(IEnumerable<AnimationClip> clips, BlinkExportOptions blinkOptions = null,
             IReadOnlyDictionary<AnimationClip, List<string>> menuPaths = null)
         {
-            menuPaths = menuPaths ?? (sourceMenuPaths = sourceMenuPaths ?? MenuClipPaths(Source));
+            if (menuPaths == null) { ReadSourceMenu(); menuPaths = sourceMenuPaths; }
             IEnumerable<string> PathsOf(AnimationClip clip) => menuPaths.TryGetValue(clip, out var paths) ? paths : Enumerable.Empty<string>();
             var candidates = new List<(ExpressionPreset Preset, int Tier, int Order, Func<ExpressionPreset, PresetAssignment> Create)>();
             var order = 0;
