@@ -109,6 +109,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
         }
 
+        // A hand-gesture entry for the same clip is read whole and also holds zeros for shapes outside the
+        // face; the contact copy is cut to the face, so it is a duplicate unless the face itself differs.
+        [TestCase(75f, false)]
+        [TestCase(50f, true)]
+        public void AContactFaceAlreadyReadAsAHandGestureIsNotAddedTwice(float gestureWeight, bool added)
+        {
+            controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            var rest = State(machine, "Rest", Clip("Rest", 0, false)); machine.defaultState = rest;
+            var selected = State(machine, "Contact face", Clip("Shared face", 75, false));
+            var transition = rest.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
+            transition.AddCondition(AnimatorConditionMode.If, 0, "Sensor");
+            var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true; metadata.ExternalParameters.Add("Sensor");
+            var gesture = new VrChatExpressionMenu.Entry { Id = "gesture/0/Shared face", Name = "Shared face", ExportName = "Shared face" };
+            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[1], Weight = gestureWeight });
+            gesture.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = Shapes[3], Weight = 0 });
+            metadata.Entries.Add(gesture);
+            VrChatAuthoredFaces.Add(avatar, metadata);
+            Assert.That(metadata.Entries.Count(item => item.Name.EndsWith(" / Shared face", StringComparison.Ordinal)), Is.EqualTo(added ? 1 : 0));
+            Assert.That(metadata.Entries.Count, Is.EqualTo(added ? 2 : 1));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void HardwareFaceFallbackCannotPublishMutedOrOrphanStates(bool muted)
