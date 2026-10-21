@@ -1096,6 +1096,16 @@ namespace VRVlog.LilToonExporter
             (item.Added ? item.Source : ExporterLocalization.T(item.Source ?? "")) + "\n" + AssetDatabase.GetAssetPath(item.Clip) +
             "\n" + ExporterLocalization.T("ダブルクリックで名前を変更");
 
+        // The × of a tile, drawn only while the mouse is over the tile. The
+        // button is called on every event, drawn empty when hidden, so it always
+        // takes its control id and the controls after it keep theirs between
+        // the repaint and the other events.
+        internal static bool CloseButton(Rect tile, Rect button, GUIContent content, GUIStyle style)
+        {
+            var shown = Event.current.type != EventType.Repaint || tile.Contains(Event.current.mousePosition);
+            return GUI.Button(button, shown ? content : GUIContent.none, shown ? style : GUIStyle.none);
+        }
+
         // One tile: the thumbnail with the name under it. A tile with a clip can
         // be clicked to preview, right-clicked for the move menu and dragged
         // onto another place. Its × shows while the mouse is over it.
@@ -1123,10 +1133,7 @@ namespace VRVlog.LilToonExporter
             if (close != null)
             {
                 if (current.type == EventType.Repaint) closableTiles.Add(ScreenRect(tile));
-                // Drawn only under the mouse; every other event keeps the button
-                // so the controls after it keep their ids.
-                if (current.type != EventType.Repaint || tile.Contains(current.mousePosition))
-                    if (GUI.Button(new Rect(tile.xMax - 18, tile.y + 2, 16, 16), new GUIContent("×", ExporterLocalization.T(closeTooltip)), closeText)) Queue(close);
+                if (CloseButton(tile, new Rect(tile.xMax - 18, tile.y + 2, 16, 16), new GUIContent("×", ExporterLocalization.T(closeTooltip)), closeText)) Queue(close);
             }
             if (clip == null) return;
             if (current.type == EventType.Repaint) candidateRects[clip] = ScreenRect(tile);
