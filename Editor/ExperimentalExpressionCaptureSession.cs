@@ -759,7 +759,7 @@ namespace VRVlog.LilToonExporter
                     .SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null).Distinct()
                     .ToDictionary(material => (Material)preparation.IsolatedCopyOf(material), material => material);
                 var mappedRecovery = new ExportRecoveryOptions();
-                foreach (var action in recoveryOptions?.Actions ?? new List<ExportRecoveryAction>())
+                foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(recoveryOptions))
                 {
                     var material = action.Material != null ? (Material)preparation.IsolatedCopyOf(action.Material) : null;
                     Renderer renderer = null;
