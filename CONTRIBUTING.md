@@ -86,6 +86,24 @@ PR, main, release-candidate and publication host checks share `Tools/run-validat
 
 For documentation changes, verify relative links and examples and check that the documented behavior matches source. If a change is intended to preserve implementation, confirm that product source, dependency policy, version metadata and package tooling are unchanged.
 
+### Checking that a change keeps the export identical
+
+A change that must not alter the output, such as a performance change, needs evidence that the exported VRM files stay the same. Export the same avatars with the base package and with the changed package, then compare the results. Keep the job list and the results outside the repository.
+
+1. Write a job list with one avatar per line, `ID|prefab path|runs`, for example `A1|Assets/AvatarA/AvatarA.prefab|2`. Use generic IDs such as `A1`.
+2. Install the base package in a Unity project that no other Editor has open, and export:
+
+   ```sh
+   pwsh -File Tools/run-export-regression.ps1 -Unity /path/to/Unity.exe -Project /path/to/project -Jobs jobs.txt -Out /path/outside/base -Label base
+   ```
+
+   The script copies `Tools/ExportRegressionRunner.cs` into a temporary folder under the project's `Assets`, exports each avatar the way **GameObject > VR Vlog > アプリに転送（通常）** does (through the expression board) and removes the folder when Unity exits. The runner is not part of the package. Each job writes `<ID>_<run>.vrm` and `<ID>_<run>.json` (success or failure, warnings and the export time in seconds).
+3. Run each avatar at least twice and confirm that the base is deterministic: `python3 Tools/compare-exports.py --runs /path/outside/base 1 2`. If two runs of the same package differ, list the paths with `python3 Tools/compare-exports.py --diff-paths <run 1 .vrm> <run 2 .vrm>`, and add only paths that change on every export to `VOLATILE` in `compare-exports.py`, with the reason.
+4. Replace the package with the changed version in the same project, export again with `-Out /path/outside/changed -Label changed` and check `--runs` there too.
+5. Compare the two versions: `python3 Tools/compare-exports.py /path/outside/base /path/outside/changed`. Every pair must match (exit code 0). The script compares success or failure, the export details warnings, every field of every expression, and the SHA-256 of the glb JSON chunk (without `VOLATILE` paths) and of the BIN chunk.
+
+Report the number of pairs and the result in the PR, without avatar names.
+
 ## Reproducing a package ZIP
 
 ZIPの再現には、同じコミット・追跡ファイルの内容と改行が必要です。上記の手順でLFの作業コピーを作り、生成前に未保存・未コミットの変更がないことを確認してください。改行を自動変換した作業コピーは、同じコミットでも配布ZIPとSHA-256が異なります。
