@@ -154,8 +154,8 @@ namespace VRVlog.LilToonExporter
         // The note beside the emotion slots when the menu was over the read
         // limit, null otherwise. Over 256 items the count is the menu's own
         // (a lower bound when counting stopped); other limits are submenus.
-        internal const string MenuOverLimitItemsFormat = "項目名から感情を選んでいません・表情メニューの項目が{0}件で上限の{1}件を超えています";
-        internal const string MenuOverLimitItemsAtLeastFormat = "項目名から感情を選んでいません・表情メニューの項目が{0}件以上で上限の{1}件を超えています";
+        internal const string MenuOverLimitItemsFormat = "項目名から感情を選んでいません・表情メニューが{0}件で上限の{1}件を超えています";
+        internal const string MenuOverLimitItemsAtLeastFormat = "項目名から感情を選んでいません・表情メニューが{0}件以上で上限の{1}件を超えています";
         internal const string MenuOverLimitSubmenus = "項目名から感情を選んでいません・表情メニューのサブメニューが多く上限を超えています";
 
         internal static string MenuOverLimitNote(VrChatMenuImportSummary summary)

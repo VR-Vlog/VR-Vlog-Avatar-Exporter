@@ -847,7 +847,8 @@ namespace VRVlog.LilToonExporter
             if (presets == ExperimentalExpressionCaptureSession.EmotionPresets && session?.MenuOverLimitMessage is string menuNote)
             {
                 var after = cardText.CalcSize(new GUIContent(title)).x + 10;
-                if (after < rect.width)
+                // Below a few characters of room Fit leaves only "…"; skip it like the blink note.
+                if (after + dimMini.CalcSize(new GUIContent(menuNote.Substring(0, Math.Min(6, menuNote.Length)))).x <= rect.width)
                     GUI.Label(new Rect(rect.x + after, rect.y, rect.width - after, rect.height), new GUIContent(Fit(menuNote, dimMini, rect.width - after), menuNote), dimMini);
             }
             if (presets != ExperimentalExpressionCaptureSession.BlinkPresets) return;
