@@ -27,3 +27,7 @@ VRChatでも存在しないBlendShapeへのカーブは何も動かさないの�
 
 - EditMode: `ShapesTheAvatarNeverHadAreSkippedLikeTheMenuExport`（無い参照と有る参照を持つ表情が、判定・プレビュー・記録で有る参照だけを使う）と、`ExplicitClipErrorsNeverPartiallyRecordOrAlterThePreview("wrong-shape")`（無い参照だけの表情は対応外のまま）、`ShapesLostByPreparationStayUnsupportedOnTheBoard`（処理で消えた参照は有る参照と混ざっても対応外のまま）。
 - マージ後に一括検証で同じアバターを書き出し直し、ボードの件数とVRMの件数を比べる。
+
+## 追記（同日）
+
+標準の表情の枠に置いた表情は、`PresetMorphs` が省かずに渡して保存が失敗していた。同じ規則で省くようにした（`2026-10-21-board-preset-absent-shapes.md`）。
