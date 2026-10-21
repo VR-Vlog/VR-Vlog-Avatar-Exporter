@@ -408,7 +408,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AFadeInBesideARestartingLayerReachesItsFinalKey()
         {
-            Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 1, 75)));
+            Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)));
             RestartingLayer();
             var messages = new List<string>();
             Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
