@@ -360,9 +360,36 @@ namespace VRVlog.LilToonExporter
                 input.Time = DefaultTime(input.Clip);
                 input.Error = input.Clip == null ? ExporterLocalization.T("AnimationClipが指定されていません") : clipErrors[input.Clip];
             }
+            DropBrokenInputs();
             // An automatic value that stopped working is replaced, not left blocking the save.
             ApplyAutomaticPresets();
             Repaint();
+        }
+
+        // An added file that can no longer be exported (edited, or the avatar
+        // changed) is hidden from the board, so it is removed like a file that
+        // could not be added: it stops counting toward the limit and the
+        // recorded route, a slot the user gave it is emptied, and the reason
+        // is shown. Automatic values are suggested again from the usable faces.
+        // A file that is also one of the avatar's faces keeps its slot, as the
+        // avatar's other unusable faces do.
+        void DropBrokenInputs()
+        {
+            var broken = clipInputs.Where(input => input.Clip != null && input.Error != null).ToArray();
+            if (broken.Length == 0) return;
+            var found = new System.Collections.Generic.HashSet<AnimationClip>((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
+                .Select(item => item.Clip));
+            var cleared = false;
+            foreach (var input in broken)
+            {
+                clipInputs.Remove(input);
+                if (board == null || found.Contains(input.Clip)) continue;
+                foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
+                    if (board.SlotValue(preset) is var value && value != null && !value.Automatic && !value.IsNone && !value.IsShape && value.ResolveClip() == input.Clip)
+                    { board.ClearSlot(preset); cleared = true; }
+            }
+            if (cleared) SaveChoices();
+            status = RejectedMessage(broken.Select(input => (input.Name, input.Error)));
         }
 
         // A new preview of the same avatar that keeps the added files, the board,
