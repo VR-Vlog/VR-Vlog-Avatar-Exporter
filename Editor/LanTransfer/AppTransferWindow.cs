@@ -432,20 +432,38 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // weight: once any editor UI Toolkit panel has drawn a Japanese character in bold, that character
         // comes from the bold Japanese font in normal-weight text too, so a few kana of a line look bold.
         // The window draws its text from its own font asset instead, made from the OS font the editor
-        // uses for Japanese on Windows, so no other text shares its lookup. Elsewhere it keeps the
-        // editor's font.
+        // uses for Japanese on Windows, so no other text shares its lookup. Korean and the Chinese
+        // characters Yu Gothic lacks come from its own fallbacks, made from the OS fonts the editor
+        // falls back to: through the editor's fallbacks, bold text in the window would leak the same way.
+        // Elsewhere it keeps the editor's font.
         private const string TextFontName = "VR Vlog App Transfer Text";
+        private static readonly string[] TextFallbackFamilies = { "Malgun Gothic", "Microsoft JhengHei" };
         private static FontAsset textFont;
+        private static bool textFontTried;
 
         internal static FontAsset TextFont()
         {
-            if (textFont != null || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
-            // The asset outlives a domain reload; reuse it rather than make one more each time.
-            textFont = Resources.FindObjectsOfTypeAll<FontAsset>().FirstOrDefault(f => f.name == TextFontName);
-            if (textFont != null) return textFont;
-            textFont = FontAsset.CreateFontAsset("Yu Gothic UI", "Semilight", 90);
-            if (textFont != null) { textFont.name = TextFontName; textFont.hideFlags = HideFlags.DontSave; }
+            // Without the font the lookup would log once per window opening; try once per domain.
+            if (textFont != null || textFontTried || Application.platform != RuntimePlatform.WindowsEditor) return textFont;
+            textFont = OsFont(TextFontName, "Yu Gothic UI", "Semilight");
+            textFontTried = textFont == null;
+            if (textFont != null && (textFont.fallbackFontAssetTable == null || textFont.fallbackFontAssetTable.Count == 0))
+            {
+                textFont.fallbackFontAssetTable = TextFallbackFamilies
+                    .Select(family => OsFont(TextFontName + " " + family, family, "Regular"))
+                    .Where(f => f != null).ToList();
+            }
             return textFont;
+        }
+
+        // The asset outlives a domain reload; reuse it rather than make one more each time.
+        private static FontAsset OsFont(string name, string family, string style)
+        {
+            var font = Resources.FindObjectsOfTypeAll<FontAsset>().FirstOrDefault(f => f.name == name);
+            if (font != null) return font;
+            font = FontAsset.CreateFontAsset(family, style, 90);
+            if (font != null) { font.name = name; font.hideFlags = HideFlags.DontSave; }
+            return font;
         }
 
         // The UXML holds the structure only; every text is set in Refresh through T.
