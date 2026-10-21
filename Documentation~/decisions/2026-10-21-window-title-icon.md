@@ -29,5 +29,5 @@
 ## 確認したこと
 
 - 検証PC の Unity 2022.3.22f1 で、変更前（develop）と変更後の **VRM書き出し** のタブを撮り比べた。変更前は日本語・英語・開き直し・アプリに転送（通常）・Unity の再起動後のどれも文字だけだった。変更後はどれもロゴが付いた。再起動後は、保存済みのレイアウトから戻ったウィンドウに `OnEnable` でロゴが付き直した。
-- 同じ検証PC で EditMode テスト（`ExperimentalExpressionCaptureTests`・`DependencyStartupTests`・アプリに転送のテスト）を回した。389 件のうち 384 件が成功、1 件がスキップで、言語別のタブのテストと `WindowIconSurvivesLayoutRestoreAndScriptReload` は成功した。失敗した 4 件は `RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces` で、検証用のプロジェクトに任意の SDK が入っていないことによるもので、今回の変更とは関係がない。
+- 同じ検証PC で EditMode テスト（`ExperimentalExpressionCaptureTests`・`DependencyStartupTests`・アプリに転送のテスト）を回した。言語別のタブのテストと `WindowIconSurvivesLayoutRestoreAndScriptReload` は成功した。389 件のうち、最終の変更で 382 件が成功、1 件がスキップ、6 件が失敗した。失敗のうち 4 件は `RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces` で、検証用のプロジェクトに任意の SDK が入っていないためだった。残りの 2 件（`CandidateSelectionBulkAddAndNamePreviewUseTheAutomaticFinalFrame`・`CorrectedRecommendedAssetBecomesSelectableWithoutLosingExplicitFiles`）は、単独で回すと develop でも同じように失敗した。どちらもこの変更とは関係がない。
 - `WindowIconSurvivesLayoutRestoreAndScriptReload` では、レイアウトから戻ったタブにロゴが付き直すこと、ウィンドウを閉じてもロゴが破棄されないこと、スクリプトの再読み込み後も同じテクスチャを使うことを確かめる。起動時の確認（`ExporterStartupProbe`・`DependencyStartupTests`）でも、メニューから開いたタブにロゴがあることを見る。
