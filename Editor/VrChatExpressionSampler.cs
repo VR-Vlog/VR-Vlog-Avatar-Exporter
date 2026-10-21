@@ -1647,35 +1647,13 @@ namespace VRVlog.LilToonExporter
             playable.IsInTransition(layer) &&
             playable.GetNextAnimatorStateInfo(layer).fullPathHash == playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
 
-        // Running these callbacks again changes nothing: a tracking control
-        // sets the same modes again, and a driver whose every write already
-        // holds the value it would write leaves the parameters as they are.
-        // A driver that cannot be evaluated here counts as a change.
-        internal static bool RepeatsWithoutEffect(IEnumerable<StateMachineBehaviour> behaviours, AnimatorControllerPlayable playable,
-            AnimatorController controller)
-        {
-            var types = new Dictionary<string, AnimatorControllerParameterType>(StringComparer.Ordinal);
-            foreach (var parameter in controller.parameters)
-                if (!types.ContainsKey(parameter.name)) types[parameter.name] = parameter.type;
-            double Read(string name) => types[name] == AnimatorControllerParameterType.Float ? playable.GetFloat(name) :
-                types[name] == AnimatorControllerParameterType.Int ? playable.GetInteger(name) : playable.GetBool(name) ? 1 : 0;
-            return behaviours.All(behaviour =>
-            {
-                if (ExpressionDependencies.IsInertAuthoringMarker(behaviour) || VrChatParameterDriver.IsTracking(behaviour)) return true;
-                if (!VrChatParameterDriver.IsDriver(behaviour)) return false;
-                var program = VrChatParameterDriver.Read(behaviour, "");
-                var destinations = new HashSet<string>(program.Operations.Select(operation => operation.Destination)
-                    .Where(name => name != null), StringComparer.Ordinal);
-                var changes = false;
-                try
-                {
-                    VrChatParameterDriver.Execute(program, types, new HashSet<string>(), destinations, true, Read,
-                        (name, value) => changes |= value != Read(name));
-                }
-                catch (InvalidOperationException) { return false; }
-                return !changes;
-            });
-        }
+        // Running these callbacks again changes nothing. In the evaluated copy
+        // drivers and layer weight controls run through ExpressionDriverBehaviour
+        // and are checked against the current values; tracking controls set the
+        // same modes again.
+        internal static bool RepeatsWithoutEffect(IEnumerable<StateMachineBehaviour> behaviours, AnimatorControllerPlayable playable) =>
+            behaviours.All(behaviour => ExpressionDependencies.IsInertAuthoringMarker(behaviour) || VrChatParameterDriver.IsTracking(behaviour) ||
+                behaviour is ExpressionDriverBehaviour adapter && ExpressionEvaluationSession.RepeatsWithoutEffect(adapter, playable));
 
         // A transition need not be stationary when its entire layer always
         // produces the same pose and parameter values. Keep the layer in native
@@ -1819,7 +1797,7 @@ namespace VRVlog.LilToonExporter
                 void Visit(AnimatorStateMachine machine, string path, bool timedAncestor, bool effectfulAncestor)
                 {
                     var timed = timedAncestor || machine.anyStateTransitions.Any(t => !t.mute && t.hasExitTime && !ExpressionDependencies.IsFalse(t, layerTimedValues));
-                    var effectful = effectfulAncestor || selfTransition && !RepeatsWithoutEffect(machine.behaviours, playable, controller);
+                    var effectful = effectfulAncestor || selfTransition && !RepeatsWithoutEffect(machine.behaviours, playable);
                     foreach (var child in machine.states)
                     {
                         if (Animator.StringToHash(path + "." + child.state.name) != hash) continue;
@@ -1830,7 +1808,7 @@ namespace VRVlog.LilToonExporter
                         // callbacks; the state stays put only when running
                         // them again changes nothing.
                         if (selfTransition && equivalentStates?.Contains(layer) != true &&
-                            (effectful || !RepeatsWithoutEffect(state.behaviours, playable, controller)))
+                            (effectful || !RepeatsWithoutEffect(state.behaviours, playable)))
                             throw Unstable("FXの状態遷移が静止していません。");
                         // Settlement only advances the state's own clock.
                         // Parameter-driven or offset clocks stay unproven.

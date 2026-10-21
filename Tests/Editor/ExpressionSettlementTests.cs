@@ -403,12 +403,17 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Each restart enters the state again and runs its callbacks, so a
-        // driver there keeps writing. Such a layer is still refused.
+        // driver there that changes a parameter the layer reads keeps writing.
+        // Such a layer is still refused.
         [Test]
         public void AStateRestartedEveryFrameWithADriverIsNotSaved()
         {
             Selected(Clip("Smile", 75));
-            ParameterDriverExpressionTests.Driver(RestartingLayer(), ParameterDriverExpressionTests.Op("Add", "Face", 1));
+            var off = RestartingLayer();
+            controller.AddParameter("Count", AnimatorControllerParameterType.Int);
+            foreach (var edge in controller.layers[controller.layers.Length - 1].stateMachine.anyStateTransitions)
+                if (edge.destinationState == off) edge.AddCondition(AnimatorConditionMode.Greater, -1, "Count");
+            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Add", "Count", 1));
             Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
         }
 
