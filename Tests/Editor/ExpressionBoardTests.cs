@@ -200,6 +200,20 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ListCanBeRecordedOnlyWithinTheRecordRules()
+        {
+            var board = Board(null, new[] { Item(Clip("Face A")), Item(Clip("Face B")) });
+            Assert.That(board.UsesRecordRoute, Is.False);
+            Assert.That(board.CanRecordList, Is.True);
+            var repeated = Board(null, new[] { Item(Clip("Face A")), Item(Clip("Face A")) });
+            Assert.That(repeated.CanRecordList, Is.False);
+            Assert.That(repeated.HasDuplicateNames, Is.False, "The ordinary route still saves with repeated names.");
+            var many = Board(null, Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 1).Select(index => Item(Clip("Face " + index))).ToArray());
+            Assert.That(many.CanRecordList, Is.False);
+            Assert.That(many.ExceedsLimit, Is.False, "The ordinary route still saves over the limit.");
+        }
+
+        [Test]
         public void AuthoredSlotsCountAsFilled()
         {
             authored.Add(ExpressionPreset.angry);
