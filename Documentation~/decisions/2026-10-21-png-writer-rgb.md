@@ -16,7 +16,7 @@ develop で書き出した 24 体の VRM を調べると、ファイルの合計
 - 全画素のアルファが 255 なら color type 2（RGB・8 ビット）、それ以外は color type 6（RGBA・8 ビット）で書く。パレットやグレースケールへの変換はしない。
 - 行の順は、Unity の画素配列（下の行が先）を上下に反転して PNG の順（上の行が先）にする。`EncodeToPNG` の出力を読み込んだ画素と同じ向きになる。
 - フィルターは行ごとに None・Sub・Up・Average・Paeth の 5 つを試し、フィルター後のバイトを符号付きとして見た絶対値の和が最も小さいものを選ぶ（libpng と同じ選び方）。同じ和なら番号の小さいほうを使う。
-- 圧縮は zlib 形式（ヘッダー `0x78 0x9C`・`DeflateStream`（`CompressionLevel.Optimal`）の deflate・ビッグエンディアンの Adler-32）。フィルターをかけた全行を 1 つのバッファーにまとめてから `DeflateStream` に流し、Adler-32 は別のスレッドで deflate と同時に求める。画素の配列と出力のほかに使うメモリは、このバッファー（画像とほぼ同じ大きさ）と IDAT 1 つ分（1 MiB）。
+- 圧縮は zlib 形式（ヘッダー `0x78 0x9C`・`DeflateStream`（`CompressionLevel.Optimal`）の deflate・ビッグエンディアンの Adler-32）。フィルターをかけた全行を 1 つのバッファーにまとめてから `DeflateStream` に流し、Adler-32 は別のスレッドで deflate と同時に求める。画素の配列のほかに使うメモリは、このバッファー（画像とほぼ同じ大きさ）、帯ごとの 2 行分の作業用バッファー、IDAT 1 つ分（1 MiB）と、書き出した PNG をためる `MemoryStream`（圧縮後の大きさ）。
 - 行のフィルターは `Parallel.For` で行の帯ごとに並列に選んでかける。ある行のフィルターは、その行と 1 つ上の行の元の値だけで決まり、ほかの行のフィルターの結果には左右されないので、帯の分け方やスレッドの数によらず同じバイト列になる。1 本のスレッドで書いた場合と同じバイト列になることはテストで確かめている。フィルター後のバイトが 64 KiB 未満の小さい画像は、呼んだスレッドで処理する。最初の版は 1 行ずつ 5 つのフィルターを順に書いていて、Unity の Mono で 2048×2048 の画像に 1465 ms（`EncodeToPNG` は 272 ms）かかったため、並列にした。あわせて、1 画素目を先に分けて処理してループの中の分岐を減らし、符号付きの絶対値を分岐なしで求めるようにした。
 - zlib の出力は 1 MiB ごとに IDAT を区切る。チャンクは IHDR・IDAT・IEND だけで、どれにもテーブルで求めた CRC-32 を付ける。develop で書き出した 24 体の VRM の PNG 322 枚を調べると、`EncodeToPNG` の出力にも IHDR・IDAT・IEND 以外のチャンク（sRGB・gAMA・iCCP など）は無かった。足すと読む側によって色の扱いが変わりうるので、足していない。
 
@@ -36,7 +36,7 @@ develop で書き出した 24 体の VRM を調べると、ファイルの合計
 - `Tests/Editor/PngWriterTests.cs` に次のテストを足した。
   - `DecodesToTheSamePixelsAsSourceAndEncodeToPng`: 不透明・半透明・グラデーション、1×1・3×5・17×9 などの大きさ、リニアと sRGB、`RGBA32`・`RGB24`・`ARGB32`・`BGRA32` の画像を書き、`ImageConversion.LoadImage` で読んだ画素が元の画素とも `EncodeToPNG` の出力を読んだ画素とも同じこと、IHDR の color type が不透明なら 2・それ以外は 6 であること。
   - `WritesValidChunksAndZlibStream`: IHDR の各欄、全チャンクの CRC-32、zlib のヘッダーと Adler-32、展開した長さと各行のフィルター番号。
-  - `ParallelFilteringWritesTheSameBytesAsSequential`: 並列で書いた PNG が、1 本のスレッドで書いた PNG とバイト単位で同じこと（行の数が帯の数より少ない 4096×5 も含む）。
+  - `ParallelFilteringWritesTheSameBytesAsSequential`: 並列で書いた PNG が、1 本のスレッドで書いた PNG とバイト単位で同じこと。どのケースもフィルター後のバイトが 64 KiB 以上で並列の経路を通る。1 行ずつの帯になる 4096×5 の RGBA（81,925 バイト）も含む。
   - `WritesTheSameChunkTypesAsEncodeToPng`: チャンクの種類が `EncodeToPNG` の出力と同じで、IHDR・IDAT・IEND だけであること。
   - `HalfFloatTextureKeepsEncodeToPngOutput`: `RGBAHalf` の画像は `EncodeToPNG` と同じバイト列になること。
   - `ConvertedOpaqueTextureIsWrittenAsRgb`: `EncodeConverted` を通した不透明な画像が RGB で書かれること。
@@ -44,4 +44,4 @@ develop で書き出した 24 体の VRM を調べると、ファイルの合計
   - `LogsTimeAndSizeFor2048Texture`: 2048×2048 の画像で、かかった時間と大きさをログに出す（時間の上限は確かめない）。
 - Unity の外でも、`PngWriter.cs` をそのまま .NET 8 でビルドし、上の 24 体の PNG 322 枚と合成画像 6 枚を書き直して確かめた。全枚で、読み込んだ画素が元と同じで、不透明な画像は RGB になり、CRC と Adler-32 も正しかった。PNG の合計は 145.43 MB から 119.04 MB（18.1% 減）になった。.NET 8 と Unity の Mono では deflate の実装が違うので、Unity での大きさは少し変わりうる。並列にした版でも同じ 328 枚で同じ結果になり、フィルター後の展開したデータは最初の版と全枚で同じだった（圧縮後のバイト列は、deflate へ 1 行ずつではなくまとめて渡すようにしたため少し変わり、合計は 119.03 MB）。.NET 8 での 2048×2048 の不透明な画像の時間は、最初の版の 365 ms から 108 ms になった。
 - Unity 2022.3 の EditMode で PngWriterTests・TextureResizeTests・MobileTexture のテスト 55 件が通過した（並列にした版）。
-- 2048×2048 の書き出し時間（Unity 2022.3 の Mono・並列にした版）: 1138 ms・2,786,139 バイト。同じ画像の `EncodeToPNG` は 313 ms・3,963,034 バイト。1 枚あたり約 0.8 秒遅くなるが、書き出し 1 回は 24 体の中央値で 9.3 秒かかっており、書き出し全体への影響は、ほかのファイルを小さくする変更と合わせて 24 体を書き出し直して測る。
+- 2048×2048 の書き出し時間（Unity 2022.3 の Mono・並列にした版）: 1138 ms・2,786,139 バイト。同じ画像の `EncodeToPNG` は 313 ms・3,963,034 バイト。ただし書き出す画像は `LilToonMobileProfile.DefaultMaximumTextureSize` で 1024×1024 までに縮めるので、実際の 1 枚あたりの差はこの 4 分の 1 程度（約 0.2 秒）になる。書き出し 1 回は 24 体の中央値で 9.3 秒かかっており、書き出し全体への影響は、ほかのファイルを小さくする変更と合わせて 24 体を書き出し直して測る。

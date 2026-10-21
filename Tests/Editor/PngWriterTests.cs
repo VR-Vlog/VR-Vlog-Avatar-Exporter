@@ -92,11 +92,12 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(source); }
         }
 
-        // Large enough that the parallel path is used; 4096x5 has fewer rows than bands.
+        // Every case has at least 64 KiB of filtered bytes, so the parallel path
+        // is used. 4096x5 RGBA (81,925 bytes) has one row per band.
         [TestCase(512, 512, "noisyGradient")]
         [TestCase(300, 200, "gradientAlpha")]
         [TestCase(257, 129, "alpha")]
-        [TestCase(4096, 5, "opaque")]
+        [TestCase(4096, 5, "alpha")]
         public void ParallelFilteringWritesTheSameBytesAsSequential(int width, int height, string pattern)
         {
             var pixels = new Color32[width * height];
