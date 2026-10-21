@@ -797,7 +797,7 @@ namespace VRVlog.LilToonExporter
                 void CheckSelectedState()
                 {
                     if (expectedLayer.HasValue && (expectedLayer.Value < 0 || expectedLayer.Value >= controller.layers.Length ||
-                        string.IsNullOrEmpty(expectedStatePath) || playable.IsInTransition(expectedLayer.Value) ||
+                        string.IsNullOrEmpty(expectedStatePath) || playable.IsInTransition(expectedLayer.Value) && !InSelfTransition(playable, expectedLayer.Value) ||
                         !MatchesExpectedStatePath(controller, expectedLayer.Value, expectedStatePath,
                             playable.GetCurrentAnimatorStateInfo(expectedLayer.Value).fullPathHash)))
                         throw new InvalidOperationException("FXの表情候補の状態に到達できませんでした。条件・優先順位・Parameter Driverを確認してください: " + expectedStatePath);
@@ -1639,6 +1639,14 @@ namespace VRVlog.LilToonExporter
                 }
         }
 
+        // An Any State transition with Can Transition To Self keeps restarting
+        // while its condition holds, so the layer never leaves its transition.
+        // Both sides play the same state; the clips and callbacks are checked
+        // as for a settled state.
+        internal static bool InSelfTransition(AnimatorControllerPlayable playable, int layer) =>
+            playable.IsInTransition(layer) &&
+            playable.GetNextAnimatorStateInfo(layer).fullPathHash == playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
+
         // A transition need not be stationary when its entire layer always
         // produces the same pose and parameter values. Keep the layer in native
         // evaluation, including its Write Defaults; prove equivalence without
@@ -1769,7 +1777,8 @@ namespace VRVlog.LilToonExporter
                     dependencies.WeightControlLayers.Contains(layer) ?
                     NeutralCurveConditions.FixedTimedValues(playable, controller, timedValues, dependencies, null) : timedValues;
                 if (layer > 0 && playable.GetLayerWeight(layer) <= 0.00001f && dependencies?.WeightControlLayers.Contains(layer) != true) continue;
-                if (playable.IsInTransition(layer) && equivalentStates?.Contains(layer) != true)
+                var selfTransition = InSelfTransition(playable, layer);
+                if (playable.IsInTransition(layer) && !selfTransition && equivalentStates?.Contains(layer) != true)
                     throw Unstable("FXの状態遷移が静止していません。");
                 var hash = playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
                 if (hash == 0) continue;
@@ -1777,15 +1786,21 @@ namespace VRVlog.LilToonExporter
                 var fixedMotionTime = false;
                 var plainClock = false;
                 var terminalClip = NativeTerminalClip(playable, controller, layer);
-                void Visit(AnimatorStateMachine machine, string path, bool timedAncestor)
+                void Visit(AnimatorStateMachine machine, string path, bool timedAncestor, bool effectfulAncestor)
                 {
                     var timed = timedAncestor || machine.anyStateTransitions.Any(t => !t.mute && t.hasExitTime && !ExpressionDependencies.IsFalse(t, layerTimedValues));
+                    var effectful = effectfulAncestor || ExpressionDependencies.HasEffectfulBehaviours(machine.behaviours);
                     foreach (var child in machine.states)
                     {
                         if (Animator.StringToHash(path + "." + child.state.name) != hash) continue;
                         if (found) throw new InvalidOperationException("FXの状態名を一意に特定できません。");
                         found = true;
                         var state = child.state;
+                        // Each restart enters the state again and runs its
+                        // callbacks; only a callback-free state stays put.
+                        if (selfTransition && equivalentStates?.Contains(layer) != true &&
+                            (effectful || ExpressionDependencies.HasEffectfulBehaviours(state.behaviours)))
+                            throw Unstable("FXの状態遷移が静止していません。");
                         // Settlement only advances the state's own clock.
                         // Parameter-driven or offset clocks stay unproven.
                         plainClock = !state.timeParameterActive && !state.speedParameterActive && state.speed > 0 &&
@@ -1825,13 +1840,13 @@ namespace VRVlog.LilToonExporter
                             ExpressionSettlement.Held(temporalWarnings);
                         }
                     }
-                    foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name, timed);
+                    foreach (var child in machine.stateMachines) Visit(child.stateMachine, path + "." + child.stateMachine.name, timed, effectful);
                 }
                 // Renaming a layer does not necessarily rename its root state
                 // machine. Unity can retain either root in the compiled state
                 // hash; accept only a unique match in the actual copied graph.
                 foreach (var rootName in new[] { layers[layer].name, layers[layer].stateMachine.name }.Distinct(StringComparer.Ordinal))
-                    Visit(layers[layer].stateMachine, rootName, false);
+                    Visit(layers[layer].stateMachine, rootName, false, false);
                 if (!found) throw new InvalidOperationException("評価中のFX状態を特定できません。");
                 foreach (var info in playable.GetCurrentAnimatorClipInfo(layer).Concat(playable.GetNextAnimatorClipInfo(layer)))
                     if (info.clip != null && info.weight > 0.00001f)
@@ -2035,7 +2050,7 @@ namespace VRVlog.LilToonExporter
             var bindings = new HashSet<EditorCurveBinding>();
             foreach (var layer in layers)
             {
-                if (playable.IsInTransition(layer) && equivalentStates?.Contains(layer) != true)
+                if (playable.IsInTransition(layer) && !InSelfTransition(playable, layer) && equivalentStates?.Contains(layer) != true)
                 {
                     const string message = "FXの表情遷移が完了しません（2秒以内に静止する表情が必要です）。";
                     if (neutral) throw new NeutralShapeSamplingException(message);
