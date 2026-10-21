@@ -25,6 +25,7 @@
   - 全身ポーズ（手動で足したポーズ・書き出さないポーズ・ポーズの表示名）も、アバターの書き出し設定（`ExportSettings.Poses`）から読んでボードのセッションに入れる。プレビューの作り直しでは、作り直す前のボードのポーズに置き換え、二重に入れない。
   - `ExperimentalExpressionCaptureSession.Export` の最初で `UniVrmOneClickExporter.ValidateSourceHumanoid`・`ValidateSourceHasMesh` を呼ぶ。書き出したバイト列は `ValidateOutputHasMesh` で確かめる。
   - 失敗した段階の扱いは、確認を出すかどうかで分ける。ボードの書き出し（通常）はこれまでどおり失敗した段階で止まり、対策画面を開く。確認を出さない保存（かんたん）は、これまでのかんたんと同じく **失敗した段階を省いて続ける** の設定（`ExportStageGuard.ContinueByDefault`）に従う。セッションの `Export` では設定を当てず、`Save` で確認を出さない転送（`TransferExport` の `interactive: false`）のときだけ当てる。ファイルへの保存（`SaveVrm`）は確認を出すかどうかにかかわらず止まる。セッションの `Export` で当てると、ボードの対策画面のテスト（失敗した段階で材質の対策を出す）が成り立たなくなる。かんたんでも止めると、これまで材質の段階を省いて書き出せていたアバターが書き出せなくなる（29 体の書き出しで 1 体あった）。
+    （2026-10-22 追記: 通常の転送も、確認を出すかどうかにかかわらず同じ設定に従うよう変えた。表情ボードの **VRMを保存** は止まるまま。`2026-10-22-quick-equals-default-normal.md`）
   - 自動設定できなかった項目の確認を出さない保存（かんたん）では、これまでのかんたんと同じく、項目があれば書き出し結果の一覧を Console に警告で出す。
 - ボードに直すところがあって `TransferExport` が止まるとき、かんたん（`interactive: false`）では「表情の割り当てを直すと作れます」に続けて、改行してボードの理由（`BoardBlockReason`）を返す。ボードが画面に無いので、何を直すかをここで示す。通常はボードの下の行に理由が出ているので、これまでどおり 1 行だけ返す。
 - 書き出しの差し替え口だった `AppTransferExport.SaveNormally` は消す。テストは差し替えずに実際に書き出して確かめる。
@@ -47,7 +48,7 @@
 
 - Unity 2022.3.22f1（VRChat SDK・UniVRM）で関係する EditMode テスト 10 クラスを回した。外部のアプリを入れていないと動かない 4 件を除いて通った。
 - 29 体をかんたんと通常で書き出した。27 体で表情の名前・数が一致し、残る 2 体はどちらの書き出しでも同じ理由で止まる。そのうち 1 体は Humanoid でないアバターで、これまでの表情ボードは Humanoid のボーンが 0 本の VRM を書き出していた。VRM として正しくないので、理由を出して止まる今の形にした。メッシュの数・頂点数・材質は修正の前後で変わらない。
-- `NonInteractiveTransferFollowsTheStageChoice`: 材質の段階が失敗するアバターで、確認を出さない `TransferExport` が **失敗した段階を省いて続ける** の設定がオンなら保存し、オフなら保存せずに対策画面を開く。
+- `TransferFollowsTheStageChoice`（この時点の名前は `NonInteractiveTransferFollowsTheStageChoice`。2026-10-22 に改名して確認を出す転送のケースを足した）: 材質の段階が失敗するアバターで、確認を出さない `TransferExport` が **失敗した段階を省いて続ける** の設定がオンなら保存し、オフなら保存せずに対策画面を開く。
 - 足したテスト（`Tests/Editor/AppTransferQuickExportTests.cs`）:
   - `QuickTransferWritesTheExpressionsOfAnUntouchedBoard`: 名前からは選ばれない形で喜びの枠を記録しておき、かんたんの書き出しと、同じアバターで準備した表情ボードの `TransferExport` の書き出しで、VRM の標準の表情とカスタムの表情の名前が一致し、喜びの枠に記録した形が入る。
   - `QuickTransferLeavesNoBoardBehind`: かんたんの書き出しのあと、準備に失敗したあとのどちらでも、表情ボードのウィンドウが残らず、`ForTransfer` が `null` になる。
