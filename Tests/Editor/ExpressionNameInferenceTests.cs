@@ -293,7 +293,7 @@ namespace VRVlog.LilToonExporter.Tests
             var filled = new List<(string Preset, string Source)>();
             var custom = Obj("笑顔", MenuFace(Bind(0, 0)), "怒り", MenuFace(Bind(0, 1)),
                 "1", MenuFace(Bind(0, 2)), "Sad", MenuFace(Bind(0, 3)), "Wink", MenuFace(Bind(0, 4)));
-            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("a", "b", "c", "d", "e")));
+            var bytes = Glb(null, custom, Arr(Obj("mesh", 0L)), Arr(Mesh("s0", "s1", "s2", "s3", "s4")));
             var paths = new Dictionary<string, string> {
                 ["笑顔"] = "喜怒哀楽 / 笑顔", ["怒り"] = "喜怒哀楽 / 怒り", ["1"] = "喜怒哀楽 / 1", ["Sad"] = "Eye / Sad", ["Wink"] = "Smile / Wink" };
             var presets = Presets(Infer(bytes, paths, filled: filled));
