@@ -552,6 +552,46 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
+        // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
+        // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
+        // whose gestures cannot be read keeps its clips and does not stop the board from opening.
+        [TestCase(0f, 0f, "plain", false)]
+        [TestCase(0f, 35f, "plain", true)]
+        [TestCase(75f, 0f, "plain", true)]
+        [TestCase(0f, 0f, "gesture", true)]
+        [TestCase(0f, 0f, "unreadable", true)]
+        public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, bool usable)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
+            var clip = new AnimationClip { name = "Lip sync switch" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, clipWeight));
+                var state = machine.AddState("Switch"); state.motion = clip; machine.defaultState = state;
+                if (kind == "gesture")
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 0, "GestureLeft");
+                }
+                // Unity itself logs the missing state machine whenever the controller is read.
+                LogAssert.ignoreFailingMessages = kind == "unreadable";
+                var layer = new AnimatorControllerLayer { name = "Switch", defaultWeight = 1, stateMachine = machine };
+                controller.layers = kind == "unreadable"
+                    ? new[] { layer, new AnimatorControllerLayer { name = "Broken", defaultWeight = 1 } }
+                    : new[] { layer };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                // Still a candidate, so an exclusion saved before keeps counting.
+                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
+                var expected = usable ? null : ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.EqualTo(expected));
+                Assert.That(session.ClipError(clip, 0), Is.EqualTo(expected));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void ChildAnimatorClipTargetsItsOwnMeshEvenWithAnIdenticalRootMesh(bool competingRoot)
@@ -1924,6 +1964,62 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
             }
             finally { window.Close(); foreach (var clip in clips) Object.DestroyImmediate(clip); }
+        }
+
+        // Runs a tile's × between two more button ids in a real IMGUI pass, and
+        // keeps how far apart they are for each event type. Ids differ between
+        // windows, so only the gap is compared. IMGUI skips ahead to the next id
+        // with the same hint, so the probe asks with the hint GUI.Button uses,
+        // as the × of the next tile does.
+        sealed class CloseButtonProbe : EditorWindow
+        {
+            internal static readonly Rect Tile = new Rect(10, 10, 60, 60);
+            internal bool Legacy;
+            internal Vector2 Mouse;
+            static readonly int ButtonHint = "Button".GetHashCode();
+            internal readonly System.Collections.Generic.Dictionary<EventType, int> Next = new System.Collections.Generic.Dictionary<EventType, int>();
+
+            void OnGUI()
+            {
+                var type = Event.current.type;
+                // Set here so the check does not depend on how the window passes the mouse position.
+                Event.current.mousePosition = Mouse;
+                var button = new Rect(Tile.xMax - 18, Tile.y + 2, 16, 16);
+                var before = GUIUtility.GetControlID(ButtonHint, FocusType.Passive);
+                if (Legacy)
+                {
+                    // The earlier form: the button was left out of a repaint without the mouse.
+                    if (type != EventType.Repaint || Tile.Contains(Event.current.mousePosition)) GUI.Button(button, "×");
+                }
+                else ExperimentalExpressionCaptureWindow.CloseButton(Tile, button, new GUIContent("×"), GUI.skin.label);
+                Next[type] = GUIUtility.GetControlID(ButtonHint, FocusType.Passive) - before;
+            }
+        }
+
+        [Test]
+        public void TheHiddenCloseButtonKeepsTheIdsOfTheControlsAfterIt()
+        {
+            int Run(bool legacy, Vector2 mouse, EventType type)
+            {
+                var probe = ScriptableObject.CreateInstance<CloseButtonProbe>();
+                try
+                {
+                    probe.Legacy = legacy; probe.Mouse = mouse; probe.Show(); probe.position = new Rect(40, 40, 200, 200);
+                    probe.Next.Clear();
+                    probe.SendEvent(new Event { type = type, mousePosition = mouse });
+                    Assert.That(probe.Next.ContainsKey(type), Is.True, type + " reached OnGUI");
+                    return probe.Next[type];
+                }
+                finally { probe.Close(); }
+            }
+            var outside = new Vector2(150, 150); var inside = CloseButtonProbe.Tile.center;
+            Assert.That(CloseButtonProbe.Tile.Contains(outside), Is.False);
+            // The probe sees the shift the earlier form made, so the check below is not empty.
+            Assert.That(Run(true, outside, EventType.Repaint), Is.Not.EqualTo(Run(true, outside, EventType.Layout)));
+            var layout = Run(false, outside, EventType.Layout);
+            Assert.That(Run(false, outside, EventType.Repaint), Is.EqualTo(layout), "Hidden × still takes its id.");
+            Assert.That(Run(false, inside, EventType.Repaint), Is.EqualTo(layout), "Shown × takes the same id.");
+            Assert.That(Run(false, outside, EventType.MouseDown), Is.EqualTo(layout));
         }
 
         static void Click(EditorWindow window, Rect rect)
