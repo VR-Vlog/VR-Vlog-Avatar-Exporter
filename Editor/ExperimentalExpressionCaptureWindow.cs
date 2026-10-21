@@ -678,7 +678,7 @@ namespace VRVlog.LilToonExporter
                 if (Event.current.type == EventType.ScrollWheel)
                 { zoom = Mathf.Clamp(zoom + Event.current.delta.y * .04f, .25f, 2); Event.current.Use(); Repaint(); }
             }
-            GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("画像をドラッグで回転、ホイールで拡大。")));
+            GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
             EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
         }
 

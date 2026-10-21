@@ -1,7 +1,7 @@
 # 表情ボードのプレビューから「元の顔」ボタンを外し、「プレビュー」の見出しを付ける
 
 - 日付: 2026-10-21
-- 対象: `Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/Locales/ExporterLocale_*.json`・`Documentation~/ExperimentalExpressionCapture.md`・`CHANGELOG.md`
+- 対象: `Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/Locales/ExporterLocale_*.json`・`Documentation~/ExperimentalExpressionCapture.md`・`CHANGELOG.md`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/Editor/ExpressionSlotLayoutTests.cs`
 
 ## 背景
 
@@ -12,9 +12,9 @@
 ## 決定
 
 - **元の顔** ボタンを外した。表情名の行は表情名だけにした。
-- ボタンのツールチップにあった「画像をドラッグで回転、ホイールで拡大。」は、プレビュー画像にマウスを合わせると出るようにした。ボタンを外すとこの操作の説明が画面から無くなるため。
+- ボタンのツールチップにあった「画像をドラッグで回転、ホイールで拡大。」は、「ドラッグで回転・ホイールで拡大」と短くして、プレビュー画像にマウスを合わせると出るようにした。ボタンを外すとこの操作の説明が画面から無くなるため。画面の文言に句読点を使わない決まりに合わせて「、」「。」を外した。
 - プレビュー画像の上に「プレビュー」の見出しを置いた。下の **VRMの表情** の見出しと同じ高さ（22）と書式（小さい灰色の文字）にそろえた。
-- 言語ファイルから「元の顔」と「元の顔に戻す。画像をドラッグで回転、ホイールで拡大。」を消し、「画像をドラッグで回転、ホイールで拡大。」を足した。「プレビュー」は既にあった訳を使う。
+- 言語ファイルから「元の顔」と「元の顔に戻す。画像をドラッグで回転、ホイールで拡大。」を消し、「ドラッグで回転・ホイールで拡大」を足した。「プレビュー」は既にあった訳を使う。
 - `ExperimentalExpressionCaptureSession.RestoreBaseline` は、枠の表情を「なし」にしたときとボードを元に戻したときにも使っているので残した。
 
 ## 入れなかったもの
@@ -25,4 +25,6 @@
 ## 確認したこと
 
 - 「元の顔」と、外した文言を使っている箇所がほかに無いことを `grep` で確かめた。テストにはこのボタンを使うものが無い。
-- 検証PC の Unity 2022.3.22f1 で、変更前と変更後の表情ボードを撮って比べた。EditMode テストの結果は PR に書く。
+- 検証PC の Unity 2022.3.22f1 で、変更前と変更後の表情ボードを撮って比べた。ボタンが無くなり、見出しの分だけ下の欄が 22 下がるほかは、並びと幅が変わらないことを見た。
+- EditMode テスト（`ExperimentalExpressionCaptureTests`・`ExpressionPresetTests`・`ExpressionSlotLayoutTests` の 253 件）を検証PC で回した。237 件が通り、16 件が失敗した。16 件は変更前の develop でも同じ名前で失敗するもので、検証PC のプロジェクトに、テストが使う外部のパッケージ（Modular Avatar など）が入っていないため。
+- 見出しを足した最初の版では、さらに 2 件（候補のカードを押して顔を切り替えるテスト）が失敗した。テストのウィンドウは `Show()` の時点で、この種類のウィンドウに前回保存された大きさ（このときは 640×900）に戻る。見出しの分だけ下がった候補のカードが見える範囲の外に出て、押せていなかった。テストでウィンドウの大きさを `Show()` の後に指定するようにして、この 2 件が通ることを確かめた。
