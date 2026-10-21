@@ -21,6 +21,14 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 
 The exporter does not reproduce every shader effect, Animator behavior or VRChat gimmick. See the [detailed scope and limitations in Japanese](README.md#対応範囲と制限).
 
+With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, which is the default, the export leaves out what does nothing in a VRM:
+
+- VRChat-only gimmicks: an object with a Modular Avatar menu or animator merge that contains a camera, sound, particles, a light, a contact or a constraint, and whose meshes are not drawn like the avatar (lilToon, MToon or a shader shared with the body). It is removed as a whole. Outfits bound to the body's bones and props drawn like the avatar stay. Gimmicks without VRChat-only parts are only listed for review.
+- Objects that a Modular Avatar Platform Filter leaves out of the generic (VRM) platform. Objects whose filters both include and exclude platforms are only listed for review.
+- Empty objects with no mesh and no bones, such as holders of VRChat menus or settings. The number left out is logged to the Console.
+
+Removed and reviewed objects appear in the export result list. Turn on **この対象は含める** (include this) in the gimmick list of the export window to keep one, or turn auto-exclude off to keep everything.
+
 ## Requirements
 
 | Component | Supported version |

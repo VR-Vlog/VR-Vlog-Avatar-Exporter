@@ -550,5 +550,223 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(settings.FirstPerson.Renderers.Count, Is.EqualTo(1));
             Assert.That(expression.MorphTargetBindings.Length, Is.EqualTo(1));
         }
+
+        static Type MaType(string fullName)
+        {
+            var type = FindType(fullName);
+            if (type == null) Assert.Ignore("Installed MA is required for the structural gimmick rules.");
+            return type;
+        }
+        Material Plain() => Own(new Material(Shader.Find("Unlit/Texture")));
+
+        // A menu or animator entry with a prop that is not drawn like the
+        // avatar and, unless told otherwise, parts that only work in VRChat.
+        GameObject StructuralGimmick(string entry, Material prop, bool runtime = true, Transform parent = null)
+        {
+            var group = Child("gimmick", parent); group.AddComponent(MaType(entry));
+            if (prop != null) Render("prop", prop, group.transform);
+            if (!runtime) return group;
+            Child("particles", group.transform).AddComponent<ParticleSystem>();
+            Child("viewer", group.transform).AddComponent<Camera>();
+            Child("speaker", group.transform).AddComponent<AudioSource>();
+            return group;
+        }
+
+        [Test] public void VrChatOnlyGimmickWithAMenuLeavesAsAWhole()
+        {
+            Render("clothing", normal);
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var finding = Matched().Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.VrChatOnlyStructure));
+            Assert.That(finding.Target, Is.SameAs(gimmick));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            Assert.That(finding.Evidence, Is.EqualTo("structure"));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, null), Is.EqualTo(new[] { gimmick }));
+            // Kept by the user, as a whole or through one of its parts.
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, new ExportGimmickOptions { IncludedObjects = new[] { gimmick } }), Is.Empty);
+            var prop = gimmick.transform.Find("prop").gameObject;
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, new ExportGimmickOptions { IncludedObjects = new[] { prop } }), Is.Empty);
+        }
+
+        [Test] public void PropDrawnLikeTheAvatarStays()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, normal);
+            Assert.That(Matched(), Is.Empty);
+            // A toon renderer counts even while it is hidden until the menu shows it.
+            gimmick.transform.Find("prop").GetComponent<Renderer>().sharedMaterial = Plain();
+            Render("plush", normal, gimmick.transform).gameObject.SetActive(false);
+            Assert.That(Matched(), Is.Empty);
+            Object.DestroyImmediate(gimmick.transform.Find("plush").gameObject);
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+        }
+
+        [Test] public void PropSharingAShaderWithTheBodyStays()
+        {
+            var body = Skin("body", unspecified); body.bones = new[] { Child("hips").transform };
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Own(new Material(unspecified.shader)));
+            Assert.That(Matched(), Is.Empty);
+            // Without bones the body skin says nothing about how the avatar is drawn.
+            body.bones = Array.Empty<Transform>();
+            Assert.That(Matched().Single().Target, Is.SameAs(gimmick));
+        }
+
+        [Test] public void OutfitBoundToTheBodyIsNotAGimmick()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var skin = Skin("dress", Plain()); skin.transform.SetParent(gimmick.transform, false);
+            skin.bones = new[] { Child("hips").transform };
+            Assert.That(Matched(), Is.Empty);
+            Object.DestroyImmediate(skin.gameObject);
+            Assert.That(Matched().Count, Is.EqualTo(1));
+            gimmick.AddComponent(MaType(ExportGimmickRules.MergeArmature));
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        [Test] public void GimmickWithoutVrChatOnlyPartsIsOnlyReviewed()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain(), runtime: false);
+            var finding = Matched().Single();
+            Assert.That(finding.Target, Is.SameAs(gimmick));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.VrChatOnlyNoEvidenceReason));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, null), Is.Empty);
+            Child("particles", gimmick.transform).AddComponent<ParticleSystem>();
+            Assert.That(Matched().Single().Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            // A missing material leaves the drawing unknown, whatever else it holds.
+            gimmick.transform.Find("prop").GetComponent<Renderer>().sharedMaterial = null;
+            finding = Matched().Single();
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.VrChatOnlyUncertainReason));
+        }
+
+        [Test] public void StructuralGimmickUsedFromOutsideIsOnlyReviewed()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var skin = Skin("body", normal); skin.bones = new[] { gimmick.transform.Find("prop") };
+            var finding = Matched().Single();
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(finding.Reason, Is.Not.EqualTo(ExportGimmickDetection.VrChatOnlyReason));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, null), Is.Empty);
+        }
+
+        [Test] public void StructuralGimmickReplacesTheTableFindingInsideIt()
+        {
+            var merge = MaType(ExportGimmickRules.MergeAnimator);
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain(), runtime: false);
+            var lens = RenderTextureLens(gimmick.transform); Object.DestroyImmediate(lens.GetComponent<Animator>()); lens.AddComponent(merge);
+            var findings = ExportGimmickDetection.Analyze(avatar).Where(f => f.RuleId != null).ToList();
+            var finding = findings.Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.VrChatOnlyStructure));
+            Assert.That(finding.Target, Is.SameAs(gimmick));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            // Kept for review, the group leaves the claimed lens to its rule.
+            var skin = Skin("body", normal); skin.bones = new[] { gimmick.transform.Find("prop") };
+            findings = ExportGimmickDetection.Analyze(avatar).Where(f => f.RuleId != null).ToList();
+            Assert.That(findings.Select(f => f.RuleId), Is.EquivalentTo(new[] { ExportGimmickRules.VrChatOnlyStructure, ExportGimmickRules.RenderTextureCamera }));
+            Assert.That(findings.Single(f => f.RuleId == ExportGimmickRules.VrChatOnlyStructure).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(findings.Single(f => f.RuleId == ExportGimmickRules.RenderTextureCamera).Target, Is.SameAs(lens));
+        }
+
+        [Test] public void MeshlessModularAvatarGimmickIsNotStructural()
+        {
+            StructuralGimmick(ExportGimmickRules.MenuInstaller, null);
+            Assert.That(Matched(), Is.Empty);
+            // A mesh that is never shown is not one either.
+            var gimmick = StructuralGimmick(ExportGimmickRules.MergeAnimator, Plain());
+            gimmick.transform.Find("prop").GetComponent<Renderer>().enabled = false;
+            Assert.That(Matched(), Is.Empty);
+        }
+
+        const string VrChatPlatform = "nadena.dev.ndmf.vrchat.avatar3";
+        const string GenericPlatform = "nadena.dev.ndmf.generic";
+
+        GameObject Filtered(string name, params (string platform, bool exclude)[] filters)
+        {
+            var type = MaType(ExportGimmickRules.PlatformFilterType);
+            var go = Child(name);
+            foreach (var (platform, exclude) in filters)
+            {
+                using var serialized = new SerializedObject(go.AddComponent(type));
+                serialized.FindProperty("m_platform").stringValue = platform;
+                serialized.FindProperty("m_excludePlatform").boolValue = exclude;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            return go;
+        }
+
+        [Test] public void PlatformFilterIsAppliedForTheVrmPlatform()
+        {
+            var vrchatOnly = Filtered("vrchat only", (VrChatPlatform, false));
+            Filtered("not on vrchat", (VrChatPlatform, true));
+            Filtered("generic", (GenericPlatform, false), (VrChatPlatform, false));
+            var mixed = Filtered("mixed", (VrChatPlatform, false), (GenericPlatform, true));
+            // A gimmick inside a removed object leaves with it, as one line.
+            StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain(), parent: vrchatOnly.transform);
+            var findings = Matched();
+            Assert.That(findings.Select(f => f.Target), Is.EquivalentTo(new[] { vrchatOnly, mixed }));
+            Assert.That(findings.All(f => f.RuleId == ExportGimmickRules.PlatformFilter), Is.True);
+            Assert.That(findings.Single(f => f.Target == vrchatOnly).Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            var review = findings.Single(f => f.Target == mixed);
+            Assert.That(review.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
+            Assert.That(review.Reason, Is.EqualTo(ExportGimmickDetection.PlatformFilterMixedReason));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null), Is.EqualTo(new[] { vrchatOnly }));
+        }
+
+        [Test] public void AutomaticOptionOffKeepsStructuralGimmicks()
+        {
+            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
+            var filtered = Filtered("vrchat only", (VrChatPlatform, false));
+            var findings = Matched();
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null), Is.EquivalentTo(new[] { gimmick, filtered }));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, new ExportGimmickOptions { AutoExclude = false }), Is.Empty);
+        }
+
+        [Test] public void EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption()
+        {
+            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            using var f = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = shader;
+            Child("empty holder", Child("empty branch", f.Source.transform).transform);
+            string[] Nodes(bool automatic) => ((List<object>)GlbDocument.Read(UniVrmOneClickExporter.Export(f.Source, "Empty objects", "Tests",
+                    exporterVersion: "0.11.5", lilToonVersion: "2.3.4", gimmickOptions: new ExportGimmickOptions { AutoExclude = automatic },
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None })).Json["nodes"])
+                .Cast<Dictionary<string, object>>().Select(node => node.TryGetValue("name", out var name) ? (string)name : null).ToArray();
+            var pruned = Nodes(true);
+            Assert.That(pruned, Has.No.Member("empty branch").And.No.Member("empty holder"));
+            Assert.That(pruned, Has.Member("Front").And.Member("Back").And.Member("Head").And.Member("Hips"));
+            var kept = Nodes(false);
+            Assert.That(kept, Has.Member("empty branch").And.Member("empty holder"));
+            Assert.That(kept, Is.SupersetOf(pruned));
+            Assert.That(f.Source.transform.Find("empty branch/empty holder"), Is.Not.Null);
+        }
+
+        [Test] public void EmptyObjectPruningKeepsEverythingTheVrmWrites()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var copy = f.Copy.transform;
+            var hips = copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Hips);
+            Child("menu holder", copy); Child("leaf", Child("branch", copy).transform);
+            var underBone = Child("empty under a bone", hips).transform;
+            var props = Child("props", copy).transform; var group = Child("group", props).transform;
+            Render("prop", normal, group);
+            var chain = Child("spring", f.Head).transform;
+            chain.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            Child("collider", hips).AddComponent<VRM10SpringBoneCollider>();
+            var center = Child("center", copy).transform;
+            var instance = f.Copy.AddComponent<Vrm10Instance>();
+            instance.SpringBone.Springs.Add(new Vrm10InstanceSpringBone.Spring("keep") { Joints = { chain.GetComponent<VRM10SpringBoneJoint>() }, Center = center });
+            Assert.That(ExportEmptyNodes.Prune(f.Copy), Is.EqualTo(4));
+            Assert.That(copy.Find("menu holder"), Is.Null);
+            Assert.That(copy.Find("branch"), Is.Null);
+            Assert.That(underBone == null, Is.True);
+            Assert.That(copy.Find("props/group/prop"), Is.Not.Null);
+            Assert.That(copy.Find("Independent hair/Head"), Is.Not.Null);
+            Assert.That(chain != null && center != null && hips.Find("collider") != null, Is.True);
+            var animator = copy.GetComponent<Animator>();
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                if (f.Source.GetComponent<Animator>().GetBoneTransform(bone) != null)
+                    Assert.That(animator.GetBoneTransform(bone), Is.Not.Null, bone.ToString());
+            Assert.Throws<ArgumentException>(() => ExportEmptyNodes.Prune(null));
+        }
     }
 }

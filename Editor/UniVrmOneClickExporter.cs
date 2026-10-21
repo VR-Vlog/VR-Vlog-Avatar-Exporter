@@ -671,6 +671,13 @@ namespace VRVlog.LilToonExporter
                 DisableEmptyMeshRenderers(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
+                // Every capture above is taken; objects with nothing to write
+                // would only be empty nodes. Normal output: the Console only.
+                if (gimmickOptions.AutoExclude)
+                {
+                    var pruned = ExportEmptyNodes.Prune(clone);
+                    if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
+                }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },

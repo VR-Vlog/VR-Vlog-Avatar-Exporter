@@ -105,8 +105,124 @@ namespace VRVlog.LilToonExporter
                     claimed.AddRange(findings.Where(f => f.Unit != GimmickExclusionUnit.Component).Select(f => f.Target.transform));
                     matched.AddRange(findings);
                 }
+            StructuralFindings(source, matched, Excluded);
             result.InsertRange(0, matched);
             return result;
+        }
+
+        internal const string PlatformFilterReason = "Modular AvatarのPlatform Filterで、VRM向けの書き出しから外す指定があります。";
+        internal const string PlatformFilterMixedReason = "Platform Filterで含める指定と外す指定が混在しているため残します。";
+        internal const string PlatformFilterUnreadableReason = "Platform Filterの設定を読めないため残します。";
+        internal const string VrChatOnlyReason = "VRChatの中でだけ動く仕組み（カメラ・音・パーティクル等）を持つギミックです。";
+        internal const string VrChatOnlyUncertainReason = "メッシュまたは材質が不足しているため、VRChat専用のギミックか判定できず残します。";
+        internal const string VrChatOnlyNoEvidenceReason = "VRChatの中でだけ動く仕組みが見つからないため、自動では外さずに残します。";
+        // MA's platform for builds that target no particular platform.
+        const string GenericPlatform = "nadena.dev.ndmf.generic";
+        static readonly string[] StructuralEntryTypes = { ExportGimmickRules.MergeAnimator, ExportGimmickRules.MenuInstaller };
+        static readonly string[] BoundTypes = { ExportGimmickRules.MergeArmature, ExportGimmickRules.MeshSettings };
+        static readonly string[] ContactTypes = { ExportGimmickRules.ContactReceiver, ExportGimmickRules.ContactSender };
+        static readonly HashSet<string> ToonShaders = new HashSet<string>(StringComparer.Ordinal) { "VRM/MToon", "VRM10/MToon10" };
+
+        // Gimmicks of any author, found without a table entry. They may hold
+        // what a table rule claimed; a removed one replaces the findings inside
+        // it. The author's Platform Filter comes first, then the structure.
+        static void StructuralFindings(GameObject source, List<ExportGimmickFinding> matched, Func<Transform, bool> excluded)
+        {
+            var reviewed = new List<Transform>();
+            bool Within(Transform t, Transform root) => t == root || t.IsChildOf(root);
+            bool Skipped(Transform t) => reviewed.Any(root => Within(t, root)) ||
+                matched.Any(f => f.Unit == GimmickExclusionUnit.Hierarchy && Within(t, f.Target.transform));
+            void Add(Transform root, string ruleId, string reason, string review)
+            {
+                review ??= SharedUnsafeReason(source, root, excluded, _ => false);
+                if (review == null) matched.RemoveAll(f => f.Unit != GimmickExclusionUnit.Component && Within(f.Target.transform, root));
+                else reviewed.Add(root);
+                matched.Add(new ExportGimmickFinding
+                {
+                    Target = root.gameObject,
+                    Unit = review == null ? GimmickExclusionUnit.Hierarchy : GimmickExclusionUnit.Review,
+                    Reason = review ?? reason,
+                    RuleId = ruleId,
+                    Evidence = "structure",
+                    Group = root.gameObject
+                });
+            }
+            // MA removes these objects for the platform it builds for. The
+            // export's build runs for VRChat, so the VRM's own platform
+            // (generic) is applied here, per object as MA groups them.
+            foreach (var filters in source.GetComponentsInChildren<Component>(true)
+                         .Where(c => c != null && c.GetType().FullName == ExportGimmickRules.PlatformFilterType)
+                         .GroupBy(c => c.transform).OrderBy(group => Depth(group.Key)).ToArray())
+            {
+                var target = filters.Key;
+                if (target == source.transform || excluded(target) || Skipped(target)) continue;
+                var included = new List<string>();
+                var excludedPlatforms = new List<string>();
+                var readable = true;
+                foreach (var filter in filters)
+                {
+                    using var serialized = new SerializedObject(filter);
+                    var platform = serialized.FindProperty("m_platform");
+                    var exclude = serialized.FindProperty("m_excludePlatform");
+                    if (platform == null || exclude == null || platform.propertyType != SerializedPropertyType.String ||
+                        exclude.propertyType != SerializedPropertyType.Boolean) { readable = false; break; }
+                    (exclude.boolValue ? excludedPlatforms : included).Add(platform.stringValue);
+                }
+                if (!readable) Add(target, ExportGimmickRules.PlatformFilter, null, PlatformFilterUnreadableReason);
+                else if (included.Count > 0 && excludedPlatforms.Count > 0) Add(target, ExportGimmickRules.PlatformFilter, null, PlatformFilterMixedReason);
+                else if (included.Count > 0 ? !included.Contains(GenericPlatform) : excludedPlatforms.Contains(GenericPlatform))
+                    Add(target, ExportGimmickRules.PlatformFilter, PlatformFilterReason, null);
+            }
+            foreach (var candidate in source.GetComponentsInChildren<Transform>(true)
+                         .Where(t => t != source.transform && !excluded(t) && ExportRendererSelection.ActiveUnder(t.gameObject, source.transform) &&
+                                     t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
+                         .OrderBy(Depth).ToArray())
+                if (!Skipped(candidate) && VrChatOnly(source, candidate, excluded, out var review))
+                    Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
+        }
+
+        static int Depth(Transform t)
+        {
+            var depth = 0;
+            for (var at = t; at != null; at = at.parent) depth++;
+            return depth;
+        }
+
+        // A menu or animator entry with its own shown mesh that is neither
+        // bound to the body nor drawn like it. review is null when VRChat-only
+        // parts (camera, sound, particles, contacts, constraints) prove it.
+        static bool VrChatOnly(GameObject source, Transform candidate, Func<Transform, bool> excluded, out string review)
+        {
+            review = null;
+            bool Inside(Transform t) => t == candidate || t.IsChildOf(candidate);
+            Mesh MeshOf(Renderer r) => r is SkinnedMeshRenderer skin ? skin.sharedMesh :
+                r is MeshRenderer && r.TryGetComponent<MeshFilter>(out var filter) ? filter.sharedMesh : null;
+            var renderers = candidate.GetComponentsInChildren<Renderer>(true).Where(r => !excluded(r.transform)).ToArray();
+            var meshes = renderers.Where(r => r is MeshRenderer || r is SkinnedMeshRenderer).ToArray();
+            // Without a mesh it is settings: expression and pose import read them.
+            if (!meshes.Any(r => r.enabled && MeshOf(r) != null && ExportRendererSelection.ActiveUnder(r.gameObject, source.transform))) return false;
+            // Bound to the body: an outfit, whatever its menu does.
+            var components = candidate.GetComponentsInChildren<Component>(true).Where(c => c != null && !excluded(c.transform)).ToArray();
+            if (meshes.OfType<SkinnedMeshRenderer>().Any(skin => skin.bones.Length > 0) || components.Any(c => IsType(c, BoundTypes))) return false;
+            // Drawn like the body: a prop of the avatar (a plush, a hand item).
+            var bodyShaders = new HashSet<Shader>(source.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .Where(skin => skin.bones.Length > 0 && !Inside(skin.transform)).SelectMany(skin => skin.sharedMaterials)
+                .Where(m => m != null && m.shader != null).Select(m => m.shader));
+            bool Toon(Material m) => m != null && m.shader != null &&
+                (UnsupportedShaderSubstitution.LooksLikeLilToon(m) || ToonShaders.Contains(m.shader.name) || bodyShaders.Contains(m.shader));
+            if (renderers.Any(r => r.sharedMaterials.Any(Toon))) return false;
+            if (meshes.Any(r => MeshOf(r) == null || r.sharedMaterials.Length == 0 || r.sharedMaterials.Any(m => m == null || m.shader == null)))
+                review = VrChatOnlyUncertainReason;
+            else if (!components.Any(RuntimeOnly)) review = VrChatOnlyNoEvidenceReason;
+            return true;
+        }
+
+        static bool RuntimeOnly(Component c)
+        {
+            if (c is Camera || c is AudioSource || c is ParticleSystem || c is Light || c is UnityEngine.Animations.IConstraint || IsType(c, ContactTypes)) return true;
+            var type = c.GetType();
+            return type.Namespace != null && (type.Namespace == "VRC" || type.Namespace.StartsWith("VRC.", StringComparison.Ordinal)) &&
+                type.Name.EndsWith("Constraint", StringComparison.Ordinal);
         }
 
         internal static bool Kept(Transform target, IEnumerable<GameObject> included) => target != null &&
