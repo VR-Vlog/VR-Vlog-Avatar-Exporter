@@ -358,11 +358,13 @@ namespace VRVlog.LilToonExporter.Tests
             var saved = 0;
             try
             {
-                // Failed before saving: the board cannot be prepared for an avatar without a mesh.
+                // Failed before saving: the board prepares (its renderer has no mesh
+                // but is there to show), and the export stops with the reason and
+                // the recovery window, as the board's save does.
                 using (var empty = new SavedAvatar())
                 {
                     var failing = Transfer(empty.Avatar);
-                    Assert.Catch<Exception>(() => failing.Export(empty.Avatar, "Failed", destination, () => saved++));
+                    Assert.That(failing.Export(empty.Avatar, "Failed", destination, () => saved++), Is.Not.Null.And.Not.Empty);
                     Assert.That(failing.RememberedName(empty.Avatar), Is.Null);
                     Assert.That(saved, Is.Zero);
                     Assert.That(File.Exists(destination), Is.False);
@@ -375,7 +377,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(saved, Is.EqualTo(1));
                 Assert.That(transfer.RememberedName(fixture.Source), Is.EqualTo("Avatar"));
             }
-            finally { if (File.Exists(destination)) File.Delete(destination); }
+            finally
+            {
+                foreach (var failure in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failure);
+                if (File.Exists(destination)) File.Delete(destination);
+            }
         }
 
         [Test]

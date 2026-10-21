@@ -469,6 +469,8 @@ namespace VRVlog.LilToonExporter
             board.Excluded.Clear(); board.Excluded.UnionWith(excluded);
             session.Presets.Clear();
             foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
+            // The poses kept replace the saved ones the preparation read again.
+            session.PoseOptions.Manual.Clear(); session.PoseOptions.Excluded.Clear(); session.PoseOptions.Names.Clear();
             session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
             foreach (var pair in poses.Names) session.PoseOptions.Names.Add(pair.Key, pair.Value);
             configuredBlink = blink; automaticBlink = automatic; saved = previousSaved;
@@ -642,6 +644,11 @@ namespace VRVlog.LilToonExporter
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
                 session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
+                // And the poses, as the export window writes them.
+                var storedPoses = stored.Poses ?? new PoseExportOptions();
+                session.PoseOptions.Manual.AddRange(storedPoses.Manual.Select(pose => pose.Copy()));
+                session.PoseOptions.Excluded.UnionWith(storedPoses.Excluded);
+                foreach (var pair in storedPoses.Names) session.PoseOptions.Names[pair.Key] = pair.Value;
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
                 steps.Next("recommend");
@@ -2127,7 +2134,13 @@ namespace VRVlog.LilToonExporter
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
             if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
-            if (BlocksExport) return ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+            if (BlocksExport)
+            {
+                // Out of sight, the quick transfer also says what to fix on the board.
+                var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+                var reason = interactive ? null : BoardBlockReason();
+                return string.IsNullOrEmpty(reason) ? needsFix : needsFix + "\n" + reason;
+            }
             if (!ExportAuthor.IsValid(author)) return ExporterLocalization.T(ExportAuthor.Required);
             // The transfer window calls this outside Advance, so it opens the
             // batch the save button runs in: the board's records check the
@@ -2175,7 +2188,10 @@ namespace VRVlog.LilToonExporter
                 {
                     // For a transfer, the details of this export go to the Console.
                     var details = (warnings ?? Enumerable.Empty<string>()).ToArray();
-                    if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
+                    // Nothing asked about what a non-interactive save worked around,
+                    // so the whole result list goes there once.
+                    if (!interactive && savedReport != null && savedReport.Count > 0) Debug.LogWarning(ExportResultList.Build(savedReport, details, path).Text());
+                    else if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
                     written();
                     return;
                 }
@@ -2346,6 +2362,8 @@ namespace VRVlog.LilToonExporter
         void ChangeAvatar()
         {
             Cleanup();
+            // Another avatar starts from blink on, as a new board does; its saved blink applies on preparing.
+            automaticBlink = true;
             licenseOptions = new AvatarLicenseOptions();
             status = null;
             showGimmicks = null;

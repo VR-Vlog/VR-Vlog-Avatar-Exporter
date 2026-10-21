@@ -557,12 +557,11 @@ namespace VRVlog.LilToonExporter
         {
             // The export always hashes the source again, even inside a batch.
             RequireValid(always: true);
-            // The same checks and stage guard as the other user-facing exports
-            // (ExportSettings.Export): stop before any stage on a source VRM
-            // cannot carry, and follow the project-wide choice on failing stages.
+            // The same checks as the other user-facing exports (ExportSettings.Export):
+            // stop before any stage on a source VRM cannot carry. A failing stage
+            // still stops here and offers the recovery window.
             UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
             UniVrmOneClickExporter.ValidateSourceHasMesh(Source);
-            if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
             var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();

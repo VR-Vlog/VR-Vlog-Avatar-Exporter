@@ -130,11 +130,13 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The board starts from the blink saved for the avatar, as the old quick
         // transfer took it from the export settings.
-        [TestCase(BlinkExportMode.Auto)]
-        [TestCase(BlinkExportMode.Manual)]
-        [TestCase(BlinkExportMode.None)]
-        public void TheHiddenBoardUsesTheSavedBlink(BlinkExportMode mode)
+        // The mode goes in as an int because the enum is internal and the test is public.
+        [TestCase((int)BlinkExportMode.Auto)]
+        [TestCase((int)BlinkExportMode.Manual)]
+        [TestCase((int)BlinkExportMode.None)]
+        public void TheHiddenBoardUsesTheSavedBlink(int modeValue)
         {
+            var mode = (BlinkExportMode)modeValue;
             using var fixture = new SavedFixture();
             var settings = new ExportSettings();
             settings.Blink.Mode = mode;
@@ -157,10 +159,10 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(board); }
         }
 
-        // The board's export follows the project-wide choice on failing stages,
-        // as the old quick transfer and the export window do.
+        // The board's export keeps stopping on a failing stage, so the quick
+        // transfer opens the recovery window as the board does.
         [Test]
-        public void TheBoardExportFollowsTheStageGuardChoice()
+        public void TheBoardExportKeepsTheStageChoiceItIsGiven()
         {
             using var fixture = new SavedFixture();
             var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
@@ -168,12 +170,80 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var session = (ExperimentalExpressionCaptureSession)typeof(ExperimentalExpressionCaptureWindow)
                     .GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(board);
-                var report = new ExportRecoveryReport { ContinueOnStageFailure = !ExportStageGuard.ContinueByDefault };
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
                 var bytes = session.Export("Avatar", "SampleAuthor", new List<string>(), recoveryReport: report);
-                Assert.That(report.ContinueOnStageFailure, Is.EqualTo(ExportStageGuard.ContinueByDefault));
+                Assert.That(report.ContinueOnStageFailure, Is.False);
                 Assert.That(bytes, Is.Not.Empty);
             }
             finally { Object.DestroyImmediate(board); }
+        }
+
+        // The board starts from the poses saved for the avatar, as the old quick
+        // transfer took them from the export settings; a rebuild does not add them again.
+        [Test]
+        public void TheHiddenBoardUsesTheSavedPosesOnce()
+        {
+            using var fixture = new SavedFixture();
+            var settings = new ExportSettings();
+            settings.Poses.Excluded.Add("SamplePose");
+            settings.Poses.Names["SamplePose"] = "Sample";
+            ExportSettingsStore.Save(fixture.Source, settings);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                PoseExportOptions Poses() => ((ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board)).PoseOptions;
+                Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                Assert.That(Poses().Names["SamplePose"], Is.EqualTo("Sample"));
+                type.GetMethod("RebuildKeepingAssignments", flags).Invoke(board, new object[] { Array.Empty<GameObject>(), null });
+                Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                Assert.That(Poses().Names.Count, Is.EqualTo(1));
+            }
+            finally { Object.DestroyImmediate(board); }
+        }
+
+        // Out of sight, a blocked board names what to fix; the open board shows it itself.
+        [Test]
+        public void ABlockedHiddenBoardSaysWhatToFix()
+        {
+            using var fixture = new SavedFixture();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-blocked-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                typeof(ExperimentalExpressionCaptureWindow).GetField("excludedObjectEdits", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+                    .SetValue(board, new List<GameObject>());
+                var needsFix = ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+                var saved = false;
+                Assert.That(board.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), path, () => saved = true, false),
+                    Is.EqualTo(needsFix + "\n" + ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません")));
+                Assert.That(board.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), path, () => saved = true), Is.EqualTo(needsFix));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(board);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        // A board switched to another avatar starts with blink on, as a new board
+        // (the quick transfer) does, before that avatar's saved blink applies.
+        [Test]
+        public void ChangingTheAvatarTurnsTheBlinkBackOn()
+        {
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("ChangeAvatar", flags).Invoke(window, null);
+                Assert.That(type.GetField("automaticBlink", flags).GetValue(window), Is.True);
+            }
+            finally { Object.DestroyImmediate(window); }
         }
 
         [Test]
