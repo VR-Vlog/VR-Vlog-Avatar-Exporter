@@ -94,12 +94,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // Validate the new owned copy before replacing an existing
                 // window/session. A failed selection leaves that session live.
                 prepared = new CloudVrmTransferSource(ownedSnapshotPath, name);
-                window = ExporterWindowIcon.Restore(GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る")));
+                window = GetWindow<CloudVrmTransferWindow>(false, ExporterLocalization.T("スマホに送る"));
                 var compact = window.source == null && !window.docked;
                 window.StopAndClean();
                 window.source = prepared;
                 window.minSize = new Vector2(360, 340);
-                if (compact) window.position = new Rect(window.position.x, window.position.y, 430, 460);
+                if (compact) window.position = new Rect(window.position.x, window.position.y, 430, 460 + ExporterWindowHeader.Height);
                 window.Show();
             }
             catch
@@ -113,7 +113,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
-            ExporterWindowIcon.Restore(this);
             if (!CloudTransferAvailability.Enabled)
             {
                 StopAndClean();
@@ -199,6 +198,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
         private void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("スマホに送る"));
             if (!CloudTransferAvailability.Enabled)
             {
                 StopAndClean();
@@ -335,7 +335,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (docked || qrTexture == null) return;
             var rect = position;
-            var height = Mathf.Max(rect.height, QrDisplaySize() + 360);
+            var height = Mathf.Max(rect.height, QrDisplaySize() + 360 + ExporterWindowHeader.Height);
             if (height <= rect.height) return;
             heightBeforeQr = rect.height; expandedQrHeight = height;
             position = new Rect(rect.x, rect.y, rect.width, height);

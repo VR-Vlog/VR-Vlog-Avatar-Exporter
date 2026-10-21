@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter
         static AppPreviewWindow Window()
         {
             var window = GetWindow<AppPreviewWindow>();
-            window.titleContent = ExporterWindowIcon.Title(T("アプリでの見え方"));
+            window.titleContent = new GUIContent(T("アプリでの見え方"));
             window.minSize = new Vector2(900, 600);
             window.Show();
             return window;
@@ -206,7 +206,6 @@ namespace VRVlog.LilToonExporter
 
         void OnEnable()
         {
-            ExporterWindowIcon.Restore(this);
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
@@ -336,8 +335,10 @@ namespace VRVlog.LilToonExporter
         void OnGUI()
         {
             CreateStyles();
-            var top = EditorGUIUtility.singleLineHeight + 3;
-            DrawToolbar(new Rect(0, 0, position.width, top));
+            ExporterWindowHeader.Draw(new Rect(0, 0, position.width, ExporterWindowHeader.Height), T("アプリでの見え方"));
+            var toolbarHeight = EditorGUIUtility.singleLineHeight + 3;
+            DrawToolbar(new Rect(0, ExporterWindowHeader.Height, position.width, toolbarHeight));
+            var top = ExporterWindowHeader.Height + toolbarHeight;
             var height = Mathf.Max(0, position.height - top);
             DrawPane(new Rect(0, top, PaneWidth, height));
             EditorGUI.DrawRect(new Rect(PaneWidth - 1, top, 1, height), new Color(0, 0, 0, .25f));
@@ -416,7 +417,7 @@ namespace VRVlog.LilToonExporter
                 if (load != null) GUI.Label(status, new GUIContent(MaterialDetail(load.MaterialStatus, loadedStandardMToon), load.MaterialStatus), clipped);
                 GUI.Label(Row(), lilToonVersion == null ? T("lilToon がありません") : "lilToon " + lilToonVersion, clipped);
                 var mismatch = Row();
-                if (lilToonVersion != null && lilToonVersion != PinnedLilToon) GUI.Label(mismatch, T("lilToon 2.3.4 と版が違います"), warning);
+                if (lilToonVersion != null && lilToonVersion != PinnedLilToon) GUI.Label(mismatch, T("lilToon 2.3.4 とバージョンが違います"), warning);
             }
             y += 6;
 

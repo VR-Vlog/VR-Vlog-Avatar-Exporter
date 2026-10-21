@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter
             IEnumerable<GameObject> excluded, ExportGimmickOptions gimmickOptions)
         {
             var window = CreateInstance<BlinkPreviewWindow>();
-            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("瞬きを確認"));
+            window.titleContent = new GUIContent(ExporterLocalization.T("瞬きを確認"));
             window.minSize = new Vector2(360, 460);
             try
             {
@@ -86,6 +86,7 @@ namespace VRVlog.LilToonExporter
 
         void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("瞬きを確認"));
             if (preview == null || copy == null) return;
             EditorGUILayout.LabelField(ExporterLocalization.T(blink.Description), EditorStyles.boldLabel);
             EditorGUILayout.LabelField(ExporterLocalization.T("開いた状態と閉じた状態を比較できます。"), EditorStyles.wordWrappedLabel);

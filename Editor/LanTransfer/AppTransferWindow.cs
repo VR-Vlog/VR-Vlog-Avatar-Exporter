@@ -215,7 +215,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
-            ExporterWindowIcon.Restore(this);
             EditorApplication.update += Poll;
             EditorApplication.quitting += StopAndClean;
             AssemblyReloadEvents.beforeAssemblyReload += StopAndClean;
@@ -638,7 +637,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 return;
             }
             var title = avatar != null ? string.Format(T(AppTransferText.TitleWithAvatar), avatar.name) : T(AppTransferText.Title);
-            if (titleContent.text != title || titleContent.image != ExporterWindowIcon.Texture) titleContent = ExporterWindowIcon.Title(title);
+            if (titleContent.text != title || titleContent.image != null) titleContent = new GUIContent(title);
             var view = shownView = Flow.View;
             var sending = view != AppTransferView.Form;
             heading.text = T(detailed ? AppTransferText.HeadingDetailed : AppTransferText.HeadingQuick);
