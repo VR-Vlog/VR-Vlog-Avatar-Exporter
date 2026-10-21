@@ -44,10 +44,17 @@ namespace VRVlog.LilToonExporter
 
         void CaptureClipRoots()
         {
+            var walked = new HashSet<RuntimeAnimatorController>();
             void Add(RuntimeAnimatorController controller, string root)
             {
                 if (controller == null) return;
-                gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller));
+                if (walked.Add(controller))
+                {
+                    // Nothing here may stop the board from opening. A controller that cannot be walked keeps
+                    // all its clips shown.
+                    try { gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller)); }
+                    catch (Exception) { gestureClips.UnionWith(controller.animationClips.Where(clip => clip != null)); }
+                }
                 foreach (var clip in controller.animationClips.Where(clip => clip != null))
                 {
                     if (!clipRoots.TryGetValue(clip, out var roots)) clipRoots.Add(clip, roots = new HashSet<string>(StringComparer.Ordinal));

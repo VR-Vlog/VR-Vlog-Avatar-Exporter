@@ -14,7 +14,7 @@
 - アバターのControllerにあるアニメーションのうち、次のすべてに当てはまるものは、ボードで対応していない表情として扱う（`ClipErrors`・`ClipError` が理由を返す）。
   - どのカーブも、すべてのキーの値と接線が0（ずっと0）。
   - ボードの基準の顔（準備後のアバター）に当てると、基準の顔と1つも変わらない。対象のBlendShapeが基準の顔で0ということ。
-  - どのControllerでも、ハンドジェスチャーの条件で入るステートのアニメーションではない。
+  - どのControllerでも、ハンドジェスチャーの条件で入るステートのアニメーションではない。書き出しが読むのはNDMFで統合したあとのFXだけだが、統合前のボードではどれがFXに入るか決まらないので、すべてのControllerを見る（迷ったら表示する側に倒す）。ステートマシンが欠けているなどで読めないControllerは、そのアニメーションをすべて表情のままにし、ボードを開くのを止めない。
   - FaceEmoに登録された表情ではない。
 - 候補の一覧（`RecommendClips`）からは外さない。対応していない表情はボードに出ないが、前に「書き出さない」へ移して保存した指定は数え続ける（`ExpressionBoard.UsesRecordRoute`）。候補から外すと、同じ保存内容のまま「この一覧を記録して書き出し」から「アバターの表情メニューをそのまま書き出し」へ切り替わってしまう。
 - メッシュが見つからない・適用元が1つに決まらないものは、これまでどおりそちらの理由で対応していない表情になる。BlendShape以外のカーブやアニメーションイベントを持つものも、これまでどおりの理由で扱う。
@@ -30,5 +30,5 @@
 
 ## 確認したこと
 
-- EditMode: `ControllerClipsThatChangeNoFaceAreUnsupported` 4件（元が0のBlendShapeを0にするだけなら対応していない表情になる、元が0でないものを0に戻す・0でない値にする・ハンドジェスチャーの条件で入るものは表情のまま、どれも候補には残る）。`ExperimentalExpressionCaptureTests`・`DirectFxExpressionDiscoveryTests`・`GestureBlendTreeTests`・`VrChatMenuExpressionTests` のほかのテストの結果は修正前と同じ（失敗はModular Avatarなどが無い環境の7メソッドで、develop と同じ）。
+- EditMode: `ControllerClipsThatChangeNoFaceAreUnsupported` 5件（元が0のBlendShapeを0にするだけなら対応していない表情になる、元が0でないものを0に戻す・0でない値にする・ハンドジェスチャーの条件で入る・読めないControllerにあるものは表情のまま、どれも候補には残る）。`ExperimentalExpressionCaptureTests`・`DirectFxExpressionDiscoveryTests`・`GestureBlendTreeTests`・`VrChatMenuExpressionTests` のほかのテストの結果は修正前と同じ（失敗はModular Avatarなどが無い環境の7メソッドで、develop と同じ）。
 - マージ後に一括検証で同じアバターを書き出し直し、ボードからこれらのアニメーションが消えることを確かめる。
