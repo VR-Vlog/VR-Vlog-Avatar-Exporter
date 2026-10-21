@@ -28,6 +28,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
         private const float TransferChrome = 253f;
         private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // "QRができたら音を鳴らす" on the QR screen, kept for every project on this PC.
+        internal const string QrReadySoundPreference = "VRVlog.AppTransfer.QrReadySound";
+        internal static bool QrReadySound
+        {
+            get => EditorPrefs.GetBool(QrReadySoundPreference, AppTransferFlow.QrReadySoundByDefault);
+            set => EditorPrefs.SetBool(QrReadySoundPreference, value);
+        }
         // Above the QR once the export is saved, when materials lost their shader. Kept out of
         // AppTransferText: that list holds one-line texts without punctuation or requests.
         internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
@@ -71,7 +78,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
-        [NonSerialized] private Toggle consentToggle, privacyToggle;
+        [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
         [NonSerialized] private Image qrImage;
         [NonSerialized] private IMGUIContainer uploadBar;
 
@@ -271,6 +278,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ClearQr();
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
+            // The OS notification sound, once per QR that is now on screen.
+            if (AppTransferFlow.ShouldBeepForQr(flow.View, qrTexture != null, QrReadySound)) EditorApplication.Beep();
         }
 
         private string Reason()
@@ -484,6 +493,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             remainingLabel = root.Q<Label>("remaining");
             barFill = root.Q("bar-fill");
             lifetimeLabel = root.Q<Label>("lifetime");
+            soundToggle = root.Q<Toggle>("sound");
             regenerateButton = root.Q<Button>("regenerate");
             closeButton = root.Q<Button>("close");
 
@@ -535,6 +545,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
             closeButton.clicked += Close;
+            soundToggle.RegisterValueChangedCallback(changed => QrReadySound = changed.newValue);
             uploadBar.onGUIHandler = DrawUploadBar;
             // The export starts once the panel has drawn the Exporting state.
             slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
@@ -708,6 +719,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             regenerateButton.text = T(AppTransferText.Regenerate);
             Show(regenerateButton, waiting);
             closeButton.text = T("閉じる");
+            soundToggle.text = soundToggle.tooltip = T(AppTransferText.QrReadySound);
+            soundToggle.SetValueWithoutNotify(QrReadySound);
         }
 
         // UI Toolkit can centre on half a device pixel; the QR's modules need whole ones.
