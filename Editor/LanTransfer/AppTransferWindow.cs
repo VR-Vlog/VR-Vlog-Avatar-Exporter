@@ -21,8 +21,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QuickMenuPath = "GameObject/VR Vlog/アプリに転送（かんたん）";
         internal const string DetailedMenuPath = "GameObject/VR Vlog/アプリに転送（通常）";
         // The Hierarchy context menu sorts its GameObject entries by priority, whatever the value,
-        // and places a submenu at its lowest one. Other avatar tools use 49 or less (some 1000,
-        // one 9999), so 10000 puts VR Vlog after them, the quick entry first.
+        // and places a submenu at its lowest one. Other avatar tools use up to 1000,
+        // one 9999, so 10000 puts VR Vlog after them, the quick entry first.
         internal const int QuickMenuPriority = 10000, DetailedMenuPriority = 10001;
         private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at

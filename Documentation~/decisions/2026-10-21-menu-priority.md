@@ -13,7 +13,7 @@ Hierarchy でアバターを右クリックすると、**VR Vlog → アプリ�
 
 優先度をかんたん 10000・通常 10001 にする。
 
-- 値は、アバター用のツールをまとめて入れた検証用のプロジェクト（Unity 2022.3.22f1・VRChat SDK・Modular Avatar・NDMF ほか）で、各ツールが GameObject メニューに付けている優先度を読んで決めた。Modular Avatar は -1000〜-997、NDMF・AudioLink・Light Limit Changer は 49、Avatar Optimizer は 20、lilToon は 21〜23、VRCQuestTools は 30〜133、TexTransTool は 1000、Light Volumes は 9999 だった。Unity 自身の項目は 2000 番台（AI・UI）まで。いちばん大きい 9999 より後ろにするため 10000 にした。
+- 値は、アバター用のツールをまとめて入れた検証用のプロジェクト（Unity 2022.3.22f1・VRChat SDK・Modular Avatar・NDMF ほか）で、各ツールが GameObject メニューに付けている優先度を読んで決めた。Modular Avatar は -1000〜-997、NDMF・AudioLink・Light Limit Changer は 49、Avatar Optimizer は 20、lilToon は 21〜23、VRCQuestTools は 30〜133、TexTransTool は 1000、Light Volumes は 9999 だった。Unity 自身の GameObject メニューの項目は 2000 番台（AI・UI）まで。右クリックの最後の **Properties...** は Unity が GameObject メニューとは別に足す項目で、変更前・変更後の確認ではいちばん下に出た。いちばん大きい 9999 より後ろにするため 10000 にした。
 - 2 つの差は 1 にする。Unity は優先度の差が 10 より大きいところに区切り線を入れる（右クリックの確認でも、30 と 49 の項目の間に区切り線が入った）ので、差が 1 なら **VR Vlog** の中に区切り線は増えない。
 - Hierarchy の右クリックでは、トップの階層に優先度による区切り線は入らなかった（49 から 1000 に飛ぶところにも入らない）。上のメニューバーの GameObject メニューでは、直前の項目との差が 10 より大きいので **VR Vlog** の前に区切り線が入る。ほかのツールのサブメニューの前にも同じように入っているので、そのままにした。
 - サブメニューは、中の項目のいちばん小さい優先度の位置に並ぶ。かんたんを先にしているので、**VR Vlog** の位置はかんたんの 10000 で決まる。
