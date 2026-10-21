@@ -180,16 +180,26 @@ namespace VRVlog.LilToonExporter
                 var text = File.ReadAllText(path);
                 if (string.IsNullOrWhiteSpace(text)) return null;
                 var store = JsonUtility.FromJson<Store>(text);
-                if (store != null && store.Version != 1) { problem = ExporterLocalization.T("表情ボードの選択を記録したファイルが別の版のため、選択を保存しませんでした。"); return null; }
+                if (store != null && store.Version != 1) { problem = string.Format(ExporterLocalization.T(OtherVersionFormat), path); return null; }
                 if (store == null || store.Avatars == null) { problem = Unreadable(path); return null; }
                 return store;
             }
-            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is ArgumentException)
+            // A lock or missing permission is not a broken file: deleting it
+            // would lose every avatar's choices, so that message does not ask to.
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                problem = string.Format(ExporterLocalization.T(CannotOpenFormat), path);
+                return null;
+            }
+            catch (ArgumentException)
             {
                 problem = Unreadable(path);
                 return null;
             }
         }
+
+        internal const string OtherVersionFormat = "表情ボードの選択を記録したファイルが別の版のため、選択を保存しませんでした: {0}";
+        internal const string CannotOpenFormat = "表情ボードの選択を記録したファイルを開けないため、選択を保存しませんでした。別のプログラムが使っていないか確かめてください: {0}";
 
         static string Unreadable(string path) =>
             string.Format(ExporterLocalization.T("表情ボードの選択を記録したファイルを読み込めないため、選択を保存しませんでした。ファイルを直すか削除すると、また保存できます: {0}"), path);
