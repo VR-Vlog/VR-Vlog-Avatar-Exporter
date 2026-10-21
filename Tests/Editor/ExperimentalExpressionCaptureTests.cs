@@ -2565,6 +2565,15 @@ namespace VRVlog.LilToonExporter.Tests
                 window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage); Drain();
                 Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ExpressionsPage));
 
+                // An apply still waiting that another action replaces does not leave the board blocked.
+                type.GetField("excludedObjectEdits", flags).SetValue(window, kept.ToList());
+                type.GetMethod("ApplyThen", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.True);
+                type.GetMethod("Queue", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
+                Drain();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, null);
+
                 // The transfer has no information page: its third step is the next window.
                 type.GetField("transferMode", flags).SetValue(window, true);
                 window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();

@@ -188,7 +188,7 @@ namespace VRVlog.LilToonExporter
             window.titleContent = new GUIContent(ExporterLocalization.T("アプリに転送（通常）"));
             window.minSize = new Vector2(600, 760);
             // The transfer has no information page: its third step is the next window.
-            if (window.page > ObjectsPage) window.page = ObjectsPage;
+            if (window.page > ObjectsPage) window.SetPage(ObjectsPage);
             if (same || avatar == null) { window.Repaint(); return true; }
             window.Queue(() =>
             {
@@ -248,7 +248,8 @@ namespace VRVlog.LilToonExporter
             finally { EditorUtility.ClearProgressBar(); Repaint(); }
         }
 
-        void Queue(Action action) { pending = action; error = null; Repaint(); }
+        // A queued action replaces any apply-on-leave still waiting, so its flag goes too.
+        void Queue(Action action) { pending = action; applyingOnLeave = false; error = null; Repaint(); }
 
         internal static void AnimationAssetsReimported()
         {
@@ -872,7 +873,6 @@ namespace VRVlog.LilToonExporter
         void ApplyThen(Action then)
         {
             if (!PreviewPending) { Queue(then); return; }
-            applyingOnLeave = true;
             Queue(() =>
             {
                 try { ApplyPreview(); }
@@ -880,15 +880,16 @@ namespace VRVlog.LilToonExporter
                 if (!PreviewPending && excludedObjectError == null) Queue(then);
                 else SetPage(ObjectsPage);
             });
+            applyingOnLeave = true;
         }
 
         void SetPage(int target)
         {
             target = Mathf.Clamp(target, ExpressionsPage, transferMode ? ObjectsPage : InfoPage);
             // The status line reports what was just done on the page being left.
-            if (target != page) status = null;
+            // Staying (a failed apply) keeps the scroll, so the reason stays in view.
+            if (target != page) { status = null; pageScroll = Vector2.zero; }
             page = target;
-            pageScroll = Vector2.zero;
             GUIUtility.keyboardControl = 0;
             Repaint();
         }
@@ -1907,7 +1908,7 @@ namespace VRVlog.LilToonExporter
             using (new EditorGUILayout.HorizontalScope())
             {
                 const float buttonWidth = 100;
-                var label = ExporterLocalization.T(configuredBlink?.Mode == BlinkExportMode.Manual ? "瞬きを書き出す" : "空いているまばたきの枠は閉じた目を自動で探す");
+                var label = ExporterLocalization.T(configuredBlink?.Mode == BlinkExportMode.Manual ? "瞬きを書き出す" : "空いている瞬きの枠は閉じた目を自動で探す");
                 var width = Mathf.Max(0, position.width - 32 - buttonWidth - 30);
                 var blinkOn = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), automaticBlink);
                 // Blink candidates follow the blink setting the export receives.
