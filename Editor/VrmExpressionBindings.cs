@@ -166,12 +166,12 @@ namespace VRVlog.LilToonExporter
                     { "morphTargetBinds", bindings }, { "isBinary", false }
                 };
                 changed = true;
-                Warn(warnings, $"{mapping.Preset}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。");
+                Warn(warnings, string.Format(ExporterLocalization.T(KnownNameFormat), mapping.Preset));
             }
             // Only slots that named a shape count. Empty slots stay silent as
             // before, and a known alias that bound the preset is enough.
             if (descriptor != null && descriptor.Shapes.Keys.Any(preset => presets == null || !presets.ContainsKey(preset)))
-                Warn(warnings, descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning);
+                Warn(warnings, ExporterLocalization.T(descriptor.Node < 0 ? UnexportedVisemeMeshWarning : UnboundVisemeWarning));
             if (inferEmotions && AddEmotions(vrm, nodes, meshes, warnings, filledEmotions, emotionCandidates, emotionShapes, shapeNames))
             {
                 changed = true;
@@ -183,6 +183,7 @@ namespace VRVlog.LilToonExporter
             return changed ? glb.Write() : bytes;
         }
 
+        internal const string KnownNameFormat = "{0}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。";
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";
