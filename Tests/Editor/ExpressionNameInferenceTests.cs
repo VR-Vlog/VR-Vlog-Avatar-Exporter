@@ -780,5 +780,41 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(text, Does.Not.Contain("既知の表情名"), locale + ": the old mouth notice is gone.");
             }
         }
+
+        [Test]
+        public void EveryShippedLocaleTranslatesTheDuplicateAndBlinkWarningsAsBlink()
+        {
+            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
+            var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
+            // The old machine translations read 瞬き as "instant".
+            var wrong = new Dictionary<string, string[]> {
+                { "en", new[] { "instant", "moment" } }, { "ko", new[] { "즉시", "즉석", "순간" } },
+                { "zh-Hans", new[] { "即时", "瞬间" } }, { "zh-Hant", new[] { "即時", "瞬間" } },
+            };
+            foreach (var locale in wrong.Keys)
+            {
+                var file = UnityEngine.JsonUtility.FromJson<LocaleFile>(System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json")));
+                var table = file.entries.ToDictionary(entry => entry.source, entry => entry.translated);
+                foreach (var (source, arguments) in new[] {
+                    (VrmExpressionBindings.DuplicateExpressionFormat, new object[] { "happy", 3 }),
+                    (VrmExpressionBindings.BlinkNotGeneratedWarning, new object[0]),
+                    (VrChatExpressionBaker.BakedFormat, new object[] { 4 }),
+                    (VrChatExpressionBaker.NoneBakedWarning, new object[0]) })
+                {
+                    Assert.That(table.TryGetValue(source, out var translated), Is.True, locale + ": " + source);
+                    Assert.That(translated, Is.Not.Empty.And.Not.EqualTo(source), locale + ": " + source);
+                    var formatted = string.Format(translated, arguments);
+                    foreach (var argument in arguments) Assert.That(formatted, Does.Contain(argument.ToString()), locale + ": " + source);
+                }
+                Assert.That(table.Keys.Where(source => source.StartsWith("{mapping.Preset}: mesh", StringComparison.Ordinal) ||
+                    source.StartsWith("VRChatから{result.Count}", StringComparison.Ordinal)), Is.Empty, locale + ": an interpolated source never matches.");
+                foreach (var entry in file.entries.Where(entry => entry.source.Contains("瞬き")))
+                    foreach (var word in wrong[locale])
+                        Assert.That(entry.translated, Does.Not.Contain(word).IgnoreCase, locale + ": " + entry.source);
+            }
+        }
+
+        [Serializable] class LocaleFile { public LocaleEntry[] entries; }
+        [Serializable] class LocaleEntry { public string source, translated; }
     }
 }
