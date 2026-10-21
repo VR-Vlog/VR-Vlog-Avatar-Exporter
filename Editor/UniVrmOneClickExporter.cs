@@ -532,14 +532,16 @@ namespace VRVlog.LilToonExporter
                     guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
                         preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
                     guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
-                    RecordTrimmedPoses(poses, warnings, recoveryReport);
+                    // Our own steps below name their stage. Unnamed, a failure here
+                    // would be blamed on the build passes and retried without them.
+                    guard.Watch(ExportStage.PoseCapture, () => RecordTrimmedPoses(poses, warnings, recoveryReport));
                     recoveryReport.Stage = "基準形評価";
                     recoveryReport.Phase = ExportPhase.Expressions;
                     // This beta retains the prepared copy's rest values. Selected
                     // expressions still use their original FX evaluation above;
                     // all endpoints below share this retained neutral snapshot.
                     warnings?.Add(ExporterLocalization.T("このベータ版ではFXの初期状態の復元を省略し、書き出し用コピーの設定を基本の顔・体形として保存しました。VRChatでの通常時の見た目と異なる場合があります。"));
-                    AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights);
+                    guard.Watch(ExportStage.Expressions, () => AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights));
                     guard.Watch(ExportStage.BlinkCapture, () => blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
                         suppressHdrTextureEmission: suppressHdrTextureEmission));
                     if (blink.MissingAutomatic)
@@ -552,27 +554,33 @@ namespace VRVlog.LilToonExporter
                         warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
                         recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
                     }
-                    var neutral = NeutralShapeSnapshot.Capture(clone);
-                    authoredEndpoints = AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile);
+                    var neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
+                    authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile));
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
-                    if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
-                    RecordSettledMenuExpressions(menu, recoveryReport);
+                    guard.Watch(ExportStage.Expressions, () =>
+                    {
+                        if (lenient) RecordLostMenuExpressions(menu, recoveryReport);
+                        RecordSettledMenuExpressions(menu, recoveryReport);
+                    });
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
-                    AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
-                    authoredEndpoints.Bake(temporaryMeshes);
+                    guard.Watch(ExportStage.Expressions, () =>
+                    {
+                        AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
+                        authoredEndpoints.Bake(temporaryMeshes);
+                    });
                     expressions = guard.Step(ExportStage.Expressions,
                         () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => new List<VrmMenuExpressions.Expression>());
-                    RecordExpressionsEndingNeutral(expressions, recoveryReport);
+                    guard.Watch(ExportStage.Expressions, () => RecordExpressionsEndingNeutral(expressions, recoveryReport));
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
-                    unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
-                        suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
-                    optimizerBindings = ExportOptimizationBindings.Capture(clone,
+                    unifiedPreparation = trackingProfile == null ? guard.Watch(ExportStage.TrackingOutput, () => new UnifiedExpressionPreparation(clone,
+                        suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission)) : null;
+                    optimizerBindings = guard.Watch(ExportStage.OptimizerEvidence, () => ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone));
+                        keptMorphs: capturedVisemes?.Morphs(clone)));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
