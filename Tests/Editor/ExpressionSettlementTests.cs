@@ -376,6 +376,126 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
         }
 
+        // An Any State edge with Can Transition To Self and a condition that
+        // stays true restarts its state every frame, so the layer is always in
+        // a transition into the state it is already in. Both sides play the
+        // same constant clip; the face is the same as in the settled state.
+        // ownLayer: the selected layer itself restarts; otherwise another
+        // layer beside it does.
+        [TestCase(false)] [TestCase(true)]
+        public void AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace(bool ownLayer)
+        {
+            var messages = new List<string>();
+            if (ownLayer)
+            {
+                var machine = controller.layers[0].stateMachine;
+                machine.defaultState = State(machine, "Idle");
+                var selected = State(machine, "Selected", Clip("Smile", 75));
+                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
+                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            }
+            else
+            {
+                Selected(Clip("Smile", 75));
+                RestartingLayer();
+            }
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+        }
+
+        // A face that fades in is saved at its final key. A layer beside it
+        // that keeps restarting into a constant state does not change the
+        // face while the fade runs to its end. A zero-length edge restarts
+        // without ever showing a transition.
+        [TestCase(.25f)] [TestCase(0f)]
+        public void AFadeInBesideARestartingLayerReachesItsFinalKey(float duration)
+        {
+            Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)));
+            RestartingLayer(duration);
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
+            Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
+        }
+
+        // Each restart sends the clock back to the start, so a clip that moves
+        // the face over time never reaches its final key and the face keeps
+        // changing. Such a layer is refused.
+        [TestCase(false)] [TestCase(true)]
+        public void AStateRestartedEveryFrameWithAMovingClipIsNotSaved(bool ownLayer)
+        {
+            var rising = AnimationCurve.Linear(0, 0, 1, 100);
+            if (ownLayer)
+            {
+                var machine = controller.layers[0].stateMachine;
+                machine.defaultState = State(machine, "Idle");
+                var selected = State(machine, "Selected", Clip("Rise", rising));
+                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
+                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            }
+            else
+            {
+                Selected(Clip("Smile", 75));
+                var blink = new AnimationClip { name = "Toggle blink" };
+                AnimationUtility.SetEditorCurve(blink, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), rising);
+                AssetDatabase.AddObjectToAsset(blink, controller);
+                RestartingLayer().motion = blink;
+            }
+            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+        }
+
+        // Each restart enters the state again and runs its callbacks, so a
+        // driver there that changes a parameter the layer reads keeps writing.
+        // Such a layer is still refused, also when a zero-length edge shows no
+        // transition at the sample or a fade beside it is waited for.
+        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)] [TestCase(0f, true)]
+        public void AStateRestartedEveryFrameWithADriverIsNotSaved(float duration, bool fadeIn)
+        {
+            Selected(fadeIn ? Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)) : Clip("Smile", 75));
+            var off = RestartingLayer(duration);
+            controller.AddParameter("Count", AnimatorControllerParameterType.Int);
+            foreach (var edge in controller.layers[controller.layers.Length - 1].stateMachine.anyStateTransitions)
+                if (edge.destinationState == off) edge.AddCondition(AnimatorConditionMode.Greater, -1, "Count");
+            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Add", "Count", 1));
+            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+        }
+
+        // Running a tracking control or a driver that sets a parameter to its
+        // current value again changes nothing, so such a restarted state
+        // still holds the face.
+        [Test]
+        public void AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace()
+        {
+            Selected(Clip("Smile", 75));
+            var off = RestartingLayer();
+            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Set", "Toggle", 0));
+            ParameterDriverExpressionTests.SdkBehaviour(off, "VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
+            var messages = new List<string>();
+            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
+        }
+
+        // A toggle layer whose Off state is re-entered every frame while its
+        // Bool stays false. Its clips hold a face morph, so the layer joins
+        // the expression's evaluation, and On and Off differ, so the layer is
+        // not one constant pose.
+        private AnimatorState RestartingLayer(float duration = .25f)
+        {
+            controller.AddParameter("Toggle", AnimatorControllerParameterType.Bool);
+            var toggle = Layer("Toggle");
+            var clip = new AnimationClip { name = "Toggle off" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 0));
+            AssetDatabase.AddObjectToAsset(clip, controller);
+            var off = State(toggle, "Off", clip); toggle.defaultState = off;
+            var onClip = new AnimationClip { name = "Toggle on" };
+            AnimationUtility.SetEditorCurve(onClip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 100));
+            AssetDatabase.AddObjectToAsset(onClip, controller);
+            var on = State(toggle, "On", onClip);
+            foreach (var (target, mode) in new[] { (off, AnimatorConditionMode.IfNot), (on, AnimatorConditionMode.If) })
+            {
+                var edge = toggle.AddAnyStateTransition(target); edge.hasExitTime = false; edge.duration = duration;
+                edge.canTransitionToSelf = true; edge.AddCondition(mode, 0, "Toggle");
+            }
+            return off;
+        }
+
         // Loops of 1 s and 0.7 s share one clock; only one starts its cycle.
         [Test]
         public void LoopsOfDifferentLengthsAreReportedAsOverlapping()
