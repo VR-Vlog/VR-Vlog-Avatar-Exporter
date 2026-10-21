@@ -115,8 +115,29 @@ namespace VRVlog.LilToonExporter
                     if (properties.propertyType == SerializedPropertyType.ObjectReference && properties.objectReferenceValue is RuntimeAnimatorController controller)
                         controllers.Add(controller);
             }
-            foreach (var controller in controllers) Add(controller.animationClips, "アバターに登録されたController");
+            foreach (var controller in controllers) Add(controller.animationClips.Where(clip => clip == null || !ChangesNoFace(clip)), "アバターに登録されたController");
             return result.OrderBy(item => item.Clip.name, StringComparer.Ordinal).ToList();
+        }
+
+        // Lip-sync and blink switches hold mouth or eyelid shapes at the 0 they already rest at. They change
+        // nothing on the face and the VRM leaves them out, so the board does not offer them as expressions.
+        // A clip that resets a shape the avatar rests away from 0 still changes the face and is kept.
+        bool ChangesNoFace(AnimationClip clip)
+        {
+            if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0 || clip.events.Length > 0) return false;
+            if (!clipRoots.TryGetValue(clip, out var roots) || roots.Count != 1 || roots.Contains(null)) return false;
+            var root = roots.Single();
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
+            {
+                if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) return false;
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve == null || curve.keys.Any(key => key.value != 0)) return false;
+                var target = Source.transform.Find(root.Length == 0 ? binding.path : binding.path.Length == 0 ? root : root + "/" + binding.path);
+                var renderer = target != null ? target.GetComponent<SkinnedMeshRenderer>() : null;
+                var index = renderer != null && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) : -1;
+                if (index < 0 || renderer.GetBlendShapeWeight(index) != 0) return false;
+            }
+            return true;
         }
 
         // The VRChat Expressions Menu paths ("Face / Smile") of the Toggle and

@@ -523,6 +523,28 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so it is not
+        // offered; a clip that resets a shape resting away from 0, or moves one, still is.
+        [TestCase(0f, 0f, false)]
+        [TestCase(0f, 35f, true)]
+        [TestCase(75f, 0f, true)]
+        public void ControllerClipsThatChangeNoFaceAreNotRecommended(float clipWeight, float restWeight, bool recommended)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
+            var clip = new AnimationClip { name = "Lip sync switch" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, clipWeight));
+                var state = machine.AddState("Switch"); state.motion = clip; machine.defaultState = state;
+                controller.layers = new[] { new AnimatorControllerLayer { name = "Switch", defaultWeight = 1, stateMachine = machine } };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.EqualTo(recommended));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void ChildAnimatorClipTargetsItsOwnMeshEvenWithAnIdenticalRootMesh(bool competingRoot)
