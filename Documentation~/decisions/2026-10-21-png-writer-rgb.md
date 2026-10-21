@@ -43,5 +43,5 @@ develop で書き出した 24 体の VRM を調べると、ファイルの合計
   - `SmoothOpaqueGradientIsSmallerThanEncodeToPng`: 512×512 の不透明なグラデーションで `EncodeToPNG` より小さいこと。
   - `LogsTimeAndSizeFor2048Texture`: 2048×2048 の画像で、かかった時間と大きさをログに出す（時間の上限は確かめない）。
 - Unity の外でも、`PngWriter.cs` をそのまま .NET 8 でビルドし、上の 24 体の PNG 322 枚と合成画像 6 枚を書き直して確かめた。全枚で、読み込んだ画素が元と同じで、不透明な画像は RGB になり、CRC と Adler-32 も正しかった。PNG の合計は 145.43 MB から 119.04 MB（18.1% 減）になった。.NET 8 と Unity の Mono では deflate の実装が違うので、Unity での大きさは少し変わりうる。並列にした版でも同じ 328 枚で同じ結果になり、フィルター後の展開したデータは最初の版と全枚で同じだった（圧縮後のバイト列は、deflate へ 1 行ずつではなくまとめて渡すようにしたため少し変わり、合計は 119.03 MB）。.NET 8 での 2048×2048 の不透明な画像の時間は、最初の版の 365 ms から 108 ms になった。
-- Unity 2022.3 の EditMode で PngWriterTests・TextureResizeTests ほか 51 件が通過した。
-- 2048×2048 の書き出し時間: （実行後に追記）
+- Unity 2022.3 の EditMode で PngWriterTests・TextureResizeTests・MobileTexture のテスト 55 件が通過した（並列にした版）。
+- 2048×2048 の書き出し時間（Unity 2022.3 の Mono・並列にした版）: 1138 ms・2,786,139 バイト。同じ画像の `EncodeToPNG` は 313 ms・3,963,034 バイト。1 枚あたり約 0.8 秒遅くなるが、書き出し 1 回は 24 体の中央値で 9.3 秒かかっており、書き出し全体への影響は、ほかのファイルを小さくする変更と合わせて 24 体を書き出し直して測る。
