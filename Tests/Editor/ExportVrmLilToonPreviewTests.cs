@@ -161,6 +161,10 @@ namespace VRVlog.LilToonExporter.Tests
                 .Select(i => Mathf.Abs(BitConverter.ToSingle(pixels, i * 16) - .5f))).Max(), Is.GreaterThan(.05f),
                 "A flat normal cannot exercise the native packing conversion.");
             var bytes = f.Export(); var originalBytes = (byte[])bytes.Clone(); await f.Import(bytes);
+            // These directions stay far from the horizon, so the exporter
+            // keeps their canonical copy in 8 bits; allow one 8-bit step.
+            Assert.That(F.Text(F.List(F.Root(GlbDocument.Read(bytes).Json), "textures").Select(F.Object)
+                .Single(t => F.Text(t, "name") == normal.name), "format"), Is.EqualTo("rgba32"));
             using (ExportVrmLilToonPreview.Apply(bytes, f.Imported.gameObject))
             {
                 var restored = (Texture2D)f.ImportedFront.sharedMaterial.GetTexture("_BumpMap");
@@ -172,7 +176,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(actual.Length, Is.EqualTo(expected[mip].Length));
                     for (var component = 0; component < actual.Length; component += 4)
                         Assert.That(BitConverter.ToSingle(actual, component),
-                            Is.EqualTo(BitConverter.ToSingle(expected[mip], component)).Within(2e-5f), "mip " + mip + " byte " + component);
+                            Is.EqualTo(BitConverter.ToSingle(expected[mip], component)).Within(1f / 255f), "mip " + mip + " byte " + component);
                     Assert.That(normal.GetPixels32(mip), Is.EqualTo(authoredPixels[mip]));
                 }
             }
