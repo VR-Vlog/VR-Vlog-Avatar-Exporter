@@ -1112,7 +1112,7 @@ namespace VRVlog.LilToonExporter.Tests
         // The expression menu gives two faces and the board lists them with a
         // third face the menu does not have. Recording the list would replace
         // the menu faces (and their motion) with still ones, so the ordinary
-        // route keeps the menu result and says the list faces it lacks were left out.
+        // route keeps the menu result and says some list faces were not exported.
         [Test]
         public void OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces()
         {
@@ -1139,8 +1139,9 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var state = machine.AddState(names[index]); state.writeDefaultValues = false;
                     clips[index] = new AnimationClip { name = names[index] };
+                    // Face A moves (35 to 75), so the VRM has its motion only if the menu result is kept.
                     AnimationUtility.SetEditorCurve(clips[index], EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
-                        AnimationCurve.Constant(0, 1, 75 - index * 20));
+                        index == 0 ? new AnimationCurve(new Keyframe(0, 35), new Keyframe(1, 75)) : AnimationCurve.Constant(0, 1, 75 - index * 20));
                     AssetDatabase.AddObjectToAsset(clips[index], controller); state.motion = clips[index];
                     var transition = neutral.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
                     transition.AddCondition(AnimatorConditionMode.Equals, index + 1, "Face");
@@ -1194,8 +1195,13 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(custom.Keys, Has.No.Member(listOnly.name));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
                 Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
+                // The moving menu face keeps its motion; a recorded list would have none.
+                var animations = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations;
+                Assert.That(animations.Count, Is.GreaterThan(0));
+                Assert.That(animations.Select(animation => animation.Expression), Has.Member(names[0]));
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
+                Assert.That(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat, Does.EndWith("のうち書き出していない表情があります"));
                 var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 1);
                 Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(1));
                 Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, names.Length + 1)));

@@ -727,9 +727,10 @@ namespace VRVlog.LilToonExporter
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
         internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にする";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
-        // The ordinary route kept the menu faces, fewer than the list; list faces
-        // the menu does not give were left out (menu faces and list clips share no key).
-        internal const string MenuShortKeptMenuFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧{1}件のうちメニューにない表情は書き出していません";
+        // The ordinary route kept the menu faces, fewer than the list; some list
+        // faces are not in the VRM. Which ones and how many is not known: menu faces
+        // and list clips share no key, and a non-FX layer can break menu faces the list has.
+        internal const string MenuShortKeptMenuFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧{1}件のうち書き出していない表情があります";
         // The ordinary route kept menu faces the list does not show; nothing was left out.
         internal const string MenuExceedsListFormat = "表情メニューから{0}件を書き出しました・その他の表情の一覧は{1}件です";
 
@@ -2208,12 +2209,14 @@ namespace VRVlog.LilToonExporter
                 }
                 // Some menu faces but fewer than the list: recording the list would
                 // replace the animated menu faces with still ones, so the menu
-                // result is kept and the list faces it lacks are reported as left out.
+                // result is kept and the result says some list faces are not in it.
                 else if (menuFaces < listedFaces)
                 {
                     var kept = string.Format(ExporterLocalization.T(MenuShortKeptMenuFormat), menuFaces, listedFaces);
                     warnings.Add(kept);
-                    report?.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T("その他の表情"), reason: kept, count: listedFaces - menuFaces);
+                    // One line without a count: listed minus menu is only a lower
+                    // bound of the faces left out, so no number is claimed.
+                    report?.Fallbacks.Record(ExportOutcome.Omitted, ExporterLocalization.T("その他の表情"), reason: kept);
                 }
                 // More menu faces than the list: the VRM keeps them all, so the
                 // result only says how many it has.
