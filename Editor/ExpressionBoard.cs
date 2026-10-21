@@ -44,6 +44,8 @@ namespace VRVlog.LilToonExporter
         readonly Func<ExpressionPreset, bool> authored;
         internal readonly List<Item> Items = new List<Item>();
         internal readonly HashSet<AnimationClip> Excluded = new HashSet<AnimationClip>();
+        // Names the user gave faces; a face without one is named after its file.
+        internal readonly Dictionary<AnimationClip, string> Names = new Dictionary<AnimationClip, string>();
 
         internal ExpressionBoard(IDictionary<ExpressionPreset, PresetAssignment> presets, Action<ExpressionPreset, PresetAssignment> setPreset,
             Func<IEnumerable<AnimationClip>, IDictionary<ExpressionPreset, PresetAssignment>> suggest, Func<ExpressionPreset, bool> authored)
@@ -167,7 +169,10 @@ namespace VRVlog.LilToonExporter
         // avatar's own faces; otherwise the custom list is recorded exactly.
         // A hidden unsupported face excluded earlier still counts, so hiding
         // it does not change what is exported.
-        internal bool UsesRecordRoute => Items.Any(item => item.Added || PlaceOf(item.Clip).Kind == PlaceKind.Excluded);
+        // A renamed custom face is recorded too: the ordinary export names
+        // faces after the avatar's menu, which the board cannot rename.
+        internal bool UsesRecordRoute => Items.Any(item => item.Added || PlaceOf(item.Clip) is var place &&
+            (place.Kind == PlaceKind.Excluded || place.Kind == PlaceKind.Other && Usable(item) && Names.ContainsKey(item.Clip)));
         internal int OverLimitBy => Math.Max(0, ExportedCustom().Count - ExperimentalExpressionCaptureSession.MaximumExpressions);
         internal bool ExceedsLimit => UsesRecordRoute && OverLimitBy > 0;
 
@@ -176,6 +181,45 @@ namespace VRVlog.LilToonExporter
         // Recorded faces are named after their files; a repeated name gets
         // " (2)" in list order when recorded, so it does not stop either route.
         internal bool CanRecordList => OverLimitBy == 0;
+
+        internal string NameOf(AnimationClip clip) =>
+            clip == null ? "" : Names.TryGetValue(clip, out var name) ? name : clip.name?.Trim() ?? "";
+        internal bool Renamed(AnimationClip clip) => clip != null && Names.ContainsKey(clip);
+
+        // A slot face is exported under the VRM preset name, so only faces of
+        // the custom and excluded lists can be renamed.
+        internal bool CanRename(AnimationClip clip) => Find(clip) is Item item && Usable(item) && PlaceOf(clip).Kind != PlaceKind.Slot;
+
+        internal const string EmptyName = "名前が空です";
+        internal const string NameTooLong = "名前は128文字までです";
+        internal const string NameHasControl = "改行やタブは使えません";
+        internal const string NameReservedFormat = "「{0}」はVRMで決まった表情の名前なので使えません";
+        internal const string NameTakenFormat = "「{0}」はその他の表情で使われています";
+
+        // Why the name cannot be used for this face, or null. The result is a
+        // localization key; a format takes the trimmed name.
+        internal string RenameError(AnimationClip clip, string name)
+        {
+            name = name?.Trim() ?? "";
+            if (name.Length == 0) return EmptyName;
+            if (name.Length > 128) return NameTooLong;
+            if (name.Any(char.IsControl)) return NameHasControl;
+            if (VrmMenuExpressions.Reserved(name)) return NameReservedFormat;
+            if (ExportedCustom().Any(other => other != clip && string.Equals(NameOf(other), name, StringComparison.Ordinal))) return NameTakenFormat;
+            return null;
+        }
+
+        // The file name, or an empty name, gives the face its file name back.
+        internal bool Rename(AnimationClip clip, string name)
+        {
+            if (!CanRename(clip)) return false;
+            name = name?.Trim() ?? "";
+            if (name.Length == 0 || name == (clip.name?.Trim() ?? "")) return Names.Remove(clip);
+            if (RenameError(clip, name) != null) return false;
+            if (Names.TryGetValue(clip, out var current) && current == name) return false;
+            Names[clip] = name;
+            return true;
+        }
 
         internal bool SlotFilled(ExpressionPreset preset) => SlotValue(preset) is PresetAssignment value && !value.IsNone || authored(preset);
         internal int SlotCount(IEnumerable<ExpressionPreset> group = null) => SlotsIn(group).Count(SlotFilled);

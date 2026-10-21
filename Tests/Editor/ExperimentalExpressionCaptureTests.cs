@@ -1891,6 +1891,39 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); }
         }
 
+        // The board name, not the file name, becomes the VRM custom expression name.
+        [Test]
+        public async Task ARenamedBoardFaceIsExportedUnderItsNewName()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var clip = new AnimationClip { name = "face_file_01" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 75));
+            var presets = new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>();
+            var board = new ExpressionBoard(presets, (preset, value) => { if (value == null) presets.Remove(preset); else presets[preset] = value; },
+                candidates => new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>(), null);
+            Vrm10Instance imported = null;
+            try
+            {
+                board.SetItems(null, new[] { new ExpressionBoard.Item { Clip = clip, Source = "Fixture" } });
+                Assert.That(board.Rename(clip, "笑顔 2"), Is.True);
+                Assert.That(board.UsesRecordRoute, Is.True);
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = board.NameOf(clip), Time = ExperimentalExpressionCaptureWindow.DefaultTime(clip) };
+                session.ReplaceClipRecords(new[] { input }, null);
+                var bytes = session.Export("Test", "Tests", new System.Collections.Generic.List<string>(), new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var names = imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray();
+                Assert.That(names, Does.Contain("笑顔 2"));
+                Assert.That(names, Does.Not.Contain("face_file_01"));
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         [Test]
         public void InvalidUpdatesPreserveEveryPreviouslyRecordedFace()
         {
