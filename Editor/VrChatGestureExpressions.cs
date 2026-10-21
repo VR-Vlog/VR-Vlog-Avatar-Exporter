@@ -44,7 +44,8 @@ namespace VRVlog.LilToonExporter
                     Id = "gesture/" + path,
                     Name = "ジェスチャー / " + (clip != null ? clip.name : path),
                     ExportName = clip != null ? clip.name : path.Substring(path.LastIndexOf('/') + 1),
-                    Source = ExpressionSource.Gesture
+                    Source = ExpressionSource.Gesture,
+                    Clip = clip
                 };
                 try
                 {

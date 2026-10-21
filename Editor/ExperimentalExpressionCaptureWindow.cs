@@ -641,6 +641,9 @@ namespace VRVlog.LilToonExporter
 
         const string OverLimitFormat = "その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません";
         const string DuplicateNamesFormat = "同じ名前の表情が{0}組あります・片方を書き出さない表情へ移すまで保存しません";
+        internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
+        internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にして同じ名前をなくす";
+        internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
 
         // The two steps of the detailed transfer; this window is the first.
         void DrawTransferSteps()
@@ -1410,7 +1413,11 @@ namespace VRVlog.LilToonExporter
         void RecordBoardClips()
         {
             RebuildBoard();
-            var exported = board.UsesRecordRoute ? board.ExportedCustom() : new System.Collections.Generic.List<AnimationClip>();
+            RecordClips(board.UsesRecordRoute ? board.ExportedCustom() : new System.Collections.Generic.List<AnimationClip>());
+        }
+
+        void RecordClips(System.Collections.Generic.List<AnimationClip> exported)
+        {
             foreach (var input in clipInputs) input.Time = DefaultTime(input.Clip);
             var inputs = exported.Select(clip => clipInputs.FirstOrDefault(input => input.Clip == clip) is var added && added != null
                 ? added : new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Time = DefaultTime(clip) }).ToArray();
@@ -1694,6 +1701,11 @@ namespace VRVlog.LilToonExporter
             var expressionCount = expressions.Length;
             // The record route replaces the menu faces even when nothing is left to record.
             var replaceCustomFaces = board.UsesRecordRoute;
+            // The ordinary route evaluates the menu again and can lose faces the
+            // board lists (a non-FX layer writing what a face reads). With fewer
+            // menu faces than the list, the same save records the list instead.
+            var listedFaces = replaceCustomFaces ? 0 : board.OtherCount;
+            var recordedList = false;
             // The report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
@@ -1724,10 +1736,71 @@ namespace VRVlog.LilToonExporter
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
+                var menuFaces = !replaceCustomFaces && listedFaces > 0 ? VrmMenuExpressions.CountRegistered(exported) : listedFaces;
+                if (menuFaces < listedFaces)
+                {
+                    var category = ExporterLocalization.T("その他の表情");
+                    string kept = null;
+                    // A recovery attempt after the board closed has no list to record.
+                    if (this == null || !ReferenceEquals(session, target))
+                        kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
+                    else
+                    {
+                        // The board may have changed before a recovery attempt.
+                        RebuildBoard();
+                        listedFaces = board.OtherCount;
+                        if (!board.CanRecordList) kept = string.Format(ExporterLocalization.T(MenuShortKeptFormat), menuFaces, listedFaces);
+                        else
+                        {
+                            // Set first: a canceled attempt still leaves the list recorded.
+                            recordedList = true;
+                            try
+                            {
+                                exported = ExportRecorded(board.ExportedCustom(), true);
+                                var recorded = string.Format(ExporterLocalization.T(MenuShortRecordedFormat), menuFaces, listedFaces);
+                                warnings.Add(recorded);
+                                report?.Fallbacks.Record(ExportOutcome.Approximated, category, reason: recorded, count: listedFaces);
+                            }
+                            catch (Exception exception) when (!(exception is OperationCanceledException))
+                            {
+                                // The menu result saved before this change is saved again.
+                                exported = ExportRecorded(new System.Collections.Generic.List<AnimationClip>(), false);
+                                recordedList = false;
+                                warnings.Add(exception.Message);
+                                kept = string.Format(ExporterLocalization.T(MenuShortNotRecordedFormat), menuFaces, listedFaces);
+                            }
+                        }
+                    }
+                    if (kept != null)
+                    {
+                        warnings.Add(kept);
+                        report?.Fallbacks.Record(ExportOutcome.Omitted, category, reason: kept, count: Math.Max(0, listedFaces - menuFaces));
+                    }
+                }
                 savedReport = report?.Fallbacks;
                 return exported;
+
+                // Records the clips on the board and exports this save again;
+                // later recovery attempts of the save take the same route.
+                byte[] ExportRecorded(System.Collections.Generic.List<AnimationClip> clips, bool replace)
+                {
+                    var shown = status;
+                    RecordClips(clips);
+                    status = shown;
+                    expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
+                    expressionCount = expressions.Length;
+                    replaceCustomFaces = replace;
+                    // The earlier result is replaced, its warnings with it.
+                    warnings.Clear();
+                    foreach (var warning in target.Warnings) warnings.Add(warning);
+                    return target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
+                        presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
+                }
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
+            // The bytes are made by now; the board keeps its own records again,
+            // whether the save finished, waits on the result list or stopped.
+            if (recovery == null && recordedList && this != null && ReferenceEquals(session, target)) RecordBoardClips();
             if (recovery != null)
             {
                 recovery.RetainInput(target.RetainForRecovery());
