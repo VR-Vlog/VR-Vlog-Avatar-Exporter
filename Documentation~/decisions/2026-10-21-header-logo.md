@@ -40,4 +40,6 @@
 ## 確認したこと
 
 - 検証PC の Unity 2022.3.22f1 で 14 画面を開いた。12 画面に加えて、**アプリに転送（かんたん）** と **アプリに転送（通常）** を含む。変更前（develop）と変更後で、タブと本文の上部を撮って比べた。変更後は、どのタブにもロゴがなく、本文の上部にロゴと画面名の見出しが出た。Unity を再起動して、保存済みのレイアウトから戻ったウィンドウでも同じだった。
-- 同じ検証PC で EditMode テストを回した。対象は `ExperimentalExpressionCaptureTests`・`DependencyStartupTests`・アプリに転送のテスト。タブにロゴがないこと、見出しのロゴを閉じても破棄せずスクリプトの再読み込み後も同じテクスチャを使うことを `HeaderLogoIsSharedAndSurvivesScriptReload` で確かめる。
+- 同じ検証PC で EditMode テストを全件回した。389 件のうち、382 件が成功、1 件がスキップ、6 件が失敗した。失敗した 6 件は develop でも同じように失敗する。4 件は任意の SDK が検証PC のプロジェクトに入っていないため、2 件はクリック操作を使うテストのため。
+- タブにロゴがないことは、`ExperimentalExpressionCaptureTests`（5 言語）・`DependencyStartupTests`・起動時の確認で確かめた。見出しのロゴを閉じても破棄せず、スクリプトの再読み込み後も同じテクスチャを使うことは、`HeaderLogoIsSharedAndSurvivesScriptReload` で確かめた。
+- 変更前から、Unity を再起動して戻った **アプリに転送（かんたん）** では、最初の数秒だけ見出しの画面名が空になる。この変更とは関係なく、develop でも同じだった。
