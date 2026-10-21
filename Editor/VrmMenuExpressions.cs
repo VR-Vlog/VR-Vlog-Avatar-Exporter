@@ -20,7 +20,7 @@ namespace VRVlog.LilToonExporter
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
             // The gesture clip this face plays, if any (VrChatExpressionMenu.Entry.Clip).
-            internal UnityEngine.AnimationClip Clip;
+            internal UnityEngine.Object Clip = null;
             // Original BlendShape names this face moves away from rest, with
             // the weight (0-100) it ends on. Emotion inference reads them when
             // the menu label says nothing; the final binds may use baked or
@@ -156,7 +156,7 @@ namespace VRVlog.LilToonExporter
             var nodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             var document = new ExpressionAnimationDocument();
-            var written = new List<(UnityEngine.AnimationClip Clip, string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
+            var written = new List<(UnityEngine.Object Clip, string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
             foreach (var expression in expressions)
             {
                 // The name carries no source prefix; the extension lists the
