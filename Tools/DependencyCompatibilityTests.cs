@@ -45,15 +45,30 @@ public static class DependencyCompatibilityTests
             Check(DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance freeze " + version);
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "No MA error " + version);
         }
-        foreach (var version in new[] { null, "", "1.17.1", "1.13.4", "1.10.0", "1.19.0", "1.19.0-alpha.0", "1.19.0-alpha.2", "1.18.7-beta.1",
-            "1.18.0-rc.1", "1.18.7+local", "2.0.0", "0.18.7", "1.18", "1.18.7.0", " 1.18.7", "1.18.7 ", "v1.18.7", "01.18.7", "1.18.07", "1.18.x" })
+        foreach (var version in new[] { "1.17.1", "1.13.4", "1.10.0", "1.19.0", "2.0.0", "0.18.7" })
         {
-            Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + (version ?? "null"));
+            Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + version);
+            Check(!DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is read " + version);
             var error = DependencyPolicy.ModularAvatarAppearanceError(version);
             Check(error != null && error.Contains("1.18.0以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "MA error names the range, the fix and that the avatar is unchanged");
-            Check(error.Contains(string.IsNullOrEmpty(version) ? "Modular Avatar ?" : "Modular Avatar " + version), "MA error names the installed version");
+            Check(error.Contains("Modular Avatar " + version), "MA error names the installed version");
         }
+        // A version that cannot be read (MA under Assets, pre-releases, other
+        // spellings) does not stop before MA's API is tried.
+        foreach (var version in new[] { null, "", "1.19.0-alpha.0", "1.19.0-alpha.2", "1.18.7-beta.1", "1.18.0-rc.1", "1.18.7+local",
+            "1.18", "1.18.7.0", " 1.18.7", "1.18.7 ", "v1.18.7", "01.18.7", "1.18.07", "1.18.x" })
+        {
+            Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA version is not a supported release " + (version ?? "null"));
+            Check(DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is unknown " + (version ?? "null"));
+            Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "Unknown MA version does not stop " + (version ?? "null"));
+            var error = DependencyPolicy.ModularAvatarUnknownVersionError(version);
+            Check(error.StartsWith("Modular Avatarの版を読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
+                error.Contains("1.18.0以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+                "Unknown MA version error says the version was not read, the range and the fix");
+        }
+        Check(DependencyPolicy.ModularAvatarUnknownVersionError(null, text => "[" + text + "]").StartsWith("[Modular Avatarの版", StringComparison.Ordinal),
+            "Caller-supplied translation applies to the unknown MA version format");
         Check(DependencyPolicy.ModularAvatarAppearanceError("1.17.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.17.1", StringComparison.Ordinal),
             "Caller-supplied translation applies to the MA format");
         Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");
