@@ -59,10 +59,17 @@ namespace VRVlog.LilToonExporter
         internal const string LightLimitSettings = "light-limit-settings";
         internal const string CameraGimmick = "camera-gimmick";
         internal const string RenderTextureCamera = "render-texture-camera";
+        // Not table rules: ExportGimmickDetection checks them after the table.
+        internal const string PlatformFilter = "platform-filter";
+        internal const string VrChatOnlyStructure = "vrchat-only-structure";
 
-        const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
-        const string MenuInstaller = "nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller";
-        const string MergeAnimator = "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator";
+        internal const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
+        internal const string ContactSender = "VRC.SDK3.Dynamics.Contact.Components.VRCContactSender";
+        internal const string MenuInstaller = "nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller";
+        internal const string MergeAnimator = "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator";
+        internal const string MergeArmature = "nadena.dev.modular_avatar.core.ModularAvatarMergeArmature";
+        internal const string MeshSettings = "nadena.dev.modular_avatar.core.ModularAvatarMeshSettings";
+        internal const string PlatformFilterType = "nadena.dev.modular_avatar.core.ModularAvatarPlatformFilter";
 
         static ExportGimmickValue Contact(string path, string parameter) =>
             new ExportGimmickValue { Path = path, Type = ContactReceiver, Property = "parameter", Value = parameter };
