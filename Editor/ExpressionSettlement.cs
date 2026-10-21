@@ -232,7 +232,7 @@ namespace VRVlog.LilToonExporter
             // A layer that keeps restarting into its state shows that state
             // throughout; the fixed pose check requires its curves to be
             // constant and its callbacks to change nothing.
-            bool Restarts(int layer) => Restarting(playable, controller, layer, Parameters(playable, controller), Resolve);
+            bool Restarts(int layer) => RestartsInto(controller, layer, Entered(layer), Parameters(playable, controller), Resolve);
             void Final(float seconds)
             {
                 // A restart inside one long step can leave the clock past its
@@ -343,7 +343,14 @@ namespace VRVlog.LilToonExporter
             IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
         {
             var hash = playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
-            if (playable.GetNextAnimatorStateInfo(layer).fullPathHash != hash) return false;
+            return playable.GetNextAnimatorStateInfo(layer).fullPathHash == hash && RestartsInto(controller, layer, hash, parameters, resolve);
+        }
+
+        // Whether such an edge holds for the state, whether or not its
+        // transition is running at this instant.
+        private static bool RestartsInto(AnimatorController controller, int layer, int hash,
+            IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
+        {
             var (state, ancestors) = resolve(layer, hash);
             if (state == null) return false;
             var triggers = new HashSet<string>(controller.parameters.Where(parameter => parameter.type == AnimatorControllerParameterType.Trigger)
