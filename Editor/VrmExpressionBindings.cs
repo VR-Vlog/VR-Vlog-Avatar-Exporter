@@ -142,7 +142,7 @@ namespace VRVlog.LilToonExporter
                     var target = ExpressionNameInference.FindExact(names, mapping.Aliases);
                     if (target == -2)
                     {
-                        Warn(warnings, $"{mapping.Preset}: mesh {meshIndex} に同名の表情が複数あるため自動設定を省略しました。");
+                        Warn(warnings, string.Format(ExporterLocalization.T(DuplicateExpressionFormat), mapping.Preset, meshIndex));
                         continue;
                     }
                     if (target < 0) continue;
@@ -179,10 +179,12 @@ namespace VRVlog.LilToonExporter
             }
             if (inferBlink && (presets == null || (!presets.ContainsKey("blink") &&
                 !(presets.ContainsKey("blinkLeft") && presets.ContainsKey("blinkRight")))))
-                Warn(warnings, "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。");
+                Warn(warnings, ExporterLocalization.T(BlinkNotGeneratedWarning));
             return changed ? glb.Write() : bytes;
         }
 
+        internal const string DuplicateExpressionFormat = "{0}: mesh {1} に同名の表情が複数あるため自動設定を省略しました。";
+        internal const string BlinkNotGeneratedWarning = "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。";
         internal const string KnownNameFormat = "{0}: 既知の表情名からVRMの割り当てを追加しました。動作を確認してください。";
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
