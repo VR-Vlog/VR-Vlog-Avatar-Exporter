@@ -155,6 +155,9 @@ namespace VRVlog.LilToonExporter
             // Authored faces skip them instead of reading the same face twice.
             internal readonly HashSet<(int Layer, UnityEditor.Animations.AnimatorState State)> GestureStates =
                 new HashSet<(int Layer, UnityEditor.Animations.AnimatorState State)>();
+            // Shows the expression being read after the menu loop. Null when
+            // the import runs without a progress bar.
+            internal Action<string> Progress;
 #endif
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
