@@ -195,6 +195,66 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AnUnsupportedFileIsNotAddedAndItsReasonIsShown()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var face = new AnimationClip { name = "Face only" }; var bone = new AnimationClip { name = "Face and bone" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            try
+            {
+                AnimationUtility.SetEditorCurve(face, binding, AnimationCurve.Constant(0, 1, 60));
+                AnimationUtility.SetEditorCurve(bone, binding, AnimationCurve.Constant(0, 1, 60));
+                AnimationUtility.SetEditorCurve(bone, unsupported, AnimationCurve.Constant(0, 1, 0));
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                var reason = session.ClipError(bone, bone.length);
+                Assert.That(reason, Is.Not.Null);
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+
+                var single = Assert.Throws<System.Reflection.TargetInvocationException>(() => type.GetMethod("AddClip", flags).Invoke(window, new object[] { bone }));
+                Assert.That(single.InnerException, Is.TypeOf<InvalidOperationException>());
+                Assert.That(single.InnerException.Message, Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(new[] { (bone.name, reason) })));
+                Assert.That(inputs, Is.Empty, "An unsupported file is not added.");
+
+                // Dropping several files adds the usable ones, says how many, and names the rest.
+                var several = Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+                    type.GetMethod("AddClips", flags).Invoke(window, new object[] { new[] { face, bone } }));
+                var added = string.Format(ExporterLocalization.T("{0}件の表情を追加しました"), 1);
+                Assert.That(several.InnerException.Message, Is.EqualTo(added + "\n" + ExperimentalExpressionCaptureWindow.RejectedMessage(new[] { (bone.name, reason) })));
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { face }));
+                Assert.That(inputs.Single().Error, Is.Null);
+                Assert.That((string)type.GetField("status", flags).GetValue(window), Is.EqualTo(added));
+
+                // An unsupported file does not count toward the limit of 64.
+                var fillers = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions - 2).Select(index =>
+                {
+                    var filler = new AnimationClip { name = "Filler " + index };
+                    AnimationUtility.SetEditorCurve(filler, binding, AnimationCurve.Constant(0, 1, index));
+                    return filler;
+                }).ToArray();
+                try
+                {
+                    foreach (var filler in fillers) inputs.Add(new ExperimentalExpressionCaptureSession.ClipInput { Clip = filler, Name = filler.name });
+                    var last = new AnimationClip { name = "Last face" };
+                    AnimationUtility.SetEditorCurve(last, binding, AnimationCurve.Constant(0, 1, 30));
+                    try
+                    {
+                        Assert.Throws<System.Reflection.TargetInvocationException>(() =>
+                            type.GetMethod("AddClips", flags).Invoke(window, new object[] { new[] { last, bone } }));
+                        Assert.That(inputs.Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
+                        Assert.That(inputs.Last().Clip, Is.EqualTo(last));
+                    }
+                    finally { Object.DestroyImmediate(last); }
+                }
+                finally { foreach (var filler in fillers) Object.DestroyImmediate(filler); }
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(face); Object.DestroyImmediate(bone); }
+        }
+
+        [Test]
         public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
