@@ -149,6 +149,59 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ASharedResetLayerEnteredByNotEqualIsNotASecondFace()
+        {
+            var smile = FaceClip("Smile");
+            var controller = Controller((smile, 1));
+            var machine = Keep(new AnimatorStateMachine());
+            machine.defaultState = machine.AddState("Idle");
+            var reset = machine.AddState("Reset"); reset.motion = FaceClip("Reset");
+            machine.AddAnyStateTransition(reset).AddCondition(AnimatorConditionMode.NotEqual, 0, "Face");
+            controller.layers = controller.layers.Append(new AnimatorControllerLayer { name = "Reset", defaultWeight = 1, stateMachine = machine }).ToArray();
+            var items = new[] { Item("Face / Smile", 1) };
+            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty,
+                "The reset face is selected by every value, so it does not split this item.");
+            Assert.That(Session.MenuClipPaths(items, controller, FaceOff), Does.Not.ContainKey(smile),
+                "MenuClipPaths is unchanged: the item still selects two clips there.");
+        }
+
+        [Test]
+        public void AnItemWithOneClipAndABlendTreeFaceIsNotListed()
+        {
+            // Spec choice: the item is linked to its clip, which is on the board.
+            var smile = FaceClip("Smile");
+            var controller = Controller((smile, 1), (Tree(FaceClip("Laugh")), 1));
+            var items = new[] { Item("Face / Smile", 1) };
+            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty);
+            Assert.That(Session.MenuClipPaths(items, controller, FaceOff)[smile], Is.EqualTo(new[] { "Face / Smile" }));
+        }
+
+        [Test]
+        public void AMenuThatCannotBeReadIsUnreadableNotEmpty()
+        {
+            var links = Session.ReadMenuLinks(() => throw new InvalidOperationException("broken"), out var overLimit);
+            Assert.That(links.Outside, Is.Null);
+            Assert.That(links.Paths, Is.Empty);
+            Assert.That(overLimit, Is.Null);
+            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
+                Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
+        }
+
+        [Test]
+        public void AMenuOverTheReadLimitIsUnreadableAndKeepsTheOverLimitNote()
+        {
+            var summary = new VrChatMenuImportSummary { CandidateCount = 300, LimitReason = "candidates" };
+            var links = Session.ReadMenuLinks(() => throw new VrChatMenuImportLimitException(summary), out var overLimit);
+            Assert.That(links.Outside, Is.Null, "The record route still drops those items, so they cannot be checked.");
+            Assert.That(links.Paths, Is.Empty);
+            Assert.That(overLimit, Is.SameAs(summary));
+            Assert.That(Session.MenuOverLimitNote(overLimit),
+                Is.EqualTo(string.Format(ExporterLocalization.T(Session.MenuOverLimitItemsFormat), 300, 256)));
+            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
+                Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
+        }
+
+        [Test]
         public void AnAvatarWithoutAVrChatMenuHasNoItemsRatherThanAFailure()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();

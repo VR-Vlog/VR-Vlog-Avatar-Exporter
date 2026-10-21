@@ -1175,6 +1175,8 @@ namespace VRVlog.LilToonExporter
                     GUI.DrawTexture(new Rect(line.x + Gap, line.y + 3, 16, 16), icon, ScaleMode.ScaleToFit);
                 var textRect = new Rect(line.x + Gap + 20, line.y, Mathf.Max(0, line.width - Gap * 2 - 20), line.height - 1);
                 GUI.Label(textRect, new GUIContent(Fit(band.Value.Text, dimMini, textRect.width), band.Value.Tooltip), dimMini);
+                // An empty label over the full line, so the icon and the gaps
+                // show the tooltip too, not only the text.
                 GUI.Label(line, new GUIContent("", band.Value.Tooltip), GUIStyle.none);
                 body = new Rect(body.x, body.y + MenuLossBandHeight, body.width, Mathf.Max(0, body.height - MenuLossBandHeight));
             }

@@ -277,7 +277,16 @@ namespace VRVlog.LilToonExporter
                     if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
                     continue;
                 }
-                var moved = faces.Where(face => Selects(face.Transition)).ToArray();
+                // An item linked to one clip has returned above, even when the
+                // same item also enters a Blend Tree face (a mixed item): the
+                // clip is on the board, so it is not counted here.
+                // Only destinations picked by an equality on the item's own
+                // parameter count. A shared layer entered by Face NotEqual 0,
+                // Greater or Less (a reset face) is selected by every value, so
+                // it would give every toggle a second face.
+                bool PicksThisValue(AnimatorTransitionBase transition) => transition.conditions.Any(condition => condition.parameter == parameter &&
+                    (condition.mode == AnimatorConditionMode.Equals || condition.mode == AnimatorConditionMode.If || condition.mode == AnimatorConditionMode.IfNot));
+                var moved = faces.Where(face => Selects(face.Transition) && PicksThisValue(face.Transition)).ToArray();
                 if ((moved.Select(face => face.Face).Distinct().Count() > 1 || moved.Any(face => !face.Single)) && !outside.Contains(entry.Name))
                     outside.Add(entry.Name);
             }
