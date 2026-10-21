@@ -23,6 +23,8 @@
 `ReadPose` で、Unity の Humanoid の曲線を BlendShape を動かさないものとして読み飛ばす。
 
 - 何を Humanoid の曲線とみなすかは、名前の推測ではなく Unity の定義から作る。`HumanTrait.MuscleName` の全筋肉（Clip での指の表記 `LeftHand.Index.1 Stretched` と元の表記の両方）、`RootT`・`RootQ`・`MotionT`・`MotionQ`、手足の IK（`LeftHandT` など）。Animator 型・パスが空・参照曲線でないものに限る。
+- `ReadPose` はメニューの表情（FaceEmo の Clip・手で作った表情）からも使われるので、そちらでも同じ曲線を読み飛ばす。BlendShape を動かさない点は同じなので、扱いをそろえた。
+- Controller に Humanoid の曲線と同じ名前のパラメーターがある場合は区別しない。Unity の予約名と重なる名前のパラメーターは実用上ないものとして扱った。
 - 値の検査（有限か）は、これまでどおり `SelectedExpressionAppearance.ValidateClipData` が全曲線に対して行う。
 
 ## 入れなかったもの
