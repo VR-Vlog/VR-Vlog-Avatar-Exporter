@@ -153,8 +153,9 @@ namespace VRVlog.LilToonExporter
                 {
                     normalScales[existing] = normalScale;
                     var record = (Dictionary<string, object>)textures[existing];
-                    // An unknown scale only needs Half, which is already stored.
-                    if (!float.IsPositiveInfinity(normalScale) || (string)record["format"] != "rgbaHalf")
+                    // Half holds the canonical values for any scale, so only an
+                    // image stored as rgba32 needs another decision.
+                    if ((string)record["format"] == "rgba32")
                     {
                         var stored = (List<object>)record["chunks"];
                         record["format"] = StoreNormal(Pixels(source, true, false, true, true).ToList(), normalScale,
