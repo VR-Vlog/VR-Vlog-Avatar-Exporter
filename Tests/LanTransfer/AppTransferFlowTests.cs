@@ -335,6 +335,27 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(AppTransferFlow.TermsUrl, Is.EqualTo("https://vrvlog.fun/terms/"));
         }
 
+        [TestCase("Waiting", true, true, true)]
+        [TestCase("Waiting", true, false, false)]
+        [TestCase("Waiting", false, true, false)]
+        [TestCase("Failed", false, true, false)]
+        [TestCase("Failed", true, true, false)]
+        [TestCase("Canceled", false, true, false)]
+        [TestCase("Expired", false, true, false)]
+        [TestCase("Completed", false, true, false)]
+        [TestCase("Uploading", false, true, false)]
+        [TestCase("Form", false, true, false)]
+        public void OnlyAQrOnScreenWithTheSoundOnBeeps(string view, bool qrShown, bool soundOn, bool beeps)
+        {
+            Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrShown, soundOn), Is.EqualTo(beeps));
+        }
+
+        [Test]
+        public void QrReadySoundIsOnByDefault()
+        {
+            Assert.That(AppTransferFlow.QrReadySoundByDefault, Is.True);
+        }
+
         [Test]
         public void WindowTextFollowsTheWordingRulesAndExistsInEveryLocale()
         {
@@ -345,7 +366,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(36));
+            Assert.That(texts.Length, Is.EqualTo(37));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {
