@@ -590,6 +590,56 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The quick transfer saves without asking: a failing stage follows the
+        // project-wide choice (省いて続ける) instead of opening the recovery window.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void NonInteractiveTransferFollowsTheStageChoice(bool continueOnFailure)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            var texture = new RenderTexture(16, 16, 0);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stage-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
+            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var saved = 0;
+            try
+            {
+                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, continueOnFailure);
+                material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var failure = window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved++, interactive: false);
+                if (continueOnFailure)
+                {
+                    Assert.That(failure, Is.Null);
+                    Assert.That(saved, Is.EqualTo(1));
+                    Assert.That(File.Exists(path), Is.True);
+                    Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.False);
+                }
+                else
+                {
+                    Assert.That(failure, Is.Not.Null);
+                    Assert.That(saved, Is.Zero);
+                    Assert.That(File.Exists(path), Is.False);
+                    Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.True);
+                }
+            }
+            finally
+            {
+                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
+                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
         // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
         // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
