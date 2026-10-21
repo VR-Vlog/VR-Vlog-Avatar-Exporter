@@ -26,6 +26,9 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryOptions
     {
         internal readonly List<ExportRecoveryAction> Actions = new List<ExportRecoveryAction>();
+
+        internal static List<ExportRecoveryAction> ActionsOrEmpty(ExportRecoveryOptions options) =>
+            options?.Actions ?? new List<ExportRecoveryAction>();
     }
 
     internal sealed class ExportRecoveryDiagnostic
@@ -210,7 +213,7 @@ namespace VRVlog.LilToonExporter
 
         internal static VrChatMenuImportPolicy MenuImportPolicy(GameObject source, ExportRecoveryOptions options)
         {
-            var actions = (options?.Actions ?? new List<ExportRecoveryAction>()).Where(a => a != null &&
+            var actions = ExportRecoveryOptions.ActionsOrEmpty(options).Where(a => a != null &&
                 (a.Kind == ExportRecoveryActionKind.SkipVrChatMenus || a.Kind == ExportRecoveryActionKind.ExcludeMenuBranch)).ToArray();
             if (actions.Length == 0) return null;
             if (source == null) throw new InvalidOperationException("対策のVRChatメニューが選択アバターの原本と一致しません。再検査してください。");
@@ -363,7 +366,7 @@ namespace VRVlog.LilToonExporter
 
         internal void Apply(ICollection<string> warnings = null)
         {
-            foreach (var action in options?.Actions ?? new List<ExportRecoveryAction>()) Validate(action);
+            foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options)) Validate(action);
             var skipAllMenus = options?.Actions.Any(action => action.Kind == ExportRecoveryActionKind.SkipVrChatMenus) == true;
             // Copy every material in the copy, including inactive wardrobes.
             // Never change a persistent material or any shared source material.
@@ -389,7 +392,7 @@ namespace VRVlog.LilToonExporter
                     foreach (var layer in new[] { "2nd", "3rd" })
                         if (bakeOptions?.Omits(original, layer) == true && slots[i].HasProperty("_UseMain" + layer + "Tex"))
                             slots[i].SetFloat("_UseMain" + layer + "Tex", 0);
-                    foreach (var action in options?.Actions ?? new List<ExportRecoveryAction>())
+                    foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
                     {
                         if (action.Material != original && action.Material != current) continue;
                         var property = action.Kind == ExportRecoveryActionKind.DisableAudioLink ? "_UseAudioLink" :
@@ -424,7 +427,7 @@ namespace VRVlog.LilToonExporter
                         { property.objectReferenceValue = replacement; changed = true; }
                     if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
                 }
-            foreach (var action in options?.Actions ?? new List<ExportRecoveryAction>())
+            foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
             {
                 // Full omission supersedes branch scope. Keep branch choices
                 // in the recipe, but never report them as additional changes.

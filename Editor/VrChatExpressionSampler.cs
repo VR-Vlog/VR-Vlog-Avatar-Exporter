@@ -18,6 +18,9 @@ namespace VRVlog.LilToonExporter
         // Tests count the override probe analyses that actually run.
         internal static Action<string> ProbeAnalysisObserver;
 
+        // A layer or clip weight at or below this counts as not playing.
+        private const float NegligibleWeight = 0.00001f;
+
         // Source exclusions name the original hierarchy. After authoring passes,
         // an active retained renderer can occupy an omitted object's old path.
         // The omission must not transfer to that unrelated retained identity.
@@ -749,7 +752,7 @@ namespace VRVlog.LilToonExporter
                 var temporal = new List<string>();
                 HashSet<(int Layer, AnimationClip Clip, EditorCurveBinding Binding)> gateShadowed = null;
                 bool Settles(int layer) => !excludedLayers.Contains(layer) && !equivalentStates.Contains(layer) &&
-                    (layer == 0 || playable.GetLayerWeight(layer) > 0.00001f || dependencies.WeightControlLayers.Contains(layer));
+                    (layer == 0 || playable.GetLayerWeight(layer) > NegligibleWeight || dependencies.WeightControlLayers.Contains(layer));
                 // Report the layers whose state, before or after settlement
                 // advances time, plays a BlendTree that still moves. The
                 // caller decides whether a time decision may stand for it.
@@ -774,8 +777,7 @@ namespace VRVlog.LilToonExporter
                 var settled = followTransitions && ExpressionSettlement.Settle(graph, playable, controller,
                     Settles,
                     remember, temporal,
-                    (layer, clip, binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-                        binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) && excludedPath?.Invoke(binding.path) != true &&
+                    (layer, clip, binding) => PoseSampling.IsBlendShape(binding) && excludedPath?.Invoke(binding.path) != true &&
                         (!dependencies.NativeSupportLayers.Contains(layer) && projectionPlan == null || dependencies.Morphs.Contains(binding)) &&
                         gateShadowed?.Contains((layer, clip, binding)) != true,
                     () =>
@@ -929,7 +931,7 @@ namespace VRVlog.LilToonExporter
                         if (info.weight == 0 || !observed.Add(info.clip)) continue;
                         foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
                         {
-                            if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) continue;
+                            if (!PoseSampling.IsBlendShape(binding)) continue;
                             // A fully explicit prepared-zero facial companion
                             // cannot become a selected automatic contribution.
                             // Use the entire effective curve and geometry proof.
@@ -1138,8 +1140,7 @@ namespace VRVlog.LilToonExporter
             bool Moves(AnimationClip clip, Func<EditorCurveBinding, bool> relevant) => clip != null &&
                 (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip)).Any(binding => relevant(binding) &&
                     !(cache?.Constant(clip, binding) ?? IsConstant(AnimationUtility.GetEditorCurve(clip, binding))));
-            return clips.Any(clip => Moves(clip, binding => binding.type == typeof(SkinnedMeshRenderer) &&
-                    binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) && excludedPath?.Invoke(binding.path) != true)) ||
+            return clips.Any(clip => Moves(clip, binding => PoseSampling.IsBlendShape(binding) && excludedPath?.Invoke(binding.path) != true)) ||
                 runtime.animationClips.Distinct().Any(clip => Moves(clip, binding => binding.type == typeof(Animator) && binding.path == "" &&
                     inputs.Contains(binding.propertyName)));
         }
@@ -1345,7 +1346,7 @@ namespace VRVlog.LilToonExporter
                     foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
                     {
                         if (!capturedMorphs.Contains(binding) || excludedPath?.Invoke(binding.path) == true ||
-                            binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) continue;
+                            !PoseSampling.IsBlendShape(binding)) continue;
                         var curve = AnimationUtility.GetEditorCurve(info.clip, binding);
                         if (IsConstant(curve)) continue;
                         if (FindRenderer(avatar, binding.path).sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0) continue;
@@ -1401,8 +1402,7 @@ namespace VRVlog.LilToonExporter
                 state.cycleOffsetParameterActive || state.mirrorParameterActive || state.cycleOffset != 0 || state.mirror || state.iKOnFeet ||
                 !Finite(state.speed) || state.speed <= 0) return null;
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))) return null;
+            if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding))) return null;
             var phase = Math.Min(1.0, info.normalizedTime) * clip.length;
             foreach (var binding in bindings)
             {
@@ -1597,7 +1597,7 @@ namespace VRVlog.LilToonExporter
                     if (binding.type == typeof(Animator) || excludedPath?.Invoke(binding.path) == true) continue;
                     if (HarmlessAppearance(neutralAvatar, clip, binding, unchangedAppearanceClips, excludedPath)) continue;
                     if (neutralPlan?.AllowsEvaluationBinding(clip, binding) == true) continue;
-                    if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                    if (!PoseSampling.IsBlendShape(binding))
                         throw UnsupportedAppearance(neutralPlan, "表情への遷移にBlendShape以外の変化が含まれます: " +
                             clip.name + " / " + binding.path + " / " + binding.propertyName + NeutralBindingDiagnostic(neutralPlan, clip, binding));
                 }
@@ -1618,7 +1618,7 @@ namespace VRVlog.LilToonExporter
             foreach (var layer in layers)
                 foreach (var info in playable.GetCurrentAnimatorClipInfo(layer).Concat(playable.GetNextAnimatorClipInfo(layer)))
                 {
-                    if (info.clip == null || info.weight <= 0.00001f || !visited.Add(info.clip)) continue;
+                    if (info.clip == null || info.weight <= NegligibleWeight || !visited.Add(info.clip)) continue;
                     if (capturedMorphs != null && AnimationUtility.GetAnimationEvents(info.clip).Length != 0)
                         throw new InvalidOperationException("常時適用FXと表情の影響範囲を確定できません。");
                     var objectChange = ObjectChangeDiagnostic(info.clip, excludedPath, neutralPlan);
@@ -1631,7 +1631,7 @@ namespace VRVlog.LilToonExporter
                         if (excludedPath?.Invoke(binding.path) == true) continue;
                         if (HarmlessAppearance(neutralAvatar, info.clip, binding, unchangedAppearanceClips, excludedPath)) continue;
                         if (neutralPlan?.AllowsEvaluationBinding(info.clip, binding) == true) continue;
-                        if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        if (!PoseSampling.IsBlendShape(binding))
                             throw UnsupportedAppearance(neutralPlan, "表情への遷移にBlendShape以外の変化が含まれます: " +
                                 info.clip.name + " / " + binding.path + " / " + binding.propertyName + NeutralBindingDiagnostic(neutralPlan, info.clip, binding));
                         if (capturedMorphs == null || capturedMorphs.Contains(binding)) history.Add(binding);
@@ -1683,7 +1683,7 @@ namespace VRVlog.LilToonExporter
                 .Select(parameter => parameter.name), StringComparer.Ordinal);
             if (AnimationUtility.GetAnimationEvents(clip).Length != 0 || AnimationUtility.GetObjectReferenceCurveBindings(clip).Length != 0 ||
                 AnimationUtility.GetCurveBindings(clip).Any(binding =>
-                    !(binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                    !(PoseSampling.IsBlendShape(binding) ||
                       binding.type == typeof(Animator) && parameters.Contains(binding.propertyName)) ||
                     !IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))) return false;
             return machine.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(machine.entryTransitions)
@@ -1784,7 +1784,7 @@ namespace VRVlog.LilToonExporter
                 var layerTimedValues = !neutral && dependencies?.RequireSettledWeightControls == true &&
                     dependencies.WeightControlLayers.Contains(layer) ?
                     NeutralCurveConditions.FixedTimedValues(playable, controller, timedValues, dependencies, null) : timedValues;
-                if (layer > 0 && playable.GetLayerWeight(layer) <= 0.00001f && dependencies?.WeightControlLayers.Contains(layer) != true) continue;
+                if (layer > 0 && playable.GetLayerWeight(layer) <= NegligibleWeight && dependencies?.WeightControlLayers.Contains(layer) != true) continue;
                 // Settlement judges a restarting layer by its edge, so the
                 // same layer is checked here even between two restarts.
                 var selfTransition = InSelfTransition(playable, layer) ||
@@ -1864,7 +1864,7 @@ namespace VRVlog.LilToonExporter
                     Visit(layers[layer].stateMachine, rootName, false, false);
                 if (!found) throw new InvalidOperationException("評価中のFX状態を特定できません。");
                 foreach (var info in playable.GetCurrentAnimatorClipInfo(layer).Concat(playable.GetNextAnimatorClipInfo(layer)))
-                    if (info.clip != null && info.weight > 0.00001f)
+                    if (info.clip != null && info.weight > NegligibleWeight)
                     {
                         if (nativeSupportLayers?.Contains(layer) == true && AnimationUtility.GetAnimationEvents(info.clip).Length != 0)
                             throw new InvalidOperationException("常時適用FXと表情の影響範囲を確定できません。");
@@ -1874,9 +1874,11 @@ namespace VRVlog.LilToonExporter
                             throw UnsupportedAppearance(neutralPlan, "常時適用FXと表情の影響範囲を確定できません。");
                         foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
                         {
+                            string CurveLabel() => layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName;
+                            bool NamesParameter() => controller.parameters.Any(parameter => parameter.name == binding.propertyName);
                             if (excludedPath?.Invoke(binding.path) == true) continue;
                             if (binding.type != typeof(Animator) &&
-                                !(binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))) continue;
+                                !PoseSampling.IsBlendShape(binding)) continue;
                             // WD/additive support remains active, including its
                             // native parameter curves. An internal parameter with
                             // no path to this pose need not itself become static.
@@ -1884,7 +1886,7 @@ namespace VRVlog.LilToonExporter
                                 !requiredParameterCurves.Contains(binding.propertyName))
                             {
                                 var parameterCurve = AnimationUtility.GetEditorCurve(info.clip, binding);
-                                ValidateNativeParameterCurve(parameterCurve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(parameterCurve, CurveLabel());
                                 continue;
                             }
                             // A humanoid muscle or root motion curve names no
@@ -1892,11 +1894,9 @@ namespace VRVlog.LilToonExporter
                             // BlendShape, so it never moves a probed expression.
                             // The default face itself keeps refusing it and
                             // falls back to the prepared rest.
-                            if (neutral && !restFace && binding.type == typeof(Animator) &&
-                                !controller.parameters.Any(parameter => parameter.name == binding.propertyName))
+                            if (neutral && !restFace && binding.type == typeof(Animator) && !NamesParameter())
                             {
-                                ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding),
-                                    layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding), CurveLabel());
                                 continue;
                             }
                             // An uncaptured support/appearance morph may target
@@ -1917,12 +1917,12 @@ namespace VRVlog.LilToonExporter
                                 // active clip's actual native interpolation.
                                 // Keep data checks and the later graph/weight/
                                 // binding/pose stability checkpoints intact.
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
                             if (terminalClip == info.clip && binding.type == typeof(SkinnedMeshRenderer))
                             {
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
                             if (IsConstant(curve)) continue;
@@ -1931,9 +1931,9 @@ namespace VRVlog.LilToonExporter
                             // parameter. It cannot change a BlendShape, so a
                             // looping hand idle beside the face is settled too.
                             if (temporalWarnings != null && plainClock && (binding.type == typeof(SkinnedMeshRenderer) ||
-                                binding.type == typeof(Animator) && !controller.parameters.Any(parameter => parameter.name == binding.propertyName)))
+                                binding.type == typeof(Animator) && !NamesParameter()))
                             {
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 ExpressionSettlement.Clip(playable.GetCurrentAnimatorStateInfo(layer).loop, temporalWarnings);
                                 continue;
                             }
@@ -2071,10 +2071,10 @@ namespace VRVlog.LilToonExporter
                     if (neutral) throw new NeutralShapeSamplingException(message);
                     throw new InvalidOperationException(message);
                 }
-                if (layer > 0 && playable.GetLayerWeight(layer) <= 0.00001f) continue;
+                if (layer > 0 && playable.GetLayerWeight(layer) <= NegligibleWeight) continue;
                 foreach (var info in playable.GetCurrentAnimatorClipInfo(layer).Concat(playable.GetNextAnimatorClipInfo(layer)))
                 {
-                    if (info.weight <= 0.00001f || info.clip == null) continue;
+                    if (info.weight <= NegligibleWeight || info.clip == null) continue;
                     var objectChange = ObjectChangeDiagnostic(info.clip, excludedPath, neutralPlan);
                     if (objectChange != null)
                         throw UnsupportedAppearance(neutralPlan, "マテリアル・オブジェクトの差し替えを含む表情は未対応です。" +
@@ -2085,7 +2085,7 @@ namespace VRVlog.LilToonExporter
                         if (excludedPath?.Invoke(binding.path) == true) continue;
                         if (HarmlessAppearance(neutralAvatar, info.clip, binding, unchangedAppearanceClips, excludedPath)) continue;
                         if (neutralPlan?.AllowsEvaluationBinding(info.clip, binding) == true) continue;
-                        if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        if (!PoseSampling.IsBlendShape(binding))
                             throw UnsupportedAppearance(neutralPlan, "BlendShape以外の変化を含みます: " +
                                 info.clip.name + " / " + binding.path + " / " + binding.propertyName + NeutralBindingDiagnostic(neutralPlan, info.clip, binding));
                         if (capturedMorphs == null || capturedMorphs.Contains(binding)) bindings.Add(binding);
