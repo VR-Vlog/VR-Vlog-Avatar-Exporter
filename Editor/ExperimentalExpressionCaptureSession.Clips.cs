@@ -134,14 +134,45 @@ namespace VRVlog.LilToonExporter
         // Button items that select each clip in the FX controller, in menu
         // order. The board reads emotions from them as the quick export reads
         // its menu faces. Nothing here may stop the board from opening.
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar)
+        // overLimit is the menu's count when it is over the read limit; the
+        // board then says why no emotion comes from the menu item names.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar, out VrChatMenuImportSummary overLimit) =>
+            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar), out overLimit);
+
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read, out VrChatMenuImportSummary overLimit) =>
+            ReadMenuLinks(read, out overLimit).Paths;
+
+        // MenuClipPaths and MenuEntriesOutsideBoard from one menu read. A menu
+        // that cannot be read gives no paths and a null Outside (unreadable,
+        // not "no items"); over the read limit it also sets overLimit. The
+        // record route still drops the menu's faces then, so the band says the
+        // items cannot be checked rather than nothing.
+        internal static (Dictionary<AnimationClip, List<string>> Paths, List<string> Outside) ReadMenuLinks(Func<VrChatExpressionMenu.Source> read,
+            out VrChatMenuImportSummary overLimit)
         {
+            overLimit = null;
             try
             {
-                var menu = VrChatExpressionMenu.Read(avatar);
-                return MenuClipPaths(menu.Entries, menu.Controller, menu.Defaults);
+                var menu = read();
+                return MenuLinks(menu.Entries, menu.Controller, menu.Defaults);
             }
-            catch (Exception) { return new Dictionary<AnimationClip, List<string>>(); }
+            catch (VrChatMenuImportLimitException limit) { overLimit = limit.Summary; return (new Dictionary<AnimationClip, List<string>>(), null); }
+            catch (Exception) { return (new Dictionary<AnimationClip, List<string>>(), null); }
+        }
+
+        // The note beside the emotion slots when the menu was over the read
+        // limit, null otherwise. Over 256 items the count is the menu's own
+        // (a lower bound when counting stopped); other limits are submenus.
+        internal const string MenuOverLimitItemsFormat = "項目名から感情を選んでいません・表情メニューが{0}件で上限の{1}件を超えています";
+        internal const string MenuOverLimitItemsAtLeastFormat = "項目名から感情を選んでいません・表情メニューが{0}件以上で上限の{1}件を超えています";
+        internal const string MenuOverLimitSubmenus = "項目名から感情を選んでいません・表情メニューのサブメニューが多く上限を超えています";
+
+        internal static string MenuOverLimitNote(VrChatMenuImportSummary summary)
+        {
+            if (summary == null) return null;
+            if (summary.LimitReason != "candidates") return ExporterLocalization.T(MenuOverLimitSubmenus);
+            return string.Format(ExporterLocalization.T(summary.IsComplete ? MenuOverLimitItemsFormat : MenuOverLimitItemsAtLeastFormat),
+                summary.CandidateCount, VrChatExpressionMenu.MaximumCandidates);
         }
 
         // A clip is linked to an item only when the item alone decides it: a
@@ -154,16 +185,56 @@ namespace VRVlog.LilToonExporter
         // linked to none: each clip is only part of the face. Blend Trees and
         // sub-machine destinations are not followed.
         internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults) => MenuLinks(entries, fx, defaults).Paths;
+
+        // The menu paths, in menu order, of the Toggle and Button items that
+        // move the face but are linked to no single clip: the item selects
+        // several face destinations (a face split over layers), or a Blend
+        // Tree or sub-machine that moves the face. The record route records
+        // only the board, which has no item for them. An item linked to one
+        // clip and an item that moves no BlendShape (clothing) are not listed.
+        internal static List<string> MenuEntriesOutsideBoard(IEnumerable<VrChatExpressionMenu.Entry> entries,
+            RuntimeAnimatorController fx, IDictionary<string, float> defaults) => MenuLinks(entries, fx, defaults).Outside;
+
+        static bool MovesFace(AnimationClip clip) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(binding =>
+            binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+
+        // MenuClipPaths and MenuEntriesOutsideBoard from one walk of the FX
+        // controller, with the same on/off rule for both.
+        internal static (Dictionary<AnimationClip, List<string>> Paths, List<string> Outside) MenuLinks(IEnumerable<VrChatExpressionMenu.Entry> entries,
             RuntimeAnimatorController fx, IDictionary<string, float> defaults)
         {
             var result = new Dictionary<AnimationClip, List<string>>();
-            if (entries == null || fx == null) return result;
+            var outside = new List<string>();
+            if (entries == null || fx == null) return (result, outside);
             var overrides = ExpressionDependencies.Overrides(fx);
+            AnimationClip Replaced(AnimationClip clip) => overrides.TryGetValue(clip, out var replaced) ? replaced : clip;
+            bool TreeMovesFace(Motion motion, HashSet<Motion> seen)
+            {
+                if (motion is AnimationClip clip) return MovesFace(Replaced(clip));
+                return motion is BlendTree tree && seen.Add(tree) && tree.children.Any(child => TreeMovesFace(child.motion, seen));
+            }
+            bool MachineMovesFace(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen) =>
+                machine != null && seen.Add(machine) && (machine.states.Any(child => TreeMovesFace(child.state?.motion, new HashSet<Motion>())) ||
+                    machine.stateMachines.Any(child => MachineMovesFace(child.stateMachine, seen)));
             var links = new List<(AnimatorTransitionBase Transition, AnimationClip Clip)>();
+            // Destinations that move the face; Single is false for a Blend Tree or a sub-machine.
+            var faces = new List<(AnimatorTransitionBase Transition, UnityEngine.Object Face, bool Single)>();
             void Link(AnimatorTransitionBase transition)
             {
-                if (transition == null || !(transition.destinationState?.motion is AnimationClip clip)) return;
-                links.Add((transition, overrides.TryGetValue(clip, out var replaced) ? replaced : clip));
+                if (transition == null) return;
+                if (transition.destinationState?.motion is AnimationClip clip)
+                {
+                    links.Add((transition, Replaced(clip)));
+                    if (MovesFace(Replaced(clip))) faces.Add((transition, Replaced(clip), true));
+                }
+                else if (transition.destinationState?.motion is BlendTree tree)
+                {
+                    if (TreeMovesFace(tree, new HashSet<Motion>())) faces.Add((transition, tree, false));
+                }
+                else if (transition.destinationState == null && transition.destinationStateMachine != null &&
+                    MachineMovesFace(transition.destinationStateMachine, new HashSet<AnimatorStateMachine>()))
+                    faces.Add((transition, transition.destinationStateMachine, false));
             }
             void Walk(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> seen)
             {
@@ -180,6 +251,7 @@ namespace VRVlog.LilToonExporter
             }
             var seenMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in ExpressionDependencies.Controller(fx).layers) Walk(layer.stateMachine, seenMachines);
+            var items = new List<(VrChatExpressionMenu.Entry Entry, string Parameter, float Value, Func<AnimatorTransitionBase, bool> Selects)>();
             foreach (var entry in entries)
             {
                 if (entry == null || entry.Error != null || entry.ControlType != "Toggle" && entry.ControlType != "Button" ||
@@ -190,21 +262,44 @@ namespace VRVlog.LilToonExporter
                 foreach (var pair in entry.Parameters) on[pair.Key] = pair.Value;
                 var off = new Dictionary<string, float>(on, StringComparer.Ordinal)
                     { [parameter] = defaults != null && defaults.TryGetValue(parameter, out var value) ? value : 0f };
+                items.Add((entry, parameter, entry.Parameters[parameter], transition =>
+                {
+                    var own = transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
+                    // Off at the default: some condition on the parameter is false there.
+                    return own.Length != 0 && !ExpressionDependencies.IsFalse(transition, on) && ExpressionDependencies.IsFalse(transition, off);
+                }));
+            }
+            // A face destination every item of a parameter selects, when the
+            // parameter has items for 2 or more values, is shared (a reset
+            // layer entered by Face NotEqual 0): it would give every item a
+            // second face. Only the board-less count ignores it.
+            var shared = new HashSet<(string Parameter, int Face)>();
+            foreach (var group in items.GroupBy(item => item.Parameter, StringComparer.Ordinal))
+            {
+                if (group.Select(item => item.Value).Distinct().Count() < 2) continue;
+                for (var index = 0; index < faces.Count; index++)
+                    if (group.All(item => item.Selects(faces[index].Transition))) shared.Add((group.Key, index));
+            }
+            foreach (var (entry, parameter, _, Selects) in items)
+            {
                 var selected = new HashSet<AnimationClip>();
                 foreach (var link in links)
+                    if (Selects(link.Transition)) selected.Add(link.Clip);
+                if (selected.Count == 1)
                 {
-                    var own = link.Transition.conditions.Where(condition => condition.parameter == parameter).ToArray();
-                    // Off at the default: some condition on the parameter is false there.
-                    if (own.Length == 0 || ExpressionDependencies.IsFalse(link.Transition, on) ||
-                        !ExpressionDependencies.IsFalse(link.Transition, off)) continue;
-                    selected.Add(link.Clip);
+                    var clip = selected.Single();
+                    if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
+                    if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                    continue;
                 }
-                if (selected.Count != 1) continue;
-                var clip = selected.Single();
-                if (!result.TryGetValue(clip, out var paths)) result.Add(clip, paths = new List<string>());
-                if (!paths.Contains(entry.Name)) paths.Add(entry.Name);
+                // An item linked to one clip has returned above, even when the
+                // same item also enters a Blend Tree face (a mixed item): the
+                // clip is on the board, so it is not counted here.
+                var moved = faces.Where((face, index) => Selects(face.Transition) && !shared.Contains((parameter, index))).ToArray();
+                if ((moved.Select(face => face.Face).Distinct().Count() > 1 || moved.Any(face => !face.Single)) && !outside.Contains(entry.Name))
+                    outside.Add(entry.Name);
             }
-            return result;
+            return (result, outside);
         }
 
         internal string ClipError(AnimationClip clip, float time)

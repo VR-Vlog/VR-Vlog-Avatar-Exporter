@@ -125,9 +125,10 @@ namespace VRVlog.LilToonExporter
             IEnumerable<KeyValuePair<AnimationClip, string>> names = null)
         {
             if (string.IsNullOrEmpty(key)) return;
-            // A file from another format version is left untouched.
-            var store = Read(out var foreign);
-            if (foreign) return;
+            // A file from another format version or one that cannot be read is
+            // left untouched, so other avatars' choices are never lost.
+            var store = Read(out var problem);
+            if (problem != null) { ExportSettingsStore.WarnOnce(problem); return; }
             store = store ?? new Store();
             var stored = store.Avatars.LastOrDefault(item => item != null && item.Avatar == key);
             var previous = stored?.Excluded ?? new List<ClipReference>();
@@ -166,18 +167,41 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static Store Read(out bool foreign)
+        // problem is the warning to show instead of saving, when the file is
+        // there but from another format version or cannot be read.
+        static Store Read(out string problem)
         {
-            foreign = false;
+            problem = null;
+            var path = FilePath;
             try
             {
-                var path = FilePath;
-                if (!File.Exists(path) || new FileInfo(path).Length > 4 * 1024 * 1024) return null;
-                var store = JsonUtility.FromJson<Store>(File.ReadAllText(path));
-                if (store != null && store.Version != 1) { foreign = true; return null; }
-                return store != null && store.Avatars != null ? store : null;
+                if (!File.Exists(path)) return null;
+                if (new FileInfo(path).Length > 4 * 1024 * 1024) { problem = Unreadable(path); return null; }
+                var text = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(text)) return null;
+                var store = JsonUtility.FromJson<Store>(text);
+                if (store != null && store.Version != 1) { problem = string.Format(ExporterLocalization.T(OtherVersionFormat), path); return null; }
+                if (store == null || store.Avatars == null) { problem = Unreadable(path); return null; }
+                return store;
             }
-            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException || error is ArgumentException) { return null; }
+            // A lock or missing permission is not a broken file: deleting it
+            // would lose every avatar's choices, so that message does not ask to.
+            catch (Exception error) when (error is IOException || error is UnauthorizedAccessException)
+            {
+                problem = string.Format(ExporterLocalization.T(CannotOpenFormat), path);
+                return null;
+            }
+            catch (ArgumentException)
+            {
+                problem = Unreadable(path);
+                return null;
+            }
         }
+
+        internal const string OtherVersionFormat = "表情ボードの選択を記録したファイルが別の版のため、選択を保存しませんでした: {0}";
+        internal const string CannotOpenFormat = "表情ボードの選択を記録したファイルを開けないため、選択を保存しませんでした。別のプログラムが使っていないか確かめてください: {0}";
+
+        static string Unreadable(string path) =>
+            string.Format(ExporterLocalization.T("表情ボードの選択を記録したファイルを読み込めないため、選択を保存しませんでした。ファイルを直すか削除すると、また保存できます: {0}"), path);
     }
 }

@@ -145,18 +145,18 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void KeptItemsAreListedOnceWithoutAsking()
         {
             var recovery = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordInferredEmotions(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat) }, recovery);
+            UniVrmOneClickExporter.RecordInferredPresets(new[] { ("happy", "笑顔", VrmExpressionBindings.FilledFormat) }, recovery);
             var warning = string.Format(VrmExpressionBindings.FilledFormat, "happy", "笑顔");
             Assert.That(ExportFallbackConfirmation.NeedsAnswer(recovery.Fallbacks, interactive: true), Is.False,
                 "Only kept output; nothing to decide before saving.");
             var list = ExportResultList.Build(recovery.Fallbacks, new[] { warning });
             var row = list.Rows.Single();
             Assert.That(row.Outcome, Is.EqualTo(ExportOutcome.Kept));
-            Assert.That(row.Group, Is.EqualTo(UniVrmOneClickExporter.InferredEmotionCategory));
+            Assert.That(row.Group, Is.EqualTo(UniVrmOneClickExporter.InferredPresetCategory));
             Assert.That(row.TargetLabel, Is.EqualTo("happy"));
             Assert.That(row.Content, Does.Not.StartWith("happy:"), "The target column already names it.");
             Assert.That(list.NoticeCount, Is.Zero, "The warning with the same text is the kept line, not another notice.");
-            Assert.That(list.Text(), Does.Contain("保持1").And.Contain("[" + UniVrmOneClickExporter.InferredEmotionCategory + "]"));
+            Assert.That(list.Text(), Does.Contain("保持1").And.Contain("[" + UniVrmOneClickExporter.InferredPresetCategory + "]"));
         }
 
         [TestCase(true)][TestCase(false)]

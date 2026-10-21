@@ -101,6 +101,7 @@ namespace VRVlog.LilToonExporter
                     foreach (var value in candidate.Values) entry.Parameters.Add(value.Key, value.Value);
                     if (entry.Error == null)
                     {
+                        source.Progress?.Invoke(entry.Name);
                         try
                         {
                             var settlement = new List<string>();
