@@ -1911,6 +1911,35 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }
 
+        // A recorded face that changes no mesh still exports one zero-delta
+        // shape on the first mesh, named like any other captured face.
+        [Test]
+        public async Task AFaceEqualToTheBaselineExportsOneZeroDeltaShapeOnTheFirstMesh()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var clip = new AnimationClip { name = "Kept rest face" }; Vrm10Instance imported = null;
+            try
+            {
+                // The clip holds the baseline weight, so no mesh differs from it.
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 35));
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                Assert.That(session.Expressions.Single().Rows.SelectMany(row => row.Weights), Is.EqualTo(session.Baseline.Rows.SelectMany(row => row.Weights)));
+                var bytes = session.Export("Baseline face", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var binding = imported.Vrm.Expression.CustomClips.Single(item => item.name == clip.name).MorphTargetBindings.Single();
+                var path = session.Channels[0].Path;
+                Assert.That(binding.RelativePath, Is.EqualTo(path));
+                var mesh = imported.transform.Find(path).GetComponent<SkinnedMeshRenderer>().sharedMesh;
+                Assert.That(mesh.GetBlendShapeName(binding.Index), Is.EqualTo("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", path, clip.name)));
+                var delta = new Vector3[mesh.vertexCount];
+                mesh.GetBlendShapeFrameVertices(binding.Index, mesh.GetBlendShapeFrameCount(binding.Index) - 1, delta, null, null);
+                Assert.That(delta, Is.All.EqualTo(Vector3.zero));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(clip); }
+        }
+
         [TestCase("model-only")]
         [TestCase("none")]
         [TestCase("synced")]
