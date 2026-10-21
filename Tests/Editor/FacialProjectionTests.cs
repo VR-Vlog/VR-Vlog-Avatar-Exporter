@@ -132,6 +132,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(metadata.Entries.Count, Is.EqualTo(added ? 2 : 1));
         }
 
+        // A layer that mixes hand gestures and contact input reaches the same state from both. The state the
+        // gesture import already read is skipped before its face is read again; a contact-only state stays.
+        [Test]
+        public void AStateAlreadyReadAsAHandGestureIsSkippedButAContactOnlyStateIsKept()
+        {
+            controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("Other", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            var rest = State(machine, "Rest", Clip("Rest", 0, false)); machine.defaultState = rest;
+            var shared = State(machine, "Shared state", Clip("Shared face", 50, false));
+            var contact = State(machine, "Contact state", Clip("Contact face", 75, false));
+            var toShared = rest.AddTransition(shared); toShared.hasExitTime = false; toShared.duration = 0;
+            toShared.AddCondition(AnimatorConditionMode.If, 0, "Sensor");
+            var toContact = rest.AddTransition(contact); toContact.hasExitTime = false; toContact.duration = 0;
+            toContact.AddCondition(AnimatorConditionMode.If, 0, "Other");
+            var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true;
+            metadata.ExternalParameters.Add("Sensor"); metadata.ExternalParameters.Add("Other");
+            metadata.GestureStates.Add((0, shared));
+            VrChatAuthoredFaces.Add(avatar, metadata);
+            Assert.That(metadata.Entries.Select(item => item.Name), Is.EqualTo(new[] { "FXクリップ / Contact face" }));
+            Assert.That(metadata.Entries.Single().Error, Is.Null, metadata.Entries.Single().Error);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void HardwareFaceFallbackCannotPublishMutedOrOrphanStates(bool muted)
