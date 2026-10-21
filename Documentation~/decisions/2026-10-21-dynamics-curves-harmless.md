@@ -38,4 +38,5 @@
 - `Tests/Editor/NeutralShapeSamplerTests.cs` に `DynamicsEnabledSupportIsHarmless` を足した。4 つの型それぞれで `m_Enabled` を 0 と 1 にする補助レイヤーがあっても基準形の評価が成功し、`m_Enabled` を理由に保持する警告が出ず、Component の有効状態と BlendShape の値が変わらず、`AllowsEvaluationBinding` が true・`EvaluationBindingRejection` が null になる。
 - `Tests/Editor/SelectedExpressionAppearanceTests.cs` に `DynamicsEnabledCurveDoesNotRejectTheGesturePose` を足した。`VRCPhysBoneCollider` の `m_Enabled` を 1 にする曲線と BlendShape の曲線を持つクリップから、`ReadPose` が BlendShape の値を返す。BoxCollider の `m_Enabled` を拒否する `ExistingUnknownPropertiesAreNotAuthorizedByCoincidentValues` はそのまま残した。
 - 2 つのテストを CI の必須一覧（`Tools/run-unity-compatibility.py` の `BEHAVIOR_CASES`）に足し、`Tools/test-compatibility-tooling.py` の `SelectedExpressionAppearanceTests` の件数を 62 にした。
-- どちらも VRChat SDK が無い環境では Ignore になる。Unity の EditMode テストは CI で回す。
+- どちらも VRChat SDK が無い環境では Ignore になる。CI は Unity の EditMode テストを回さないので、VRChat SDK と UniVRM 0.131 の入った Unity 2022.3.22f1 で `NeutralShapeSamplerTests`・`SelectedExpressionAppearanceTests`・`VrChatMenuExpressionTests`・`HeldAutomaticExpressionTests`・`NeutralLayerControlTests` を回し、482 件すべて通った。
+- 背景のアバターをかんたん書き出し（**アプリに転送（かんたん）**）で書き出し直すと、表情は標準 6・カスタム 3 から標準 7・カスタム 10 になり、`VRVLOG_expression_animations` が入った。BlendShape は表情が増えた分だけ 10 個から 34 個に増え、メッシュの数・頂点数・材質は変わらない。
