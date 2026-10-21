@@ -34,7 +34,7 @@ Removed and reviewed objects appear in the export result list. To keep one, turn
 | Component | Supported version |
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
-| lilToon | 2.0.0–2.3.4; install it with your avatar before exporting |
+| lilToon | 2.0.0–2.3.4 from 0.12.0-beta.1 (stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting |
 | UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; 3.5.2 or later and below 3.11.0 when an expression file uses VRC Animator Play Audio |

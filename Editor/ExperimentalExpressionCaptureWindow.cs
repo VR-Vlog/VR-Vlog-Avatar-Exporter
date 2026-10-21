@@ -662,6 +662,9 @@ namespace VRVlog.LilToonExporter
 
         void DrawPreview()
         {
+            // Same caption row as the VRM expression slots below.
+            var header = GUILayoutUtility.GetRect(100, 22, GUILayout.ExpandWidth(true));
+            GUI.Label(new Rect(header.x, header.y + 2, header.width, 18), ExporterLocalization.T("プレビュー"), dimMini);
             var rect = GUILayoutUtility.GetRect(100, 165, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint && rect.width > 0)
             {
@@ -678,12 +681,8 @@ namespace VRVlog.LilToonExporter
                 if (Event.current.type == EventType.ScrollWheel)
                 { zoom = Mathf.Clamp(zoom + Event.current.delta.y * .04f, .25f, 2); Event.current.Use(); Repaint(); }
             }
-            using (new EditorGUILayout.HorizontalScope())
-            {
-                EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
-                if (GUILayout.Button(new GUIContent(ExporterLocalization.T("元の顔"), ExporterLocalization.T("元の顔に戻す。画像をドラッグで回転、ホイールで拡大。")), GUILayout.Width(65)))
-                    Queue(() => { session.RestoreBaseline(); previewName = ExporterLocalization.T("基準の顔"); });
-            }
+            GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
+            EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
         }
 
         // ---- Expression board ----
