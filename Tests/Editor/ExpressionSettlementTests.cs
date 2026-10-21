@@ -412,14 +412,15 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
         }
 
-        // Running a tracking control or a driver without operations again
-        // changes nothing, so such a restarted state still holds the face.
+        // Running a tracking control or a driver that sets a parameter to its
+        // current value again changes nothing, so such a restarted state
+        // still holds the face.
         [Test]
         public void AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace()
         {
             Selected(Clip("Smile", 75));
             var off = RestartingLayer();
-            ParameterDriverExpressionTests.Driver(off);
+            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Set", "Toggle", 0));
             ParameterDriverExpressionTests.SdkBehaviour(off, "VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
             var messages = new List<string>();
             Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));

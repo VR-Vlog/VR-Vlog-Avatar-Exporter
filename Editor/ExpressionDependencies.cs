@@ -51,13 +51,6 @@ namespace VRVlog.LilToonExporter
         internal static bool HasEffectfulBehaviours(IEnumerable<StateMachineBehaviour> behaviours) => behaviours.Any(behaviour =>
             !IsInertAuthoringMarker(behaviour));
 
-        // Running these callbacks again changes nothing: a tracking control
-        // sets the same modes, and a driver without operations writes nothing.
-        internal static bool RepeatsWithoutEffect(IEnumerable<StateMachineBehaviour> behaviours) => behaviours.All(behaviour =>
-            IsInertAuthoringMarker(behaviour) || VrChatParameterDriver.IsTracking(behaviour) ||
-            VrChatParameterDriver.IsDriver(behaviour) && VrChatParameterDriver.Read(behaviour, "") is var program &&
-            program.Error == null && program.Operations.Count == 0);
-
         internal sealed class Layer
         {
             internal readonly HashSet<string> Reads = new HashSet<string>(StringComparer.Ordinal);
