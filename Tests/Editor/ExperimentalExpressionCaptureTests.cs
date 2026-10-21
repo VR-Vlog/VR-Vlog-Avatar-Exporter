@@ -1582,8 +1582,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A shape the renderer had before the build passes but lost in them is
-        // not skipped: the menu export stops on it, so the board must too, even
-        // when another reference in the clip still resolves.
+        // not skipped: the menu export omits the face for it, so the board must
+        // reject it too, even when another reference in the clip still resolves.
         [Test]
         public void ShapesLostByPreparationStayUnsupportedOnTheBoard()
         {
@@ -1598,8 +1598,9 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 70));
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Frozen in build"), AnimationCurve.Constant(0, 1, 100));
-                Assert.That(session.ClipError(clip, clip.length), Is.Not.Null);
-                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.Not.Null);
+                var expected = ExporterLocalization.T("候補のBlendShapeが表示中のメッシュにありません: ");
+                Assert.That(session.ClipError(clip, clip.length), Does.StartWith(expected));
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Does.StartWith(expected));
             }
             finally { Object.DestroyImmediate(clip); }
         }
