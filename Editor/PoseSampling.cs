@@ -723,6 +723,22 @@ namespace VRVlog.LilToonExporter
             return result;
         }
         internal static bool IsBodyMuscle(string property) => BodyMuscles.Contains(property);
+        // Unity's whole humanoid channel set: every muscle in both spellings,
+        // root/motion and IK goals. These move the skeleton, never a BlendShape.
+        static readonly HashSet<string> HumanoidChannels = BuildHumanoidChannels();
+        static HashSet<string> BuildHumanoidChannels()
+        {
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var name in HumanTrait.MuscleName) { result.Add(name); result.Add(MuscleProperty(name)); }
+            foreach (var part in new[] { "Root", "Motion", "LeftFoot", "RightFoot", "LeftHand", "RightHand" })
+            {
+                foreach (var axis in "xyz") result.Add(part + "T." + axis);
+                foreach (var axis in "xyzw") result.Add(part + "Q." + axis);
+            }
+            return result;
+        }
+        internal static bool IsHumanoidChannel(EditorCurveBinding binding) => binding.type == typeof(Animator) && binding.path == "" &&
+            !binding.isPPtrCurve && HumanoidChannels.Contains(binding.propertyName);
         internal static AvatarMaskBodyPart Part(string bone)
         {
             if (bone == "neck" || bone == "head") return AvatarMaskBodyPart.Head;
