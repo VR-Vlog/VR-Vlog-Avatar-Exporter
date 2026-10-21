@@ -523,6 +523,46 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
+        // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
+        // moves one, or is entered by a gesture (the gesture route exports it) stays a face. A controller
+        // whose gestures cannot be read keeps its clips and does not stop the board from opening.
+        [TestCase(0f, 0f, "plain", false)]
+        [TestCase(0f, 35f, "plain", true)]
+        [TestCase(75f, 0f, "plain", true)]
+        [TestCase(0f, 0f, "gesture", true)]
+        [TestCase(0f, 0f, "unreadable", true)]
+        public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, bool usable)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
+            var clip = new AnimationClip { name = "Lip sync switch" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, clipWeight));
+                var state = machine.AddState("Switch"); state.motion = clip; machine.defaultState = state;
+                if (kind == "gesture")
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 0, "GestureLeft");
+                }
+                // Unity itself logs the missing state machine whenever the controller is read.
+                LogAssert.ignoreFailingMessages = kind == "unreadable";
+                var layer = new AnimatorControllerLayer { name = "Switch", defaultWeight = 1, stateMachine = machine };
+                controller.layers = kind == "unreadable"
+                    ? new[] { layer, new AnimatorControllerLayer { name = "Broken", defaultWeight = 1 } }
+                    : new[] { layer };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                // Still a candidate, so an exclusion saved before keeps counting.
+                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
+                var expected = usable ? null : ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.EqualTo(expected));
+                Assert.That(session.ClipError(clip, 0), Is.EqualTo(expected));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void ChildAnimatorClipTargetsItsOwnMeshEvenWithAnIdenticalRootMesh(bool competingRoot)

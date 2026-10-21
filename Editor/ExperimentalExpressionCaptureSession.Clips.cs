@@ -38,12 +38,23 @@ namespace VRVlog.LilToonExporter
         internal sealed class PoseNameReference { public string Id, Name; }
 
         readonly Dictionary<AnimationClip, HashSet<string>> clipRoots = new Dictionary<AnimationClip, HashSet<string>>();
+        // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
+        // when they change nothing, so the board keeps them.
+        readonly HashSet<AnimationClip> gestureClips = new HashSet<AnimationClip>();
 
         void CaptureClipRoots()
         {
+            var walked = new HashSet<RuntimeAnimatorController>();
             void Add(RuntimeAnimatorController controller, string root)
             {
                 if (controller == null) return;
+                if (walked.Add(controller))
+                {
+                    // Nothing here may stop the board from opening. A controller that cannot be walked keeps
+                    // all its clips shown.
+                    try { gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller)); }
+                    catch (Exception) { gestureClips.UnionWith(controller.animationClips.Where(clip => clip != null)); }
+                }
                 foreach (var clip in controller.animationClips.Where(clip => clip != null))
                 {
                     if (!clipRoots.TryGetValue(clip, out var roots)) clipRoots.Add(clip, roots = new HashSet<string>(StringComparer.Ordinal));
@@ -198,7 +209,7 @@ namespace VRVlog.LilToonExporter
 
         internal string ClipError(AnimationClip clip, float time)
         {
-            try { BuildClipPose(clip, time, "プレビュー"); return null; }
+            try { return NoFaceError(clip, BuildClipPose(clip, time, "プレビュー")); }
             catch (InvalidOperationException error) { return error.Message; }
         }
 
@@ -208,10 +219,26 @@ namespace VRVlog.LilToonExporter
             var result = new Dictionary<AnimationClip, string>();
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
             {
-                try { BuildClipPoseUnchecked(clip, clip.length, "プレビュー"); result.Add(clip, null); }
+                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, clip.length, "プレビュー"))); }
                 catch (InvalidOperationException error) { result.Add(clip, error.Message); }
             }
             return result;
+        }
+
+        internal const string NoFaceChange = "元から0のBlendShapeを0にするだけで、顔を何も変えないアニメーションです。";
+
+        // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
+        // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
+        // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
+        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        string NoFaceError(AnimationClip clip, Pose pose)
+        {
+            if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
+            if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
+                .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
+            for (var i = 0; i < Baseline.Rows.Count; i++)
+                if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
+            return ExporterLocalization.T(NoFaceChange);
         }
 
         // Read only the explicitly authored morph curves. No Animator graph,
