@@ -85,6 +85,8 @@ namespace VRVlog.LilToonExporter
         const string DragKey = "VRVlog.LilToonExporter.ExpressionBoardCard";
         Vector2 pressStart;
         Place? dropHover, dropHoverNext;
+        // The .anim drop area under a valid drag, keyed by its label.
+        string clipDropHover, clipDropHoverNext;
         Vector2? dragMouse;
         // Window-relative slot rectangles, kept for tests and screenshots.
         readonly System.Collections.Generic.Dictionary<Place, Rect> slotRects = new System.Collections.Generic.Dictionary<Place, Rect>();
@@ -461,9 +463,9 @@ namespace VRVlog.LilToonExporter
             var current = Event.current;
             var dragUpdate = current.type == EventType.DragUpdated;
             var dragMousePosition = current.mousePosition;
-            if (dragUpdate) dropHoverNext = null;
+            if (dragUpdate) { dropHoverNext = null; clipDropHoverNext = null; }
             if (current.type == EventType.DragExited || current.type == EventType.DragPerform || current.type == EventType.MouseUp)
-            { dropHover = null; dragMouse = null; }
+            { dropHover = null; clipDropHover = null; dragMouse = null; }
             if (current.type == EventType.MouseMove)
             {
                 var hovered = closableTiles.FindIndex(tile => tile.Contains(current.mousePosition));
@@ -542,6 +544,7 @@ namespace VRVlog.LilToonExporter
             if (dragUpdate)
             {
                 if (!Nullable.Equals(dropHover, dropHoverNext)) { dropHover = dropHoverNext; Repaint(); }
+                if (clipDropHover != clipDropHoverNext) { clipDropHover = clipDropHoverNext; Repaint(); }
                 var dragging = DragAndDrop.GetGenericData(DragKey) is AnimationClip;
                 dragMouse = dragging ? dragMousePosition : (Vector2?)null;
                 if (dragging) Repaint();
@@ -1629,6 +1632,8 @@ namespace VRVlog.LilToonExporter
                 using (new EditorGUI.DisabledScope(clipToAdd == null))
                     if (GUILayout.Button(ExporterLocalization.T("追加"), GUILayout.Width(60))) { var clip = clipToAdd; Queue(() => AddClip(clip)); }
             }
+            EditorGUILayout.Space(4);
+            DropClips(ExporterLocalization.T("UnityのProjectから表情の.animをここへドロップ（複数可）"), AddClips);
             if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
             else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
         }
@@ -1904,10 +1909,12 @@ namespace VRVlog.LilToonExporter
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
             GUI.Box(area, label);
             var current = Event.current;
+            if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, AccentColor);
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
             var clips = DragAndDrop.objectReferences.OfType<AnimationClip>().Where(clip => clip != null).Distinct().ToArray();
             var valid = GUI.enabled && clips.Length > 0 && DragAndDrop.objectReferences.All(item => item is AnimationClip);
             DragAndDrop.visualMode = valid ? DragAndDropVisualMode.Copy : DragAndDropVisualMode.Rejected;
+            if (valid && current.type == EventType.DragUpdated) clipDropHoverNext = label;
             if (valid && current.type == EventType.DragPerform) { DragAndDrop.AcceptDrag(); Queue(() => accept(clips)); }
             current.Use();
         }
@@ -2288,7 +2295,7 @@ namespace VRVlog.LilToonExporter
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null; showExcludedObjects = null;
-            dropHover = dropHoverNext = null; dragMouse = null;
+            dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;
             ClearThumbnails(); slotRects.Clear(); closableTiles.Clear(); hoverTile = -1;
             blinkFallback = null; blinkFallbackStale = true;
         }
