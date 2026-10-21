@@ -123,7 +123,7 @@ namespace VRVlog.LilToonExporter.Tests
             check(candidates.Count == 3 && candidates["1"] == "Other / 1" && candidates["1 (2)"] == "Smile / 1" && candidates["Wink"] == "Wink",
                 "Each registered name keeps the text inference reads; without one it reads the name.");
             var filled = new List<(string Preset, string Source, string Format)>();
-            VrmExpressionBindings.AddMissing(pathOutput, inferBlink: false, inferEmotions: true, filledEmotions: filled, emotionCandidates: candidates);
+            VrmExpressionBindings.AddMissing(pathOutput, inferBlink: false, inferEmotions: true, filledPresets: filled, emotionCandidates: candidates);
             check(filled.SequenceEqual(new[] { ("happy", "1 (2)", VrmExpressionBindings.FilledFormat) }), "Item \"1\" of a \"Smile\" submenu still fills happy.");
             check(VrmMenuExpressions.EmotionShapes(paths).Count == 0, "Faces without source shapes give the shape guess nothing.");
             check(VrmMenuExpressions.UniqueName("Smile", name => false) == "Smile" &&
