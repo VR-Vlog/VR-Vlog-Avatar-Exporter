@@ -14,12 +14,13 @@
 ## 置き換えなかった箇所
 
 - `ExportFailureWindow.RefreshSession` の `session.Report?.Diagnostics ?? new List<ExportRecoveryDiagnostic>()`（2 か所）。対策ではなく診断（`ExportRecoveryReport.Diagnostics`）の一覧で、持ち主の型が違うので、そのままにした。
+- `ExportRecovery.Apply` の `skipAllMenus`（`options?.Actions.Any(...) == true`）。`options` が `null` でなく `Actions` が `null` のとき、今の式は例外になり、`ActionsOrEmpty(options).Any(...)` に替えると例外にならず `false` になる。挙動が変わるので、そのままにした。
 
 ## 書き出す内容が変わらない理由
 
 - `ActionsOrEmpty` は置き換えた式と同じく、`options` が `null` でなければ `options.Actions` のリストそのものを、`null` なら呼ぶたびに新しい空のリストを返す。戻り値の型も `List<ExportRecoveryAction>` のままなので、`foreach` の列挙のしかたも変わらない。
 - 5 か所とも、返った一覧を `foreach` で読むか `Where` で絞るだけで、その一覧に追加・削除しない（`ExperimentalExpressionCaptureSession.Export` で追加するのは別に作った `mappedRecovery.Actions`）。
-- `options` を読む回数（1 回）と、読む時点も変わらない。
+- 各箇所で `options` を読む回数と読む時点は置き換え前と同じ（材料スロットごとのループの中の箇所は、置き換え前と同じくスロットの数だけ読む）。
 
 ## 確認したこと
 
