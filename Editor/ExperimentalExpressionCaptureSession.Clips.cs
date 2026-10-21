@@ -38,12 +38,16 @@ namespace VRVlog.LilToonExporter
         internal sealed class PoseNameReference { public string Id, Name; }
 
         readonly Dictionary<AnimationClip, HashSet<string>> clipRoots = new Dictionary<AnimationClip, HashSet<string>>();
+        // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
+        // when they change nothing, so the board keeps them.
+        readonly HashSet<AnimationClip> gestureClips = new HashSet<AnimationClip>();
 
         void CaptureClipRoots()
         {
             void Add(RuntimeAnimatorController controller, string root)
             {
                 if (controller == null) return;
+                gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller));
                 foreach (var clip in controller.animationClips.Where(clip => clip != null))
                 {
                     if (!clipRoots.TryGetValue(clip, out var roots)) clipRoots.Add(clip, roots = new HashSet<string>(StringComparer.Ordinal));
@@ -115,29 +119,8 @@ namespace VRVlog.LilToonExporter
                     if (properties.propertyType == SerializedPropertyType.ObjectReference && properties.objectReferenceValue is RuntimeAnimatorController controller)
                         controllers.Add(controller);
             }
-            foreach (var controller in controllers) Add(controller.animationClips.Where(clip => clip == null || !ChangesNoFace(clip)), "アバターに登録されたController");
+            foreach (var controller in controllers) Add(controller.animationClips, "アバターに登録されたController");
             return result.OrderBy(item => item.Clip.name, StringComparer.Ordinal).ToList();
-        }
-
-        // Lip-sync and blink switches hold mouth or eyelid shapes at the 0 they already rest at. They change
-        // nothing on the face and the VRM leaves them out, so the board does not offer them as expressions.
-        // A clip that resets a shape the avatar rests away from 0 still changes the face and is kept.
-        bool ChangesNoFace(AnimationClip clip)
-        {
-            if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Length > 0 || clip.events.Length > 0) return false;
-            if (!clipRoots.TryGetValue(clip, out var roots) || roots.Count != 1 || roots.Contains(null)) return false;
-            var root = roots.Single();
-            foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-            {
-                if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) return false;
-                var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                if (curve == null || curve.keys.Any(key => key.value != 0)) return false;
-                var target = Source.transform.Find(root.Length == 0 ? binding.path : binding.path.Length == 0 ? root : root + "/" + binding.path);
-                var renderer = target != null ? target.GetComponent<SkinnedMeshRenderer>() : null;
-                var index = renderer != null && renderer.sharedMesh != null ? renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) : -1;
-                if (index < 0 || renderer.GetBlendShapeWeight(index) != 0) return false;
-            }
-            return true;
         }
 
         // The VRChat Expressions Menu paths ("Face / Smile") of the Toggle and
@@ -219,7 +202,7 @@ namespace VRVlog.LilToonExporter
 
         internal string ClipError(AnimationClip clip, float time)
         {
-            try { BuildClipPose(clip, time, "プレビュー"); return null; }
+            try { return NoFaceError(clip, BuildClipPose(clip, time, "プレビュー")); }
             catch (InvalidOperationException error) { return error.Message; }
         }
 
@@ -229,10 +212,26 @@ namespace VRVlog.LilToonExporter
             var result = new Dictionary<AnimationClip, string>();
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
             {
-                try { BuildClipPoseUnchecked(clip, clip.length, "プレビュー"); result.Add(clip, null); }
+                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, clip.length, "プレビュー"))); }
                 catch (InvalidOperationException error) { result.Add(clip, error.Message); }
             }
             return result;
+        }
+
+        internal const string NoFaceChange = "元から0のBlendShapeを0にするだけで、顔を何も変えないアニメーションです。";
+
+        // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
+        // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
+        // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
+        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        string NoFaceError(AnimationClip clip, Pose pose)
+        {
+            if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
+            if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
+                .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
+            for (var i = 0; i < Baseline.Rows.Count; i++)
+                if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
+            return ExporterLocalization.T(NoFaceChange);
         }
 
         // Read only the explicitly authored morph curves. No Animator graph,

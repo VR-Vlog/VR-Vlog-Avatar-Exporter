@@ -523,12 +523,14 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so it is not
-        // offered; a clip that resets a shape resting away from 0, or moves one, still is.
-        [TestCase(0f, 0f, false)]
-        [TestCase(0f, 35f, true)]
-        [TestCase(75f, 0f, true)]
-        public void ControllerClipsThatChangeNoFaceAreNotRecommended(float clipWeight, float restWeight, bool recommended)
+        // A lip-sync or blink switch holds shapes at the 0 they rest at and changes nothing, so the board
+        // treats it as unsupported and does not show it. A clip that resets a shape resting away from 0,
+        // moves one, or is entered by a gesture (the gesture route exports it) stays a face.
+        [TestCase(0f, 0f, false, false)]
+        [TestCase(0f, 35f, false, true)]
+        [TestCase(75f, 0f, false, true)]
+        [TestCase(0f, 0f, true, true)]
+        public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, bool gesture, bool usable)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
@@ -537,10 +539,19 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, clipWeight));
                 var state = machine.AddState("Switch"); state.motion = clip; machine.defaultState = state;
+                if (gesture)
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 0, "GestureLeft");
+                }
                 controller.layers = new[] { new AnimatorControllerLayer { name = "Switch", defaultWeight = 1, stateMachine = machine } };
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
-                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.EqualTo(recommended));
+                // Still a candidate, so an exclusion saved before keeps counting.
+                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
+                var expected = usable ? null : ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange);
+                Assert.That(session.ClipErrors(new[] { clip })[clip], Is.EqualTo(expected));
+                Assert.That(session.ClipError(clip, 0), Is.EqualTo(expected));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
