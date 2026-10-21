@@ -842,6 +842,14 @@ namespace VRVlog.LilToonExporter
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
+            // A menu over the read limit gives no emotion from its item names. The
+            // note sits in the caption row, so it moves nothing; the tooltip keeps all of it.
+            if (presets == ExperimentalExpressionCaptureSession.EmotionPresets && session?.MenuOverLimitMessage is string menuNote)
+            {
+                var after = cardText.CalcSize(new GUIContent(title)).x + 10;
+                if (after < rect.width)
+                    GUI.Label(new Rect(rect.x + after, rect.y, rect.width - after, rect.height), new GUIContent(Fit(menuNote, dimMini, rect.width - after), menuNote), dimMini);
+            }
             if (presets != ExperimentalExpressionCaptureSession.BlinkPresets) return;
             var note = ExporterLocalization.T("左右はアバターから見て");
             var used = cardText.CalcSize(new GUIContent(title)).x + 10;

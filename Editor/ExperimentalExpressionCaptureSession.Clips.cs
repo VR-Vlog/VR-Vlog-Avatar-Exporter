@@ -134,14 +134,36 @@ namespace VRVlog.LilToonExporter
         // Button items that select each clip in the FX controller, in menu
         // order. The board reads emotions from them as the quick export reads
         // its menu faces. Nothing here may stop the board from opening.
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar)
+        // overLimit is the menu's count when it is over the read limit; the
+        // board then says why no emotion comes from the menu item names.
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar, out VrChatMenuImportSummary overLimit) =>
+            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar), out overLimit);
+
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read, out VrChatMenuImportSummary overLimit)
         {
+            overLimit = null;
             try
             {
-                var menu = VrChatExpressionMenu.Read(avatar);
+                var menu = read();
                 return MenuClipPaths(menu.Entries, menu.Controller, menu.Defaults);
             }
+            catch (VrChatMenuImportLimitException limit) { overLimit = limit.Summary; return new Dictionary<AnimationClip, List<string>>(); }
             catch (Exception) { return new Dictionary<AnimationClip, List<string>>(); }
+        }
+
+        // The note beside the emotion slots when the menu was over the read
+        // limit, null otherwise. Over 256 items the count is the menu's own
+        // (a lower bound when counting stopped); other limits are submenus.
+        internal const string MenuOverLimitItemsFormat = "項目名から感情を選んでいません・表情メニューの項目が{0}件で上限の{1}件を超えています";
+        internal const string MenuOverLimitItemsAtLeastFormat = "項目名から感情を選んでいません・表情メニューの項目が{0}件以上で上限の{1}件を超えています";
+        internal const string MenuOverLimitSubmenus = "項目名から感情を選んでいません・表情メニューのサブメニューが多く上限を超えています";
+
+        internal static string MenuOverLimitNote(VrChatMenuImportSummary summary)
+        {
+            if (summary == null) return null;
+            if (summary.LimitReason != "candidates") return ExporterLocalization.T(MenuOverLimitSubmenus);
+            return string.Format(ExporterLocalization.T(summary.IsComplete ? MenuOverLimitItemsFormat : MenuOverLimitItemsAtLeastFormat),
+                summary.CandidateCount, VrChatExpressionMenu.MaximumCandidates);
         }
 
         // A clip is linked to an item only when the item alone decides it: a
