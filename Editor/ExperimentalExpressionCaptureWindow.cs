@@ -148,7 +148,7 @@ namespace VRVlog.LilToonExporter
         static Color ErrorColor => Skin(0xe0675f, 0xb3261e);
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
-        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim,
+        GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim, dropBox,
             nameCenter;
         bool stylesForProSkin;
         Texture2D accentNormal, accentHover, accentActive;
@@ -1742,6 +1742,10 @@ namespace VRVlog.LilToonExporter
             closeText = Label(EditorStyles.label, DimColor, TextAnchor.MiddleCenter);
             closeText.hover.textColor = TextColor;
             centeredDim = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleCenter);
+            // Drop areas: the hint is centred in the box and readable on both skins.
+            dropBox = Label(GUI.skin.box, DimColor, TextAnchor.MiddleCenter);
+            dropBox.wordWrap = true;
+            dropBox.padding = new RectOffset(6, 6, 2, 2);
             Texture2D Solid(Color color)
             {
                 var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave };
@@ -1908,7 +1912,7 @@ namespace VRVlog.LilToonExporter
         void DropClips(string label, Action<AnimationClip[]> accept)
         {
             var area = GUILayoutUtility.GetRect(100, 42, GUILayout.ExpandWidth(true));
-            GUI.Box(area, label);
+            GUI.Box(area, label, dropBox);
             var current = Event.current;
             if (current.type == EventType.Repaint && clipDropHover == label) Outline(area, AccentColor);
             if (!area.Contains(current.mousePosition) || current.type != EventType.DragUpdated && current.type != EventType.DragPerform) return;
