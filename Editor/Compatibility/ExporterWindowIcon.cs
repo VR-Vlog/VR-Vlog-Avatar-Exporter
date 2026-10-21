@@ -22,9 +22,11 @@ namespace VRVlog.LilToonExporter
 
         // The saved window layout keeps the tab text but not this texture, so a
         // window restored at Unity startup gets its icon back here (call from OnEnable).
-        public static void Restore(EditorWindow window)
+        // GetWindow(title) also sets the text only, so wrap those calls with it too.
+        public static T Restore<T>(T window) where T : EditorWindow
         {
             if (window.titleContent.image == null) window.titleContent = Title(window.titleContent.text);
+            return window;
         }
 
         private static Texture2D Create()

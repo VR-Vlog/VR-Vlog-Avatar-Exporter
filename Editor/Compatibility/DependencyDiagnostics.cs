@@ -137,7 +137,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             else OpenDiagnostics();
         }
 
-        public static void OpenDiagnostics() => EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境"));
+        public static void OpenDiagnostics() => ExporterWindowIcon.Restore(EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境")));
     }
 
     public sealed class DependencyDiagnosticsWindow : EditorWindow

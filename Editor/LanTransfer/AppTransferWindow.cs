@@ -215,6 +215,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private void OnEnable()
         {
+            ExporterWindowIcon.Restore(this);
             EditorApplication.update += Poll;
             EditorApplication.quitting += StopAndClean;
             AssemblyReloadEvents.beforeAssemblyReload += StopAndClean;
