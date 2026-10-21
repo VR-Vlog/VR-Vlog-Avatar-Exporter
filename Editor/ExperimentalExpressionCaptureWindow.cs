@@ -1634,7 +1634,7 @@ namespace VRVlog.LilToonExporter
                     if (GUILayout.Button(ExporterLocalization.T("追加"), GUILayout.Width(60))) { var clip = clipToAdd; Queue(() => AddClip(clip)); }
             }
             EditorGUILayout.Space(4);
-            DropClips(ExporterLocalization.T("UnityのProjectから表情の.animをここへドロップ（複数可）"), AddClips);
+            DropClips(ExporterLocalization.T("Projectから表情の.animをドロップして追加（複数可）"), AddClips);
             if (presetKey == null) EditorGUILayout.LabelField(ExporterLocalization.T("シーンが未保存のため指定は次回に残りません"), EditorStyles.wordWrappedMiniLabel);
             else if (presetSkipped > 0) EditorGUILayout.LabelField(ExporterLocalization.T("前回の指定のうち元のファイルがないものを外しました"), EditorStyles.wordWrappedMiniLabel);
         }
