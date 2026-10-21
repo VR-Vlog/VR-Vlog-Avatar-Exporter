@@ -1046,6 +1046,28 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
+        // Every condition is known and holds. An edge without conditions
+        // holds as well.
+        internal static bool IsTrue(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues)
+        {
+            if (fixedValues == null) return false;
+            foreach (var condition in transition.conditions)
+            {
+                if (!fixedValues.TryGetValue(condition.parameter, out var value)) return false;
+                switch (condition.mode)
+                {
+                    case AnimatorConditionMode.If: if (value == 0) return false; break;
+                    case AnimatorConditionMode.IfNot: if (value != 0) return false; break;
+                    case AnimatorConditionMode.Equals: if (value != condition.threshold) return false; break;
+                    case AnimatorConditionMode.NotEqual: if (value == condition.threshold) return false; break;
+                    case AnimatorConditionMode.Greater: if (value <= condition.threshold) return false; break;
+                    case AnimatorConditionMode.Less: if (value >= condition.threshold) return false; break;
+                    default: return false;
+                }
+            }
+            return true;
+        }
+
         private static bool? TypedCondition(AnimatorCondition condition, IDictionary<string, float> fixedValues,
             IDictionary<string, AnimatorControllerParameterType> types)
         {

@@ -306,6 +306,7 @@ namespace VRVlog.LilToonExporter
                 var duration = transition.durationUnit == DurationUnit.Fixed ? transition.duration :
                     transition.duration * playable.GetCurrentAnimatorStateInfo(layer).length;
                 if (!Finite(duration) || !Finite(transition.normalizedTime)) throw new InvalidOperationException(InvalidTransitionTime);
+                if (Restarting(playable, controller, layer, parameters, resolve)) return null;
                 if (Interruptible(playable, layer, resolve)) return (0, false, true);
                 return (Math.Max(0, (1 - transition.normalizedTime) * duration), false, false);
             }
@@ -325,6 +326,25 @@ namespace VRVlog.LilToonExporter
             var time = info.normalizedTime;
             var wait = info.loop && exit < 1 ? Mathf.Repeat(exit - (time - Mathf.Floor(time)), 1) : Math.Max(0, exit - time);
             return (wait * info.length, true, false);
+        }
+
+        // An Any State edge into the current state that can transition to
+        // self, waits for no exit time and whose conditions hold starts again
+        // whenever its transition ends, so the layer never leaves its self
+        // transition and stays in this state. Its end is not an event. A
+        // trigger is consumed by the restart, so it does not hold.
+        private static bool Restarting(AnimatorControllerPlayable playable, AnimatorController controller, int layer,
+            IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
+        {
+            var hash = playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
+            if (playable.GetNextAnimatorStateInfo(layer).fullPathHash != hash) return false;
+            var (state, ancestors) = resolve(layer, hash);
+            if (state == null) return false;
+            var triggers = new HashSet<string>(controller.parameters.Where(parameter => parameter.type == AnimatorControllerParameterType.Trigger)
+                .Select(parameter => parameter.name), StringComparer.Ordinal);
+            return ancestors.SelectMany(machine => machine.anyStateTransitions).Any(value => value.destinationState == state &&
+                value.canTransitionToSelf && !value.mute && !value.hasExitTime &&
+                value.conditions.All(condition => !triggers.Contains(condition.parameter)) && ExpressionDependencies.IsTrue(value, parameters));
         }
 
         // VRChat evaluates every frame, so another edge can cut a running
