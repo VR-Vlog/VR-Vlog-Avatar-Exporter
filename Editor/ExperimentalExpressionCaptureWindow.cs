@@ -358,7 +358,8 @@ namespace VRVlog.LilToonExporter
             foreach (var input in clipInputs)
             {
                 input.Time = DefaultTime(input.Clip);
-                input.Error = input.Clip == null ? ExporterLocalization.T("AnimationClipが指定されていません") : clipErrors[input.Clip];
+                // Only a deleted .anim leaves a null clip here; added files are never null.
+                input.Error = input.Clip == null ? ExporterLocalization.T(DeletedClipReason) : clipErrors[input.Clip];
             }
             DropBrokenInputs();
             // An automatic value that stopped working is replaced, not left blocking the save.
@@ -372,10 +373,12 @@ namespace VRVlog.LilToonExporter
         // recorded route, a slot the user gave it is emptied, and the reason
         // is shown. Automatic values are suggested again from the usable faces.
         // A file that is also one of the avatar's faces keeps its slot, as the
-        // avatar's other unusable faces do.
+        // avatar's other unusable faces do. A deleted file is removed too; its
+        // slot is kept, since the slot already shows the file as missing and
+        // the save stops with that reason.
         void DropBrokenInputs()
         {
-            var broken = clipInputs.Where(input => input.Clip != null && input.Error != null).ToArray();
+            var broken = clipInputs.Where(input => input.Error != null).ToArray();
             if (broken.Length == 0) return;
             var found = new System.Collections.Generic.HashSet<AnimationClip>((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
                 .Select(item => item.Clip));
@@ -383,7 +386,7 @@ namespace VRVlog.LilToonExporter
             foreach (var input in broken)
             {
                 clipInputs.Remove(input);
-                if (board == null || found.Contains(input.Clip)) continue;
+                if (board == null || input.Clip == null || found.Contains(input.Clip)) continue;
                 foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
                     if (board.SlotValue(preset) is var value && value != null && !value.Automatic && !value.IsNone && !value.IsShape && value.ResolveClip() == input.Clip)
                     { board.ClearSlot(preset); cleared = true; }
@@ -1596,6 +1599,8 @@ namespace VRVlog.LilToonExporter
             clipInputs.Add(input);
             session.PreviewClip(input.Clip, input.Time); ShowFace(input.Name);
         }
+
+        internal const string DeletedClipReason = "ファイルが削除されました。";
 
         // One line per file that was not added: its name, then the reason.
         internal static string RejectedMessage(System.Collections.Generic.IEnumerable<(string Name, string Reason)> rejected) =>
