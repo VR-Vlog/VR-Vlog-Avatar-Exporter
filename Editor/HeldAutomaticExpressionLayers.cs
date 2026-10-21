@@ -39,8 +39,16 @@ namespace VRVlog.LilToonExporter
             var unitFxCommands = HasOnlyUnchangedUnitFxCommands(runtime, source, layers, others, context, selectedInputs);
             // An empty output plan asks only whether the existing strict rest
             // proof permits omission. It cannot alter the actual scalar plan.
-            var proof = NeutralShapePlan.CreateProjection(avatar, Array.Empty<EditorCurveBinding>(), Array.Empty<AnimationClip>());
-            foreach (var index in NeutralRandomRest.Preserve(runtime, source, proof, null, context))
+            // Nor does it depend on the selection, so one analysis proves it once.
+            var cache = ExpressionInspectCache.Current;
+            var key = cache?.RandomRestSignature(avatar, runtime, source, context);
+            if (key == null || !cache.TryRandomRest(key, source, out var rest))
+            {
+                var proof = NeutralShapePlan.CreateProjection(avatar, Array.Empty<EditorCurveBinding>(), Array.Empty<AnimationClip>());
+                rest = NeutralRandomRest.Preserve(runtime, source, proof, null, context);
+                if (key != null) cache.StoreRandomRest(key, source, rest);
+            }
+            foreach (var index in rest)
             {
                 var layer = layers[index];
                 if (layer.Morphs.Overlaps(selectedMorphs) || layer.WeightControls.Count != 0 ||
