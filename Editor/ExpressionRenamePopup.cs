@@ -40,7 +40,7 @@ namespace VRVlog.LilToonExporter
             var current = Event.current;
             // Enter and Esc are read before the text field takes the key. While a
             // Japanese conversion is open, Enter only confirms the conversion.
-            var composing = !string.IsNullOrEmpty(Input.compositionString);
+            var composing = Composing();
             if (current.type == EventType.KeyDown && !composing && (current.keyCode == KeyCode.Return || current.keyCode == KeyCode.KeypadEnter))
             { if (problem(text) == null) Apply(text); current.Use(); return; }
             if (current.type == EventType.KeyDown && !composing && current.keyCode == KeyCode.Escape) { editorWindow.Close(); current.Use(); return; }
@@ -71,6 +71,14 @@ namespace VRVlog.LilToonExporter
         {
             apply(name);
             editorWindow.Close();
+        }
+
+        // Input throws when the project uses only the Input System package; the
+        // guard is then skipped and Enter and Esc work as without a conversion.
+        static bool Composing()
+        {
+            try { return !string.IsNullOrEmpty(Input.compositionString); }
+            catch (InvalidOperationException) { return false; }
         }
 
         static void Line(Rect rect, string value, GUIStyle style) =>

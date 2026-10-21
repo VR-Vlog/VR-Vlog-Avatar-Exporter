@@ -486,10 +486,15 @@ namespace VRVlog.LilToonExporter
             if (repaint && boardDrawn) PruneThumbnails();
             // The rename box opens from OnGUI, outside any scroll view, so its
             // place (window space, like candidateRects) needs no conversion.
+            // A double-click first queues a preview of the face; the box waits for it.
             if (repaint && renameRequest is (AnimationClip clip, Rect at))
             {
-                renameRequest = null;
-                if (pending == null && board != null && board.CanRename(clip)) OpenRename(clip, at);
+                if (pending != null) Repaint();
+                else
+                {
+                    renameRequest = null;
+                    if (board != null && board.CanRename(clip)) OpenRename(clip, at);
+                }
             }
         }
 
