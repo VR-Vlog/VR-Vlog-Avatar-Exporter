@@ -319,8 +319,15 @@ namespace VRVlog.LilToonExporter
             var hasColor = false; var color = Color.black;
             foreach (var name in EmissionColors)
                 if (values.TryVector(name, out var vector) && Finite(vector)) { color = vector; hasColor = true; break; }
+            // Colors are saved in sRGB and the source shader scales the linear
+            // value, as the MToon fallback reads it (_EmissionColor.linear).
             foreach (var name in EmissionStrengths)
-                if (values.TryFloat(name, out var strength) && strength >= 0) { color = new Color(color.r * strength, color.g * strength, color.b * strength, color.a); break; }
+                if (values.TryFloat(name, out var strength) && strength >= 0)
+                {
+                    var scaled = (color.linear * strength).gamma;
+                    color = new Color(scaled.r, scaled.g, scaled.b, color.a);
+                    break;
+                }
             bool enabled;
             var toggle = EmissionToggles.FirstOrDefault(name => values.TryFloat(name, out _));
             if (toggle != null) enabled = values.Float(toggle, 0) > .5f;

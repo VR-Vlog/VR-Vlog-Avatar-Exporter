@@ -18,15 +18,7 @@ namespace VRVlog.LilToonExporter
         internal static void Add(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath = null)
         {
             var runtime = source.Controller;
-            var controller = runtime as AnimatorController;
-            var replacements = new Dictionary<AnimationClip, AnimationClip>();
-            if (runtime is AnimatorOverrideController overrides)
-            {
-                controller = overrides.runtimeAnimatorController as AnimatorController;
-                var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
-                overrides.GetOverrides(pairs);
-                foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
-            }
+            var controller = Resolve(runtime, out var replacements);
             if (controller == null) return;
 
             var seen = new Dictionary<AnimationClip, List<VrChatExpressionMenu.Entry>>();
@@ -116,6 +108,28 @@ namespace VRVlog.LilToonExporter
             internal AnimatorState State;
             internal int Layer;
             internal string Path;
+        }
+
+        // The clips that Add reads as gesture faces, whatever they hold.
+        internal static HashSet<AnimationClip> TargetClips(RuntimeAnimatorController runtime)
+        {
+            var result = new HashSet<AnimationClip>();
+            var controller = Resolve(runtime, out var replacements);
+            if (controller == null) return result;
+            foreach (var target in Discover(controller))
+                if (EffectiveMotion(controller, target.State, target.Layer) is AnimationClip clip)
+                    result.Add(replacements.TryGetValue(clip, out var replacement) ? replacement : clip);
+            return result;
+        }
+
+        private static AnimatorController Resolve(RuntimeAnimatorController runtime, out Dictionary<AnimationClip, AnimationClip> replacements)
+        {
+            replacements = new Dictionary<AnimationClip, AnimationClip>();
+            if (!(runtime is AnimatorOverrideController overrides)) return runtime as AnimatorController;
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrides.GetOverrides(pairs);
+            foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
+            return overrides.runtimeAnimatorController as AnimatorController;
         }
 
         private static IEnumerable<Target> Discover(AnimatorController controller)
