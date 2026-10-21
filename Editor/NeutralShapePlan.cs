@@ -81,7 +81,7 @@ namespace VRVlog.LilToonExporter
                     !plan.unboundAppearanceBindings.Contains(binding) && !HarmlessActivation(prepared, clip, binding) &&
                     !(unchangedClips?.Contains(clip) == true && SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)));
                 if (!changedAppearance) continue;
-                foreach (var morph in bindings.Where(binding => IsMorph(binding) && plan.CommittedMorphs.Contains(binding)))
+                foreach (var morph in bindings.Where(binding => PoseSampling.IsBlendShape(binding) && plan.CommittedMorphs.Contains(binding)))
                     plan.PreservedMorphs.Add(morph);
             }
             plan.CommittedMorphs.ExceptWith(plan.PreservedMorphs);
@@ -168,7 +168,7 @@ namespace VRVlog.LilToonExporter
                 }
                 if (appearance.Count == 0) continue;
                 visualClips.Add(clip, Describe(clip, appearance[0]));
-                foreach (var morph in bindings.Where(IsMorph))
+                foreach (var morph in bindings.Where(PoseSampling.IsBlendShape))
                 {
                     if (!plan.CommittedMorphs.Contains(morph)) continue;
                     if (clipOwners[clip].All(index => invariantMorphs[index].Contains(morph))) continue;
@@ -336,7 +336,7 @@ namespace VRVlog.LilToonExporter
             // checks. Missing optional morph targets are resolved separately.
             if (binding.type == null || binding.path == null || string.IsNullOrEmpty(binding.propertyName))
                 throw new InvalidOperationException(ExporterLocalization.T("FXの見た目の曲線の参照が不正です: ") + Describe(clip, binding));
-            if (binding.type == typeof(Animator) || IsMorph(binding)) return;
+            if (binding.type == typeof(Animator) || PoseSampling.IsBlendShape(binding)) return;
             if (!targets.TryGetValue(binding.path, out var matches))
             { unboundAppearanceBindings.Add(binding); return; }
             if (matches.Length != 1)
@@ -373,7 +373,7 @@ namespace VRVlog.LilToonExporter
 
         internal void PreserveTemporalRest(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (!CommittedMorphs.Contains(binding) || !IsMorph(binding))
+            if (!CommittedMorphs.Contains(binding) || !PoseSampling.IsBlendShape(binding))
                 throw new InvalidOperationException("時間で変わる初期BlendShapeの対象を確定できません。");
             if (TemporalMorphs.Add(binding)) temporalReasons.Add(binding, Describe(clip, binding));
         }
@@ -448,9 +448,6 @@ namespace VRVlog.LilToonExporter
             return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
                 name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
         }
-
-        private static bool IsMorph(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-            binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal);
 
         private static bool IsMaterial(EditorCurveBinding binding) => typeof(Renderer).IsAssignableFrom(binding.type) &&
             (binding.propertyName.StartsWith("material.", StringComparison.Ordinal) ||
