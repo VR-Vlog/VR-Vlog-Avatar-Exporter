@@ -440,7 +440,8 @@ namespace VRVlog.LilToonExporter
             foreach (var finding in ExportGimmickChoices.Listed(gimmickFindings))
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.ObjectField(finding.Target, typeof(GameObject), true);
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.ObjectField(finding.Target, typeof(GameObject), true);
                 EditorGUILayout.LabelField(ExporterLocalization.T(finding.Reason), EditorStyles.wordWrappedLabel);
                 if (finding.Unit == GimmickExclusionUnit.Review)
                 {
