@@ -236,5 +236,23 @@ namespace VRVlog.LilToonExporter.Tests
             preview.AutoExclude = false;
             Assert.That(ExportGimmickChoices.SameGimmicks(saved, preview), Is.False);
         }
+
+        // The board's row: the toggle stays at the right edge and the object
+        // field keeps a readable width when the window is narrow.
+        [TestCase(620f)] [TestCase(440f)] [TestCase(320f)] [TestCase(120f)]
+        public void GimmickRowKeepsTheToggleAndTheObjectFieldInPlace(float width)
+        {
+            var row = new Rect(14, 40, width, 18);
+            var (name, field, contents, toggle) = ExperimentalExpressionCaptureWindow.GimmickRow(row, 90, 8);
+            Assert.That(toggle, Is.EqualTo(new Rect(row.xMax - 90, 40, 90, 18)));
+            Assert.That(name.x, Is.EqualTo(row.x));
+            Assert.That(field.x, Is.EqualTo(name.xMax + 8).Within(.01f));
+            Assert.That(contents.x, Is.EqualTo(field.xMax + 8).Within(.01f));
+            Assert.That(contents.xMax + 8, Is.EqualTo(toggle.x).Within(.01f));
+            foreach (var rect in new[] { name, field, contents }) { Assert.That(rect.y, Is.EqualTo(40)); Assert.That(rect.height, Is.EqualTo(18)); Assert.That(rect.width, Is.GreaterThanOrEqualTo(0)); }
+            var rest = Mathf.Max(0, width - 90 - 24);
+            Assert.That(field.width, Is.GreaterThanOrEqualTo(Mathf.Min(120, rest * .5f)));
+            Assert.That(field.width, Is.GreaterThanOrEqualTo(rest * .35f - .01f));
+        }
     }
 }
