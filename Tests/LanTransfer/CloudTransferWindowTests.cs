@@ -417,6 +417,26 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             finally { Object.DestroyImmediate(window); }
         }
 
+        [Test]
+        public void QrReadySoundDefaultsOnAndIsSaved()
+        {
+            var exists = EditorPrefs.HasKey(AppTransferWindow.QrReadySoundPreference);
+            var saved = EditorPrefs.GetBool(AppTransferWindow.QrReadySoundPreference, true);
+            try
+            {
+                EditorPrefs.DeleteKey(AppTransferWindow.QrReadySoundPreference);
+                Assert.That(AppTransferWindow.QrReadySound, Is.True);
+                AppTransferWindow.QrReadySound = false;
+                Assert.That(EditorPrefs.GetBool(AppTransferWindow.QrReadySoundPreference, true), Is.False);
+                Assert.That(AppTransferWindow.QrReadySound, Is.False);
+            }
+            finally
+            {
+                if (exists) EditorPrefs.SetBool(AppTransferWindow.QrReadySoundPreference, saved);
+                else EditorPrefs.DeleteKey(AppTransferWindow.QrReadySoundPreference);
+            }
+        }
+
         private static void WithPrivacyPreference(Action test)
         {
             var exists = EditorPrefs.HasKey(CloudVrmTransferWindow.PrivacyConsentPreference);

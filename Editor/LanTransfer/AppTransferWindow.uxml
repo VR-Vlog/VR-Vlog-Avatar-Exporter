@@ -91,7 +91,10 @@
                     <ui:VisualElement class="bar-track">
                         <ui:VisualElement name="bar-fill" class="bar-fill" />
                     </ui:VisualElement>
-                    <ui:Label name="lifetime" class="t mini grey lifetime" />
+                    <ui:VisualElement class="lifetime-row">
+                        <ui:Toggle name="sound" class="mini sound" />
+                        <ui:Label name="lifetime" class="t mini grey lifetime" />
+                    </ui:VisualElement>
                 </ui:VisualElement>
             </ui:ScrollView>
             <ui:VisualElement class="hairline" />

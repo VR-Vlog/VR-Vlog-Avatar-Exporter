@@ -46,6 +46,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
         internal const string Regenerate = "QRを作り直す";
+        internal const string QrReadySound = "QRができたら音を鳴らす";
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
         internal const string Completed = "取り込みが終わりました";
@@ -85,6 +86,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string TermsUrl = "https://vrvlog.fun/terms/";
         internal const string Extension = ".vrm";
         private const int MaximumNameLength = 256;
+        // "QRができたら音を鳴らす" is on until the user turns it off.
+        internal const bool QrReadySoundByDefault = true;
 
         private readonly Func<CloudVrmTransferSource, CloudVrmTransferSession> createSession;
         private readonly Func<long> now;
@@ -114,6 +117,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             : !hasAuthor ? AppTransferText.NeedsAuthor
             : !consented ? AppTransferText.NeedsConsent
             : privacyAccepted ? null : AppTransferText.NeedsPrivacyConsent;
+
+        // The OS notification sound plays only when a QR has just appeared on screen; a QR
+        // that could not be drawn, a failed or canceled transfer and an ended wait stay silent.
+        internal static bool ShouldBeepForQr(AppTransferView view, bool qrShown, bool soundOn) =>
+            soundOn && qrShown && view == AppTransferView.Waiting;
 
         // The phone stores the transfer under this name and lists the avatar
         // without the extension. This string is also the QR and AAD name.
