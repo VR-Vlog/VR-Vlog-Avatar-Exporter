@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter
             window.session = session;
             if (window.inputOwnership == null) window.inputOwnership = session.AcquireInputOwnership();
             window.saved = saved;
-            window.titleContent = ExporterWindowIcon.Title(ExporterLocalization.T("書き出すVRMを確認"));
+            window.titleContent = new GUIContent(ExporterLocalization.T("書き出すVRMを確認"));
             window.minSize = new Vector2(780, 580);
             window.ShowUtility();
             EditorApplication.delayCall += () => { if (window != null) window.StartRebuild(); };
@@ -173,6 +173,7 @@ namespace VRVlog.LilToonExporter
 
         private void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("書き出すVRMを確認"));
             if (session == null)
             {
                 EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。書き出し画面から再度書き出してください。"), MessageType.Warning);
