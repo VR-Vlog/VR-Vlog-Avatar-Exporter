@@ -19,6 +19,8 @@ namespace VRVlog.LilToonExporter
             // Where the expression came from (ExpressionSource), listed in the
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
+            // The gesture clip this face plays, if any (VrChatExpressionMenu.Entry.Clip).
+            internal UnityEngine.Object Clip = null;
             // Original BlendShape names this face moves away from rest, with
             // the weight (0-100) it ends on. Emotion inference reads them when
             // the menu label says nothing; the final binds may use baked or
@@ -154,6 +156,7 @@ namespace VRVlog.LilToonExporter
             var nodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             var document = new ExpressionAnimationDocument();
+            var written = new List<(UnityEngine.Object Clip, string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
             foreach (var expression in expressions)
             {
                 // The name carries no source prefix; the extension lists the
@@ -244,6 +247,16 @@ namespace VRVlog.LilToonExporter
                     }
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
+                // One gesture clip registered twice (both hands) writes the
+                // same binds and motion under the same name; the app would
+                // list it as name and name (2). Keep the first; the other stays
+                // unregistered (RegisteredName null). Only the same clip: the
+                // board lists each clip once, and separate clips stay separate.
+                var inference = expression.InferenceName ?? expression.Name;
+                if (expression.Clip != null && written.Any(previous => previous.Clip == expression.Clip && previous.Name == expression.Name &&
+                    previous.Inference == inference && previous.Source == expression.Source &&
+                    SameBinds(previous.Binds, binds) && SameAnimation(previous.Animation, animation))) continue;
+                written.Add((expression.Clip, expression.Name, inference, expression.Source, binds, animation));
                 custom.Add(name, new Dictionary<string, object>
                 {
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
@@ -265,6 +278,47 @@ namespace VRVlog.LilToonExporter
             if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
             ((List<object>)used).Add(ExpressionAnimationData.Extension);
             return glb.Write();
+        }
+
+        static bool SameBinds(List<object> first, List<object> second) =>
+            first.Count == second.Count && first.Zip(second, SameBind).All(same => same);
+
+        static bool SameBind(object first, object second)
+        {
+            var a = (Dictionary<string, object>)first;
+            var b = (Dictionary<string, object>)second;
+            return Convert.ToInt64(a["node"]) == Convert.ToInt64(b["node"]) && Convert.ToInt64(a["index"]) == Convert.ToInt64(b["index"]) &&
+                Convert.ToDouble(a["weight"]).Equals(Convert.ToDouble(b["weight"]));
+        }
+
+        // Equal as written: duration, loop, every curve key and every point's
+        // value and output morph.
+        static bool SameAnimation(ExpressionAnimationData first, ExpressionAnimationData second)
+        {
+            if (first == null || second == null) return first == second;
+            if (!first.Duration.Equals(second.Duration) || first.Loop != second.Loop || first.Channels.Count != second.Channels.Count) return false;
+            for (var c = 0; c < first.Channels.Count; c++)
+            {
+                var a = first.Channels[c];
+                var b = second.Channels[c];
+                if (a.Curve.PreWrap != b.Curve.PreWrap || a.Curve.PostWrap != b.Curve.PostWrap ||
+                    a.Curve.Keys.Count != b.Curve.Keys.Count || a.Points.Count != b.Points.Count) return false;
+                for (var k = 0; k < a.Curve.Keys.Count; k++)
+                {
+                    var p = a.Curve.Keys[k];
+                    var q = b.Curve.Keys[k];
+                    if (!p.Time.Equals(q.Time) || !p.Value.Equals(q.Value) || !Nullable.Equals(p.InTangent, q.InTangent) ||
+                        !Nullable.Equals(p.OutTangent, q.OutTangent) || !p.InWeight.Equals(q.InWeight) || !p.OutWeight.Equals(q.OutWeight)) return false;
+                }
+                for (var i = 0; i < a.Points.Count; i++)
+                {
+                    var p = a.Points[i];
+                    var q = b.Points[i];
+                    if (!p.Value.Equals(q.Value) || (p.Morph == null) != (q.Morph == null) ||
+                        p.Morph != null && (p.Morph.Node != q.Morph.Node || p.Morph.Index != q.Morph.Index)) return false;
+                }
+            }
+            return true;
         }
 
         private static Dictionary<string, object> Object(Dictionary<string, object> parent, string key)

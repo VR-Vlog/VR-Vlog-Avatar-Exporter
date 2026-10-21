@@ -225,8 +225,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.UsesRecordRoute, Is.False);
             Assert.That(board.CanRecordList, Is.True);
             var repeated = Board(null, new[] { Item(Clip("Face A")), Item(Clip("Face A")) });
-            Assert.That(repeated.CanRecordList, Is.False);
-            Assert.That(repeated.HasDuplicateNames, Is.False, "The ordinary route still saves with repeated names.");
+            Assert.That(repeated.CanRecordList, Is.True, "A repeated name is numbered when recorded.");
             var many = Board(null, Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 1).Select(index => Item(Clip("Face " + index))).ToArray());
             Assert.That(many.CanRecordList, Is.False);
             Assert.That(many.ExceedsLimit, Is.False, "The ordinary route still saves over the limit.");
@@ -348,20 +347,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.OverLimitBy, Is.Zero);
             Assert.That(board.ExceedsLimit, Is.False);
             Assert.That(board.ExportedCustom().Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
-        }
-
-        [Test]
-        public void RepeatedNamesBlockOnlyTheRecordRoute()
-        {
-            var first = Clip("smile"); var second = Clip("smile"); var third = Clip("smile"); var other = Clip("wink");
-            var board = Board(null, new[] { Item(first), Item(second), Item(third), Item(other) });
-            Assert.That(board.DuplicateNames(), Is.EqualTo(new[] { "smile" }), "Each repeated name is reported once.");
-            Assert.That(board.HasDuplicateNames, Is.False, "The ordinary route records nothing, so names do not matter.");
-            board.Move(other, Place.Excluded);
-            Assert.That(board.HasDuplicateNames, Is.True);
-            board.Move(first, Place.Excluded); board.Move(second, Place.Slot(ExpressionPreset.happy));
-            Assert.That(board.DuplicateNames(), Is.Empty, "A face in a slot or the excluded list is not recorded as a custom face.");
-            Assert.That(board.HasDuplicateNames, Is.False);
         }
     }
 }
