@@ -38,10 +38,12 @@ namespace VRVlog.LilToonExporter
                 error.normal.textColor = EditorGUIUtility.isProSkin ? new Color32(0xe0, 0x67, 0x5f, 0xff) : new Color32(0xb3, 0x26, 0x1e, 0xff);
             }
             var current = Event.current;
-            // Enter and Esc are read before the text field takes the key.
-            if (current.type == EventType.KeyDown && (current.keyCode == KeyCode.Return || current.keyCode == KeyCode.KeypadEnter))
+            // Enter and Esc are read before the text field takes the key. While a
+            // Japanese conversion is open, Enter only confirms the conversion.
+            var composing = !string.IsNullOrEmpty(Input.compositionString);
+            if (current.type == EventType.KeyDown && !composing && (current.keyCode == KeyCode.Return || current.keyCode == KeyCode.KeypadEnter))
             { if (problem(text) == null) Apply(text); current.Use(); return; }
-            if (current.type == EventType.KeyDown && current.keyCode == KeyCode.Escape) { editorWindow.Close(); current.Use(); return; }
+            if (current.type == EventType.KeyDown && !composing && current.keyCode == KeyCode.Escape) { editorWindow.Close(); current.Use(); return; }
 
             var inner = new Rect(rect.x + Pad, rect.y + Pad, rect.width - Pad * 2, rect.height - Pad * 2);
             GUI.Label(new Rect(inner.x, inner.y, inner.width, 18), ExporterLocalization.T("表情名を変更"), EditorStyles.boldLabel);
