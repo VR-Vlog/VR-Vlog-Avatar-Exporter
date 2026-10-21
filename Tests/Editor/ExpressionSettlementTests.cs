@@ -413,8 +413,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A toggle layer whose Off state is re-entered every frame while its
-        // Bool stays false. The clip holds a face morph, so the layer joins
-        // the expression's evaluation.
+        // Bool stays false. Its clips hold a face morph, so the layer joins
+        // the expression's evaluation, and On and Off differ, so the layer is
+        // not one constant pose.
         private AnimatorState RestartingLayer()
         {
             controller.AddParameter("Toggle", AnimatorControllerParameterType.Bool);
@@ -423,8 +424,15 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 0));
             AssetDatabase.AddObjectToAsset(clip, controller);
             var off = State(toggle, "Off", clip); toggle.defaultState = off;
-            var edge = toggle.AddAnyStateTransition(off); edge.hasExitTime = false; edge.duration = .25f;
-            edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle");
+            var onClip = new AnimationClip { name = "Toggle on" };
+            AnimationUtility.SetEditorCurve(onClip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 100));
+            AssetDatabase.AddObjectToAsset(onClip, controller);
+            var on = State(toggle, "On", onClip);
+            foreach (var (target, mode) in new[] { (off, AnimatorConditionMode.IfNot), (on, AnimatorConditionMode.If) })
+            {
+                var edge = toggle.AddAnyStateTransition(target); edge.hasExitTime = false; edge.duration = .25f;
+                edge.canTransitionToSelf = true; edge.AddCondition(mode, 0, "Toggle");
+            }
             return off;
         }
 
