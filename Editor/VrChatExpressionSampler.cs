@@ -38,8 +38,7 @@ namespace VRVlog.LilToonExporter
                 {
                     var entry = source.Entries[index];
                     if (entry.Error != null) continue;
-                    if (EditorUtility.DisplayCancelableProgressBar("VRChatの表情を読み込み中", entry.Name, (float)index / source.Entries.Count))
-                        throw new OperationCanceledException();
+                    ShowProgress(entry.Name, 0.5f * index / source.Entries.Count);
                     try
                     {
                         var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
@@ -62,13 +61,26 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
+                // The menu loop fills the first half of the bar; each of the
+                // four imports below takes an eighth of the rest.
+                var step = 0;
+                source.Progress = name => ShowProgress(name, 0.5f + step * 0.125f);
                 VrChatGestureExpressions.Add(avatar, source, excludedPath);
+                step++;
                 VrChatFxExpressions.Add(avatar, source, excludedPath, menuPolicy);
+                step++;
                 VrChatAuthoredFaces.Add(avatar, source, excludedPath, menuPolicy);
+                step++;
                 FaceEmoExpressions.Add(avatar, source, excludedPath, authoringSource, faceEmoBindings);
             }
-            finally { source.FacialProjectionSession = null; EditorUtility.ClearProgressBar(); }
+            finally { source.FacialProjectionSession = null; source.Progress = null; EditorUtility.ClearProgressBar(); }
             return source;
+        }
+
+        private static void ShowProgress(string name, float fraction)
+        {
+            if (EditorUtility.DisplayCancelableProgressBar("VRChatの表情を読み込み中", name, fraction))
+                throw new OperationCanceledException();
         }
 
         // The user-facing export captures one explicit environment. Runtime
@@ -140,6 +152,7 @@ namespace VRVlog.LilToonExporter
             VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null)
         {
             if (runtime == null || entry.Error != null || entry.Values.Count == 0) return;
+            metadata?.Progress?.Invoke(entry.Name);
             // Inspect the authored graph before any early exit: a layer control
             // can enable a stationary layer whose serialized default weight is
             // zero, as well as disable one that the probe would otherwise keep.
@@ -488,7 +501,8 @@ namespace VRVlog.LilToonExporter
                     if (sourceState != null && nativeSlot)
                     {
                         var suspended = HeldAutomaticExpressionLayers.Find(probeRuntime, metadata,
-                            NeutralShapeSampler.AutomaticChannels(avatar), layerIndex.Value, explicitMorphs);
+                            ExpressionInspectCache.Current?.AutomaticChannels(avatar) ?? NeutralShapeSampler.AutomaticChannels(avatar),
+                            layerIndex.Value, explicitMorphs);
                         var knownAutomatic = suspended.Count > 0;
                         var unownedRest = HeldAutomaticExpressionLayers.FindUnownedRandomRest(avatar, probeRuntime, metadata,
                             explicitMorphs, context, out var preparedRestMorphs);
