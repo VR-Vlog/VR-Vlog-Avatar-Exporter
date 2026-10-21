@@ -110,6 +110,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_Cull"), Is.EqualTo(0f));
         }
 
+        [Test] public void EmissionStrengthScalesTheLinearColor()
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionStrengthProbe")) { name = "Glow" });
+            var authored = new Color(.5f, .25f, .4f, .7f);
+            source.SetColor("_EmissionColor", authored); source.SetFloat("_EmissionStrength", 2);
+            var output = Substitute(source).GetColor("_EmissionColor");
+            var expected = authored.linear;
+            Assert.That(output.linear.r, Is.EqualTo(expected.r * 2).Within(1e-4), "The shader doubles the linear value, not the saved sRGB value.");
+            Assert.That(output.linear.g, Is.EqualTo(expected.g * 2).Within(1e-4));
+            Assert.That(output.linear.b, Is.EqualTo(expected.b * 2).Within(1e-4));
+            Assert.That(output.r, Is.EqualTo(.6859f).Within(1e-3), "sRGB 0.5 doubled in linear is about sRGB 0.686, not 1.");
+            Assert.That(output.a, Is.EqualTo(.7f).Within(1e-6), "Alpha is not scaled.");
+        }
+
         [Test] public void AShadeImageEqualToTheMainImageBecomesARatioToTheMainColor()
         {
             var main = Texture("main");
