@@ -1874,6 +1874,8 @@ namespace VRVlog.LilToonExporter
                             throw UnsupportedAppearance(neutralPlan, "常時適用FXと表情の影響範囲を確定できません。");
                         foreach (var binding in AnimationUtility.GetCurveBindings(info.clip))
                         {
+                            string CurveLabel() => layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName;
+                            bool NamesParameter() => controller.parameters.Any(parameter => parameter.name == binding.propertyName);
                             if (excludedPath?.Invoke(binding.path) == true) continue;
                             if (binding.type != typeof(Animator) &&
                                 !(binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))) continue;
@@ -1884,7 +1886,7 @@ namespace VRVlog.LilToonExporter
                                 !requiredParameterCurves.Contains(binding.propertyName))
                             {
                                 var parameterCurve = AnimationUtility.GetEditorCurve(info.clip, binding);
-                                ValidateNativeParameterCurve(parameterCurve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(parameterCurve, CurveLabel());
                                 continue;
                             }
                             // A humanoid muscle or root motion curve names no
@@ -1892,11 +1894,9 @@ namespace VRVlog.LilToonExporter
                             // BlendShape, so it never moves a probed expression.
                             // The default face itself keeps refusing it and
                             // falls back to the prepared rest.
-                            if (neutral && !restFace && binding.type == typeof(Animator) &&
-                                !controller.parameters.Any(parameter => parameter.name == binding.propertyName))
+                            if (neutral && !restFace && binding.type == typeof(Animator) && !NamesParameter())
                             {
-                                ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding),
-                                    layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(info.clip, binding), CurveLabel());
                                 continue;
                             }
                             // An uncaptured support/appearance morph may target
@@ -1917,12 +1917,12 @@ namespace VRVlog.LilToonExporter
                                 // active clip's actual native interpolation.
                                 // Keep data checks and the later graph/weight/
                                 // binding/pose stability checkpoints intact.
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
                             if (terminalClip == info.clip && binding.type == typeof(SkinnedMeshRenderer))
                             {
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
                             if (IsConstant(curve)) continue;
@@ -1931,9 +1931,9 @@ namespace VRVlog.LilToonExporter
                             // parameter. It cannot change a BlendShape, so a
                             // looping hand idle beside the face is settled too.
                             if (temporalWarnings != null && plainClock && (binding.type == typeof(SkinnedMeshRenderer) ||
-                                binding.type == typeof(Animator) && !controller.parameters.Any(parameter => parameter.name == binding.propertyName)))
+                                binding.type == typeof(Animator) && !NamesParameter()))
                             {
-                                ValidateNativeParameterCurve(curve, layers[layer].name + " / " + info.clip.name + " / " + binding.propertyName);
+                                ValidateNativeParameterCurve(curve, CurveLabel());
                                 ExpressionSettlement.Clip(playable.GetCurrentAnimatorStateInfo(layer).loop, temporalWarnings);
                                 continue;
                             }
