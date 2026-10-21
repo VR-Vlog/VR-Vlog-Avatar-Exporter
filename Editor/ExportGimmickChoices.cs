@@ -6,12 +6,12 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // The gimmick list both windows show and the "VRMに入れる" choice behind
+    // The gimmick list both windows show and the include choice behind
     // each row. The choices live in ExportSettings, so a choice made in one
     // window is what the other window and every export read.
     internal static class ExportGimmickChoices
     {
-        internal const string HeaderFormat = "VRChat用のギミック（外す{0}件・入れる{1}件）";
+        internal const string HeaderFormat = "VRChat用のギミック（除外{0}件・含める{1}件）";
         internal const string EmptyHeader = "VRChat用のギミック（0件）";
         internal const string PartsFormat = "{0}を含む";
         internal const string OtherGroup = "その他のギミック";
@@ -52,8 +52,19 @@ namespace VRVlog.LilToonExporter
         }
 
         // A parent the user keeps also keeps this finding.
-        internal static bool Inherited(ExportGimmickFinding finding, ExportSettings settings) =>
-            settings.IncludedGimmicks.Any(go => go != null && go != finding.Target && finding.Target.transform.IsChildOf(go.transform));
+        internal static bool Inherited(ExportGimmickFinding finding, ExportSettings settings) => InheritedFrom(finding, settings) != null;
+
+        // The nearest kept parent the row follows, or null.
+        internal static GameObject InheritedFrom(ExportGimmickFinding finding, ExportSettings settings) =>
+            settings.IncludedGimmicks.Where(go => go != null && go != finding.Target && finding.Target.transform.IsChildOf(go.transform))
+                .OrderByDescending(go => Depth(go.transform)).FirstOrDefault();
+
+        static int Depth(Transform transform)
+        {
+            var depth = 0;
+            for (var t = transform; t != null; t = t.parent) depth++;
+            return depth;
+        }
 
         // Whether the user kept this finding itself. A Component finding keeps
         // only its components, not the object (which can be the avatar root).
