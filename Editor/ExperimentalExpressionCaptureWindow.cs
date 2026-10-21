@@ -951,13 +951,7 @@ namespace VRVlog.LilToonExporter
                     var row = GUILayoutUtility.GetRect(100, line, GUILayout.ExpandWidth(true));
                     row.xMin += indent;
                     if (finding.Target == null) continue;
-                    var rest = Mathf.Max(0, row.width - toggleWidth - gap * 3);
-                    // A narrow window keeps the field readable and shortens the other two.
-                    var fieldWidth = Mathf.Max(rest * .35f, Mathf.Min(120, rest * .5f));
-                    var nameRect = new Rect(row.x, row.y, (rest - fieldWidth) * .55f, line);
-                    var fieldRect = new Rect(nameRect.xMax + gap, row.y, fieldWidth, line);
-                    var reasonRect = new Rect(fieldRect.xMax + gap, row.y, rest - fieldWidth - nameRect.width, line);
-                    var toggleRect = new Rect(row.xMax - toggleWidth, row.y, toggleWidth, line);
+                    var (nameRect, fieldRect, reasonRect, toggleRect) = GimmickRow(row, toggleWidth, gap);
                     var rowName = ExportGimmickChoices.RowName(finding);
                     var reason = ExporterLocalization.T(finding.Reason ?? "");
                     var path = ExportGimmickChoices.PathOf(finding, source);
@@ -984,6 +978,18 @@ namespace VRVlog.LilToonExporter
                     }
                 }
             }
+        }
+
+        // name | object field | contents | toggle on one line. A narrow window
+        // keeps the field readable and shortens the name and the contents first.
+        internal static (Rect Name, Rect Field, Rect Contents, Rect Toggle) GimmickRow(Rect row, float toggleWidth, float gap)
+        {
+            var rest = Mathf.Max(0, row.width - toggleWidth - gap * 3);
+            var field = Mathf.Max(rest * .35f, Mathf.Min(120, rest * .5f));
+            var name = new Rect(row.x, row.y, (rest - field) * .55f, row.height);
+            var fieldRect = new Rect(name.xMax + gap, row.y, field, row.height);
+            var contents = new Rect(fieldRect.xMax + gap, row.y, rest - field - name.width, row.height);
+            return (name, fieldRect, contents, new Rect(row.xMax - toggleWidth, row.y, toggleWidth, row.height));
         }
 
         // Saved at once, so the export window and the next export read it.
