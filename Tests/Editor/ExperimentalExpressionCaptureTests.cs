@@ -255,10 +255,11 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
+        public void AnAddedFileThatBecomesUnsupportedIsRemovedAndItsReasonIsShown()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>(); var clip = new AnimationClip { name = "Explicit edited face" };
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var clip = new AnimationClip { name = "Later with bone" };
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
             var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
@@ -268,18 +269,46 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
-                var input = inputs.Single();
-                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
-                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(input.Error, Is.Not.Null);
-                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
-                Assert.That(session.Expressions, Is.Empty, "An unsupported file stays on the board but is not exported.");
-                AnimationUtility.SetEditorCurve(clip, unsupported, null); AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 2, 90));
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+                Assert.That(board.UsesRecordRoute, Is.True, "An added file is recorded.");
+                // The user's own choice of slot goes with the file.
+                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
+
+                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
+                var reason = session.ClipError(clip, clip.length);
+                Assert.That(reason, Is.Not.Null);
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                Assert.That(inputs, Is.Empty, "A file hidden from the board does not stay counted toward the limit.");
+                Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
+                Assert.That(board.PlaceOf(clip).Kind, Is.Not.EqualTo(ExpressionBoard.PlaceKind.Slot));
+                Assert.That((string)type.GetField("status", flags).GetValue(window),
+                    Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(new[] { (clip.name, reason) })));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
+        public void ReimportRefreshesExplicitRowsAndRecordsTheRepairedFile()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>(); var clip = new AnimationClip { name = "Explicit edited face" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+                var input = inputs.Single();
+                // A file that becomes unsupported is removed instead (see the test above).
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 2, 90));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
                 Assert.That(input.Error, Is.Null); Assert.That(input.Time, Is.EqualTo(2));
                 type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
-                session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(90));
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
@@ -1935,6 +1964,62 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
             }
             finally { window.Close(); foreach (var clip in clips) Object.DestroyImmediate(clip); }
+        }
+
+        // Runs a tile's × between two more button ids in a real IMGUI pass, and
+        // keeps how far apart they are for each event type. Ids differ between
+        // windows, so only the gap is compared. IMGUI skips ahead to the next id
+        // with the same hint, so the probe asks with the hint GUI.Button uses,
+        // as the × of the next tile does.
+        sealed class CloseButtonProbe : EditorWindow
+        {
+            internal static readonly Rect Tile = new Rect(10, 10, 60, 60);
+            internal bool Legacy;
+            internal Vector2 Mouse;
+            static readonly int ButtonHint = "Button".GetHashCode();
+            internal readonly System.Collections.Generic.Dictionary<EventType, int> Next = new System.Collections.Generic.Dictionary<EventType, int>();
+
+            void OnGUI()
+            {
+                var type = Event.current.type;
+                // Set here so the check does not depend on how the window passes the mouse position.
+                Event.current.mousePosition = Mouse;
+                var button = new Rect(Tile.xMax - 18, Tile.y + 2, 16, 16);
+                var before = GUIUtility.GetControlID(ButtonHint, FocusType.Passive);
+                if (Legacy)
+                {
+                    // The earlier form: the button was left out of a repaint without the mouse.
+                    if (type != EventType.Repaint || Tile.Contains(Event.current.mousePosition)) GUI.Button(button, "×");
+                }
+                else ExperimentalExpressionCaptureWindow.CloseButton(Tile, button, new GUIContent("×"), GUI.skin.label);
+                Next[type] = GUIUtility.GetControlID(ButtonHint, FocusType.Passive) - before;
+            }
+        }
+
+        [Test]
+        public void TheHiddenCloseButtonKeepsTheIdsOfTheControlsAfterIt()
+        {
+            int Run(bool legacy, Vector2 mouse, EventType type)
+            {
+                var probe = ScriptableObject.CreateInstance<CloseButtonProbe>();
+                try
+                {
+                    probe.Legacy = legacy; probe.Mouse = mouse; probe.Show(); probe.position = new Rect(40, 40, 200, 200);
+                    probe.Next.Clear();
+                    probe.SendEvent(new Event { type = type, mousePosition = mouse });
+                    Assert.That(probe.Next.ContainsKey(type), Is.True, type + " reached OnGUI");
+                    return probe.Next[type];
+                }
+                finally { probe.Close(); }
+            }
+            var outside = new Vector2(150, 150); var inside = CloseButtonProbe.Tile.center;
+            Assert.That(CloseButtonProbe.Tile.Contains(outside), Is.False);
+            // The probe sees the shift the earlier form made, so the check below is not empty.
+            Assert.That(Run(true, outside, EventType.Repaint), Is.Not.EqualTo(Run(true, outside, EventType.Layout)));
+            var layout = Run(false, outside, EventType.Layout);
+            Assert.That(Run(false, outside, EventType.Repaint), Is.EqualTo(layout), "Hidden × still takes its id.");
+            Assert.That(Run(false, inside, EventType.Repaint), Is.EqualTo(layout), "Shown × takes the same id.");
+            Assert.That(Run(false, outside, EventType.MouseDown), Is.EqualTo(layout));
         }
 
         static void Click(EditorWindow window, Rect rect)
