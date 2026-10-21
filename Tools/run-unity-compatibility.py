@@ -920,6 +920,7 @@ BEHAVIOR_CASES = {
         'AutomaticAliasRequiresUniqueExactMeaningAndCompleteNonInertGeometry': 9,
         'CoexistingKnownBlinkFamiliesAllKeepTheirAutomaticOwnership': 1,
         'UnownedRandomRecoveryIsPreservedWithoutRecapturingItsStationaryReset': 2,
+        'HeldProbeRunsTheSelectionAnalysesOnce': 1,
         'ReadOnlyRandomGateProducersKeepTheirNativeSelectedCallbacks': 2,
         'ReadOnlyRandomGateCannotConcealMalformedTypedProducerOperations': 3,
         'ReadOnlyRandomGateRequiresReproducibleNativeProducerOperations': 2,
