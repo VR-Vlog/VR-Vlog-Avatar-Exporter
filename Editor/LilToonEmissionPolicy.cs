@@ -60,7 +60,8 @@ namespace VRVlog.LilToonExporter
                 !material.HasProperty("_EmissionGradTex")) return Color.white;
             var texture = material.GetTexture("_EmissionGradTex");
             if (texture == null) return Color.white; // lilToon's default image is white
-            var row = TextureColors.ReadLinear(texture, Mathf.Clamp(texture.width, 1, 256), 1);
+            // One sample per texel: a narrower row would skip texels when it shrinks the image.
+            var row = TextureColors.ReadLinear(texture, Mathf.Max(texture.width, 1), 1);
             var speed = material.HasProperty("_EmissionGradSpeed") ? material.GetFloat("_EmissionGradSpeed") : 1f;
             var sum = Vector4.zero;
             var count = 0;

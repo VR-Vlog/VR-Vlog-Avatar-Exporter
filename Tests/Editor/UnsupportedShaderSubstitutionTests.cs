@@ -238,6 +238,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(glow));
         }
 
+        // No switch property: the declared keyword decides, even with an image
+        // and a white color.
+        [Test] public void AnEmissionKeywordWithoutASwitchDecidesTheEmission()
+        {
+            var glow = Texture("glow");
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionKeywordProbe")) { name = "Keyword" });
+            source.SetTexture("_EmissionMap", glow);
+            Assert.That(Substitute(source).GetFloat("_UseEmission"), Is.EqualTo(0f), "The keyword is off by default.");
+            source.EnableKeyword("_ES_ENABLE");
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(glow));
+        }
+
         [Test] public void WithoutASwitchTheShaderDefaultColorAloneDoesNotGlow()
         {
             var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionNoSwitchProbe")) { name = "Always" });
