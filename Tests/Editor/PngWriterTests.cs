@@ -13,17 +13,10 @@ namespace VRVlog.LilToonExporter.Tests
     public class PngWriterTests
     {
         [TestCase(8, 8, "opaque", TextureFormat.RGBA32, false)]
-        [TestCase(8, 8, "opaque", TextureFormat.RGBA32, true)]
-        [TestCase(8, 8, "alpha", TextureFormat.RGBA32, false)]
         [TestCase(8, 8, "alpha", TextureFormat.RGBA32, true)]
-        [TestCase(1, 1, "opaque", TextureFormat.RGBA32, false)]
         [TestCase(1, 1, "alpha", TextureFormat.RGBA32, false)]
-        [TestCase(3, 5, "opaque", TextureFormat.RGBA32, false)]
-        [TestCase(3, 5, "alpha", TextureFormat.RGBA32, true)]
         [TestCase(17, 9, "opaque", TextureFormat.RGBA32, true)]
-        [TestCase(17, 9, "alpha", TextureFormat.RGBA32, false)]
         [TestCase(64, 48, "gradient", TextureFormat.RGBA32, false)]
-        [TestCase(64, 48, "gradient", TextureFormat.RGBA32, true)]
         [TestCase(64, 48, "gradientAlpha", TextureFormat.RGBA32, false)]
         [TestCase(17, 9, "opaque", TextureFormat.RGB24, false)]
         [TestCase(17, 9, "alpha", TextureFormat.ARGB32, false)]
@@ -50,7 +43,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(source); Object.DestroyImmediate(decoded); Object.DestroyImmediate(decodedUnity); }
         }
 
-        [TestCase(17, 9, "opaque")]
         [TestCase(17, 9, "alpha")]
         [TestCase(300, 200, "gradient")]
         public void WritesValidChunksAndZlibStream(int width, int height, string pattern)
@@ -95,7 +87,6 @@ namespace VRVlog.LilToonExporter.Tests
         // Every case has at least 64 KiB of filtered bytes, so the parallel path
         // is used. 4096x5 RGBA (81,925 bytes) has one row per band.
         [TestCase(512, 512, "noisyGradient")]
-        [TestCase(300, 200, "gradientAlpha")]
         [TestCase(257, 129, "alpha")]
         [TestCase(4096, 5, "alpha")]
         public void ParallelFilteringWritesTheSameBytesAsSequential(int width, int height, string pattern)

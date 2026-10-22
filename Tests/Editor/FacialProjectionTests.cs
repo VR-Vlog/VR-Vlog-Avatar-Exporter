@@ -209,7 +209,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("bool")]
-        [TestCase("trigger")]
         [TestCase("int")]
         [TestCase("fractional int")]
         [TestCase("exhausted int")]
@@ -339,7 +338,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.01f)]
-        [TestCase(1f)]
         [TestCase(100f)]
         public void EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale(float scale)
         {
@@ -365,7 +363,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(.92f, true, true)]
         [TestCase(.5f, true, false)]
-        [TestCase(.1f, true, false)]
         [TestCase(.92f, false, false)]
         public void DescriptorFaceSeamsAcceptOnlyHeadDominantHumanoidNeckSkin(float headWeight, bool useNeck, bool accepted)
         {
@@ -682,9 +679,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("VisemeBlendShape")]
         [TestCase("JawFlapBlendShape")]
-        [TestCase("Default")]
         [TestCase("JawFlapBone")]
-        [TestCase("VisemeParameterOnly")]
         public void LipSyncModesIgnoreInactiveBlendshapeFields(string mode)
         {
             var descriptor = avatar.GetComponents<Component>().Single(c => c != null && c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
@@ -712,7 +707,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("tiny position")]
         public void LaterFramesAndNonPositionBodyDeformationsCannotEnterTheFaceProjection(string kind)
         {

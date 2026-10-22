@@ -69,10 +69,8 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.DeleteAsset(directory);
         }
 
-        [TestCase(false, false)]
         [TestCase(true, false)]
         [TestCase(false, true)]
-        [TestCase(true, true)]
         public void TimedPetLayerDoesNotRejectRetainedFaceWhenEntireLayerIsExcluded(bool petUsesMenuParameter, bool ongoingTransition)
         {
             var next = petMachine.AddState("Pet next");

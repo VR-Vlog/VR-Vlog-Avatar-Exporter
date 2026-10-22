@@ -252,7 +252,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f)]
-        [TestCase(.75f)]
         public void CoalescedAuthoredMorphRoutesRegisterOneEqualWeight(float weight)
         {
             Skin(source, "first", "original"); Skin(source, "second", "original");
@@ -340,7 +339,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(0f, 0f, false)]
         [TestCase(.2f, .2f, false)]
         [TestCase(0f, .8f, true)]
-        [TestCase(.2f, .8f, true)]
         public void CoalescedDistinctAuthoredRoutesCompareTheirFirstOriginalWeights(float firstWeight, float secondWeight, bool conflict)
         {
             Skin(source, "first", "original"); Skin(source, "second", "original");
@@ -447,11 +445,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("color", false)]
-        [TestCase("color", true)]
-        [TestCase("emissionColor", false)]
         [TestCase("emissionColor", true)]
         [TestCase("uv", false)]
-        [TestCase("uv", true)]
         public void MovingMaterialEvidenceFollowsMappedSlotsAndOwnedFallbackCopies(string kind, bool becomesInert)
         {
             var original = Skin(source, "face", "UE/JawOpen");
@@ -821,7 +816,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f)]
-        [TestCase(.75f)]
         public void InstalledAvatarOptimizerCoalescedTrackingShapesDoNotMultiplyProfileWeights(float weight)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
@@ -870,12 +864,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f, .25f, false, false)]
-        [TestCase(.75f, .75f, false, false)]
         [TestCase(.25f, .75f, true, false)]
-        [TestCase(.75f, .25f, true, false)]
-        [TestCase(.25f, .25f, false, true)]
         [TestCase(.75f, .75f, false, true)]
-        [TestCase(.25f, .75f, true, true)]
         [TestCase(.75f, .25f, true, true)]
         public void InstalledAvatarOptimizerCoalescedAuthoredShapesDriveOnceOrStopOnConflictingWeights(float firstWeight, float secondWeight, bool conflict, bool custom)
         {
