@@ -39,10 +39,13 @@ namespace VRVlog.LilToonExporter.Compatibility
         {
             var dash = version.IndexOf('-');
             if (dash < 0) return version;
-            var suffix = version.Substring(dash + 1);
-            if (suffix.Length == 0) return version;
-            foreach (var c in suffix)
-                if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '.' || c == '-')) return version;
+            // SemVer: dot-separated, non-empty identifiers of [0-9A-Za-z-].
+            foreach (var identifier in version.Substring(dash + 1).Split('.'))
+            {
+                if (identifier.Length == 0) return version;
+                foreach (var c in identifier)
+                    if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-')) return version;
+            }
             return version.Substring(0, dash);
         }
 
