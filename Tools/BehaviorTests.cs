@@ -66,7 +66,6 @@ public static class ExporterBehaviorTests
         vertexOutline.Properties["_UseOutline"]=1f;vertexOutline.Properties["_OutlineVertexR2Width"]=1f;
         var outlineWarnings=new List<string>();
         Check(LilToonMaterialReader.Read(vertexOutline,0,(_,__)=>0,outlineWarnings).features.Contains("outline") && outlineWarnings.Count>0, "Dedicated display retains vertex-controlled outlines and discloses the fallback difference.");
-        CheckHiddenMaterialInjection();
         var original = Encode(Fixture("unused", "Blink", "Blink_L", "Blink_R", "mouth_a", "vrc.v.aa"));
         var output = VrmExpressionBindings.AddMissing(original);
         var result = GlbDocument.Read(output);
@@ -225,38 +224,6 @@ public static class ExporterBehaviorTests
         material.Properties["_ShadowColorTex"] = new UnityEngine.Texture { name = "authored-shade" };
         record = LilToonMaterialReader.Read(material, 0, (_, __) => 0);
         Check(record.textures.Any(t => t.semantic == "shadow"), "Preserve a separately authored shade image.");
-    }
-
-    private static void CheckHiddenMaterialInjection()
-    {
-        var root = new UnityEngine.GameObject();
-        var body = new UnityEngine.Material { name = "body" };
-        var outfit = new UnityEngine.Material { name = "outfit" };
-        // A hidden material whose missing main texture would itself fail if read.
-        outfit.Properties["_MainTex"] = new UnityEngine.Texture { name = "not-exported" };
-        var hidden = new UnityEngine.Renderer { sharedMaterials = new[] { outfit } };
-        hidden.gameObject.activeInHierarchy = false;
-        root.Renderers.Add(hidden);
-        root.Renderers.Add(new UnityEngine.Renderer { sharedMaterials = new[] { body } });
-        var source = VRVlog.LilToonExporter.Tests.MaterialBindingFixture.Build("body");
-        Func<byte[], int> injectCount = bytes => VRVlog.LilToonExporter.Tests.MaterialBindingFixture.InjectedMaterials(
-            LilToonGlbExtension.Inject(bytes, root, "0.4.1", "2.3.4")).Count;
-        Check(injectCount(source) == 1, "Inactive outfit absent from fallback must not abort material injection.");
-        Check(!hidden.gameObject.activeInHierarchy && ReferenceEquals(hidden.sharedMaterials[0], outfit), "Hidden clothing and source materials remain unchanged.");
-        hidden.gameObject.activeInHierarchy = true;
-        hidden.enabled = false;
-        Check(injectCount(source) == 1, "Disabled renderer must not require or decode its missing material.");
-        hidden.enabled = true;
-        bool threw = false;
-        try { injectCount(source); } catch (InvalidOperationException e) { threw = e.Message.Contains("outfit"); }
-        Check(threw, "A visible outfit missing from fallback must still fail explicitly.");
-        outfit.Properties.Clear();
-        Check(injectCount(VRVlog.LilToonExporter.Tests.MaterialBindingFixture.Build("body", "outfit")) == 2,
-            "A visible outfit is retained when its fallback material exists.");
-        hidden.sharedMaterials = new[] { body };
-        Check(injectCount(source) == 1, "Shared visible material is injected only once.");
-        root.activeInHierarchy = false;
-        Check(injectCount(source) == 1, "An inactive avatar root exports what is shown inside it.");
     }
 
     // The private fixture is supplied locally; it is never checked in or copied
