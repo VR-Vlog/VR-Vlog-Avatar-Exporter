@@ -17,6 +17,11 @@ namespace VRVlog.LilToonExporter
     {
         // Tests count the override probe analyses that actually run.
         internal static Action<string> ProbeAnalysisObserver;
+        // Tests and the export regression play the override probes that would
+        // be read directly as well, and see "direct", "sampled", "match" or
+        // "mismatch: ..." for each.
+        internal static bool CompareDirectProbe;
+        internal static Action<string> DirectProbeObserver;
 
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
@@ -438,6 +443,7 @@ namespace VRVlog.LilToonExporter
             // probe and still analyses each one.
             (HashSet<int> Suspended, bool KnownAutomatic, HashSet<int> UnownedRest, HashSet<EditorCurveBinding> PreparedRest)? selection = null;
             ExpressionDependencies probeDependencies = null;
+            bool? direct = null;
             try
             {
                 List<MorphValue> Probe(float input)
@@ -584,7 +590,23 @@ namespace VRVlog.LilToonExporter
                             weightLayerOffset: !nativeSlot && !layerIndex.HasValue ? 1 : 0);
                     }
                     var dependencies = nativeSlot ? (probeDependencies ??= AnalyzeProbe()) : AnalyzeProbe();
-                    var values = SampleNeutral(avatar, probeRuntime, dependencies, metadata, excludedPath, context, scalarPlan);
+                    // Both probes build the same graph apart from the input,
+                    // so the first one decides for both.
+                    direct ??= DirectProbe(avatar, probeRuntime, dependencies, explicitMorphs, scalarPlan.CommittedMorphs, excludedPath,
+                        layerIndex ?? -1, nativeSlot && sourceState != null && !hasLayerControls && projection == null &&
+                        stationaryBindings.Count == 0 && parameterLayers.Count == 0 &&
+                        (layerIndex.Value == 0 || originalLayers[layerIndex.Value].defaultWeight == 1) &&
+                        originalLayers[layerIndex.Value].avatarMask == null && avatar.GetComponent<Animator>() != null &&
+                        sourceBehaviours.Length == 0 && sourceMachines.All(machine => machine.behaviours.Length == 0));
+                    List<MorphValue> values;
+                    if (direct == true && !CompareDirectProbe)
+                        values = explicitMorphs.Select(binding => new MorphValue
+                            { Path = binding.path, Shape = binding.propertyName.Substring("blendShape.".Length), Weight = input }).ToList();
+                    else
+                    {
+                        values = SampleNeutral(avatar, probeRuntime, dependencies, metadata, excludedPath, context, scalarPlan);
+                        if (direct == true) CompareDirect(entry.Name, input, explicitMorphs, values);
+                    }
                     context.UsedParameters.UnionWith(dependencies.Parameters.Where(context.Values.ContainsKey));
                     // A supplied input can establish that a gate is false,
                     // disappearing from the reachable dependency reads. That
@@ -630,6 +652,45 @@ namespace VRVlog.LilToonExporter
             {
                 foreach (var asset in owned) if (asset != null) UnityEngine.Object.DestroyImmediate(asset);
             }
+        }
+
+        // A probe whose only playing layer is the selected one, at full weight
+        // on Override with no callbacks, and whose morphs are exactly the
+        // clip's own, ends with its input on every one of them. Return that
+        // without playing the graph. A probe with anything more (another
+        // layer on these morphs, support layers, weight controls, drivers,
+        // stationary or parameter layers, a projection, or a renderer the
+        // capture would reject) still plays.
+        private static bool DirectProbe(GameObject avatar, RuntimeAnimatorController probeRuntime, ExpressionDependencies dependencies,
+            ISet<EditorCurveBinding> explicitMorphs, ISet<EditorCurveBinding> committedMorphs, Func<string, bool> excludedPath,
+            int layerIndex, bool simpleSlot)
+        {
+            bool Result(bool value) { DirectProbeObserver?.Invoke(value ? "direct" : "sampled"); return value; }
+            if (!simpleSlot || !committedMorphs.SetEquals(explicitMorphs) || !dependencies.Morphs.SetEquals(explicitMorphs) ||
+                dependencies.Layers.Count != 1 || !dependencies.Layers.Contains(layerIndex) || dependencies.NativeSupportLayers.Count > 0 ||
+                dependencies.IndependentTopOverrideLayer >= 0 || dependencies.HasFxControls || dependencies.WeightControlLayers.Count > 0 ||
+                dependencies.RequireSettledWeightControls || dependencies.Drivers.Count > 0 ||
+                FindExcludedLayers(ExpressionDependencies.Controller(probeRuntime), probeRuntime, excludedPath, dependencies.Parameters).Contains(layerIndex))
+                return Result(false);
+            foreach (var binding in explicitMorphs)
+            {
+                if (excludedPath?.Invoke(binding.path) == true) return Result(false);
+                SkinnedMeshRenderer renderer;
+                try { renderer = FindRenderer(avatar, binding.path); }
+                catch (InvalidOperationException) { return Result(false); }
+                if (!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
+                    renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0)
+                    return Result(false);
+            }
+            return Result(true);
+        }
+
+        private static void CompareDirect(string name, float input, ISet<EditorCurveBinding> explicitMorphs, List<MorphValue> sampled)
+        {
+            var expected = new HashSet<(string, string)>(explicitMorphs.Select(binding => (binding.path, binding.propertyName.Substring("blendShape.".Length))));
+            var matches = sampled.Count == expected.Count && sampled.All(value => expected.Contains((value.Path, value.Shape)) && value.Weight == input);
+            DirectProbeObserver?.Invoke(matches ? "match" : "mismatch: " + name + " " + input.ToString(CultureInfo.InvariantCulture) + ": " +
+                string.Join(", ", sampled.Select(value => value.Path + "/" + value.Shape + "=" + value.Weight.ToString("R", CultureInfo.InvariantCulture))));
         }
 
         private static HashSet<EditorCurveBinding> StationaryBindings(GameObject avatar, RuntimeAnimatorController runtime,
