@@ -22,7 +22,7 @@ PhysBoneの重複は元の静止姿勢を残して担当を分け、左右別メ
 
 ## 必要な環境
 
-Unity 2022.3、lilToon（0.12.0-beta.4以降はバージョンを問いません。推奨は **2.3.4**。0.12.0-beta.1〜beta.3は2.0.0〜2.3.4、安定版0.11.15は2.3.4だけ）、UniVRM **0.131.x**（0.131.0〜0.131.3で確認済み）、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応バージョンか確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、VRChat SDK 3.5.2以上3.11.0未満が必要です。Modular AvatarのShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは、Modular Avatar 1.18.0以上1.19.0未満が必要です。lilToonのバージョンでは書き出しを止めません。アプリは導入済みのバージョンにかかわらずlilToon 2.3.4として描画し、2.3.4とシェーダーが違うところは書き出し画面に警告として出します（2.3.4にないプロパティは書き出さず、2.3.4のプロパティと合わないマテリアルはMToonで近似します）。止まるのは、lilToonが入っていないときと、ベイク用シェーダー（`Hidden/ltsother_baker`）が2.3.4と違うときだけです。
+Unity 2022.3、lilToon（0.12.0-beta.4以降はバージョンを問いません。推奨は **2.3.4**。0.12.0-beta.1〜beta.3は2.0.0〜2.3.4、安定版0.11.15は2.3.4だけ）、UniVRM **0.131.x**（0.131.0〜0.131.3で確認済み）、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応バージョンか確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。VRChat SDKは3.5.0以上3.11.0未満（3.11.0未満のベータ版を含む）に対応します。音声再生（VRC Animator Play Audio）を含む表情ファイルは、この機能が入った3.5.2以降で使えます。Modular AvatarのShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは、Modular Avatar 1.18.0以上1.19.0未満が必要です。lilToonのバージョンでは書き出しを止めません。アプリは導入済みのバージョンにかかわらずlilToon 2.3.4として描画し、2.3.4とシェーダーが違うところは書き出し画面に警告として出します（2.3.4にないプロパティは書き出さず、2.3.4のプロパティと合わないマテリアルはMToonで近似します）。止まるのは、lilToonが入っていないときと、ベイク用シェーダー（`Hidden/ltsother_baker`）が2.3.4と違うときだけです。
 
 ## 使い方
 
