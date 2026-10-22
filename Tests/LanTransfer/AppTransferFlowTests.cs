@@ -428,6 +428,19 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrShown, soundOn), Is.EqualTo(beeps));
         }
 
+        [TestCase("Exporting", true)]
+        [TestCase("Uploading", true)]
+        [TestCase("Waiting", true)]
+        [TestCase("Completed", false)]
+        [TestCase("Expired", false)]
+        [TestCase("Canceled", false)]
+        [TestCase("Failed", false)]
+        [TestCase("Form", false)]
+        public void DoNotShareShowsFromTheExportUntilTheQrIsGone(string view, bool shown)
+        {
+            Assert.That(AppTransferFlow.ShowsDoNotShare((AppTransferView)Enum.Parse(typeof(AppTransferView), view)), Is.EqualTo(shown));
+        }
+
         [Test]
         public void QrReadySoundIsOnByDefault()
         {
