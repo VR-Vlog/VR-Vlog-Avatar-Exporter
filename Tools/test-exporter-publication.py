@@ -43,7 +43,7 @@ class PublicationTests(unittest.TestCase):
         self.fresh_official_reader = lambda: None
         self.listing = {"id": publication.REPOSITORY_ID, "url": publication.CANONICAL_URL, "packages": {}}
         for name in publication.REQUIRED_PACKAGES:
-            version = "0.11.14" if name == publication.REQUIRED_PACKAGES[0] else "0.131.0"
+            version = "0.11.14"
             manifest = {"name": name, "version": version, "zipSHA256": "a" * 64,
                         "url": f"https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/download/v{version}/{name}-{version}.zip"}
             self.listing["packages"][name] = {"versions": {version: manifest}}

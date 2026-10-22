@@ -4,11 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -324,11 +325,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); Object.DestroyImmediate(clip); }
         }
 
-        [TestCase("position")]
-        [TestCase("rotation")]
-        [TestCase("scale")]
-        [TestCase("active")]
-        public void ParentOnlyChangesInvalidateTheCapturedSourceAppearance(string change)
+        [TestCase("position", true)]
+        [TestCase("rotation", true)]
+        [TestCase("scale", false)]
+        [TestCase("active", false)]
+        public void ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile(string change, bool current)
         {
             using var f = new RecoveryFixture();
             var parent = new GameObject("Source parent");
@@ -342,7 +343,8 @@ namespace VRVlog.LilToonExporter.Tests
                 if (change == "rotation") parent.transform.rotation = Quaternion.Euler(0, 25, 0);
                 if (change == "scale") parent.transform.localScale = Vector3.one * 1.1f;
                 if (change == "active") parent.SetActive(false);
-                Assert.That(stamp.Matches(f.Source), Is.False, change);
+                // The export puts the root at the origin facing forward; its world scale is kept.
+                Assert.That(stamp.Matches(f.Source), Is.EqualTo(current), change);
                 if (change != "active") Assert.That(f.Source.transform.localToWorldMatrix, Is.Not.EqualTo(sourceLocal));
                 Assert.That(f.Source.transform.localPosition, Is.EqualTo(Vector3.zero));
                 Assert.That(f.Renderer.sharedMaterial, Is.SameAs(f.Material));
@@ -417,7 +419,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = Export(Options(action));
                 loaded = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(loaded, Is.Not.Null);
-                Assert.That(loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).All(m => m.shader.name == "VRM10/MToon10"), Is.True);
+                Assert.That(loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).All(m => m.shader.name == MToon10Meta.UnityShaderName), Is.True);
                 Assert.That(material.GetFloat("_UseAudioLink"), Is.EqualTo(1));
                 Assert.That(skins.All(s => s.sharedMaterial == material && s.sharedMesh == f.Mesh && s.GetBlendShapeWeight(0) == 35), Is.True);
             }

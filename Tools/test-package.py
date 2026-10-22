@@ -57,7 +57,7 @@ class PackageTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.git("init", "--quiet")
-        for name in package.ROOT_FILES | package.LOCALE_FILES | package.DATA_FILES | {"Editor/Example.cs", "Editor/Example.cs.meta", "Editor/Test.asmdef", "Editor/Example.shader", "Runtime.meta", "Runtime/Tracking.cs", "Runtime/Tracking.cs.meta", "Runtime/Tracking.asmdef", "ThirdPartyNotices/Example.md"}:
+        for name in package.ROOT_FILES | package.LOCALE_FILES | package.DATA_FILES | package.VENDOR_FILES | {"Editor/Vendor/UniVRM/Shaders/Example.hlsl", "Editor/Example.cs", "Editor/Example.cs.meta", "Editor/Test.asmdef", "Editor/Example.shader", "Runtime.meta", "Runtime/Tracking.cs", "Runtime/Tracking.cs.meta", "Runtime/Tracking.asmdef", "ThirdPartyNotices/Example.md"}:
             self.write(name, name)
         self.version("0.11.12-beta.1")
         self.write("Documentation~/CloudTransfer.md", "prerelease cloud transfer guide")
@@ -313,6 +313,41 @@ class PackageTests(unittest.TestCase):
         self.git("add", name)
         with self.assertRaisesRegex(ValueError, "Package source must be UTF-8"):
             package.build(self.root, self.root / "invalid-encoding.zip")
+
+    def test_bundled_univrm_ships_whole_without_widening_other_folders(self):
+        vendored = ["Editor/Vendor/UniVRM/Shaders/Example.hlsl", "Editor/Vendor/UniVRM/Shaders/Example.hlsl.meta",
+                    "Editor/Vendor/UniVRM/Resources/Pose.asset", "Editor/Vendor/UniVRM/Resources/Pose.asset.meta",
+                    "Editor/Vendor/UniVRM/LICENSE.txt.meta", "Editor/Vendor/UniVRM/VERSION.json.meta"]
+        outside = ["Editor/Example.hlsl", "Editor/Pose.asset", "Editor/notes.txt", "Editor/data.json",
+                   "Runtime/Example.hlsl", "Tools/Vendor/UniVRM/LICENSE.txt"]
+        for name in vendored + outside:
+            self.write(name, name)
+        self.git("add", ".")
+        archive = self.root / "package.zip"
+        names = package.build(self.root, archive)
+        self.assertTrue(package.VENDOR_FILES <= set(names))
+        self.assertTrue(set(vendored) <= set(names))
+        self.assertFalse(set(outside) & set(names))
+        with zipfile.ZipFile(archive) as built:
+            self.assertEqual(built.read("Editor/Vendor/UniVRM/LICENSE.txt"), b"Editor/Vendor/UniVRM/LICENSE.txt")
+            self.assertIn("Editor/Vendor/UniVRM/Shaders/Example.hlsl", built.namelist())
+
+    def test_missing_bundled_univrm_license_or_shader_include_fails(self):
+        for name in ["Editor/Vendor/UniVRM/LICENSE.txt", "Editor/Vendor/UniVRM/Shaders/Example.hlsl"]:
+            with self.subTest(name=name):
+                self.git("rm", "--cached", name)
+                with self.assertRaisesRegex(ValueError, "Required package files"):
+                    package.build(self.root, self.root / "invalid.zip")
+                self.git("add", name)
+
+    def test_repository_bundles_the_univrm_license_and_shader_includes(self):
+        repository = Path(__file__).resolve().parents[1]
+        self.assertTrue(package.included("Editor/Vendor/UniVRM/LICENSE.txt"))
+        self.assertIn("Permission is hereby granted",
+                      (repository / "Editor/Vendor/UniVRM/LICENSE.txt").read_text(encoding="utf-8"))
+        shaders = sorted((repository / "Editor/Vendor/UniVRM").rglob("*.hlsl"))
+        self.assertTrue(shaders)
+        self.assertTrue(all(package.included(path.relative_to(repository).as_posix()) for path in shaders))
 
     def test_missing_locale_asset_fails(self):
         self.git("rm", "--cached", "Editor/Locales/ExporterLocale_ko.json")

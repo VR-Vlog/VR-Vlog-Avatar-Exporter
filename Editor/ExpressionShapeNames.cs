@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 #if !EXPORTER_BEHAVIOR_TESTS
 using UnityEditor;
 using UnityEngine;

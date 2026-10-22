@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -34,7 +35,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(created, Is.EquivalentTo(new[] { output }), "The exporter owns and later destroys the converted copy.");
             // Pure red is identical in sRGB and linear, so the factor check
             // does not depend on MToon's color-space conversion.
-            Assert.That(output.shader.name, Is.EqualTo("VRM10/MToon10"));
+            Assert.That(output.shader.name, Is.EqualTo(MToon10Meta.UnityShaderName));
             Assert.That(output.name, Is.EqualTo("Plain"));
             Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, 0, 0, 1)));

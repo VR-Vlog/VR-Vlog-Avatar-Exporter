@@ -3,11 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniGLTF.Extensions.VRMC_vrm;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using VRVlog.FaceTracking;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -1637,7 +1638,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var vrm = ScriptableObject.CreateInstance<VRM10Object>(); var clip = ScriptableObject.CreateInstance<VRM10Expression>();
-            var first = new Material(Shader.Find("VRM10/MToon10")) { name = "Repeated UE Material" };
+            var first = new Material(Shader.Find(MToon10Meta.UnityShaderName)) { name = "Repeated UE Material" };
             var second = new Material(first) { name = first.name }; Material replacement = null; GameObject introduced = null;
             try
             {

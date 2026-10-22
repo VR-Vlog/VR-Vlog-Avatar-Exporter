@@ -4,8 +4,15 @@
     "AppearancePreparationTests",
     "MaReactiveExpressionExportTests",
     "MaDeletionExportTests",
+    "NdmfPreparationTests",
     "ExperimentalExpressionCaptureTests"
   ],
+  "modularAvatarMinimumAtCommit": {
+    "a37c0d2": "1.18.0",
+    "a0c37f9": "1.10.4",
+    "ddbee33": "1.11.2",
+    "97d1ae7": "1.12.2"
+  },
   "sets": {
     "E2": {
       "modularAvatar": "1.13.4",
@@ -30,7 +37,22 @@
       "uniVrm": "0.131.2",
       "lilToon": "2.3.4",
       "aao": "1.9.20"
-    }
+    },
+    "L1": {"modularAvatar": "1.10.4", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "L9": {"modularAvatar": "1.11.2", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "M0": {"modularAvatar": "1.11.7", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "M1": {"modularAvatar": "1.12.0", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "M4": {"modularAvatar": "1.12.1", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "M5": {"modularAvatar": "1.12.2", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "M2": {"modularAvatar": "1.12.3", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "M3": {"modularAvatar": "1.12.4", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "L2": {"modularAvatar": "1.12.5", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "L3": {"modularAvatar": "1.13.0", "ndmf": "1.8.3", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "L4": {"modularAvatar": "1.14.0", "ndmf": "1.9.0", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "L8": {"modularAvatar": "1.14.2", "ndmf": "1.9.1", "vrchatSdk": "3.10.5", "uniVrm": "0.131.3", "lilToon": "2.3.4", "aao": null},
+    "L5": {"modularAvatar": "1.17.1", "ndmf": "1.11.0", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "L6": {"modularAvatar": "1.18.0", "ndmf": "1.11.0", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null},
+    "L7": {"modularAvatar": "1.18.7", "ndmf": "1.14.8", "vrchatSdk": "3.10.5", "uniVrm": "0.131.2", "lilToon": "2.3.4", "aao": null}
   },
   "runs": [
     {
@@ -43,6 +65,7 @@
       "set": "E4",
       "run": "focused",
       "commit": "a37c0d2",
+      "filter": ["AppearancePreparationTests", "MaReactiveExpressionExportTests", "MaDeletionExportTests", "ExperimentalExpressionCaptureTests"],
       "counts": {"total": 153, "passed": 147, "failed": 6, "skipped": 0},
       "fixtures": {
         "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
@@ -55,6 +78,7 @@
       "set": "E2",
       "run": "focused",
       "commit": "a37c0d2",
+      "filter": ["AppearancePreparationTests", "MaReactiveExpressionExportTests", "MaDeletionExportTests", "ExperimentalExpressionCaptureTests"],
       "counts": {"total": 153, "passed": 114, "failed": 31, "skipped": 8},
       "stoppedByRangeMessage": 25,
       "fixtures": {
@@ -68,12 +92,371 @@
       "set": "U2",
       "run": "focused",
       "commit": "a37c0d2",
+      "filter": ["AppearancePreparationTests", "MaReactiveExpressionExportTests", "MaDeletionExportTests", "ExperimentalExpressionCaptureTests"],
       "counts": {"total": 153, "passed": 149, "failed": 4, "skipped": 0},
       "fixtures": {
         "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
         "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
         "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
         "ExperimentalExpressionCaptureTests": {"total": 120, "passed": 116, "failed": 4, "skipped": 0}
+      }
+    },
+    {
+      "set": "L1",
+      "run": "focused",
+      "commit": "a0c37f9",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 223, "failed": 13, "skipped": 8},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 6, "failed": 6, "skipped": 3},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "L9",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 223, "failed": 13, "skipped": 8},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 6, "failed": 6, "skipped": 3},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "M0",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 223, "failed": 13, "skipped": 8},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 6, "failed": 6, "skipped": 3},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "M1",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": null,
+      "compileErrors": [
+        "Packages/nadena.dev.modular-avatar/Runtime/ModularAvatarMergeBlendTree.cs(4,7): The type or namespace name 'API' could not be found",
+        "Packages/nadena.dev.modular-avatar/Runtime/ModularAvatarMergeBlendTree.cs(13,75): The type or namespace name 'IVirtualizeMotion' could not be found"
+      ]
+    },
+    {
+      "set": "M4",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": null,
+      "compileErrors": [
+        "Packages/nadena.dev.modular-avatar/Runtime/ModularAvatarMergeBlendTree.cs(4,7): The type or namespace name 'API' could not be found",
+        "Packages/nadena.dev.modular-avatar/Runtime/ModularAvatarMergeBlendTree.cs(13,75): The type or namespace name 'IVirtualizeMotion' could not be found"
+      ]
+    },
+    {
+      "set": "M5",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 230, "failed": 9, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 154, "failed": 8, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "M2",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 230, "failed": 9, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 154, "failed": 8, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "M3",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 230, "failed": 9, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 154, "failed": 8, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "L2",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 232, "failed": 7, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "L3",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 233, "failed": 6, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "L4",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 232, "failed": 12, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 11, "failed": 4, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 154, "failed": 8, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 4
+      }
+    },
+    {
+      "set": "L8",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 238, "failed": 6, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "L5",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 235, "failed": 9, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 153, "failed": 9, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.LeavingTheObjectsPageAppliesItsEditsFirst": 1,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "L6",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 235, "failed": 9, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 153, "failed": 9, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "ExperimentalExpressionCaptureTests.SavedExcludedObjectsThatLeaveNoPreviewWaitInTheList": 1
+      }
+    },
+    {
+      "set": "L7",
+      "run": "focused",
+      "commit": "ddbee33",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 238, "failed": 6, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "L3",
+      "run": "focused",
+      "commit": "97d1ae7",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 233, "failed": 6, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "L8",
+      "run": "focused",
+      "commit": "97d1ae7",
+      "pc": "PC 1",
+      "counts": {"total": 244, "passed": 238, "failed": 6, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "M5",
+      "run": "focused",
+      "commit": "97d1ae7",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 230, "failed": 9, "skipped": 5},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 10, "failed": 0, "skipped": 2},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 3, "failed": 0, "skipped": 3},
+        "NdmfPreparationTests": {"total": 49, "passed": 48, "failed": 1, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 154, "failed": 8, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "L7",
+      "run": "focused",
+      "commit": "97d1ae7",
+      "pc": "PC 2",
+      "counts": {"total": 244, "passed": 238, "failed": 6, "skipped": 0},
+      "fixtures": {
+        "AppearancePreparationTests": {"total": 12, "passed": 12, "failed": 0, "skipped": 0},
+        "MaReactiveExpressionExportTests": {"total": 15, "passed": 15, "failed": 0, "skipped": 0},
+        "MaDeletionExportTests": {"total": 6, "passed": 6, "failed": 0, "skipped": 0},
+        "NdmfPreparationTests": {"total": 49, "passed": 49, "failed": 0, "skipped": 0},
+        "ExperimentalExpressionCaptureTests": {"total": 162, "passed": 156, "failed": 6, "skipped": 0}
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
       }
     }
   ]

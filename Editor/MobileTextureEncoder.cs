@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using UnityEngine;
-using ExportColorSpace = UniGLTF.ColorSpace;
+using ExportColorSpace = VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace;
 
 namespace VRVlog.LilToonExporter
 {

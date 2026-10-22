@@ -5,8 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -29,7 +29,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             RequirePackages();
             var source = new GameObject("Avatar");
-            source.AddComponent(Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
+            source.AddComponent(AvatarRoot());
             var face = new GameObject("Face"); face.transform.SetParent(source.transform, false);
             var skin = face.AddComponent<SkinnedMeshRenderer>();
             var mesh = new Mesh(); ConfigureGeometry(mesh); skin.sharedMesh = mesh; skin.SetBlendShapeWeight(1, 25);
@@ -89,7 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             RequirePackages();
             var source = new GameObject("Avatar");
-            source.AddComponent(Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot"));
+            source.AddComponent(AvatarRoot());
             var face = new GameObject("Face"); face.transform.SetParent(source.transform, false);
             var skin = face.AddComponent<SkinnedMeshRenderer>();
             var mesh = new Mesh(); ConfigureGeometry(mesh); skin.sharedMesh = mesh; skin.SetBlendShapeWeight(1, 25);
@@ -392,10 +392,14 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); AssetDatabase.DeleteAsset(folder); }
         }
 
+        // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+        // avatar by its descriptor, as a real avatar would be found.
+        static Type AvatarRoot() => Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+
         static void RequirePackages()
         {
             foreach (var name in new[] { Ma + "ModularAvatarShapeChanger", Ma + "ModularAvatarMenuItem", Ma + "ModularAvatarMergeAnimator",
-                "nadena.dev.ndmf.runtime.components.NDMFAvatarRoot", "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor",
+                "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor",
                 "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu", "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters" })
                 if (Installed(name) == null) Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
         }
@@ -404,10 +408,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var node = new GameObject("Smile control"); node.transform.SetParent(root.transform, false);
             var type = Installed(Ma + "ModularAvatarMenuItem"); var component = node.AddComponent(type);
-            var control = type.GetProperty("PortableControl").GetValue(component);
-            var kind = control.GetType().GetProperty("Type"); kind.SetValue(control, Enum.Parse(kind.PropertyType, "Toggle"));
-            control.GetType().GetProperty("Parameter").SetValue(control, "Menu");
-            control.GetType().GetProperty("Value").SetValue(control, 1f);
+            AppearancePreparationTests.SetToggle(component, "Menu", 1f);
             type.GetField("automaticValue").SetValue(component, false); type.GetField("isDefault").SetValue(component, selected);
             return component;
         }

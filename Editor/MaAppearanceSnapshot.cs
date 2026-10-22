@@ -56,7 +56,7 @@ namespace VRVlog.LilToonExporter
                 CopyOverride(simulator, analyzer, "PropertyOverrides", "ForcePropertyOverrides", parameterMap, analyzeClone ? map : null);
                 CopyOverride(simulator, analyzer, "MenuItemOverrides", "ForceMenuItems", parameterMap, analyzeClone ? map : null);
                 var analysis = analyzerType.GetMethod("Analyze").Invoke(analyzer, new object[] { analyzeClone ? clone : source });
-                var states = (IDictionary)Field(analysis, "InitialStates");
+                var states = InitialStates(analysis);
                 // Simulator selections describe the appearance to freeze, not
                 // the complete set of states a menu can select. Analyze the
                 // unforced copy separately so selecting a menu in SceneView
@@ -70,18 +70,25 @@ namespace VRVlog.LilToonExporter
                     if (dynamic.Contains(Property(shape.Key)))
                         foreach (var rule in (IEnumerable)Field(shape.Value, "actionGroups"))
                             if (Field(rule, "ControllingObject") is Component controller) retained.Add(controller);
-                var selectorType = Required(Ma + "editor.IMeshSelector");
+                // MA 1.18 describes Shape Changer Delete and
+                // Mesh Cutter as IMeshSelector, 1.14 to 1.17 as IVertexFilter.
+                // Up to 1.13 a delete is a float on deletedShape.<name> and MA
+                // removes the vertices that blend shape moves (1.13 passes the
+                // value as the threshold; earlier versions delete above 0.5).
+                var selectorType = Optional(Ma + "editor.IMeshSelector") ?? Optional(Ma + "editor.IVertexFilter");
+                if (selectorType == null && components.Any(c => c.GetType().Name == "ModularAvatarMeshCutter"))
+                    throw new TypeLoadException(Ma + "editor.IMeshSelector");
+                MethodInfo removeShapes = null;
                 var selectors = new Dictionary<SkinnedMeshRenderer, IList>();
                 // Freeze irreversible geometry and constant appearance using
                 // MA's own resolved simulator selection. Reversible reactions
                 // stay authored so the canonical build can generate their FX.
-                foreach (DictionaryEntry state in states)
+                foreach (var state in states)
                 {
-                    var original = (Object)Field(state.Key, "TargetObject");
+                    var (original, name) = Property(state.Key);
                     if (original == null) continue;
                     var target = original;
                     if (!analyzeClone && !map.TryGetValue(original, out target)) continue;
-                    var name = (string)Field(state.Key, "PropertyName");
                     // The original weights/material/visibility are the off
                     // endpoint from which MA generates reversible reactions.
                     // Writing the currently selected pose here would turn both
@@ -100,18 +107,46 @@ namespace VRVlog.LilToonExporter
                         var slots = renderer.sharedMaterials;
                         if (index >= 0 && index < slots.Length) { slots[index] = replacement; renderer.sharedMaterials = slots; }
                     }
-                    else if (target is SkinnedMeshRenderer cut && state.Value != null && selectorType.IsInstanceOfType(state.Value))
+                    else if (target is SkinnedMeshRenderer cut && state.Value != null && selectorType != null && selectorType.IsInstanceOfType(state.Value))
                     {
                         if (!selectors.TryGetValue(cut, out var list))
                             selectors.Add(cut, list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(selectorType)));
                         list.Add(state.Value);
                     }
+                    else if (target is SkinnedMeshRenderer deleted && selectorType == null && name.StartsWith("deletedShape.", StringComparison.Ordinal) && state.Value is float threshold)
+                    {
+                        removeShapes = removeShapes ?? Required(Ma + "editor.RemoveBlendShapeFromMesh").GetMethod("RemoveBlendshapes", Members)
+                            ?? throw new MissingMethodException(Ma + "editor.RemoveBlendShapeFromMesh", "RemoveBlendshapes");
+                        // IEnumerable<(int, float)> from 1.13, IEnumerable<int> before.
+                        var item = removeShapes.GetParameters()[1].ParameterType.GetGenericArguments()[0];
+                        var index = deleted.sharedMesh == null ? -1 : deleted.sharedMesh.GetBlendShapeIndex(name.Substring(13));
+                        if (index < 0 || item == typeof(int) && threshold <= .5f) continue;
+                        if (!selectors.TryGetValue(deleted, out var list))
+                            selectors.Add(deleted, list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(item)));
+                        list.Add(item == typeof(int) ? (object)index : (index, threshold));
+                    }
                 }
                 foreach (var pair in selectors)
                 {
                     if (pair.Key.sharedMesh == null) continue;
-                    var mesh = (Mesh)Required(Ma + "editor.RemoveVerticesFromMesh").GetMethod("FilterPrimitivesOnly", Members)
-                        .Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, pair.Value });
+                    Mesh mesh;
+                    if (selectorType == null) mesh = (Mesh)removeShapes.Invoke(null, new object[] { pair.Key.sharedMesh, pair.Value });
+                    else
+                    {
+                        var remove = Required(Ma + "editor.RemoveVerticesFromMesh");
+                        var primitives = remove.GetMethod("FilterPrimitivesOnly", Members);
+                        if (primitives != null) mesh = (Mesh)primitives.Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, pair.Value });
+                        else
+                        {
+                            // 1.14 to 1.17 take (TargetProp, IVertexFilter) and read only the filter.
+                            var vertices = remove.GetMethod("RemoveVertices", Members) ?? throw new MissingMethodException(remove.FullName, "RemoveVertices");
+                            var tuple = vertices.GetParameters()[2].ParameterType.GetGenericArguments()[0];
+                            var targets = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tuple));
+                            var none = Activator.CreateInstance(tuple.GetGenericArguments()[0]);
+                            foreach (var selector in pair.Value) targets.Add(Activator.CreateInstance(tuple, none, selector));
+                            mesh = (Mesh)vertices.Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, targets });
+                        }
+                    }
                     owned.Add(mesh);
                     pair.Key.sharedMesh = mesh;
                 }
@@ -131,7 +166,8 @@ namespace VRVlog.LilToonExporter
                     }
                     if (component.GetType().Name == "ModularAvatarMeshCutter")
                         foreach (var filter in component.GetComponents<Component>())
-                            if (filter != null && filter.GetType().GetInterfaces().Any(i => i.FullName == Ma + "vertex_filters.IMeshSelectorBehavior"))
+                            if (filter != null && filter.GetType().GetInterfaces().Any(i => i.FullName == Ma + "vertex_filters.IMeshSelectorBehavior" ||
+                                i.FullName == Ma + "vertex_filters.IVertexFilterBehavior"))
                                 Object.DestroyImmediate(filter);
                     Object.DestroyImmediate(component);
                 }
@@ -144,8 +180,59 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static (Object Target, string Name) Property(object key) =>
-            ((Object)Field(key, "TargetObject"), (string)Field(key, "PropertyName"));
+        // MA 1.18 and 1.19.0-alpha.0 key the analysis by TargetProp and report
+        // InitialStates. 1.19.0-alpha.1 keys it by typed targets and reports
+        // the initially active action per target instead. Both are read as the
+        // 1.18 (object, property name) key and value, so the freeze below is
+        // the same for either. Other targets (Reactive Move, parameters) are
+        // not frozen and read as (null, null).
+        static (Object Target, string Name) Property(object key)
+        {
+            switch (key.GetType().Name)
+            {
+                case "TargetProp":
+                case "PropertyTarget": return ((Object)Field(key, "TargetObject"), (string)Field(key, "PropertyName"));
+                case "ObjectActiveTarget": return ((Object)Field(key, "Target"), "m_IsActive");
+                case "ShapeKeyTarget": return ((Object)Field(key, "Renderer"), "blendShape." + Field(key, "ShapeName"));
+                case "MaterialSlotTarget": return ((Object)Field(key, "Renderer"), "m_Materials.Array.data[" + Field(key, "MaterialIndex") + "]");
+                case "MeshSectionTarget":
+                    return ((Object)Field(key, "Renderer"), (bool)Field(key, "IsShape")
+                        ? "deletedShape." + Field(key, "ShapeName") : "deletedMeshByMask." + Field(key, "Selector"));
+                default: return (null, null);
+            }
+        }
+
+        // 1.18 values: active 1/0, shape weight, Material, and IMeshSelector
+        // for a deletion (null keeps the section).
+        static List<KeyValuePair<object, object>> InitialStates(object analysis)
+        {
+            var result = new List<KeyValuePair<object, object>>();
+            var states = analysis.GetType().GetField("InitialStates", Members);
+            if (states != null)
+            {
+                foreach (DictionaryEntry entry in (IDictionary)states.GetValue(analysis))
+                    result.Add(new KeyValuePair<object, object>(entry.Key, entry.Value));
+                return result;
+            }
+            foreach (DictionaryEntry action in (IDictionary)Field(analysis, "InitialActions"))
+            {
+                object value;
+                switch (action.Value.GetType().Name)
+                {
+                    case "DriveActiveState": value = (bool)Field(action.Value, "Active") ? 1f : 0f; break;
+                    case "SetShapeKey":
+                    case "FloatPropAction":
+                    case "ObjectPropAction": value = Field(action.Value, "Value"); break;
+                    case "SetMaterial": value = Field(action.Value, "Material"); break;
+                    case "HideMeshSection": value = Field(action.Value, "Selector"); break;
+                    // Other actions (Reactive Move, parameter drivers) are not frozen.
+                    // A newly listed pre-release must be checked for new action types.
+                    default: continue;
+                }
+                result.Add(new KeyValuePair<object, object>(action.Key, value));
+            }
+            return result;
+        }
 
         // Let MA describe dependencies between reactions. Menu conditions and
         // authored activation curves can vary; object toggles propagate that
@@ -161,7 +248,7 @@ namespace VRVlog.LilToonExporter
                 foreach (DictionaryEntry property in properties)
                 {
                     var key = Property(property.Key);
-                    if (key.Name.StartsWith("deletedShape.", StringComparison.Ordinal) || result.Contains(key)) continue;
+                    if (key.Target == null || key.Name.StartsWith("deletedShape.", StringComparison.Ordinal) || result.Contains(key)) continue;
                     foreach (var rule in (IEnumerable)Field(property.Value, "actionGroups"))
                         foreach (var condition in (IEnumerable)Field(rule, "ControllingConditions"))
                         {
@@ -307,9 +394,17 @@ namespace VRVlog.LilToonExporter
             }
             analyzer.GetType().GetProperty(property).SetValue(analyzer, value);
         }
-        static object Field(object obj, string name) => obj.GetType().GetField(name, Members).GetValue(obj);
-        static Type Required(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false))
-            .FirstOrDefault(t => t != null) ?? throw new TypeLoadException(name);
+        // 1.19 targets and actions expose properties where 1.18 had fields.
+        static object Field(object obj, string name)
+        {
+            var type = obj.GetType();
+            var field = type.GetField(name, Members);
+            if (field != null) return field.GetValue(obj);
+            return (type.GetProperty(name, Members) ?? throw new MissingMemberException(type.FullName, name)).GetValue(obj);
+        }
+        static Type Required(string name) => Optional(name) ?? throw new TypeLoadException(name);
+        static Type Optional(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false))
+            .FirstOrDefault(t => t != null);
         static void Map(Transform source, Transform clone, IDictionary<Object, Object> map)
         {
             map.Add(source.gameObject, clone.gameObject);

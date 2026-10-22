@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using Fixture = VRVlog.LilToonExporter.Tests.AttachmentConnectionTests.Fixture;

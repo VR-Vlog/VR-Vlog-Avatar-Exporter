@@ -4,11 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using F = VRVlog.LilToon.LilToonFullContract;
 using Object = UnityEngine.Object;
 
@@ -417,7 +418,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var skins = Avatar.Skins; var original = skins.Select(r => r.sharedMaterials).ToArray();
                 var replacements = new Dictionary<Material, Material>();
                 foreach (var source in original.SelectMany(values => values).Distinct())
-                    replacements.Add(source, Own(new Material(Shader.Find("VRM10/MToon10")) { name = source.name }));
+                    replacements.Add(source, Own(new Material(Shader.Find(MToon10Meta.UnityShaderName)) { name = source.name }));
                 try
                 {
                     for (var i = 0; i < skins.Length; i++) skins[i].sharedMaterials = original[i].Select(material => replacements[material]).ToArray();

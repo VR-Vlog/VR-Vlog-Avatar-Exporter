@@ -92,7 +92,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.HasCurrentSuccess, Is.True);
                 Assert.That(session.CanSave, Is.True);
 
-                source.transform.localPosition = new Vector3(.25f, 0, 0);
+                // The root scale reaches the file; its place in the scene does not.
+                source.transform.localScale = new Vector3(1.25f, 1, 1);
                 EditorUtility.SetDirty(source.transform);
                 Assert.That(EditorJsonUtility.ToJson(source.transform), Is.Not.EqualTo(transformJson));
                 Assert.That(stamp.Matches(source), Is.False, "Actual serialized input changes must still invalidate the comparison.");

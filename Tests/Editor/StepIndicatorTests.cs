@@ -69,15 +69,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(StepIndicator.LabelOf(State.Upcoming, true), Is.EqualTo((false, true, false)));
         }
 
+        // The third step saves and sends the VRM in both modes while the transfer module is there and
+        // turned on; without it the page is the VRM's information, and the next button says the same.
         [Test]
-        public void TheThirdStepIsNamedForTheTransfer()
+        public void TheThirdStepIsNamedForTheSaveAndTransferWhereThePanelIsUsable()
         {
             Assert.That(StepIndicator.Names(false), Is.EqualTo(new[] { "1 表情の設定", "2 除外するオブジェクト", "3 VRMの情報" }));
-            Assert.That(StepIndicator.Names(true), Is.EqualTo(new[] { "1 表情の設定", "2 除外するオブジェクト", "3 名前と利用条件" }));
+            Assert.That(StepIndicator.Names(true), Is.EqualTo(new[] { "1 表情の設定", "2 除外するオブジェクト", "3 VRMの保存と転送" }));
+            Assert.That(ExperimentalExpressionCaptureWindow.NextLabel(false), Is.EqualTo("次へ：VRMの情報"));
+            Assert.That(ExperimentalExpressionCaptureWindow.NextLabel(true), Is.EqualTo("次へ：VRMの保存と転送"));
         }
 
         [TestCase("1 表情の設定", "1", "表情の設定")]
-        [TestCase("3 Name and usage terms", "3", "Name and usage terms")]
+        [TestCase("3 Save and send the VRM", "3", "Save and send the VRM")]
         [TestCase("VRM", "", "VRM")]
         [TestCase("VRM information", "", "VRM information")]
         [TestCase("", "", "")]
