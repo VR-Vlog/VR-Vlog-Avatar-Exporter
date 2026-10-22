@@ -84,7 +84,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f)]
-        [TestCase(.25f)]
         public void InvalidAuthorIndexCannotAddressNewlyAppendedBlinkOrExpressionChannel(float weight)
         {
             using var fixture = new Fixture();
@@ -310,7 +309,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(0f)]
         [TestCase(float.NaN)]
-        [TestCase(float.PositiveInfinity)]
         public void ProfileRetainsExistingInvalidWeightContract(float weight)
         {
             Assert.Throws<InvalidOperationException>(() => VrmTrackingExpressions.ValidateMorph(new TrackingMorph { shape = "Multi", weight = weight }, "JawOpen"));

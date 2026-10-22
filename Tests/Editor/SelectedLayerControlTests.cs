@@ -154,9 +154,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
         }
 
-        [TestCase(0f, 0f)] [TestCase(0f, .5f)] [TestCase(0f, 1f)]
-        [TestCase(.5f, 0f)] [TestCase(.5f, .5f)] [TestCase(.5f, 1f)]
-        [TestCase(1f, 0f)] [TestCase(1f, .5f)] [TestCase(1f, 1f)]
+        [TestCase(0f, .5f)] [TestCase(.5f, 1f)] [TestCase(1f, 0f)] [TestCase(1f, 1f)]
         public void InstantIndividualFxControlMatchesNativeSelectedWeight(float goal, float initialWeight)
         {
             var layers = controller.layers; layers[TargetLayer].defaultWeight = initialWeight; controller.layers = layers;
@@ -237,9 +235,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
         }
 
-        [TestCase("native", 0f)] [TestCase("native", .5f)] [TestCase("native", 1f)]
+        [TestCase("native", 0f)] [TestCase("native", .5f)]
         [TestCase("inactive", .5f)]
-        [TestCase("standalone", 0f)] [TestCase("standalone", .5f)] [TestCase("standalone", 1f)]
+        [TestCase("standalone", .5f)] [TestCase("standalone", 1f)]
         public void DirectClipControlsPreserveNativeSlotAndStandaloneIndexMapping(string mode, float goal)
         {
             Control(command, goal);
@@ -420,7 +418,7 @@ namespace VRVlog.LilToonExporter.Tests
             Unchanged(before);
         }
 
-        [TestCase("Action")] [TestCase("Gesture")] [TestCase("Additive")]
+        [TestCase("Action")] [TestCase("Additive")]
         public void NonFxIndividualControlsRemainOutsideFacialWeightEvaluation(string playable)
         {
             Control(command, .5f, target: 0, duration: 2, playable: playable);

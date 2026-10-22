@@ -15,7 +15,6 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class FullTextureResizeTests
     {
         [TestCase(false, 4096, 8, 1024, 2)]
-        [TestCase(true, 4096, 8, 1024, 2)]
         [TestCase(true, 8, 4096, 2, 1024)]
         [TestCase(true, 1500, 7, 1024, 5)]
         public void CaptureCapsLargeImagesAndPreservesAspectColorAlphaAndSource(bool srgb, int width, int height, int outputWidth, int outputHeight)

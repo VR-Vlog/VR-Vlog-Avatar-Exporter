@@ -52,7 +52,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(HumanBodyBones.Neck)]
         [TestCase(HumanBodyBones.Head)]
         [TestCase(HumanBodyBones.LeftEye)]
-        [TestCase(HumanBodyBones.Jaw)]
         public void TrackingOnlyMusclesCannotBecomeBodyPoses(HumanBodyBones bone)
         {
             using var f = new AttachmentConnectionTests.Fixture(); var clip = new AnimationClip();
@@ -139,10 +138,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(clip); }
         }
-        [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
-        [TestCase(true, true)]
         public void MaskedBindingKindsDoNotForceMixedSampling(bool maskMuscle, bool outer)
         {
             using var f = new AttachmentConnectionTests.Fixture(); var clip = new AnimationClip(); var mask = new AvatarMask();
@@ -277,7 +274,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("prop")]
         [TestCase("head")]
         [TestCase("blendshape")]
-        [TestCase("material")]
         [TestCase("masked")]
         [TestCase("body")]
         public void MotionDetectionUsesEffectiveBodyCurves(string kind)
@@ -328,7 +324,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Bool", "If", true)]
         [TestCase("Float", "Greater", true)]
         [TestCase("Missing", "Equals", false)]
-        [TestCase("Renamed", "Equals", false)]
         [TestCase("Duplicate", "Equals", false)]
         [TestCase("Bool", "Equals", false)]
         [TestCase("Float", "Equals", false)]

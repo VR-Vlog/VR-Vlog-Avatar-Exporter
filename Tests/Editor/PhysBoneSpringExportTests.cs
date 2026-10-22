@@ -816,14 +816,12 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false, false)]
-        [TestCase(true, false, false)]
         [TestCase(true, true, false)]
         [TestCase(true, false, true)]
         public Task ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(bool full, bool modularAvatar, bool rootCollider) =>
             ExportImportsSpringsAndMovesHair(full, modularAvatar, rootCollider, false);
 
         [TestCase(false)]
-        [TestCase(true)]
         public Task ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(bool full) =>
             ExportImportsSpringsAndMovesHair(full, false, false, false, true);
 

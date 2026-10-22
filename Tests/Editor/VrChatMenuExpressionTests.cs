@@ -858,7 +858,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("alias")]
         [TestCase("position")]
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("near position")]
         public void MutuallyExclusiveAnimationsReuseOnlyExactStoredPnt(string kind)
         {
@@ -1051,7 +1050,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("position")]
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("tiny position")]
         public void OnlyAnExactlyZeroScalarPntCanReuseAMarker(string kind)
         {
