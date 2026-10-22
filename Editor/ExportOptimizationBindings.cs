@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using UniGLTF;
-using UniGLTF.Extensions.VRMC_vrm;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using VRVlog.FaceTracking;
@@ -499,7 +499,7 @@ namespace VRVlog.LilToonExporter
             return mapped;
         }
 
-        internal void Bind(ModelExporter converter, VrmLib.Model model, ExportingGltfData storage)
+        internal void Bind(ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, ExportingGltfData storage)
         {
             BindNodes(skin => converter.Nodes.TryGetValue(skin.gameObject, out var node) ? model.Nodes.IndexOf(node) : -1);
         }

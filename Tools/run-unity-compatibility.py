@@ -732,6 +732,7 @@ BEHAVIOR_CASES = {
         'ActiveMergePreservesAnInactiveTargetAttachmentChain': 1,
         'ActiveSkinRetainsItsInactiveRigTagAndAncestors': 2,
         'AuthoredNdmfRootMarkerRetainsItsProcessingSemantics': 1,
+        'BeforePlatformsRunsFromResolvingWithoutAPlatform': 2,
         'CallbackFreePreparationStopsAfterTransformingAndRetainsOwnedAssetLifetime': 1,
         'CleanupFailuresStillRestoreScopeAndReleaseOwnedAssets': 3,
         'InactiveAuthoringIsRetainedRegardlessOfRendererVisibility': 2,
@@ -741,12 +742,13 @@ BEHAVIOR_CASES = {
         'InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning': 2,
         'InvalidInactiveRigIsValidatedRegardlessOfSkinVisibility': 2,
         'InvalidInactiveWardrobeRequiresProcessingAndIsValidated': 2,
-        'KnownVersionsResolveCompleteBridge': 3,
+        'KnownVersionsResolveCompleteBridge': 6,
         'LoggedBuildErrorStopsExportAndReleasesGeneratedAssets': 1,
         'MissingBakedExpressionStopsExport': 1,
         'MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf': 1,
         'OptionalDependencyIsNotRequiredWithoutAuthoringTags': 1,
         'OriginalAndNestedCopiesAreRejectedBeforeProcessing': 1,
+        'PartialPlatformApiFailsBeforeProcessing': 1,
         'PersistentContainerOfUnsavedAssetIsCopiedWithoutEditingOriginalReferences': 2,
         'PersistentPluginAssetsRemainUntilExportLeaseEndsAndNeverTouchSiblingAssets': 1,
         'PhaseExceptionStillFinishesAndReleasesGeneratedAssets': 1,
@@ -1107,24 +1109,21 @@ INTEGRATION_VARIANTS = {
 }
 
 
-def compatibility_counts(supported):
-    counts = {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1}
-    if supported:
-        counts.update(DependencyRoundTripTests=2, RendererSelectionTests=3, SkinnedMeshFallbackWeightTests=12, LilToonStructureCheckTests=11)
-    return counts
+def compatibility_counts():
+    # The exporter writes with its bundled UniVRM, so every project runs the
+    # round trip whatever UniVRM (if any) the project itself has installed.
+    return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
+            'RendererSelectionTests': 3, 'SkinnedMeshFallbackWeightTests': 12, 'LilToonStructureCheckTests': 11}
 
 
-def required_regressions(supported, profile):
+def required_regressions(profile):
     if profile not in PROFILES:
         raise SystemExit('Unknown Unity validation profile: ' + profile)
-    if profile != 'compatibility' and not supported:
-        raise SystemExit('Exporter behavior/integration profiles require a supported real UniVRM environment')
     required = {
         'DependencyEnvironmentTests': {'ActualInstalledPackagesMatchRequestedTestEnvironment': 1},
         'DependencyStartupTests': {'MenuResolvesBackendWithoutInitializationRegistration': 1},
+        'DependencyRoundTripTests': {'SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport': 2},
     }
-    if supported:
-        required['DependencyRoundTripTests'] = {'SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport': 2}
     if profile != 'compatibility':
         required.update(BEHAVIOR_CASES)
     if profile == 'exporter-integration':
@@ -1133,10 +1132,10 @@ def required_regressions(supported, profile):
     return required
 
 
-def profile_filters(supported, profile):
-    required = required_regressions(supported, profile)
+def profile_filters(profile):
+    required = required_regressions(profile)
     filters = []
-    for suite in dict.fromkeys([*compatibility_counts(supported), *required]):
+    for suite in dict.fromkeys([*compatibility_counts(), *required]):
         if profile == 'exporter-behavior' and suite in INTEGRATION_CASES:
             # Shared suites have optional installed-tool cases. Select every
             # required behavior method, without silently accepting skipped ones.
@@ -1146,8 +1145,8 @@ def profile_filters(supported, profile):
     return filters
 
 
-def validate_result(xml, supported, profile='compatibility'):
-    required = required_regressions(supported, profile)
+def validate_result(xml, profile='compatibility'):
+    required = required_regressions(profile)
     tree = ET.parse(xml).getroot()
     cases = tree.findall('.//test-case')
     names = [c.get('fullname') for c in cases]
@@ -1163,11 +1162,11 @@ def validate_result(xml, supported, profile='compatibility'):
             variants = INTEGRATION_VARIANTS.get(suite, {}).get(method) if profile == 'exporter-integration' else None
             if variants is not None and {c.get('fullname') for c in found} != {name + '(' + args + ')' for args in variants}:
                 raise SystemExit('Required real-Unity parameter combinations did not pass: ' + name)
-    for suite, count in compatibility_counts(supported).items():
+    for suite, count in compatibility_counts().items():
         found = [c for c in cases if c.get('classname') == 'VRVlog.LilToonExporter.Tests.' + suite]
         if len(found) != count:
             raise SystemExit('Required compatibility suite has missing or unexpected cases: ' + suite)
-    allowed = {NAMESPACE + suite for suite in [*compatibility_counts(supported), *required]}
+    allowed = {NAMESPACE + suite for suite in [*compatibility_counts(), *required]}
     if any(c.get('classname') not in allowed for c in cases):
         raise SystemExit('Unexpected test classes in Unity validation profile: ' + profile)
     if tree.get('result') != 'Passed' or any(c.get('result') != 'Passed' for c in cases):
@@ -1238,7 +1237,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--unity', required=True, type=Path)
     parser.add_argument('--project', required=True, type=Path)
-    parser.add_argument('--expect-univrm', required=True)
+    parser.add_argument('--expect-univrm', required=True,
+                        help="The project's own UniVRM version, or 'missing'; the exporter uses its bundled copy either way")
     parser.add_argument('--expect-unity', default='2022.3.62f3')
     parser.add_argument('--expect-liltoon', help='Stop before running Unity unless the project resolved exactly this lilToon release')
     parser.add_argument('--output', required=True, type=Path)
@@ -1247,12 +1247,7 @@ def main():
                         help='Compatibility only (default), generated exporter behavior, or behavior plus installed AAO/NDMF integration')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
-    config = json.loads((root / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-    # Every release of the accepted patch line is supported, as at export time,
-    # so a new patch can be verified before it is added to uniVrm.versions.
-    univrm = unity_packages.univrm_support(config, args.expect_univrm)
-    supported = univrm['supported']
-    filters = profile_filters(supported, args.profile)
+    filters = profile_filters(args.profile)
     identity_before = source_identity(root)
     liltoon_before = installed_liltoon(args.project, args.expect_liltoon)
     output = args.output.resolve()
@@ -1271,7 +1266,7 @@ def main():
     result = subprocess.run(command, env=env, timeout=args.timeout, **flags)
     if result.returncode != 0 or not xml.exists():
         raise SystemExit('Unity failed or produced no test result. See ' + str(log))
-    cases = validate_result(xml, supported, args.profile)
+    cases = validate_result(xml, args.profile)
     identity_after = source_identity(root)
     if any(identity_before[key] != identity_after[key] for key in ('packageVersion', 'gitCommit')):
         raise SystemExit('Runner package version or Git commit changed during Unity validation')
@@ -1281,8 +1276,7 @@ def main():
     # version that was readable beforehand can be compared.
     if 'unavailable' not in liltoon_before and liltoon_after['installed'] != liltoon_before['installed']:
         raise SystemExit('Installed lilToon changed during Unity validation')
-    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm,
-              'uniVrmSupported': supported, 'uniVrmListed': univrm['listed'], 'unity': args.expect_unity,
+    report = {'profile': args.profile, 'expectedUniVrm': args.expect_univrm, 'unity': args.expect_unity,
               'lilToon': liltoon_after, 'tests': len(cases), 'result': 'Passed', 'runnerSource': identity_before,
               'seconds': round(time.monotonic() - started), 'xml': xml.name, 'log': log.name}
     (output / (stamp + '.json')).write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

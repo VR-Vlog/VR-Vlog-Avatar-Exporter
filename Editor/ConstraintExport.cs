@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using AimAxis = UniGLTF.Extensions.VRMC_node_constraint.AimAxis;
-using RollAxis = UniGLTF.Extensions.VRMC_node_constraint.RollAxis;
-using UniVRM10;
+using AimAxis = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_node_constraint.AimAxis;
+using RollAxis = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_node_constraint.RollAxis;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Animations;

@@ -1,0 +1,27 @@
+{
+    "name": "VRVlog.LilToonExporter.Vendor.SpringBoneJobs",
+    "rootNamespace": "",
+    "references": [
+        "GUID:6b6594aa8012b4bd44ef4f6bbf552d2d",
+        "GUID:5e9a8e7b86b5bdf42435065c63a18bb1",
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:d8b63aba1907145bea998dd612889d6b"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.burst",
+            "expression": "0.01",
+            "define": "ENABLE_SPRINGBONE_BURST"
+        }
+    ],
+    "noEngineReferences": false
+}

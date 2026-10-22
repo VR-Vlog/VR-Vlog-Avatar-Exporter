@@ -1,0 +1,8 @@
+﻿namespace VRVlog.LilToonExporter.Vendor.UniGLTF
+{
+    public enum UrpLitWorkflowType
+    {
+        Specular = 0,
+        Metallic = 1,
+    }
+}

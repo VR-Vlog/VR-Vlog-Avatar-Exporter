@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -302,7 +302,7 @@ namespace VRVlog.LilToonExporter
             // blink, mouth, gaze and neutral are themselves those channels.
             expression.IsBinary = false;
             expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = EmotionPresets.Contains(preset)
-                ? UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.blend : UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.none;
+                ? VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.blend : VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.none;
             return expression;
         }
 
@@ -737,7 +737,7 @@ namespace VRVlog.LilToonExporter
 
         VRM10Expression AuthoredClip(ExpressionPreset preset)
         {
-            var expression = Source != null && Source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
+            var expression = ForeignUniVrm.AuthoredSettings(Source)?.Expression;
             return expression?.Clips.Where(item => item.Preset == preset).Select(item => item.Clip).FirstOrDefault();
         }
 

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using Object = UnityEngine.Object;
 using Assignment = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSession.PresetAssignment;

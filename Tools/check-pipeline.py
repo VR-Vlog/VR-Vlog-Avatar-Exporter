@@ -62,7 +62,6 @@ def release_value(output, manual=None):
 
 RELEASE_VALUES = {
     "VERSION": release_value("version"),
-    "UNIVRM_VERSION": release_value("univrm_version"),
     "EXPECTED_COMMIT": release_value("expected_commit"),
     "EXPECTED_PACKAGE_SHA256": release_value("package_sha256", "expected_package_sha256"),
     "CANDIDATE_RUN_ID": release_value("candidate_run_id"),
@@ -128,7 +127,7 @@ def check_automatic_beta(workflow, jobs):
         require(not job.get("defaults") and not job.get("env"),
                 "Publication jobs must not inherit command or source overrides")
     resolver = jobs["resolve-candidate"]
-    outputs = ("publish", "version", "expected_commit", "package_sha256", "candidate_run_id", "univrm_version")
+    outputs = ("publish", "version", "expected_commit", "package_sha256", "candidate_run_id")
     require(resolver.get("outputs") == {name: "${{ steps.candidate.outputs." + name + " }}" for name in outputs},
             "Automatic release outputs must come only from candidate authentication")
     require(resolver.get("steps") == [
@@ -145,7 +144,7 @@ def check_automatic_beta(workflow, jobs):
                                                      "persist-credentials": False}}]
             and steps[0] == checkouts[0],
             "Publish only the exact authenticated candidate or current manually dispatched main commit")
-    versions = dict(release_environment("UNIVRM_VERSION", "RELEASE_CHANNEL", "EXPECTED_COMMIT"),
+    versions = dict(release_environment("RELEASE_CHANNEL", "EXPECTED_COMMIT"),
                     EXPORTER_VERSION=RELEASE_VALUES["VERSION"], GH_TOKEN="${{ github.token }}")
     version_step = require_release_step(steps, "Verify versions", versions)
     require(version_step.get("run", "").strip() == "python3 Tools/release_policy.py > release-flags.txt",
@@ -160,15 +159,16 @@ def check_automatic_beta(workflow, jobs):
         "Always authenticate the exact candidate commit, version and ZIP before publication")
     package = require_release_step(steps, "Build exporter package",
                                    release_environment("VERSION", "EXPECTED_PACKAGE_SHA256"))
-    dependencies = require_release_step(steps, "Build UniVRM dependency packages", release_environment("UNIVRM_VERSION"))
     publish = require_release_step(steps, "Publish release",
-                                   dict(release_environment("VERSION", "UNIVRM_VERSION", "EXPECTED_COMMIT"),
+                                   dict(release_environment("VERSION", "EXPECTED_COMMIT"),
                                         GH_TOKEN="${{ github.token }}"))
     require(re.findall(r"--target\s+(\S+)", publish.get("run", "")) == ['"${EXPECTED_COMMIT}"'],
             "Release tags must target the authenticated source commit rather than a moving workflow SHA")
-    require(steps.index(version_step) < steps.index(receipt) < steps.index(package)
-            < steps.index(dependencies) < steps.index(publish),
+    require(steps.index(version_step) < steps.index(receipt) < steps.index(package) < steps.index(publish),
             "Keep version policy, candidate receipt, reproducible build and publication ordered")
+    # UniVRM is bundled inside the exporter: no input, output, build or asset may bring back its packages.
+    require(not re.search(r"(?i)univrm|com\.vrmc", json.dumps(workflow)),
+            "Release only the exporter ZIP; UniVRM is bundled, not a dependency package")
 
     dispatch = jobs["dispatch-listing"]
     require(dispatch.get("needs") == ["release", "resolve-candidate"]
