@@ -615,6 +615,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy()
         {
+            // NDMF before 1.8.0 has no NDMFAvatarRoot to put on the copy, and MA
+            // finds the avatar of a reference by its VRChat descriptor there.
+            if (InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null &&
+                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") is Type descriptor)
+            {
+                source.AddComponent(descriptor);
+                clone.AddComponent(descriptor);
+            }
             var sourceTag = AddMerge(source, "resolver-provided attachment", false, null, false);
             var copyTag = AddMerge(clone, "resolver-provided attachment", false, null, false);
             Assert.DoesNotThrow(() => NdmfExportPreparation.ValidateCopy(source, clone));

@@ -2262,6 +2262,10 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Face").motion = clip;
                 var mergeType = Sdk("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
                 Assert.That(mergeType, Is.Not.Null, "This experiment uses the real Modular Avatar integration.");
+                // NDMF before 1.8.0 has no generic platform and builds the FX
+                // that Merge Animator merges into from a VRChat descriptor.
+                if (Sdk("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
+                    typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
                 {
