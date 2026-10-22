@@ -9,12 +9,17 @@ namespace VRVlog.LilToonExporter
 {
     internal static partial class LilToonStructureCheck
     {
-        // Stops before the export copy is prepared. Later the snapshot and the
-        // shared contract still validate what is actually written.
-        internal static void Require(GameObject avatar, string installedVersion)
+        // Runs before the export copy is prepared. Differences of the shaders
+        // the avatar uses go to warnings; a missing or changed baker stops.
+        // Later the snapshot and the shared contract still validate what is
+        // actually written.
+        internal static void Inspect(GameObject avatar, string installedVersion, ICollection<string> warnings)
         {
             var differences = Check(avatar);
-            if (differences.Count > 0) throw new InvalidOperationException(Message(differences, installedVersion, ExporterLocalization.T));
+            var stops = differences.Where(Stops).ToList();
+            if (stops.Count > 0) throw new InvalidOperationException(Message(stops, installedVersion, ExporterLocalization.T));
+            if (warnings == null) return;
+            foreach (var warning in Warnings(differences.Where(d => d.Shader != BakerShader).ToList(), ExporterLocalization.T)) warnings.Add(warning);
         }
 
         // Checks the official shaders of the renderers the snapshot records, and
@@ -83,7 +88,7 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static string TypeName(ShaderPropertyType type)
+        internal static string TypeName(ShaderPropertyType type)
         {
             switch (type)
             {
@@ -95,7 +100,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static string DimensionName(TextureDimension dimension)
+        internal static string DimensionName(TextureDimension dimension)
         {
             switch (dimension)
             {

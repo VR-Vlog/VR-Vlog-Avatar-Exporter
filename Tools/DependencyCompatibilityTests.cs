@@ -63,50 +63,54 @@ public static class DependencyCompatibilityTests
             Check(DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is unknown " + (version ?? "null"));
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "Unknown MA version does not stop " + (version ?? "null"));
             var error = DependencyPolicy.ModularAvatarUnknownVersionError(version);
-            Check(error.StartsWith("Modular Avatarの版を読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
+            Check(error.StartsWith("Modular Avatarのバージョンを読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
                 error.Contains("1.18.0以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "Unknown MA version error says the version was not read, the range and the fix");
         }
-        Check(DependencyPolicy.ModularAvatarUnknownVersionError(null, text => "[" + text + "]").StartsWith("[Modular Avatarの版", StringComparison.Ordinal),
+        Check(DependencyPolicy.ModularAvatarUnknownVersionError(null, text => "[" + text + "]").StartsWith("[Modular Avatarのバージョン", StringComparison.Ordinal),
             "Caller-supplied translation applies to the unknown MA version format");
         Check(DependencyPolicy.ModularAvatarAppearanceError("1.17.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.17.1", StringComparison.Ordinal),
             "Caller-supplied translation applies to the MA format");
         Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");
-        Check(DependencyPolicy.LilToonMinimum == "2.0.0" && DependencyPolicy.LilToonMaximum == "2.3.4", "Supported lilToon range");
-        foreach (var version in new[] { "2.0.0", "2.1.0", "2.1.10", "2.2.1", "2.3.0", "2.3.3", "2.3.4" })
-        {
-            Check(DependencyPolicy.ClassifyLilToon(version) == DependencyPolicy.LilToonSupport.Supported, "In range " + version);
-            Check(DependencyPolicy.AcceptsLilToon(version), "Accepted " + version);
-            Check(DependencyPolicy.LilToonError(version) == null, "No error " + version);
-        }
+        // Any installed lilToon exports (mk 2026-10-22). Only a missing one stops;
+        // a version other than the catalogue's warns that the app draws 2.3.4.
+        Check(DependencyPolicy.ClassifyLilToon("2.3.4") == DependencyPolicy.LilToonSupport.Catalogue, "Catalogue version");
+        Check(DependencyPolicy.LilToonError("2.3.4") == null && DependencyPolicy.LilToonWarning("2.3.4") == null, "Catalogue version neither stops nor warns");
         var cases = new (string Version, DependencyPolicy.LilToonSupport Expected)[]
         {
-            (null, DependencyPolicy.LilToonSupport.Missing), ("", DependencyPolicy.LilToonSupport.Missing),
             ("1.10.3", DependencyPolicy.LilToonSupport.Older), ("1.8.0", DependencyPolicy.LilToonSupport.Older),
             ("0.9.9", DependencyPolicy.LilToonSupport.Older), ("1.99.99", DependencyPolicy.LilToonSupport.Older),
+            ("2.0.0", DependencyPolicy.LilToonSupport.Older), ("2.3.3", DependencyPolicy.LilToonSupport.Older),
             ("2.3.5", DependencyPolicy.LilToonSupport.Newer), ("2.4.0", DependencyPolicy.LilToonSupport.Newer),
-            ("2.10.0", DependencyPolicy.LilToonSupport.Newer), ("3.0.0", DependencyPolicy.LilToonSupport.Newer),
+            ("2.4.1", DependencyPolicy.LilToonSupport.Newer), ("2.10.0", DependencyPolicy.LilToonSupport.Newer),
+            ("3.0.0", DependencyPolicy.LilToonSupport.Newer),
             ("2.3.4-beta", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.4-preview.1", DependencyPolicy.LilToonSupport.Unreadable),
             ("2.0.0-rc.1", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.4+local", DependencyPolicy.LilToonSupport.Unreadable),
             (" 2.3.4", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.4 ", DependencyPolicy.LilToonSupport.Unreadable),
             ("v2.3.4", DependencyPolicy.LilToonSupport.Unreadable), ("2.3", DependencyPolicy.LilToonSupport.Unreadable),
             ("2.3.4.0", DependencyPolicy.LilToonSupport.Unreadable), ("2.03.4", DependencyPolicy.LilToonSupport.Unreadable),
             ("2..4", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.x", DependencyPolicy.LilToonSupport.Unreadable),
-            ("2.3.٤", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.99999999999", DependencyPolicy.LilToonSupport.Unreadable),
+            ("2.3.\u0664", DependencyPolicy.LilToonSupport.Unreadable), ("2.3.99999999999", DependencyPolicy.LilToonSupport.Unreadable),
         };
         foreach (var item in cases)
         {
-            Check(DependencyPolicy.ClassifyLilToon(item.Version) == item.Expected, "Classify " + (item.Version ?? "null"));
-            Check(!DependencyPolicy.AcceptsLilToon(item.Version), "Stops " + (item.Version ?? "null"));
-            var error = DependencyPolicy.LilToonError(item.Version);
-            Check(error != null && error.Contains("2.0.0") && error.Contains("2.3.4"), "Error names the supported range");
-            if (!string.IsNullOrEmpty(item.Version)) Check(error.Contains(item.Version), "Error names the installed version");
+            Check(DependencyPolicy.ClassifyLilToon(item.Version) == item.Expected, "Classify " + item.Version);
+            Check(DependencyPolicy.AcceptsLilToon(item.Version), "Exports " + item.Version);
+            Check(DependencyPolicy.LilToonError(item.Version) == null, "Does not stop " + item.Version);
+            var warning = DependencyPolicy.LilToonWarning(item.Version);
+            Check(warning != null && warning.Contains(item.Version) && warning.Contains("2.3.4"), "Warning names both versions " + item.Version);
         }
-        Check(DependencyPolicy.LilToonError("1.10.3").Contains("移行処理"), "Old versions are told that lilToon migrates on update");
-        Check(DependencyPolicy.LilToonError("2.3.5").Contains("確かめた範囲"), "Newer versions are told the verified range");
-        Check(!DependencyPolicy.AcceptsNewerLilToon, "Newer versions stay stopped until the owner decides");
-        Check(DependencyPolicy.LilToonError("1.10.3", text => "[" + text + "]").StartsWith("[lilToon 1.10.3", StringComparison.Ordinal),
-            "Caller-supplied translation applies to the format");
+        foreach (var version in new[] { null, "" })
+        {
+            Check(DependencyPolicy.ClassifyLilToon(version) == DependencyPolicy.LilToonSupport.Missing, "Classify missing " + (version ?? "null"));
+            Check(!DependencyPolicy.AcceptsLilToon(version), "Stops without lilToon " + (version ?? "null"));
+            Check(DependencyPolicy.LilToonError(version).Contains("VCC／ALCOM"), "Missing lilToon tells how to add it");
+            Check(DependencyPolicy.LilToonWarning(version) == null, "Missing lilToon stops instead of warning");
+        }
+        Check(DependencyPolicy.LilToonError(null, text => "[" + text + "]").StartsWith("[lilToon", StringComparison.Ordinal),
+            "Caller-supplied translation applies to the error");
+        Check(DependencyPolicy.LilToonWarning("2.4.1", text => "[" + text + "]").StartsWith("[", StringComparison.Ordinal),
+            "Caller-supplied translation applies to the warning");
         Console.WriteLine("Dependency compatibility: " + count + " assertions passed.");
     }
 }

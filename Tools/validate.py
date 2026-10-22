@@ -191,14 +191,15 @@ assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalizatio
 assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'package.name, "jp.lilxyzw.liltoon"' in window
-assert "RequireSupportedLilToon(GameObject avatar)" in window
-# Both export entries compare the shaders the avatar uses with the catalogue.
-assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
-assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
+assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in window
+# Both export entries compare the shaders the avatar uses with the catalogue;
+# only a missing lilToon (or its baker) stops, other differences are warnings.
+assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, version, warnings);")
+assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 # The export window and batch callers export through ExportSettings, which runs
 # the same check ("アプリに転送" through the board's session, checked above).
 export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
-assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in export_settings
+assert "lilToonVersion: LilToonExporterWindow.RequireLilToon(avatar, warnings)," in export_settings
 assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
 assert "licenseOptions: License, disableAudioLink: true" in export_settings
 assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
@@ -214,7 +215,7 @@ assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo
 assert "PackageManagerPackageInfo FindLilToonPackage()" in window
 assert "PackageManagerPackageInfo.GetAllRegisteredPackages()" in window
 assert "Vrm10AppearanceExporter.Export" in one_click
-assert one_click.index("NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true)") < one_click.index("VrChatExpressionMenu.Read(source,")
+assert one_click.index("NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true)") < one_click.index("VrChatExpressionMenu.Read(source)")
 assert one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)") < one_click.index("NdmfExportPreparation.ValidateCopy(source, clone,") < one_click.index("MaAppearanceSnapshot.Apply(source, clone,")
 assert "target => exclusions.ContainsCopyTransform(clone, target)" in one_click
 assert one_click.index("VrChatExpressionSampler.Analyze(clone,") < one_click.index("FaceEmoExpressions.ApplyPreparedDefaultFace(clone,") < one_click.index("NeutralShapeSnapshot.Capture(clone)") < one_click.index("preparedMenuBindings.Capture(menu)") < one_click.index("VrChatExpressionBaker.Bake(null, clone,") < one_click.index("ExportOptimizationBindings.Capture(clone,")
@@ -377,15 +378,15 @@ assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureE
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
-assert 'var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);' in one_click
-assert 'var read = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
+assert 'var read = VrChatExpressionMenu.Read(source);' in one_click
+assert 'var menuPolicy = guard.IsOmitted(ExportStage.ExpressionMenu) ? new VrChatMenuImportPolicy { SkipAll = true } : null;' in one_click
 assert 'bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);' in one_click
 assert 'new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding)' in one_click
 assert 'VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,' in one_click
 assert one_click.index('FaceEmoExpressions.Capture(source, clone, ExcludedBinding,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,\n                        transformed.ObjectRegistry, transformed.IsolatedCopyOf);' in one_click
 assert 'new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy)' in one_click
-assert 'SkipVrChatMenus' in recovery and 'ExcludeMenuBranch' in recovery
+assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
 assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
 assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click

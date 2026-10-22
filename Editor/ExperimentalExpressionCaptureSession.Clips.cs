@@ -132,45 +132,24 @@ namespace VRVlog.LilToonExporter
         // Button items that select each clip in the FX controller, in menu
         // order. The board reads emotions from them as the quick export reads
         // its menu faces. Nothing here may stop the board from opening.
-        // overLimit is the menu's count when it is over the read limit; the
-        // board then says why no emotion comes from the menu item names.
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar, out VrChatMenuImportSummary overLimit) =>
-            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar), out overLimit);
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(GameObject avatar) =>
+            MenuClipPaths(() => VrChatExpressionMenu.Read(avatar));
 
-        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read, out VrChatMenuImportSummary overLimit) =>
-            ReadMenuLinks(read, out overLimit).Paths;
+        internal static Dictionary<AnimationClip, List<string>> MenuClipPaths(Func<VrChatExpressionMenu.Source> read) =>
+            ReadMenuLinks(read).Paths;
 
         // MenuClipPaths and MenuEntriesOutsideBoard from one menu read. A menu
         // that cannot be read gives no paths and a null Outside (unreadable,
-        // not "no items"); over the read limit it also sets overLimit. The
-        // record route still drops the menu's faces then, so the band says the
-        // items cannot be checked rather than nothing.
-        internal static (Dictionary<AnimationClip, List<string>> Paths, List<string> Outside) ReadMenuLinks(Func<VrChatExpressionMenu.Source> read,
-            out VrChatMenuImportSummary overLimit)
+        // not "no items"). The record route still drops the menu's faces
+        // then, so the band says the items cannot be checked rather than nothing.
+        internal static (Dictionary<AnimationClip, List<string>> Paths, List<string> Outside) ReadMenuLinks(Func<VrChatExpressionMenu.Source> read)
         {
-            overLimit = null;
             try
             {
                 var menu = read();
                 return MenuLinks(menu.Entries, menu.Controller, menu.Defaults);
             }
-            catch (VrChatMenuImportLimitException limit) { overLimit = limit.Summary; return (new Dictionary<AnimationClip, List<string>>(), null); }
             catch (Exception) { return (new Dictionary<AnimationClip, List<string>>(), null); }
-        }
-
-        // The note beside the emotion slots when the menu was over the read
-        // limit, null otherwise. Over 256 items the count is the menu's own
-        // (a lower bound when counting stopped); other limits are submenus.
-        internal const string MenuOverLimitItemsFormat = "項目名から感情を選んでいません・表情メニューが{0}件で上限の{1}件を超えています";
-        internal const string MenuOverLimitItemsAtLeastFormat = "項目名から感情を選んでいません・表情メニューが{0}件以上で上限の{1}件を超えています";
-        internal const string MenuOverLimitSubmenus = "項目名から感情を選んでいません・表情メニューのサブメニューが多く上限を超えています";
-
-        internal static string MenuOverLimitNote(VrChatMenuImportSummary summary)
-        {
-            if (summary == null) return null;
-            if (summary.LimitReason != "candidates") return ExporterLocalization.T(MenuOverLimitSubmenus);
-            return string.Format(ExporterLocalization.T(summary.IsComplete ? MenuOverLimitItemsFormat : MenuOverLimitItemsAtLeastFormat),
-                summary.CandidateCount, VrChatExpressionMenu.MaximumCandidates);
         }
 
         // A clip is linked to an item only when the item alone decides it: a
@@ -408,7 +387,6 @@ namespace VRVlog.LilToonExporter
             {
                 var pose = BuildClipPoseUnchecked(input.Clip, input.Time, input.Name);
                 if (!names.Add(pose.Name)) { result.Skipped.Add(pose.Name + ": 同名の表情を登録済みです。"); continue; }
-                if (Expressions.Count + staged.Count >= MaximumExpressions) throw new InvalidOperationException(ExporterLocalization.T("記録できる表情は64件までです。"));
                 staged.Add(pose); result.Imported.Add(pose.Name);
             }
             Expressions.AddRange(staged); // Atomic: invalid files never publish a partial batch or change the preview.
@@ -425,8 +403,6 @@ namespace VRVlog.LilToonExporter
             var replaced = new HashSet<Pose>(previous ?? Array.Empty<Pose>());
             var retained = Expressions.Where(pose => !replaced.Contains(pose)).ToArray();
             var staged = inputs.Select(input => BuildClipPoseUnchecked(input.Clip, input.Time, input.Name)).ToArray();
-            if (retained.Length + staged.Length > MaximumExpressions)
-                throw new InvalidOperationException(ExporterLocalization.T("記録できる表情は64件までです。"));
             var names = new HashSet<string>(retained.Select(pose => pose.Name), StringComparer.Ordinal);
             foreach (var pose in staged)
             {
@@ -455,7 +431,8 @@ namespace VRVlog.LilToonExporter
             return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
 
-        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale)
+        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale,
+            ExportRecoveryReport report = null)
         {
             // APL definitions still belong to the original avatar; generated
             // menu poses belong to the prepared copy. Collect both before
@@ -464,6 +441,7 @@ namespace VRVlog.LilToonExporter
             poses.CollectPrepared(Copy, warnings);
             var failed = poses.Entries.FirstOrDefault(entry => entry.Source.Contains("手動") && entry.Error != null && !poseOptions.Excluded.Contains(entry.Id));
             if (failed != null) throw new InvalidOperationException(ExporterLocalization.T("ポーズを書き出せません: ") + failed.Name + " / " + failed.Error);
+            PoseLimitChooser.Apply(poses, warnings, report);
             var document = GlbDocument.Read(bytes);
             var extensions = (Dictionary<string, object>)document.Json["extensions"];
             var vrm = (Dictionary<string, object>)extensions["VRMC_vrm"];
