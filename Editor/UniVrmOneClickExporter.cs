@@ -1095,8 +1095,7 @@ namespace VRVlog.LilToonExporter
             var rimEnabled = source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > 0.5f;
             var hidden = HiddenInFallback(source);
             var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
-            var shadeTexture = Texture(source, "_ShadowColorTex");
-            if (shadeTexture == Texture2D.whiteTexture) shadeTexture = null;
+            var shadeTexture = ShadeTexture(source);
             var context = new MToon10Context(material)
             {
                 AlphaMode = AlphaMode(source),
@@ -1188,12 +1187,15 @@ namespace VRVlog.LilToonExporter
                     var color = Color(source, "_Color", UnityEngine.Color.white);
                     if (HiddenInFallback(source)) color.a = 0f;
                     return color;
-                case MaterialColorType.shadeColor: return source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
-                    ? MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white),
-                        MobileMaterialMath.Shadow2ndShade(Color(source, "_ShadowColor", UnityEngine.Color.gray), Color(source, "_Shadow2ndColor", UnityEngine.Color.clear),
-                            Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f)),
-                        Float(source, "_ShadowStrength", 1f))
-                    : Color(source, "_Color", UnityEngine.Color.white);
+                case MaterialColorType.shadeColor:
+                    if (!(source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f)) return Color(source, "_Color", UnityEngine.Color.white);
+                    var shade = MobileMaterialMath.Shadow2ndShade(Color(source, "_ShadowColor", UnityEngine.Color.gray), Color(source, "_Shadow2ndColor", UnityEngine.Color.clear),
+                        Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f));
+                    // The shade image is the main image unless a shadow color
+                    // texture replaces it; only then is the main color not a factor.
+                    return ShadeTexture(source) == null
+                        ? MobileMaterialMath.MultipliedShadeColor(Color(source, "_Color", UnityEngine.Color.white), shade, Float(source, "_ShadowStrength", 1f))
+                        : MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white), shade, Float(source, "_ShadowStrength", 1f));
                 // lilToon 2.3.4 scales emission by lerp(1, invLighting, _EmissionFluorescence),
                 // and invLighting is 0 under normal light. MToon emission is not
                 // light-dependent, so use that lit-scene value: 1 - fluorescence.
@@ -1225,6 +1227,11 @@ namespace VRVlog.LilToonExporter
         private static float Float(Material material, string property, float fallback) => material.HasProperty(property) ? material.GetFloat(property) : fallback;
         private static Color Color(Material material, string property, Color fallback) => material.HasProperty(property) ? material.GetColor(property) : fallback;
         private static Texture Texture(Material material, string property) => material.HasProperty(property) ? material.GetTexture(property) : null;
+        private static Texture ShadeTexture(Material material)
+        {
+            var texture = Texture(material, "_ShadowColorTex");
+            return texture == Texture2D.whiteTexture ? null : texture;
+        }
         private static bool EnabledOrTexture(Material material, string enableProperty, string textureProperty) =>
             material.HasProperty(enableProperty)
                 ? material.GetFloat(enableProperty) > 0.5f
