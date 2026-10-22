@@ -368,6 +368,8 @@ namespace VRVlog.LilToonExporter
             }
             var common = StencilState.Read(shared, property);
             var values = new HashSet<int> { 0 };
+            string firstClips = null;
+            var sameClips = true;
             bool Hidden(string pass)
             {
                 var stencil = StencilState.Read(pass, property) ?? common;
@@ -378,9 +380,17 @@ namespace VRVlog.LilToonExporter
                     var zTest = Command(ZTestCommand, DepthComparisons, pass) ?? Command(ZTestCommand, DepthComparisons, shared) ?? 4;
                     var cull = Command(CullCommand, CullModes, pass) ?? Command(CullCommand, CullModes, shared) ?? 2;
                     var depthTested = zTest != 0 && zTest != 8 && zTest != 9;
-                    // A fragment that clips, discards or uses alpha to coverage leaves pixels unwritten.
-                    var everyPixel = !depthTested && cull == 0 && !Discards.IsMatch(pass);
+                    // A fragment that clips, discards or uses alpha to coverage leaves
+                    // pixels unwritten. When every stencil pass so far clips with the
+                    // same statements, the earlier passes skipped those pixels too, so
+                    // they still hold the untouched 0.
+                    var clips = string.Join("\n", ClipStatements.Matches(pass).Cast<Match>().Select(match => Whitespace.Replace(match.Value, "")));
+                    sameClips &= firstClips == null || clips == firstClips;
+                    firstClips ??= clips;
+                    var discards = Discards.IsMatch(pass);
+                    var everyPixel = !depthTested && cull == 0 && (!discards || sameClips && !AlphaToMask.IsMatch(pass));
                     values = stencil.After(values, depthTested, cull != 1, cull != 2, everyPixel);
+                    if (everyPixel && discards) values.Add(0);
                 }
                 return !drawn;
             }
@@ -392,6 +402,9 @@ namespace VRVlog.LilToonExporter
         static readonly Regex ZTestCommand = new Regex(@"\bZTest\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
         static readonly Regex CullCommand = new Regex(@"\bCull\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
         static readonly Regex Discards = new Regex(@"\bclip\s*\(|\bdiscard\b|\bAlphaToMask\s+(On|\[)", RegexOptions.IgnoreCase);
+        static readonly Regex AlphaToMask = new Regex(@"\bAlphaToMask\s+(On|\[)", RegexOptions.IgnoreCase);
+        static readonly Regex ClipStatements = new Regex(@"\bclip\s*\([^;]*;|\bdiscard\s*;", RegexOptions.IgnoreCase);
+        static readonly Regex Whitespace = new Regex(@"\s+");
         // Indices are UnityEngine.Rendering.CompareFunction and CullMode; Off is
         // the ZTest keyword for no depth test.
         static readonly string[] DepthComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always", "Off" };
