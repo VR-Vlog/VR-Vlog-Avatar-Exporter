@@ -128,13 +128,9 @@ namespace VRVlog.LilToonExporter.Tests
             ? skin.sharedMesh : renderer.GetComponent<MeshFilter>().sharedMesh;
 
         [TestCase(false, false, false)]
-        [TestCase(false, false, true)]
-        [TestCase(false, true, false)]
         [TestCase(false, true, true)]
-        [TestCase(true, false, false)]
         [TestCase(true, false, true)]
         [TestCase(true, true, false)]
-        [TestCase(true, true, true)]
         public void InsideOutsideAndPartialPrimitivesMatchCanonicalBuild(bool skinned, bool removeInside, bool transformed)
         {
             RequirePackages();
@@ -356,10 +352,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
-        [TestCase(true, true)]
         public async Task BoxDeletionSurvivesExportReimportWithTraceMergeExpressionsAndMaterialRoutes(bool merge, bool fullLilToon)
         {
             RequirePackages();

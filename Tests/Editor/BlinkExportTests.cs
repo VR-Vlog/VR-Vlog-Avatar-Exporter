@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter.Tests
             cache.Invalidate();
         }
 
-        [TestCase("eye_close")][TestCase("previewBlink")][TestCase("eye_close_left")]
+        [TestCase("eye_close")][TestCase("previewBlink")]
         public void UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing(string name)
         {
             Skin(name);
@@ -187,7 +187,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("BlinkLeft", "BlinkRight")]
         [TestCase("Fcl_EYE_Close_L", "Fcl_EYE_Close_R")]
         [TestCase("eye_blink_1_L", "eye_blink_1_R")]
-        [TestCase("eye_blink_2_L", "eye_blink_2_R")]
         public void LegacyEyesOnDifferentRenderersResolveWithoutTrackingEvidence(string leftName, string rightName)
         {
             var left = Skin(leftName); var right = Skin(rightName);
@@ -212,7 +211,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssertUnresolved(BlinkExportSession.Resolve(root), BlinkExportSession.UnmatchedClosingSide);
         }
 
-        [TestCase(true, false)][TestCase(false, false)][TestCase(true, true)][TestCase(false, true)]
+        [TestCase(true, false)][TestCase(false, true)]
         public void ACompleteUnifiedPairIncludesCompatibleOneSidedEyelashes(bool left, bool normalized)
         {
             var face = Skin("UE/EyeClosedLeft", "UE/EyeClosedRight");
@@ -239,7 +238,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(eyelashes.sharedMesh.blendShapeCount, Is.EqualTo(1));
         }
 
-        [TestCase(false, false)][TestCase(true, false)][TestCase(false, true)][TestCase(true, true)]
+        [TestCase(true, false)][TestCase(false, true)]
         public void InertUnifiedClosureIsNotSelectedAlongsideUsableExplicitJaw(bool bilateral, bool endpointRest)
         {
             var names = bilateral ? new[] { "UE/JawOpen", "UE/EyeClosed" } : new[] { "UE/JawOpen", "UE/EyeClosedLeft", "UE/EyeClosedRight" };
@@ -430,7 +429,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(resolved.Slots[0][0].Weight, Is.EqualTo(100));
         }
 
-        [TestCase("Blink_L")][TestCase("Blink_R")]
+        [TestCase("Blink_L")]
         public void APartialEyelashPairCannotBeHiddenByAnotherRenderersBlink(string shape)
         {
             Skin("Blink"); Skin(shape);

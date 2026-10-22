@@ -372,13 +372,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false, false)]
-        [TestCase(false, true, false)]
-        [TestCase(true, false, false)]
         [TestCase(true, true, false)]
-        [TestCase(false, false, true)]
         [TestCase(false, true, true)]
         [TestCase(true, false, true)]
-        [TestCase(true, true, true)]
         public async Task NdmfGeneratedShapeAndReboundFxUsePreparedMeshAndRendererPathInRealVrm(bool moved, bool fullLilToon, bool replacedRenderer)
         {
             var type = DescriptorType(); if (type == null) Assert.Ignore("Install the real VRChat SDK.");

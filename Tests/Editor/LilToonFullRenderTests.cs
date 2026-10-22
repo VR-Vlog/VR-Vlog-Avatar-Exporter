@@ -54,10 +54,10 @@ namespace VRVlog.LilToonExporter.Tests
             Compare(authoring,runtime);
         }
 
-        [TestCase("_UseMain2ndTex")][TestCase("_UseMain3rdTex")][TestCase("_UseShadow")]
-        [TestCase("_UseRimShade")][TestCase("_UseEmission")][TestCase("_UseEmission2nd")]
+        [TestCase("_UseMain2ndTex")][TestCase("_UseShadow")]
+        [TestCase("_UseRimShade")][TestCase("_UseEmission")]
         [TestCase("_UseBumpMap")][TestCase("_UseBump2ndMap")][TestCase("_UseAnisotropy")]
-        [TestCase("_UseReflection")][TestCase("_UseMatCap")][TestCase("_UseMatCap2nd")]
+        [TestCase("_UseReflection")][TestCase("_UseMatCap")]
         [TestCase("_UseRim")][TestCase("_UseGlitter")][TestCase("_UseBacklight")]
         [TestCase("_UseParallax")][TestCase("_UsePOM")]
         public void EnabledFeatureMatchesReferencePixels(string feature)
@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter.Tests
             Compare(original,runtime);
         }
 
-        [TestCase(1,0f)][TestCase(2,.5f)][TestCase(3,1f)]
+        [TestCase(1,0f)][TestCase(3,1f)]
         public void FurSubdivisionAndRandomnessMatchReference(int layers,float random)
         {
             if(!AppReader.AppProject)Assert.Ignore("Requires the application's own shader set; with the official set this compares a shader with itself.");

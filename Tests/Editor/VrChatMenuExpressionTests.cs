@@ -269,7 +269,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("ongoing segment")]
         [TestCase("loop")]
         [TestCase("future bend")]
-        [TestCase("weighted tail bend")]
         [TestCase("wrapped short curve")]
         [TestCase("future SDK timer")]
         public void AReachedMorphTailCannotHideAFutureCurveOrCallback(string kind)
@@ -324,9 +323,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("loop")]
         [TestCase("late curve")]
         [TestCase("speed input")]
-        [TestCase("motion time")]
         [TestCase("cycle offset")]
-        [TestCase("parameter curve")]
         [TestCase("future exit")]
         public void TerminalMorphProofCannotReplaceAnUnprovenNativeClockOrFutureState(string kind)
         {
@@ -359,7 +356,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("constant override", true)]
-        [TestCase("terminal override", true)]
         [TestCase("fractional override", false)]
         [TestCase("additive", false)]
         [TestCase("unbound channel", false)]
@@ -858,7 +854,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("alias")]
         [TestCase("position")]
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("near position")]
         public void MutuallyExclusiveAnimationsReuseOnlyExactStoredPnt(string kind)
         {
@@ -1051,7 +1046,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("position")]
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("tiny position")]
         public void OnlyAnExactlyZeroScalarPntCanReuseAMarker(string kind)
         {

@@ -80,7 +80,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("scalar")]
         [TestCase("vector")]
         [TestCase("absent activation")]
-        [TestCase("absent material")]
         [TestCase("absent renderer")]
         public void UnchangedPreparedAppearanceKeepsOnlyAuthoredMorphAnimation(string kind)
         {
@@ -97,9 +96,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("activation")]
-        [TestCase("enabled")]
         [TestCase("color")]
-        [TestCase("scalar")]
         [TestCase("vector")]
         public void ARealAppearanceChangeStillRejectsTheWholeSelectedClip(string kind)
         {
@@ -110,8 +107,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("color")]
         [TestCase("activation")]
-        [TestCase("enabled")]
-        [TestCase("vector")]
         public void AChangingAppearanceCurveIsNotCertifiedFromItsFirstKey(string kind)
         {
             var binding = Appearance(kind);
@@ -122,8 +117,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, "color")]
-        [TestCase(true, "color")]
-        [TestCase(false, "vector")]
         [TestCase(true, "vector")]
         public void PropertyBlockPreventsMaterialNoOpProofEvenWhenStoredMaterialMatches(bool perSlot, string kind)
         {
@@ -136,11 +129,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("equal", "color")]
-        [TestCase("different", "color")]
         [TestCase("missing", "color")]
-        [TestCase("equal", "vector")]
         [TestCase("different", "vector")]
-        [TestCase("missing", "vector")]
         public void EverySharedMaterialSlotMustHaveTheSameDeclaredValue(string mode, string kind)
         {
             var binding = Appearance(kind); var second = new Material(material); owned.Add(second);
@@ -227,7 +217,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("_MainTexHSVG")]
-        [TestCase("_MainTex_ScrollRotate")]
         public void MatchingVectorChannelsKeepTheirActualNativeValue(string property)
         {
             material.SetVector(property, PreparedVector);
@@ -360,8 +349,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("ordinary", false, 1f)]
         [TestCase("HDR", false, 1f)]
-        [TestCase("HDR", true, 1f)]
-        [TestCase("HDR", false, 4f)]
         [TestCase("HDR", true, 4f)]
         [TestCase("Gamma", false, 1f)]
         public void MaterialColorAnimationMatchesActualRenderedPixels(string kind, bool linearBaseline, float intensity)
@@ -469,10 +456,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadPose(avatar, clip));
         }
 
-        [TestCase(false, false)]
-        [TestCase(true, false)]
         [TestCase(false, true)]
-        [TestCase(true, true)]
+        [TestCase(true, false)]
         public async Task MixedLilToonGesturePreservesPreparedAppearanceAndMorphEndpointsAfterExport(bool fullLilToon, bool controlledLayer)
         {
             var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))

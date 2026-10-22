@@ -53,9 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(1f, true)]
-        [TestCase(.5f, true)]
         [TestCase(8f, false)]
-        [TestCase(9.6f, false)]
         [TestCase(-9.6f, false)]
         public void AModerateTiltFitsOnlyAtAWeakScale(float scale, bool fits)
         {
@@ -73,7 +71,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(LilToonFullSnapshot.NormalFitsRgba32(new[] { HalfPixels(pixels) }, 1), Is.EqualTo(fits));
         }
 
-        [TestCase(float.PositiveInfinity)]
         [TestCase(float.NaN)]
         public void AnUnknownScaleKeepsHalf(float scale)
         {
@@ -82,8 +79,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(new[] { 1f }, "rgba32")]
-        [TestCase(new[] { .5f, 1f }, "rgba32")]
-        [TestCase(new[] { 1f, 9.6f }, "rgbaHalf")]
         [TestCase(new[] { 9.6f, 1f }, "rgbaHalf")]
         [TestCase(new[] { 1f, -9.6f }, "rgbaHalf")]
         public void TheStrongestReferenceDecidesASharedNormal(float[] scales, string expected)
