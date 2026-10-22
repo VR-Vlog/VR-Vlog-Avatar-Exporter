@@ -456,18 +456,15 @@ namespace VRVlog.LilToonExporter
             var height = Mathf.Max(1, Mathf.RoundToInt(mask.height * fit));
             var pixels = Sampled(mask, width, height);
             if (pixels == null) return null;
-            // Kept in the mask's own encoding: a Linear project decodes an sRGB
-            // mask when sampling, so the value is encoded back.
-            var srgb = mask.isDataSRGB;
-            var encode = srgb && QualitySettings.activeColorSpace == ColorSpace.Linear;
+            // The pixels are the values the source shader sampled, so the image
+            // is kept linear for lilToon to sample the same ones.
             for (var i = 0; i < pixels.Length; i++)
             {
                 var v = Mathf.Clamp01(pixels[i][channel]);
                 if (inverted) v = 1 - v;
-                if (encode) v = Mathf.LinearToGammaSpace(v);
                 pixels[i] = new Color(v, v, v, 1);
             }
-            var baked = new Texture2D(width, height, TextureFormat.RGBA32, false, !srgb)
+            var baked = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
             {
                 name = DeterministicNames.Unique(mask.name + "__VRVlog_Mask" + "RGBA"[channel] + (inverted ? "_Inverted" : ""),
                     candidate => textures.Exists(texture => texture != null && texture.name == candidate)),

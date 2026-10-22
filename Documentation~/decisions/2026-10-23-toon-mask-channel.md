@@ -12,7 +12,7 @@
 ## 決定
 
 - R チャンネルを選んだ反転していない灰色で不透明なマスクは、これまでどおり同じ画像をそのまま写す。グラフィックスデバイスが無くて灰色か確かめられないときも写す。
-- それ以外のマスクは、元のシェーダーが読むチャンネルの値（反転していれば 1 から引いた値）を R・G・B に入れ、A を 1 にした画像を GPU で読み戻して作り、元のマスクの拡大縮小とずらしを付けて写す。大きさは元の画像と同じで、長い辺が 2048 を超えるときだけ縮める。画像は元のマスクと同じ色空間（sRGB かリニアか）で持ち、シェーダーが読む値が元と同じになるようにする。名前は元のマスクの名前の後ろに `__VRVlog_Mask` とチャンネル名（反転していれば `_Inverted`）を付ける。
+- それ以外のマスクは、元のシェーダーが読むチャンネルの値（反転していれば 1 から引いた値）を R・G・B に入れ、A を 1 にした画像を GPU で読み戻して作り、元のマスクの拡大縮小とずらしを付けて写す。大きさは元の画像と同じで、長い辺が 2048 を超えるときだけ縮める。読み戻した値は元のシェーダーが読む値（sRGB のマスクは復号したあとの値）なので、画像はリニアで持ち、lilToon が同じ値を読むようにする。名前は元のマスクの名前の後ろに `__VRVlog_Mask` とチャンネル名（反転していれば `_Inverted`）を付ける。
 - 作った画像は書き出しの一時画像の一覧（主画像の焼き込みと同じ `temporaryTextures`）に入れ、書き出しが終わったら書き出し用のコピーと一緒に破棄する。`Create` に一覧を渡さない呼び出し（lilToon の構造の確認）では焼き込まない。
 - 焼き込めないとき（グラフィックスデバイスが無い、読み戻しに失敗した、一覧が無い）は、効果を切って（`_UseMatCap`・`_UseMatCap2nd`・`_UseRim`・`_UseEmission` を 0）、これまでと同じ名前（Matcap Mask・Matcap 2 Mask・Rim Mask・Emission Mask）で報告する。材質全体に掛かるより、効果が無いほうが元の見た目に近い。
 
@@ -21,6 +21,7 @@
 - `SectionedToonSubstitutionTests.AGreyRedChannelMaskIsCopied` で、灰色で不透明な R チャンネルのマスクが同じ画像のまま写ることを確かめる。
 - `SectionedToonSubstitutionTests.AColoredRedChannelMaskBecomesAGreyMaskInsteadOfTintingTheRim` で、色のある R チャンネルのマスクが R の値の灰色の画像になり、リムが有効のまま報告されないことを確かめる。
 - `SectionedToonSubstitutionTests.AnInvertedGreenChannelMaskKeepsAReplacingMatcapToItsArea` で、置換のマットキャップの G チャンネルを反転したマスクが、各画素 1 − G の灰色で不透明な新しい画像になり、拡大縮小とずらしが残り、報告されないことを確かめる。
+- `SectionedToonSubstitutionTests.AMaskThatCannotBeBakedTurnsTheMatcapOff` で、焼き込めないときにマットキャップが切られ、Matcap Mask として報告されることを確かめる。
 
 ## 欠点
 

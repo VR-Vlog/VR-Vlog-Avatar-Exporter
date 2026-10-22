@@ -250,6 +250,18 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Is.Empty);
         }
 
+        [Test] public void AMaskThatCannotBeBakedTurnsTheMatcapOff()
+        {
+            var source = Probe();
+            source.SetFloat("_MatcapEnable", 1); source.SetFloat("_MatcapReplace", 1);
+            source.SetTexture("_MatcapMask", Mask(Color.white)); source.SetFloat("_MatcapMaskChannel", 1);
+
+            // Without a list to own the baked image, as when a graphics device is missing.
+            var output = Own(UnsupportedShaderSubstitution.Create(source, out _, out _, out var dropped));
+            Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(0f), "Unmasked, the matcap would cover the whole material.");
+            Assert.That(dropped, Is.EqualTo(new[] { "Matcap Mask" }));
+        }
+
         [Test] public void TheStrongestMatcapBlendPicksLilToonsMode()
         {
             var matcap = Own(new Texture2D(4, 4) { name = "matcap" });
