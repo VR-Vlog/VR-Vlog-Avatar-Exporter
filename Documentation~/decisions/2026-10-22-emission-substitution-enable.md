@@ -33,4 +33,5 @@ Unity とシェーダーの定義から読めることだけで決める。ア�
 ## 検証
 
 - EditMode: `UnsupportedShaderSubstitutionTests` の `AShaderSwitchDecidesTheEmissionEvenWithAWhiteColor`・`WithoutASwitchTheShaderDefaultColorAloneDoesNotGlow`・`AnEmissionImageNamedEmissionMasksTheColor`・`EmissionTintedByTheBaseColorUsesTheAlbedo`、`MaterialFallbackTests.GradatedEmissionUsesTheAverageOfTheGradation`。
-- 100 体の見え方の比較（元のアバター／修正前／修正後、正面・45°・背面）で、白や灰色に光っていたアバターが元の色に近づき、ほかのアバターは悪化しないことを確かめた。
+- EditMode 全体（4170 件）: 修正前と比べて新しく失敗したテストはない。`QuickTransferMatchesDefaultNormalTests`（5 件）は通った。
+- 100 体の見え方の比較（元のアバター／修正前（develop 5c23038）／修正後、正面・45°・背面、3 方向の平均）: 白や灰色に光っていた 3 体の色差 ΔE2000 の平均が 17.06 → 4.29（スイッチ `_ES_Enable`）、16.63 → 10.69（発光の画像 `_Emission`）、40.35 → 31.62（lilToon のグラデーション）に下がった。ほかの 96 体で IoU が 0.002 より下がったもの・ΔE が 0.3 より上がったものはない（1 体は修正前も修正後も検証ツールが失敗した）。`_Emission` の 2 体のうち 1 体はルートのずれ（別の修正）で比べられず、`_EmissionBaseColorAsMap` の 1 体は修正前から ΔE 4.3 で変わらなかった。
