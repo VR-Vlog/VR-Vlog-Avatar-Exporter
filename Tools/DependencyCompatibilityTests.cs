@@ -89,6 +89,22 @@ public static class DependencyCompatibilityTests
             "Caller-supplied translation applies to the error");
         Check(DependencyPolicy.LilToonWarning("2.4.1", text => "[" + text + "]").StartsWith("[", StringComparison.Ordinal),
             "Caller-supplied translation applies to the warning");
+        // lilToon under Assets without a readable version (mk 2026-10-22):
+        // exports with the version warning, which says the version is unknown.
+        var unknown = DependencyPolicy.LilToonUnknownVersion;
+        Check(DependencyPolicy.ClassifyLilToon(unknown) == DependencyPolicy.LilToonSupport.Unreadable, "Unknown version is unreadable");
+        Check(DependencyPolicy.LilToonError(unknown) == null, "Unknown version does not stop");
+        var unknownWarning = DependencyPolicy.LilToonWarning(unknown);
+        Check(unknownWarning == "アプリではlilToon 2.3.4として描画します（導入済みのバージョンは不明）", "Unknown version warns as unknown");
+        Check(DependencyPolicy.LilToonWarning(unknown, text => text == "不明" ? "unknown!" : text).Contains("unknown!"),
+            "Caller-supplied translation applies to the unknown version");
+        Check(DependencyPolicy.DisplayLilToon("2.3.4", text => text) == "2.3.4", "Display a known version");
+        Check(DependencyPolicy.DisplayLilToon(null, text => text) == "未インストール", "Display missing lilToon");
+        Check(DependencyPolicy.DescribeLilToon("2.3.4", null, text => text) == "2.3.4", "Package install shows only the version");
+        Check(DependencyPolicy.DescribeLilToon("2.3.4", "Assets/lilToon", text => text) == "2.3.4（Assetsに導入: Assets/lilToon）",
+            "Assets install shows the version and folder");
+        Check(DependencyPolicy.DescribeLilToon(unknown, "Assets/lilToon/Shader", text => text) == "不明（Assetsに導入: Assets/lilToon/Shader）",
+            "Assets install without a version shows unknown");
         Console.WriteLine("Dependency compatibility: " + count + " assertions passed.");
     }
 }
