@@ -84,12 +84,13 @@ namespace VRVlog.LilToonExporter.Tests
         [Test] public void ProjectUniVrmSettingsOnTheSourceAreExportedAndLeftUnchanged()
         {
             // As with the bundled Vrm10Instance, the authored amount is baked
-            // into a generated target that the clip drives fully, so 60% of
-            // the shape is 0.6 of what the same avatar exports at 100%.
+            // into a generated target that the clip drives fully. The target
+            // starts from the fixture's posed 35%, so 60% exports (60-35)/(100-35)
+            // of what the same avatar exports at 100%.
             var partial = ExportedBlinkHeight(.6f);
             var full = ExportedBlinkHeight(1f);
             Assert.That(full, Is.GreaterThan(1e-5f));
-            Assert.That(partial / full, Is.EqualTo(.6f).Within(1e-3f));
+            Assert.That(partial / full, Is.EqualTo(25f / 65f).Within(1e-3f));
         }
 
         float ExportedBlinkHeight(float weight)
