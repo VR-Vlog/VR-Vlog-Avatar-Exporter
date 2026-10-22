@@ -17,15 +17,13 @@ public static class ExporterBakeBehaviorTests
         StaticLayerSettingsAreAccepted();
         EveryCauseAndSourceLocationIsReportedWithoutMutation();
         DisabledInactiveAndExcludedRenderersAreIgnored();
-        ConsentUsesMaterialIdentityAndDoesNotMutatePriorOptions();
-        ApprovedOmissionOnlyChangesExportCopies();
         UvProofUsesOnlyTheRenderedSubmesh();
         AtlasFrameZeroIsRequired();
         StaticLayerAlphaIsAcceptedAndInvalidModesAreRejected();
         DynamicAndSurfaceDependentSettingsRemainBlocked();
         GuardRejectsBeforeGpuAllocation();
         Equal(GpuForbidden.Calls, 0, "No GPU operation was attempted");
-        Console.WriteLine("Bake policy checks passed (" + assertions + " assertions). Production preflight, consent and omission compiled and executed.");
+        Console.WriteLine("Bake policy checks passed (" + assertions + " assertions). Production preflight compiled and executed.");
         Console.WriteLine("Unity APIs use property/hierarchy test doubles. Shader rendering and Unity Editor compatibility are not tested; GPU operations throw.");
     }
 
@@ -179,80 +177,6 @@ public static class ExporterBakeBehaviorTests
         Throws<ArgumentNullException>(() => LilToonMainTextureBaker.ValidateAvatar(null), "Null avatar rejected");
     }
 
-    private static void ConsentUsesMaterialIdentityAndDoesNotMutatePriorOptions()
-    {
-        var first = LayerMaterial("Identical names");
-        var second = LayerMaterial("Identical names");
-        first.SetFloat("_Main2ndTexIsLeftOnly", 1);
-        first.SetFloat("_UseMain3rdTex", 1);
-        first.SetFloat("_Main3rdTexIsRightOnly", 1);
-        second.SetFloat("_Main2ndTexIsLeftOnly", 1);
-        var avatar = new GameObject("Avatar");
-        Skin(avatar, first, second);
-        var all = Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar), "Consent fixture");
-        Equal(all.Issues.Count, 3, "Three separately consented material/layer pairs");
-        Check(all.Issues.All(i => i.RendererPath == "Avatar"), "Root renderer has readable avatar path");
-        var empty = new MaterialBakeOptions();
-        var firstLayerOnly = empty.WithOmissions(all.Issues.Where(i => i.Material == first && i.Layer == "2nd"));
-        Check(!empty.Omits(first, "2nd"), "Consent does not mutate prior options");
-        Check(firstLayerOnly.Omits(first, "2nd"), "Selected pair consented");
-        Check(!firstLayerOnly.Omits(first, "3rd") && !firstLayerOnly.Omits(second, "2nd"), "Same name and other layer unconsented");
-        var remaining = Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar, null, firstLayerOnly), "Partial consent");
-        Equal(remaining.Issues.Count, 2, "Only selected layer omitted from preflight");
-        Check(remaining.Issues.Any(i => i.Material == first && i.Layer == "3rd") && remaining.Issues.Any(i => i.Material == second), "Unapproved identities retained");
-        var complete = firstLayerOnly.WithOmissions(remaining.Issues);
-        Valid(avatar, "Explicit merged consent clears listed pairs", options: complete);
-        Check(!firstLayerOnly.Omits(first, "3rd"), "Merging keeps previous options immutable");
-        Equal(first.GetFloat("_UseMain2ndTex"), 1f, "Consent leaves original layer enabled");
-        Equal(first.GetFloat("_UseMain3rdTex"), 1f, "Consent leaves original third layer enabled");
-        Throws<InvalidOperationException>(() => empty.WithOmissions(new[] { new MaterialBakeIssue(null, "", "2nd", "", "", "") }), "Missing source identity cannot be approved");
-        Throws<InvalidOperationException>(() => empty.WithOmissions(new[] { new MaterialBakeIssue(first, "", "Main", "", "", "") }), "Unrelated material scope cannot be approved");
-    }
-
-    private static void ApprovedOmissionOnlyChangesExportCopies()
-    {
-        var first = LayerMaterial("Shared material");
-        var second = LayerMaterial("Shared material");
-        first.SetFloat("_Main2ndTexShouldFlipMirror", 1);
-        first.SetFloat("_UseMain3rdTex", 1);
-        first.SetFloat("_Main3rdTexIsLeftOnly", 1);
-        second.SetFloat("_Main2ndTexIsRightOnly", 1);
-        var sourceAvatar = new GameObject("Source avatar");
-        var source = Skin(sourceAvatar, first, second);
-        var firstBefore = first.Snapshot();
-        var secondBefore = second.Snapshot();
-        var issues = Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(sourceAvatar), "Omission fixture").Issues;
-        var options = new MaterialBakeOptions().WithOmissions(issues);
-        var exportAvatar = new GameObject("Export clone fixture");
-        var exported = Skin(exportAvatar, first, second, first);
-        var duplicate = Skin(exportAvatar.Child("Also shared"), first);
-        var materials = new List<Material>();
-        var textures = new List<Texture2D>();
-        var warnings = new List<string>();
-        var materialCount = Material.Count;
-        LilToonMainTextureBaker.Prepare(exportAvatar, materials, textures, warnings, false, false, options);
-        Equal(materials.Count, 2, "One copy per source identity");
-        Equal(Material.Count - materialCount, 2, "No extra baker material allocated when all layers omitted");
-        var slots = exported.sharedMaterials;
-        Check(slots[0] != first && slots[1] != second, "Only export references replaced");
-        Check(slots[0] != slots[1], "Same-name sources remain distinct");
-        Check(slots[0] == slots[2] && slots[0] == duplicate.sharedMaterials[0], "Copy reused across slots and renderers");
-        Check(materials.Contains(slots[0]) && materials.Contains(slots[1]), "Copies owned by export cleanup collection");
-        Equal(slots[0].GetFloat("_UseMain2ndTex"), 0f, "Approved second layer disabled on copy");
-        Equal(slots[0].GetFloat("_UseMain3rdTex"), 0f, "Approved third layer disabled on copy");
-        Equal(slots[1].GetFloat("_UseMain2ndTex"), 0f, "Second source's approved layer disabled");
-        Check(slots[0].GetTexture("_MainTex") == first.GetTexture("_MainTex"), "Base texture identity retained");
-        Equal(slots[0].GetColor("_Color"), first.GetColor("_Color"), "Base tint retained");
-        Equal(slots[0].GetFloat("_Main2ndTexShouldFlipMirror"), 1f, "Omission disables layer, not authored layer properties");
-        Equal(textures.Count, 0, "All-omitted path allocates no baked texture");
-        Equal(warnings.Count, 3, "One clear omission notice per approved enabled pair");
-        Check(warnings.All(w => w.Contains("出力用コピー") && w.Contains("省略")), "Notices identify export-copy omissions");
-        Equal(first.Snapshot(), firstBefore, "First source material unchanged after prepare");
-        Equal(second.Snapshot(), secondBefore, "Second source material unchanged after prepare");
-        Check(source.sharedMaterials[0] == first && source.sharedMaterials[1] == second, "Original avatar references unchanged");
-        Check(!LilToonMainTextureBaker.NeedsBake(slots[0]), "Approved copy requires no GPU work");
-    }
-
     private static void UvProofUsesOnlyTheRenderedSubmesh()
     {
         var decal = LayerMaterial();
@@ -379,9 +303,6 @@ public static class ExporterBakeBehaviorTests
             material.SetTextureScale("_Main" + layer + "Tex", new Vector2(float.PositiveInfinity, 1));
             OneIssue(avatar, "レイヤーの配置");
             material.SetTextureScale("_Main" + layer + "Tex", Vector2.one);
-            var issue = new MaterialBakeIssue(material, "", layer, "省略", "", "");
-            var options = new MaterialBakeOptions().WithOmissions(new[] { issue });
-            Check(!LilToonMainTextureBaker.NeedsLayerAlphaBake(material, options), "Omitted alpha layer does not affect the selected baker");
             material.SetFloat("_Main" + layer + "TexAlphaMode", 0);
             Valid(avatar, "Transparent alpha guard ignores mode zero: " + layer);
         }

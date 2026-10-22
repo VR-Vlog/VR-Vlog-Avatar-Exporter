@@ -175,7 +175,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (recordFace)
                 {
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
-                    session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                    session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } }, null);
                 }
                 var bytes = session.Export("Constraint export", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var nodes = (System.Collections.Generic.List<object>)GlbDocument.Read(bytes).Json["nodes"];
@@ -207,7 +207,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (recordFace)
                 {
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
-                    session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                    session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } }, null);
                 }
                 var bytes = session.Export("Callback-safe export", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes));
@@ -424,7 +424,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(session.Channels.Select(channel => channel.Path), Does.Contain("Front"));
                     Assert.That(session.Warnings.Count(warning => warning.Contains("Twin")), Is.EqualTo(1));
                     Assert.That(session.ClipError(clip, clip.length), Is.Null, "A face touching the repeated mesh stays usable.");
-                    session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                    session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } }, null);
                     var recorded = session.Expressions.Single();
                     Assert.That(recorded.Rows.Select(row => row.Path).Where(path => path.Contains("Twin")), Is.Empty);
                     Assert.That(recorded.Rows.Single(row => row.Path == "Front").Weights[0], Is.EqualTo(80));
@@ -463,7 +463,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Simulate a later authoring material assignment on the owned copy.
                 prepared.sharedMaterial = hidden;
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
-                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } }, null);
                 var options = new ExportRecoveryOptions(); options.Actions.Add(new ExportRecoveryAction { Id = "mesh-recovery", Kind = ExportRecoveryActionKind.ExcludeHiddenRenderer, Renderer = original });
                 var bytes = session.Export("Mesh recovery", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryOptions: options);
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes));
@@ -487,7 +487,7 @@ namespace VRVlog.LilToonExporter.Tests
                 authored.Expression.CustomClips.Add(original); fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
-                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } });
+                session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = clip.length } }, null);
                 var snapshot = session.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray(); session.Expressions.Clear();
                 var bytes = session.Export("Retry snapshot", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recordedExpressions: snapshot);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -757,7 +757,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session.PreviewClip(clip, clip.length);
                 Assert.That(session.Channels.Single(channel => channel.Path == "Accessory/Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(75));
                 if (competingRoot) Assert.That(session.Channels.Single(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(35));
-                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Relative face", Time = clip.length } });
+                session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Relative face", Time = clip.length } }, null);
                 Assert.That(session.Expressions.Single().Rows.Single(row => row.Path == "Accessory/Front").Weights[0], Is.EqualTo(75));
                 Assert.That(AnimationUtility.GetCurveBindings(clip).Single().path, Is.EqualTo("Front"));
                 Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp));
@@ -2297,8 +2297,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Is.EqualTo(native.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0)).Within(.001));
                 Assert.That(session.Channels.First(channel => channel.Path == "Back").Renderer.GetBlendShapeWeight(0), Is.EqualTo(35), "Unspecified curves always start from the baseline.");
                 var inputs = new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Explicit", Time = .5f } };
-                Assert.That(session.ImportClips(inputs).Imported, Is.EqualTo(new[] { "Explicit" }));
-                Assert.That(session.ImportClips(inputs).Imported, Is.Empty);
+                Assert.That(session.ReplaceClipRecords(inputs, null).Select(pose => pose.Name), Is.EqualTo(new[] { "Explicit" }));
                 session.LoadSettings(session.SaveSettings()); session.PreviewRecorded(session.Expressions.Single());
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
                 Assert.That(state.behaviours.Length, Is.EqualTo(1));
@@ -2321,9 +2320,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
                 var inputs = clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = 0 }).ToArray();
-                var result = session.ImportClips(inputs);
-                Assert.That(result.Imported, Has.Count.EqualTo(100), "There is no limit on the number of recorded faces.");
-                Assert.That(result.Skipped, Is.Empty);
+                var result = session.ReplaceClipRecords(inputs, null);
+                Assert.That(result, Has.Length.EqualTo(100), "There is no limit on the number of recorded faces.");
                 Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(clips.Select(clip => clip.name)));
             }
             finally { foreach (var clip in clips) Object.DestroyImmediate(clip); }
@@ -2360,9 +2358,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var time = mode == "bad-time" ? float.NaN : 0;
                 Assert.That(session.ClipError(invalid, time), Is.Not.Null);
                 Assert.Throws<InvalidOperationException>(() => session.PreviewClip(invalid, time));
-                Assert.Throws<InvalidOperationException>(() => session.ImportClips(new[] {
+                Assert.Throws<InvalidOperationException>(() => session.ReplaceClipRecords(new[] {
                     new ExperimentalExpressionCaptureSession.ClipInput { Clip = valid, Name = "Valid" },
-                    new ExperimentalExpressionCaptureSession.ClipInput { Clip = invalid, Name = "Invalid", Time = time } }));
+                    new ExperimentalExpressionCaptureSession.ClipInput { Clip = invalid, Name = "Invalid", Time = time } }, null));
                 Assert.That(session.Expressions, Is.Empty);
                 Assert.That(session.Channels[0].Renderer.GetBlendShapeWeight(0), Is.EqualTo(50));
             }
@@ -2385,7 +2383,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.ClipErrors(new[] { clip })[clip], Is.Null);
                 session.PreviewClip(clip, clip.length);
                 Assert.That(session.Channels[0].Renderer.GetBlendShapeWeight(0), Is.EqualTo(70));
-                session.ImportClips(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Partly stale", Time = clip.length } });
+                session.ReplaceClipRecords(new[] { new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = "Partly stale", Time = clip.length } }, null);
                 var row = session.Expressions.Single().Rows.Single(value => value.Path == session.Channels[0].Path);
                 Assert.That(row.Weights[Array.IndexOf(row.Shapes, "Hair detail")], Is.EqualTo(70));
                 Assert.That(row.Shapes, Does.Not.Contain("Removed long ago"));
@@ -2578,7 +2576,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(inputs.All(input => input.Error == null), Is.True);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 Assert.That(session.Channels.First(channel => channel.Path == "Front").Renderer.GetBlendShapeWeight(0), Is.EqualTo(70 + count - 1), "Adding a valid file previews it.");
-                Assert.That(session.ImportClips(inputs).Imported.Count, Is.EqualTo(count));
+                Assert.That(session.ReplaceClipRecords(inputs, null).Length, Is.EqualTo(count));
                 Assert.That(fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(35));
             }
             finally
