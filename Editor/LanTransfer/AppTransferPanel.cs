@@ -144,10 +144,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Another avatar cancels the upload or the QR on screen, so it is asked first.
         internal static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
+            T("このQRコードは使えなくなります"), T("変更する"), T("転送を続ける"));
 
         internal static bool ConfirmRedoingTransfer() => EditorUtility.DisplayDialog(T("QRを作り直す"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
+            T("このQRコードは使えなくなります"), T("作り直す"), T("転送を続ける"));
 
         private static string T(string source) => ExporterLocalization.T(source);
         private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
@@ -940,7 +940,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(problemBox, entry == null);
             diagnosticsButton.text = T("VR Vlog 動作環境");
             Show(diagnosticsButton, entry == null);
-            playingBox.text = T("Playモードを終了すると編集できます。");
+            playingBox.text = T("Playモードを終了すると編集できます");
             // The board says this above its pages.
             Show(playingBox, playing && !embedded);
             formFields.SetEnabled(!playing && entry != null);

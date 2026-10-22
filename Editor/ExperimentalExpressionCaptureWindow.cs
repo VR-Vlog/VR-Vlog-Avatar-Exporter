@@ -602,7 +602,7 @@ namespace VRVlog.LilToonExporter
                 EditorGUILayout.Space(12);
                 var blocked = pending != null || applyingOnLeave || EditorApplication.isPlayingOrWillChangePlaymode;
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
-                    EditorGUILayout.HelpBox(ExporterLocalization.T("Playモードを終了すると編集できます。"), MessageType.Info);
+                    EditorGUILayout.HelpBox(ExporterLocalization.T("Playモードを終了すると編集できます"), MessageType.Info);
                 using (new EditorGUI.DisabledScope(blocked))
                 {
                     if (session == null || page == ExpressionsPage)
