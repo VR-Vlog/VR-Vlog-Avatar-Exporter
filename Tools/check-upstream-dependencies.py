@@ -22,7 +22,7 @@ def release_version(tag):
 
 
 def compare(config, releases):
-    known = {'lilToon': config['lilToon']['supported']['maximum'],
+    known = {'lilToon': config['lilToon']['verified']['maximum'],
              'UniVRM': max(config['uniVrm']['versions'], key=release_version),
              'NDMF': config['authoring']['ndmfReference'],
              'Modular Avatar': config['authoring']['modularAvatarReference']}

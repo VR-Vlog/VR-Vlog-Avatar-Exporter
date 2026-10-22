@@ -22,7 +22,7 @@ PhysBoneの重複は元の静止姿勢を残して担当を分け、左右別メ
 
 ## 必要な環境
 
-Unity 2022.3、lilToon **2.0.0〜2.3.4**（0.12.0-beta.1以降。安定版0.11.15は2.3.4だけ）、UniVRM **0.131.x**（0.131.0〜0.131.3で確認済み）、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応版か確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、VRChat SDK 3.5.2以上3.11.0未満が必要です。Modular AvatarのShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは、Modular Avatar 1.18.0以上1.19.0未満が必要です。lilToon 1.x以前では書き出しの前に止まるので、lilToonを2.0.0〜2.3.4へ更新してください（lilToonの移行処理でマテリアルが移行され、そのまま書き出せます）。2.3.4より新しいlilToonとプレリリース版も止まります。新しい版は、lilToonを2.3.4に戻すか、対応したExporterの公開を待ってください。
+Unity 2022.3、lilToon（0.12.0-beta.4以降はバージョンを問いません。推奨は **2.3.4**。0.12.0-beta.1〜beta.3は2.0.0〜2.3.4、安定版0.11.15は2.3.4だけ）、UniVRM **0.131.x**（0.131.0〜0.131.3で確認済み）、VR Vlog **0.1.1（ビルド345）以降**が必要です。VCC・ALCOMではUniVRM 0.131.xを自動で導入し、対応バージョンか確認します。Modular Avatarを使う場合は、その依存パッケージも事前に導入してください。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、VRChat SDK 3.5.2以上3.11.0未満が必要です。Modular AvatarのShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは、Modular Avatar 1.18.0以上1.19.0未満が必要です。lilToonのバージョンでは書き出しを止めません。アプリは導入済みのバージョンにかかわらずlilToon 2.3.4として描画し、2.3.4とシェーダーが違うところは書き出し画面に警告として出します（2.3.4にないプロパティは書き出さず、2.3.4のプロパティと合わないマテリアルはMToonで近似します）。止まるのは、lilToonが入っていないときと、ベイク用シェーダー（`Hidden/ltsother_baker`）が2.3.4と違うときだけです。
 
 ## 使い方
 
@@ -96,9 +96,9 @@ lilToon専用表示のレイヤー合成には、書き出し元のUnityプロ�
 
 対応するVR Vlogでは、Linearで作った2nd／3rdの重ね合わせをGammaのアプリでもLinearで計算します。出力元の情報がない旧VRMはVRChatのLinearワークフローを前提に読み込みます。旧ExporterでGammaプロジェクトから書き出したVRMは、対応版のExporterで書き出し直す必要があります。透明材質を背景に合成する工程や照明全体をLinearへ変更する修正ではありません。
 
-### 書き出し元のlilToonの版
+### 書き出し元のlilToonのバージョン
 
-Exporterは書き出し元のプロジェクトに導入されていたlilToonの版を`asset.extras.VRVLOG_lilToonInstalledVersion`に保存します。`VRVLOG_materials_liltoon`の`sourceLilToonVersion`は、マテリアルが準拠するlilToonのカタログの版（2.3.4）のままです。lilToonのマテリアルが無いアバターの書き出しには保存しません。アプリの読み込みはこの値を使いません。
+Exporterは書き出し元のプロジェクトに導入されていたlilToonのバージョンを`asset.extras.VRVLOG_lilToonInstalledVersion`に保存します。`VRVLOG_materials_liltoon`の`sourceLilToonVersion`は、導入済みのバージョンにかかわらず、マテリアルが準拠するlilToonのカタログのバージョン（2.3.4）のままです。lilToonのマテリアルが無いアバターの書き出しには保存しません。アプリの読み込みはこの値を使いません。
 
 ## 脆弱性の報告
 

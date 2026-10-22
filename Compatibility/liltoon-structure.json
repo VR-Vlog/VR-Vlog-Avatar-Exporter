@@ -126,6 +126,18 @@
       "commit": "252fd8cfc46106d4967e95b3f2c788418502f227",
       "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
       "matchesReference": true
+    },
+    {
+      "tag": "2.4.0",
+      "commit": "582a703a79cfc28ba67f540ed4ea63cc2c4b1e7b",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
+    },
+    {
+      "tag": "2.4.1",
+      "commit": "e698a2f791bd28dd1aabf227c74f14bedeca3587",
+      "structureHash": "7561ec4344159603152b2d6cee9e6edbf6a1da2b40275b8f8a9ce3e451ee4e57",
+      "matchesReference": true
     }
   ]
 }
