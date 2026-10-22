@@ -96,7 +96,18 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(exported["isBinary"], Is.EqualTo(true));
             var binds = (List<object>)exported["morphTargetBinds"];
             Assert.That(binds.Count, Is.EqualTo(1));
-            Assert.That(Convert.ToSingle(((Dictionary<string, object>)binds[0])["weight"]), Is.EqualTo(.6f).Within(1e-5f));
+            // As with the bundled Vrm10Instance, the authored 60% is baked into
+            // a generated target that the clip drives fully.
+            var bind = (Dictionary<string, object>)binds[0];
+            Assert.That(Convert.ToSingle(bind["weight"]), Is.EqualTo(1f).Within(1e-5f));
+            var node = (Dictionary<string, object>)((List<object>)glb.Json["nodes"])[Convert.ToInt32(bind["node"])];
+            var mesh = (Dictionary<string, object>)((List<object>)glb.Json["meshes"])[Convert.ToInt32(node["mesh"])];
+            var target = Convert.ToInt32(bind["index"]);
+            Assert.That((string)((List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"])[target], Does.StartWith("__VRVlog_Blink_"));
+            var primitive = (Dictionary<string, object>)((List<object>)mesh["primitives"])[0];
+            var positions = Convert.ToInt32(((Dictionary<string, object>)((List<object>)primitive["targets"])[target])["POSITION"]);
+            var accessor = (Dictionary<string, object>)((List<object>)glb.Json["accessors"])[positions];
+            Assert.That(Convert.ToSingle(((List<object>)accessor["max"])[1]), Is.EqualTo(.006f).Within(1e-4f));
 
             // The source keeps the project UniVRM component and assets as they were.
             Assert.That(fixture.Source.GetComponent<Vrm10Instance>(), Is.Null);
@@ -149,7 +160,8 @@ namespace VRVlog.LilToonExporter.Tests
             var adopted = copy.GetComponentInChildren<Renderer>().sharedMaterial;
             Assert.That(adopted.shader.name, Is.EqualTo(MToon10Meta.UnityShaderName));
             Assert.That(adopted.renderQueue, Is.EqualTo(2450));
-            Assert.That(adopted.GetColor("_Color"), Is.EqualTo(new Color(.2f, .4f, .6f, 1f)));
+            var color = adopted.GetColor("_Color");
+            Assert.That(new[] { color.r, color.g, color.b, color.a }, Is.EqualTo(new[] { .2f, .4f, .6f, 1f }).Within(1e-4f));
 
             // The source and its material are not touched.
             Assert.That(source.GetComponent<Vrm10Instance>(), Is.Null);
