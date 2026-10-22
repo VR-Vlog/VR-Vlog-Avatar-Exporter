@@ -1,7 +1,7 @@
 # NDMF の下限を 1.8.3 から 1.6.0 に下げる
 
 - 日付: 2026-10-22
-- 対象: `Compatibility/dependencies.json`・`Editor/Compatibility/DependencyPolicy.Generated.cs`・`Editor/NdmfExportPreparation.cs`・`Tests/Editor/NdmfPreparationTests.cs`・`Tools/run-unity-compatibility.py`・README 3 種・`Compatibility/README.md`・`Compatibility/Evidence/NdmfRange/`・`CHANGELOG.md`
+- 対象: `Compatibility/dependencies.json`・`Editor/Compatibility/DependencyPolicy.Generated.cs`・`Editor/NdmfExportPreparation.cs`・`Tests/Editor/NdmfPreparationTests.cs`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/Editor/AppearancePreparationTests.cs`・`Tests/Editor/MaReactiveExpressionExportTests.cs`・`Tests/Editor/MaDeletionExportTests.cs`・`Tools/run-unity-compatibility.py`・README 3 種・`Compatibility/README.md`・`Compatibility/Evidence/NdmfRange/`・`CHANGELOG.md`
 
 ## 背景
 
@@ -41,7 +41,13 @@ Bridge が型名で読むもの:
 
 ## 実プロジェクトでの確認
 
-Unity 2022.3.22f1 の実プロジェクトで、NDMF の 1.6.0・1.7.2・1.7.10・1.8.0・1.8.3 と、それぞれを受け付ける MA（1.11.2・1.12.2・1.12.5・1.13.0）や MA なしを組み合わせて NDMF まわりのテストを回した。NDMF 1.6.0 と 1.7.x で、1.8.0 以降と違う結果になったのはテストの土台（NDMF のアバターの印も VRChat の記述子も無いアバター）だけで、テストを直した。組み合わせと結果は `Compatibility/Evidence/NdmfRange/README.md` にある。
+Unity 2022.3.22f1 の実プロジェクトで、NDMF の 1.6.0・1.7.2・1.8.3 を、MA なし、MA 1.11.2（NDMF 1.6.0 を受け付ける版）、MA 1.12.2（表示の固定の下限）と組み合わせ、NDMF と MA まわりの 11 のテストクラス（342 件）を回した。最後の確認は develop をマージした後の 53f9773 で、マージ前の 9d294c3 でも同じ組を回した。それより前のコミットでは 1.7.10・1.8.0 と MA 1.12.5・1.13.0 も回した。組み合わせ、結果、失敗の原因は `Compatibility/Evidence/NdmfRange/README.md` にある。
+
+- MA を揃えて NDMF だけを変えた組（MA なしの 1.6.0 と 1.8.3、MA 1.12.2 の 1.7.2 と 1.8.3）で、1.8.0 より前だけで失敗するテストは無かった。どの組でも出る失敗は、テスト環境の都合（未導入のポーズのパッケージ、batch mode での IMGUI のドラッグ）、NDMF 1.14.8 より前のレポートの選択先、MA の版によるもので、NDMF の下限とは関係しない。
+- 1.8.0 より前では、NDMF の `NDMFAvatarRoot`（VRChat 以外のアバターの印）を使うテストを飛ばす（skip）。MA の参照の解決（`MaSceneReferencePreparationTests` の 29 件）、`INDMFEditorOnly` の判定を `NDMFAvatarRoot` で確かめる 1 件、印か Descriptor の無いアバターを使う `NdmfPreparationTests`・`AppearancePreparationTests`・`ExperimentalExpressionCaptureTests` の 15 件がこれに当たり、1.6.0〜1.7.x では実プロジェクトで確かめていない。
+- 最初の実行では、VRChat の Avatar Descriptor も `NDMFAvatarRoot` も無いアバターを使う 2 つのテスト（MA の参照の解決、Merge Animator の推奨）が NDMF 1.7.x で失敗した。1.8.0 より前の NDMF と 1.13.0 より前の MA は、アバターを VRChat の Avatar Descriptor で見つけ、Merge Animator の結合先の FX もそこから作るため。2 つのテストは、1.8.0 より前では VRChat の Avatar Descriptor を付けて回すように直した。
+
+この失敗は利用者にも起こりうる。VRChat の Avatar Descriptor の無いアバター（VRChat 以外のアバター）に MA 1.11.x か 1.12.x を使い、NDMF 1.6.0〜1.7.x と組み合わせると、書き出しは MA の参照を解決できずにエラーで止まる（「Modular Avatar の追従先を取得できません」、Merge Animator では NDMF の中の `KeyNotFoundException`）。元のアバターは変わらない。この MA は VRChat 以外のアバターに対応しておらず（対応は 1.13.0 から）、NDMF 1.8.0 以降ではそのアバターを処理せずに飛ばす。VRChat の Avatar Descriptor があるアバターは影響を受けない。MA 自身が対応していない組み合わせなので、Exporter では回避せず、エラーで止める今の動きのままにする。
 
 ## 検討した代替案と不採用理由
 
