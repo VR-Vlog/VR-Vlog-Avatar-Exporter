@@ -119,18 +119,26 @@ namespace VRVlog.LilToonExporter.Tests
 
         static async Task<Vrm10Instance> Load(byte[] bytes) => await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
 
+        // The board passes its list of faces even when it lists none.
+        static readonly (string Name, AnimationClip Clip, float Time)[] NoFaces = Array.Empty<(string, AnimationClip, float)>();
+
+        // A saved face record, as the board keeps one from its list.
+        static void Record(Session session, string name, float weight)
+        {
+            var pose = Session.ClonePose(session.Baseline); pose.Name = name; pose.Rows[0].Weights[0] = weight;
+            session.Expressions.Add(pose);
+        }
+
         static Session.PresetAssignment[] NoneForEveryEmotion() => Session.EmotionPresets.Select(Session.PresetAssignment.None).ToArray();
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void WithoutAssignmentsTheExportedExpressionsAreUnchanged(bool recordFace)
+        [Test]
+        public void WithoutAssignmentsTheExportedExpressionsAreUnchanged()
         {
             using var fixture = Fixture(smile: false);
             using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-            if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); }
             var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
-            var before = session.Export("Test", "Tests", blinkOptions: blink);
-            var explicitNone = session.Export("Test", "Tests", blinkOptions: blink, presets: NoneForEveryEmotion());
+            var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
+            var explicitNone = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: NoneForEveryEmotion());
             Assert.That(Session.EmotionPresets.Any(preset => Presets(before).ContainsKey(preset.ToString())), Is.False);
             Assert.That(Canonical(Expressions(explicitNone)), Is.EqualTo(Canonical(Expressions(before))),
                 "Choosing nothing must keep the expression data of the existing export.");
@@ -148,7 +156,7 @@ namespace VRVlog.LilToonExporter.Tests
                 session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
                 session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
-                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(Presets(bytes).Keys.Where(key => Session.EmotionPresets.Any(preset => preset.ToString() == key)), Is.EquivalentTo(new[] { "happy", "sad" }));
                 imported = await Load(bytes);
                 Assert.That(imported.Vrm.Expression.Happy, Is.Not.Null);
@@ -193,7 +201,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var assignment = Session.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
                 Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
                 session.SetPreset(ExpressionPreset.happy, assignment);
-                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 // A clip preset is baked into one generated target on the mesh it moves.
                 var bound = BoundShapes(bytes, "happy");
                 Assert.That(bound, Has.Length.EqualTo(1));
@@ -205,67 +213,13 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public async Task CaptureRouteKeepsRecordedCustomFacesBesideThePreset()
-        {
-            using var fixture = Fixture();
-            Vrm10Instance imported = null;
-            try
-            {
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline();
-                session.SetPreset(ExpressionPreset.surprised, Session.PresetAssignment.ForShape(ExpressionPreset.surprised, "Front", "Smile"));
-                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-                imported = await Load(bytes);
-                Assert.That(imported.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("Sample"),
-                    "Recorded faces keep their custom names for the app's animation references.");
-                Assert.That(imported.Vrm.Expression.Surprised, Is.Not.Null);
-                var front = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
-                var origin = fixture.Mesh.vertices[0];
-                imported.Runtime.Expression.SetWeight(ExpressionKey.Surprised, 1); imported.Runtime.Process();
-                Assert.That(Vector3.Distance(FirstVertex(front), origin + HairDelta * .35f + SmileDelta), Is.LessThan(.0001));
-            }
-            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
-        }
-
-        // The authored custom clip stands in for the avatar's menu faces, which
-        // the ordinary route keeps and which need the VRChat SDK to build here.
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task ReplacingCustomFacesWithNothingLeavesNoKeptFace(bool withPreset)
-        {
-            using var fixture = Fixture();
-            var authored = ScriptableObject.CreateInstance<VRM10Object>();
-            var kept = ScriptableObject.CreateInstance<VRM10Expression>();
-            kept.name = "Excluded face"; kept.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f) };
-            authored.Expression.AddClip(ExpressionPreset.custom, kept);
-            Vrm10Instance ordinary = null, replaced = null;
-            try
-            {
-                fixture.Source.AddComponent<Vrm10Instance>().Vrm = authored;
-                using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (withPreset) session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
-                var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
-                ordinary = await Load(session.Export("Test", "Tests", blinkOptions: blink));
-                Assert.That(ordinary.Vrm.Expression.CustomClips.Select(clip => clip.name), Does.Contain("Excluded face"), "The shortcut routes keep the avatar's faces.");
-                replaced = await Load(session.Export("Test", "Tests", blinkOptions: blink, recordedExpressions: Array.Empty<Session.Pose>(), replaceCustomFaces: true));
-                Assert.That(replaced.Vrm.Expression.CustomClips, Is.Empty, "Replacing with an empty list exports no custom face.");
-                Assert.That(replaced.Vrm.Expression.Happy?.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>(), withPreset ? Is.Not.Empty : Is.Empty);
-            }
-            finally
-            {
-                foreach (var instance in new[] { ordinary, replaced }) if (instance != null) Object.DestroyImmediate(instance.gameObject);
-                Object.DestroyImmediate(kept); Object.DestroyImmediate(authored);
-            }
-        }
-
-        [Test]
         public void DuplicateOrUnassignableAssignmentsAreRejected()
         {
             using var fixture = Fixture();
             using var session = new Session(fixture.Source, replayInstalledDefaults: false);
             var first = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             var second = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Back", "Smile");
-            Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", presets: new[] { first, second }));
+            Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", NoFaces, presets: new[] { first, second }));
             Assert.Throws<InvalidOperationException>(() => session.SetPreset(ExpressionPreset.custom, Session.PresetAssignment.ForShape(ExpressionPreset.custom, "Front", "Smile")));
             Assert.Throws<InvalidOperationException>(() => session.SetPreset(ExpressionPreset.custom, Session.PresetAssignment.None(ExpressionPreset.custom)));
             session.SetPreset(ExpressionPreset.happy, first); session.SetPreset(ExpressionPreset.happy, second);
@@ -282,7 +236,7 @@ namespace VRVlog.LilToonExporter.Tests
             string json;
             using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
             {
-                session.SetWeight(0, 0, 75); session.Capture("Sample");
+                Record(session, "Sample", 75);
                 session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForShape(ExpressionPreset.sad, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.angry, Session.PresetAssignment.None(ExpressionPreset.angry));
                 var automatic = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"); automatic.Automatic = true;
@@ -314,7 +268,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = Fixture();
             using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-            session.SetWeight(0, 0, 75); session.Capture("Sample");
+            Record(session, "Sample", 75);
             var settings = JsonUtility.FromJson<Session.Settings>(session.SaveSettings());
             var entry = Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile");
             switch (kind)
@@ -792,9 +746,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Session.PresetFullLabel(ExpressionPreset.neutral), Is.EqualTo(ExporterLocalization.T("基準の顔")));
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task MouthGazeAndNeutralAssignmentsExportWithoutOverrides(bool recordFace)
+        [Test]
+        public async Task MouthGazeAndNeutralAssignmentsExportWithoutOverrides()
         {
             using var fixture = Fixture();
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Raise", RaiseDelta));
@@ -802,12 +755,11 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
                 session.SetPreset(ExpressionPreset.aa, Session.PresetAssignment.ForShape(ExpressionPreset.aa, "Front", "Open"));
                 session.SetPreset(ExpressionPreset.lookUp, Session.PresetAssignment.ForShape(ExpressionPreset.lookUp, "Front", "Raise"));
                 session.SetPreset(ExpressionPreset.neutral, Session.PresetAssignment.ForShape(ExpressionPreset.neutral, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.happy, Session.PresetAssignment.ForShape(ExpressionPreset.happy, "Back", "Smile"));
-                var bytes = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(Presets(bytes).Keys, Is.SupersetOf(new[] { "aa", "lookUp", "neutral", "happy" }));
                 imported = await Load(bytes);
                 var expression = imported.Vrm.Expression;
@@ -837,9 +789,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task AssignedBlinkReplacesTheAutomaticBlink(bool recordFace)
+        [Test]
+        public async Task AssignedBlinkReplacesTheAutomaticBlink()
         {
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Shut", ShutDelta));
@@ -847,15 +798,14 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
                 var origin = fixture.Mesh.vertices[0] + HairDelta * .35f;
-                automatic = await Load(session.Export("Test", "Tests"));
+                automatic = await Load(session.Export("Test", "Tests", NoFaces));
                 var front = automatic.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 automatic.Runtime.Expression.SetWeight(ExpressionKey.Blink, 1); automatic.Runtime.Process();
                 Assert.That(Vector3.Distance(FirstVertex(front), origin + BlinkDelta), Is.LessThan(.0001), "Without an assignment the automatic blink picks 'Blink'.");
 
                 session.SetPreset(ExpressionPreset.blink, Session.PresetAssignment.ForShape(ExpressionPreset.blink, "Front", "Shut"));
-                assigned = await Load(session.Export("Test", "Tests"));
+                assigned = await Load(session.Export("Test", "Tests", NoFaces));
                 front = assigned.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 assigned.Runtime.Expression.SetWeight(ExpressionKey.Blink, 1); assigned.Runtime.Process();
                 Assert.That(Vector3.Distance(FirstVertex(front), origin + ShutDelta), Is.LessThan(.0001), "The assignment wins over the automatic blink.");
@@ -898,7 +848,7 @@ namespace VRVlog.LilToonExporter.Tests
                     "The candidate is the eyelid setting the automatic blink uses.");
                 Assert.That(session.BlinkFallbackDescription(null), Is.EqualTo(ExporterLocalization.T("VRChatの閉眼設定")));
                 session.SetPreset(ExpressionPreset.blink, Session.PresetAssignment.ForShape(ExpressionPreset.blink, "Front", "Shut"));
-                imported = await Load(session.Export("Test", "Tests"));
+                imported = await Load(session.Export("Test", "Tests", NoFaces));
                 var exported = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 imported.Runtime.Expression.SetWeight(ExpressionKey.Blink, 1); imported.Runtime.Process();
                 Assert.That(Vector3.Distance(FirstVertex(exported), fixture.Mesh.vertices[0] + HairDelta * .35f + ShutDelta), Is.LessThan(.0001));
@@ -935,9 +885,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(mesh); }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task ConfirmingOneBlinkPresetKeepsTheOtherCandidates(bool recordFace)
+        [Test]
+        public async Task ConfirmingOneBlinkPresetKeepsTheOtherCandidates()
         {
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1), Shape("Shut_L", ShutDelta, 0));
@@ -945,17 +894,16 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
                 var suggested = session.SuggestPresets(Array.Empty<AnimationClip>());
                 Assert.That(suggested.Keys, Is.EquivalentTo(Session.BlinkPresets));
-                var before = session.Export("Test", "Tests");
-                var unconfirmed = session.Export("Test", "Tests", presets: suggested.Values);
+                var before = session.Export("Test", "Tests", NoFaces);
+                var unconfirmed = session.Export("Test", "Tests", NoFaces, presets: suggested.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
                     "Automatic blink candidates export exactly what the automatic blink exports.");
 
                 var changed = suggested.Values.Select(value => value.Preset == "blinkLeft"
                     ? Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Front", "Shut_L") : value).ToArray();
-                imported = await Load(session.Export("Test", "Tests", presets: changed));
+                imported = await Load(session.Export("Test", "Tests", NoFaces, presets: changed));
                 var front = imported.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 var expression = imported.Runtime.Expression;
                 var baseFace = new[] { 0, 1 }.Select(vertex => fixture.Mesh.vertices[vertex] + HairDelta * .35f).ToArray();
@@ -1009,14 +957,14 @@ namespace VRVlog.LilToonExporter.Tests
                 // Unconfirmed candidates found by name are left to the ordinary
                 // export, which binds the same shapes by itself.
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
-                var before = session.Export("Test", "Tests", blinkOptions: blink);
-                var unconfirmed = session.Export("Test", "Tests", blinkOptions: blink, presets: suggested.Values);
+                var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
+                var unconfirmed = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: suggested.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))));
                 Assert.That(BoundShapes(unconfirmed, "aa"), Is.EqualTo(new[] { "Front/vrc.v_aa@1" }));
                 Assert.That(BoundShapes(unconfirmed, "ih"), Is.EqualTo(new[] { "Back/vrc.v_ih@1", "Front/vrc.v_ih@1" }));
                 Assert.That(Presets(unconfirmed).ContainsKey("ee"), Is.False);
                 // Lip Sync candidates are not known names and are written as assignments.
-                var withLipSync = session.Export("Test", "Tests", blinkOptions: blink, presets: lipSync.Values);
+                var withLipSync = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: lipSync.Values);
                 Assert.That(Presets(withLipSync).ContainsKey("ee"), Is.True);
                 Assert.That(BoundShapes(withLipSync, "ih"), Has.Length.EqualTo(1), "The Lip Sync shape replaces the name binding on both meshes.");
             }
@@ -1066,8 +1014,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(lipSync.Keys, Is.EquivalentTo(new[] { ExpressionPreset.aa }));
                 Assert.That(lipSync[ExpressionPreset.aa].Automatic && lipSync[ExpressionPreset.aa].Path == "Front", Is.True);
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
-                var before = session.Export("Test", "Tests", blinkOptions: blink);
-                var unconfirmed = session.Export("Test", "Tests", blinkOptions: blink, presets: lipSync.Values);
+                var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
+                var unconfirmed = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: lipSync.Values);
                 Assert.That(Canonical(Expressions(unconfirmed)), Is.EqualTo(Canonical(Expressions(before))),
                     "An unconfirmed Lip Sync candidate on a known name exports what the name binding exports.");
                 Assert.That(BoundShapes(unconfirmed, "aa"), Is.EqualTo(new[] { "Back/vrc.v_aa@1", "Front/vrc.v_aa@1" }), "The other mesh keeps its mouth shape.");
@@ -1075,40 +1023,36 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(mesh); }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NoneOnAMouthPresetStopsTheNameBinding(bool recordFace)
+        [Test]
+        public void NoneOnAMouthPresetStopsTheNameBinding()
         {
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("vrc.v_aa", OpenDelta), Shape("vrc.v_ih", RaiseDelta));
             try
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.None };
-                var before = session.Export("Test", "Tests", blinkOptions: blink);
+                var before = session.Export("Test", "Tests", NoFaces, blinkOptions: blink);
                 Assert.That(BindCount(before, "aa"), Is.EqualTo(1), "Without a choice the known name binds aa.");
-                var none = session.Export("Test", "Tests", blinkOptions: blink, presets: new[] { Session.PresetAssignment.None(ExpressionPreset.aa) });
+                var none = session.Export("Test", "Tests", NoFaces, blinkOptions: blink, presets: new[] { Session.PresetAssignment.None(ExpressionPreset.aa) });
                 Assert.That(BindCount(none, "aa"), Is.Zero, "\"None\" on aa writes no aa binding.");
                 Assert.That(BoundShapes(none, "ih"), Is.EqualTo(BoundShapes(before, "ih")), "The other mouth presets keep the name binding.");
             }
             finally { Object.DestroyImmediate(mesh); }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NoneOnEveryBlinkPresetWritesNoBlink(bool recordFace)
+        [Test]
+        public void NoneOnEveryBlinkPresetWritesNoBlink()
         {
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Blink", BlinkDelta), Shape("Blink_L", LeftDelta, 0), Shape("Blink_R", RightDelta, 1));
             try
             {
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-                if (recordFace) { session.SetWeight(0, 0, 90); session.Capture("Sample"); session.RestoreBaseline(); }
-                var automatic = session.Export("Test", "Tests");
+                var automatic = session.Export("Test", "Tests", NoFaces);
                 Assert.That(BindCount(automatic, "blink"), Is.EqualTo(1), "Without a choice the automatic blink binds 'Blink'.");
-                var none = session.Export("Test", "Tests", presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
-                var noBlink = session.Export("Test", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var none = session.Export("Test", "Tests", NoFaces, presets: Session.BlinkPresets.Select(Session.PresetAssignment.None).ToArray());
+                var noBlink = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 // No blink still writes a no-op binding so viewers do not fall back to raw names.
                 Assert.That(Session.BlinkPresets.SelectMany(preset => BoundShapes(none, preset.ToString())), Has.All.Contains("/__VRVlog_BlinkNone_"));
                 Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(noBlink))), "\"None\" on every blink preset is no blink.");
@@ -1132,9 +1076,9 @@ namespace VRVlog.LilToonExporter.Tests
                 // The blink export bakes each binding into a generated endpoint
                 // shape named from its mesh, source shape and slot.
                 static string[] Meshes(IEnumerable<string> bound) => bound.Select(value => value.Substring(0, value.IndexOf('/'))).ToArray();
-                var automatic = session.Export("Test", "Tests");
+                var automatic = session.Export("Test", "Tests", NoFaces);
                 Assert.That(Meshes(BoundShapes(automatic, "blink")), Is.EqualTo(new[] { "Back", "Front" }));
-                var chosen = session.Export("Test", "Tests", presets: new[] {
+                var chosen = session.Export("Test", "Tests", NoFaces, presets: new[] {
                     Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Front", "Blink_L"),
                     Session.PresetAssignment.ForShape(ExpressionPreset.blinkRight, "Front", "Blink_R") });
                 Assert.That(BoundShapes(chosen, "blink"), Is.EqualTo(BoundShapes(automatic, "blink")), "The unchosen both-eyes slot keeps the automatic two meshes.");
@@ -1167,7 +1111,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.PresetError(ExpressionPreset.blinkLeft, chosen[0]), Is.Null);
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Null);
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.False);
-                var bytes = session.Export("Test", "Tests", presets: chosen);
+                var bytes = session.Export("Test", "Tests", NoFaces, presets: chosen);
                 Assert.That(BoundShapes(bytes, "blinkLeft").Length, Is.EqualTo(1), "The unchanged 'Hair detail' is not part of the blink.");
                 Assert.That(BoundShapes(bytes, "blinkRight").Length, Is.EqualTo(1));
             }
@@ -1190,7 +1134,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.PresetError(ExpressionPreset.blinkRight, chosen[1]), Is.Not.Null);
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkLeft, chosen[0]), Is.True, "The slot shows the short overlap text.");
                 Assert.That(session.BlinkSidesOverlap(ExpressionPreset.blinkRight, chosen[1]), Is.True);
-                var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", presets: chosen));
+                var thrown = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", NoFaces, presets: chosen));
                 Assert.That(thrown.Message, Is.EqualTo(error), "The export stops with the eye slot's own error.");
             }
             finally { Object.DestroyImmediate(mesh); Object.DestroyImmediate(left); Object.DestroyImmediate(right); }
@@ -1210,8 +1154,8 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.AddComponent<Vrm10Instance>().Vrm = settings;
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
                 Assert.That(session.HasAuthoredPreset(ExpressionPreset.blinkLeft), Is.False);
-                var automatic = session.Export("Test", "Tests");
-                var none = session.Export("Test", "Tests", presets: new[] { Session.PresetAssignment.None(ExpressionPreset.blinkLeft) });
+                var automatic = session.Export("Test", "Tests", NoFaces);
+                var none = session.Export("Test", "Tests", NoFaces, presets: new[] { Session.PresetAssignment.None(ExpressionPreset.blinkLeft) });
                 Assert.That(((Dictionary<string, object>)Presets(none)["blink"])["isBinary"], Is.EqualTo(true), "The source VRM's own blink is kept.");
                 Assert.That(Canonical(Expressions(none)), Is.EqualTo(Canonical(Expressions(automatic))), "\"None\" on a slot the VRM leaves empty changes nothing.");
             }
@@ -1248,7 +1192,7 @@ namespace VRVlog.LilToonExporter.Tests
             string json;
             using (var session = new Session(fixture.Source, replayInstalledDefaults: false))
             {
-                session.SetWeight(0, 0, 75); session.Capture("Sample");
+                Record(session, "Sample", 75);
                 session.SetPreset(ExpressionPreset.aa, Session.PresetAssignment.ForShape(ExpressionPreset.aa, "Front", "Smile"));
                 session.SetPreset(ExpressionPreset.blinkLeft, Session.PresetAssignment.ForShape(ExpressionPreset.blinkLeft, "Back", "Smile"));
                 session.SetPreset(ExpressionPreset.neutral, Session.PresetAssignment.None(ExpressionPreset.neutral));

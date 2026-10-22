@@ -132,17 +132,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
         }
 
-        // Recording a face removes the descriptor from the export copy. The
-        // Lip Sync captured before that must still bind, or warn when it cannot.
+        // The expression board's export binds the Lip Sync the same way, or
+        // warns when it cannot.
         [TestCase(5)][TestCase(4)]
-        public void RecordedExpressionExportBindsDescriptorVisemes(int present)
+        public void BoardExportBindsDescriptorVisemes(int present)
         {
             DescriptorType();
             using var fixture = ExportAvatar(LipNames.Take(present), LipNames);
             using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
-            session.SetWeight(0, 0, 65); session.Capture("Recorded face");
             var warnings = new List<string>();
-            var glb = GlbDocument.Read(session.Export("Recorded visemes", "Tests", warnings,
+            var glb = GlbDocument.Read(session.Export("Board visemes", "Tests", Array.Empty<(string, AnimationClip, float)>(), warnings,
                 new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < present; i++)
