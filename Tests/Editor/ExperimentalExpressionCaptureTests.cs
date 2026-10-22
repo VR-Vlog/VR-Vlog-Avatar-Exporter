@@ -1394,6 +1394,45 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A moving face put in an emotion slot is the still preset and, as in
+        // the ordinary export, also a custom face that keeps its animation.
+        [Test]
+        public void ListOnlyExportKeepsAMovingSlotFaceMovingAsACustomFace()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var moving = new AnimationClip { name = "Moving joy" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-slot-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Linear(0, 0, 2, 80));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
+                    { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = moving, Source = "Fixture" } });
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Move(moving, ExpressionBoard.Place.Slot(ExpressionPreset.happy)), Is.True);
+                Assert.That(board.OtherCount, Is.Zero);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["preset"]).Keys, Does.Contain("happy"));
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["custom"]).Keys, Does.Contain(moving.name));
+                var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]

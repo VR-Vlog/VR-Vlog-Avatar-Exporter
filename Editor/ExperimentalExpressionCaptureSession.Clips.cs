@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<AnimationClip> timedClips = new HashSet<AnimationClip>();
         readonly HashSet<AnimationClip> playedClips = new HashSet<AnimationClip>();
 
-        bool HeldAtOneFrame(AnimationClip clip) => timedClips.Contains(clip) && !playedClips.Contains(clip);
+        internal bool HeldAtOneFrame(AnimationClip clip) => timedClips.Contains(clip) && !playedClips.Contains(clip);
 
         void CollectTimedClips(RuntimeAnimatorController runtime)
         {

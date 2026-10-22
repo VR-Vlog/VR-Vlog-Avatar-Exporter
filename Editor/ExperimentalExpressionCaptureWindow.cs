@@ -2408,7 +2408,16 @@ namespace VRVlog.LilToonExporter
             // clips (a moving one keeps its animation), are the VRM's custom
             // expressions. Nothing is recorded and no menu face is played; the
             // default face is the ordinary one.
-            var listFaces = board.ExportedCustom().Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
+            // A moving face in an emotion slot is a still preset; as in the
+            // ordinary export, it is also a custom face that keeps moving.
+            var listed = board.ExportedCustom();
+            var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
+            var movingSlotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
+                .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
+                .Where(clip => clip != null && !listed.Contains(clip) && VrChatGestureExpressions.HasChangingMorph(clip, null) &&
+                    !session.HeldAtOneFrame(clip) && !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
+                .ToList();
+            var listFaces = listed.Concat(movingSlotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             var savedFaces = listFaces.Count;
