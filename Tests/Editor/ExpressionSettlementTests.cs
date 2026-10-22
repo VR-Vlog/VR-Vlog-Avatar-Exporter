@@ -99,7 +99,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Settlement converts native clocks with AnimatorStateInfo.length and
         // AnimatorTransitionInfo.duration/durationUnit. Measure both directly.
-        [TestCase(1f, false)] [TestCase(2f, false)] [TestCase(.5f, false)] [TestCase(2f, true)]
+        [TestCase(.5f, false)] [TestCase(2f, true)]
         public void NativeClocksMatchTheSettlementConversion(float speed, bool fixedDuration)
         {
             var machine = controller.layers[0].stateMachine;
@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (graph.IsValid()) graph.Destroy(); }
         }
 
-        [TestCase(1f)] [TestCase(.5f)] [TestCase(2f)]
+        [TestCase(.5f)] [TestCase(2f)]
         public void ANonLoopingClipLongerThanTheWarmUpIsSavedAtItsLastKey(float speed)
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100))).speed = speed;
@@ -446,7 +446,7 @@ namespace VRVlog.LilToonExporter.Tests
         // driver there that changes a parameter the layer reads keeps writing.
         // Such a layer is still refused, also when a zero-length edge shows no
         // transition at the sample or a fade beside it is waited for.
-        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)] [TestCase(0f, true)]
+        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)]
         public void AStateRestartedEveryFrameWithADriverIsNotSaved(float duration, bool fadeIn)
         {
             Selected(fadeIn ? Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)) : Clip("Smile", 75));

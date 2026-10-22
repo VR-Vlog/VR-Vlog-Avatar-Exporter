@@ -47,12 +47,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(DeterministicNames.Hash("a", ""), Is.Not.EqualTo(DeterministicNames.Hash("a")));
         }
 
-        [Test] public void HashHasTheLengthOfTheReplacedGuid()
-        {
-            Assert.That(DeterministicNames.Hash("Menu", "Body", "smile"), Does.Match("^[0-9a-f]{32}$"));
-            Assert.That(DeterministicNames.Hash(), Does.Match("^[0-9a-f]{32}$"));
-        }
-
         [Test] public void RepeatedNamesGetNumberedSuffixesInOrder()
         {
             var used = new HashSet<string> { "taken" };

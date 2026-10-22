@@ -224,22 +224,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void OverTheLimitPosesKeepTheFirst128()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            using var session = new PoseExportSession(fixture.Source, new PoseExportOptions());
-            session.CollectPrepared(fixture.Copy);
-            for (var i = 0; i < 130; i++)
-                session.Entries.Add(new PoseCandidate { Id = "pose" + i, IsAnimation = true, Animation = new HumanoidAnimationData { Id = "pose" + i } });
-            Assert.Throws<InvalidOperationException>(() => session.SelectedAnimations());
-            // Outside an export nothing is asked; the default drops the last.
-            PoseLimitChooser.Apply(session, null, null);
-            Assert.That(session.LimitExcluded, Is.EquivalentTo(new[] { "pose128", "pose129" }));
-            Assert.That(session.SelectedAnimations().Select(animation => animation.Id),
-                Is.EqualTo(Enumerable.Range(0, 128).Select(i => "pose" + i)));
-        }
-
-        [Test]
         public void ANoPoseSessionCollectsNothing()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();

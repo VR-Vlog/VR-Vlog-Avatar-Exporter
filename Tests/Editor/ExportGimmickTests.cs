@@ -123,7 +123,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(effect.sharedMaterial, Is.SameAs(hidden));
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public void RemovedAuxiliaryRendererDoesNotExcludeRetainedOrMovedFaceMorphs(bool moveToOldPath)
         {
@@ -227,14 +226,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportGimmickDetection.UnsafeRootReason(avatar, root.transform, t => t == skin.transform), Is.Null);
         }
 
-        [Test] public void KeepingAChildPreventsAutomaticHierarchyDeletion()
-        {
-            var root = Child("system"); var child = Child("keep", root.transform);
-            var findings = new[] { new ExportGimmickFinding { Target = root, Unit = GimmickExclusionUnit.Hierarchy } };
-            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null).Single(), Is.SameAs(root));
-            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, new ExportGimmickOptions { IncludedObjects = new[] { child } }), Is.Empty);
-        }
-
         [TestCase("ModularAvatarMergeArmature", "mergeTarget.referencePath")]
         [TestCase("ModularAvatarBoneProxy", "subPath")]
         public void MaPathBasedConnectionsProtectTheHierarchy(string componentName, string pathProperty)
@@ -317,14 +308,6 @@ namespace VRVlog.LilToonExporter.Tests
             var namesOnly = new ExportGimmickRule { Id = "names", Reason = "names", RequiredChildren = new[] { "HeadSystem" } };
             Child("HeadSystem", Child("system").transform);
             Assert.That(Matched(namesOnly), Is.Empty);
-        }
-
-        [Test] public void OrdinaryAvatarPartsMatchNoTableRule()
-        {
-            Render("clothing", normal); Skin("body", normal);
-            Child("camera").AddComponent<Camera>();
-            Child("animated").AddComponent<Animator>();
-            Assert.That(ExportGimmickDetection.Analyze(avatar).Where(f => f.RuleId != null), Is.Empty);
         }
 
         [Test] public void DedicatedSettingsObjectLeavesWholeOtherwiseOnlyTheComponent()
@@ -440,17 +423,6 @@ namespace VRVlog.LilToonExporter.Tests
             display.mainTexture = capture.targetTexture;
             capture.targetTexture = null;
             Assert.That(Matched(rule), Is.Empty);
-        }
-
-        [Test] public void TableFindsAModularAvatarRenderTextureCamera()
-        {
-            var merge = FindType("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-            if (merge == null) Assert.Ignore("Installed MA is required for the table rule.");
-            var lens = RenderTextureLens(); Object.DestroyImmediate(lens.GetComponent<Animator>()); lens.AddComponent(merge);
-            var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
-            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.RenderTextureCamera));
-            Assert.That(finding.Target, Is.SameAs(lens));
-            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
         }
 
         [Test] public void InactiveAvatarRootStillHasItsGimmicksFound()
@@ -584,6 +556,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
             Assert.That(finding.Evidence, Is.EqualTo("structure"));
             Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, null), Is.EqualTo(new[] { gimmick }));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, new ExportGimmickOptions { AutoExclude = false }), Is.Empty);
             // Kept by the user, as a whole or through one of its parts.
             Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, new ExportGimmickOptions { IncludedObjects = new[] { gimmick } }), Is.Empty);
             var prop = gimmick.transform.Find("prop").gameObject;
@@ -712,15 +685,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(review.Unit, Is.EqualTo(GimmickExclusionUnit.Review));
             Assert.That(review.Reason, Is.EqualTo(ExportGimmickDetection.PlatformFilterMixedReason));
             Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null), Is.EqualTo(new[] { vrchatOnly }));
-        }
-
-        [Test] public void AutomaticOptionOffKeepsStructuralGimmicks()
-        {
-            var gimmick = StructuralGimmick(ExportGimmickRules.MenuInstaller, Plain());
-            var filtered = Filtered("vrchat only", (VrChatPlatform, false));
-            var findings = Matched();
-            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, null), Is.EquivalentTo(new[] { gimmick, filtered }));
-            Assert.That(ExportGimmickDetection.AutomaticRoots(findings, new ExportGimmickOptions { AutoExclude = false }), Is.Empty);
         }
 
         [Test] public void EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption()

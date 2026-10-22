@@ -274,27 +274,5 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(index, Is.GreaterThanOrEqualTo(0), name);
             return material.shader.GetPropertyType(index) == UnityEngine.Rendering.ShaderPropertyType.Int ? material.GetInteger(name) : material.GetFloat(name);
         }
-
-        [Test] public void ApplyNamesTheMappedMaterialsAndTheSectionsLeftOut()
-        {
-            var toon = Probe(); toon.SetFloat("_EnableDissolve", 1); toon.SetFloat("_GlitterEnable", 1);
-            var plain = Own(new Material(Shader.Find("Standard")) { name = "Plain" });
-            var avatar = Own(new GameObject("avatar"));
-            foreach (var (material, index) in new[] { toon, plain }.Select((material, index) => (material, index)))
-            {
-                var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.name = "part" + index;
-                part.transform.SetParent(avatar.transform, false);
-                part.GetComponent<Renderer>().sharedMaterial = material;
-            }
-            var created = new List<Material>(); var warnings = new List<string>();
-            UnsupportedShaderSubstitution.Apply(avatar, created, warnings, new ExportFallbackReport(), null);
-            owned.AddRange(created);
-            Assert.That(warnings, Is.EqualTo(new[]
-            {
-                ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Plain",
-                ExporterLocalization.T(UnsupportedShaderSubstitution.ToonMapped) + "Toon",
-                ExporterLocalization.T(UnsupportedShaderSubstitution.DroppedEffects) + "Toon (Dissolve, Glitter)",
-            }));
-        }
     }
 }

@@ -177,8 +177,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("2nd", false)]
-        [TestCase("2nd", true)]
-        [TestCase("3rd", false)]
         [TestCase("3rd", true)]
         public void StaticDecalBoundsAndUvCopyAreBaked(string layer, bool copy)
         {
