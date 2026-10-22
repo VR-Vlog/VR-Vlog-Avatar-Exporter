@@ -174,6 +174,19 @@ namespace VRVlog.LilToonExporter
             window.minSize = new Vector2(600, 760);
         }
 
+        // "VRMを書き出す..." from an avatar's context menu: the window with that avatar
+        // chosen, not yet prepared. A board prepared for another avatar asks first, as its
+        // "変更" button does; keeping it leaves the board as it was.
+        public static void OpenFor(GameObject avatar)
+        {
+            Open();
+            var window = GetWindow<ExperimentalExpressionCaptureWindow>();
+            if (avatar == null || window.source == avatar) return;
+            if (window.session == null) { window.SelectSource(avatar); window.Repaint(); return; }
+            if (!window.ConfirmChangeAvatar()) return;
+            window.Queue(() => { window.ChangeAvatar(); window.SelectSource(avatar); });
+        }
+
         // "アプリに転送（通常）": this board, prepared for the avatar, leads on to
         // the transfer window instead of saving a file. A board already prepared
         // for the avatar keeps its assignments. False when the user kept the

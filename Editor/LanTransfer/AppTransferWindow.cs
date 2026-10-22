@@ -10,7 +10,8 @@ using VRVlog.LilToonExporter.Compatibility;
 
 namespace VRVlog.LilToonExporter.LanTransfer
 {
-    // "アプリに転送": opened from the Hierarchy context menu of an avatar. One window takes the
+    // "アプリに転送": opened from the VR Vlog menu, in the menu bar or the Hierarchy context
+    // menu of an avatar (ExporterMenu lays both out). One window takes the
     // name and the consent, exports, uploads the encrypted VRM and shows the QR of the
     // vrvlog://import#... link. AppTransferFlow decides what is shown and when; this class
     // builds the UI Toolkit view (AppTransferWindow.uxml/.uss) and connects it to the Editor.
@@ -18,12 +19,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // step after the expression board, and exports what that board shows.
     public sealed class AppTransferWindow : EditorWindow
     {
-        internal const string QuickMenuPath = "GameObject/VR Vlog/アプリに転送（かんたん）";
-        internal const string DetailedMenuPath = "GameObject/VR Vlog/アプリに転送（通常）";
-        // The Hierarchy context menu sorts its GameObject entries by priority, whatever the value,
-        // and places a submenu at its lowest one. Other avatar tools use up to 1000,
-        // one 9999, so 10000 puts VR Vlog after them, the quick entry first.
-        internal const int QuickMenuPriority = 10000, DetailedMenuPriority = 10001;
+        internal const string QuickMenu = "アプリに転送（かんたん）...", DetailedMenu = "アプリに転送（通常）...";
+        internal const string QuickMenuPath = ExporterMenu.Hierarchy + QuickMenu, DetailedMenuPath = ExporterMenu.Hierarchy + DetailedMenu;
+        internal const string QuickMenuBarPath = ExporterMenu.MenuBar + QuickMenu, DetailedMenuBarPath = ExporterMenu.MenuBar + DetailedMenu;
+        // The quick entry first, then the detailed one, in both menus.
+        internal const int QuickMenuPriority = ExporterMenu.HierarchyPriority + ExporterMenu.QuickTransferOrder,
+            DetailedMenuPriority = ExporterMenu.HierarchyPriority + ExporterMenu.DetailedTransferOrder;
+        internal const int QuickMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.QuickTransferOrder,
+            DetailedMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.DetailedTransferOrder;
         private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
         // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
@@ -85,20 +88,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private IMGUIContainer uploadBar;
 
         [MenuItem(QuickMenuPath, false, QuickMenuPriority)]
+        [MenuItem(QuickMenuBarPath, false, QuickMenuBarPriority)]
         private static void OpenFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected != null) Open(selected);
         }
 
-        // Listed only in versions that transfer, and for one avatar root.
+        // Listed only in versions that transfer, and for one avatar root: the one right-clicked,
+        // or in the menu bar the one selected in the Hierarchy. Otherwise the entry is grey.
         [MenuItem(QuickMenuPath, true)]
-        private static bool CanOpenFromMenu() =>
-            CloudTransferAvailability.Enabled && Selection.gameObjects.Length == 1 && IsAvatarRoot(Selection.gameObjects[0]);
+        [MenuItem(QuickMenuBarPath, true)]
+        private static bool CanOpenFromMenu() => CloudTransferAvailability.Enabled && ExporterMenu.OneAvatarRootSelected();
 
         // The detailed transfer starts on the expression board. When the exporter cannot
         // run, the quick window opens instead and says why.
         [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
+        [MenuItem(DetailedMenuBarPath, false, DetailedMenuBarPriority)]
         private static void OpenDetailedFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
@@ -110,16 +116,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         [MenuItem(DetailedMenuPath, true)]
+        [MenuItem(DetailedMenuBarPath, true)]
         private static bool CanOpenDetailedFromMenu() => CanOpenFromMenu();
-
-        // The top of an avatar: it has an Animator and nothing above it has one.
-        internal static bool IsAvatarRoot(GameObject target)
-        {
-            if (target == null || target.GetComponent<Animator>() == null) return false;
-            for (var parent = target.transform.parent; parent != null; parent = parent.parent)
-                if (parent.GetComponent<Animator>() != null) return false;
-            return true;
-        }
 
         public static void Open(GameObject target) => Open(target, false);
 

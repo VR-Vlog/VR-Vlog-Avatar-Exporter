@@ -17,6 +17,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         const string BackendType = "VRVlog.LilToonExporter.ExperimentalExpressionCaptureWindow";
         const string BackendDefinition = "Packages/com.vrvlog.liltoon-vrm-exporter/Editor/VRVlog.LilToonExporter.Editor.asmdef";
         static Action openExporter;
+        static Action<GameObject> openExporterFor;
         static string backendError;
 
         // Resolve at the point of use. Opening the menu must not depend on an
@@ -55,9 +56,38 @@ namespace VRVlog.LilToonExporter.Compatibility
             }
         }
 
+        // The same window with an avatar already chosen, for the Hierarchy context menu.
+        // Resolved like OpenExporter; whether the export can start is still decided there.
+        public static Action<GameObject> OpenExporterFor
+        {
+            get
+            {
+                if (openExporterFor != null) return openExporterFor;
+                try
+                {
+                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+                    {
+                        if (assembly.GetName().Name != BackendAssembly) continue;
+                        var method = assembly.GetType(BackendType, false)?.GetMethod("OpenFor",
+                            BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null);
+                        if (method != null && method.ReturnType == typeof(void))
+                            openExporterFor = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), method);
+                        break;
+                    }
+                }
+                catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException ||
+                    exception is FileLoadException || exception is BadImageFormatException || exception is ArgumentException)
+                {
+                    // Left unresolved: OpenFor falls back to the plain export window.
+                }
+                return openExporterFor;
+            }
+        }
+
         public static void RefreshBackend()
         {
             openExporter = null;
+            openExporterFor = null;
             backendError = null;
         }
 
@@ -130,12 +160,31 @@ namespace VRVlog.LilToonExporter.Compatibility
             return text.ToString();
         }
 
-        [MenuItem("VR Vlog/VRMを書き出す")]
+        [MenuItem(ExporterMenu.MenuBar + ExporterMenu.Export, false, ExporterMenu.MenuBarPriority + ExporterMenu.ExportOrder)]
         public static void Open()
         {
             if (StartupError(Installed()) == null) OpenExporter();
             else OpenDiagnostics();
         }
+
+        // From an avatar's context menu: the export window with that avatar chosen, or the
+        // diagnostics when the export cannot start.
+        public static void OpenFor(GameObject avatar)
+        {
+            if (StartupError(Installed()) != null) OpenDiagnostics();
+            else if (OpenExporterFor != null) OpenExporterFor(avatar);
+            else OpenExporter();
+        }
+
+        [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, false, ExporterMenu.HierarchyPriority + ExporterMenu.ExportOrder)]
+        static void OpenForAvatarFromMenu(MenuCommand command)
+        {
+            var selected = command.context as GameObject ?? Selection.activeGameObject;
+            if (selected != null) OpenFor(selected);
+        }
+
+        [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, true)]
+        static bool CanOpenForAvatarFromMenu() => ExporterMenu.OneAvatarRootSelected();
 
         public static void OpenDiagnostics() => EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境"));
     }
