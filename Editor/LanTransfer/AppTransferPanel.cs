@@ -36,8 +36,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The layout and styles next to AppTransferWindow.cs, found by their asset GUIDs.
         private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
         // The start dialog names the transfer it stops. Sentences, so kept out of AppTransferText.
-        internal const string StopUploadText = "「{0}」のアップロードを中止します。";
-        internal const string StopQrText = "「{0}」で表示中のQRは使えなくなります。";
+        internal const string StopUploadText = "「{0}」のアップロードを中止します";
+        internal const string StopQrText = "「{0}」で表示中のQRは使えなくなります";
 
         // Every panel on screen, in a window or on the board. The Editor transfers one avatar at a time:
         // starting one stops the others, after asking.
