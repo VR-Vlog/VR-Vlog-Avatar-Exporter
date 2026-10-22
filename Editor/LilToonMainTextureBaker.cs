@@ -152,25 +152,22 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        const string LayerAlphaShaderName = "Hidden/VRVlog/LayerAlphaBaker";
         const string PackageIncludeRoot = "Packages/" + Compatibility.LilToonInstallation.PackageName + "/";
-        static Shader layerAlphaUnderAssets;
-        static string layerAlphaUnderAssetsFolder;
+        static Shader layerAlpha;
+        static string layerAlphaFolder;
 
-        // LayerAlphaBaker includes lilToon by its package path. lilToon under
-        // Assets leaves that path empty, so compile the same source against
-        // the Assets folder instead.
+        // LayerAlphaBakerSource includes lilToon by its package path. lilToon
+        // under Assets leaves that path empty, so the source is compiled in
+        // memory, against the Assets folder when lilToon is there.
         internal static Shader LayerAlphaShader()
         {
-            var shader = Shader.Find(LayerAlphaShaderName);
             var folder = Compatibility.LilToonInstallation.Find()?.AssetsFolder;
-            if (shader == null || folder == null) return shader;
-            if (layerAlphaUnderAssets != null && layerAlphaUnderAssetsFolder == folder) return layerAlphaUnderAssets;
-            if (layerAlphaUnderAssets != null) UnityEngine.Object.DestroyImmediate(layerAlphaUnderAssets);
-            layerAlphaUnderAssets = ShaderUtil.CreateShaderAsset(LayerAlphaSource(System.IO.File.ReadAllText(System.IO.Path.GetFullPath(AssetDatabase.GetAssetPath(shader))), folder), false);
-            layerAlphaUnderAssets.hideFlags = HideFlags.HideAndDontSave;
-            layerAlphaUnderAssetsFolder = folder;
-            return layerAlphaUnderAssets;
+            if (layerAlpha != null && layerAlphaFolder == folder) return layerAlpha;
+            if (layerAlpha != null) UnityEngine.Object.DestroyImmediate(layerAlpha);
+            layerAlpha = ShaderUtil.CreateShaderAsset(folder == null ? LayerAlphaBakerSource.Text : LayerAlphaSource(LayerAlphaBakerSource.Text, folder), false);
+            layerAlpha.hideFlags = HideFlags.HideAndDontSave;
+            layerAlphaFolder = folder;
+            return layerAlpha;
         }
 
         internal static string LayerAlphaSource(string source, string lilToonFolder) =>
