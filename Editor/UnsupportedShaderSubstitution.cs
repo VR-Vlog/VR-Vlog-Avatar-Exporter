@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UniVRM10;
 using VRM10.MToon10;
 using UnityEditor;
@@ -224,6 +226,8 @@ namespace VRVlog.LilToonExporter
                     if (values.TryFloat(name, out var cutoff)) { Set(material, "_Cutoff", Mathf.Clamp01(cutoff)); break; }
             // lilToon clips by _Cutoff in every mode; blended sources do not clip.
             if (mode == Mode.Transparent) Set(material, "_Cutoff", 0);
+            // lilToon's transparent shader writes depth by default; follow the source.
+            if (mode == Mode.Transparent) Set(material, "_ZWrite", WritesDepth(source, values) ? 1 : 0);
 
             foreach (var name in NormalTextures)
                 if (values.Texture(name, out var normal, out var scale, out var offset) && Flat(normal))
@@ -259,6 +263,70 @@ namespace VRVlog.LilToonExporter
             if (queue > 2500 && (!values.TryFloat("_DstBlend", out var destination) || destination != 0)) return Mode.Transparent;
             if (queue >= 2450 && queue <= 2500 && Cutoffs.Any(cutoff => values.TryFloat(cutoff, out _))) return Mode.Cutout;
             return Mode.Opaque;
+        }
+
+        // Whether a blended source writes depth. A declared _ZWrite holds the
+        // authored value; otherwise the ZWrite command in the shader file
+        // decides. Built-in and missing shaders have no file to read, and
+        // Unity's built-in blended shaders do not write depth.
+        static bool WritesDepth(Material source, SourceValues values)
+        {
+            if (values.TryFloat("_ZWrite", out var declared)) return declared > .5f;
+            var path = source.shader == null || source.shader.name == MissingShader ? null : AssetDatabase.GetAssetPath(source.shader);
+            if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return false;
+            // GetFullPath resolves a package path to the folder it is installed in.
+            path = Path.GetFullPath(path);
+            return File.Exists(path) && ShaderWritesDepth(File.ReadAllText(path), name => values.Float(name, 0));
+        }
+
+        static readonly Regex Comments = new Regex(@"//[^\n]*|/\*.*?\*/", RegexOptions.Singleline);
+        static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|\[\s*(\w+)\s*\])", RegexOptions.IgnoreCase);
+        static readonly Regex DepthOnlyPass = new Regex(@"""LightMode""\s*=\s*""(ShadowCaster|Meta|DepthOnly|DepthNormals|MotionVectors)""", RegexOptions.IgnoreCase);
+
+        // ShaderLab of the first SubShader (the one Unity uses on desktop
+        // hardware): a pass that draws color writes depth when its own ZWrite,
+        // else the SubShader's, says On; Unity's default without a command is
+        // On. Shadow and depth-only passes do not draw color. A surface shader
+        // has no Pass blocks; only a SubShader command decides it.
+        internal static bool ShaderWritesDepth(string text, Func<string, float> property)
+        {
+            text = Comments.Replace(text, "");
+            var start = Regex.Match(text, @"\bSubShader\s*\{");
+            if (!start.Success) return false;
+            var subShader = Block(text, start.Index + start.Length - 1);
+            var outside = new System.Text.StringBuilder();
+            var passes = new List<string>();
+            var at = 0;
+            foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{"))
+            {
+                if (pass.Index < at) continue;
+                var body = Block(subShader, pass.Index + pass.Length - 1);
+                outside.Append(subShader, at, pass.Index - at);
+                passes.Add(body);
+                at = pass.Index + pass.Length - 1 + body.Length;
+            }
+            outside.Append(subShader, at, subShader.Length - at);
+            bool? Command(string scope)
+            {
+                var match = ZWriteCommand.Match(scope);
+                if (!match.Success) return null;
+                return match.Groups[2].Success ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+            }
+            var shared = Command(outside.ToString());
+            if (passes.Count == 0) return shared ?? false;
+            return passes.Where(pass => !DepthOnlyPass.IsMatch(pass)).Any(pass => Command(pass) ?? shared ?? true);
+        }
+
+        // The text from an opening brace to its closing brace, both included.
+        static string Block(string text, int open)
+        {
+            var depth = 0;
+            for (var i = open; i < text.Length; i++)
+            {
+                if (text[i] == '{') depth++;
+                else if (text[i] == '}' && --depth == 0) return text.Substring(open, i - open + 1);
+            }
+            return text.Substring(open);
         }
 
         // Main-color adjustments of other toon shaders. lilToon's tone

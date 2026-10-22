@@ -198,6 +198,30 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [TestCase(1f, 1)]
+        [TestCase(0f, 0)]
+        public void TransparentFallbackWritesDepthWhenLilToonDoes(float zWrite, int expected)
+        {
+            // lilToon's transparent shader writes depth by default; without it
+            // MToon would show the far side of the mesh through the near side.
+            var shader = Shader.Find("Hidden/lilToonTransparent");
+            Assert.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var created = new List<Material>();
+            try
+            {
+                source.SetFloat("_ZWrite", zWrite);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, new List<string>());
+                Assert.AreEqual(2, fallback.GetInt("_AlphaMode"));
+                Assert.AreEqual(expected, fallback.GetInt("_TransparentWithZWrite"));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+            }
+        }
+
         [TestCase(null, 1f)]
         [TestCase(0f, 1f)]
         [TestCase(.5f, .5f)]
