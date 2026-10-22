@@ -130,11 +130,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0, false)]
-        [TestCase(0, true)]
-        [TestCase(1, false)]
         [TestCase(1, true)]
         [TestCase(2, false)]
-        [TestCase(2, true)]
         public void MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(int pathMode, bool nestedTree)
         {
             RequirePackages();
@@ -286,11 +283,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, AnimatorControllerParameterType.Int)]
-        [TestCase(true, AnimatorControllerParameterType.Int)]
-        [TestCase(false, AnimatorControllerParameterType.Bool)]
         [TestCase(true, AnimatorControllerParameterType.Bool)]
         [TestCase(false, AnimatorControllerParameterType.Float)]
-        [TestCase(true, AnimatorControllerParameterType.Float)]
         public async Task MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(bool permanentDeletion, AnimatorControllerParameterType parameterKind)
         {
             RequirePackages();

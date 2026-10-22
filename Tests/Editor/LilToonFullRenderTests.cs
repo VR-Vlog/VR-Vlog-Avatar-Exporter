@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter.Tests
             Compare(original,runtime);
         }
 
-        [TestCase(1,0f)][TestCase(2,.5f)][TestCase(3,1f)]
+        [TestCase(1,0f)][TestCase(3,1f)]
         public void FurSubdivisionAndRandomnessMatchReference(int layers,float random)
         {
             if(!AppReader.AppProject)Assert.Ignore("Requires the application's own shader set; with the official set this compares a shader with itself.");

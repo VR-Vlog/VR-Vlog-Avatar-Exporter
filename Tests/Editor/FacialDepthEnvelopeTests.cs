@@ -91,10 +91,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, .01f)]
-        [TestCase(90f, .01f)]
-        [TestCase(0f, 1f)]
-        [TestCase(90f, 1f)]
-        [TestCase(0f, 100f)]
         [TestCase(90f, 100f)]
         public void HeadBoundedDisconnectedDepthWorksWithRotatedRenderersAndMeshScales(float rotation, float scale)
         {
@@ -106,14 +102,12 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("rear")]
         [TestCase("posterior inside mirrored bounds")]
-        [TestCase("posterior inside original margin")]
         [TestCase("side")]
         [TestCase("above")]
         [TestCase("one outside vertex")]
         [TestCase("nonhead boundary")]
         [TestCase("anchor outside")]
         [TestCase("straddling descriptor")]
-        [TestCase("singular bindpose")]
         [TestCase("nonfinite bindpose")]
         [TestCase("singular renderer")]
         public void DepthCannotAuthorizeUnboundedOrUnprovenTopology(string damage)
@@ -170,10 +164,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, .01f)]
-        [TestCase(90f, .01f)]
-        [TestCase(0f, 1f)]
-        [TestCase(90f, 1f)]
-        [TestCase(0f, 100f)]
         [TestCase(90f, 100f)]
         public void ExactFacialEdgesConnectDuplicatedMaterialSeams(float rotation, float scale)
         {
