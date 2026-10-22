@@ -23,7 +23,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
         // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
-        private const float TransferChrome = 253f;
+        // The "VRMをPCに保存" row under both screens and its hairline (AppTransferWindow.uss).
+        private const float SaveRowHeight = 41f;
+        private const float TransferChrome = 253f + SaveRowHeight;
         internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
         // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
         private const float WarningFontSize = 24f, SmallestWarningFontSize = 12f;
@@ -38,6 +40,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The start dialog names the transfer it stops. Sentences, so kept out of AppTransferText.
         internal const string StopUploadText = "「{0}」のアップロードを中止します";
         internal const string StopQrText = "「{0}」で表示中のQRは使えなくなります";
+        // The secondary button under the transfer, and the line next to it once it saved.
+        internal const string SaveCopyText = "VRMをPCに保存";
+        internal const string SavedCopyText = "{0}を保存しました";
+        internal const string SavedCopyMissingShadersText = "{0}を保存しました・シェーダーが見つからないマテリアル{1}個";
 
         // Every panel on screen, in a window or on the board. The Editor transfers one avatar at a time:
         // starting one stops the others, after asking.
@@ -77,13 +83,17 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private float pixelsPerPoint;
         // On the board, the most the QR area may take of the page's height (FitToArea).
         [NonSerialized] private float embeddedRoom = float.PositiveInfinity;
+        // The last "VRMをPCに保存" for this avatar: the file written, or why nothing was.
+        [NonSerialized] private string savedCopy, saveProblem;
+        [NonSerialized] private int savedCopyMissingShaders;
 
         [NonSerialized] private bool built;
         [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
-        [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton;
+        [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton, saveButton;
         [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
-            reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote;
+            reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
+            saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
         [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
@@ -164,6 +174,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             flow?.Stop();
             ClearQr();
             missingShaders = 0;
+            savedCopy = saveProblem = null;
             // A name left over from an avatar that no longer exists is not the user's choice for this one.
             var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name
                 || avatarName == RememberedName(avatar);
@@ -328,6 +339,65 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (flow.CanRegenerate) flow.Regenerate();
             else if (Exporter != null && !EditorApplication.isPlayingOrWillChangePlaymode) { flow.BeginExport(); ExpectExportPaint(); }
             Refresh();
+        }
+
+        // Saving needs what the export needs, not the consent to the transfer service. Not while
+        // the transfer exports, which holds the Editor until it has saved its own copy.
+        private bool CanSaveCopy => Exporter != null && avatar != null && !EditorApplication.isPlayingOrWillChangePlaymode && BoardReady
+            && !BoardNeedsFix && Exporter.HasAuthor() && Flow.View != AppTransferView.Exporting;
+
+        // "VRMをPCに保存": the VRM this transfer sends, saved where the user picks as "VRMを保存" saves
+        // it, with the same destination dialog, result list and recovery window. The transfer on screen
+        // goes on. Without a name, the avatar's, as the board's own save names it.
+        private void SaveCopy()
+        {
+            if (!CanSaveCopy) return;
+            var name = string.IsNullOrWhiteSpace(avatarName) ? avatar.name.Trim() : avatarName.Trim();
+            string failure;
+            try
+            {
+                failure = Exporter.SaveCopy(avatar, name, detailed, (path, missing) =>
+                {
+                    // Also later, when the recovery window saves once the user fixed what failed.
+                    savedCopy = path;
+                    savedCopyMissingShaders = missing;
+                    saveProblem = null;
+                    Refresh();
+                });
+            }
+            catch (Exception exception) { failure = exception.Message ?? ""; }
+            finally { EditorUtility.ClearProgressBar(); }
+            if (failure != null) { savedCopy = null; saveProblem = failure; }
+            Refresh();
+        }
+
+        private void RefreshSaveRow()
+        {
+            saveButton.text = T(SaveCopyText);
+            saveButton.SetEnabled(CanSaveCopy);
+            string result = "", detail = "";
+            var warn = false;
+            if (saveProblem != null)
+            {
+                // The recovery window, when open, has the details; the first line fits the row.
+                var first = saveProblem.Split('\n')[0].Trim();
+                result = first.Length > 0 ? first : T(AppTransferText.ExportFailed);
+                detail = saveProblem;
+                warn = true;
+            }
+            else if (savedCopy != null)
+            {
+                var file = Path.GetFileName(savedCopy);
+                result = savedCopyMissingShaders > 0 ? string.Format(T(SavedCopyMissingShadersText), file, savedCopyMissingShaders)
+                    : string.Format(T(SavedCopyText), file);
+                detail = savedCopy;
+                warn = savedCopyMissingShaders > 0;
+            }
+            saveResult.text = result;
+            saveResult.tooltip = detail;
+            saveResult.EnableInClassList("save-result--warn", warn);
+            saveOpen.text = T("保存先を開く");
+            Show(saveOpen, saveProblem == null && savedCopy != null && File.Exists(savedCopy));
         }
 
         private void ExpectExportPaint()
@@ -555,6 +625,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             soundToggle = root.Q<Toggle>("sound");
             regenerateButton = root.Q<Button>("regenerate");
             closeButton = root.Q<Button>("close");
+            saveButton = root.Q<Button>("save");
+            saveResult = root.Q<Label>("save-result");
+            saveOpen = root.Q<Label>("save-open");
 
             // The board above shows the header, the avatar and the way back to the faces and objects,
             // and its "戻る" leaves the QR screen, so the panel has no "閉じる" there.
@@ -617,6 +690,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
             closeButton.clicked += () => { if (Window != null) Window.Close(); };
+            saveButton.clicked += SaveCopy;
+            saveOpen.RegisterCallback<ClickEvent>(_ => { if (savedCopy != null && File.Exists(savedCopy)) EditorUtility.RevealInFinder(savedCopy); });
             soundToggle.RegisterValueChangedCallback(changed => AppTransferWindow.QrReadySound = changed.newValue);
             uploadBar.onGUIHandler = DrawUploadBar;
             // The export starts once the panel has drawn the Exporting state.
@@ -691,6 +766,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(transfer, sending);
             if (sending) RefreshTransfer(view);
             else RefreshForm();
+            RefreshSaveRow();
         }
 
         private void RefreshForm()
@@ -844,6 +920,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, bool> EditDetails;
             internal Func<GameObject, string, string, Action, string> ExportDetailed;
             internal Func<int> LastMissingShaderCount;
+            internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
 
             internal static ExportEntry Resolve()
             {
@@ -865,6 +942,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
                         ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
                         LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
+                        SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
+                            typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                     };
                 }
                 catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException
