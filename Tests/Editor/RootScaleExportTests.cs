@@ -36,6 +36,26 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void RootPlaceInTheSceneIsNotExportedAndIsRestored()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var position = new Vector3(-10, .25f, 3); var rotation = Quaternion.Euler(0, 90, 0);
+            f.Copy.transform.SetPositionAndRotation(position, rotation);
+            var hips = f.Copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Hips);
+            Assert.That(hips.parent, Is.SameAs(f.Copy.transform));
+            f.PrepareMeshesForExport();
+            var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Copy, new BuiltInVrm10MaterialExporter(),
+                new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Root place fixture", Version = "1", Authors = new List<string> { "Tests" } });
+            var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var node = nodes.Single(n => (string)n["name"] == "Hips");
+            Assert.That(Numbers(node, "translation"), Is.EqualTo(new[] { 0, 1, 0 }).Within(1e-6), "The avatar stands at the origin.");
+            Assert.That(node.ContainsKey("rotation") ? Numbers(node, "rotation") : new double[] { 0, 0, 0, 1 },
+                Is.EqualTo(new[] { 0, 0, 0, 1 }).Within(1e-6), "The avatar faces forward.");
+            Assert.That(f.Copy.transform.position, Is.EqualTo(position));
+            Assert.That(Quaternion.Angle(f.Copy.transform.rotation, rotation), Is.LessThan(1e-3f));
+        }
+
+        [Test]
         public void PoseAndAnimationHipsOffsetsAreExportedInTheScaledModelSpace()
         {
             using var f = new AttachmentConnectionTests.Fixture();
