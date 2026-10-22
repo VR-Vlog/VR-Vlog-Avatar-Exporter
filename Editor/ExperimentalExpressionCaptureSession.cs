@@ -77,7 +77,7 @@ namespace VRVlog.LilToonExporter
             IncludedObjects = gimmickOptions.IncludedObjects.ToArray(), IncludedComponents = gimmickOptions.IncludedComponents.ToArray() };
         ExperimentalExpressionControllerScope controllers;
         FaceEmoExpressions.BindingSnapshot faceEmoBindings;
-        Hash128 sourceStamp;
+        ExportRecoverySourceStamp sourceStamp;
         Pose preparedRest;
         bool disposed, ownerReleased;
         int recoveryUsers;
@@ -230,7 +230,9 @@ namespace VRVlog.LilToonExporter
                 Baseline = Snapshot("基準の顔");
                 steps.Next("fingerprint");
                 // Settle source read caches before guarding subsequent edits.
-                sourceStamp = ExportSourceFingerprint.Compute(source);
+                // Like the recovery window, a partially driven VRChat rotation
+                // may differ by the solver's re-encoding noise only.
+                sourceStamp = ExportRecoverySourceStamp.Capture(source);
                 // The stamps were just taken from the source as it is: the rest
                 // of this batch need not hash the whole avatar again.
                 if (batchDepth > 0) validatedBatch = batchId;
@@ -238,7 +240,7 @@ namespace VRVlog.LilToonExporter
             catch { Dispose(); throw; }
         }
 
-        internal bool HasCurrentSource => !disposed && Source != null && ExportSourceFingerprint.Compute(Source) == sourceStamp;
+        internal bool HasCurrentSource => !disposed && Source != null && sourceStamp.Matches(Source);
 
         // Hashing the whole source avatar and its meshes takes a long time on a
         // real avatar, and preparing the board checks the session once per
@@ -263,7 +265,7 @@ namespace VRVlog.LilToonExporter
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
             var hashed = !always && batchDepth > 0 && validatedBatch == batchId;
             using var timing = hashed ? null : ExpressionBoardTimings.Step("validate");
-            if (Source == null || !hashed && ExportSourceFingerprint.Compute(Source) != sourceStamp)
+            if (Source == null || !hashed && !sourceStamp.Matches(Source))
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
             foreach (var channel in Channels)
                 if (channel.Renderer == null || !channel.Renderer.enabled || !channel.Renderer.gameObject.activeInHierarchy ||
