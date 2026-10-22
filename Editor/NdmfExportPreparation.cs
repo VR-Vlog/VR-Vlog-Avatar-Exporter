@@ -499,9 +499,10 @@ namespace VRVlog.LilToonExporter
                                 // throws on a null controller, so lend it an empty one, as
                                 // AAO skips the controller for the com.vrmc.vrm Vrm10Instance.
                                 var animator = clone.GetComponent<Animator>();
+                                UnityEditor.Animations.AnimatorStateMachine placeholderLayer = null;
                                 var placeholder = animator != null && animator.runtimeAnimatorController == null
                                     && clone.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>() != null
-                                    ? PlaceholderController() : null;
+                                    ? PlaceholderController(out placeholderLayer) : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
                                 finally
@@ -509,7 +510,7 @@ namespace VRVlog.LilToonExporter
                                     if (placeholder != null)
                                     {
                                         if (animator != null && animator.runtimeAnimatorController == placeholder) animator.runtimeAnimatorController = null;
-                                        foreach (var layer in placeholder.layers) Object.DestroyImmediate(layer.stateMachine);
+                                        Object.DestroyImmediate(placeholderLayer);
                                         Object.DestroyImmediate(placeholder);
                                     }
                                 }
@@ -561,14 +562,13 @@ namespace VRVlog.LilToonExporter
         // The lent controller keeps one empty layer: Animator::Sample, which
         // AnimationMode.SampleAnimationClip calls (as plugins that photograph menu
         // icons do in Optimizing), crashes Unity on a controller with no layers.
-        private static UnityEditor.Animations.AnimatorController PlaceholderController()
+        // The state machine is returned so that cleanup does not depend on a
+        // plugin leaving the controller's layers in place.
+        private static UnityEditor.Animations.AnimatorController PlaceholderController(out UnityEditor.Animations.AnimatorStateMachine stateMachine)
         {
             var controller = new UnityEditor.Animations.AnimatorController { hideFlags = HideFlags.HideAndDontSave };
-            controller.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer
-            {
-                name = "Base Layer", defaultWeight = 1,
-                stateMachine = new UnityEditor.Animations.AnimatorStateMachine { name = "Base Layer", hideFlags = HideFlags.HideAndDontSave },
-            });
+            stateMachine = new UnityEditor.Animations.AnimatorStateMachine { name = "Base Layer", hideFlags = HideFlags.HideAndDontSave };
+            controller.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer { name = "Base Layer", defaultWeight = 1, stateMachine = stateMachine });
             return controller;
         }
 

@@ -58,7 +58,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(source, "AnimationMode sampling", "Tests", warnings);
                 var log = string.Join("\n", warnings);
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty, log);
-                Assert.That(Get("Layers"), Is.Not.EqualTo(0), "A root controller without layers crashes AnimationMode sampling.");
+                Assert.That(Get("Layers"), Is.EqualTo(1), "The export lends a controller with one layer; one without layers crashes AnimationMode sampling.");
                 Assert.That(Get("Sampled"), Is.EqualTo(1), log);
             }
             finally { Object.DestroyImmediate(vrm); }

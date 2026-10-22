@@ -109,7 +109,12 @@ namespace UnityEditor.Animations
 {
     public class AnimatorStateMachine : UnityEngine.Object { }
     public class AnimatorState : UnityEngine.Object { }
-    public class AnimatorController : UnityEngine.RuntimeAnimatorController { }
+    public class AnimatorControllerLayer { public string name; public float defaultWeight; public AnimatorStateMachine stateMachine; }
+    public class AnimatorController : UnityEngine.RuntimeAnimatorController
+    {
+        public AnimatorControllerLayer[] layers = new AnimatorControllerLayer[0];
+        public void AddLayer(AnimatorControllerLayer layer) => layers = layers.Append(layer).ToArray();
+    }
 }
 namespace UnityEditor
 {
