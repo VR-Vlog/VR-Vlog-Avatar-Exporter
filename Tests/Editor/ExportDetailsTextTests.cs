@@ -49,6 +49,23 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void NativeClipboardAndUtf8FileContainTheSameCompleteUnicodeText()
+        {
+            var details = new string('文', 180000) + "\n最後のエラー 👁️\r\n最終行\t保存終了";
+            var previous = EditorGUIUtility.systemCopyBuffer;
+            try
+            {
+                ExportDetailsText.Copy(details);
+                Assert.That(EditorGUIUtility.systemCopyBuffer, Is.EqualTo(details));
+                var path = Path.Combine(directory, "全文.txt");
+                Assert.That(ExportDetailsText.Save(details, () => path, out var error), Is.True, error);
+                Assert.That(File.ReadAllText(path, Encoding.UTF8), Is.EqualTo(EditorGUIUtility.systemCopyBuffer));
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(new UTF8Encoding(false).GetBytes(details)));
+            }
+            finally { EditorGUIUtility.systemCopyBuffer = previous; }
+        }
+
+        [Test]
         public void CancelDoesNotTouchAnExistingFileOrLeaveTemporaryFiles()
         {
             var path = Path.Combine(directory, "existing.txt");

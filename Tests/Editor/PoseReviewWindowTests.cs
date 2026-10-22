@@ -138,6 +138,33 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator UnsupportedDropIsRejectedAndClosingCancelsPendingWork()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var options = new PoseExportOptions();
+            var clip = HumanoidPoseTests.Clip(fixture.Source);
+            var window = Open(fixture.Source, options);
+            try
+            {
+                yield return Ready(window);
+                Drop(window, fixture.Source);
+                Assert.That(options.Manual, Is.Empty);
+                Assert.That(window.IsBusy, Is.False);
+                Assert.That(DragAndDrop.visualMode, Is.EqualTo(DragAndDropVisualMode.Rejected));
+                Drop(window, clip);
+                window.Close();
+                yield return null;
+                Assert.That(Resources.FindObjectsOfTypeAll<PoseReviewWindow>(), Is.Empty);
+            }
+            finally
+            {
+                if (window != null) window.Close();
+                DragAndDrop.objectReferences = Array.Empty<Object>();
+                Object.DestroyImmediate(clip);
+            }
+        }
+
         [Test]
         public void IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport()
         {

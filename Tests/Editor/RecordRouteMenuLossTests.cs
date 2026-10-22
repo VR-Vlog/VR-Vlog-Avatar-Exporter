@@ -157,6 +157,17 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AnItemWithOneClipAndABlendTreeFaceIsNotListed()
+        {
+            // Spec choice: the item is linked to its clip, which is on the board.
+            var smile = FaceClip("Smile");
+            var controller = Controller((smile, 1), (Tree(FaceClip("Laugh")), 1));
+            var items = new[] { Item("Face / Smile", 1) };
+            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty);
+            Assert.That(Session.MenuClipPaths(items, controller, FaceOff)[smile], Is.EqualTo(new[] { "Face / Smile" }));
+        }
+
+        [Test]
         public void AMenuThatCannotBeReadIsUnreadableNotEmpty()
         {
             var links = Session.ReadMenuLinks(() => throw new InvalidOperationException("broken"));
@@ -164,6 +175,15 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(links.Paths, Is.Empty);
             Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
                 Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
+        }
+
+        [Test]
+        public void AnAvatarWithoutAVrChatMenuHasNoItemsRatherThanAFailure()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+            Assert.That(session.SourceMenuEntriesOutsideBoard, Is.Not.Null.And.Empty);
         }
     }
 }
