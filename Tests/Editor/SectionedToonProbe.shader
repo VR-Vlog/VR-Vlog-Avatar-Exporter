@@ -63,6 +63,9 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _MatcapMultiply ("Multiply", Range(0, 1)) = 0
         _MatcapAdd ("Add", Range(0, 1)) = 0
         _MatcapUVMode ("UV Mode", Int) = 1
+        _MatcapMask ("Mask", 2D) = "white" {}
+        _MatcapMaskChannel ("Mask Channel", Int) = 0
+        _MatcapMaskInvert ("Invert Mask", Float) = 0
         // Rim.
         _EnableRimLighting ("Rim Lighting", Float) = 0
         _RimStyle ("Rim Style", Int) = 0
