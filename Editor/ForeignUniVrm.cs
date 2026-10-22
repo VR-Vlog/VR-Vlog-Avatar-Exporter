@@ -36,6 +36,20 @@ namespace VRVlog.LilToonExporter
         // The source is kept to tell a reused instance ID from the same asset.
         static readonly Dictionary<int, (Object Source, long Stamp, Object[] Created)> settingsCache = new Dictionary<int, (Object, long, Object[])>();
 
+        // The lists above are lost on a domain reload, but the DontSave
+        // objects they track would stay in memory until the editor quits.
+        // The copies are gone by then (NdmfExportPreparation closes their
+        // scenes), and a later read converts the settings again.
+        static ForeignUniVrm() => AssemblyReloadEvents.beforeAssemblyReload += ReleaseAll;
+
+        internal static void ReleaseAll()
+        {
+            foreach (var pair in adopted) Release(pair.Value);
+            adopted.Clear();
+            foreach (var cached in settingsCache.Values) Release(cached.Created);
+            settingsCache.Clear();
+        }
+
         internal static bool IsForeign(Type type)
         {
             var space = type?.Namespace;

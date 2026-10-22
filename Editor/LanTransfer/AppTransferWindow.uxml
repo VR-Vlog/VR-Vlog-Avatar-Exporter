@@ -51,7 +51,6 @@
                 <ui:Label name="consent-hint" class="t mini grey consent-hint" />
                 <ui:VisualElement name="privacy" class="privacy">
                     <ui:VisualElement class="row row--terms">
-                        <ui:VisualElement class="label-col" />
                         <ui:Label name="privacy-link" class="t link" />
                     </ui:VisualElement>
                     <ui:VisualElement class="check-row">

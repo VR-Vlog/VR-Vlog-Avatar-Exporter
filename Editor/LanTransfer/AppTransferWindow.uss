@@ -227,6 +227,35 @@
     margin-bottom: 8px;
 }
 
+/* The terms, the consent and the two notes under it are centred as one block. A row keeps its
+   pieces together in the middle, and a wrapped sentence centres each of its lines. */
+.consent .row--terms,
+.consent .check-row {
+    justify-content: center;
+}
+
+.consent .label-col {
+    width: auto;
+}
+
+.consent .check-text {
+    flex-grow: 0;
+    -unity-text-align: upper-center;
+}
+
+.consent .consent-hint {
+    -unity-text-align: middle-center;
+}
+
+/* The QR note and the line that says why "QRコードを作る" is off sit right under the block, so they follow it. */
+.form-footer .create-hint {
+    -unity-text-align: upper-center;
+}
+
+.form-footer .reason {
+    -unity-text-align: middle-center;
+}
+
 .reason {
     height: 18px;
     flex-shrink: 0;
