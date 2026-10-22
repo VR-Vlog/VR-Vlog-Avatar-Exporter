@@ -1300,6 +1300,53 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }
 
+        // Without the VRChat SDK the list-only export still reads the listed
+        // clips: a still face keeps its value and a looping face is written
+        // to VRVLOG_expression_animations, ending on its last frame.
+        [Test]
+        public void ListOnlyExportKeepsAMovingFaceAnimation()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var still = new AnimationClip { name = "Still face" };
+            var moving = new AnimationClip { name = "Moving face" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-moving-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+                AnimationUtility.SetEditorCurve(still, binding, AnimationCurve.Constant(0, 1, 40));
+                AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 0, 2, 80));
+                var settings = AnimationUtility.GetAnimationClipSettings(moving); settings.loopTime = true;
+                AnimationUtility.SetAnimationClipSettings(moving, settings);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new[] { still, moving }.Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.UsesRecordRoute, Is.False);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+                var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
+                var animation = document.Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
+                Assert.That(animation.Loop, Is.True);
+                Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]
