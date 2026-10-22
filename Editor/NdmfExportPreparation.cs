@@ -491,9 +491,11 @@ namespace VRVlog.LilToonExporter
                                 afterTransforming(lease);
                                 // AAO reads the root controller unless it knows a platform
                                 // component; it does not know the bundled Vrm10Instance and
-                                // throws on a null controller, so lend it an empty one.
+                                // throws on a null controller, so lend it an empty one, as
+                                // AAO skips the controller for the com.vrmc.vrm Vrm10Instance.
                                 var animator = clone.GetComponent<Animator>();
                                 var placeholder = animator != null && animator.runtimeAnimatorController == null
+                                    && clone.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>() != null
                                     ? new UnityEditor.Animations.AnimatorController { hideFlags = HideFlags.HideAndDontSave } : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }

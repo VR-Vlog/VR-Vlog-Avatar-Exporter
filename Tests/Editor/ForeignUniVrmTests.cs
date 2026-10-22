@@ -83,10 +83,21 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void ProjectUniVrmSettingsOnTheSourceAreExportedAndLeftUnchanged()
         {
+            // As with the bundled Vrm10Instance, the authored amount is baked
+            // into a generated target that the clip drives fully, so 60% of
+            // the shape is 0.6 of what the same avatar exports at 100%.
+            var partial = ExportedBlinkHeight(.6f);
+            var full = ExportedBlinkHeight(1f);
+            Assert.That(full, Is.GreaterThan(1e-5f));
+            Assert.That(partial / full, Is.EqualTo(.6f).Within(1e-3f));
+        }
+
+        float ExportedBlinkHeight(float weight)
+        {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")); owned.Add(material);
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
-            var blink = ProjectBlink(true, .6f);
+            var blink = ProjectBlink(true, weight);
             var settings = ProjectSettings(blink);
             Attach(fixture.Source, settings);
             var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Project UniVRM", "Tests"));
@@ -96,8 +107,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(exported["isBinary"], Is.EqualTo(true));
             var binds = (List<object>)exported["morphTargetBinds"];
             Assert.That(binds.Count, Is.EqualTo(1));
-            // As with the bundled Vrm10Instance, the authored 60% is baked into
-            // a generated target that the clip drives fully.
             var bind = (Dictionary<string, object>)binds[0];
             Assert.That(Convert.ToSingle(bind["weight"]), Is.EqualTo(1f).Within(1e-5f));
             var node = (Dictionary<string, object>)((List<object>)glb.Json["nodes"])[Convert.ToInt32(bind["node"])];
@@ -107,13 +116,13 @@ namespace VRVlog.LilToonExporter.Tests
             var primitive = (Dictionary<string, object>)((List<object>)mesh["primitives"])[0];
             var positions = Convert.ToInt32(((Dictionary<string, object>)((List<object>)primitive["targets"])[target])["POSITION"]);
             var accessor = (Dictionary<string, object>)((List<object>)glb.Json["accessors"])[positions];
-            Assert.That(Convert.ToSingle(((List<object>)accessor["max"])[1]), Is.EqualTo(.006f).Within(1e-4f));
 
             // The source keeps the project UniVRM component and assets as they were.
             Assert.That(fixture.Source.GetComponent<Vrm10Instance>(), Is.Null);
             Assert.That(fixture.Source.GetComponents<MonoBehaviour>().Count(component => component.GetType().FullName == "UniVRM10.Vrm10Instance"), Is.EqualTo(1));
             using (var serialized = new SerializedObject(blink))
-                Assert.That(serialized.FindProperty("MorphTargetBindings").GetArrayElementAtIndex(0).FindPropertyRelative("Weight").floatValue, Is.EqualTo(.6f));
+                Assert.That(serialized.FindProperty("MorphTargetBindings").GetArrayElementAtIndex(0).FindPropertyRelative("Weight").floatValue, Is.EqualTo(weight));
+            return Math.Abs(Convert.ToSingle(((List<object>)accessor["max"])[1])) + Math.Abs(Convert.ToSingle(((List<object>)accessor["min"])[1]));
         }
 
         [Test] public void AuthoredSettingsAreConvertedOnceAndFollowEditsOfTheProjectAsset()

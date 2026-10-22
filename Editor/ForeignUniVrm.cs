@@ -33,7 +33,8 @@ namespace VRVlog.LilToonExporter
         // Assets made for copies, released once their copy is gone.
         static readonly List<KeyValuePair<GameObject, Object[]>> adopted = new List<KeyValuePair<GameObject, Object[]>>();
         // Settings read from a source avatar, rebuilt when the user edits them.
-        static readonly Dictionary<int, KeyValuePair<long, Object[]>> settingsCache = new Dictionary<int, KeyValuePair<long, Object[]>>();
+        // The source is kept to tell a reused instance ID from the same asset.
+        static readonly Dictionary<int, (Object Source, long Stamp, Object[] Created)> settingsCache = new Dictionary<int, (Object, long, Object[])>();
 
         internal static bool IsForeign(Type type)
         {
@@ -73,14 +74,15 @@ namespace VRVlog.LilToonExporter
                 var stamp = Stamp(settings);
                 if (settingsCache.TryGetValue(settings.GetInstanceID(), out var cached))
                 {
-                    if (cached.Key == stamp && cached.Value.Length != 0 && cached.Value[0] != null) return (VRM10Object)cached.Value[0];
-                    Release(cached.Value);
+                    if (ReferenceEquals(cached.Source, settings) && cached.Stamp == stamp && cached.Created.Length != 0 && cached.Created[0] != null)
+                        return (VRM10Object)cached.Created[0];
+                    Release(cached.Created);
                 }
                 var map = new Dictionary<Object, Object>();
                 var created = new List<Object>();
                 Convert(settings, map, created);
                 CopyAll(map);
-                settingsCache[settings.GetInstanceID()] = new KeyValuePair<long, Object[]>(stamp, created.ToArray());
+                settingsCache[settings.GetInstanceID()] = (settings, stamp, created.ToArray());
                 return (VRM10Object)map[settings];
             }
         }
