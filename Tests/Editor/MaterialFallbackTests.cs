@@ -390,6 +390,51 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ShadeColorMultipliesTheMainColorLikeLilToon()
+        {
+            var shader = Shader.Find("lilToon");
+            Assume.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var shadeImage = new Texture2D(2, 2);
+            var created = new List<Material>();
+            try
+            {
+                // A dark tinted cloth: lilToon shades it with albedo * _ShadowColor,
+                // so the shade stays dark instead of moving toward the light gray shadow color.
+                var main = new Color(.2f, .25f, .4f, 1f);
+                var shadow = new Color(.8f, .8f, .85f, 1f);
+                source.SetColor("_Color", main);
+                source.SetFloat("_UseShadow", 1f);
+                source.SetColor("_ShadowColor", shadow);
+                source.SetColor("_Shadow2ndColor", new Color(0f, 0f, 0f, 0f));
+                source.SetFloat("_ShadowStrength", 1f);
+                var full = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
+                Assert.AreEqual(main.linear.r * shadow.linear.r, full.linear.r, .0001f);
+                Assert.AreEqual(main.linear.b * shadow.linear.b, full.linear.b, .0001f);
+                Assert.Less(full.g, main.g);
+
+                // A shadow color brighter than white never lights the shade above the lit side.
+                source.SetColor("_ShadowColor", new Color(1.5f, .5f, 1f, 1f));
+                var bright = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
+                Assert.AreEqual(main.r, bright.r, .0001f);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
+                Assert.AreEqual(bright.g, fallback.GetColor("_ShadeColor").g, .0001f);
+
+                // A shadow color texture replaces the albedo, so the main color is not a factor there.
+                source.SetColor("_ShadowColor", shadow);
+                source.SetTexture("_ShadowColorTex", shadeImage);
+                Assert.AreEqual(MobileMaterialMath.ShadeColor(main, shadow, 1f),
+                    UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(shadeImage);
+            }
+        }
+
+        [Test]
         public void SecondShadowColorIsMixedIntoTheShadeColor()
         {
             var shader = Shader.Find("lilToon");
@@ -408,7 +453,7 @@ namespace VRVlog.LilToonExporter.Tests
                 source.SetFloat("_ShadowStrength", .8f);
                 source.SetFloat("_ShadowBorder", .5f);
                 source.SetFloat("_Shadow2ndBorder", .25f);
-                var legacy = MobileMaterialMath.ShadeColor(main, shadow, .8f);
+                var legacy = MobileMaterialMath.MultipliedShadeColor(main, shadow, .8f);
 
                 // An unused 2nd shadow (alpha 0) keeps the previous result exactly.
                 source.SetColor("_Shadow2ndColor", new Color(second.r, second.g, second.b, 0f));
@@ -417,7 +462,7 @@ namespace VRVlog.LilToonExporter.Tests
                 source.SetColor("_Shadow2ndColor", second);
                 var mixed = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
                 // The 2nd border covers half of the 1st band.
-                var expected = MobileMaterialMath.ShadeColor(main, UnityEngine.Color.Lerp(shadow.linear, second.linear, .5f).gamma, .8f);
+                var expected = MobileMaterialMath.MultipliedShadeColor(main, UnityEngine.Color.Lerp(shadow.linear, second.linear, .5f).gamma, .8f);
                 Assert.AreEqual(expected.r, mixed.r, .0001f);
                 Assert.AreEqual(expected.g, mixed.g, .0001f);
                 Assert.AreEqual(expected.b, mixed.b, .0001f);
@@ -433,7 +478,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 // A material without the 2nd shadow property keeps the previous formula.
                 fixture.SetFloat("_UseShadow", 1f);
-                Assert.AreEqual(MobileMaterialMath.ShadeColor(fixture.GetColor("_Color"), fixture.GetColor("_ShadowColor"), fixture.GetFloat("_ShadowStrength")),
+                Assert.AreEqual(MobileMaterialMath.MultipliedShadeColor(fixture.GetColor("_Color"), fixture.GetColor("_ShadowColor"), fixture.GetFloat("_ShadowStrength")),
                     UniVrmOneClickExporter.FallbackColor(fixture, MaterialColorType.shadeColor));
             }
             finally
