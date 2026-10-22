@@ -1188,7 +1188,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
                     : new System.Collections.Generic.Dictionary<string, object>();
                 Assert.That(custom.Keys.Where(key => key.StartsWith("Face ")), Is.EquivalentTo(names.Take(listed)));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.Zero, "No menu face is played.");
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
                 Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed)));
