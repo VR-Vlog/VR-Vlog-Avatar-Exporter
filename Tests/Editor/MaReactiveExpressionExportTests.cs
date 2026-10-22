@@ -24,6 +24,14 @@ namespace VRVlog.LilToonExporter.Tests
         static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
 
+        // MA 1.12 added the MMD world relay together with its VRChat settings;
+        // earlier versions have neither, so there is nothing to switch off.
+        static void DisableMmdWorldSupport(GameObject root)
+        {
+            var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
+            if (settingsType != null) settingsType.GetProperty("MMDWorldSupport").SetValue(root.AddComponent(settingsType), false);
+        }
+
         [Test]
         public void MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion()
         {
@@ -210,8 +218,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) })
                         .Invoke(reference, new object[] { fixture.Source.transform }), Is.SameAs(explicitRoot));
                 }
-                var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
-                settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
+                DisableMmdWorldSupport(fixture.Source);
                 Assert.That(gate.GetComponentsInParent<Component>(true).All(value => value.GetType().FullName != Ma + "ModularAvatarMenuItem"), Is.True);
                 var authored = fixture.Source.GetComponentsInChildren<Component>(true).Cast<Object>()
                     .Concat(AssetDatabase.FindAssets("", new[] { folder }).SelectMany(guid => AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(guid))))
@@ -331,8 +338,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) }).Invoke(reference, new object[] { changer }), Is.Not.Null,
                         "The installed MA must resolve every authored fixture target before export.");
                 }
-            var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
-            settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
+            DisableMmdWorldSupport(fixture.Source);
             var folderName = "__MaReactiveExport_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
             Vrm10Instance imported = null;
