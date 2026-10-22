@@ -16,6 +16,28 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExperimentalExpressionCaptureTests
     {
+        // Recorded faces with the same weights on every row are written once,
+        // the first by name; one weight different keeps both.
+        [Test]
+        public void RecordedFacesWithTheSameWeightsAreWrittenOnce()
+        {
+            ExperimentalExpressionCaptureSession.Pose Face(string name, float second) => new ExperimentalExpressionCaptureSession.Pose
+            {
+                Name = name,
+                Rows =
+                {
+                    new ExperimentalExpressionCaptureSession.Row { Path = "Body", Shapes = new[] { "A", "B" }, Weights = new[] { 50f, second } },
+                    new ExperimentalExpressionCaptureSession.Row { Path = "Face", Shapes = new[] { "C" }, Weights = new[] { 0f } }
+                }
+            };
+            var report = new ExportRecoveryReport();
+            var kept = ExperimentalExpressionCaptureSession.MergeIdentical(new[] { Face("Smile", 30), Face("Joy", 30), Face("Grin", 31) }, report);
+            Assert.That(kept.Select(pose => pose.Name), Is.EqualTo(new[] { "Smile", "Grin" }));
+            var entry = report.Fallbacks.Results.Single();
+            Assert.That((entry.Outcome, entry.Name), Is.EqualTo((ExportOutcome.Kept, "Joy")));
+            Assert.That(entry.Reason, Does.Contain("Smile"));
+        }
+
         [Test]
         public void OwnedCopyKeepsAValidIsolatedSceneAndPreservesSource()
         {
@@ -228,8 +250,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(inputs.Single().Error, Is.Null);
                 Assert.That((string)type.GetField("status", flags).GetValue(window), Is.EqualTo(added));
 
-                // An unsupported file does not count toward the limit of 64.
-                var fillers = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions - 2).Select(index =>
+                // There is no limit on the number of faces: the 100th is added too.
+                var fillers = Enumerable.Range(0, 98).Select(index =>
                 {
                     var filler = new AnimationClip { name = "Filler " + index };
                     AnimationUtility.SetEditorCurve(filler, binding, AnimationCurve.Constant(0, 1, index));
@@ -244,7 +266,7 @@ namespace VRVlog.LilToonExporter.Tests
                     {
                         Assert.Throws<System.Reflection.TargetInvocationException>(() =>
                             type.GetMethod("AddClips", flags).Invoke(window, new object[] { new[] { last, bone } }));
-                        Assert.That(inputs.Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
+                        Assert.That(inputs.Count, Is.EqualTo(100));
                         Assert.That(inputs.Last().Clip, Is.EqualTo(last));
                     }
                     finally { Object.DestroyImmediate(last); }
@@ -1005,8 +1027,9 @@ namespace VRVlog.LilToonExporter.Tests
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-listed-faces-" + Guid.NewGuid().ToString("N") + ".vrm");
             try
             {
-                foreach (var clip in clips)
-                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65));
+                // The two faces differ in value; identical faces would be written once.
+                for (var index = 0; index < clips.Length; index++) AnimationUtility.SetEditorCurve(clips[index],
+                    EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 65 + index * 10));
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetField("author", flags).SetValue(window, "Tests");
                 type.GetField("automaticBlink", flags).SetValue(window, false);
@@ -1045,7 +1068,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var menu = new byte[] { 1 }; var again = new byte[] { 2 };
             var restored = 0;
-            var result = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+            var result = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 3,
                 () => throw new InvalidOperationException("Recording failed"), () => { restored++; return again; });
             Assert.That(result.Exported, Is.SameAs(again));
             Assert.That(restored, Is.EqualTo(1));
@@ -1055,13 +1078,13 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(result.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 3)));
 
             restored = 0;
-            Assert.Throws<OperationCanceledException>(() => ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (3, true),
+            Assert.Throws<OperationCanceledException>(() => ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 3,
                 () => throw new OperationCanceledException(), () => { restored++; return again; }));
             Assert.That(restored, Is.Zero, "A canceled save is not exported again.");
         }
 
-        // A recovery attempt decides the count and the record rules again from
-        // the board at that time; after the board closed it only gives the counts.
+        // A recovery attempt decides the count again from the board at that
+        // time; after the board closed it only gives the counts.
         [Test]
         public void MenuShortSaveDecidesAgainFromTheBoardAtThatTime()
         {
@@ -1070,15 +1093,16 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] Record() { calls++; return recordedBytes; }
             byte[] Again() { calls++; return menu; }
 
-            var kept = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (65, false), Record, Again);
-            Assert.That(kept.Exported, Is.SameAs(menu));
-            Assert.That(kept.ListedFaces, Is.EqualTo(65));
-            Assert.That(kept.Recorded, Is.Null);
-            Assert.That(kept.Error, Is.Null);
-            Assert.That(kept.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptFormat), 1, 65)));
-            Assert.That(calls, Is.Zero);
+            var many = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 65, Record, Again);
+            Assert.That(many.Exported, Is.SameAs(recordedBytes));
+            Assert.That(many.ListedFaces, Is.EqualTo(65));
+            Assert.That(many.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 65)));
+            Assert.That(many.Kept, Is.Null);
+            Assert.That(many.Error, Is.Null);
+            Assert.That(calls, Is.EqualTo(1), "A list over 64 faces is recorded too.");
 
-            var recorded = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => (4, true), Record, Again);
+            calls = 0;
+            var recorded = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 4, Record, Again);
             Assert.That(recorded.Exported, Is.SameAs(recordedBytes));
             Assert.That(recorded.ListedFaces, Is.EqualTo(4));
             Assert.That(recorded.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 4)));
@@ -2109,6 +2133,29 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(native); Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
 
+        [Test]
+        public void ImportingOneHundredClipsRecordsEveryFace()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var clips = Enumerable.Range(0, 100).Select(index =>
+            {
+                var clip = new AnimationClip { name = "Face " + index };
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Constant(0, 1, index));
+                return clip;
+            }).ToArray();
+            try
+            {
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                var inputs = clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = 0 }).ToArray();
+                var result = session.ImportClips(inputs);
+                Assert.That(result.Imported, Has.Count.EqualTo(100), "There is no limit on the number of recorded faces.");
+                Assert.That(result.Skipped, Is.Empty);
+                Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(clips.Select(clip => clip.name)));
+            }
+            finally { foreach (var clip in clips) Object.DestroyImmediate(clip); }
+        }
+
         [TestCase("bone")]
         [TestCase("material")]
         [TestCase("display")]
@@ -2697,7 +2744,7 @@ namespace VRVlog.LilToonExporter.Tests
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
             var presets = new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>();
-            var clips = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 2).Select(index => new AnimationClip { name = "Face " + index }).ToArray();
+            var clips = Enumerable.Range(0, 66).Select(index => new AnimationClip { name = "Face " + index }).ToArray();
             var twin = new AnimationClip { name = "Face 0" };
             var board = new ExpressionBoard(presets, (preset, value) => { if (value == null) presets.Remove(preset); else presets[preset] = value; },
                 candidates => new System.Collections.Generic.Dictionary<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>(), null);
@@ -2721,8 +2768,8 @@ namespace VRVlog.LilToonExporter.Tests
 
                 board.SetItems(null, clips.Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
                 board.Move(clips[0], ExpressionBoard.Place.Excluded);
-                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T("その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません"), 1)));
-                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.Null, "Recording more than 64 faces does not stop the save.");
+                Assert.That(window.BlocksExport, Is.False);
 
                 var errors = (System.Collections.Generic.Dictionary<ExpressionPreset, string>)type.GetField("presetErrors", flags).GetValue(window);
                 errors[ExpressionPreset.sad] = null; errors[ExpressionPreset.aa] = "Mouth reason"; errors[ExpressionPreset.angry] = "Angry reason";

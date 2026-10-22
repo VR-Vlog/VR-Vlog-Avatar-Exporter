@@ -313,18 +313,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
         }
 
-        [Test]
-        public void ExcludingOneMenuBranchAlsoPreventsUnprovenHardwareFaceRecovery()
-        {
-            controller.AddParameter("Sensor", AnimatorControllerParameterType.Bool);
-            var machine = controller.layers[0].stateMachine;
-            machine.defaultState = State(machine, "Face", Clip("Recovery face", 75, true));
-            var metadata = Metadata(); metadata.NeutralInputInventoryComplete = true; metadata.ExternalParameters.Add("Sensor");
-            var policy = new VrChatMenuImportPolicy(); policy.ExcludedBranches.Add("Original menu branch");
-            VrChatAuthoredFaces.Add(avatar, metadata, policy: policy);
-            Assert.That(metadata.Entries, Is.Empty);
-        }
-
         private void AddDisconnectedSurface(float scale, bool extendsOutside, bool torsoInfluence)
         {
             // The opaque channel represents a separate eye/cheek insert. The

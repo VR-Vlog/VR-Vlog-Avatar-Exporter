@@ -222,6 +222,28 @@ namespace VRVlog.LilToonExporter
                 if (expression.EndsNeutral) report.Fallbacks.Add(ExportFallbackKind.ExpressionEndsNeutral, expression.Name);
         }
 
+        internal const string MergedExpressionCategory = "同じ内容の表情";
+        internal const string MergedExpressionFormat = "「{0}」と同じ内容のため1つにまとめました";
+
+        // Faces Add wrote once under an identical face's name are listed by
+        // their own label; the same label again (one clip on both hands) was
+        // never two faces and is not listed. The report also counts the merged
+        // clips no written face plays, so the board can compare its list.
+        internal static void RecordMergedExpressions(IList<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
+        {
+            var category = ExporterLocalization.T(MergedExpressionCategory);
+            var written = expressions.Where(expression => expression.RegisteredName != null).ToList();
+            foreach (var expression in expressions.Where(expression => expression.MergedInto != null))
+            {
+                var kept = written.First(item => item.RegisteredName == expression.MergedInto);
+                if (expression.Name == kept.Name) continue;
+                report.Fallbacks.Record(ExportOutcome.Kept, category, expression.Name,
+                    string.Format(ExporterLocalization.T(MergedExpressionFormat), expression.MergedInto));
+            }
+            report.MergedMenuClips = expressions.Where(expression => expression.MergedInto != null && expression.Clip != null)
+                .Select(expression => expression.Clip).Distinct().Count(clip => written.All(item => item.Clip != clip));
+        }
+
         internal const string InferredPresetCategory = "名前から自動で設定";
 
         // Presets filled from a name or from the shapes a menu face moves
@@ -393,17 +415,16 @@ namespace VRVlog.LilToonExporter
             guard.Run(ExportStage.SourceValidation, () => NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true));
             // Re-read the live assets on every export; a preview is never a stale
             // cached source of expression weights after the user edits a clip.
-            var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);
             recoveryReport.Stage = "表情メニュー読込";
             recoveryReport.Phase = ExportPhase.Expressions;
             var menu = guard.Run(ExportStage.ExpressionMenu, () =>
             {
-                var read = VrChatExpressionMenu.Read(source, menuPolicy);
+                var read = VrChatExpressionMenu.Read(source);
                 exclusions.FilterExpressions(read, warnings);
                 return read;
             }, () => new VrChatExpressionMenu.Source());
             // Without the menu, later passes must not read it again either.
-            if (guard.IsOmitted(ExportStage.ExpressionMenu)) menuPolicy = new VrChatMenuImportPolicy { SkipAll = true };
+            var menuPolicy = guard.IsOmitted(ExportStage.ExpressionMenu) ? new VrChatMenuImportPolicy { SkipAll = true } : null;
             var sourceBlink = guard.Run(ExportStage.BlinkCapture,
                 () => BlinkExportSession.CaptureForExport(source, blinkOptions, exclusions.Contains, suppressSharedTextureEmission, suppressHdrTextureEmission),
                 () => BlinkExportSession.CaptureForExport(source, new BlinkExportOptions { Mode = BlinkExportMode.None }, exclusions.Contains,
@@ -522,11 +543,14 @@ namespace VRVlog.LilToonExporter
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
                         }
                     }
-                    var preparedMenuPolicy = menuPolicy?.WithOwnedCopies(value => transformed.IsolatedCopyOf(value as UnityEngine.Object));
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                        preparedMenuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                        menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                    // The warning comes from the menu's own messages.
+                    if (menu.MenuOmittedForCandidateLimit)
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",
+                            ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit));
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
@@ -534,7 +558,7 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(preparedMenuBindings, menu, warnings));
                     guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
                         preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
-                    guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
+                    guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, menuPolicy));
                     // Our own steps below name their stage. Unnamed, a failure here
                     // would be blamed on the build passes and retried without them.
                     guard.Watch(ExportStage.PoseCapture, () => RecordTrimmedPoses(poses, warnings, recoveryReport));
@@ -725,6 +749,7 @@ namespace VRVlog.LilToonExporter
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    RecordMergedExpressions(expressions, recoveryReport);
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,

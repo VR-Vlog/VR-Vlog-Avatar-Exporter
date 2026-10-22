@@ -199,10 +199,6 @@ namespace VRVlog.LilToonExporter
 
         private void RememberDiagnostics(ExportRecoveryReport report)
         {
-            // A build pass changed the menu tree. Routes from the original
-            // failure can no longer be offered as a valid prepared-tree remedy.
-            if (report.Diagnostics.Any(diagnostic => diagnostic?.Code == "menu-import-changed"))
-                availableDiagnostics.RemoveAll(diagnostic => diagnostic?.Action?.Kind == ExportRecoveryActionKind.ExcludeMenuBranch);
             // Do not offer a recipe which the captured normal-export settings
             // have already applied. In particular, the default safe-gimmick
             // filter has already removed these hidden renderer components.
@@ -233,8 +229,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var action in options.Actions.Where(action => action != null))
                     copy.Actions.Add(new ExportRecoveryAction
                     {
-                        Id = action.Id, Kind = action.Kind, Material = action.Material, Renderer = action.Renderer,
-                        MenuRoot = action.MenuRoot, MenuOwner = action.MenuOwner, MenuPath = action.MenuPath
+                        Id = action.Id, Kind = action.Kind, Material = action.Material, Renderer = action.Renderer
                     });
             return copy;
         }

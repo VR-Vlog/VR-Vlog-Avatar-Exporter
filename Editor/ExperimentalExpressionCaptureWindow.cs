@@ -780,13 +780,10 @@ namespace VRVlog.LilToonExporter
             var other = presetErrors.Values.FirstOrDefault(value => value != null);
             if (other != null) return other;
             if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
-            if (board.ExceedsLimit) return string.Format(ExporterLocalization.T(OverLimitFormat), board.OverLimitBy);
             return null;
         }
 
-        const string OverLimitFormat = "その他の表情が64件を超えています・{0}件を書き出さない表情へ移すまで保存しません";
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
-        internal const string MenuShortKeptFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件のとおりに書き出すには64件以下にする";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
         // The ordinary route kept the menu faces, fewer than the list; some list
         // faces are not in the VRM. Which ones and how many is not known: menu faces
@@ -807,10 +804,10 @@ namespace VRVlog.LilToonExporter
         }
 
         // rebuildBoard is null once the board closed; otherwise it rebuilds the
-        // board and gives its list count and whether the list can be recorded.
+        // board and gives its list count.
         // A failed recordList is undone by exportMenuAgain, whose bytes are saved.
         internal static MenuShortResult ResolveMenuShort(byte[] exported, int menuFaces, int listedFaces,
-            Func<(int Listed, bool CanRecord)> rebuildBoard, Func<byte[]> recordList, Func<byte[]> exportMenuAgain)
+            Func<int> rebuildBoard, Func<byte[]> recordList, Func<byte[]> exportMenuAgain)
         {
             var result = new MenuShortResult { Exported = exported, ListedFaces = listedFaces };
             // A recovery attempt after the board closed has no list to record.
@@ -820,13 +817,8 @@ namespace VRVlog.LilToonExporter
                 return result;
             }
             // The board may have changed before a recovery attempt.
-            var (listed, canRecord) = rebuildBoard();
+            var listed = rebuildBoard();
             result.ListedFaces = listed;
-            if (!canRecord)
-            {
-                result.Kept = string.Format(ExporterLocalization.T(MenuShortKeptFormat), menuFaces, listed);
-                return result;
-            }
             try
             {
                 result.Exported = recordList();
@@ -1231,15 +1223,6 @@ namespace VRVlog.LilToonExporter
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
-            // A menu over the read limit gives no emotion from its item names. The
-            // note sits in the caption row, so it moves nothing; the tooltip keeps all of it.
-            if (presets == ExperimentalExpressionCaptureSession.EmotionPresets && session?.MenuOverLimitMessage is string menuNote)
-            {
-                var after = cardText.CalcSize(new GUIContent(title)).x + 10;
-                // Below a few characters of room Fit leaves only "…"; skip it like the blink note.
-                if (after + dimMini.CalcSize(new GUIContent(menuNote.Substring(0, Math.Min(6, menuNote.Length)))).x <= rect.width)
-                    GUI.Label(new Rect(rect.x + after, rect.y, rect.width - after, rect.height), new GUIContent(Fit(menuNote, dimMini, rect.width - after), menuNote), dimMini);
-            }
             if (presets != ExperimentalExpressionCaptureSession.BlinkPresets) return;
             var note = ExporterLocalization.T("左右はアバターから見て");
             var used = cardText.CalcSize(new GUIContent(title)).x + 10;
@@ -2049,10 +2032,7 @@ namespace VRVlog.LilToonExporter
         void AddClips(AnimationClip[] clips)
         {
             var additions = clips.Where(clip => clip != null && !clipInputs.Any(input => input.Clip == clip)).Distinct().Select(Checked).ToArray();
-            // Only the files that are added count toward the limit.
             var usable = additions.Where(input => input.Error == null).ToArray();
-            if (clipInputs.Count + usable.Length > ExperimentalExpressionCaptureSession.MaximumExpressions)
-                throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。選択を減らして追加してください。"));
             foreach (var input in usable) Keep(input);
             if (usable.Length > 0) status = string.Format(ExporterLocalization.T("{0}件の表情を追加しました"), usable.Length);
             ApplyAutomaticPresets();
@@ -2066,8 +2046,6 @@ namespace VRVlog.LilToonExporter
             if (clip == null || clipInputs.Any(input => input.Clip == clip)) return;
             var input = Checked(clip);
             if (input.Error != null) throw new InvalidOperationException(RejectedMessage(new[] { (input.Name, input.Error) }));
-            if (clipInputs.Count >= ExperimentalExpressionCaptureSession.MaximumExpressions)
-                throw new InvalidOperationException(ExporterLocalization.T("表情は64件までです。"));
             Keep(input);
             status = ExporterLocalization.T("表情を追加しました");
             ApplyAutomaticPresets();
@@ -2231,7 +2209,7 @@ namespace VRVlog.LilToonExporter
         void Export()
         {
             RequireAuthor();
-            RequireWithinLimit();
+            RebuildBoard();
             var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", AvatarName() + "-expressions", "vrm");
             if (string.IsNullOrEmpty(path)) return;
             SaveVrm(path, interactive: true);
@@ -2242,13 +2220,6 @@ namespace VRVlog.LilToonExporter
         void RequireAuthor()
         {
             if (!ExportAuthor.IsValid(author)) throw new InvalidOperationException(ExporterLocalization.T(ExportAuthor.Required));
-        }
-
-        void RequireWithinLimit()
-        {
-            RebuildBoard();
-            if (board != null && board.ExceedsLimit)
-                throw new InvalidOperationException(string.Format(ExporterLocalization.T(OverLimitFormat), board.OverLimitBy));
         }
 
         internal ExportRecoverySession SaveVrm(string path, bool interactive = false)
@@ -2293,7 +2264,7 @@ namespace VRVlog.LilToonExporter
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
-            RequireWithinLimit();
+            RebuildBoard();
             RecordBoardClips();
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
@@ -2301,7 +2272,7 @@ namespace VRVlog.LilToonExporter
             var expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
-            var expressionCount = expressions.Length;
+            var expressionCount = ExperimentalExpressionCaptureSession.MergeIdentical(expressions).Length;
             // The record route replaces the menu faces even when nothing is left to record.
             var replaceCustomFaces = board.UsesRecordRoute;
             // The ordinary route evaluates the menu again and can lose faces the
@@ -2358,11 +2329,11 @@ namespace VRVlog.LilToonExporter
                 {
                     var category = ExporterLocalization.T("その他の表情");
                     var resolved = ResolveMenuShort(exported, menuFaces, listedFaces,
-                        this == null || !ReferenceEquals(session, target) ? null : (Func<(int, bool)>)(() => {
+                        this == null || !ReferenceEquals(session, target) ? null : (Func<int>)(() => {
                             RebuildBoard();
                             // Set here: a later attempt compares with this count even when this one throws.
                             listedFaces = board.OtherCount;
-                            return (listedFaces, board.CanRecordList);
+                            return listedFaces;
                         }),
                         () => {
                             // Set first: a canceled attempt still leaves the list recorded.
@@ -2391,7 +2362,8 @@ namespace VRVlog.LilToonExporter
                 // Some menu faces but fewer than the list: recording the list would
                 // replace the animated menu faces with still ones, so the menu
                 // result is kept and the result says some list faces are not in it.
-                else if (menuFaces < listedFaces)
+                // A listed clip written as an identical face of another is in it.
+                else if (menuFaces + (report?.MergedMenuClips ?? 0) < listedFaces)
                 {
                     var kept = string.Format(ExporterLocalization.T(MenuShortKeptMenuFormat), menuFaces, listedFaces);
                     warnings.Add(kept);
@@ -2415,7 +2387,7 @@ namespace VRVlog.LilToonExporter
                     RecordClips(clips);
                     status = shown;
                     expressions = target.Expressions.Select(ExperimentalExpressionCaptureSession.ClonePose).ToArray();
-                    expressionCount = expressions.Length;
+                    expressionCount = ExperimentalExpressionCaptureSession.MergeIdentical(expressions).Length;
                     replaceCustomFaces = replace;
                     // The earlier result is replaced, its warnings with it.
                     warnings.Clear();
@@ -2455,7 +2427,7 @@ namespace VRVlog.LilToonExporter
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
-            RequireWithinLimit();
+            RebuildBoard();
             var entry = LilToonExporterWindow.DetailedTransferMethod();
             if (entry == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
             try { entry.Invoke(null, new object[] { source }); }
