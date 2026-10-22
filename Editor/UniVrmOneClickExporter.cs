@@ -113,7 +113,6 @@ namespace VRVlog.LilToonExporter
             // A strict attempt starts from the caller's warnings, which it used
             // to add to directly, so the checks for repeated warnings see them.
             List<string> attemptWarnings = null;
-            var callerWarnings = guard.ContinueOnFailure || warnings == null ? 0 : warnings.Count;
             byte[] Attempt(bool bakeMatcaps) => guard.Retry(() =>
             {
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
@@ -130,7 +129,7 @@ namespace VRVlog.LilToonExporter
                     report.Fallbacks.Clear();
                     bytes = Attempt(false);
                 }
-                CopyWarnings(attemptWarnings, callerWarnings, warnings);
+                CopyWarnings(attemptWarnings, !guard.ContinueOnFailure, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
                 report.Stage = "完了";
                 report.Phase = ExportPhase.ResultList;
@@ -140,7 +139,7 @@ namespace VRVlog.LilToonExporter
             }
             catch (Exception error)
             {
-                CopyWarnings(attemptWarnings, callerWarnings, warnings);
+                CopyWarnings(attemptWarnings, !guard.ContinueOnFailure, warnings);
                 var cause = ExportStageGuard.Unwrap(error);
                 // A diagnostic failure must never replace the original export error.
                 if (report.Diagnostics.Count == 0)
@@ -349,10 +348,13 @@ namespace VRVlog.LilToonExporter
             else warnings?.Add(warning);
         }
 
-        static void CopyWarnings(List<string> attempt, int skip, ICollection<string> warnings)
+        // A strict attempt's list holds the caller's warnings too, and may have
+        // put a warning before them, so it replaces the caller's list.
+        static void CopyWarnings(List<string> attempt, bool replace, ICollection<string> warnings)
         {
             if (attempt == null || warnings == null) return;
-            foreach (var warning in attempt.Skip(skip)) warnings.Add(warning);
+            if (replace) warnings.Clear();
+            foreach (var warning in attempt) warnings.Add(warning);
         }
 
         static void RecordOmissions(ExportStageGuard guard, ExportRecoveryReport report, ICollection<string> warnings,

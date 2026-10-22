@@ -43,6 +43,8 @@ namespace VRVlog.LilToonExporter
         internal static Texture2D Weight(Material material, List<Texture2D> owned, Bakes bakes = null)
         {
             if (owned == null || bakes != null && !bakes.Enabled || !Enabled(material) || Mode(material) == Multiply) return null;
+            // Without a MatCap image MToon's MatCap adds nothing to weigh.
+            if (Texture(material, "_MatCapTex") == null) return null;
             var mask = Mask(material);
             var mainStrength = Mathf.Clamp01(Float(material, "_MatCapMainStrength", 0f));
             var screen = Mode(material) == Screen;
@@ -62,6 +64,8 @@ namespace VRVlog.LilToonExporter
             var color = material.HasProperty("_MatCapColor") ? material.GetColor("_MatCapColor") : Color.white;
             var strength = Mathf.Clamp01(Float(material, "_MatCapBlend", 1f)) * Mathf.Clamp01(color.a);
             if (!(strength > 0f)) return null;
+            // The mean is read back as floats; without them keep the main image.
+            if (!SystemInfo.SupportsRenderTextureFormat(RenderTextureFormat.ARGBFloat)) return null;
             var mean = Mean(material);
             // Shaders read colors as they are in a gamma project.
             var shaded = QualitySettings.activeColorSpace == ColorSpace.Linear ? color.linear : color;

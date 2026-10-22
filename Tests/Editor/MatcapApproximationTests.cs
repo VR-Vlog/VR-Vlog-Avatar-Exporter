@@ -28,6 +28,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
                 Assert.AreSame(main, fallback.GetTexture("_MainTex"), "An added MatCap does not change the main image.");
                 Assert.AreSame(mask, material.GetTexture("_MatCapBlendMask"));
+                // Without a MatCap image there is nothing to weigh.
+                material.SetTexture("_MatCapTex", null);
+                Assert.IsNull(UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures).GetTexture("_RimTex"));
+                Assert.That(textures, Has.Count.EqualTo(1));
             }
             finally { Destroy(material, created, textures, mask, main); }
         }
@@ -203,9 +207,10 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // 55 materials need 111 images without the bakes and 166 with them.
-        [TestCase(55, false)]
-        [TestCase(4, true)]
-        public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked)
+        [TestCase(55, false, false)]
+        [TestCase(55, false, true)]
+        [TestCase(4, true, false)]
+        public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked, bool lenient)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var quad = new Mesh { name = "MatCap quad" };
@@ -240,8 +245,13 @@ namespace VRVlog.LilToonExporter.Tests
                     part.AddComponent<MeshFilter>().sharedMesh = quad;
                     part.AddComponent<MeshRenderer>().sharedMaterial = material;
                 }
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                // The export made again keeps one copy of each warning.
+                var warnings = new List<string> { "Earlier" };
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                    recoveryReport: new ExportRecoveryReport { ContinueOnStageFailure = lenient });
+                Assert.That(warnings, Is.Unique);
+                Assert.That(warnings, Does.Contain("Earlier"));
                 var glb = GlbDocument.Read(bytes);
                 var extensions = glb.Json.TryGetValue("extensions", out var raw) ? raw as Dictionary<string, object> : null;
                 Assert.That(extensions != null && extensions.ContainsKey(LilToonMobileProfile.ExtensionName), Is.True, "The bakes must not cost the lilToon extension.");
@@ -267,6 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
             material.SetFloat("_MatCapBlendMode", mode);
             material.SetColor("_MatCapColor", Color.white);
             material.SetFloat("_MatCapBlend", 1);
+            material.SetTexture("_MatCapTex", Texture2D.whiteTexture);
             return material;
         }
 
