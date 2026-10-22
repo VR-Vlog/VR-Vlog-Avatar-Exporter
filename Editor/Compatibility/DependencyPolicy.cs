@@ -16,10 +16,10 @@ namespace VRVlog.LilToonExporter.Compatibility
         public static string UniVrmError(string vrm, string gltf)
         {
             if (!SupportsUniVrm(vrm) || !SupportsUniVrm(gltf))
-                return "UniVRM / UniGLTF の対応版: " + UniVrmRange +
+                return "UniVRM / UniGLTF の対応バージョン: " + UniVrmRange +
                     "。現在: " + Display(vrm) + " / " + Display(gltf) + "。";
             if (!string.Equals(vrm, gltf, StringComparison.Ordinal))
-                return "UniVRM と UniGLTF のバージョンが異なります（" + vrm + " / " + gltf + "）。同じ版を選んでください。";
+                return "UniVRM と UniGLTF のバージョンが異なります（" + vrm + " / " + gltf + "）。同じバージョンを選んでください。";
             return null;
         }
 
@@ -58,7 +58,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         public static string ModularAvatarAppearanceError(string version, Func<string, string> translate)
         {
             if (SupportsModularAvatarAppearance(version) || ModularAvatarVersionUnknown(version)) return null;
-            const string format = "Modular Avatar {0}では、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定できません。対応範囲は{1}以上{2}未満です。VCC／ALCOMでModular Avatarを1.18.xに変更してください。アバターは変更していません。これらのMAコンポーネントを使っていないアバターは、どのMAの版でも書き出せます。";
+            const string format = "Modular Avatar {0}では、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定できません。対応範囲は{1}以上{2}未満です。VCC／ALCOMでModular Avatarを1.18.xに変更してください。アバターは変更していません。これらのMAコンポーネントを使っていないアバターは、どのMAのバージョンでも書き出せます。";
             return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum, ModularAvatarBelow);
         }
 
@@ -69,65 +69,44 @@ namespace VRVlog.LilToonExporter.Compatibility
         // Shown when the version could not be read and MA's API then failed.
         public static string ModularAvatarUnknownVersionError(string version, Func<string, string> translate)
         {
-            const string format = "Modular Avatarの版を読めなかったため（{0}）、版を確かめずにShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定しようとしましたが、固定できませんでした。対応範囲は{1}以上{2}未満で、VCC／ALCOMで入れた1.18.xのModular Avatarなら固定できます。アバターは変更していません。";
+            const string format = "Modular Avatarのバージョンを読めなかったため（{0}）、バージョンを確かめずにShape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を書き出し用に固定しようとしましたが、固定できませんでした。対応範囲は{1}以上{2}未満で、VCC／ALCOMで入れた1.18.xのModular Avatarなら固定できます。アバターは変更していません。";
             return string.Format(translate(format), string.IsNullOrEmpty(version) ? "?" : version, ModularAvatarMinimum, ModularAvatarBelow);
         }
 
-        public enum LilToonSupport { Supported, Missing, Unreadable, Older, Newer }
+        public enum LilToonSupport { Catalogue, Missing, Unreadable, Older, Newer }
 
-        // Versions above LilToonMaximum are unverified. Setting this to true
-        // relies on LilToonStructureCheck, which every export entry runs after
-        // this version check: it stops when the shaders the avatar uses differ
-        // from the 2.3.4 catalogue in names, types, dimensions or passes.
-        // Behaviour changes with an identical structure are not detected.
-        public static readonly bool AcceptsNewerLilToon = false;
-
-        static readonly int[] Minimum = ParseRelease(LilToonMinimum) ?? throw new InvalidOperationException("Invalid LilToonMinimum.");
-        static readonly int[] Maximum = ParseRelease(LilToonMaximum) ?? throw new InvalidOperationException("Invalid LilToonMaximum.");
+        static readonly int[] Catalogue = ParseRelease(LilToonVersion) ?? throw new InvalidOperationException("Invalid LilToonVersion.");
 
         // LilToonVersion is the catalogue every export conforms to (and the
-        // value of sourceLilToonVersion); LilToonMinimum..LilToonMaximum is the
-        // installed range whose own migration reaches that catalogue.
+        // value of sourceLilToonVersion). Any installed lilToon exports: only a
+        // missing one stops. Another version is compared with that catalogue
+        // by LilToonStructureCheck, which lists what the export leaves out.
         public static LilToonSupport ClassifyLilToon(string version)
         {
             if (string.IsNullOrEmpty(version)) return LilToonSupport.Missing;
             var parsed = ParseRelease(version);
             if (parsed == null) return LilToonSupport.Unreadable;
-            if (CompareRelease(parsed, Minimum) < 0) return LilToonSupport.Older;
-            if (CompareRelease(parsed, Maximum) > 0) return LilToonSupport.Newer;
-            return LilToonSupport.Supported;
+            var order = CompareRelease(parsed, Catalogue);
+            return order < 0 ? LilToonSupport.Older : order > 0 ? LilToonSupport.Newer : LilToonSupport.Catalogue;
         }
 
-        public static bool AcceptsLilToon(string version)
-        {
-            var support = ClassifyLilToon(version);
-            return support == LilToonSupport.Supported || (support == LilToonSupport.Newer && AcceptsNewerLilToon);
-        }
+        public static bool AcceptsLilToon(string version) => ClassifyLilToon(version) != LilToonSupport.Missing;
 
         public static string LilToonError(string version) => LilToonError(version, text => text);
 
-        // translate receives the Japanese format and returns the localized
-        // format; {0} is the installed version and {1}..{2} the supported range.
-        public static string LilToonError(string version, Func<string, string> translate)
+        // translate receives the Japanese text and returns the localized one.
+        public static string LilToonError(string version, Func<string, string> translate) =>
+            AcceptsLilToon(version) ? null : translate("lilToonが見つかりません（VCC／ALCOMでlilToonを追加）");
+
+        public static string LilToonWarning(string version) => LilToonWarning(version, text => text);
+
+        // Shown in the export result when the installed lilToon is not the
+        // catalogue version. {0} is the installed version, {1} the catalogue.
+        public static string LilToonWarning(string version, Func<string, string> translate)
         {
-            if (AcceptsLilToon(version)) return null;
-            string format;
-            switch (ClassifyLilToon(version))
-            {
-                case LilToonSupport.Missing:
-                    format = "lilToonが見つかりません。VCC／ALCOMでlilToon {1}〜{2}を追加してください。";
-                    break;
-                case LilToonSupport.Older:
-                    format = "lilToon {0}は対応範囲（{1}〜{2}）より古い版です。VCC／ALCOMでlilToonを{1}〜{2}の版へ更新してください。更新するとlilToonの移行処理でマテリアルが移行され、そのまま書き出せます。";
-                    break;
-                case LilToonSupport.Newer:
-                    format = "lilToon {0}はこのExporterで確かめた範囲（{1}〜{2}）より新しい版です。VCC／ALCOMでlilToonを{2}に戻すか、この版に対応したExporterの公開を待ってください。";
-                    break;
-                default:
-                    format = "lilToon {0}はプレリリース版か、版の番号を読み取れません。VCC／ALCOMでlilToon {1}〜{2}の正式版を選んでください。";
-                    break;
-            }
-            return string.Format(translate(format), version, LilToonMinimum, LilToonMaximum);
+            var support = ClassifyLilToon(version);
+            if (support == LilToonSupport.Catalogue || support == LilToonSupport.Missing) return null;
+            return string.Format(translate("アプリではlilToon {1}として描画します（導入済みのバージョンは{0}）"), version, LilToonVersion);
         }
 
         // Numeric X.Y.Z only. Pre-release and build suffixes are not releases.
@@ -161,6 +140,6 @@ namespace VRVlog.LilToonExporter.Compatibility
             if (error != null) throw new InvalidOperationException(error + Recovery);
         }
 
-        public const string Recovery = " VCC／ALCOMで対応版を確認してください。別のツールと競合する場合は、更新前のプロジェクトのコピーで書き出してください。";
+        public const string Recovery = " VCC／ALCOMで対応バージョンを確認してください。別のツールと競合する場合は、更新前のプロジェクトのコピーで書き出してください。";
     }
 }

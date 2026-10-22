@@ -54,6 +54,12 @@ structure check) and `UniVrmOneClickExporter.Export`. Options the window can
 set (gimmicks, blink, poses, recovery, license) keep their defaults. It reads
 the GLB JSON chunk of the result.
 
+Since 2026-10-22 the method is `RequireLilToon(GameObject, ICollection<string>)`
+and it stops only without lilToon or with a changed baker shader
+([decision](../../../Documentation~/decisions/2026-10-22-liltoon-no-version-gate.md)).
+`ZipProbe.cs.txt` is kept as it ran; running it again needs that name and a
+warnings list.
+
 ## Results
 
 | lilToon | Unity | UniVRM / UniGLTF | Menu | Ready | Export | `asset.extras.VRVLOG_lilToonInstalledVersion` | `sourceLilToonVersion` | Editor run (s) |

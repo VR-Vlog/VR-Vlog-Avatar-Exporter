@@ -1,5 +1,7 @@
 # lilToon の版を 2.0.0〜2.3.4 の範囲で判定する
 
+> 2026-10-22の[lilToonのバージョンで書き出しを止めない](2026-10-22-liltoon-no-version-gate.md)で一部を置き換えた（範囲外のバージョンでも止めない）。
+
 - 日付: 2026-10-14
 - 対象: `Compatibility/dependencies.json`・`Tools/generate-compatibility.py`・`Editor/Compatibility/DependencyPolicy.cs`・`Editor/Compatibility/DependencyDiagnostics.cs`・`Editor/LilToonExporterWindow.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/LilToonFullSnapshot.cs`・`Editor/Locales`
 - Issue: #146（Epic #145）

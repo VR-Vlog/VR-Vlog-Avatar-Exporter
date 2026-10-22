@@ -8,10 +8,11 @@ namespace VRVlog.LilToonExporter
 {
     // Compares the installed lilToon shaders with the 2.3.4 catalogue before
     // export: property names, types, runtime texture dimensions, named passes
-    // and their LightMode. Values are not compared. This file has no Unity
-    // types so host tests run the comparison; reading shaders is in
-    // LilToonStructureCheck.Unity.cs. DependencyPolicy.AcceptsNewerLilToon
-    // relies on this check.
+    // and their LightMode. Values are not compared. Differences of the shaders
+    // the avatar uses become warnings (LilToonFullSnapshot leaves them out or
+    // approximates the material); only lilToon's baker stops the export. This
+    // file has no Unity types so host tests run the comparison; reading
+    // shaders is in LilToonStructureCheck.Unity.cs.
     internal static partial class LilToonStructureCheck
     {
         // Exporter bakes main color layers with lilToon's own baker. The baker
@@ -107,18 +108,23 @@ namespace VRVlog.LilToonExporter
             return differences;
         }
 
+        // The baker blits with the properties LilToonMainTextureBaker sets, so
+        // a missing baker or a missing or retyped baker property stops the
+        // export. Extra properties of the baker are harmless.
+        internal static bool Stops(Difference difference) =>
+            difference.Shader == BakerShader && difference.Kind != Kind.UnknownProperty;
+
         // translate receives a Japanese format and returns the localized one.
         internal static string Message(IReadOnlyList<Difference> differences, string installedVersion, Func<string, string> translate)
         {
             var version = LilToon234Catalogue.Version;
-            var text = new StringBuilder(string.Format(translate("導入済みのlilToon {0}のシェーダー構成が{1}と一致しません"), installedVersion, version));
+            var text = new StringBuilder(string.Format(translate("lilToon {0}のベイク用シェーダーが{1}と違うため書き出せません"), installedVersion, version));
             foreach (var difference in differences.Take(ShownDifferences))
                 text.Append('\n').Append(string.Format(translate(Template(difference.Kind)),
                     difference.Shader, difference.Name, difference.Actual, difference.Expected, version));
             if (differences.Count > ShownDifferences)
                 text.Append('\n').Append(string.Format(translate("ほか{0}件"), differences.Count - ShownDifferences));
-            foreach (var remedy in Remedies(differences))
-                text.Append(translate("\n対処: ")).Append(string.Format(translate(remedy), version));
+            text.Append('\n').Append(string.Format(translate("VCC／ALCOMでlilToonを入れ直すか{0}に切り替える"), version));
             return text.ToString();
         }
 
@@ -137,17 +143,47 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // One line per shader and kind for the export result, saying what the
+        // export does about it, then the settings that make Unity match.
+        internal static IEnumerable<string> Warnings(IReadOnlyList<Difference> differences, Func<string, string> translate)
+        {
+            var version = LilToon234Catalogue.Version;
+            foreach (var group in differences.GroupBy(d => (d.Shader, d.Kind)))
+            {
+                var items = string.Join(", ", group.Select(d => string.IsNullOrEmpty(d.Actual) ? d.Name : d.Name + " " + d.Actual + "→" + d.Expected));
+                yield return string.Format(translate(WarningTemplate(group.Key.Kind)), group.Key.Shader, version, items);
+            }
+            foreach (var remedy in Remedies(differences))
+                yield return string.Format(translate(remedy), version);
+        }
+
+        static string WarningTemplate(Kind kind)
+        {
+            switch (kind)
+            {
+                case Kind.UnknownProperty: return "{0}: lilToon {1}にないプロパティは書き出しません（{2}）";
+                case Kind.MissingProperty: return "{0}: lilToon {1}のプロパティが足りないマテリアルはMToonで近似します（{2}）";
+                case Kind.PropertyType: return "{0}: 型がlilToon {1}と違うプロパティがあるマテリアルはMToonで近似します（{2}）";
+                case Kind.TextureDimension: return "{0}: 画像の種類がlilToon {1}と違うプロパティがあるマテリアルはMToonで近似します（{2}）";
+                case Kind.MissingPass: return "{0}: 足りないパスはlilToon {1}のパスとして書き出します（{2}）";
+                case Kind.UnknownPass: return "{0}: lilToon {1}にないパスは書き出しません（{2}）";
+                case Kind.PassLightMode: return "{0}: LightModeが違うパスはlilToon {1}のLightModeで書き出します（{2}）";
+                default: return "{0}: シェーダーを読み込めません";
+            }
+        }
+
         // lilToon's Shader Setting removes the ForwardAdd passes when "Use
         // ForwardAdd" is off and renames SHADOW_CASTER_OUTLINE to SHADOW_CASTER
-        // when "Fix for Deffered" is on. Anything else needs a clean install.
+        // when "Fix for Deffered" is on. The app draws the 2.3.4 passes, so
+        // these settings, or the 2.3.4 package itself, make Unity look the same.
         internal static IEnumerable<string> Remedies(IReadOnlyList<Difference> differences)
         {
             bool ForwardAdd(Difference d) => d.Kind == Kind.MissingPass && d.Name.StartsWith("FORWARD_ADD", StringComparison.Ordinal);
             bool Deferred(Difference d) => d.Kind == Kind.MissingPass && d.Name == "SHADOW_CASTER_OUTLINE" ||
                 d.Kind == Kind.UnknownPass && d.Name == "SHADOW_CASTER";
-            if (differences.Any(ForwardAdd)) yield return "lilToonのシェーダー設定で「ForwardAddパスを使用」をオンにする";
-            if (differences.Any(Deferred)) yield return "lilToonのシェーダー設定で「Fix for Deffered」をオフにする";
-            if (differences.Any(d => !ForwardAdd(d) && !Deferred(d))) yield return "VCC／ALCOMでlilToonを入れ直すか{0}に切り替える";
+            if (differences.Any(ForwardAdd)) yield return "lilToonのシェーダー設定で「ForwardAddパスを使用」をオンにするとUnityでもアプリと同じパスで描画します";
+            if (differences.Any(Deferred)) yield return "lilToonのシェーダー設定で「Fix for Deffered」をオフにするとUnityでもアプリと同じパスで描画します";
+            if (differences.Any(d => !ForwardAdd(d) && !Deferred(d))) yield return "lilToon {0}に切り替えるとUnityでもアプリと同じ見た目になります";
         }
     }
 }
