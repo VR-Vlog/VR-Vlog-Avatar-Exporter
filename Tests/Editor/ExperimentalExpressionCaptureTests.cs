@@ -2601,10 +2601,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Drain();
                 type.GetField("excludedObjectEdits", flags).SetValue(window, null);
 
-                // The transfer has no information page: its third step is the next window.
+                // The transfer's third page shows the transfer panel in place of the information page.
                 type.GetField("transferMode", flags).SetValue(window, true);
                 window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
-                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
             }
             finally
             {

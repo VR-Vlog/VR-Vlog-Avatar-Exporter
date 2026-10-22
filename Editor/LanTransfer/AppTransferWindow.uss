@@ -259,6 +259,17 @@
 
 /* Transfer */
 
+/* Only on the expression board's page, which cancels the transfer when it is left. The line keeps
+   its height in every state there, so the QR below does not move when it appears. */
+.leave-note {
+    height: 18px;
+    flex-shrink: 0;
+    margin-bottom: 8px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
 .slot-row {
     flex-shrink: 0;
 }

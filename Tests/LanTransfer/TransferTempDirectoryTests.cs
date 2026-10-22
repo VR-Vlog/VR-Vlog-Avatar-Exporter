@@ -126,11 +126,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             TransferTempDirectory.TestRoots = outcome == "no folder" ? (Func<System.Collections.Generic.IEnumerable<string>>)(() => new[] { Unusable() }) : () => new[] { good };
             var avatar = new UnityEngine.GameObject("vrvlog-app-transfer-temp", typeof(UnityEngine.Animator));
             // Not shown: the window logic runs without an OS window, which batch runs may not create.
-            var window = UnityEngine.ScriptableObject.CreateInstance<AppTransferWindow>();
+            var window = new AppTransferPanel();
             string written = null;
             try
             {
-                var entryType = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic);
+                var entryType = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic);
                 var entry = Activator.CreateInstance(entryType, true);
                 Func<UnityEngine.GameObject, string, string, Action, string> export = (target, name, destination, saved) =>
                 {
@@ -142,14 +142,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 entryType.GetField("Export", field | BindingFlags.Public).SetValue(entry, export);
                 entryType.GetField("SelectAvatar", field | BindingFlags.Public).SetValue(entry, (Action<UnityEngine.GameObject>)(_ => { }));
                 entryType.GetField("HasAuthor", field | BindingFlags.Public).SetValue(entry, (Func<bool>)(() => true));
-                typeof(AppTransferWindow).GetField("exporter", field).SetValue(window, entry);
-                typeof(AppTransferWindow).GetField("exporterResolved", field).SetValue(window, true);
-                typeof(AppTransferWindow).GetField("avatar", field).SetValue(window, avatar);
-                typeof(AppTransferWindow).GetField("avatarName", field).SetValue(window, "SampleAvatar");
+                typeof(AppTransferPanel).GetField("exporter", field).SetValue(window, entry);
+                typeof(AppTransferPanel).GetField("exporterResolved", field).SetValue(window, true);
+                typeof(AppTransferPanel).GetField("avatar", field).SetValue(window, avatar);
+                typeof(AppTransferPanel).GetField("avatarName", field).SetValue(window, "SampleAvatar");
                 var flow = new AppTransferFlow();
-                typeof(AppTransferWindow).GetField("flow", field).SetValue(window, flow);
+                typeof(AppTransferPanel).GetField("flow", field).SetValue(window, flow);
                 flow.BeginExport();
-                Assert.DoesNotThrow(() => typeof(AppTransferWindow).GetMethod("RunExport", field).Invoke(window, null));
+                Assert.DoesNotThrow(() => typeof(AppTransferPanel).GetMethod("RunExport", field).Invoke(window, null));
                 if (outcome == "no folder") Assert.That(written, Is.Null, "Nothing is exported without a folder for it.");
                 else
                 {
@@ -161,8 +161,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
             finally
             {
-                typeof(AppTransferWindow).GetField("flow", field).SetValue(window, null);
-                UnityEngine.Object.DestroyImmediate(window);
+                typeof(AppTransferPanel).GetField("flow", field).SetValue(window, null);
                 UnityEngine.Object.DestroyImmediate(avatar);
             }
         }
