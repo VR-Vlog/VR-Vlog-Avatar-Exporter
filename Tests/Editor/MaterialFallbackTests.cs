@@ -51,6 +51,26 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void OutlineKeepsAuthoredColorInsteadOfMultiplyingByAlbedo()
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon to read its default outline lighting.");
+            var source = new Material(shader);
+            var created = new List<Material>();
+            try
+            {
+                Assert.AreEqual(1f, source.GetFloat("_OutlineEnableLighting"));
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, new List<string>());
+                Assert.AreEqual(0f, fallback.GetFloat("_OutlineLightingMix"));
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
         public void OutlineMaskConvertsRedToGreenAndRetainsSource()
         {
             var source = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));

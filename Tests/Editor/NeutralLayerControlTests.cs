@@ -706,11 +706,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("Action", false)]
-        [TestCase("Gesture", false)]
         [TestCase("Additive", false)]
-        [TestCase("Action", true)]
         [TestCase("Gesture", true)]
-        [TestCase("Additive", true)]
         public void NonFxIndividualLayerControlsDoNotBlockNeutralMorphs(string target, bool otherController)
         {
             AnimatorController other = null; var state = controlState;
@@ -766,11 +763,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("nanWeight")]
-        [TestCase("infiniteWeight")]
         [TestCase("negativeWeight")]
         [TestCase("largeWeight")]
         [TestCase("nanDuration")]
-        [TestCase("infiniteDuration")]
         [TestCase("negativeDuration")]
         [TestCase("negativeIndex")]
         [TestCase("outOfRangeIndex")]

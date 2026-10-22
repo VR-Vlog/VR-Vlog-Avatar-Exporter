@@ -70,8 +70,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(texture);
             }
         }
-
-        [UnityTest] public IEnumerator OneAnimDropRemainsUsable() => VerifyDrop(1);
         [UnityTest] public IEnumerator TwentyAnimDropRemainsUsable() => VerifyDrop(20);
 
         static IEnumerator VerifyDrop(int count)

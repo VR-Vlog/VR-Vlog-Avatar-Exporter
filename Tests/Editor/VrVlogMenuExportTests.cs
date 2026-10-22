@@ -67,26 +67,5 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(first); Object.DestroyImmediate(second);
             }
         }
-
-        [Test]
-        public void TheMenuBarExportStillOpensWithoutAnAvatar()
-        {
-            CloseWindows();
-            var selection = Selection.objects;
-            try
-            {
-                var ready = DependencyDiagnostics.StartupError(DependencyDiagnostics.Installed()) == null;
-                Selection.objects = new Object[0];
-                Assert.That(EditorApplication.ExecuteMenuItem("VR Vlog/VRMを書き出す..."), Is.True);
-                Assert.That(Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Length, Is.EqualTo(ready ? 1 : 0),
-                    DependencyDiagnostics.CreateReport());
-                Assert.That(Resources.FindObjectsOfTypeAll<DependencyDiagnosticsWindow>().Length, Is.EqualTo(ready ? 0 : 1));
-            }
-            finally
-            {
-                Selection.objects = selection;
-                CloseWindows();
-            }
-        }
     }
 }

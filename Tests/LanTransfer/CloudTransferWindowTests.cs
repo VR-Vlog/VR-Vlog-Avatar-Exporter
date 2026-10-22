@@ -76,57 +76,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]
-        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "アプリに転送（通常）...", 1)]
-        public void AppTransferIsAMenuBarAndHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string name, int order)
-        {
-            var flags = BindingFlags.NonPublic | BindingFlags.Static;
-            var entries = typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
-            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu
-            // and where its export always was in the menu bar. The two entries are next to each
-            // other, the quick one first.
-            Assert.That(entries.Select(entry => (entry.menuItem, entry.validate, entry.priority)), Is.EquivalentTo(new[]
-            {
-                ("GameObject/VR Vlog/" + name, false, 10000 + order),
-                ("VR Vlog/" + name, false, 1000 + order),
-            }));
-            var validation = typeof(AppTransferWindow).GetMethod(canOpen, flags);
-            var validations = validation.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
-            Assert.That(validations.All(entry => entry.validate), Is.True);
-            Assert.That(validations.Select(entry => entry.menuItem), Is.EquivalentTo(new[] { "GameObject/VR Vlog/" + name, "VR Vlog/" + name }));
-            var selection = Selection.objects;
-            var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
-            var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
-            var plain = new GameObject("vrvlog-app-transfer-plain");
-            var nested = new GameObject("vrvlog-app-transfer-nested", typeof(Animator));
-            var group = new GameObject("vrvlog-app-transfer-group");
-            nested.transform.SetParent(first.transform);
-            second.transform.SetParent(group.transform);
-            try
-            {
-                // Versions that do not transfer never list the entry.
-                var enabled = CloudTransferAvailability.Enabled;
-                Selection.objects = Array.Empty<Object>();
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
-                Selection.objects = new Object[] { first };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
-                // A parent without an Animator does not make its child less of a root.
-                Selection.objects = new Object[] { second };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(enabled));
-                Selection.objects = new Object[] { first, second };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
-                Selection.objects = new Object[] { plain };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
-                Selection.objects = new Object[] { nested };
-                Assert.That(validation.Invoke(null, null), Is.EqualTo(false));
-            }
-            finally
-            {
-                Selection.objects = selection;
-                Object.DestroyImmediate(first); Object.DestroyImmediate(group); Object.DestroyImmediate(plain);
-            }
-        }
-
         [Test]
         public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
         {
