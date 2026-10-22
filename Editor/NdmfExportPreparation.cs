@@ -501,7 +501,7 @@ namespace VRVlog.LilToonExporter
                                 var animator = clone.GetComponent<Animator>();
                                 var placeholder = animator != null && animator.runtimeAnimatorController == null
                                     && clone.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>() != null
-                                    ? new UnityEditor.Animations.AnimatorController { hideFlags = HideFlags.HideAndDontSave } : null;
+                                    ? PlaceholderController() : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
                                 finally
@@ -509,6 +509,7 @@ namespace VRVlog.LilToonExporter
                                     if (placeholder != null)
                                     {
                                         if (animator != null && animator.runtimeAnimatorController == placeholder) animator.runtimeAnimatorController = null;
+                                        foreach (var layer in placeholder.layers) Object.DestroyImmediate(layer.stateMachine);
                                         Object.DestroyImmediate(placeholder);
                                     }
                                 }
@@ -555,6 +556,20 @@ namespace VRVlog.LilToonExporter
                 lease.Dispose();
                 throw;
             }
+        }
+
+        // The lent controller keeps one empty layer: Animator::Sample, which
+        // AnimationMode.SampleAnimationClip calls (as plugins that photograph menu
+        // icons do in Optimizing), crashes Unity on a controller with no layers.
+        private static UnityEditor.Animations.AnimatorController PlaceholderController()
+        {
+            var controller = new UnityEditor.Animations.AnimatorController { hideFlags = HideFlags.HideAndDontSave };
+            controller.AddLayer(new UnityEditor.Animations.AnimatorControllerLayer
+            {
+                name = "Base Layer", defaultWeight = 1,
+                stateMachine = new UnityEditor.Animations.AnimatorStateMachine { name = "Base Layer", hideFlags = HideFlags.HideAndDontSave },
+            });
+            return controller;
         }
 
         private static void RequireSuccessful(Bridge bridge, object context)
