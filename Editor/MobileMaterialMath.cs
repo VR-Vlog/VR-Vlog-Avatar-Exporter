@@ -29,6 +29,23 @@ namespace VRVlog.LilToonExporter
                 main.b + (shade.b - main.b) * weight, 1f).gamma;
         }
 
+        // Without a shadow color texture lilToon 2.3.4 shades with
+        // albedo * _ShadowColor, and _ShadowStrength fades the shadow toward
+        // the lit color: albedo * lerp(1, shade, strength). MToon multiplies
+        // its shade image (the main image here) by this factor, so the main
+        // color must be kept as a factor rather than blended toward the shade
+        // color. lilToon also never lets the shadow be brighter than the lit
+        // side, hence the upper limit of 1.
+        internal static Color MultipliedShadeColor(Color main, Color shade, float strength)
+        {
+            var weight = Mathf.Clamp01(strength);
+            main = main.linear;
+            shade = shade.linear;
+            return new Color(main.r * Mathf.Min(1f, 1f + (shade.r - 1f) * weight),
+                main.g * Mathf.Min(1f, 1f + (shade.g - 1f) * weight),
+                main.b * Mathf.Min(1f, 1f + (shade.b - 1f) * weight), 1f).gamma;
+        }
+
         // lilToon blends _Shadow2ndColor over the 1st shadow color by its alpha
         // where the light falls below _Shadow2ndBorder. MToon has one shade
         // band, so the 2nd color is weighted by the share of the 1st band it
