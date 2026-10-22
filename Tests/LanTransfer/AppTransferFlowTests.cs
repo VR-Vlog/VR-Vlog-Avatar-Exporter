@@ -245,10 +245,57 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(run.Flow.Remaining, Is.EqualTo(0L));
                 Assert.That(run.Flow.RemainingFraction, Is.EqualTo(0f));
                 if (expected == AppTransferView.Failed) Assert.That(run.Flow.FailureText(text => text).Length > 0, Is.True);
-                // Once the phone has the avatar the exported copy is deleted; otherwise it stays for a new QR.
-                Assert.That(File.Exists(run.Path), Is.EqualTo(expected != AppTransferView.Completed));
-                Assert.That(run.Flow.CanRegenerate, Is.EqualTo(expected != AppTransferView.Completed));
+                // The exported copy stays after every end, also once the phone has the avatar, so
+                // "VRMを保存" can still save the file that was sent. Stopping deletes it.
+                Assert.That(File.Exists(run.Path), Is.True);
+                Assert.That(run.Flow.SnapshotHash, Is.EqualTo(AppTransferFlow.FileHashOf(run.Path)));
+                run.Flow.Stop();
+                Assert.That(File.Exists(run.Path), Is.False);
+                Assert.That(run.Flow.SnapshotHash == null, Is.True);
             }
+        }
+
+        // "VRMを保存" on the QR screen writes the bytes that were sent and says which ones they are.
+        [Test]
+        public async Task SavingTheSentCopyWritesTheSameBytes()
+        {
+            using (var run = new FlowRun())
+            {
+                var folder = Path.Combine(Path.GetTempPath(), "vrvlog-copy-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(folder);
+                try
+                {
+                    var sentBytes = File.ReadAllBytes(run.Path);
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    var destination = Path.Combine(folder, "saved.vrm");
+                    // An older file there is replaced as a whole.
+                    File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
+                    string written;
+                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination);
+                    Assert.That(written, Is.EqualTo(run.Flow.SnapshotHash));
+                    Assert.That(AppTransferFlow.FileHashOf(destination), Is.EqualTo(written));
+                    Assert.That(File.ReadAllBytes(destination).SequenceEqual(sentBytes), Is.True);
+                    Assert.That(Directory.GetFiles(folder).Length, Is.EqualTo(1));
+                    // The QR on screen is still the one the copy came from.
+                    Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+                }
+                finally { Directory.Delete(folder, true); }
+            }
+        }
+
+        [Test]
+        public void NothingToSaveWhileExportingOrBeforeAnExport()
+        {
+            using (var flow = new AppTransferFlow())
+            {
+                Assert.That(flow.SnapshotHash == null, Is.True);
+                Assert.That(flow.OpenSnapshot() == null, Is.True);
+                flow.BeginExport();
+                Assert.That(flow.SnapshotHash == null, Is.True);
+                Assert.That(flow.OpenSnapshot() == null, Is.True);
+            }
+            Assert.That(AppTransferFlow.FileHashOf(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".vrm")) == null, Is.True);
         }
 
         [Test]

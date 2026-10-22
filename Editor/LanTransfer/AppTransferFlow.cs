@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 using ZXing;
 using ZXing.Common;
@@ -196,6 +197,40 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static string NewSnapshotPath() => TransferTempDirectory.NewFile("VRVlogCloudTransfers", Extension);
         internal static void Discard(string snapshotPath) => LanVrmTransferServer.TryDelete(snapshotPath);
 
+        // Writes what from reads to destination and returns the SHA-256 of the bytes written. The bytes go to
+        // a temporary file next to destination first, so a failed copy leaves whatever was there before.
+        internal static string CopyTo(Stream from, string destination)
+        {
+            var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            try
+            {
+                string hash;
+                using (var sha = SHA256.Create())
+                {
+                    using (var to = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    using (var hashing = new CryptoStream(to, sha, CryptoStreamMode.Write))
+                        from.CopyTo(hashing);
+                    hash = LanTransferProtocol.Hex(sha.Hash);
+                }
+                if (File.Exists(destination)) File.Replace(temporary, destination, null);
+                else File.Move(temporary, destination);
+                return hash;
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }
+
+        // The SHA-256 of a file, as CloudVrmTransferSource computes it, or null when it cannot be read.
+        internal static string FileHashOf(string path)
+        {
+            try
+            {
+                using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var sha = SHA256.Create()) return LanTransferProtocol.Hex(sha.ComputeHash(file));
+            }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
+                || exception is NotSupportedException) { return null; }
+        }
+
         internal AppTransferView View
         {
             get
@@ -227,6 +262,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // A new QR is a new session uploaded from the same exported snapshot. An ended
         // session may still be telling the service; that does not hold up the next one.
         internal bool CanRegenerate => source != null && !exporting && (session == null || session.Terminal || session.State == CloudTransferState.Ready);
+        // The exported copy this transfer sends, kept until the flow stops (a new QR from another export,
+        // another avatar, leaving the page or closing), so "VRMを保存" can save the very file sent, also
+        // after the phone has it. Null while exporting and when there is none.
+        internal string SnapshotHash => exporting ? null : source?.FileHash;
+        internal FileStream OpenSnapshot() => exporting || source == null ? null : source.OpenRead();
 
         // Seconds until the service deadline. The deadline starts when the
         // transfer is created, so the upload has already used part of it.
@@ -304,8 +344,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 nextPoll = time + 5;
                 polling = session.RefreshAsync();
             }
-            // The phone has the avatar: the exported copy is no longer needed.
-            if (session?.State == CloudTransferState.Completed) { source?.Dispose(); source = null; }
         }
 
         // Cancels a transfer in progress and deletes the exported snapshot.

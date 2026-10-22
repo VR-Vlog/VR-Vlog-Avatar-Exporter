@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter
         SavedExpressionVrm saved;
         // Materials whose shader was missing in the last save, the file or the transfer. Read by AppTransferExport.
         internal int LastMissingShaderCount { get; private set; }
+        // Failing stages the last save or transfer left out; "VRMを保存" stops at them instead.
+        internal int LastOmittedStageCount { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -2396,6 +2398,7 @@ namespace VRVlog.LilToonExporter
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
                 // A plain field: still set when the recovery window saves after this board closed.
                 LastMissingShaderCount = missingShaders;
+                LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
                 if (written != null)
                 {
                     // For a transfer, the details of this export go to the Console.
