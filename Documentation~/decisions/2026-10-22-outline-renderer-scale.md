@@ -1,0 +1,40 @@
+# lilToonの輪郭の太さにメッシュを描いていた大きさを掛けて書き出す
+
+- 日付: 2026-10-22
+- 対象: `Editor/OutlineRendererScale.cs`（新規）・`Editor/UniVrmOneClickExporter.cs`・`Editor/LilToonMaterialReader.cs`・`Tests/Editor/OutlineRendererScaleTests.cs`（新規）
+
+## 背景
+
+体のメッシュを拡大したボーン（38.7 倍）に付けたアバターで、元では見えている輪郭が、書き出した VRM ではほぼ見えなくなっていた。
+
+lilToon の輪郭は頂点をオブジェクト空間の法線方向に `_OutlineWidth`（cm）だけ押し出す。シーンでは、この押し出しがメッシュの大きさだけ大きくなる。
+
+- MeshRenderer は長さ 1 の法線を、拡縮を含むオブジェクトからワールドへの行列で描く。
+- SkinnedMeshRenderer は GPU スキニングで法線を正規化しない。法線の長さはスキン行列（`bone.localToWorldMatrix * bindpose`）の拡縮になる。
+
+検証用のシェーダーで描画時の法線の長さを測ると、SkinnedMeshRenderer では Renderer の lossyScale とほぼ同じだった（38.72・32.5・1.59）。上の 38.7 倍のアバターでは `_OutlineWidth` 0.08 の輪郭がシーンで約 3cm になる。
+
+VRM は大きさを頂点に焼き込み、ノードの拡縮を 1 にする。書き出したメッシュの法線は長さ 1 になるので、同じ `_OutlineWidth` では 0.8mm の輪郭になっていた。標準 MToon の互換表示（World モード、メートル）も同じく 0.8mm だった。
+
+lilToon の `_OutlineFixWidth`（カメラとの距離で太さを保つ設定）は原因ではない。太さに掛ける値が 1 を超えないので、輪郭を太くはしない。
+
+## 決定
+
+- 書き出しのコピーで、lilToon の輪郭を持つ材質の `_OutlineWidth` に、その材質を使う Renderer の大きさを掛ける。
+  - SkinnedMeshRenderer の大きさは、スキン行列の拡縮（3 軸の平均）をボーンウェイトで重み付けした平均。ウェイトが読めないときはボーンごとの値の中央値、ボーンが無いときは lossyScale。
+  - MeshRenderer は lossyScale の 3 軸の平均。
+  - 大きさが 1 から 0.1% 以内なら何もしない。
+- 材質は名前を変えずに複製し、すべてのスロットを複製に差し替える。表情と最適化の対応は材質を名前で探すので、1 つの名前に 1 つの材質を保つ。書き出しがすでに持っている複製は、その場で書き換える。
+- 置き換えは、lilToon 以外のシェーダーを lilToon に置き換えたあと、lilToon の拡張に材質を記録する前に行う。lilToon の拡張と標準 MToon の互換表示の両方が、掛けたあとの太さを読む。
+- 大きさの違う Renderer が同じ材質を使っているときは、最初の Renderer の大きさに合わせて警告を出す。
+
+## 制限
+
+- 大きさの違う Renderer で共有された材質は、1 つの太さしか持てないので、最初の Renderer 以外は元と太さが変わる（警告を出す）。名前を変えて分けると、名前で材質を探す表情と最適化の対応が崩れる。
+- アニメーションで差し替える材質（材質の切り替え）は、書き出し時に Renderer に付いていないので掛けない。
+- アプリは太い輪郭を上限 5mm へ近似する。38.7 倍のアバターの約 3cm の輪郭は 5mm で表示され、近似の警告が出る。
+- 輪郭以外でオブジェクト空間の長さを使う設定（ファーの長さなど）は扱っていない。
+
+## 検証
+
+- EditMode: `OutlineRendererScaleTests`（拡大した MeshRenderer の複製と名前・元の材質が変わらないこと・lilToon の拡張と MToon の互換表示が読む太さ、ボーンだけを拡大した SkinnedMeshRenderer、大きさ 1・すでに持っている複製・輪郭なしの材質、大きさの違う共有）。

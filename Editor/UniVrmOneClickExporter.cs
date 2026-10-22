@@ -628,7 +628,13 @@ namespace VRVlog.LilToonExporter
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
                 }));
-                var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
+                // Before anything reads _OutlineWidth: the VRM loses the renderer scale lilToon drew the outline with.
+                OutlineRendererScale.Apply(clone, temporaryMaterials, warnings, (copy, original) =>
+                {
+                    recoveryReport.Track(copy, original);
+                    recovery?.Track(copy, original);
+                });
+                var fullSnapshot =exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
