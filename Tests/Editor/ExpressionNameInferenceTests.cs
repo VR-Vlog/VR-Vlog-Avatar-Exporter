@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using NUnit.Framework;
 using UnityEditor;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 
 namespace VRVlog.LilToonExporter.Tests
 {

@@ -1,0 +1,19 @@
+{
+    "name": "VRVlog.LilToonExporter.Vendor.VrmLib",
+    "rootNamespace": "",
+    "references": [
+        "GUID:6b6594aa8012b4bd44ef4f6bbf552d2d",
+        "GUID:5e9a8e7b86b5bdf42435065c63a18bb1"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

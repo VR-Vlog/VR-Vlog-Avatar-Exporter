@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -710,7 +710,7 @@ namespace VRVlog.LilToonExporter
                     expression.name = VrmMenuExpressions.UniqueName(pose.Name,
                         name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
                     expression.IsBinary = true;
-                    expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
+                    expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
                     var bindings = new List<MorphTargetBinding>();
                     for (var i = 0; i < Channels.Count; i++)
                     {

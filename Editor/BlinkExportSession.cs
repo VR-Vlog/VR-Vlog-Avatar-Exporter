@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -83,7 +83,7 @@ namespace VRVlog.LilToonExporter
             }
             else
             {
-                var expressions = source.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
+                var expressions = ForeignUniVrm.AuthoredSettings(source)?.Expression;
                 var clips = new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight };
                 if (clips.Any(c => c != null))
                 {
@@ -577,7 +577,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal void Bind(ModelExporter converter, VrmLib.Model model, ExportingGltfData storage)
+        internal void Bind(ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, ExportingGltfData storage)
         {
             foreach (var renderer in Slots.SelectMany(s => s).Select(b => b.Renderer).Distinct())
             {

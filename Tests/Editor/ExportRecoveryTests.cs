@@ -4,11 +4,12 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -418,7 +419,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = Export(Options(action));
                 loaded = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(loaded, Is.Not.Null);
-                Assert.That(loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).All(m => m.shader.name == "VRM10/MToon10"), Is.True);
+                Assert.That(loaded.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).Where(m => m != null).All(m => m.shader.name == MToon10Meta.UnityShaderName), Is.True);
                 Assert.That(material.GetFloat("_UseAudioLink"), Is.EqualTo(1));
                 Assert.That(skins.All(s => s.sharedMaterial == material && s.sharedMesh == f.Mesh && s.GetBlendShapeWeight(0) == 35), Is.True);
             }

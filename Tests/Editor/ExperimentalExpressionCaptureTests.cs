@@ -4,12 +4,13 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.TestTools;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -941,10 +942,10 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("automaticBlink", flags).SetValue(window, false);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 var selected = new AvatarLicenseOptions {
-                    AvatarPermission = UniGLTF.Extensions.VRMC_vrm.AvatarPermissionType.everyone,
-                    CommercialUsage = UniGLTF.Extensions.VRMC_vrm.CommercialUsageType.corporation,
-                    CreditNotation = UniGLTF.Extensions.VRMC_vrm.CreditNotationType.unnecessary,
-                    Modification = UniGLTF.Extensions.VRMC_vrm.ModificationType.allowModificationRedistribution,
+                    AvatarPermission = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.AvatarPermissionType.everyone,
+                    CommercialUsage = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.CommercialUsageType.corporation,
+                    CreditNotation = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.CreditNotationType.unnecessary,
+                    Modification = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ModificationType.allowModificationRedistribution,
                     AllowExcessivelyViolentUsage = true, AllowExcessivelySexualUsage = true,
                     AllowPoliticalOrReligiousUsage = true, AllowAntisocialOrHateUsage = true, AllowRedistribution = true,
                     CopyrightInformation = "First avatar copyright", OtherLicenseUrl = "https://example.invalid/first-avatar", ThirdPartyLicenses = "First avatar licenses"
@@ -1601,7 +1602,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(type => type != null);
             var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(type => type != null);
-            Assert.That(proxyType, Is.Not.Null); Assert.That(markerType, Is.Not.Null);
+            Assert.That(proxyType, Is.Not.Null);
+            if (markerType == null) Assert.Ignore("NDMF before 1.8.0 has no NDMFAvatarRoot, and this fixture has no VRChat descriptor to identify the avatar.");
             if (source.GetComponent(markerType) == null) source.AddComponent(markerType);
             var proxy = source.transform.Find("Front").gameObject.AddComponent(proxyType);
             proxyType.GetProperty("target").SetValue(proxy, source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head));
@@ -2261,6 +2263,10 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Face").motion = clip;
                 var mergeType = Sdk("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
                 Assert.That(mergeType, Is.Not.Null, "This experiment uses the real Modular Avatar integration.");
+                // NDMF before 1.8.0 has no generic platform and builds the FX
+                // that Merge Animator merges into from a VRChat descriptor.
+                if (Sdk("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
+                    typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
                 {
@@ -2883,7 +2889,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Moves", 100, Enumerable.Repeat(new Vector3(0, .01f, 0), 3).ToArray(), null, null);
             mesh.AddBlendShapeFrame("Normals only", 100, new Vector3[3], Enumerable.Repeat(new Vector3(0, .1f, 0), 3).ToArray(), null);
             mesh.AddBlendShapeFrame("Still", 100, new Vector3[3], null, null);
-            var material = new Material(Shader.Find("VRM10/MToon10"));
+            var material = new Material(Shader.Find(MToon10Meta.UnityShaderName));
             var face = new GameObject("Face"); face.transform.SetParent(fixture.Source.transform, false);
             var skin = face.AddComponent<SkinnedMeshRenderer>(); skin.sharedMesh = mesh; skin.bones = new[] { head }; skin.rootBone = head; skin.sharedMaterials = new[] { material };
             var check = typeof(ExperimentalExpressionCaptureSession).GetMethod("HasGeometryChange", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);

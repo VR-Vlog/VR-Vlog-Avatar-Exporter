@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using VRVlog.Poses;
@@ -187,7 +187,7 @@ namespace VRVlog.LilToonExporter
             return omitted;
         }
 
-        internal void Bind(ModelExporter converter, VrmLib.Model model, ExportingGltfData storage)
+        internal void Bind(ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, ExportingGltfData storage)
         {
             var animator = prepared.GetComponent<Animator>();
             int Node(string name)
