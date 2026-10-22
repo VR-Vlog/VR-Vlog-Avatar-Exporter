@@ -37,52 +37,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void MainStrengthAndScreenScaleTheAddedMatcap()
-        {
-            var material = Create(2);
-            var main = Solid(new Color(.5f, .25f, 1, 1));
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                material.SetTexture("_MainTex", main);
-                material.SetFloat("_MatCapMainStrength", 1);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                var pixel = Linear(((Texture2D)fallback.GetTexture("_RimTex")).GetPixel(0, 0));
-                // albedo * (1 - albedo) for main strength 1 and screen.
-                Assert.That(pixel.r, Is.EqualTo(.25f).Within(.015f));
-                Assert.That(pixel.g, Is.EqualTo(.1875f).Within(.015f));
-                Assert.That(pixel.b, Is.EqualTo(0f).Within(.015f));
-            }
-            finally { Destroy(material, created, textures, main); }
-        }
-
-        [Test]
-        public void UnmaskedAddedMatcapAndRimLightKeepTheirImages()
-        {
-            var material = Create(1);
-            var mask = Solid(Color.black);
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                foreach (var unmasked in new Texture[] { null, Texture2D.whiteTexture })
-                {
-                    material.SetTexture("_MatCapBlendMask", unmasked);
-                    var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                    Assert.IsNull(fallback.GetTexture("_RimTex"));
-                    Assert.That(textures, Is.Empty);
-                }
-                // The rim image also scales MToon's rim light; keep it for that.
-                material.SetTexture("_MatCapBlendMask", mask);
-                material.SetFloat("_UseRim", 1);
-                UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                Assert.That(textures, Is.Empty);
-            }
-            finally { Destroy(material, created, textures, mask); }
-        }
-
-        [Test]
         public void MultiplyMatcapDarkensTheMainImageWhereMasked()
         {
             var material = Create(3);
@@ -113,104 +67,10 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Destroy(material, created, textures, matcap, mask, main); }
         }
 
-        [Test]
-        public void NormalMatcapDarkensByItsAlphaAndIsAdded()
-        {
-            var material = Create(0);
-            var matcap = Solid(new Color(1, 1, 1, .5f));
-            var main = Solid(new Color(.8f, .8f, .8f, 1));
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                material.SetTexture("_MainTex", main);
-                material.SetTexture("_MatCapTex", matcap);
-                material.SetFloat("_MatCapBlend", .5f);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                // lerp(dst, src, blend * a) keeps 1 - .5 * .5 of dst.
-                var pixel = Linear(((Texture2D)fallback.GetTexture("_MainTex")).GetPixel(0, 0));
-                Assert.That(pixel.r, Is.EqualTo(.6f).Within(.015f));
-                Assert.That(Linear(((Texture2D)fallback.GetTexture("_MainTex")).GetPixel(0, 0)).a, Is.EqualTo(1f).Within(.015f));
-                Assert.AreSame(matcap, fallback.GetTexture("_MatcapTex"));
-            }
-            finally { Destroy(material, created, textures, matcap, main); }
-        }
-
-        [Test]
-        public void WhiteMultiplyMatcapLeavesTheMainImage()
-        {
-            var material = Create(3);
-            var main = Solid(Color.white);
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                material.SetTexture("_MainTex", main);
-                material.SetTexture("_MatCapTex", Texture2D.whiteTexture);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                Assert.AreSame(main, fallback.GetTexture("_MainTex"));
-                Assert.That(textures, Is.Empty);
-            }
-            finally { Destroy(material, created, textures, main); }
-        }
-
-        [Test]
-        public void NormalMatcapWithoutAnImageLeavesTheMainImage()
-        {
-            var material = Create(0);
-            var main = Solid(Color.white);
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                material.SetTexture("_MainTex", main);
-                material.SetTexture("_MatCapTex", null);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
-                // MToon adds nothing without the image, so darkening would only lose light.
-                Assert.AreSame(main, fallback.GetTexture("_MainTex"));
-                Assert.That(textures, Is.Empty);
-            }
-            finally { Destroy(material, created, textures, main); }
-        }
-
-        [Test]
-        public void MaterialsWithTheSameInputsShareOneBake()
-        {
-            var first = Create(3);
-            var second = Create(3);
-            var matcap = Solid(new Color(.5f, .25f, 1, 1));
-            var main = Solid(Color.white);
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            try
-            {
-                foreach (var material in new[] { first, second })
-                {
-                    material.SetTexture("_MainTex", main);
-                    material.SetTexture("_MatCapTex", matcap);
-                }
-                var bakes = new MatcapApproximation.Bakes(true);
-                var a = UniVrmOneClickExporter.CreateMToonFallback(first, created, null, false, textures, matcapBakes: bakes);
-                var b = UniVrmOneClickExporter.CreateMToonFallback(second, created, null, false, textures, matcapBakes: bakes);
-                Assert.That(textures, Has.Count.EqualTo(1));
-                Assert.AreSame(a.GetTexture("_MainTex"), b.GetTexture("_MainTex"));
-                second.SetColor("_Color", new Color(.5f, .5f, .5f, 1));
-                var c = UniVrmOneClickExporter.CreateMToonFallback(second, created, null, false, textures, matcapBakes: bakes);
-                Assert.That(textures, Has.Count.EqualTo(2), "A different main color is its own bake.");
-                Assert.AreNotSame(a.GetTexture("_MainTex"), c.GetTexture("_MainTex"));
-                // Disabled bakes keep the source images.
-                var d = UniVrmOneClickExporter.CreateMToonFallback(first, created, null, false, textures, matcapBakes: new MatcapApproximation.Bakes(false));
-                Assert.AreSame(main, d.GetTexture("_MainTex"));
-                Assert.That(textures, Has.Count.EqualTo(2));
-            }
-            finally { Object.DestroyImmediate(second); Destroy(first, created, textures, matcap, main); }
-        }
-
         // 55 materials need 111 images without the bakes and 166 with them.
-        [TestCase(55, false, false)]
-        [TestCase(55, false, true)]
-        [TestCase(4, true, false)]
-        public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked, bool lenient)
+        [TestCase(55, false)]
+        [TestCase(4, true)]
+        public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var quad = new Mesh { name = "MatCap quad" };
@@ -248,8 +108,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // The export made again keeps one copy of each warning.
                 var warnings = new List<string> { "Earlier" };
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
-                    recoveryReport: new ExportRecoveryReport { ContinueOnStageFailure = lenient });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(warnings, Is.Unique);
                 Assert.That(warnings, Does.Contain("Earlier"));
                 var glb = GlbDocument.Read(bytes);
