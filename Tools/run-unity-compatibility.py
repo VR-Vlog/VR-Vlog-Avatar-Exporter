@@ -742,7 +742,7 @@ BEHAVIOR_CASES = {
         'InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning': 2,
         'InvalidInactiveRigIsValidatedRegardlessOfSkinVisibility': 2,
         'InvalidInactiveWardrobeRequiresProcessingAndIsValidated': 2,
-        'KnownVersionsResolveCompleteBridge': 5,
+        'KnownVersionsResolveCompleteBridge': 6,
         'LoggedBuildErrorStopsExportAndReleasesGeneratedAssets': 1,
         'MissingBakedExpressionStopsExport': 1,
         'MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf': 1,

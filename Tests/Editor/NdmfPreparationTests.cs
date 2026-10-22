@@ -651,8 +651,11 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
             if (type == null) Assert.Ignore("Install Modular Avatar to test its real authoring metadata.");
-            var marker = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (identifyAvatar && marker != null && !root.GetComponentsInChildren<Component>(true).Any(component => component.transform == root.transform && component.GetType() == marker))
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
+                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (identifyAvatar && marker != null &&!root.GetComponentsInChildren<Component>(true).Any(component => component.transform == root.transform && component.GetType() == marker))
                 root.AddComponent(marker);
             var node = Child(root.transform, name, Vector3.zero).gameObject;
             node.SetActive(false);
@@ -684,6 +687,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("1.6.0")]
         [TestCase("1.7.10")]
+        [TestCase("1.8.0")]
         [TestCase("1.8.3")]
         [TestCase("1.13.0")]
         [TestCase("1.14.8")]

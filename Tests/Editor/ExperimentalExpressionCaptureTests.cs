@@ -1601,7 +1601,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(type => type != null);
             var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(type => type != null);
-            Assert.That(proxyType, Is.Not.Null); Assert.That(markerType, Is.Not.Null);
+            Assert.That(proxyType, Is.Not.Null);
+            if (markerType == null) Assert.Ignore("NDMF before 1.8.0 has no NDMFAvatarRoot, and this fixture has no VRChat descriptor to identify the avatar.");
             if (source.GetComponent(markerType) == null) source.AddComponent(markerType);
             var proxy = source.transform.Find("Front").gameObject.AddComponent(proxyType);
             proxyType.GetProperty("target").SetValue(proxy, source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head));
