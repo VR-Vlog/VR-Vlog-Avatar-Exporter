@@ -47,6 +47,35 @@ namespace VRVlog.LilToonExporter
             return Finite(scale.x) && Finite(scale.y) && scale.x != 0 && scale.y != 0 && Finite(offset.x) && Finite(offset.y);
         }
 
+#if !EXPORTER_BEHAVIOR_TESTS
+        // Reads the image on the GPU, which the behavior tests do not have.
+        // lilToon 2.3.4 multiplies the emission by _EmissionGradTex sampled at
+        // (_EmissionGradSpeed * time, 0.5), and the alpha weights the blend.
+        // MToon emission does not change over time, so the fallback uses the
+        // average of that row over a cycle, or its value at time 0 when the
+        // gradation does not move.
+        public static Color GradientFactor(Material material)
+        {
+            if (material == null || !material.HasProperty("_EmissionUseGrad") || material.GetFloat("_EmissionUseGrad") <= 0.5f ||
+                !material.HasProperty("_EmissionGradTex")) return Color.white;
+            var texture = material.GetTexture("_EmissionGradTex");
+            if (texture == null) return Color.white; // lilToon's default image is white
+            var row = TextureColors.ReadLinear(texture, Mathf.Clamp(texture.width, 1, 256), 1);
+            var speed = material.HasProperty("_EmissionGradSpeed") ? material.GetFloat("_EmissionGradSpeed") : 1f;
+            var sum = Vector4.zero;
+            var count = 0;
+            for (var i = 0; i < row.Length; i++)
+            {
+                // At u = 0 the repeating bilinear sample mixes the first and last texels.
+                if (speed == 0 && i != 0 && i != row.Length - 1) continue;
+                sum += new Vector4(row[i].r * row[i].a, row[i].g * row[i].a, row[i].b * row[i].a, 0);
+                count++;
+            }
+            sum /= count;
+            return Finite(sum.x) && Finite(sum.y) && Finite(sum.z) ? new Color(sum.x, sum.y, sum.z, 1) : Color.white;
+        }
+#endif
+
         private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }
