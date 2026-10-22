@@ -285,14 +285,15 @@ namespace VRVlog.LilToonExporter
             return text != null && ShaderWritesDepth(text, name => values.Float(name, 0));
         }
 
-        // Whether every pass that draws color has ColorMask 0. Such a material
-        // only writes stencil (or depth) for another material; MToon has no
+        // Whether no pass draws color on its own: each has ColorMask 0 or a
+        // stencil test that fails where no other material marked the stencil.
+        // Such a material only writes stencil (or depth) for another material,
+        // or draws an effect over pixels another material marked; MToon has no
         // stencil, so drawing it would cover the mesh behind it.
         static bool DrawsNoColor(Material source, SourceValues values)
         {
             var text = ShaderText(source);
-            // An unset property is lilToon's and Unity's default mask, RGBA (15).
-            return text != null && ShaderDrawsNoColor(text, name => values.Float(name, 15));
+            return text != null && ShaderDrawsNoColor(text, values.Float);
         }
 
         // The source of a shader file, or null for built-in and missing shaders.
@@ -308,7 +309,9 @@ namespace VRVlog.LilToonExporter
         static readonly Regex Comments = new Regex(@"//[^\n]*|/\*.*?\*/", RegexOptions.Singleline);
         static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|\[\s*(\w+)\s*\])", RegexOptions.IgnoreCase);
         static readonly Regex ColorMaskCommand = new Regex(@"\bColorMask\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+        static readonly Regex StencilBlock = new Regex(@"\bStencil\s*\{", RegexOptions.IgnoreCase);
         static readonly Regex DepthOnlyPass = new Regex(@"""LightMode""\s*=\s*""(ShadowCaster|Meta|DepthOnly|DepthNormals|MotionVectors)""", RegexOptions.IgnoreCase);
+        static readonly string[] StencilComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always" };
 
         // ShaderLab of the first SubShader (the one Unity uses on desktop
         // hardware): a pass that draws color writes depth when its own ZWrite,
@@ -318,34 +321,77 @@ namespace VRVlog.LilToonExporter
         // shader also writes its own shadow pass.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
-            if (!ColorPasses(text, ZWriteCommand, out var shared, out var passes, out var surface, out _)) return false;
-            bool? On(Match match) => match == null ? (bool?)null : match.Groups[2].Success
-                ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+            if (!ColorPasses(text, out var shared, out var passes, out var surface, out _)) return false;
+            bool? On(string scope)
+            {
+                var match = ZWriteCommand.Match(scope);
+                if (!match.Success) return null;
+                return match.Groups[2].Success ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+            }
             if (surface && (On(shared) ?? false)) return true;
             if (passes == null) return On(shared) ?? false;
             return passes.Any(pass => On(pass) ?? On(shared) ?? true);
         }
 
-        // Same SubShader rules for ColorMask, whose default is RGBA. A shader
-        // without color passes (only shadow or depth passes) draws no color
-        // either. UsePass borrows a pass this file does not show, so it counts
-        // as drawing color.
-        internal static bool ShaderDrawsNoColor(string text, Func<string, float> property)
+        // Same SubShader rules for ColorMask (default RGBA) and the Stencil
+        // block (default: no test). A pass draws nothing on its own when its
+        // mask is 0 or its stencil comparison fails on a cleared buffer (0),
+        // such as Equal with a non-zero reference. A shader without color
+        // passes (only shadow or depth passes) draws no color either. UsePass
+        // borrows a pass this file does not show, so it counts as drawing.
+        // property(name, fallback) reads a material value.
+        internal static bool ShaderDrawsNoColor(string text, Func<string, float, float> property)
         {
-            if (!ColorPasses(text, ColorMaskCommand, out var shared, out var passes, out var surface, out var borrows) || borrows) return false;
-            bool? None(Match match) => match == null ? (bool?)null : match.Groups[2].Success
-                ? property(match.Groups[2].Value) < .5f : match.Groups[1].Value == "0";
-            if (surface && !(None(shared) ?? false)) return false;
-            if (passes == null) return None(shared) ?? false;
-            return passes.All(pass => None(pass) ?? None(shared) ?? false);
+            if (!ColorPasses(text, out var shared, out var passes, out var surface, out var borrows) || borrows) return false;
+            bool? Masked(string scope)
+            {
+                var match = ColorMaskCommand.Match(scope);
+                if (!match.Success) return null;
+                return match.Groups[2].Success ? property(match.Groups[2].Value, 15) < .5f : match.Groups[1].Value == "0";
+            }
+            bool Hidden(string pass) => (Masked(pass) ?? Masked(shared) ?? false) || (StencilFailsWhenCleared(pass, property) ?? StencilFailsWhenCleared(shared, property) ?? false);
+            if (surface && !Hidden(shared)) return false;
+            if (passes == null) return Hidden(shared);
+            return passes.All(Hidden);
         }
 
-        // Splits the first SubShader into the command its own scope sets and
-        // the command each color pass sets (null where the scope has none).
-        // passes is null when there are no Pass blocks; surface tells that
-        // the shader also generates color passes, which take the SubShader
-        // command; borrows tells that a UsePass adds passes from another shader.
-        static bool ColorPasses(string text, Regex command, out Match shared, out List<Match> passes, out bool surface, out bool borrows)
+        // Whether the scope's Stencil block rejects every pixel whose stencil
+        // is still 0, for both faces; null when the scope has no Stencil block.
+        static bool? StencilFailsWhenCleared(string scope, Func<string, float, float> property)
+        {
+            var start = StencilBlock.Match(scope);
+            if (!start.Success) return null;
+            var block = Block(scope, start.Index + start.Length - 1);
+            float Value(string key, float fallback)
+            {
+                var match = Regex.Match(block, @"\b" + key + @"\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+                if (!match.Success) return fallback;
+                if (match.Groups[2].Success) return property(match.Groups[2].Value, fallback);
+                var named = Array.FindIndex(StencilComparisons, name => name.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+                if (named >= 0) return named;
+                return float.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : fallback;
+            }
+            var reference = (int)Value("Ref", 0) & (int)Value("ReadMask", 255);
+            var both = Value("Comp", 8);
+            bool Fails(float comparison)
+            {
+                switch ((int)comparison)
+                {
+                    case 1: case 2: return true;                        // Never, Less
+                    case 3: case 4: return reference != 0;              // Equal, LEqual
+                    case 5: case 6: return reference == 0;              // Greater, NotEqual
+                    default: return false;                              // Disabled, GEqual, Always
+                }
+            }
+            return Fails(Value("CompFront", both)) && Fails(Value("CompBack", both));
+        }
+
+        // Splits the first SubShader into its own scope (outside the passes)
+        // and the color passes. passes is null when there are no Pass blocks;
+        // surface tells that the shader also generates color passes, which
+        // take the SubShader commands; borrows tells that a UsePass adds
+        // passes from another shader.
+        static bool ColorPasses(string text, out string shared, out List<string> passes, out bool surface, out bool borrows)
         {
             shared = null; passes = null; surface = false; borrows = false;
             text = Comments.Replace(text, "");
@@ -365,10 +411,9 @@ namespace VRVlog.LilToonExporter
                 at = pass.Index + pass.Length - 1 + body.Length;
             }
             outside.Append(subShader, at, subShader.Length - at);
-            Match Find(string scope) { var match = command.Match(scope); return match.Success ? match : null; }
-            shared = Find(outside.ToString());
-            surface = Regex.IsMatch(outside.ToString(), @"#pragma\s+surface\b");
-            if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).Select(Find).ToList();
+            shared = outside.ToString();
+            surface = Regex.IsMatch(shared, @"#pragma\s+surface\b");
+            if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).ToList();
             return true;
         }
 

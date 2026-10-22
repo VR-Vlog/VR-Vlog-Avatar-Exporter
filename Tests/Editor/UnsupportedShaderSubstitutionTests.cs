@@ -145,7 +145,29 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
         public void TheFirstSubShaderDecidesWhetherAnyPassDrawsColor(string shaderLab, bool expected)
         {
-            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, name => name == "_Mask" ? 0 : 15), Is.EqualTo(expected));
+            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, (name, fallback) => name == "_Mask" ? 0 : fallback), Is.EqualTo(expected));
+        }
+
+        // A pass whose stencil test fails where nothing marked the stencil
+        // draws only over pixels another material marked, so on its own it
+        // draws nothing.
+        [TestCase("SubShader { Pass { ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } } Pass { Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal } } }", true)]
+        [TestCase("SubShader { Stencil { Ref 2 Comp Equal } Pass { } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref [_Ref] Comp [_Comp] } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref [_Zero] Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp NotEqual } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 0 Comp NotEqual } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 ReadMask 2 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 CompFront Equal CompBack Always } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp Always CompFront Equal CompBack LEqual } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp GEqual } } }", false)]
+        [TestCase("SubShader { Stencil { Ref 1 Comp Equal } Pass { Stencil { Ref 1 Comp Always } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp Equal } } Pass { } }", false)]
+        public void AStencilTestThatFailsOnAClearedBufferDrawsNothing(string shaderLab, bool expected)
+        {
+            // _Ref is 5 and _Comp is 3 (Equal) on the material; _Zero is 0.
+            float Property(string name, float fallback) => name == "_Ref" ? 5 : name == "_Comp" ? 3 : name == "_Zero" ? 0 : fallback;
+            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, Property), Is.EqualTo(expected));
         }
 
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
