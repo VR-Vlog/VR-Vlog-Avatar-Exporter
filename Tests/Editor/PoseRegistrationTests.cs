@@ -387,7 +387,13 @@ namespace VRVlog.LilToonExporter.Tests
         // A hand gesture layer holds a Tracking Control left in Tracking mode.
         // A clothing toggle that never reaches a body layer must not report it
         // as an unsupported pose; a menu that reaches one keeps the diagnosis.
+        // The BlendTree cases build the toggle the way Modular Avatar 1.19
+        // builds Reactive Components: a Direct tree on an always-one Float and
+        // a 1D tree on the menu parameter, which becomes a Float in the
+        // Animator while the Expression Parameter stays Bool.
         [TestCase("Clothing", TestName = "ClothingToggleIsNotReportedAsUnsupportedPose")]
+        [TestCase("BlendTreeClothing", TestName = "BlendTreeClothingToggleIsNotReportedAsUnsupportedPose")]
+        [TestCase("BlendTreeBody", TestName = "BlendTreeThatMovesTheBodyStillReportsThePose")]
         [TestCase("Body", TestName = "BodyMenuStillReportsUnrelatedTrackingControl")]
         [TestCase("Driver", TestName = "DriverForwardedMenuStillReportsUnrelatedTrackingControl")]
         public void MenuThatCannotReachABodyLayerIsNotAnUnsupportedPose(string scenario)
@@ -400,7 +406,8 @@ namespace VRVlog.LilToonExporter.Tests
             var parameterArray = Array.CreateInstance(parameterType, 1); var parameterRow = Activator.CreateInstance(parameterType);
             Set(parameterRow, "name", "Toggle_A"); Set(parameterRow, "valueType", "Bool"); parameterArray.SetValue(parameterRow, 0);
             parameterField.SetValue(parameters, parameterArray); Set(descriptor, "expressionParameters", parameters);
-            var name = scenario == "Clothing" ? "Sweater_OFF" : "Toggle_" + scenario;
+            var blendTree = scenario.StartsWith("BlendTree", StringComparison.Ordinal);
+            var name = scenario == "Clothing" || blendTree ? "Sweater_OFF" : "Toggle_" + scenario;
             var toggle = Add((IList)PoseMenuResolver.Member(menu, "controls")); Set(toggle, "name", name); Set(toggle, "type", "Toggle"); Set(toggle, "value", 1f);
             var parameter = Activator.CreateInstance(toggle.GetType().GetField("parameter").FieldType); Set(parameter, "name", "Toggle_A"); Set(toggle, "parameter", parameter);
             Set(descriptor, "expressionsMenu", menu);
@@ -429,7 +436,7 @@ namespace VRVlog.LilToonExporter.Tests
                 SetBodyAnimation(tracking); Set(tracking, "trackingLeftHand", "Tracking");
                 Edge(handMachine, fist).AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
                 var gestureLayers = new List<AnimatorControllerLayer> { new AnimatorControllerLayer { name = "Left Hand", defaultWeight = 1, stateMachine = handMachine } };
-                if (scenario != "Clothing")
+                if (scenario != "Clothing" && !blendTree)
                 {
                     var input = scenario == "Body" ? "Toggle_A" : "Pose_B";
                     gesture.AddParameter(input, AnimatorControllerParameterType.Bool);
@@ -442,12 +449,33 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 gesture.layers = gestureLayers.ToArray();
                 // The clothing toggle only animates object activity and a BlendShape.
-                fx.AddParameter("Toggle_A", AnimatorControllerParameterType.Bool);
                 var fxMachine = new AnimatorStateMachine(); owned.Add(fxMachine);
-                var shown = fxMachine.AddState("On"); shown.writeDefaultValues = false; shown.motion = on;
-                var hidden = fxMachine.AddState("Off"); hidden.writeDefaultValues = false; hidden.motion = off;
-                Edge(fxMachine, hidden).AddCondition(AnimatorConditionMode.If, 0, "Toggle_A");
-                Edge(fxMachine, shown).AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle_A");
+                if (blendTree)
+                {
+                    // FX without a mask ignores muscles, so the body is moved through a bone's Transform.
+                    if (scenario == "BlendTreeBody")
+                    {
+                        var spine = f.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Spine);
+                        AnimationUtility.SetEditorCurve(off, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(spine, f.Source.transform),
+                            typeof(Transform), "localEulerAnglesRaw.x"), AnimationCurve.Constant(0, 1, 20));
+                    }
+                    fx.AddParameter("Toggle_A", AnimatorControllerParameterType.Float);
+                    fx.AddParameter(new AnimatorControllerParameter { name = "$$MA/RC/AlwaysOne", type = AnimatorControllerParameterType.Float, defaultFloat = 1 });
+                    var menuTree = new BlendTree { name = "Menu", blendType = BlendTreeType.Simple1D, blendParameter = "Toggle_A", useAutomaticThresholds = false };
+                    menuTree.AddChild(on, 0); menuTree.AddChild(off, 1);
+                    var direct = new BlendTree { name = "Apply", blendType = BlendTreeType.Direct };
+                    direct.children = new[] { new ChildMotion { motion = menuTree, directBlendParameter = "$$MA/RC/AlwaysOne", timeScale = 1 } };
+                    owned.Add(menuTree); owned.Add(direct);
+                    var apply = fxMachine.AddState("Apply"); apply.writeDefaultValues = true; apply.motion = direct;
+                }
+                else
+                {
+                    fx.AddParameter("Toggle_A", AnimatorControllerParameterType.Bool);
+                    var shown = fxMachine.AddState("On"); shown.writeDefaultValues = false; shown.motion = on;
+                    var hidden = fxMachine.AddState("Off"); hidden.writeDefaultValues = false; hidden.motion = off;
+                    Edge(fxMachine, hidden).AddCondition(AnimatorConditionMode.If, 0, "Toggle_A");
+                    Edge(fxMachine, shown).AddCondition(AnimatorConditionMode.IfNot, 0, "Toggle_A");
+                }
                 fx.layers = new[] { new AnimatorControllerLayer { name = "Sweater", defaultWeight = 1, stateMachine = fxMachine } };
                 if (scenario == "Driver")
                 {
@@ -481,7 +509,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(result.Count, Is.EqualTo(1));
                 var warnings = new List<string>();
                 using (var session = new PoseExportSession(f.Source, null)) session.CollectPrepared(clone, warnings);
-                if (scenario == "Clothing")
+                if (scenario == "Clothing" || scenario == "BlendTreeClothing")
                 {
                     Assert.That(result[0].NotBodyPose, Is.True, result[0].Error);
                     Assert.That(result[0].Error, Is.EqualTo(PoseMenuResolver.NotBodyPoseMessage));
@@ -490,6 +518,12 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 // The existing proof still runs and still rejects the pose.
                 Assert.That(result[0].NotBodyPose, Is.False);
+                if (scenario == "BlendTreeBody")
+                {
+                    Assert.That(result[0].Error, Is.Not.Null);
+                    Assert.That(warnings, Has.Some.StartsWith("ポーズ未対応: " + name + " — "));
+                    return;
+                }
                 Assert.That(result[0].Error, Does.Contain("Tracking Control").And.Contain("trackingLeftHand"));
                 Assert.That(warnings, Has.Some.StartsWith("ポーズ未対応: " + name + " — "));
             }
