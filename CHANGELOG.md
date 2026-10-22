@@ -2,6 +2,7 @@
 
 ## 未リリース
 
+- 標準MToonの互換表示で、lilToonの輪郭線がほぼ黒になっていたのを直しました。輪郭線に光を当てるかどうかのlilToonの設定（`_OutlineEnableLighting`）をMToonの別の意味の項目に入れていたため、輪郭線の色に本体の色が掛かっていました。互換表示の輪郭線は、lilToonで設定した輪郭線の色で出ます。
 - 体を動かさないBlendTreeだけを使うメニュー（Modular Avatar 1.19のObject Toggle・Shape Changerなど）を、ポーズの候補として「ポーズ未対応」の警告に出さないようにしました。これまではBlendTreeを含むレイヤーをすべて体を動かすものとして扱っていたため、1.19では表情や衣装の切り替えのメニューに「Expression ParametersとAnimatorパラメーターの型が一致しません」などの警告が付いていました。
 - lilToonの発光のグラデーションに幅が256より大きい画像を使うと、標準MToonの互換表示の発光の明るさが画像の平均とずれることがあったのを直しました。画像を縮小してから平均していたので、縮小で飛ばされた色が入っていませんでした。
 - lilToonを`Assets`の下に入れたプロジェクトや、lilToonを入れていないプロジェクトで、Exporterを読み込むたびにコンソールへ出ていた`LayerAlphaBaker.shader`のエラー（Couldn't open include file）が出ないようにしました。書き出すファイルは変わりません。
