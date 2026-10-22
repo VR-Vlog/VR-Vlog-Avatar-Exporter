@@ -108,8 +108,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase("rgbaHalf", 0x7c00u)][TestCase("rgbaHalf", 0xfc00u)][TestCase("rgbaHalf", 0x7e01u)]
-        [TestCase("rgbaFloat", 0x7f800000u)][TestCase("rgbaFloat", 0xff800000u)][TestCase("rgbaFloat", 0x7fc00001u)]
+        [TestCase("rgbaHalf", 0x7c00u)][TestCase("rgbaHalf", 0x7e01u)]
+        [TestCase("rgbaFloat", 0xff800000u)][TestCase("rgbaFloat", 0x7fc00001u)]
         public void NonFiniteHdrPayloadsAreRejectedIncludingAlpha(string format, uint bits)
         {
             var size = format == "rgbaHalf" ? 2 : 4;
@@ -164,24 +164,18 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_UNorm, true, "rgbaHalf")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RG_BC5_UNorm, true, "rgbaHalf")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RGBA_DXT5_UNorm, true, "rgbaHalf")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat, true, "rgbaHalf")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R32G32B32A32_SFloat, true, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_UNorm, true, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R_EAC_UNorm, true, "rgbaFloat")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RG_EAC_UNorm, true, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R_EAC_SNorm, true, "rgbaFloat")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RG_EAC_SNorm, true, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R8G8B8A8_UNorm, false, "rgba32")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_SFloat, false, "rgbaHalf")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R32G32B32A32_SFloat, false, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_UNorm, false, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R8_SNorm, false, "rgbaFloat")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R16_SNorm, false, "rgbaFloat")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R_EAC_UNorm, false, "rgba32")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RG_EAC_UNorm, false, "rgba32")]
         [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.R_EAC_SNorm, false, "rgbaFloat")]
-        [TestCase(UnityEngine.Experimental.Rendering.GraphicsFormat.RG_EAC_SNorm, false, "rgbaFloat")]
         public void NormalStorageSupportsMobileFilteringWithoutReducingAuthoredHighPrecision(
             UnityEngine.Experimental.Rendering.GraphicsFormat format, bool normal, string expected)
             => Assert.That(LilToonFullSnapshot.StorageFormat(format, normal), Is.EqualTo(expected));

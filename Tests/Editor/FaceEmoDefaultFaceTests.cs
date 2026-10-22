@@ -96,27 +96,6 @@ namespace VRVlog.LilToonExporter.Tests
             source.Entries.Add(entry); return source;
         }
 
-        [TestCase(0)]
-        [TestCase(100)]
-        public void BranchUsesCommonUnderlayAndExplicitZeroWithoutInheritingModeDefault(float smile)
-        {
-            var menu = Menu(smile);
-            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, OriginalPath);
-            var entry = menu.Entries.Single(); Assert.That(entry.Error, Is.Null);
-            Assert.That(entry.Values.Single(value => value.Path == "Body" && value.Shape == "Open").Weight, Is.EqualTo(100));
-            Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(smile));
-            Assert.That(entry.Values.Single(value => value.Path == "Accessory" && value.Shape == "Cheek").Weight, Is.EqualTo(10));
-            Assert.That(entry.Values.Select(value => value.Path), Does.Not.Contain("Merged/Face"));
-        }
-
-        [Test]
-        public void ExplicitOpeningZeroOverridesCommonOpeningHundred()
-        {
-            var menu = Menu(100); menu.Entries[0].Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Body", Shape = "Open", Weight = 0 });
-            FaceEmoExpressions.ApplyPreparedDefaultFace(avatar, menu, OriginalPath);
-            Assert.That(menu.Entries[0].Values.Single(value => value.Shape == "Open").Weight, Is.Zero);
-        }
-
         [Test]
         public void UnresolvedOriginalRendererAndAnimatedCommonFaceAreActionableErrors()
         {

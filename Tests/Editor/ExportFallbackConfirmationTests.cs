@@ -324,7 +324,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()[0].sharedMaterial = missing;
                 var report = new ExportRecoveryReport();
-                var warnings = new List<string>();
+                // A warning the caller already has stays once, after the summary.
+                var warnings = new List<string> { "Earlier" };
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 // The export is not blocked; the VRM is still written.
@@ -335,6 +336,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var summary = string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Missing";
                 Assert.That(warnings.Count(warning => warning == summary), Is.EqualTo(1));
                 Assert.That(warnings[0], Is.EqualTo(summary), "The summary comes before the other warnings.");
+                Assert.That(warnings.Count(warning => warning == "Earlier"), Is.EqualTo(1));
                 var result = ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
                 Assert.That(result.MissingShaderCount, Is.EqualTo(1));
                 Assert.That(result.Rows.Any(row => row.Content == ExportFallbackConfirmation.MissingShaderReason &&

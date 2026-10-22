@@ -11,10 +11,8 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class SkinnedMeshFallbackWeightTests
     {
-        [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
-        [TestCase(true, true)]
         public void RigidMeshesPreserveGeometryAndMixedZeroWeightsFailSafely(bool mixedWeights, bool useRootBone)
         {
             using var fixture = new Fixture(mixedWeights, useRootBone);

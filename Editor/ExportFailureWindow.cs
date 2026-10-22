@@ -141,7 +141,8 @@ namespace VRVlog.LilToonExporter
             if (hadSession && session == null)
             {
                 EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。書き出し画面から再度書き出してください。"), MessageType.Warning);
-                if (GUILayout.Button(ExporterLocalization.T("書き出し画面を開く"))) { LilToonExporterWindow.Open(); Close(); }
+                // The same entry point as the export menu item, so a retry exports what the board exports.
+                if (GUILayout.Button(ExporterLocalization.T("書き出し画面を開く"))) { Compatibility.DependencyDiagnostics.Open(); Close(); }
                 ExportDetailsText.DrawActions(fullDetails, ref detailsFeedback, ref detailsSaveFailed, ref detailsFeedbackScroll);
                 return;
             }

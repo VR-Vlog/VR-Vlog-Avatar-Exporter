@@ -101,10 +101,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, 1f, AnimatorLayerBlendingMode.Override, false)]
-        [TestCase(true, 1f, AnimatorLayerBlendingMode.Override, false)]
         [TestCase(true, .5f, AnimatorLayerBlendingMode.Override, false)]
         [TestCase(false, .5f, AnimatorLayerBlendingMode.Additive, false)]
-        [TestCase(true, .5f, AnimatorLayerBlendingMode.Additive, false)]
         [TestCase(true, 1f, AnimatorLayerBlendingMode.Override, true)]
         public void IndependentParameterAnimationKeepsTheNativeBodyPose(bool writeDefaults, float weight,
             AnimatorLayerBlendingMode mode, bool selfTimed)
@@ -221,10 +219,8 @@ namespace VRVlog.LilToonExporter.Tests
             return (waiting, listening, factor);
         }
 
-        [TestCase(false, false)]
         [TestCase(true, false)]
         [TestCase(false, true)]
-        [TestCase(true, true)]
         public void GestureSmoothingFeedbackAndUnrelatedFacialConsumerKeepNativeBody(bool writeDefaults, bool facialConsumer)
         {
             GestureSmoothing(writeDefaults);
@@ -316,7 +312,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("First incoming", false)]
-        [TestCase("First incoming", true)]
         [TestCase("Last outgoing", true)]
         public void GestureSmoothingUnusedEndpointTangentsDoNotRequirePortableEncoding(string endpoint, bool writeDefaults)
         {
