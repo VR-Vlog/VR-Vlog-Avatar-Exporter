@@ -12,6 +12,13 @@ using Humanoid = VRVlog.LilToonExporter.Vendor.UniHumanoid.Humanoid;
 
 namespace VRVlog.LilToonExporter
 {
+    static class TransformKeys
+    {
+        internal static readonly string[] Rotation = { "m_LocalRotation.x", "m_LocalRotation.y", "m_LocalRotation.z", "m_LocalRotation.w" };
+        internal static readonly string[] PositionAndRotation = { "m_LocalPosition.x", "m_LocalPosition.y", "m_LocalPosition.z",
+            "m_LocalRotation.x", "m_LocalRotation.y", "m_LocalRotation.z", "m_LocalRotation.w" };
+    }
+
     [ComponentInformation(typeof(Vrm10Instance))]
     internal sealed class ExportVrm10InstanceInformation : ComponentInformation<Vrm10Instance>
     {
@@ -29,13 +36,13 @@ namespace VRVlog.LilToonExporter
         protected override void CollectMutations(Vrm10Instance component, ComponentMutationsCollector collector)
         {
             foreach (var joint in component.SpringBone.Springs.SelectMany(spring => spring.Joints).Where(joint => joint))
-                collector.TransformPositionAndRotation(joint.transform);
+                collector.ModifyProperties(joint.transform, TransformKeys.PositionAndRotation);
             if (component.Vrm != null && component.Vrm.LookAt != null && component.Vrm.LookAt.LookAtType == LookAtType.bone)
             {
                 var leftEye = Bone(component, HumanBodyBones.LeftEye);
-                if (leftEye != null) collector.TransformRotation(leftEye);
+                if (leftEye != null) collector.ModifyProperties(leftEye, TransformKeys.Rotation);
                 var rightEye = Bone(component, HumanBodyBones.RightEye);
-                if (rightEye != null) collector.TransformRotation(rightEye);
+                if (rightEye != null) collector.ModifyProperties(rightEye, TransformKeys.Rotation);
             }
         }
 
@@ -76,7 +83,7 @@ namespace VRVlog.LilToonExporter
         }
 
         protected override void CollectMutations(Vrm10AimConstraint component, ComponentMutationsCollector collector) =>
-            collector.TransformRotation(component.transform);
+            collector.ModifyProperties(component.transform, TransformKeys.Rotation);
     }
 
     [ComponentInformation(typeof(Vrm10RollConstraint))]
@@ -89,7 +96,7 @@ namespace VRVlog.LilToonExporter
         }
 
         protected override void CollectMutations(Vrm10RollConstraint component, ComponentMutationsCollector collector) =>
-            collector.TransformRotation(component.transform);
+            collector.ModifyProperties(component.transform, TransformKeys.Rotation);
     }
 
     [ComponentInformation(typeof(Vrm10RotationConstraint))]
@@ -102,7 +109,7 @@ namespace VRVlog.LilToonExporter
         }
 
         protected override void CollectMutations(Vrm10RotationConstraint component, ComponentMutationsCollector collector) =>
-            collector.TransformRotation(component.transform);
+            collector.ModifyProperties(component.transform, TransformKeys.Rotation);
     }
 
     [ComponentInformation(typeof(Humanoid))]
