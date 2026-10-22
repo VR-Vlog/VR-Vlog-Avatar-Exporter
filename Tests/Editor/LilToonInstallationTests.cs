@@ -125,5 +125,24 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(material); }
         }
+
+        [Test]
+        public void LayerAlphaBakerIncludesLilToonFromTheAssetsFolder()
+        {
+            var source = "#include \"Packages/jp.lilxyzw.liltoon/Shader/Includes/lil_common.hlsl\"";
+            Assert.That(LilToonMainTextureBaker.LayerAlphaSource(source, "Assets/lilToon"),
+                Is.EqualTo("#include \"Assets/lilToon/Shader/Includes/lil_common.hlsl\""));
+        }
+
+        // Where lilToon is under Assets this compiles the rewritten source;
+        // a baker that fails to compile draws the error shader instead of the layers.
+        [Test]
+        public void LayerAlphaBakerCompilesWhereLilToonIs()
+        {
+            var shader = LilToonMainTextureBaker.LayerAlphaShader();
+            Assert.That(shader, Is.Not.Null);
+            Assert.That(UnityEditor.ShaderUtil.ShaderHasError(shader), Is.False);
+            Assert.That(shader.isSupported, Is.True);
+        }
     }
 }
