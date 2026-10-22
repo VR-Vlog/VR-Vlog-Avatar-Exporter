@@ -183,6 +183,14 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(kept.GetComponent<Renderer>(), Is.Not.Null);
         }
 
+        [Test] public void DisabledAutomaticOptionPreservesAllRenderers()
+        {
+            Render("effect", hidden); var clone = Own(Object.Instantiate(avatar));
+            using var session = new ExportGimmickSession(avatar, clone, new ExportGimmickOptions { AutoExclude = false });
+            session.Apply(null, null, null);
+            Assert.That(clone.GetComponentsInChildren<Renderer>().Length, Is.EqualTo(1));
+        }
+
         [Test] public void UniVrmDoesNotSerializeRemovedGeometryOrItsMaterial()
         {
             Render("effect", hidden); Render("body", normal);
@@ -412,6 +420,17 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Matched(rule), Is.Empty);
             display.mainTexture = capture.targetTexture;
             capture.targetTexture = null;
+            Assert.That(Matched(rule), Is.Empty);
+        }
+
+        [Test] public void InactiveAvatarRootStillHasItsGimmicksFound()
+        {
+            var rule = new ExportGimmickRule { Id = "test-loop", Reason = "loop", EntryTypes = new[] { "Animator" }, RenderTextureLoop = true };
+            var lens = RenderTextureLens(avatar.transform);
+            avatar.SetActive(false);
+            Assert.That(Matched(rule).Single().Target, Is.SameAs(lens));
+            avatar.SetActive(true);
+            lens.SetActive(false);
             Assert.That(Matched(rule), Is.Empty);
         }
 

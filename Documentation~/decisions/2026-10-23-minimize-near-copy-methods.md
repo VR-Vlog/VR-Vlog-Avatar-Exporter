@@ -11,17 +11,17 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ### `ExportGimmickTests`
 
-- `DisabledAutomaticOptionPreservesAllRenderers` を消す。主経路で代わりに守れるか: 自動の除外を切ったときに何も消えないことは `SettingsComponentIsRemovedFromTheCopyOnly` と `EmptyObjectsLeaveTheVrmOnlyWithTheAutomaticOption` が守る。
+- `DisabledAutomaticOptionPreservesAllRenderers` は残す。レビューで、その経路の唯一の守りと分かったので戻した。
 - `AutomaticOptionOffKeepsStructuralGimmicks` を消す。主経路で代わりに守れるか: 確かめていた1行（`AutoExclude = false` で何も自動で外さない）を `VrChatOnlyGimmickWithAMenuLeavesAsAWhole` に移した。
 - `TableFindsAModularAvatarRenderTextureCamera` を消す。主経路で代わりに守れるか: 同じ表の規則は `StructuralGimmickReplacesTheTableFindingInsideIt` が同じ部品で通る。
 - `OrdinaryAvatarPartsMatchNoTableRule` を消す。主経路で代わりに守れるか: 普通の部品を誤って外さないことは `NamesBlackColorAndShapeDoNotIdentifyAGimmick` と、主経路の書き出しテスト（服・体が残る）が守る。
 - `KeepingAChildPreventsAutomaticHierarchyDeletion` を消す。主経路で代わりに守れるか: 子を残すと親ごとの除外が止まることは `VrChatOnlyGimmickWithAMenuLeavesAsAWhole`（`prop` を残す行）が守る。
-- `InactiveAvatarRootStillHasItsGimmicksFound` を消す。主経路で代わりに守れるか: 非表示のアバターでも仕掛けを見つけることは `InactiveRootExportTests.GimmicksAreFoundUnderAHiddenAvatar` が書き出しまで通して守る。
+- `InactiveAvatarRootStillHasItsGimmicksFound` は残す。レビューで、その経路の唯一の守りと分かったので戻した。
 - `RemovedAuxiliaryRendererDoesNotExcludeRetainedOrMovedFaceMorphs` の `[TestCase(false)]` を消し、元のパスへ移した顔の行（`true`）だけ残す。`true` の行が同じ判定を通ったうえで移動も扱う。
 
 ### `InactiveRootExportTests`
 
-- `AShownAvatarRecordsNoHiddenRoot` を消す。主経路で代わりに守れるか: 表示中のアバターで警告や報告が出ないことは、表示中のアバターを書き出す主経路のテスト（`ExportFlowTests`）が守る。非表示の子を書き出さないことは同じクラスの非表示ルートのテストが確かめている。
+- `AShownAvatarRecordsNoHiddenRoot` を消す。主経路で代わりに守れるか: 表示中かどうかをアバターの中だけで判断することは同じクラスの `ActivityIsJudgedInsideTheAvatar` が守り、表示中のアバターで余計な警告が出ないことは、表示中のアバターを丸ごと書き出して警告が空であることを確かめるテストが守る。
 
 ### `ExportSettingsTests`
 
@@ -29,24 +29,24 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ### `SectionedToonSubstitutionTests`
 
-- `LightingSwitchedOffCastsNoShadow` を消す。主経路で代わりに守れるか: 影を切る分岐（`_ShadingEnabled` が0、またはライティングの種類が5）は `FlatLightingCastsNoShadowAndKeepsTheBrightnessLimit` が同じ行を通る。
-- `OnlyBrightnessUnderATintedMainColorIsNotReported` を消す。主経路で代わりに守れるか: 色の付いたメインカラーの下での報告の有無は `AdjustingColorsUnderATintedMainColorIsReported` が同じ分岐を通る。
+- `LightingSwitchedOffCastsNoShadow` は残す。レビューで、その経路の唯一の守りと分かったので戻した。
+- `OnlyBrightnessUnderATintedMainColorIsNotReported` は残す。レビューで、その経路の唯一の守りと分かったので戻した。
 - `ApplyNamesTheMappedMaterialsAndTheSectionsLeftOut` を消す。警告の文言と並びだけの確認。変換の中身は `Create` を使う他のテストが確かめている。
 
 ### `ConstraintExportTests`
 
 - `TheVrmFormulaFollowsTheSourceExactlyWhenKept` を消す。主経路で代わりに守れるか: そのまま残す回転コンストレイントは `SiblingRotationWithTheSameRestBecomesAKeptVrmRotation` と `AFullExportWritesTheNodeConstraint` が守る。
-- `AVrchatRotationConstraintIsReadWithoutTheSdkReference` を消す。主経路で代わりに守れるか: VRChat の回転コンストレイントを読むことは `AFullExportWritesAVrchatRotationConstraint` が書き出しまで通して守る。
+- `AVrchatRotationConstraintIsReadWithoutTheSdkReference` は残す。レビューで、その経路の唯一の守りと分かったので戻した。
 - `EveryShippedLocaleTranslatesTheConstraintResults` を消す。翻訳の文言だけの確認で、訳が無くても元の文が出る。
 - `AnOffConstraintKeepsThePoseAndIsListed` の `inactiveAndUnlocked` の行を消す（4→3ケース）。止まっているときの分岐は `inactive` の行が通る。使わなくなった `switch` の分岐も消した。
 
 ### `VrmLookAtExportTests`
 
-- `MeasuredEyeLookPosesBecomeOneToOneRangeMaps` を消す。主経路で代わりに守れるか: 左右で違う角度（20度と30度）の計測と読み戻しは `RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm` が守り、警告が出ないことは `EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange` が守る。元の目の回転を書き換えないことの確認は `RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm` に移した。
+- `MeasuredEyeLookPosesBecomeOneToOneRangeMaps` を消す。主経路で代わりに守れるか: 左右で違う角度（20度と30度）の計測と読み戻しは `RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm` が守る。ただし、上下の角度が左右の目で違うとき（上が12度と14度、下が16度と15度）に小さいほうを使うことは、もう確かめていない。警告は計測できないときだけ1件出ることを `UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns` が守る。計測できた目の動きで警告が出ないことを直接確かめるテストは無くなった（`EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange` が確かめるのは目の動きが無いときだけ）。元の目の回転を書き換えないことの確認は `RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm` に移した。
 
 ### `NonLilToonExportTests`
 
-- `AnAssignedNonLilToonMaterialKeepsTheLilToonMessage` を消す。エラーの文言だけの確認。主経路で代わりに守れるか: マテリアルが無いときの分かれ方は `AvatarWhoseMaterialsAreAllMissingNamesTheRenderers` が守る。
+- `AnAssignedNonLilToonMaterialKeepsTheLilToonMessage` を消す。エラーの文言を確かめるほか、空のマテリアル枠があっても割り当て済みのマテリアルが1つでもあれば「マテリアルが無い」エラーにしない分岐（割り当ての有無の判定）も通っていた。主経路で代わりに守れるか: すべて空のときの分かれ方は `AvatarWhoseMaterialsAreAllMissingNamesTheRenderers` が守り、割り当て済みのマテリアルを持つアバターの書き出しは主経路のテストが毎回通る。
 
 ### `DeterministicNamesTests`
 
@@ -62,12 +62,12 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ### `PoseLimitPlanTests`
 
-- `PoseLimitPlanTests.WithinTheLimitsNothingIsDroppedWhateverWasSaved` を消す。主経路で代わりに守れるか: `PoseLimitChooserTests.WithinTheLimitsNothingIsAsked` が保存済みの選択を置いたうえで同じことを確かめる。
+- `PoseLimitPlanTests.WithinTheLimitsNothingIsDroppedWhateverWasSaved` を消す。主経路で代わりに守れるか: 保存済みの選択があっても余計なポーズを落とさないことは `PoseLimitChooserTests.ATooLargePoseAloneDropsNothingElseAndKeepsTheSavedChoice` が確かめる。
 - `PoseLimitPlanTests.OverTheCountTheDefaultDropsTheLastRows` を消す。主経路で代わりに守れるか: 既定で後ろから落とすことは `PoseLimitChooserTests.QuickAndBatchExportsUseTheDefaultWithoutAsking` と `TheNormalExportAsksOnceAndListsWhatWasLeftOut`（既定は保存しない）が守る。
 
 ### `AttachmentConnectionTests`
 
-- `GeneratedRootJointsStayFixedWhileSameNamedHairCanBeAttached` を6→4ケースにする。`(1, true)` と `(2, true)` を消す。`weightMode` が2のときは早く抜けるので `includeConnected` は効かない。
+- `GeneratedRootJointsStayFixedWhileSameNamedHairCanBeAttached` を6→4ケースにする。`(1, true)` と `(2, true)` を消す。`weightMode` が2のときは早く抜けるので `includeConnected` は効かない。`weightMode` が1のときは固定する関節ができないので、固定した関節を付け替えられないことの確認が空になり、`includeConnected` で変わる部分は `(0, false)` と `(0, true)` が通る。
 - `OnlyActiveEnabledVrmConstraintsEstablishOrBlockAttachment` を4→3ケースにする。`(false, false)` は無効・非アクティブのそれぞれ片方の行と同じ分岐。
 - `ManualAndMaAppearanceMatchAfterCompleteExportAndReload` を5→2ケースにする。`0`（変更なし）と `7`（3つの規則をすべて通す）を残し、1つずつの `1`・`2`・`4` を消す。
 
@@ -95,15 +95,15 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ## 件数
 
-触った14ファイルの合計で、テストメソッド238→218、ケース300→261（`TestCaseSource` の2メソッドはケース数に入れていない）。
+触った14ファイルの合計で、テストメソッド238→223、ケース300→266（`TestCaseSource` の2メソッドはケース数に入れていない）。
 
 | ファイル | メソッド | ケース |
 | --- | --- | --- |
-| `ExportGimmickTests` | 43→37 | 45→38 |
+| `ExportGimmickTests` | 43→39 | 45→40 |
 | `InactiveRootExportTests` | 7→6 | 7→6 |
 | `ExportSettingsTests` | 15→14 | 15→14 |
-| `SectionedToonSubstitutionTests` | 21→18 | 21→18 |
-| `ConstraintExportTests` | 25→22 | 32→28 |
+| `SectionedToonSubstitutionTests` | 21→20 | 21→20 |
+| `ConstraintExportTests` | 25→23 | 32→29 |
 | `VrmLookAtExportTests` | 7→6 | 7→6 |
 | `NonLilToonExportTests` | 5→4 | 5→4 |
 | `DeterministicNamesTests` | 7→6 | 7→6 |

@@ -84,6 +84,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_ShadowMainStrength"), Is.EqualTo(1f).Within(1e-6));
         }
 
+        [Test] public void LightingSwitchedOffCastsNoShadow()
+        {
+            var source = Probe(); source.SetFloat("_LightingMode", 4); source.SetFloat("_ShadingEnabled", 0);
+            Assert.That(Substitute(source).GetFloat("_UseShadow"), Is.EqualTo(0f));
+        }
+
         [Test] public void SkinLightingCastsNoShadowAndIsReported()
         {
             var source = Probe(); source.SetFloat("_LightingMode", 3);
@@ -156,6 +162,16 @@ namespace VRVlog.LilToonExporter.Tests
             var output = Substitute(source, out _, out var dropped);
             Assert.That(output.GetVector("_MainTexHSVG").y, Is.EqualTo(1.5f).Within(1e-6));
             Assert.That(dropped, Is.EqualTo(new[] { "Color Adjust with Main Color" }));
+        }
+
+        [Test] public void OnlyBrightnessUnderATintedMainColorIsNotReported()
+        {
+            var source = Probe();
+            source.SetColor("_Color", new Color(1, .5f, .5f, 1));
+            source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainBrightness", -.25f);
+
+            Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty, "Scaling the brightness and multiplying the color commute.");
         }
 
         [Test] public void MultiplyingShadeLayersThatNeedTheBaseDifferentlyAreReported()

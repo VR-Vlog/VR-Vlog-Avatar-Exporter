@@ -309,6 +309,32 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => ConstraintExport.Convert(f.Copy, f.Copy, null));
         }
 
+        [Test]
+        public void AVrchatRotationConstraintIsReadWithoutTheSdkReference()
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            using var f = new Fixture();
+            var component = f.B.gameObject.AddComponent(type);
+            using (var settings = new SerializedObject(component))
+            {
+                settings.FindProperty("IsActive").boolValue = true;
+                settings.FindProperty("Locked").boolValue = true;
+                settings.FindProperty("GlobalWeight").floatValue = .75f;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = f.A;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            f.Convert();
+            var rotation = f.B.GetComponent<Vrm10RotationConstraint>();
+            Assert.That(rotation.Source, Is.EqualTo(f.A));
+            Assert.That(rotation.Weight, Is.EqualTo(.75f));
+            Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
+        }
+
         [TestCase(true)][TestCase(false)]
         public void AnUnlockedOrOffVrchatConstraintIsListed(bool isActive)
         {
