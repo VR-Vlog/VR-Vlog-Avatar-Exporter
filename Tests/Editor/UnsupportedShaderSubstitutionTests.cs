@@ -119,6 +119,70 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));
         }
 
+        [Test] public void AStencilWriterStaysWithoutColorAndDepth()
+        {
+            // The probe masks every color channel and does not write depth; an
+            // opaque copy that draws would cover the body as a white shell.
+            var writer = Own(new Material(Shader.Find("Hidden/VRVlogTests/StencilWriterProbe")) { name = "Writer" });
+            var substitute = Substitute(writer);
+            Assert.That(substitute.shader.name, Is.EqualTo("lilToon"));
+            Assert.That(substitute.GetFloat("_ColorMask"), Is.EqualTo(0f));
+            Assert.That(substitute.GetFloat("_ZWrite"), Is.EqualTo(0f));
+            // An ordinary opaque source keeps lilToon's defaults.
+            var plain = Substitute(Standard());
+            Assert.That(plain.GetFloat("_ColorMask"), Is.EqualTo(15f));
+            Assert.That(plain.GetFloat("_ZWrite"), Is.EqualTo(1f));
+        }
+
+        [TestCase("SubShader { ColorMask 0 ZWrite Off Pass { Tags { \"LightMode\"=\"ForwardBase\" } } }", true)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { ColorMask 0 } }", true)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { Blend One One ColorMask RGB } }", false)]
+        [TestCase("SubShader { ColorMask 0 Pass { } Pass { ColorMask RGBA } }", false)]
+        [TestCase("SubShader { Pass { ZWrite On } }", false)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
+        [TestCase("SubShader { Pass { ColorMask [_Mask] } }", true)]
+        [TestCase("SubShader { Pass { ColorMask [_Unset] } }", false)]
+        [TestCase("SubShader { Pass { /* ColorMask 0 */ ColorMask RGBA // ColorMask 0\n } }", false)]
+        [TestCase("SubShader { Pass { ColorMask 0 } UsePass \"Other/PASS\" }", false)]
+        [TestCase("SubShader { Pass { ColorMask RGBA } } SubShader { Pass { ColorMask 0 } }", false)]
+        [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG }", true)]
+        [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert\n ENDCG }", false)]
+        [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", false)]
+        [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
+        public void TheFirstSubShaderDecidesWhetherAnyPassDrawsColor(string shaderLab, bool expected)
+        {
+            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, (name, fallback) => name == "_Mask" ? 0 : fallback), Is.EqualTo(expected));
+        }
+
+        // A pass whose stencil test fails where nothing marked the stencil
+        // draws only over pixels another material marked, so on its own it
+        // draws nothing. A mark the shader's own earlier pass leaves counts,
+        // unless a later pass that reaches every pixel clears it.
+        [TestCase("SubShader { Pass { ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } } Pass { Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 CompFront Always CompBack Always PassFront Replace PassBack Replace } } Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 CompFront Equal CompBack Equal PassFront Zero PassBack Zero Fail Keep } } Pass { Cull Front ZTest Always Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal Pass Zero } } }", true)]
+        [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } } Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Equal Pass Zero } } Pass { ZTest Always ColorMask RGB Stencil { Ref 121 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { ColorMask 0 Stencil { Ref 1 Comp Always Pass IncrSat } } Pass { Stencil { Ref 2 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } CGPROGRAM clip(c.a - 0.5); ENDCG } Pass { Stencil { Ref 121 Comp NotEqual } } }", false)]
+        [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } CGPROGRAM clip(c.a - 0.5); ENDCG } Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 Comp Equal Pass Zero Fail Keep } CGPROGRAM clip( c.a-0.5 ); ENDCG } Pass { Cull Front ZTest Always Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal Pass Zero } } }", true)]
+        [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } CGPROGRAM clip(c.a - 0.5); ENDCG } Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 Comp Equal Pass Zero Fail Keep } CGPROGRAM clip(c.a - 0.9); ENDCG } Pass { Cull Front ZTest Always Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal Pass Zero } } }", false)]
+        [TestCase("SubShader { Stencil { Ref 2 Comp Equal } Pass { } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref [_Ref] Comp [_Comp] } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref [_Zero] Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp NotEqual } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 0 Comp NotEqual } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 ReadMask 2 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 CompFront Equal CompBack Always } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp Always CompFront Equal CompBack LEqual } } }", true)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp GEqual } } }", false)]
+        [TestCase("SubShader { Stencil { Ref 1 Comp Equal } Pass { Stencil { Ref 1 Comp Always } } }", false)]
+        [TestCase("SubShader { Pass { Stencil { Ref 1 Comp Equal } } Pass { } }", false)]
+        public void AStencilTestThatFailsOnAClearedBufferDrawsNothing(string shaderLab, bool expected)
+        {
+            // _Ref is 5 and _Comp is 3 (Equal) on the material; _Zero is 0.
+            float Property(string name, float fallback) => name == "_Ref" ? 5 : name == "_Comp" ? 3 : name == "_Zero" ? 0 : fallback;
+            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, Property), Is.EqualTo(expected));
+        }
+
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
         {
             var main = Texture("main"); var shade = Texture("shade"); var normal = Texture("normal");

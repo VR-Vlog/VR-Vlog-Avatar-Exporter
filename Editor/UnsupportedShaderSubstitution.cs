@@ -229,6 +229,14 @@ namespace VRVlog.LilToonExporter
             if (mode == Mode.Transparent) Set(material, "_Cutoff", 0);
             // lilToon's transparent shader writes depth by default; follow the source.
             if (mode == Mode.Transparent) Set(material, "_ZWrite", WritesDepth(source, values) ? 1 : 0);
+            // A stencil (or depth) writer draws no color; lilToon keeps that
+            // with its own ColorMask, and an opaque copy must not write depth
+            // the source did not write.
+            if (DrawsNoColor(source, values))
+            {
+                Set(material, "_ColorMask", 0);
+                Set(material, "_ZWrite", WritesDepth(source, values) ? 1 : 0);
+            }
 
             foreach (var name in NormalTextures)
                 if (values.Texture(name, out var normal, out var scale, out var offset) && Flat(normal))
@@ -273,23 +281,44 @@ namespace VRVlog.LilToonExporter
         static bool WritesDepth(Material source, SourceValues values)
         {
             if (values.TryFloat("_ZWrite", out var declared)) return declared > .5f;
+            var text = ShaderText(source);
+            return text != null && ShaderWritesDepth(text, name => values.Float(name, 0));
+        }
+
+        // Whether no pass draws color on its own: each has ColorMask 0 or a
+        // stencil test that fails where no other material marked the stencil.
+        // Such a material only writes stencil (or depth) for another material,
+        // or draws an effect over pixels another material marked; MToon has no
+        // stencil, so drawing it would cover the mesh behind it.
+        static bool DrawsNoColor(Material source, SourceValues values)
+        {
+            var text = ShaderText(source);
+            return text != null && ShaderDrawsNoColor(text, values.Float);
+        }
+
+        // The source of a shader file, or null for built-in and missing shaders.
+        static string ShaderText(Material source)
+        {
             var path = source.shader == null || source.shader.name == MissingShader ? null : AssetDatabase.GetAssetPath(source.shader);
-            if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return null;
             // GetFullPath resolves a package path to the folder it is installed in.
             path = Path.GetFullPath(path);
-            // A file that cannot be read counts as a shader without one.
-            try { return File.Exists(path) && ShaderWritesDepth(File.ReadAllText(path), name => values.Float(name, 0)); }
-            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return false; }
+            // A file that cannot be read counts as a missing one.
+            try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return null; }
         }
 
         static readonly Regex Comments = new Regex(@"//[^\n]*|/\*.*?\*/", RegexOptions.Singleline);
         static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|True|False|1|0|\[\s*(\w+)\s*\])(?!\w)", RegexOptions.IgnoreCase);
+        static readonly Regex ColorMaskCommand = new Regex(@"\bColorMask\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+        static readonly Regex StencilBlock = new Regex(@"\bStencil\s*\{", RegexOptions.IgnoreCase);
         static readonly Regex DepthOnlyPass = new Regex(@"""LightMode""\s*=\s*""(ShadowCaster|Meta|DepthOnly|DepthNormals|MotionVectors)""", RegexOptions.IgnoreCase);
         static readonly Regex SurfacePragma = new Regex(@"#pragma\s+surface\b[^\n]*", RegexOptions.IgnoreCase);
         // Options with which the surface shader compiler blends the color
         // passes it generates and turns their ZWrite off. keepalpha and
         // alphatest do not blend.
         static readonly Regex SurfaceBlend = new Regex(@"(?<![\w:])(alpha(:(auto|fade|premul|blend))?|decal:(add|blend))(?![\w:])", RegexOptions.IgnoreCase);
+        static readonly string[] StencilComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always" };
 
         // ShaderLab of the first SubShader (the one Unity uses on desktop
         // hardware): a pass that draws color writes depth when its own ZWrite,
@@ -301,23 +330,8 @@ namespace VRVlog.LilToonExporter
         // keywords are case-insensitive.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
-            text = Comments.Replace(text, "");
-            var start = Regex.Match(text, @"\bSubShader\s*\{", RegexOptions.IgnoreCase);
-            if (!start.Success) return false;
-            var subShader = Block(text, start.Index + start.Length - 1);
-            var outside = new System.Text.StringBuilder();
-            var passes = new List<string>();
-            var at = 0;
-            foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{", RegexOptions.IgnoreCase))
-            {
-                if (pass.Index < at) continue;
-                var body = Block(subShader, pass.Index + pass.Length - 1);
-                outside.Append(subShader, at, pass.Index - at);
-                passes.Add(body);
-                at = pass.Index + pass.Length - 1 + body.Length;
-            }
-            outside.Append(subShader, at, subShader.Length - at);
-            bool? Command(string scope)
+            if (!ColorPasses(text, out var shared, out var passes, out var surface, out _)) return false;
+            bool? On(string scope)
             {
                 var match = ZWriteCommand.Match(scope);
                 if (!match.Success) return null;
@@ -325,11 +339,220 @@ namespace VRVlog.LilToonExporter
                 var value = match.Groups[1].Value;
                 return value.Equals("On", StringComparison.OrdinalIgnoreCase) || value.Equals("True", StringComparison.OrdinalIgnoreCase) || value == "1";
             }
-            var shared = Command(outside.ToString());
-            var surface = SurfacePragma.Match(outside.ToString());
-            if (surface.Success && !SurfaceBlend.IsMatch(surface.Value) && (shared ?? false)) return true;
-            if (passes.Count == 0) return !surface.Success && (shared ?? false);
-            return passes.Where(pass => !DepthOnlyPass.IsMatch(pass)).Any(pass => Command(pass) ?? shared ?? true);
+            if (surface && !SurfaceBlend.IsMatch(SurfacePragma.Match(shared).Value) && (On(shared) ?? false)) return true;
+            if (passes == null) return !surface && (On(shared) ?? false);
+            return passes.Any(pass => On(pass) ?? On(shared) ?? true);
+        }
+
+        // Same SubShader rules for ColorMask (default RGBA), the Stencil block
+        // (default: no test), ZTest (default LEqual) and Cull (default Back).
+        // The passes run in order on a stencil no other material has written
+        // (0), and a pass that writes the stencil changes the values the next
+        // passes compare against. A pass draws nothing when its mask is 0 or
+        // its comparison fails, for both faces, on every value the stencil
+        // can hold by then: a shader that marks the stencil and then draws
+        // where it marked still draws, while a color pass that waits for a
+        // mark another material leaves does not. A shader without color
+        // passes (only shadow or depth passes) draws no color either. UsePass
+        // borrows a pass this file does not show, so it counts as drawing.
+        // property(name, fallback) reads a material value.
+        internal static bool ShaderDrawsNoColor(string text, Func<string, float, float> property)
+        {
+            if (!ColorPasses(text, out var shared, out var passes, out var surface, out var borrows) || borrows) return false;
+            bool? Masked(string scope)
+            {
+                var match = ColorMaskCommand.Match(scope);
+                if (!match.Success) return null;
+                return match.Groups[2].Success ? property(match.Groups[2].Value, 15) < .5f : match.Groups[1].Value == "0";
+            }
+            int? Command(Regex command, string[] names, string scope)
+            {
+                var match = command.Match(scope);
+                if (!match.Success) return null;
+                if (match.Groups[2].Success)
+                {
+                    var value = (int)property(match.Groups[2].Value, -1);
+                    return value >= 0 ? value : (int?)null;
+                }
+                var named = Array.FindIndex(names, name => name.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+                return named >= 0 ? named : (int?)null;
+            }
+            var common = StencilState.Read(shared, property);
+            var values = new HashSet<int> { 0 };
+            string firstClips = null;
+            var sameClips = true;
+            bool Hidden(string pass)
+            {
+                var stencil = StencilState.Read(pass, property) ?? common;
+                var drawn = !(Masked(pass) ?? Masked(shared) ?? false) && (stencil == null || stencil.Passes(values));
+                if (stencil != null)
+                {
+                    // ZTest Off and Always (and Disabled from a property) test no depth.
+                    var zTest = Command(ZTestCommand, DepthComparisons, pass) ?? Command(ZTestCommand, DepthComparisons, shared) ?? 4;
+                    var cull = Command(CullCommand, CullModes, pass) ?? Command(CullCommand, CullModes, shared) ?? 2;
+                    var depthTested = zTest != 0 && zTest != 8 && zTest != 9;
+                    // A fragment that clips, discards or uses alpha to coverage leaves
+                    // pixels unwritten. When every stencil pass so far clips with the
+                    // same statements, the earlier passes skipped those pixels too, so
+                    // they still hold the untouched 0.
+                    var clips = string.Join("\n", ClipStatements.Matches(pass).Cast<Match>().Select(match => Whitespace.Replace(match.Value, "")));
+                    sameClips &= firstClips == null || clips == firstClips;
+                    firstClips ??= clips;
+                    var discards = Discards.IsMatch(pass);
+                    var everyPixel = !depthTested && cull == 0 && (!discards || sameClips && !AlphaToMask.IsMatch(pass));
+                    values = stencil.After(values, depthTested, cull != 1, cull != 2, everyPixel);
+                    if (everyPixel && discards) values.Add(0);
+                }
+                return !drawn;
+            }
+            if (passes == null) return Hidden(shared);
+            if (surface && !Hidden(shared)) return false;
+            return passes.All(Hidden);
+        }
+
+        static readonly Regex ZTestCommand = new Regex(@"\bZTest\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+        static readonly Regex CullCommand = new Regex(@"\bCull\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+        static readonly Regex Discards = new Regex(@"\bclip\s*\(|\bdiscard\b|\bAlphaToMask\s+(On|\[)", RegexOptions.IgnoreCase);
+        static readonly Regex AlphaToMask = new Regex(@"\bAlphaToMask\s+(On|\[)", RegexOptions.IgnoreCase);
+        static readonly Regex ClipStatements = new Regex(@"\bclip\s*\([^;]*;|\bdiscard\s*;", RegexOptions.IgnoreCase);
+        static readonly Regex Whitespace = new Regex(@"\s+");
+        // Indices are UnityEngine.Rendering.CompareFunction and CullMode; Off is
+        // the ZTest keyword for no depth test.
+        static readonly string[] DepthComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always", "Off" };
+        static readonly string[] CullModes = { "Off", "Front", "Back" };
+        static readonly string[] StencilOperations = { "Keep", "Zero", "Replace", "IncrSat", "DecrSat", "Invert", "IncrWrap", "DecrWrap" };
+
+        // One Stencil block: the comparison and operations of each face.
+        sealed class StencilState
+        {
+            struct Face { public int Comparison, Pass, Fail, ZFail; }
+            int reference, readMask, writeMask;
+            Face front, back;
+
+            // null when the scope has no Stencil block.
+            internal static StencilState Read(string scope, Func<string, float, float> property)
+            {
+                var start = StencilBlock.Match(scope);
+                if (!start.Success) return null;
+                var block = Block(scope, start.Index + start.Length - 1);
+                int Value(string key, int fallback, string[] names = null)
+                {
+                    var match = Regex.Match(block, @"\b" + key + @"\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+                    if (!match.Success) return fallback;
+                    if (match.Groups[2].Success) return (int)property(match.Groups[2].Value, fallback);
+                    var named = names == null ? -1 : Array.FindIndex(names, name => name.Equals(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+                    if (named >= 0) return named;
+                    return float.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var number) ? (int)number : fallback;
+                }
+                Face Side(string suffix, Face both) => new Face
+                {
+                    Comparison = Value("Comp" + suffix, both.Comparison, StencilComparisons),
+                    Pass = Value("Pass" + suffix, both.Pass, StencilOperations),
+                    Fail = Value("Fail" + suffix, both.Fail, StencilOperations),
+                    ZFail = Value("ZFail" + suffix, both.ZFail, StencilOperations),
+                };
+                var shared = Side("", new Face { Comparison = 8 });
+                return new StencilState
+                {
+                    reference = Value("Ref", 0) & 255,
+                    readMask = Value("ReadMask", 255) & 255,
+                    writeMask = Value("WriteMask", 255) & 255,
+                    front = Side("Front", shared),
+                    back = Side("Back", shared),
+                };
+            }
+
+            bool Compares(int comparison, int value)
+            {
+                int r = reference & readMask, b = value & readMask;
+                switch (comparison)
+                {
+                    case 1: return false;      // Never
+                    case 2: return r < b;      // Less
+                    case 3: return r == b;     // Equal
+                    case 4: return r <= b;     // LEqual
+                    case 5: return r > b;      // Greater
+                    case 6: return r != b;     // NotEqual
+                    case 7: return r >= b;     // GEqual
+                    default: return true;      // Disabled, Always
+                }
+            }
+
+            // Whether either face passes on one of the values.
+            internal bool Passes(IEnumerable<int> values) => values.Any(value => Compares(front.Comparison, value) || Compares(back.Comparison, value));
+
+            IEnumerable<int> Write(int operation, int value)
+            {
+                int next;
+                switch (operation)
+                {
+                    case 0: next = value; break;
+                    case 1: next = 0; break;
+                    case 2: next = reference; break;
+                    case 3: next = Math.Min(value + 1, 255); break;
+                    case 4: next = Math.Max(value - 1, 0); break;
+                    case 5: next = ~value; break;
+                    case 6: next = value + 1; break;
+                    case 7: next = value - 1; break;
+                    default: return Enumerable.Range(0, 256);
+                }
+                return new[] { ((value & ~writeMask) | (next & writeMask)) & 255 };
+            }
+
+            IEnumerable<int> Outcomes(Face face, int value, bool depthTested)
+            {
+                if (!Compares(face.Comparison, value)) return Write(face.Fail, value);
+                return depthTested ? Write(face.Pass, value).Concat(Write(face.ZFail, value)) : Write(face.Pass, value);
+            }
+
+            // The values the stencil can hold after the pass. A pixel can be
+            // drawn several times (overlapping triangles, both faces), so the
+            // operations repeat until nothing new appears. A pass that tests no
+            // depth, draws both faces and keeps every fragment reaches every
+            // pixel of the mesh, so the values before it only remain where it
+            // writes them back.
+            internal HashSet<int> After(HashSet<int> values, bool depthTested, bool frontDrawn, bool backDrawn, bool everyPixel)
+            {
+                var faces = new List<Face>();
+                if (frontDrawn) faces.Add(front);
+                if (backDrawn) faces.Add(back);
+                IEnumerable<int> Step(IEnumerable<int> from) => from.SelectMany(value => faces.SelectMany(face => Outcomes(face, value, depthTested)));
+                var reached = new HashSet<int>(Step(values));
+                for (var frontier = reached.ToList(); frontier.Count > 0;) frontier = Step(frontier).Where(reached.Add).ToList();
+                if (!everyPixel) reached.UnionWith(values);
+                return reached;
+            }
+        }
+
+        // Splits the first SubShader into its own scope (outside the passes)
+        // and the color passes. passes is null when there are no Pass blocks;
+        // surface tells that the shader also generates color passes, which
+        // take the SubShader commands; borrows tells that a UsePass adds
+        // passes from another shader.
+        static bool ColorPasses(string text, out string shared, out List<string> passes, out bool surface, out bool borrows)
+        {
+            shared = null; passes = null; surface = false; borrows = false;
+            text = Comments.Replace(text, "");
+            var start = Regex.Match(text, @"\bSubShader\s*\{", RegexOptions.IgnoreCase);
+            if (!start.Success) return false;
+            var subShader = Block(text, start.Index + start.Length - 1);
+            borrows = Regex.IsMatch(subShader, @"\bUsePass\b", RegexOptions.IgnoreCase);
+            var outside = new System.Text.StringBuilder();
+            var bodies = new List<string>();
+            var at = 0;
+            foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{", RegexOptions.IgnoreCase))
+            {
+                if (pass.Index < at) continue;
+                var body = Block(subShader, pass.Index + pass.Length - 1);
+                outside.Append(subShader, at, pass.Index - at);
+                bodies.Add(body);
+                at = pass.Index + pass.Length - 1 + body.Length;
+            }
+            outside.Append(subShader, at, subShader.Length - at);
+            shared = outside.ToString();
+            surface = SurfacePragma.IsMatch(shared);
+            if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).ToList();
+            return true;
         }
 
         // The text from an opening brace to its closing brace, both included.
