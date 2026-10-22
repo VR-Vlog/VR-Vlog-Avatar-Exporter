@@ -2462,6 +2462,18 @@ namespace VRVlog.LilToonExporter.Tests
                 // Already exporting, nothing is asked.
                 Assert.That(window.LeaveTransferMode(true), Is.True);
                 Assert.That(asked.Count, Is.EqualTo(3));
+                // "VRMを書き出す..." for another avatar: "戻る" keeps the transfer and its avatar.
+                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
+                answer = false;
+                var other = new GameObject("Other");
+                try
+                {
+                    Assert.That(window.ChooseForExport(other, true), Is.False);
+                    Assert.That(window.TransferMode, Is.True);
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.Null);
+                    Assert.That(asked.Count, Is.EqualTo(4));
+                }
+                finally { Object.DestroyImmediate(other); }
             }
             finally
             {

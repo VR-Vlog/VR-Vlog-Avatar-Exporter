@@ -190,12 +190,18 @@ namespace VRVlog.LilToonExporter
         // "変更" button does; keeping it leaves the board as it was.
         public static void OpenFor(GameObject avatar)
         {
-            Open();
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
-            if (avatar == null || window.source == avatar) return;
-            if (window.session == null) { window.SelectSource(avatar); window.Repaint(); return; }
-            if (!window.ConfirmChangeAvatar()) return;
-            window.Queue(() => { window.ChangeAvatar(); window.SelectSource(avatar); });
+            if (!window.ChooseForExport(avatar, window.TransferPanelTransferring)) window.Focus();
+        }
+
+        // False when the user kept the transfer on the third page: the avatar stays too.
+        internal bool ChooseForExport(GameObject avatar, bool transferring)
+        {
+            if (!LeaveTransferMode(transferring)) return false;
+            if (avatar == null || source == avatar) return true;
+            if (session == null) { SelectSource(avatar); Repaint(); return true; }
+            if (ConfirmChangeAvatar()) Queue(() => { ChangeAvatar(); SelectSource(avatar); });
+            return true;
         }
 
         // "アプリに転送（通常）": this board, prepared for the avatar, leads on to
