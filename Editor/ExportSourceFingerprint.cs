@@ -218,6 +218,10 @@ namespace VRVlog.LilToonExporter
         static bool True(SerializedObject settings, string name) => settings.FindProperty(name)?.boolValue == true;
         static bool IsVrcRotationConstraint(Object value) => value.GetType().FullName == "VRC.SDK3.Dynamics.Constraint.Components.VRCAimConstraint" ||
             value.GetType().FullName == "VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint";
+        // The descriptor inspector writes its parameters into each menu's
+        // Parameters in memory without dirtying it. The export reads the
+        // descriptor's own parameters, so the menu's copy is not an input.
+        static bool IsVrcExpressionsMenu(Object value) => value.GetType().FullName == "VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu";
         // The root's channels that only place it in the scene. Its scale stays
         // in: it is hashed here and as the world scale.
         static bool IsRootPlacement(string path) => path == "m_LocalPosition" || path == "m_LocalRotation" ||
@@ -373,7 +377,8 @@ namespace VRVlog.LilToonExporter
                 }
                 if (drivenRotation && property.propertyPath == "m_LocalRotation" || drivenEulerHint && property.propertyPath == "m_LocalEulerAnglesHint" ||
                     avatarRoot && IsRootPlacement(property.propertyPath) ||
-                    IsVrcRotationConstraint(value) && (property.propertyPath == "cachedExecutionGroupIndex" || property.propertyPath == "latestValidExecutionGroupIndex"))
+                    IsVrcRotationConstraint(value) && (property.propertyPath == "cachedExecutionGroupIndex" || property.propertyPath == "latestValidExecutionGroupIndex") ||
+                    IsVrcExpressionsMenu(value) && property.propertyPath == "Parameters")
                 { enterChildren = false; continue; }
                 hash.Text(property.propertyPath); hash.Integer((int)property.propertyType);
                 switch (property.propertyType)
