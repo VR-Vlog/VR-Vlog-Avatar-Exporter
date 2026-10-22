@@ -24,12 +24,29 @@ namespace VRVlog.LilToonExporter.Compatibility
         }
 
         // VRChat SDK Base/Avatars in which VRCAnimatorPlayAudio may be omitted from
-        // an expression capture copy: the same release, VrchatSdkMinimum <= v < VrchatSdkBelow.
+        // an expression capture copy: the same version, VrchatSdkMinimum <= X.Y.Z < VrchatSdkBelow.
+        // A pre-release (X.Y.Z-beta.N) counts as its X.Y.Z: VRCAnimatorPlayAudio and
+        // VRC_AnimatorPlayAudio are the same in every 3.5.2+ pre-release as in the stable ones.
         public static bool SupportsVrchatSdkAudio(string avatars, string sdkBase)
         {
-            var parsed = avatars == null ? null : ParseRelease(avatars);
+            var parsed = avatars == null ? null : ParseRelease(StripPreRelease(avatars));
             return parsed != null && string.Equals(avatars, sdkBase, StringComparison.Ordinal) &&
                 CompareRelease(parsed, VrchatSdkLow) >= 0 && CompareRelease(parsed, VrchatSdkHigh) < 0;
+        }
+
+        // "3.10.6-beta.2" -> "3.10.6". A missing or malformed suffix is left for ParseRelease to reject.
+        static string StripPreRelease(string version)
+        {
+            var dash = version.IndexOf('-');
+            if (dash < 0) return version;
+            // SemVer: dot-separated, non-empty identifiers of [0-9A-Za-z-].
+            foreach (var identifier in version.Substring(dash + 1).Split('.'))
+            {
+                if (identifier.Length == 0) return version;
+                foreach (var c in identifier)
+                    if (!(c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '-')) return version;
+            }
+            return version.Substring(0, dash);
         }
 
         static readonly int[] VrchatSdkLow = ParseRelease(VrchatSdkMinimum) ?? throw new InvalidOperationException("Invalid VrchatSdkMinimum.");
