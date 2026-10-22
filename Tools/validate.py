@@ -377,15 +377,15 @@ assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureE
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
-assert 'var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);' in one_click
-assert 'var read = VrChatExpressionMenu.Read(source, menuPolicy);' in one_click
+assert 'var read = VrChatExpressionMenu.Read(source);' in one_click
+assert 'var menuPolicy = guard.IsOmitted(ExportStage.ExpressionMenu) ? new VrChatMenuImportPolicy { SkipAll = true } : null;' in one_click
 assert 'bool ExcludedBinding(string path) => exclusions.ContainsPath(path) || gimmicks.ContainsPath(path);' in one_click
 assert 'new PreparedExpressionBindings(clone, menu, excludedPath: ExcludedBinding)' in one_click
 assert 'VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,' in one_click
 assert one_click.index('FaceEmoExpressions.Capture(source, clone, ExcludedBinding,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'faceEmoBindings?.RebindPrepared(transformed.PreparedRendererFor,\n                        transformed.ObjectRegistry, transformed.IsolatedCopyOf);' in one_click
 assert 'new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy)' in one_click
-assert 'SkipVrChatMenus' in recovery and 'ExcludeMenuBranch' in recovery
+assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
 assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
 assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click

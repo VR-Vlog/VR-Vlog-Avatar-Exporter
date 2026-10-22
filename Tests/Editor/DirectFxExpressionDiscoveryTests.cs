@@ -403,7 +403,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void DeepNestedExitPathReportsAnAtomicOptionalDiagnostic()
+        public void DeepNestedExitPathIsReadInFull()
         {
             controller.AddParameter("FaceMode", AnimatorControllerParameterType.Bool);
             controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Int);
@@ -424,11 +424,10 @@ namespace VRVlog.LilToonExporter.Tests
             var exit = previousState.AddExitTransition(); exit.duration = 0; exit.hasExitTime = false;
             exit.AddCondition(AnimatorConditionMode.Equals, 1, "FaceChoice");
             var face = State(root, "Selected after deep exit", Clip("Smile", 75)); root.AddStateMachineTransition(first, face);
-            var source = new VrChatExpressionMenu.Source { Controller = controller };
-            var authored = new VrChatExpressionMenu.Entry { Id = "menu", Name = "Existing authored expression" }; source.Entries.Add(authored);
-            Assert.DoesNotThrow(() => VrChatFxExpressions.Add(avatar, source));
-            Assert.That(source.Entries.Single(), Is.SameAs(authored));
-            Assert.That(source.Messages.Single(), Does.Contain("条件経路").And.Contain("深すぎる"));
+            var source = Read(); Assert.That(source.Messages, Is.Empty);
+            var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Parameters.Keys, Is.EquivalentTo(new[] { "FaceMode", "FaceChoice" }));
+            Assert.That(entry.Parameters.Values, Is.All.EqualTo(1)); Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
         }
 
         void Parameter(string name, AnimatorControllerParameterType type, float initial)
@@ -660,27 +659,25 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void LongPriorityExclusionsRespectTheConditionWorkBudget()
+        public void LongPriorityExclusionsAreReadInFull()
         {
             var faces = EntryFaces();
             Parameter("Mode", AnimatorControllerParameterType.Int, 0);
             // There is only one surviving negation branch. Excluding values
             // around the default makes each candidate assignment scan many
-            // constraints, so counting graph nodes alone cannot bound work.
-            // Simultaneous destination contradictions now prune the smaller
-            // selector, but this facial default still needs the full fallback
-            // exclusion proof. Keep that actual solver work above its budget.
+            // constraints. The facial default still needs the full fallback
+            // exclusion proof, and it is read without a work limit.
             for (var index = 0; index < 128; index++)
             {
                 var value = index % 2 == 0 ? -index / 2 : (index + 1) / 2;
                 faces.Machine.AddEntryTransition(faces.Earlier).AddCondition(AnimatorConditionMode.Equals, value, "Mode");
             }
-            var source = new VrChatExpressionMenu.Source { Controller = controller };
-            var authored = new VrChatExpressionMenu.Entry { Id = "menu", Name = "Authored face" }; source.Entries.Add(authored);
-            Assert.DoesNotThrow(() => VrChatFxExpressions.Add(avatar, source));
-            Assert.That(source.Entries, Has.Count.EqualTo(1));
-            Assert.That(source.Entries.Single(), Is.SameAs(authored));
-            Assert.That(source.Messages.Single(), Does.Contain("条件の探索").And.Contain("上限"));
+            var source = Read();
+            Assert.That(source.Messages, Is.Empty);
+            Assert.That(source.Entries.Any(entry => Mathf.Abs(Weight(entry) - 75) < .01f), Is.True);
+            Assert.That(source.Entries.Any(entry => Mathf.Abs(Weight(entry) - 20) < .01f), Is.True);
+            foreach (var entry in source.Entries)
+                AssertNativeFace(entry, "Priority faces." + (Weight(entry) > 50 ? faces.Default.name : faces.Earlier.name));
         }
 
         [Test]
@@ -731,19 +728,23 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void EntryNegationExpansionReportsAnAtomicDiscoveryBudgetDiagnostic()
+        public void EntryNegationExpansionIsReadInFull()
         {
             var faces = EntryFaces();
-            for (var index = 0; index < 14; index++)
+            // Each earlier !(A && B) doubles the fallback branches. Every
+            // branch is a native candidate, so keep the count small.
+            for (var index = 0; index < 4; index++)
             {
                 Parameter("A" + index, AnimatorControllerParameterType.Bool, 1); Parameter("B" + index, AnimatorControllerParameterType.Bool, 1);
                 var entry = faces.Machine.AddEntryTransition(faces.Earlier);
                 entry.AddCondition(AnimatorConditionMode.If, 0, "A" + index); entry.AddCondition(AnimatorConditionMode.If, 0, "B" + index);
             }
-            var source = new VrChatExpressionMenu.Source { Controller = controller };
-            var authored = new VrChatExpressionMenu.Entry { Id = "menu", Name = "Authored face" }; source.Entries.Add(authored);
-            Assert.DoesNotThrow(() => VrChatFxExpressions.Add(avatar, source));
-            Assert.That(source.Entries.Single(), Is.SameAs(authored)); Assert.That(source.Messages.Single(), Does.Contain("探索").And.Contain("上限"));
+            var source = Read();
+            Assert.That(source.Messages, Is.Empty);
+            Assert.That(source.Entries.Any(entry => Mathf.Abs(Weight(entry) - 75) < .01f), Is.True);
+            Assert.That(source.Entries.Any(entry => Mathf.Abs(Weight(entry) - 20) < .01f), Is.True);
+            foreach (var entry in source.Entries)
+                AssertNativeFace(entry, "Priority faces." + (Weight(entry) > 50 ? faces.Default.name : faces.Earlier.name));
         }
 
         [TestCase(true)]
@@ -1463,24 +1464,33 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void InferredCandidateBudgetCannotRemoveAuthoredExpressionsOrPublishAPartialSubset()
+        public void ManyInferredCandidatesArePublishedAfterAuthoredExpressions()
         {
             controller.AddParameter("ExpressionStrength", AnimatorControllerParameterType.Float);
             var tree = new BlendTree { name = "Many inference points", blendType = BlendTreeType.Simple1D,
                 blendParameter = "ExpressionStrength", useAutomaticThresholds = false };
             AssetDatabase.AddObjectToAsset(tree, controller);
-            var clip = Clip("Shared face", 75);
-            tree.children = Enumerable.Range(0, 260).Select(index => new ChildMotion { motion = clip, threshold = index, timeScale = 1 }).ToArray();
+            // Knot 0 is the default selection; the other 300 are candidates.
+            tree.children = Enumerable.Range(0, 301).Select(index => new ChildMotion { motion = Clip("Face " + index, index / 4f),
+                threshold = index, timeScale = 1 }).ToArray();
             neutral.motion = tree;
             var source = new VrChatExpressionMenu.Source { Controller = controller };
             var authored = new VrChatExpressionMenu.Entry { Id = "menu", Name = "Existing authored expression" }; source.Entries.Add(authored);
             Assert.DoesNotThrow(() => VrChatFxExpressions.Add(avatar, source));
-            Assert.That(source.Entries.Single(), Is.SameAs(authored));
-            Assert.That(source.Messages.Single(), Does.Contain("自動表情探索").And.Contain("256"));
+            Assert.That(source.Messages, Is.Empty);
+            Assert.That(source.Entries.First(), Is.SameAs(authored));
+            var inferred = source.Entries.Skip(1).ToArray();
+            Assert.That(inferred.Select(entry => entry.Parameters["ExpressionStrength"]),
+                Is.EquivalentTo(Enumerable.Range(1, 300).Select(index => (float)index)));
+            foreach (var entry in inferred)
+            {
+                Assert.That(entry.Error, Is.Null);
+                Assert.That(Weight(entry), Is.EqualTo(entry.Parameters["ExpressionStrength"] / 4).Within(.01));
+            }
         }
 
         [Test]
-        public void DeepConditionChainReportsAnAtomicOptionalDiscoveryDiagnostic()
+        public void DeepConditionChainIsReadInFull()
         {
             controller.AddParameter("FaceMode", AnimatorControllerParameterType.Bool);
             var previous = neutral;
@@ -1491,11 +1501,39 @@ namespace VRVlog.LilToonExporter.Tests
             }
             var face = State(controller.layers[0].stateMachine, "Deep face", Clip("Deep face", 75));
             Transition(previous, face, "FaceMode", 0, AnimatorConditionMode.If);
-            var source = new VrChatExpressionMenu.Source { Controller = controller };
-            var authored = new VrChatExpressionMenu.Entry { Id = "menu", Name = "Existing authored expression" }; source.Entries.Add(authored);
-            Assert.DoesNotThrow(() => VrChatFxExpressions.Add(avatar, source));
-            Assert.That(source.Entries.Single(), Is.SameAs(authored));
-            Assert.That(source.Messages.Single(), Does.Contain("条件経路").And.Contain("深すぎる"));
+            var source = Read(); Assert.That(source.Messages, Is.Empty);
+            var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Parameters.Keys, Is.EquivalentTo(new[] { "FaceMode" })); Assert.That(entry.Parameters["FaceMode"], Is.EqualTo(1));
+            Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
+        }
+
+        [Test]
+        public void LayeredDiamondGraphFinishesWithoutDuplicateCandidates()
+        {
+            controller.AddParameter("FaceMode", AnimatorControllerParameterType.Bool);
+            var machine = controller.layers[0].stateMachine;
+            // Every layer doubles the paths into the next one. All paths carry
+            // the same condition, so the work stays per state, not per path.
+            // Native Animator ignores a transition with neither a condition
+            // nor an exit time, so each step repeats FaceMode.
+            var previous = new[] { neutral };
+            for (var layer = 0; layer < 20; layer++)
+            {
+                var current = new[] { State(machine, "A " + layer, null), State(machine, "B " + layer, null) };
+                foreach (var from in previous)
+                    foreach (var to in current) Transition(from, to, "FaceMode", 0, AnimatorConditionMode.If);
+                previous = current;
+            }
+            var face = State(machine, "Deep face", Clip("Deep face", 75));
+            foreach (var from in previous) Transition(from, face, "FaceMode", 0, AnimatorConditionMode.If);
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var source = Read();
+            watch.Stop();
+            Assert.That(source.Messages, Is.Empty);
+            var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Parameters.Keys, Is.EquivalentTo(new[] { "FaceMode" })); Assert.That(entry.Parameters["FaceMode"], Is.EqualTo(1));
+            Assert.That(Weight(entry), Is.EqualTo(75).Within(.01));
+            Assert.That(watch.Elapsed.TotalSeconds, Is.LessThan(10), "Paths through the same states must not be expanded one by one.");
         }
 
         [Test]

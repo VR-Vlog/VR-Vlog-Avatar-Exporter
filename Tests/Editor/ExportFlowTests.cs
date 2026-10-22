@@ -240,8 +240,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("DisableAudioLink", true)]
-        [TestCase("SkipVrChatMenus", false)]
-        [TestCase("ExcludeMenuBranch", false)]
         [TestCase("ExcludeHiddenRenderer", false)]
         public void SuggestedDirectFixNeverSelectsBroadMenuOrRendererOmission(string kindName, bool suggested)
         {

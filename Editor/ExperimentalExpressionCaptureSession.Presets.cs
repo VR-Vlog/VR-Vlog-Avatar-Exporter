@@ -467,18 +467,16 @@ namespace VRVlog.LilToonExporter
         Dictionary<AnimationClip, List<string>> sourceMenuPaths;
         List<string> sourceMenuOutside;
         bool sourceMenuRead;
-        VrChatMenuImportSummary sourceMenuOverLimit;
 
         // Reads Source's VRChat menu once per session for both MenuClipPaths
         // and MenuEntriesOutsideBoard (ReadMenuLinks). Nothing here may stop
-        // the board from opening: a menu that cannot be read, or is over the
-        // read limit, gives no paths and a null list. An avatar without a
-        // VRChat menu reads as no items.
+        // the board from opening: a menu that cannot be read gives no paths
+        // and a null list. An avatar without a VRChat menu reads as no items.
         void ReadSourceMenu()
         {
             if (sourceMenuRead) return;
             sourceMenuRead = true;
-            (sourceMenuPaths, sourceMenuOutside) = ReadMenuLinks(() => VrChatExpressionMenu.Read(Source), out sourceMenuOverLimit);
+            (sourceMenuPaths, sourceMenuOutside) = ReadMenuLinks(() => VrChatExpressionMenu.Read(Source));
         }
 
         // The menu paths of the items the record route leaves out (see the
@@ -487,10 +485,6 @@ namespace VRVlog.LilToonExporter
         {
             get { ReadSourceMenu(); return sourceMenuOutside; }
         }
-
-        // Why no emotion comes from the menu item names, null when the menu
-        // was read (or not read yet, or read for a caller's menuPaths).
-        internal string MenuOverLimitMessage => MenuOverLimitNote(sourceMenuOverLimit);
 
         // Per emotion, the best tier wins; within a tier added/registered clips
         // come before BlendShapes, in the given order. A clip whose name says

@@ -16,7 +16,7 @@ namespace VRVlog.LilToonExporter
         internal static void Add(GameObject avatar, VrChatExpressionMenu.Source source,
             Func<string, bool> excludedPath = null, VrChatMenuImportPolicy policy = null)
         {
-            if (source.Controller == null || policy?.SkipAll == true || policy?.ExcludedBranches.Count > 0) return;
+            if (source.Controller == null || policy?.SkipAll == true) return;
             if (!source.NeutralInputInventoryComplete) NeutralInputProof.Read(avatar, source);
             if (!source.NeutralInputInventoryComplete) return;
             var scope = FacialProjectionScope.For(avatar, source);

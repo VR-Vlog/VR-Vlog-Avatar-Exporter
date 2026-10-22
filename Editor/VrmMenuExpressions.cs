@@ -16,6 +16,9 @@ namespace VRVlog.LilToonExporter
             internal string InferenceName;
             // The name Add registered, with any duplicate-name suffix.
             internal string RegisteredName;
+            // Set by Add when this face is written as an identical face's
+            // registered name instead (RegisteredName stays null).
+            internal string MergedInto;
             // Where the expression came from (ExpressionSource), listed in the
             // expression animation extension.
             internal string Source = ExpressionSource.Menu;
@@ -156,12 +159,11 @@ namespace VRVlog.LilToonExporter
             var nodes = (List<object>)glb.Json["nodes"];
             var meshes = (List<object>)glb.Json["meshes"];
             var document = new ExpressionAnimationDocument();
-            var written = new List<(UnityEngine.Object Clip, string Name, string Inference, string Source, List<object> Binds, ExpressionAnimationData Animation)>();
+            var built = new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)>();
             foreach (var expression in expressions)
             {
-                // The name carries no source prefix; the extension lists the
-                // source. Recorded and authored custom faces keep their names.
-                var name = UniqueName(expression.Name, custom.ContainsKey);
+                expression.RegisteredName = null;
+                expression.MergedInto = null;
                 ExpressionAnimationData.MorphReference Named(string target)
                 {
                     var matches = new List<ExpressionAnimationData.MorphReference>();
@@ -247,16 +249,29 @@ namespace VRVlog.LilToonExporter
                     }
                 }
                 if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
-                // One gesture clip registered twice (both hands) writes the
-                // same binds and motion under the same name; the app would
-                // list it as name and name (2). Keep the first; the other stays
-                // unregistered (RegisteredName null). Only the same clip: the
-                // board lists each clip once, and separate clips stay separate.
-                var inference = expression.InferenceName ?? expression.Name;
-                if (expression.Clip != null && written.Any(previous => previous.Clip == expression.Clip && previous.Name == expression.Name &&
-                    previous.Inference == inference && previous.Source == expression.Source &&
-                    SameBinds(previous.Binds, binds) && SameAnimation(previous.Animation, animation))) continue;
-                written.Add((expression.Clip, expression.Name, inference, expression.Source, binds, animation));
+                built.Add((expression, binds, animation));
+            }
+            // Faces that write the same binds (same morphs, exactly the same
+            // weights) and the same motion are one face to the app, whatever
+            // their clip, label or source: the same clip under two menu items,
+            // two clips with the same values, one gesture clip on both hands.
+            // The group is written once, where its first face is, under the
+            // name of the face whose label emotion inference reads (an
+            // emotion first, then neutral), else the first; the others stay
+            // unregistered with MergedInto set to that name.
+            var groups = new List<List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)>>();
+            foreach (var item in built)
+            {
+                var group = groups.FirstOrDefault(g => SameBinds(g[0].Binds, item.Binds) && SameAnimation(g[0].Animation, item.Animation));
+                if (group != null) group.Add(item);
+                else groups.Add(new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> { item });
+            }
+            foreach (var group in groups)
+            {
+                var (expression, binds, animation) = KeptFace(group);
+                // The name carries no source prefix; the extension lists the
+                // source. Recorded and authored custom faces keep their names.
+                var name = UniqueName(expression.Name, custom.ContainsKey);
                 custom.Add(name, new Dictionary<string, object>
                 {
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
@@ -264,6 +279,7 @@ namespace VRVlog.LilToonExporter
                 });
                 document.Expressions.Add(new ExpressionSource { Expression = name, Source = expression.Source });
                 expression.RegisteredName = name;
+                foreach (var other in group) if (other.Expression != expression) other.Expression.MergedInto = name;
                 if (animation != null)
                 {
                     animation.Expression = name; // Includes any duplicate-name suffix.
@@ -280,8 +296,21 @@ namespace VRVlog.LilToonExporter
             return glb.Write();
         }
 
+        static (Expression Expression, List<object> Binds, ExpressionAnimationData Animation) KeptFace(
+            List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> group)
+        {
+            string Text((Expression Expression, List<object> Binds, ExpressionAnimationData Animation) item) =>
+                item.Expression.InferenceName ?? item.Expression.Name;
+            var emotion = group.Select((item, order) => (item, order, match: ExpressionNameInference.MatchMenuPath(Text(item))))
+                .Where(entry => entry.match != null).OrderBy(entry => entry.match.Value.Tier).ThenBy(entry => entry.order).Select(entry => entry.item);
+            var neutral = group.Where(item => ExpressionNameInference.MatchNeutralMenuPath(Text(item)));
+            return emotion.Concat(neutral).Concat(group).First();
+        }
+
+        // Binds hold each output morph once (Bind keeps the first), so equal
+        // sets mean the same face; weights compare exactly.
         static bool SameBinds(List<object> first, List<object> second) =>
-            first.Count == second.Count && first.Zip(second, SameBind).All(same => same);
+            first.Count == second.Count && first.All(bind => second.Any(other => SameBind(bind, other)));
 
         static bool SameBind(object first, object second)
         {

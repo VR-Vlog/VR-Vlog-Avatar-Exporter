@@ -178,14 +178,10 @@ namespace VRVlog.LilToonExporter
         // faces after the avatar's menu, which the board cannot rename.
         internal bool UsesRecordRoute => Items.Any(item => item.Added || PlaceOf(item.Clip) is var place &&
             (place.Kind == PlaceKind.Excluded || place.Kind == PlaceKind.Other && Usable(item) && Names.ContainsKey(item.Clip)));
-        internal int OverLimitBy => Math.Max(0, ExportedCustom().Count - ExperimentalExpressionCaptureSession.MaximumExpressions);
-        internal bool ExceedsLimit => UsesRecordRoute && OverLimitBy > 0;
 
         // The ordinary export records this list instead when the menu gives
-        // fewer faces; it can only when the list meets the record limit.
-        // Recorded faces are named after their files; a repeated name gets
-        // " (2)" in list order when recorded, so it does not stop either route.
-        internal bool CanRecordList => OverLimitBy == 0;
+        // fewer faces. Recorded faces are named after their files; a repeated
+        // name gets " (2)" in list order when recorded, so it does not stop either route.
 
         internal string NameOf(AnimationClip clip) =>
             clip == null ? "" : Names.TryGetValue(clip, out var name) ? name : clip.name?.Trim() ?? "";

@@ -15,9 +15,6 @@ namespace VRVlog.LilToonExporter
     // proves the target was reached and keeps its existing capability checks.
     internal static class VrChatFxExpressions
     {
-        const int MaximumNodes = 8192, MaximumDepth = 16, MaximumCandidates = 256;
-        const int MaximumConditionChecks = MaximumNodes * 32;
-
         // A time-decided BlendTree is never one settled frame. The gesture
         // path catches its message and reads the tree as an animation, so it
         // is not shown; the FX path has no animated reading and omits it.
@@ -166,8 +163,8 @@ namespace VRVlog.LilToonExporter
         {
             var handInputs = new HashSet<string>(new[] { "GestureLeft", "GestureRight", "GestureLeftWeight", "GestureRightWeight" }, StringComparer.Ordinal);
             var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
-            // Buffer discovery before native evaluation. A malformed tree or
-            // exhausted graph budget cannot publish an arbitrary partial set.
+            // Buffer discovery before native evaluation. A malformed tree
+            // cannot publish an arbitrary partial set.
             var candidates = Discover(source, context, excludedPath, handInputs,
                 (candidateLayer, candidateState) => candidateState == state, layer).ToArray();
             var result = new List<VrChatExpressionMenu.Entry>();
@@ -292,31 +289,15 @@ namespace VRVlog.LilToonExporter
             var impossible = new Dictionary<AnimatorTransitionBase, bool>();
             var replacements = ExpressionDependencies.Overrides(source.Controller);
             var layers = controller.layers;
-            var nodes = 0;
-            var conditionChecks = 0;
-            var candidates = 0;
             var emitted = new HashSet<string>(StringComparer.Ordinal);
             var faceOutputs = new Dictionary<Motion, bool>();
             var controlPoints = new Dictionary<BlendTree, Point[]>();
-            void Visit()
-            {
-                if (++nodes > MaximumNodes)
-                    throw new InvalidOperationException("FXの表情探索が上限を超えています。Controllerの構成を確認してください。");
-            }
-            void CheckCondition()
-            {
-                // A single priority branch can contain many exclusions. Its
-                // solver work grows independently of the number of graph nodes.
-                if (++conditionChecks > MaximumConditionChecks)
-                    throw new InvalidOperationException("FXの表情条件の探索が上限を超えています。Controllerの構成を確認してください。");
-            }
             bool Impossible(AnimatorTransitionBase transition)
             {
                 if (impossible.TryGetValue(transition, out var cached)) return cached;
                 var disproved = false;
                 foreach (var condition in transition.conditions)
                 {
-                    CheckCondition();
                     // Malformed conditions retain their existing diagnostics.
                     // Fractional Int thresholds are not a portable proof.
                     if (string.IsNullOrEmpty(condition.parameter) || !parameters.TryGetValue(condition.parameter, out var parameter) ||
@@ -332,7 +313,7 @@ namespace VRVlog.LilToonExporter
                 if (onlyLayer.HasValue && layer != onlyLayer.Value) continue;
                 // Wardrobe/gimmick graphs cannot supply a face unless they
                 // write a facial dependency or control one of its layer weights.
-                // Do not spend the route-expansion budget on unrelated graphs.
+                // Do not expand routes in unrelated graphs.
                 var dependency = dependencies[layer];
                 if (dependency.Morphs.Count == 0 && !dependency.Writes.Overlaps(faceInputs) &&
                     !dependency.WeightControls.Values.Any(control => control.AnimatorLayer && control.Playable == "FX" &&
@@ -343,8 +324,8 @@ namespace VRVlog.LilToonExporter
                 // Without a selectable read, neither route conditions nor a
                 // motion point can supply a candidate assignment. Avoid walking
                 // that readonly graph before the same candidate eligibility
-                // check below; dense automatic graphs must not consume the
-                // budget needed to discover an independent authored face.
+                // check below; dense automatic graphs need not be walked to
+                // discover an independent authored face.
                 if (!dependency.Reads.Any(Selectable)) continue;
                 var origin = layer;
                 var sync = new HashSet<int>();
@@ -358,22 +339,19 @@ namespace VRVlog.LilToonExporter
                 var owners = new Dictionary<AnimatorState, AnimatorStateMachine>();
                 var parents = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
                 var edges = new List<Edge>();
-                void Index(AnimatorStateMachine machine, string path, AnimatorStateMachine parent, int depth)
+                void Index(AnimatorStateMachine machine, string path, AnimatorStateMachine parent)
                 {
-                    Visit();
-                    if (machine == null || depth > MaximumDepth || parents.ContainsKey(machine))
+                    if (machine == null || parents.ContainsKey(machine))
                         throw new InvalidOperationException("FXのStateMachine階層を安全に探索できません。");
                     parents.Add(machine, parent);
                     foreach (var child in machine.states)
                     {
-                        Visit();
                         if (child.state == null || paths.ContainsKey(child.state))
                             throw new InvalidOperationException("FXの状態参照が不正です。");
                         paths.Add(child.state, path + "." + child.state.name); owners.Add(child.state, machine);
                         var previousStateTransitions = new List<AnimatorTransitionBase>();
                         foreach (var transition in Enabled(child.state.transitions))
                         {
-                            Visit();
                             // Native Animator also makes an ordinary self
                             // transition ineligible when this flag is false.
                             if (transition.destinationState == child.state && !transition.canTransitionToSelf) continue;
@@ -387,7 +365,6 @@ namespace VRVlog.LilToonExporter
                     var previousAnyTransitions = new List<AnimatorStateTransition>();
                     foreach (var transition in Enabled(machine.anyStateTransitions))
                     {
-                        Visit();
                         edges.Add(new Edge { Owner = machine, Transition = transition, PreviousEntries = previousAnyTransitions.Take(previousAnyTransitions.Count)
                             // Without an active source, a self-disabled prior
                             // may be ineligible during default initialization.
@@ -398,7 +375,6 @@ namespace VRVlog.LilToonExporter
                     var previousEntries = new List<AnimatorTransitionBase>();
                     foreach (var transition in Enabled(machine.entryTransitions))
                     {
-                        Visit();
                         // A manually serialized Entry -> Exit has no actual
                         // source state and can crash native Animator playback.
                         // Reject it before sampling any inferred candidate.
@@ -412,15 +388,14 @@ namespace VRVlog.LilToonExporter
                         var previousMachineTransitions = new List<AnimatorTransitionBase>();
                         foreach (var transition in Enabled(machine.GetStateMachineTransitions(child.stateMachine)))
                         {
-                            Visit();
                             edges.Add(new Edge { Owner = machine, SourceMachine = child.stateMachine, Transition = transition,
                                 PreviousEntries = previousMachineTransitions.Take(previousMachineTransitions.Count) });
                             previousMachineTransitions.Add(transition);
                         }
-                        Index(child.stateMachine, path + "." + child.stateMachine.name, machine, depth + 1);
+                        Index(child.stateMachine, path + "." + child.stateMachine.name, machine);
                     }
                 }
-                Index(layers[origin].stateMachine, layers[layer].name, null, 0);
+                Index(layers[origin].stateMachine, layers[layer].name, null);
                 var wantedStates = stateFilter == null ? null : new HashSet<AnimatorState>(paths.Keys.Where(state => stateFilter(layer, state)));
                 var wantedMachines = new HashSet<AnimatorStateMachine>();
                 if (wantedStates != null)
@@ -436,24 +411,49 @@ namespace VRVlog.LilToonExporter
                 var exits = edges.Where(edge => edge.Transition.isExit)
                     .GroupBy(edge => edge.Owner).ToDictionary(group => group.Key, group => group.ToArray());
                 var gateQueries = new Dictionary<string, Constraint[][]>(StringComparer.Ordinal);
+                var gateReach = new Dictionary<string, HashSet<UnityEngine.Object>>(StringComparer.Ordinal);
+                var exitEdges = edges.Where(edge => edge.Transition.isExit).ToLookup(edge => edge.Transition);
+                // The objects a gate query can push onto its visited set,
+                // following the same steps as the Compute*Gates below.
+                IEnumerable<UnityEngine.Object> Exits(AnimatorStateMachine machine) => exits.TryGetValue(machine, out var leaving) ?
+                    leaving.Select(edge => (UnityEngine.Object)edge.Transition) : Enumerable.Empty<UnityEngine.Object>();
+                IEnumerable<UnityEngine.Object> Pushed(Edge edge) => edge.Source != null ? new UnityEngine.Object[] { edge.Source } :
+                    edge.SourceMachine != null ? Exits(edge.SourceMachine) : new UnityEngine.Object[] { edge.Owner };
+                IEnumerable<UnityEngine.Object> Next(UnityEngine.Object value) =>
+                    value is AnimatorState state ? new UnityEngine.Object[] { owners[state] }.Concat(incomingStates.TryGetValue(state, out var arriving) ?
+                        arriving.SelectMany(Pushed) : Enumerable.Empty<UnityEngine.Object>()) :
+                    value is AnimatorStateMachine machine ? (parents[machine] != null && incoming.TryGetValue(machine, out var entering) ?
+                        entering.SelectMany(Pushed) : Enumerable.Empty<UnityEngine.Object>()) :
+                    exitEdges[(AnimatorTransitionBase)value].SelectMany(Pushed);
                 IEnumerable<Constraint[]> RememberGates(string kind, UnityEngine.Object node,
                     HashSet<UnityEngine.Object> stack, Func<IEnumerable<Constraint[]>> compute)
                 {
-                    Visit();
-                    // Recursive eligibility depends on the complete visited
-                    // set, including individual Exit edges. A state-only cache
+                    // Recursive eligibility depends on the visited set,
+                    // including individual Exit edges. A state-only cache
                     // would mix distinct historical entry/exit restrictions.
-                    var key = kind + "/" + node.GetInstanceID() + "/" +
-                        string.Join(",", stack.Select(value => value.GetInstanceID()).OrderBy(value => value));
+                    // Only visited objects this query can reach again change
+                    // its result. Other members (all of them in an acyclic
+                    // graph) stay out of the key, so each node is computed
+                    // once per distinct cycle cut instead of once per path.
+                    var name = kind + "/" + node.GetInstanceID();
+                    if (!gateReach.TryGetValue(name, out var reach))
+                    {
+                        reach = new HashSet<UnityEngine.Object>();
+                        var open = new Stack<UnityEngine.Object>(kind == "exit" ? Exits((AnimatorStateMachine)node) : new[] { node });
+                        while (open.Count > 0)
+                        {
+                            var value = open.Pop();
+                            if (reach.Add(value)) foreach (var next in Next(value)) open.Push(next);
+                        }
+                        gateReach.Add(name, reach);
+                    }
+                    var key = name + "/" + string.Join(",", stack.Where(reach.Contains).Select(value => value.GetInstanceID()).OrderBy(value => value));
                     if (!gateQueries.TryGetValue(key, out var values))
                     {
-                        var pendingGates = new List<Constraint[]>();
-                        foreach (var gate in compute())
-                        {
-                            Visit(); // Also bound materialized cached routes.
-                            pendingGates.Add(gate);
-                        }
-                        values = pendingGates.ToArray(); gateQueries.Add(key, values);
+                        // Paths carrying the same conditions are one gate.
+                        var seenGates = new HashSet<string>(StringComparer.Ordinal);
+                        values = compute().Where(gate => seenGates.Add(ConstraintSet(gate))).ToArray();
+                        gateQueries.Add(key, values);
                     }
                     foreach (var gate in values) yield return gate;
                 }
@@ -481,8 +481,7 @@ namespace VRVlog.LilToonExporter
                         // this targeted route. Historical source gates remain
                         // separate and are never treated as simultaneous.
                         if (simultaneous != null && Solve(Append(simultaneous, entry.conditions), new Dictionary<string, float>(),
-                            parameters, defaults, _ => true, CheckCondition, out var contradiction) == null && contradiction == null) continue;
-                        CheckCondition(); // Bound cache traversal as well as misses.
+                            parameters, defaults, _ => true, out var contradiction) == null && contradiction == null) continue;
                         if (prefix.Children.TryGetValue(entry, out var cached))
                         { prefix = cached; if (prefix.Alternatives.Length == 0) yield break; continue; }
                         // !(A && B) is !A || !B. Keep the original comparison
@@ -497,29 +496,23 @@ namespace VRVlog.LilToonExporter
                         foreach (var alternative in prefix.Alternatives)
                             foreach (var condition in entry.conditions)
                             {
-                                Visit();
                                 var combined = alternative.Concat(new[] { new Constraint { Condition = condition, Negated = true } })
                                     .GroupBy(ConstraintKey).Select(group => group.First()).ToArray();
                                 // Keep malformed/unsupported conditions for
                                 // their normal diagnostics; prune only proven
                                 // contradictory parameter conjunctions.
-                                if (Solve(combined, new Dictionary<string, float>(), parameters, defaults, _ => true, CheckCondition, out var error) == null && error == null)
+                                if (Solve(combined, new Dictionary<string, float>(), parameters, defaults, _ => true, out var error) == null && error == null)
                                     continue;
                                 var keys = new HashSet<string>(combined.Select(ConstraintKey), StringComparer.Ordinal);
                                 var key = string.Concat(keys.OrderBy(value => value, StringComparer.Ordinal).Select(value => value.Length + ":" + value));
                                 if (!next.TryGetValue(keys.Count, out var sameSize))
                                     next.Add(keys.Count, sameSize = new Dictionary<string, (Constraint[], HashSet<string>)>(StringComparer.Ordinal));
                                 if (sameSize.ContainsKey(key)) continue;
-                                bool Contains(HashSet<string> superset, HashSet<string> subset)
-                                { Visit(); return superset.IsSupersetOf(subset); }
                                 // Equal-sized alternatives use a hash lookup.
-                                // Bound the remaining subset comparisons too,
-                                // so independent conditions cannot create an
-                                // unaccounted quadratic expansion.
                                 if (next.Where(group => group.Key < keys.Count).SelectMany(group => group.Value.Values)
-                                    .Any(existing => Contains(keys, existing.Keys))) continue;
+                                    .Any(existing => keys.IsSupersetOf(existing.Keys))) continue;
                                 foreach (var group in next.Where(group => group.Key > keys.Count))
-                                    foreach (var existing in group.Value.Where(value => Contains(value.Value.Keys, keys)).Select(value => value.Key).ToArray())
+                                    foreach (var existing in group.Value.Where(value => value.Value.Keys.IsSupersetOf(keys)).Select(value => value.Key).ToArray())
                                         group.Value.Remove(existing);
                                 sameSize.Add(key, (combined, keys));
                             }
@@ -551,8 +544,6 @@ namespace VRVlog.LilToonExporter
                     if (!exits.TryGetValue(machine, out var entries)) yield break;
                     foreach (var entry in entries)
                     {
-                        if (stack.Count >= MaximumDepth)
-                            throw new InvalidOperationException("FXの条件経路が深すぎるため、自動表情探索を完全に完了できません。");
                         // An exit and its machine's entry are distinct graph
                         // steps. Track the exit edge itself so valid entry
                         // gates remain available while recursive exits stop.
@@ -569,8 +560,6 @@ namespace VRVlog.LilToonExporter
                     => RememberGates("machine", machine, stack, () => ComputeMachineGates(machine, stack));
                 IEnumerable<Constraint[]> ComputeMachineGates(AnimatorStateMachine machine, HashSet<UnityEngine.Object> stack)
                 {
-                    if (stack.Count >= MaximumDepth)
-                        throw new InvalidOperationException("FXの条件経路が深すぎるため、自動表情探索を完全に完了できません。");
                     if (!stack.Add(machine)) yield break;
                     try
                     {
@@ -586,8 +575,6 @@ namespace VRVlog.LilToonExporter
                     => RememberGates("state", state, stack, () => ComputeStateGates(state, stack));
                 IEnumerable<Constraint[]> ComputeStateGates(AnimatorState state, HashSet<UnityEngine.Object> stack)
                 {
-                    if (stack.Count >= MaximumDepth)
-                        throw new InvalidOperationException("FXの条件経路が深すぎるため、自動表情探索を安全に完了できません。");
                     if (!stack.Add(state)) yield break;
                     try
                     {
@@ -617,14 +604,13 @@ namespace VRVlog.LilToonExporter
                     var motion = EffectiveMotion(controller, state, layer);
                     if (motion == null) return false;
                     if (!faceOutputs.TryGetValue(motion, out var hasFace))
-                    { hasFace = HasFaceOutput(motion, replacements, excludedPath, faceInputs, new HashSet<Motion>(), Visit); faceOutputs.Add(motion, hasFace); }
+                    { hasFace = HasFaceOutput(motion, replacements, excludedPath, faceInputs, new HashSet<Motion>()); faceOutputs.Add(motion, hasFace); }
                     return hasFace;
                 }
                 var routes = new List<(AnimatorState State, Constraint[] Conditions, int WarmPrefix)>();
                 void Destination(AnimatorTransitionBase transition, Constraint[] conditions, HashSet<AnimatorStateMachine> stack, int warmPrefix)
                 {
                     if (Impossible(transition) || !RelevantDestination(transition)) return;
-                    Visit();
                     if (transition.destinationState != null && paths.ContainsKey(transition.destinationState))
                         routes.Add((transition.destinationState, conditions, warmPrefix));
                     var machine = transition.destinationStateMachine;
@@ -661,8 +647,13 @@ namespace VRVlog.LilToonExporter
                         EffectiveMotion(controller, state, layer) is AnimationClip timedDefault &&
                         VrChatGestureExpressions.HasChangingMorph(replacements.TryGetValue(timedDefault, out var effectiveDefault) ? effectiveDefault : timedDefault, excludedPath)))
                         foreach (var gate in StateGates(state, new HashSet<UnityEngine.Object>())) routes.Add((state, gate, WarmPrefix(gate)));
+                // Paths carrying the same conditions into the same state are
+                // one route. The first keeps its order and warm-up prefix.
+                var seenRoutes = new HashSet<string>(StringComparer.Ordinal);
                 foreach (var route in routes)
                 {
+                    if (!seenRoutes.Add(route.State.GetInstanceID() + "/" + ConstraintSet(route.Conditions) + "/" +
+                        ConstraintSet(route.Conditions.Take(route.WarmPrefix)))) continue;
                     if (stateFilter?.Invoke(layer, route.State) == false) continue;
                     var motion = EffectiveMotion(controller, route.State, layer);
                     var behaviours = controller.GetStateEffectiveBehaviours(route.State, layer) ?? Array.Empty<StateMachineBehaviour>();
@@ -676,27 +667,27 @@ namespace VRVlog.LilToonExporter
                     {
                         if (motion == null) continue;
                         if (!faceOutputs.TryGetValue(motion, out var hasFace))
-                        { hasFace = HasFaceOutput(motion, replacements, excludedPath, faceInputs, new HashSet<Motion>(), Visit); faceOutputs.Add(motion, hasFace); }
+                        { hasFace = HasFaceOutput(motion, replacements, excludedPath, faceInputs, new HashSet<Motion>()); faceOutputs.Add(motion, hasFace); }
                         if (!hasFace) continue;
                     }
                     Point[] points;
                     if (motion is BlendTree tree)
                     {
                         if (!controlPoints.TryGetValue(tree, out points))
-                        { points = Points(tree, parameters, Selectable, new HashSet<BlendTree>(), Visit).ToArray(); controlPoints.Add(tree, points); }
+                        { points = Points(tree, parameters, Selectable, new HashSet<BlendTree>()).ToArray(); controlPoints.Add(tree, points); }
                     }
                     else if (motion is AnimationClip timedClip && route.State.timeParameterActive &&
                         VrChatGestureExpressions.HasChangingMorph(replacements.TryGetValue(timedClip, out var effectiveTimed) ? effectiveTimed : timedClip, excludedPath))
                     {
                         if (replacements.TryGetValue(timedClip, out var replacement)) timedClip = replacement;
-                        points = MotionTimePoints(route.State, timedClip, parameters, Selectable, excludedPath, Visit).ToArray();
+                        points = MotionTimePoints(route.State, timedClip, parameters, Selectable, excludedPath).ToArray();
                     }
                     else points = new[] { new Point() };
                     if (points.Length == 0) continue;
                     foreach (var point in points)
                     {
                         if (!route.Conditions.Any(constraint => Selectable(constraint.Condition.parameter)) && !point.Values.Keys.Any(Selectable)) continue;
-                        var values = Solve(route.Conditions, point.Values, parameters, defaults, Selectable, CheckCondition, out var error);
+                        var values = Solve(route.Conditions, point.Values, parameters, defaults, Selectable, out var error);
                         var speculativeWarmStart = false;
                         Dictionary<string, float> arrivalValues = null;
                         // A gate established during the sampler's native default
@@ -706,7 +697,7 @@ namespace VRVlog.LilToonExporter
                         // Full native reachability/stability must still succeed.
                         if (values == null && route.WarmPrefix > 0)
                         {
-                            values = Solve(route.Conditions.Skip(route.WarmPrefix), point.Values, parameters, defaults, Selectable, CheckCondition, out error);
+                            values = Solve(route.Conditions.Skip(route.WarmPrefix), point.Values, parameters, defaults, Selectable, out error);
                             speculativeWarmStart = true;
                         }
                         if (values == null && error == null && stateFilter != null && motion is BlendTree && selectableBuiltIns != null)
@@ -719,7 +710,7 @@ namespace VRVlog.LilToonExporter
                             var conditions = route.Conditions.Skip(speculativeWarmStart ? route.WarmPrefix : 0).ToArray();
                             var controls = point.Values.Where(pair => !selectableBuiltIns.Contains(pair.Key))
                                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
-                            var arrival = Solve(conditions, controls, parameters, defaults, Selectable, CheckCondition, out var arrivalError);
+                            var arrival = Solve(conditions, controls, parameters, defaults, Selectable, out var arrivalError);
                             if (arrival != null && arrivalError == null)
                             {
                                 var final = new Dictionary<string, float>(arrival, StringComparer.Ordinal);
@@ -741,8 +732,6 @@ namespace VRVlog.LilToonExporter
                         }
                         if (values == null || error == null && values.All(pair => defaults.TryGetValue(pair.Key, out var value) && value == pair.Value)) continue;
                         if (!emitted.Add(layer + "/" + paths[route.State] + "/" + Assignment(values) + "/" + error)) continue;
-                        if (++candidates > MaximumCandidates)
-                            throw new InvalidOperationException("FXの自動表情候補が256件を超えています。表情の登録を整理してください。");
                         yield return new Candidate { Layer = layer, State = route.State, Path = paths[route.State], Values = values,
                             SpeculativeWarmStart = speculativeWarmStart, ArrivalValues = arrivalValues,
                             DefaultValues = point.PreservesInputs || weightMorph ? values.Keys.ToDictionary(name => name,
@@ -755,11 +744,11 @@ namespace VRVlog.LilToonExporter
 
         static Dictionary<string, float> Solve(IEnumerable<Constraint> conditions, IDictionary<string, float> point,
             IDictionary<string, AnimatorControllerParameter> parameters, IDictionary<string, float> defaults,
-            Func<string, bool> selectable, Action checkCondition, out string error)
+            Func<string, bool> selectable, out string error)
         {
             error = null;
             var result = new Dictionary<string, float>(point, StringComparer.Ordinal);
-            foreach (var group in conditions.GroupBy(constraint => { checkCondition(); return constraint.Condition.parameter; }))
+            foreach (var group in conditions.GroupBy(constraint => constraint.Condition.parameter))
             {
                 if (string.IsNullOrEmpty(group.Key) || !parameters.TryGetValue(group.Key, out var parameter))
                 { error = "FXの条件のパラメーターがありません: " + group.Key; return result; }
@@ -771,8 +760,7 @@ namespace VRVlog.LilToonExporter
                 { error = "FXの条件の値が不正です: " + group.Key; return result; }
                 if (constraints.Any(constraint => !ValidMode(parameter.type, constraint.Condition.mode)))
                 { error = "FXの条件の型と比較方法を再現できません: " + group.Key; return result; }
-                bool Accept(float value) => constraints.All(constraint =>
-                { checkCondition(); return Matches(constraint.Condition, value) != constraint.Negated; });
+                bool Accept(float value) => constraints.All(constraint => Matches(constraint.Condition, value) != constraint.Negated);
                 if (!selectable(group.Key) || result.ContainsKey(group.Key))
                 { if (!Accept(current)) return null; }
                 else
@@ -801,10 +789,9 @@ namespace VRVlog.LilToonExporter
         }
 
         static IEnumerable<Point> Points(BlendTree tree, IDictionary<string, AnimatorControllerParameter> parameters, Func<string, bool> selectable,
-            HashSet<BlendTree> stack, Action visit)
+            HashSet<BlendTree> stack)
         {
-            visit();
-            if (stack.Count >= MaximumDepth || !stack.Add(tree))
+            if (!stack.Add(tree))
                 throw new InvalidOperationException("FXのBlendTree階層を安全に探索できません。");
             try
             {
@@ -828,7 +815,6 @@ namespace VRVlog.LilToonExporter
                 }
                 for (var index = 0; index < children.Length; index++)
                 {
-                    visit();
                     var child = children[index];
                     if (tree.blendType != BlendTreeType.Direct && (tree.blendType == BlendTreeType.Simple1D ? !Finite(child.threshold) :
                         !Finite(child.position.x) || !Finite(child.position.y)))
@@ -853,7 +839,7 @@ namespace VRVlog.LilToonExporter
                     }
                     if (point.Values.Values.Any(value => !Finite(value))) throw new InvalidOperationException("FXのBlendTreeの設定値が不正です。");
                     if (!(child.motion is BlendTree nested)) { yield return point; continue; }
-                    var innerPoints = Points(nested, parameters, selectable, stack, visit).ToArray();
+                    var innerPoints = Points(nested, parameters, selectable, stack).ToArray();
                     // Empty trees do not erase a surrounding user selection.
                     // Readonly inputs at every level stay in the native graph;
                     // only authored user knots become selected assignments.
@@ -876,7 +862,7 @@ namespace VRVlog.LilToonExporter
 
         static IEnumerable<Point> MotionTimePoints(AnimatorState state, AnimationClip clip,
             IDictionary<string, AnimatorControllerParameter> parameters, Func<string, bool> selectable,
-            Func<string, bool> excludedPath, Action visit)
+            Func<string, bool> excludedPath)
         {
             var name = state.timeParameter;
             if (string.IsNullOrEmpty(name) || !parameters.TryGetValue(name, out var parameter) || parameter.type != AnimatorControllerParameterType.Float)
@@ -893,7 +879,6 @@ namespace VRVlog.LilToonExporter
                 VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.propertyName);
                 foreach (var key in curve.keys)
                 {
-                    visit();
                     if (key.time < 0 || key.time > clip.length)
                         throw new InvalidOperationException("FXのMotion Timeのキー時刻がClipの範囲外です: " + clip.name);
                     knots.Add(key.time / clip.length);
@@ -902,19 +887,17 @@ namespace VRVlog.LilToonExporter
             if (!selectable(name)) { yield return new Point { PreservesInputs = true }; yield break; }
             foreach (var value in knots)
             {
-                visit();
                 var point = new Point(); point.Values.Add(name, value); yield return point;
             }
         }
 
         static bool HasFaceOutput(Motion motion, IDictionary<AnimationClip, AnimationClip> replacements, Func<string, bool> excludedPath,
             ISet<string> faceInputs,
-            HashSet<Motion> stack, Action visit)
+            HashSet<Motion> stack)
         {
             if (motion == null) return false;
-            visit();
-            if (stack.Count >= MaximumDepth || !stack.Add(motion))
-                throw new InvalidOperationException("FXのMotion参照が循環または深すぎる階層になっています。");
+            if (!stack.Add(motion))
+                throw new InvalidOperationException("FXのMotion参照が循環しています");
             try
             {
                 if (motion is AnimationClip clip)
@@ -924,7 +907,7 @@ namespace VRVlog.LilToonExporter
                         binding.type == typeof(Animator) && faceInputs.Contains(binding.propertyName) ||
                         excludedPath?.Invoke(binding.path) != true && PoseSampling.IsBlendShape(binding));
                 }
-                return motion is BlendTree tree && tree.children.Any(child => HasFaceOutput(child.motion, replacements, excludedPath, faceInputs, stack, visit));
+                return motion is BlendTree tree && tree.children.Any(child => HasFaceOutput(child.motion, replacements, excludedPath, faceInputs, stack));
             }
             finally { stack.Remove(motion); }
         }
@@ -948,6 +931,9 @@ namespace VRVlog.LilToonExporter
         static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         static string ConstraintKey(Constraint value) => value.Condition.parameter + "\u001f" + (int)value.Condition.mode + "/" +
             value.Condition.threshold.ToString("R", CultureInfo.InvariantCulture) + "/" + value.Negated;
+        // Order-insensitive identity of a conjunction.
+        static string ConstraintSet(IEnumerable<Constraint> constraints) => string.Concat(constraints.Select(ConstraintKey)
+            .Distinct(StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).Select(value => value.Length + ":" + value));
         static bool ValidMode(AnimatorControllerParameterType type, AnimatorConditionMode mode) =>
             type == AnimatorControllerParameterType.Bool ? mode == AnimatorConditionMode.If || mode == AnimatorConditionMode.IfNot :
             type == AnimatorControllerParameterType.Int ? mode == AnimatorConditionMode.Equals || mode == AnimatorConditionMode.NotEqual ||
