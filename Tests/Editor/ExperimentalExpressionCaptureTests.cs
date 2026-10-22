@@ -1012,12 +1012,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
-        // The fixture has no expression menu, so the ordinary route gives no
-        // menu face for a face the board lists. The same save then records the
-        // list; a repeated name is numbered like a repeated menu face.
+        // The fixture has no expression menu. The list-only export writes the
+        // listed faces anyway; a repeated name is numbered like a repeated menu face.
         [TestCase(false)]
         [TestCase(true)]
-        public void OrdinaryRouteRecordsTheListWhenTheMenuGivesFewerFaces(bool repeatedName)
+        public void ListOnlyExportWritesTheListWithoutAMenu(bool repeatedName)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
@@ -1043,21 +1042,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
                     : new System.Collections.Generic.Dictionary<string, object>();
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                if (repeatedName)
-                {
-                    Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")), Is.EquivalentTo(new[] { "Listed face", "Listed face (2)" }));
-                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 2)));
-                }
-                else
-                {
-                    Assert.That(custom.Keys, Does.Contain("Listed face"));
-                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 1)));
-                    var menuWarning = ExporterLocalization.T("VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。");
-                    Assert.That(status.Split('\n').Count(line => line == menuWarning), Is.LessThanOrEqualTo(1), "The replaced menu result leaves its warnings out.");
-                    Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero,
-                        "After the save the board keeps its own records again.");
-                    Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
-                }
+                Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")),
+                    Is.EquivalentTo(repeatedName ? new[] { "Listed face", "Listed face (2)" } : new[] { "Listed face" }));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, clips.Length)));
+                Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero, "Nothing is recorded.");
+                Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
+                Assert.That(((SavedExpressionVrm)type.GetField("saved", flags).GetValue(window)).Expressions, Is.EqualTo(clips.Length));
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
@@ -1120,13 +1110,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(calls, Is.Zero, "A closed board records nothing.");
         }
 
-        // The expression menu gives two faces. The ordinary route keeps both
-        // whatever the board lists; with fewer listed the result says how many
-        // each has, and the saved count is the faces the VRM has.
+        // The expression menu has two faces. The list-only export plays no menu
+        // face: the VRM has exactly the listed ones, and the saved count is those.
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void OrdinaryRouteSaysWhenTheMenuGivesMoreFacesThanTheList(int listed)
+        public void ListOnlyExportLeavesOutMenuFacesTheListDoesNotHave(int listed)
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
@@ -1196,27 +1185,25 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = File.ReadAllBytes(path);
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
-                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                // Both menu faces stay: the list was not recorded in their place.
-                Assert.That(custom.Keys, Is.SupersetOf(names));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
+                var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
+                    : new System.Collections.Generic.Dictionary<string, object>();
+                Assert.That(custom.Keys.Where(key => key.StartsWith("Face ")), Is.EquivalentTo(names.Take(listed)));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed);
-                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(listed < names.Length ? 1 : 0));
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, listed)));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed)));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
-                Assert.That(saved.Expressions, Is.EqualTo(VrmMenuExpressions.CountRegistered(bytes)), "The saved count is what the VRM has.");
+                Assert.That(saved.Expressions, Is.EqualTo(listed), "The saved count is the listed faces.");
             }
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }
 
         // The expression menu gives two faces and the board lists them with a
-        // third face the menu does not have. Recording the list would replace
-        // the menu faces (and their motion) with still ones, so the ordinary
-        // route keeps the menu result and says some list faces were not exported.
+        // still face and a looping face the menu does not have. The list-only
+        // export reads all four from their clips as the ordinary export reads
+        // gesture clips: the looping face keeps its animation.
         [Test]
-        public void OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces()
+        public void ListOnlyExportWritesListFacesTheMenuDoesNotHave()
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
@@ -1228,6 +1215,7 @@ namespace VRVlog.LilToonExporter.Tests
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
             var listOnly = new AnimationClip { name = "Listed only" };
+            var moving = new AnimationClip { name = "Listed moving" };
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-menu-kept-" + Guid.NewGuid().ToString("N") + ".vrm");
             try
             {
@@ -1250,6 +1238,10 @@ namespace VRVlog.LilToonExporter.Tests
                 // A face only the board lists; its weight differs from both menu faces.
                 AnimationUtility.SetEditorCurve(listOnly, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
                     AnimationCurve.Constant(0, 1, 15));
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Linear(0, 0, 1, 60));
+                var settings = AnimationUtility.GetAnimationClipSettings(moving); settings.loopTime = true;
+                AnimationUtility.SetAnimationClipSettings(moving, settings);
                 var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
@@ -1280,32 +1272,207 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("author", flags).SetValue(window, "Tests");
                 type.GetField("automaticBlink", flags).SetValue(window, false);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
-                type.GetField("recommendations", flags).SetValue(window, clips.Append(listOnly).Select(clip =>
+                type.GetField("recommendations", flags).SetValue(window, clips.Append(listOnly).Append(moving).Select(clip =>
                     new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
                 type.GetMethod("RebuildBoard", flags).Invoke(window, null);
                 var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
                 Assert.That(board.UsesRecordRoute, Is.False);
-                Assert.That(board.OtherCount, Is.EqualTo(names.Length + 1));
+                Assert.That(board.OtherCount, Is.EqualTo(names.Length + 2));
                 window.SaveVrm(path);
                 var bytes = File.ReadAllBytes(path);
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                // The menu faces stay with their animation extension: the list was not recorded in their place.
-                Assert.That(custom.Keys, Is.SupersetOf(names));
-                Assert.That(custom.Keys, Has.No.Member(listOnly.name));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
-                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
+                Assert.That(custom.Keys, Is.SupersetOf(names.Append(listOnly.name).Append(moving.name)));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length + 2), "Every listed face is registered as the ordinary export registers its faces.");
+                var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
+                var animation = document.Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Duration, Is.EqualTo(1).Within(1e-6));
+                Assert.That(animation.Loop, Is.True);
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                Assert.That(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat, Does.EndWith("のうち書き出していない表情があります"));
-                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 1);
-                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(1));
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, names.Length + 1)));
+                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 2);
+                Assert.That(status, Does.Not.Contain(line));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
-                Assert.That(saved.Expressions, Is.EqualTo(names.Length), "The saved count is the menu faces the VRM has.");
+                Assert.That(saved.Expressions, Is.EqualTo(names.Length + 2), "The saved count is the listed faces.");
             }
-            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
+        }
+
+        // Without the VRChat SDK the list-only export still reads the listed
+        // clips: a still face keeps its value and a looping face is written
+        // to VRVLOG_expression_animations, ending on its last frame.
+        [Test]
+        public void ListOnlyExportKeepsAMovingFaceAnimation()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var still = new AnimationClip { name = "Still face" };
+            var moving = new AnimationClip { name = "Moving face" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-moving-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+                AnimationUtility.SetEditorCurve(still, binding, AnimationCurve.Constant(0, 1, 40));
+                AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 0, 2, 80));
+                var settings = AnimationUtility.GetAnimationClipSettings(moving); settings.loopTime = true;
+                AnimationUtility.SetAnimationClipSettings(moving, settings);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new[] { still, moving }.Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.UsesRecordRoute, Is.False);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+                var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
+                var animation = document.Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
+                Assert.That(animation.Loop, Is.True);
+                Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // A clip only a Motion Time state plays (a Radial Puppet's) stays one
+        // face at the board's frame, as the menu export keeps it, instead of
+        // playing through the radial's range.
+        [Test]
+        public void ListOnlyExportHoldsAMotionTimeFaceAtOneFrame()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var radial = new AnimationClip { name = "Radial face" };
+            var controller = new UnityEditor.Animations.AnimatorController { name = "Radial" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-radial-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(radial, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Linear(0, 0, 2, 80));
+                controller.AddParameter("Radial", AnimatorControllerParameterType.Float);
+                controller.AddLayer("Base");
+                var state = controller.layers[0].stateMachine.AddState("Radial");
+                state.motion = radial; state.timeParameterActive = true; state.timeParameter = "Radial";
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
+                    { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = radial, Source = "Fixture" } });
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["custom"]).Keys, Does.Contain(radial.name));
+                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension) &&
+                    VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Any(), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); Object.DestroyImmediate(radial);
+                foreach (var layer in controller.layers) Object.DestroyImmediate(layer.stateMachine);
+                Object.DestroyImmediate(controller);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        // A moving face put in an emotion slot is the still preset and, as in
+        // the ordinary export, also a custom face that keeps its animation.
+        [Test]
+        public void ListOnlyExportKeepsAMovingSlotFaceMovingAsACustomFace()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var moving = new AnimationClip { name = "Moving joy" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-slot-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Linear(0, 0, 2, 80));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
+                    { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = moving, Source = "Fixture" } });
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Move(moving, ExpressionBoard.Place.Slot(ExpressionPreset.happy)), Is.True);
+                Assert.That(board.OtherCount, Is.Zero);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["preset"]).Keys, Does.Contain("happy"));
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["custom"]).Keys, Does.Contain(moving.name));
+                var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // A listed face on a mesh the build tools move is read where the mesh
+        // now is, as the board's presets are, instead of being dropped.
+        [Test]
+        public void ListOnlyExportReadsAFaceOnAMeshTheBuildToolsMove()
+        {
+            if (AppDomain.CurrentDomain.GetAssemblies().All(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy") == null))
+                Assert.Ignore("Install Modular Avatar.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            MoveFrontWithInstalledMa(fixture.Source);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var still = new AnimationClip { name = "Still face" };
+            var moving = new AnimationClip { name = "Moving face" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-moved-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+                AnimationUtility.SetEditorCurve(still, binding, AnimationCurve.Constant(0, 1, 40));
+                AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 0, 2, 80));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new[] { still, moving }.Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom[still.name])["morphTargetBinds"], Is.Not.Empty);
+                var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
         }
 
         // With a face moved to the excluded list the board records its list;

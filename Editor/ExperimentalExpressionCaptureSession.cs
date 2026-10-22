@@ -382,6 +382,9 @@ namespace VRVlog.LilToonExporter
             target.Renderer.SetBlendShapeWeight(shape, value);
         }
 
+        // Stops a save before the export when the source changed after the board opened.
+        internal void RequireCurrentSource() => RequireValid(always: true);
+
         internal void CaptureBaseline()
         {
             RequireValid();
@@ -532,7 +535,8 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Export(string avatarName, string author, ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
-            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false)
+            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false,
+            IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null)
         {
             // The export always hashes the source again, even inside a batch.
             RequireValid(always: true);
@@ -579,7 +583,7 @@ namespace VRVlog.LilToonExporter
             // menu/FX, authored expressions, metadata and preparation route.
             // replaceCustomFaces asks for exactly the recorded custom faces, even
             // none, so both shortcuts that keep the menu faces are skipped.
-            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
+            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0 && listFaces == null)
             {
                 var ordinary = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
@@ -593,6 +597,9 @@ namespace VRVlog.LilToonExporter
             }
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
+            // listFaces (the list-only export) plays no menu face: the exporter
+            // reads the listed clips as its faces, moving ones with their
+            // animation; the default face is still the ordinary one.
             if (!replaceCustomFaces && expressions.Length == 0)
             {
                 var authored = new List<Object>();
@@ -605,7 +612,8 @@ namespace VRVlog.LilToonExporter
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
                         inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
-                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
+                        listFaces: listFaces?.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList());
                     UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                     return authoredVrm;
                 }
