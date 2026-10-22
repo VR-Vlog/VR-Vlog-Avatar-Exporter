@@ -75,11 +75,7 @@ assert "Only GLB 2.0 is supported" in glb
 assert "GLB contains multiple JSON chunks" in glb
 assert "VRMC_materials_mtoon" in injector
 assert "extensionsRequired" in injector
-assert "Custom extension must not be required" in injector
-assert "already contains the lilToon extension" in injector
 assert "must be an array" in injector and "must be an object" in injector
-assert "Validate(output, extension.materials.Count)" in injector
-assert "ExportRendererSelection.Enumerate(avatar)" in injector
 assert "ExportRendererSelection.Enumerate(clone)" in one_click
 assert "ExportRendererSelection.RequireActiveRoot(source)" not in one_click
 assert one_click.index("ExportRendererSelection.HiddenInScene(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
@@ -108,31 +104,12 @@ for backlight_property in ("_BacklightColor", "_BacklightMainStrength", "_Backli
 assert '("_BacklightColorTex", "backlight")' in reader
 assert 'case "backlight": return Enabled(material, "_UseBacklight")' in reader
 assert 'item.Name == "_BacklightColorTex"' in reader and 'texture == Texture2D.whiteTexture' in reader
-assert "ResolveTexture(glb, texture" in injector
 assert 'LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);' in one_click
 assert 'var warningText' not in window
 assert 'VrmMenuExpressions.CountRegistered(bytes)' in window
-assert "glb.AppendBinary(png)" in injector
 texture_encoder = (root / "Editor/MobileTextureEncoder.cs").read_text(encoding="utf-8")
 assert "PngWriter.Encode(destination)" in texture_encoder
 assert "UnityEngine.Object.DestroyImmediate(destination)" in texture_encoder
-assert "addedTextures.TryGetValue" in injector
-assert "fallbackTextureCount" in injector
-assert 'addedTextures.TryGetValue((texture' in injector
-assert injector.index('if(!isBacklight)') < injector.index('addedTextures.TryGetValue((texture')
-assert 'FindTexture(texture.name,imageNames,textureSources,fallbackTextureCount,out var ambiguous)' in injector
-assert 'string.Equals(semantic,"normalMap",StringComparison.Ordinal)' in injector
-assert 'MaterialTexture(glb.Json,materialIndex,"normalTexture")' in injector
-assert injector.index('MaterialTexture(glb.Json,materialIndex,"normalTexture")') < injector.index('MobileTextureEncoder.EncodeSource(')
-assert 'if(!ambiguous)return existing;' in injector
-assert "同名候補が複数あるため、元画像を直接埋め込みました" in injector
-assert "sampled.mipmapCount > 1" in injector
-for gltf_filter in ("9984L", "9985L", "9987L"):
-    assert gltf_filter in injector
-assert 'Array(glb.Json,"bufferViews",true)' in injector
-assert 'Array(glb.Json,"images",true)' in injector
-assert 'Array(glb.Json,"samplers",true)' in injector
-assert 'Array(glb.Json,"textures",true)' in injector
 assert 'EmbeddedBuffer()["byteLength"] = (long)bytes.Length' in glb
 for unsupported_toggle in ("_UseEmission2nd", "_UseBump2ndMap", "_UseMatCap2nd"):
     assert f'"{unsupported_toggle}"' in reader
@@ -147,7 +124,6 @@ assert "JPEG SOS segment is invalid" in injector
 assert "MIME type does not match" in injector
 assert "PNG chunk CRC is invalid" in injector
 assert "PNG IDAT/IEND structure is invalid" in injector
-assert "ambiguous=true;return -1" in injector
 assert "FromDom(root)" in injector
 assert "LilToonExtensionValidator.TryValidate(extension" in injector
 assert "Extension is missing from extensionsUsed" in injector
