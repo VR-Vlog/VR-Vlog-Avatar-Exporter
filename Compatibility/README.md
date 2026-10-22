@@ -39,10 +39,18 @@ claim that every avatar or every combination is verified.
 
 The VRChat SDK is optional as well. It matters only when an expression file uses
 VRC Animator Play Audio: the capture copy omits that behaviour, and the exporter
-accepts it when VRChat SDK Base and Avatars are the same release with
-`vrchatSdkMinimum <= version < vrchatSdkBelow` (3.5.2 to below 3.11.0). 3.5.2 is
-the first stable release with `VRCAnimatorPlayAudio`; its fields and members are
-identical through 3.10.5. Results:
+accepts it when VRChat SDK Base and Avatars are the same version with
+`vrchatSdkMinimum <= X.Y.Z < vrchatSdkBelow` (3.5.0 to below 3.11.0). A
+pre-release counts as its X.Y.Z, so 3.10.6-beta.2 is accepted and
+3.11.0-beta.1 is not. 3.5.0 is the first SDK that declares Unity 2022.3; 3.4.x
+declares 2019.4. `VRCAnimatorPlayAudio` first ships in 3.5.2-beta.1, so on 3.5.0
+and 3.5.1 there is nothing to omit. Every type and member the exporter reads
+by name (avatar descriptor, expression parameters and menu, PhysBone, VRC
+Constraints, Play Audio) was compared across 62 official releases and
+pre-releases: they are identical wherever they exist, except in the VRC
+Constraints preview builds 3.6.2-constraints.1 and .2. Those store `Sources` as
+an array; the exporter finds no sources there and leaves those constraints out.
+Results:
 [Evidence/VrchatSdkRange](Evidence/VrchatSdkRange/README.md).
 
 Modular Avatar has its own range only for the appearance freeze, which runs

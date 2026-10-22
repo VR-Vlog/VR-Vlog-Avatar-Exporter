@@ -108,5 +108,12 @@
                 <ui:Button name="close" class="footer-button close" />
             </ui:VisualElement>
         </ui:VisualElement>
+        <!-- Under both the form and the QR screen, so saving stays in one place through the transfer. -->
+        <ui:VisualElement class="hairline" />
+        <ui:VisualElement name="save-row" class="save-row">
+            <ui:Button name="save" class="save" />
+            <ui:Label name="save-result" class="t mini grey save-result" />
+            <ui:Label name="save-open" class="t mini link save-open" />
+        </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

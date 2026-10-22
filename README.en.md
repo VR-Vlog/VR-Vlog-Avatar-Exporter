@@ -37,7 +37,7 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 | lilToon | Any version from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4, stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
 | UniVRM / UniGLTF | Not required; UniVRM 0.131.4 is bundled with renamed namespaces and shaders, so an installed UniVRM of any version does not conflict |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
-| VRChat SDK | Optional; 3.5.2 or later and below 3.11.0 when an expression file uses VRC Animator Play Audio |
+| VRChat SDK | Optional; checked with 3.5.0 or later and below 3.11.0, including pre-releases below 3.11.0. Expression files with VRC Animator Play Audio need 3.5.2 or later and below 3.11.0 |
 | Modular Avatar | Optional; 1.18.0 or later and below 1.19.0 when the avatar uses Shape Changer, Object Toggle, Material Setter, Material Swap or Mesh Cutter. Other avatars export with any version |
 
 Install Modular Avatar and its dependencies beforehand if your avatar uses them. The [dependency policy](Compatibility/dependencies.json) records supported versions; the exporter reports missing or unsupported packages without automatically changing them.
