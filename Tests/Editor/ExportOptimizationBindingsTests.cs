@@ -920,7 +920,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var target = routes[0].Renderer; var meshBeforeApply = target.sharedMesh; var materialsBeforeApply = target.sharedMaterials;
                 var settingsBeforeApply = clone.GetComponent<Vrm10Instance>().Vrm; var copies = 0;
                 var optimizedAuthored = custom ? settingsBeforeApply.Expression.CustomClips.Single() : settingsBeforeApply.Expression.Happy;
-                Assert.That(optimizedAuthored.name, Is.Not.EqualTo(expression.name), "Installed AAO must really rename its copied ScriptableObject.");
+                // AAO duplicates only the UniVRM types it compiles against, so
+                // the bundled clip reaches Apply unrenamed and unduplicated.
+                Assert.That(optimizedAuthored.name, Is.EqualTo(expression.name));
                 Assert.That(RegisteredAssetIdentity(preparation.ObjectRegistry, optimizedAuthored), Is.SameAs(capturedIdentity), "The asset registry identity must remain usable after Finish.");
                 var generatedCustom = Own(ScriptableObject.CreateInstance<VRM10Expression>()); generatedCustom.name = "generated custom(Clone)";
                 generatedCustom.MorphTargetBindings = new[] { new MorphTargetBinding(UnityEditor.AnimationUtility.CalculateTransformPath(target.transform, clone.transform), target.sharedMesh.GetBlendShapeIndex(routes[0].Shape), .1f) };
