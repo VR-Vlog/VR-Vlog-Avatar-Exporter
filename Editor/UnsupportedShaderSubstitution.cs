@@ -277,29 +277,38 @@ namespace VRVlog.LilToonExporter
             if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return false;
             // GetFullPath resolves a package path to the folder it is installed in.
             path = Path.GetFullPath(path);
-            return File.Exists(path) && ShaderWritesDepth(File.ReadAllText(path), name => values.Float(name, 0));
+            // A file that cannot be read counts as a shader without one.
+            try { return File.Exists(path) && ShaderWritesDepth(File.ReadAllText(path), name => values.Float(name, 0)); }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException) { return false; }
         }
 
         static readonly Regex Comments = new Regex(@"//[^\n]*|/\*.*?\*/", RegexOptions.Singleline);
-        static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|\[\s*(\w+)\s*\])", RegexOptions.IgnoreCase);
+        static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|True|False|1|0|\[\s*(\w+)\s*\])(?!\w)", RegexOptions.IgnoreCase);
         static readonly Regex DepthOnlyPass = new Regex(@"""LightMode""\s*=\s*""(ShadowCaster|Meta|DepthOnly|DepthNormals|MotionVectors)""", RegexOptions.IgnoreCase);
+        static readonly Regex SurfacePragma = new Regex(@"#pragma\s+surface\b[^\n]*", RegexOptions.IgnoreCase);
+        // Options with which the surface shader compiler blends the color
+        // passes it generates and turns their ZWrite off. keepalpha and
+        // alphatest do not blend.
+        static readonly Regex SurfaceBlend = new Regex(@"(?<![\w:])(alpha(:(auto|fade|premul|blend))?|decal:(add|blend))(?![\w:])", RegexOptions.IgnoreCase);
 
         // ShaderLab of the first SubShader (the one Unity uses on desktop
         // hardware): a pass that draws color writes depth when its own ZWrite,
         // else the SubShader's, says On; Unity's default without a command is
         // On. Shadow and depth-only passes do not draw color. The color passes a
         // surface shader generates take the SubShader command, even when the
-        // shader also writes its own shadow pass.
+        // shader also writes its own shadow pass, unless the surface options
+        // blend; then only its own color passes can write depth. ShaderLab
+        // keywords are case-insensitive.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
             text = Comments.Replace(text, "");
-            var start = Regex.Match(text, @"\bSubShader\s*\{");
+            var start = Regex.Match(text, @"\bSubShader\s*\{", RegexOptions.IgnoreCase);
             if (!start.Success) return false;
             var subShader = Block(text, start.Index + start.Length - 1);
             var outside = new System.Text.StringBuilder();
             var passes = new List<string>();
             var at = 0;
-            foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{"))
+            foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{", RegexOptions.IgnoreCase))
             {
                 if (pass.Index < at) continue;
                 var body = Block(subShader, pass.Index + pass.Length - 1);
@@ -312,11 +321,14 @@ namespace VRVlog.LilToonExporter
             {
                 var match = ZWriteCommand.Match(scope);
                 if (!match.Success) return null;
-                return match.Groups[2].Success ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+                if (match.Groups[2].Success) return property(match.Groups[2].Value) > .5f;
+                var value = match.Groups[1].Value;
+                return value.Equals("On", StringComparison.OrdinalIgnoreCase) || value.Equals("True", StringComparison.OrdinalIgnoreCase) || value == "1";
             }
             var shared = Command(outside.ToString());
-            if (Regex.IsMatch(outside.ToString(), @"#pragma\s+surface\b") && (shared ?? false)) return true;
-            if (passes.Count == 0) return shared ?? false;
+            var surface = SurfacePragma.Match(outside.ToString());
+            if (surface.Success && !SurfaceBlend.IsMatch(surface.Value) && (shared ?? false)) return true;
+            if (passes.Count == 0) return !surface.Success && (shared ?? false);
             return passes.Where(pass => !DepthOnlyPass.IsMatch(pass)).Any(pass => Command(pass) ?? shared ?? true);
         }
 
