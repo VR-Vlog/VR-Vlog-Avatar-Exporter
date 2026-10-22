@@ -785,7 +785,8 @@ class UpstreamTests(unittest.TestCase):
 
     def test_new_release_requests_review_without_modifying_policy(self):
         before = json.dumps(self.config)
-        self.releases['lilToon']['tag_name'] = '2.3.5'
+        major, minor, patch = upstream.release_version(self.config['lilToon']['verified']['maximum'])
+        self.releases['lilToon']['tag_name'] = '%d.%d.%d' % (major, minor, patch + 1)
         result = upstream.compare(self.config, self.releases)
         self.assertTrue(result[0]['needsCompatibilityReview'])
         self.assertEqual(before, json.dumps(self.config))
@@ -816,25 +817,26 @@ class LilToonRangeGeneratorTests(unittest.TestCase):
             (self.root / name).parent.mkdir(parents=True, exist_ok=True)
             (self.root / name).write_bytes((ROOT / name).read_bytes())
 
-    def generate(self, **supported):
+    def generate(self, **verified):
         path = self.root / 'Compatibility/dependencies.json'
         config = json.loads(path.read_text(encoding='utf-8'))
-        config['lilToon']['supported'].update(supported)
+        config['lilToon']['verified'].update(verified)
         path.write_text(json.dumps(config), encoding='utf-8')
         return generator.outputs(self.root)['Editor/Compatibility/DependencyPolicy.Generated.cs']
 
-    def test_catalogue_version_and_supported_range_are_separate_constants(self):
-        text = self.generate()
-        self.assertIn('LilToonVersion = "2.3.4";', text)
-        self.assertIn('LilToonMinimum = "2.0.0";', text)
-        self.assertIn('LilToonMaximum = "2.3.4";', text)
-        self.assertIn('LilToonMaximum = "2.10.0";', self.generate(maximum='2.10.0'))
+    def test_catalogue_version_is_generated_and_the_verified_range_is_not(self):
+        # Nothing in the Exporter stops on the installed lilToon version; the verified
+        # range is only read by the structure check.
+        for text in [self.generate(), self.generate(maximum='2.10.0')]:
+            self.assertIn('LilToonVersion = "2.3.4";', text)
+            self.assertNotIn('LilToonMinimum', text)
+            self.assertNotIn('LilToonMaximum', text)
 
     def test_range_must_contain_the_catalogue_and_use_plain_version_numbers(self):
-        for supported in [{'minimum': '2.3.5'}, {'maximum': '2.3.3'}, {'maximum': '2.3.4-beta'},
-                          {'minimum': '2.0'}, {'minimum': '02.0.0'}, {'minimum': 'v2.0.0'}]:
-            with self.subTest(supported=supported), self.assertRaises(AssertionError):
-                self.generate(**supported)
+        for verified in [{'minimum': '2.3.5'}, {'maximum': '2.3.3'}, {'maximum': '2.3.4-beta'},
+                         {'minimum': '2.0'}, {'minimum': '02.0.0'}, {'minimum': 'v2.0.0'}]:
+            with self.subTest(verified=verified), self.assertRaises(AssertionError):
+                self.generate(**verified)
 
     def test_version_order_is_numeric(self):
         self.assertGreater(generator.version_tuple('2.10.0'), generator.version_tuple('2.3.4'))

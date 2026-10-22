@@ -222,6 +222,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
+        internal const string ApproximatedLilToonReason = "lilToon 2.3.4とプロパティが合わないためMToonで近似します";
         internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
 
@@ -606,6 +607,16 @@ namespace VRVlog.LilToonExporter
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
+                // Another lilToon version may lack a 2.3.4 property a material
+                // needs. Such a material keeps the MToon approximation written
+                // below and is listed as approximated, also when it is the only one.
+                var approximated = new HashSet<Material>(fullSnapshot?.Approximated ?? Array.Empty<Material>());
+                foreach (var material in approximated)
+                {
+                    var reason = ExporterLocalization.T(ApproximatedLilToonReason);
+                    warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
+                    recoveryReport.Fallbacks.Add(ExportFallbackKind.MaterialApproximated, material.name, reason: reason);
+                }
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
@@ -614,11 +625,12 @@ namespace VRVlog.LilToonExporter
                 // otherwise each such material becomes color-and-image MToon and is
                 // listed as approximated.
                 if (withoutLilToon && !guard.ContinueOnFailure &&
-                    ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
+                    ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
+                        .Any(material => LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
                 if (withoutLilToon && guard.ContinueOnFailure)
                     foreach (var material in ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
-                                 .Where(material => material != null && LilToonMaterialReader.IsLilToon(material)).Distinct())
+                                 .Where(material => material != null && LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)).Distinct())
                     {
                         var reason = ExporterLocalization.T(UnofficialLilToonReason);
                         warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
@@ -1134,7 +1146,7 @@ namespace VRVlog.LilToonExporter
                 // light-dependent, so use that lit-scene value: 1 - fluorescence.
                 case MaterialColorType.emissionColor: return EnabledOrTexture(source, "_UseEmission", "_EmissionMap") && !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission)
                     ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f))
-                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) : UnityEngine.Color.black;
+                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) * LilToonEmissionPolicy.GradientFactor(source) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return MatcapAdditive(source)
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
