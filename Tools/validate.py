@@ -272,7 +272,7 @@ assert "Generate VPM listing" in listing_workflow
 assert "Generate listing from a local release fixture" in listing_workflow
 assert "--package-listing-source-folder" in listing_workflow
 assert 'test -s "$fixture/output/index.json"' in listing_workflow
-assert 'Compatibility/dependencies.json' in release_workflow
+assert 'Compatibility/dependencies.json' not in release_workflow
 # The existing workflow may retain a historical stable UI default. Publication
 # uses the explicit input and release_policy rejects any manifest mismatch.
 assert re.search(r"version:\n\s+description: Exporter version without the v prefix\n\s+required: true\n\s+default: \d+\.\d+\.\d+\n", release_workflow)
@@ -297,7 +297,8 @@ for workflow_name in ("validate.yml", "release-vpm.yml", "release-candidate.yml"
 assert 'tag v${VERSION} already exists' in release_workflow
 assert 'git ls-remote --exit-code --tags origin' in release_workflow
 # Listing dispatch pins beta to its published tag; check-pipeline.py checks the complete script.
-assert '"com.vrmc.vrmshaders" not in gltf.get("dependencies", {})' in release_workflow
+# UniVRM is bundled, so the release neither builds nor attaches UniVRM packages.
+assert "com.vrmc" not in release_workflow and "univrm" not in release_workflow.lower()
 assert (root / "ThirdPartyNotices/UniVRM.md").is_file()
 assert (root / "LICENSE").is_file()
 assert "instance.Vrm.Meta.CopyTo" not in one_click
