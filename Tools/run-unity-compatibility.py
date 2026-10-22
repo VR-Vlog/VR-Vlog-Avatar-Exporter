@@ -111,6 +111,7 @@ BEHAVIOR_CASES = {
         'AMaterialWithAMissingShaderIsFoundOnceAndOtherSlotsAreIgnored': 1,
         'ARealExportReportsBlinkAndMaterialFallbacksOnce': 1,
         'ARealExportWithAMissingShaderSavesAndWarnsOnce': 1,
+        'AStageIsNamedWithItsPhase': 1,
         'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
         'BatchModeSavesWithoutTheList': 1,

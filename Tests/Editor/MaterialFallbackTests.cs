@@ -311,6 +311,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(null, 1f)]
+        [TestCase(.5f, .5f)]
         [TestCase(1f, 0f)]
         public void FluorescentEmissionUsesTheLitSceneStrength(float? fluorescence, float expected)
         {

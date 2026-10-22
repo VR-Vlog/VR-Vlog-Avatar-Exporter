@@ -11,7 +11,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ## 決定
 
-### MaterialFallbackTests（メソッド 14 → 13、ケース 21 → 17）
+### MaterialFallbackTests（メソッド 14 → 13、ケース 21 → 18）
 
 残したもの:
 
@@ -24,7 +24,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 - `ColorMaskZeroFallbackIsInvisible`（2 ケース）: 色を描かない材質が殻のように見えた不具合の修正。0 と 15 で結果が分かれる。
 - `TransparentFallbackWritesDepthWhenLilToonDoes`（2 ケース）: 半透明の材質で奥の面が透けた不具合の修正。1 と 0 で結果が分かれる。
 - `GradatedEmissionUsesTheAverageOfTheGradation`（3 → 2 ケース）: グラデーションの係数が `FallbackColor` に掛かることを確かめるのはここだけ。止まったグラデーション（速さ 0）は別の分岐を通る。
-- `FluorescentEmissionUsesTheLitSceneStrength`（4 → 2 ケース）: 蛍光の発光が明るい場面で白く飛んだ不具合の修正。
+- `FluorescentEmissionUsesTheLitSceneStrength`（4 → 3 ケース）: 蛍光の発光が明るい場面で白く飛んだ不具合の修正。0.5 は `1 - 蛍光` の中間の値を確かめる唯一のケースなので残した。
 - `MultiplyMatcapIsOmittedWhileAddedMatcapStays`: 乗算のマットキャップが光った不具合の修正。マットキャップの色を空にすることと、加算のマットキャップの `_RimLightingMix` はここだけで確かめる。
 - `ShadeColorMultipliesTheMainColorLikeLilToon`: 主色を暗くした材質の影が白っぽくなった不具合の修正。
 - `SecondShadowColorIsMixedIntoTheShadeColor`: 2 影が抜けていた不具合の修正。
@@ -33,13 +33,14 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 - `OptOutRetainsEmissionInBothMaterialRepresentations`: 主画像と同じ画像の発光を消す設定の既定値がオフになってからは、`DefaultExportKeeps…` と同じ入力・同じ確認になった。
 - `GradatedEmissionUsesTheAverageOfTheGradation` の速さ -1 のケース: 速さ 1 と同じ分岐を通り、結果も同じ。
-- `FluorescentEmissionUsesTheLitSceneStrength` の 0 と 0.5 のケース: 既定値（設定しない）と 1 の 2 つで、変わらない場合と発光が消える場合が揃う。0 は既定値と同じ値。
+- `FluorescentEmissionUsesTheLitSceneStrength` の 0 のケース: 既定値（設定しない）と同じ値で、同じ結果になる。
 
-### ExportFallbackConfirmationTests（メソッド 15 → 14、ケース 17 → 15）
+### ExportFallbackConfirmationTests（メソッド 15 → 15、ケース 17 → 16）
 
 残したもの:
 
 - `EveryShippedLocaleTranslatesTheResultWords`: 結果一覧の文言が 4 言語の訳にあることを確かめるのはここだけ（`Tools/validate.py` は失敗文と復旧の文だけを見る）。
+- `AStageIsNamedWithItsPhase`: 段階の表示名が「区分: 段階」になることと、区分と段階が同じときに 1 つだけ出すことを確かめるのはここだけ（`2026-10-19-export-phases.md` が参照している）。
 - `BatchModeSavesWithoutTheList`（`BatchAndNonInteractiveCallersSaveWithoutTheList` から改名）: バッチ実行では一覧を出さずに保存する。
 - `AnExportWithoutFallbacksNeverAsks`: 代わりに処理したものが無い書き出しで確認を出さない主経路。
 - `TheListShowsEveryFallbackWithItsTargets`: 対象名を 2 件で切らないことと、既定の理由がエディターの言語で出ることを確かめるのはここだけ。
@@ -53,7 +54,6 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 消したもの:
 
-- `AStageIsNamedWithItsPhase`: 段階の表示名の文字列を 2 つ確かめるだけ。訳があることは `EveryShippedLocaleTranslatesTheResultWords` が確かめる。
 - `BatchAndNonInteractiveCallersSaveWithoutTheList` の `interactive: false` のケース: `NonInteractiveSavingKeepsTheEarlierBehaviour` が実際の保存まで通して同じことを確かめる。
 
 ### MatcapApproximationTests（メソッド 3 → 3、ケース 4 → 4）
@@ -68,10 +68,10 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 | ファイル | メソッド | ケース |
 | --- | --- | --- |
-| MaterialFallbackTests | 14 → 13 | 21 → 17 |
-| ExportFallbackConfirmationTests | 15 → 14 | 17 → 15 |
+| MaterialFallbackTests | 14 → 13 | 21 → 18 |
+| ExportFallbackConfirmationTests | 15 → 15 | 17 → 16 |
 | MatcapApproximationTests | 3 → 3 | 4 → 4 |
-| 合計 | 32 → 30 | 42 → 36 |
+| 合計 | 32 → 31 | 42 → 38 |
 
 ## 検証
 
