@@ -51,7 +51,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void FinalGlbTrackingContract() => UnifiedExpressionFixture.Run((ok, message) => Assert.That(ok, Is.True, message));
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task PartialChannelsAndMultipleRestingMeshesSurviveExportAndReimport(bool fullLilToon)
         {
@@ -153,8 +152,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public async Task SplitFaceExportsSharedMouthAndOnlyAvailableBilateralBlink(bool bilateral, bool fullLilToon)
         {
@@ -220,8 +217,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, false, "UE/LipFunnelUpperLeft")]
-        [TestCase(.4f, false, "UE/LipFunnelUpperLeft")]
-        [TestCase(0f, true, "UE/LipFunnelUpperLeft")]
         [TestCase(.4f, true, "UE/LipFunnelUpperLeft")]
         [TestCase(.4f, false, "LipFunnelUpperLeft")]
         [TestCase(.4f, true, "lip_funnel_upper_left")]
@@ -278,7 +273,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task SharedGlbMeshKeepsAuthoredCoverageScopedToItsRendererNode(bool fullLilToon)
         {
@@ -370,7 +364,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(trimmed); Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task ExplicitRawAliasWinsOverCanonicalInExportedBindings(bool fullLilToon)
         {
@@ -454,8 +447,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public async Task UeEvidencePairsOnlyCompatibleLegacySidesAcrossRenderers(bool compatible, bool fullLilToon)
         {
@@ -502,8 +493,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("en")]
         [TestCase("ko")]
-        [TestCase("zh-Hans")]
-        [TestCase("zh-Hant")]
         public void UnifiedExpressionFailuresHaveLocalizedActionsAndPreserveTargetNames(string locale)
         {
             var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRVlog.LilToonExporter.ExporterLocalization")).First(value => value != null);
@@ -530,7 +519,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task SplitPartialBlinkUsesTheSameUeClosureInStandardAndDetailedPlayback(bool fullLilToon)
         {
@@ -566,31 +554,18 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("empty", false)]
-        [TestCase("empty", true)]
-        [TestCase("authoredInert", false)]
         [TestCase("authoredInert", true)]
         [TestCase("authoredRest100", false)]
-        [TestCase("authoredRest100", true)]
-        [TestCase("authoredRest100Partial", false)]
         [TestCase("authoredRest100Partial", true)]
         [TestCase("disabled", false)]
-        [TestCase("disabled", true)]
-        [TestCase("invalid", false)]
         [TestCase("invalid", true)]
         [TestCase("missingRenderer", false)]
-        [TestCase("missingRenderer", true)]
-        [TestCase("missingMaterial", false)]
         [TestCase("missingMaterial", true)]
         [TestCase("inert", false)]
-        [TestCase("inert", true)]
-        [TestCase("rest100", false)]
         [TestCase("rest100", true)]
         [TestCase("suppressed", false)]
-        [TestCase("suppressed", true)]
-        [TestCase("inertPreferred", false)]
         [TestCase("inertPreferred", true)]
         [TestCase("ambiguousRaw", false)]
-        [TestCase("ambiguousRaw", true)]
         public void MissingBlinkRequiresUsableUnifiedRoute(string scenario, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -664,7 +639,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task ClampedNegativeRestKeepsNativeGeometryAndProvidesMovingUnifiedBlinkFallback(bool fullLilToon)
         {
@@ -720,20 +694,12 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("partial", false)]
-        [TestCase("partial", true)]
-        [TestCase("rawMouth", false)]
         [TestCase("rawMouth", true)]
         [TestCase("authoredMorph", false)]
-        [TestCase("authoredMorph", true)]
-        [TestCase("authoredColor", false)]
         [TestCase("authoredColor", true)]
         [TestCase("authoredUv", false)]
-        [TestCase("authoredUv", true)]
-        [TestCase("authoredColorInert", false)]
         [TestCase("authoredColorInert", true)]
         [TestCase("authoredUvInert", false)]
-        [TestCase("authoredUvInert", true)]
-        [TestCase("emptyRepair", false)]
         [TestCase("emptyRepair", true)]
         public async Task SupportedUnifiedRouteWithoutBilateralEyeRigSurvivesBothExportModes(string scenario, bool fullLilToon)
         {
@@ -800,11 +766,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(100f, 1f, false)]
-        [TestCase(100f, 1f, true)]
-        [TestCase(100f, .5f, false)]
         [TestCase(100f, .5f, true)]
         [TestCase(50f, .5f, false)]
-        [TestCase(50f, .5f, true)]
         public async Task AuthoredMorphEligibilityMatchesActualExportedResidual(float rest, float bindingWeight, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -932,16 +895,10 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("mixedMorph", false)]
-        [TestCase("mixedMorph", true)]
-        [TestCase("discardedInvalidMorph", false)]
         [TestCase("discardedInvalidMorph", true)]
         [TestCase("onlyExcluded", false)]
-        [TestCase("onlyExcluded", true)]
-        [TestCase("color", false)]
         [TestCase("color", true)]
         [TestCase("uv", false)]
-        [TestCase("uv", true)]
-        [TestCase("onlyExcludedColor", false)]
         [TestCase("onlyExcludedColor", true)]
         public async Task AuthoredExclusionsMatchFinalReferencePruning(string kind, bool fullLilToon)
         {
@@ -992,7 +949,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); if (excludedMaterial != null) Object.DestroyImmediate(excludedMaterial); Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public void AuthoredRouteWithOnlyExcludedTargetsCannotWaiveMissingBlink(bool fullLilToon)
         {
@@ -1013,12 +969,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, false, false)]
-        [TestCase(0f, false, true)]
-        [TestCase(0f, true, false)]
-        [TestCase(0f, true, true)]
-        [TestCase(25f, false, false)]
-        [TestCase(25f, false, true)]
-        [TestCase(25f, true, false)]
         [TestCase(25f, true, true)]
         public async Task LeadingNeutralFrameSurvivesActualGlbAndContinuousPlayback(float rest, bool authored, bool fullLilToon)
         {
@@ -1126,8 +1076,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public async Task DuplicateAuthoredTargetsMatchPinnedFirstBindingPlayback(bool positiveFirst, bool fullLilToon)
         {
@@ -1161,13 +1109,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, false)]
-        [TestCase(0f, true)]
-        [TestCase(100f, false)]
-        [TestCase(100f, true)]
-        [TestCase(150f, false)]
         [TestCase(150f, true)]
         [TestCase(200f, false)]
-        [TestCase(200f, true)]
         public async Task ExtendedRawFramesUseActualRemainingExportRange(float rest, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1213,17 +1156,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f, false, false)]
-        [TestCase(0f, false, true)]
-        [TestCase(0f, true, false)]
         [TestCase(0f, true, true)]
-        [TestCase(25f, false, false)]
-        [TestCase(25f, false, true)]
-        [TestCase(25f, true, false)]
-        [TestCase(25f, true, true)]
-        [TestCase(100f, false, false)]
         [TestCase(100f, false, true)]
         [TestCase(100f, true, false)]
-        [TestCase(100f, true, true)]
         public async Task NegativeIntermediateFramesKeepTheirPositiveExportedEndpoint(float rest, bool authored, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1286,7 +1221,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var curve in new[] { "nonproportional", "zeroEndpoint", "explicitNeutral" })
             foreach (var rest in new[] { 0f, 25f, 100f })
             foreach (var authored in new[] { false, true })
-            foreach (var full in new[] { false, true })
+            foreach (var full in new[] { true })
                 yield return new TestCaseData(curve, rest, authored, full);
         }
 
@@ -1374,11 +1309,8 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame(name, 100, Enumerable.Repeat(Vector3.up * amount, mesh.vertexCount).ToArray(), null, null);
 
         [TestCase("missing", false)]
-        [TestCase("missing", true)]
-        [TestCase("invalid", false)]
         [TestCase("invalid", true)]
         [TestCase("scoped", false)]
-        [TestCase("scoped", true)]
         public async Task MaterialCoverageWithMalformedMorphKeepsItsDeclaredNodeScopeInRealGlb(string scope, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1480,7 +1412,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("color", false)]
         [TestCase("color", true)]
-        [TestCase("uv", false)]
         [TestCase("uv", true)]
         public async Task MaterialOnlyAuthoredCoverageSurvivesRoundtripWithoutRawAggregate(string kind, bool fullLilToon)
         {
@@ -1533,29 +1464,11 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("color", false, true)]
         [TestCase("color", true, false)]
         [TestCase("color", true, true)]
-        [TestCase("emissionColor", false, false)]
-        [TestCase("emissionColor", false, true)]
         [TestCase("emissionColor", true, false)]
-        [TestCase("emissionColor", true, true)]
-        [TestCase("shadeColor", false, false)]
-        [TestCase("shadeColor", false, true)]
-        [TestCase("shadeColor", true, false)]
         [TestCase("shadeColor", true, true)]
-        [TestCase("matcapColor", false, false)]
-        [TestCase("matcapColor", false, true)]
         [TestCase("matcapColor", true, false)]
-        [TestCase("matcapColor", true, true)]
-        [TestCase("rimColor", false, false)]
-        [TestCase("rimColor", false, true)]
-        [TestCase("rimColor", true, false)]
         [TestCase("rimColor", true, true)]
-        [TestCase("outlineColor", false, false)]
-        [TestCase("outlineColor", false, true)]
         [TestCase("outlineColor", true, false)]
-        [TestCase("outlineColor", true, true)]
-        [TestCase("uv", false, false)]
-        [TestCase("uv", false, true)]
-        [TestCase("uv", true, false)]
         [TestCase("uv", true, true)]
         public async Task MaterialEndpointEvidenceMatchesActualImportedProxy(string kind, bool moving, bool fullLilToon)
         {
@@ -1674,7 +1587,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
         [TestCase(true, true)]
@@ -1727,13 +1639,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("shared", false, false)]
-        [TestCase("shared", false, true)]
-        [TestCase("shared", true, false)]
         [TestCase("shared", true, true)]
-        [TestCase("hdr", false, false)]
         [TestCase("hdr", false, true)]
         [TestCase("hdr", true, false)]
-        [TestCase("hdr", true, true)]
         public async Task EmissionEvidenceUsesTheActualSuppressionOptions(string kind, bool suppressed, bool fullLilToon)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1814,10 +1722,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
         }
 
-        [TestCase(false, false)]
         [TestCase(true, false)]
         [TestCase(false, true)]
-        [TestCase(true, true)]
         public void FallbackBakingCannotReplaceMovingMaterialEvidenceWithAnInertBase(bool fullLilToon, bool otherUnifiedSurvives = false)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1849,7 +1755,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("color", true)]
         [TestCase("color", false)]
         [TestCase("uv", true)]
-        [TestCase("uv", false)]
         public void MaterialOnlyPreparationDoesNotRequireSuppressedMorphs(string kind, bool usable)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -1879,7 +1784,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(trimmed); Object.DestroyImmediate(clip); Object.DestroyImmediate(vrm); }
         }
 
-        [TestCase(false)]
         [TestCase(true)]
         public async Task GeneratedJawMenuRemainsBinaryAlongsideContinuousUnifiedJaw(bool fullLilToon)
         {

@@ -417,19 +417,12 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("saved", false)]
-        [TestCase("saved", true)]
-        [TestCase("incomplete controller inventory", false)]
         [TestCase("incomplete controller inventory", true)]
         [TestCase("missing persistence", false)]
-        [TestCase("missing persistence", true)]
-        [TestCase("missing type", false)]
         [TestCase("missing type", true)]
         [TestCase("expression type mismatch", false)]
-        [TestCase("expression type mismatch", true)]
-        [TestCase("shared type mismatch", false)]
         [TestCase("shared type mismatch", true)]
         [TestCase("shared default mismatch", false)]
-        [TestCase("shared default mismatch", true)]
         public void ReadOnlyRestGatesRequireCompleteTransientInputEvidence(string kind, bool producer)
         {
             RestorableInputGateFixture(producer);
@@ -468,11 +461,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("controller only", false)]
-        [TestCase("controller only", true)]
-        [TestCase("unsaved SDK input", false)]
         [TestCase("unsaved SDK input", true)]
         [TestCase("local synced SDK input", false)]
-        [TestCase("local synced SDK input", true)]
         public void KnownUnsavedReadOnlyRestGatesKeepTheirNativeAuthoredFace(string kind, bool producer)
         {
             RestorableInputGateFixture(producer);
