@@ -2,6 +2,7 @@
 
 ## 未リリース
 
+- lilToonを`Assets`の下に入れたプロジェクトや、lilToonを入れていないプロジェクトで、Exporterを読み込むたびにコンソールへ出ていた`LayerAlphaBaker.shader`のエラー（Couldn't open include file）が出ないようにしました。書き出すファイルは変わりません。
 - Modular Avatarのプレリリース1.19.0-alpha.2でも、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を固定して書き出せるようにしました。alpha.1から変わったMAの解析結果を1.18と同じ形に読み替え、1.19で変わったReactive Componentsのアニメーターの形（BlendTree）からも、1.18と同じメニュー由来の表情を取り込みます。alpha.2が必要とするNDMF 1.15.0-beta.1・beta.2も通します。alpha.0・alpha.1と、確かめていないプレリリース（1.19.0-alpha.3など）は、対応範囲外の版として書き出しの前に止まります。
 - NDMFの版の判定を`X.Y.Z`の形に限りました。`1.14.8.0`や`1.14`のような形の版はNDMFの処理の前に止まります（VCC／ALCOMで入れたNDMFはこの形になりません）。
 - 書き出しを準備したあとHierarchyでアバターを選ぶだけで、保存が「元のアバターが変更されました」で止まることがあったのを直しました。VRChat SDKのAvatar Descriptorのインスペクタが、VRMには入らないExpressions Menuの値をメモリ上で書き換えていたためです。メニューの項目やExpression Parametersを変えたときは今までどおり止まります。

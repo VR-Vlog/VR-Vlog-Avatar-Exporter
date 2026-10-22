@@ -141,8 +141,25 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var shader = LilToonMainTextureBaker.LayerAlphaShader();
             Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.name, Is.EqualTo("Hidden/VRVlog/LayerAlphaBaker"));
             Assert.That(UnityEditor.ShaderUtil.ShaderHasError(shader), Is.False);
             Assert.That(shader.isSupported, Is.True);
+            Assert.That(LilToonMainTextureBaker.LayerAlphaShader(), Is.SameAs(shader));
+        }
+
+        // A .shader asset that includes lilToon by its package path fails to
+        // compile on import, and logs the missing include in the console,
+        // where lilToon is under Assets or not installed.
+        [Test]
+        public void NoShaderAssetIncludesLilToonByItsPackagePath()
+        {
+            var exporter = PackageInfo.FindForAssembly(typeof(LilToonMainTextureBaker).Assembly);
+            Assume.That(exporter, Is.Not.Null, "The exporter is not installed as a package.");
+            var shaders = System.IO.Directory.GetFiles(exporter.resolvedPath, "*.shader", System.IO.SearchOption.AllDirectories);
+            Assert.That(shaders, Is.Not.Empty);
+            foreach (var path in shaders)
+                Assert.That(System.IO.File.ReadAllText(path), Does.Not.Contain("Packages/" + LilToonInstallation.PackageName + "/"), path);
+            Assert.That(LayerAlphaBakerSource.Text, Does.Contain("#include \"Packages/" + LilToonInstallation.PackageName + "/Shader/Includes/lil_common.hlsl\""));
         }
     }
 }
