@@ -6,7 +6,7 @@ namespace VRVlog.LilToonExporter
     // ModelExporter turns the avatar root's children into glTF scene roots
     // and never writes the root's own TRS. In VRChat the root scale sets the
     // avatar size, so move it into the direct children while exporting; their
-    // world matrices stay the same. Root position and rotation are not baked
+    // matrices relative to the root stay the same. Root position and rotation are not baked
     // on purpose: the avatar is exported at the origin facing forward. The
     // root's place in the scene still reaches the scene roots through the
     // world matrices ConvertCoordinate works on, so the root is put at the
