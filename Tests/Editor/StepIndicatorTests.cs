@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter.Tests
         const int Expressions = ExperimentalExpressionCaptureWindow.ExpressionsPage;
         const int Objects = ExperimentalExpressionCaptureWindow.ObjectsPage;
         const int Info = ExperimentalExpressionCaptureWindow.InfoPage;
+        // Half a device pixel, with room for float rounding.
+        const float HalfPixel = .5f + 1e-3f;
 
         static State[] StatesOn(int shown) => Enumerable.Range(0, StepIndicator.Count).Select(index => StepIndicator.StateOf(index, shown)).ToArray();
 
@@ -121,6 +123,64 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(wide.Labels.Select(label => label.width), Is.EqualTo(narrow.Labels.Select(label => label.width)));
             Assert.That(wide.Labels.Sum(label => label.width), Is.LessThanOrEqualTo(StepIndicator.MaxLabels));
             Assert.That(wide.Lines[0].width, Is.GreaterThan(narrow.Lines[0].width));
+        }
+
+        [TestCase(1f)]
+        [TestCase(1.5f)]
+        [TestCase(2f)]
+        [TestCase(3f)]
+        public void TheGlyphBoxIsCentredOnWholeDevicePixels(float scale)
+        {
+            var circle = new Rect(401, 75, StepIndicator.Circle, StepIndicator.Circle);
+            // A "1" box of 6 x 10 px at 100%, from 1px left of the pen and 1px under the baseline.
+            var rect = StepIndicator.GlyphRect(circle, -1, 5, -1, 9, -1, 9, scale);
+            Assert.That(Mathf.Abs(rect.center.x - circle.center.x) * scale, Is.LessThanOrEqualTo(HalfPixel));
+            Assert.That(Mathf.Abs(rect.center.y - circle.center.y) * scale, Is.LessThanOrEqualTo(HalfPixel));
+            foreach (var edge in new[] { rect.xMin, rect.yMin, rect.xMax, rect.yMax })
+                Assert.That(edge * scale, Is.EqualTo(Mathf.Round(edge * scale)).Within(1e-3f), "The glyph is not resampled between device pixels.");
+        }
+
+        [Test]
+        public void AGlyphWithAnUnevenBoxStandsOnTheSameBaselineAsOne()
+        {
+            var circle = new Rect(16, 75, StepIndicator.Circle, StepIndicator.Circle);
+            var one = StepIndicator.GlyphRect(circle, -1, 5, -1, 9, -1, 9, 1);
+            // "!" reaches as high as "1" but its box has an extra row below the baseline.
+            var bang = StepIndicator.GlyphRect(circle, -1, 4, -2, 9, -1, 9, 1);
+            Assert.That(bang.yMin, Is.EqualTo(one.yMin));
+            Assert.That(bang.yMax, Is.EqualTo(one.yMax + 1));
+        }
+
+        [UnityTest]
+        public IEnumerator TheNumbersFromTheEditorFontLandOnTheCircleCentre()
+        {
+            // EditorStyles exists only once some editor GUI has been drawn.
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            try
+            {
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                window.Show();
+                for (var frame = 0; frame < 4; frame++) { window.Repaint(); yield return null; }
+                var font = EditorStyles.miniBoldFont;
+                Assert.That(font, Is.Not.Null);
+                var circle = new Rect(16, 75, StepIndicator.Circle, StepIndicator.Circle);
+                foreach (var scale in new[] { 1f, 1.5f, 2f, 3f })
+                {
+                    var size = Mathf.RoundToInt(EditorStyles.miniBoldLabel.fontSize * scale);
+                    font.RequestCharactersInTexture("123!", size);
+                    Assert.That(font.GetCharacterInfo('1', out var one, size), Is.True);
+                    foreach (var c in "123!")
+                    {
+                        Assert.That(font.GetCharacterInfo(c, out var glyph, size), Is.True);
+                        var rect = StepIndicator.GlyphRect(circle, glyph.minX, glyph.maxX, glyph.minY, glyph.maxY, one.minY, one.maxY, scale);
+                        Assert.That(Mathf.Abs(rect.center.x - circle.center.x) * scale, Is.LessThanOrEqualTo(HalfPixel), $"'{c}' across at {scale}");
+                        Assert.That(circle.Contains(rect.min) && circle.Contains(rect.max), Is.True, $"'{c}' inside the circle at {scale}");
+                    }
+                }
+            }
+            finally { Object.DestroyImmediate(window); }
         }
 
         [UnityTest]

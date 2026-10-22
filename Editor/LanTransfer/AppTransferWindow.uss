@@ -518,3 +518,42 @@
 .app-transfer--light .warning-text {
     color: rgb(184, 36, 31);
 }
+
+/* "VRMをPCに保存" under both screens: a normal button, so "QRコードを作る" stays the one blue button. */
+.save-row {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    height: 40px;
+    padding: 0 16px;
+}
+
+.save {
+    height: 22px;
+    margin: 0;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.save-result {
+    flex-grow: 1;
+    flex-shrink: 1;
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    -unity-text-align: middle-left;
+}
+
+.save-open {
+    flex-shrink: 0;
+    margin-left: 8px;
+}
+
+.app-transfer--dark .save-result--warn {
+    color: rgb(230, 170, 60);
+}
+
+.app-transfer--light .save-result--warn {
+    color: rgb(150, 95, 0);
+}
