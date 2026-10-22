@@ -89,7 +89,7 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
-            bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null)
+            bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, bool skipExpressionPlayback = false)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -118,7 +118,7 @@ namespace VRVlog.LilToonExporter
                     attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
                     return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                         suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets);
+                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, skipExpressionPlayback);
                 }, failure => report.Fallbacks.Clear());
                 CopyWarnings(attemptWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
@@ -362,7 +362,7 @@ namespace VRVlog.LilToonExporter
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
-            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets)
+            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, bool skipExpressionPlayback)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -529,9 +529,12 @@ namespace VRVlog.LilToonExporter
                     }
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
+                    // skipExpressionPlayback plays no face: the caller's authored
+                    // clips are the faces, and the default face below is unchanged.
                     using (ExpressionBoardTimings.Step("export.playback"))
                         menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                            menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                            skipExpressionPlayback ? new VrChatMenuImportPolicy { SkipPlayback = true } : menuPolicy, source, faceEmoBindings),
+                            () => new VrChatExpressionMenu.Source());
                     // The warning comes from the menu's own messages.
                     if (menu.MenuOmittedForCandidateLimit)
                         recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",

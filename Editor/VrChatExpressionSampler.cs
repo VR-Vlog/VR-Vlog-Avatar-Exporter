@@ -40,7 +40,7 @@ namespace VRVlog.LilToonExporter
             GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
             try { return AnalyzeOnce(avatar, excludedPath, menuPolicy, authoringSource, faceEmoBindings); }
-            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true)
+            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true && menuPolicy?.SkipPlayback != true)
             {
                 var source = AnalyzeOnce(avatar, excludedPath, new VrChatMenuImportPolicy { SkipAll = true, Reason = MenuOverCandidateLimit },
                     authoringSource, faceEmoBindings);
@@ -85,6 +85,7 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
+                if (menuPolicy?.SkipPlayback == true) return source;
                 // The menu loop fills the first half of the bar; each of the
                 // four imports below takes an eighth of the rest.
                 var step = 0;

@@ -1011,12 +1011,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
-        // The fixture has no expression menu, so the ordinary route gives no
-        // menu face for a face the board lists. The same save then records the
-        // list; a repeated name is numbered like a repeated menu face.
+        // The fixture has no expression menu. The list-only export writes the
+        // listed faces anyway; a repeated name is numbered like a repeated menu face.
         [TestCase(false)]
         [TestCase(true)]
-        public void OrdinaryRouteRecordsTheListWhenTheMenuGivesFewerFaces(bool repeatedName)
+        public void ListOnlyExportWritesTheListWithoutAMenu(bool repeatedName)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
@@ -1042,21 +1041,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
                     : new System.Collections.Generic.Dictionary<string, object>();
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                if (repeatedName)
-                {
-                    Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")), Is.EquivalentTo(new[] { "Listed face", "Listed face (2)" }));
-                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 2)));
-                }
-                else
-                {
-                    Assert.That(custom.Keys, Does.Contain("Listed face"));
-                    Assert.That(status, Does.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, 1)));
-                    var menuWarning = ExporterLocalization.T("VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。");
-                    Assert.That(status.Split('\n').Count(line => line == menuWarning), Is.LessThanOrEqualTo(1), "The replaced menu result leaves its warnings out.");
-                    Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero,
-                        "After the save the board keeps its own records again.");
-                    Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
-                }
+                Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")),
+                    Is.EquivalentTo(repeatedName ? new[] { "Listed face", "Listed face (2)" } : new[] { "Listed face" }));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, clips.Length)));
+                Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero, "Nothing is recorded.");
+                Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
+                Assert.That(((SavedExpressionVrm)type.GetField("saved", flags).GetValue(window)).Expressions, Is.EqualTo(clips.Length));
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
@@ -1119,13 +1109,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(calls, Is.Zero, "A closed board records nothing.");
         }
 
-        // The expression menu gives two faces. The ordinary route keeps both
-        // whatever the board lists; with fewer listed the result says how many
-        // each has, and the saved count is the faces the VRM has.
+        // The expression menu has two faces. The list-only export plays no menu
+        // face: the VRM has exactly the listed ones, and the saved count is those.
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
-        public void OrdinaryRouteSaysWhenTheMenuGivesMoreFacesThanTheList(int listed)
+        public void ListOnlyExportLeavesOutMenuFacesTheListDoesNotHave(int listed)
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
@@ -1195,27 +1184,24 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = File.ReadAllBytes(path);
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
-                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                // Both menu faces stay: the list was not recorded in their place.
-                Assert.That(custom.Keys, Is.SupersetOf(names));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
+                var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
+                    : new System.Collections.Generic.Dictionary<string, object>();
+                Assert.That(custom.Keys.Where(key => key.StartsWith("Face ")), Is.EquivalentTo(names.Take(listed)));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.Zero, "No menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed);
-                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(listed < names.Length ? 1 : 0));
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, listed)));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed)));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
-                Assert.That(saved.Expressions, Is.EqualTo(VrmMenuExpressions.CountRegistered(bytes)), "The saved count is what the VRM has.");
+                Assert.That(saved.Expressions, Is.EqualTo(listed), "The saved count is the listed faces.");
             }
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }
 
         // The expression menu gives two faces and the board lists them with a
-        // third face the menu does not have. Recording the list would replace
-        // the menu faces (and their motion) with still ones, so the ordinary
-        // route keeps the menu result and says some list faces were not exported.
+        // third face the menu does not have. The list-only export writes all
+        // three from their curves, as still faces without the menu's animation.
         [Test]
-        public void OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces()
+        public void ListOnlyExportWritesListFacesTheMenuDoesNotHave()
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
@@ -1290,19 +1276,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                // The menu faces stay with their animation extension: the list was not recorded in their place.
-                Assert.That(custom.Keys, Is.SupersetOf(names));
-                Assert.That(custom.Keys, Has.No.Member(listOnly.name));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
-                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
+                Assert.That(custom.Keys, Is.SupersetOf(names.Append(listOnly.name)));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.Zero, "No menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
-                Assert.That(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat, Does.EndWith("のうち書き出していない表情があります"));
                 var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 1);
-                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(1));
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, names.Length + 1)));
+                Assert.That(status, Does.Not.Contain(line));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
-                Assert.That(saved.Expressions, Is.EqualTo(names.Length), "The saved count is the menu faces the VRM has.");
+                Assert.That(saved.Expressions, Is.EqualTo(names.Length + 1), "The saved count is the listed faces.");
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }

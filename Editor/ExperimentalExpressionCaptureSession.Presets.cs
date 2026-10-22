@@ -338,6 +338,46 @@ namespace VRVlog.LilToonExporter
             instance.Vrm = settings;
         }
 
+        // The list-only export: each face of the board's list becomes a custom
+        // VRM clip on the copy, read from its curves at the board's time like a
+        // standard preset. Weights are clamped to 0-100. A zero, or a shape the
+        // copy does not have, leaves that channel at the default face.
+        // AuthorPresets has given the copy its own VRM settings by now.
+        void AuthorListFaces(GameObject clone, IEnumerable<(string Name, AnimationClip Clip, float Time)> faces, List<Object> assets)
+        {
+            var settings = clone.GetComponent<Vrm10Instance>().Vrm;
+            foreach (var face in faces)
+            {
+                var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
+                expression.name = VrmMenuExpressions.UniqueName(face.Name,
+                    name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
+                expression.IsBinary = true;
+                expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
+                var bindings = new List<MorphTargetBinding>();
+                foreach (var morph in ListFaceMorphs(face.Clip, face.Time))
+                {
+                    SkinnedMeshRenderer renderer;
+                    try { renderer = VrChatExpressionSampler.FindRenderer(clone, morph.Path); }
+                    catch (InvalidOperationException) { continue; }
+                    var index = renderer.sharedMesh.GetBlendShapeIndex(morph.Shape);
+                    if (index >= 0) bindings.Add(new MorphTargetBinding(morph.Path, index, morph.Weight / 100f));
+                }
+                expression.MorphTargetBindings = bindings.ToArray();
+                settings.Expression.CustomClips.Add(expression);
+            }
+        }
+
+        // The clip's BlendShape curves at the given time, in authoring paths.
+        List<(string Path, string Shape, float Weight)> ListFaceMorphs(AnimationClip clip, float time)
+        {
+            var root = ClipRoot(clip);
+            return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
+                string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
+                binding.propertyName.Substring("blendShape.".Length),
+                Mathf.Clamp(AnimationUtility.GetEditorCurve(clip, binding).Evaluate(time), 0f, 100f)))
+                .Where(morph => morph.Item3 > 0 && !skippedPaths.Contains(morph.Item1) && ShapeOnEitherMesh(morph.Item1, morph.Item2)).ToList();
+        }
+
         // Blink assignments go to the blink export as a manual setting, not as
         // authored clips: it replaces every authored blink preset unless the
         // source VRM's own blink is kept. The chosen presets (an empty one for

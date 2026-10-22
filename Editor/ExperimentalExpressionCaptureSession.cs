@@ -532,7 +532,8 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Export(string avatarName, string author, ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, IEnumerable<Pose> recordedExpressions = null, PoseExportOptions recordedPoses = null,
-            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false)
+            IEnumerable<PresetAssignment> presets = null, bool replaceCustomFaces = false,
+            IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null)
         {
             // The export always hashes the source again, even inside a batch.
             RequireValid(always: true);
@@ -579,7 +580,7 @@ namespace VRVlog.LilToonExporter
             // menu/FX, authored expressions, metadata and preparation route.
             // replaceCustomFaces asks for exactly the recorded custom faces, even
             // none, so both shortcuts that keep the menu faces are skipped.
-            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
+            if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0 && listFaces == null)
             {
                 var ordinary = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
@@ -593,6 +594,8 @@ namespace VRVlog.LilToonExporter
             }
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
+            // listFaces (the list-only export) joins them as custom clips and
+            // plays no menu face; the default face is still the ordinary one.
             if (!replaceCustomFaces && expressions.Length == 0)
             {
                 var authored = new List<Object>();
@@ -603,9 +606,13 @@ namespace VRVlog.LilToonExporter
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
-                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
+                        authorCopyExpressions: clone =>
+                        {
+                            AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored);
+                            if (listFaces != null) AuthorListFaces(clone, listFaces, authored);
+                        },
                         inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
-                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions, skipExpressionPlayback: listFaces != null);
                     UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                     return authoredVrm;
                 }
