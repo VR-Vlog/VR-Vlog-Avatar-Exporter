@@ -45,6 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             var source = fixture.Source;
             Assert.That(source.GetComponent<Animator>().runtimeAnimatorController, Is.Null);
+            foreach (var skin in fixture.Skins) skin.sharedMaterial.shader = Shader.Find("lilToon");
             source.AddComponent(descriptorType);
             // An MA component makes the export run the NDMF phases.
             var proxy = source.transform.Find("Back").gameObject.AddComponent(proxyType);
