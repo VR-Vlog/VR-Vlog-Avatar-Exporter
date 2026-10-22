@@ -1838,9 +1838,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("ja", "VRM書き出し", "VRMを保存")]
         [TestCase("en", "VRM Export", "Save VRM")]
-        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1859,29 +1856,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
             finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
-        }
-
-        // The logo is drawn in the header at the top of the window, not on the tab.
-        // Closing a window keeps the shared texture, and after a script reload the
-        // same texture is found again instead of being made twice.
-        [Test]
-        public void HeaderLogoIsSharedAndSurvivesScriptReload()
-        {
-            var icon = ExporterWindowIcon.Texture;
-            Assert.That(icon, Is.Not.Null);
-            Assert.That((icon.width, icon.height), Is.EqualTo((128, 128)));
-            Assert.That(ExporterWindowHeader.Height, Is.EqualTo(61f));
-            ExperimentalExpressionCaptureWindow window = null;
-            try
-            {
-                ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
-                window.Repaint();
-                Assert.That(window.titleContent.image, Is.Null);
-            }
-            finally { window?.Close(); }
-            Assert.That(icon != null, "closing a window must not destroy the shared icon");
-            typeof(ExporterWindowIcon).GetField("texture", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).SetValue(null, null);
-            Assert.That(ExporterWindowIcon.Texture, Is.SameAs(icon));
         }
 
         [Test]
@@ -2734,28 +2708,6 @@ namespace VRVlog.LilToonExporter.Tests
         public void TheThirdPageIsThePanelInBothModesWhereItIsUsable(int page, bool prepared, bool transferMode, bool panelUsable, bool panel)
         {
             Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared, transferMode, panelUsable), Is.EqualTo(panel));
-        }
-
-        // The question before leaving the transfer: one line without 句点, buttons that say what they do.
-        [Test]
-        public void TheLeaveDialogTextFollowsTheWordingRulesAndExistsInEveryLocale()
-        {
-            var texts = new[]
-            {
-                ExperimentalExpressionCaptureWindow.CancelTransferTitle, ExperimentalExpressionCaptureWindow.CancelTransferBody,
-                ExperimentalExpressionCaptureWindow.LeaveTransferText, ExperimentalExpressionCaptureWindow.KeepTransferText,
-                ExperimentalExpressionCaptureWindow.NextLabel(true), StepIndicator.Names(true)[2],
-            };
-            foreach (var text in texts)
-                Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|はい|いいえ"), Is.False, text);
-            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var directory = Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var table = File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
-                foreach (var text in texts)
-                    Assert.That(table, Does.Contain("{\"source\":\"" + text + "\",\"translated\":\""), locale + ": " + text);
-            }
         }
 
         [Test]

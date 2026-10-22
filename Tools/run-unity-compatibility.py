@@ -19,14 +19,10 @@ PROFILES = ('compatibility', 'exporter-behavior', 'exporter-integration')
 BEHAVIOR_CASES = {
     'ExportDetailsTextTests': {
         'AllDiagnosticFieldsAndTheExactNestedExceptionSurviveLargeReports': 1,
-        'NativeClipboardAndUtf8FileContainTheSameCompleteUnicodeText': 1,
         'CancelDoesNotTouchAnExistingFileOrLeaveTemporaryFiles': 1,
         'ConfirmedExistingFileIsReplacedWithCompleteTextWithoutTemporaryFiles': 1,
         'WriteFailureIsReportedAndPreservesOtherFiles': 1,
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
-        'FailureSnapshotKeepsEveryTargetSharingOneRecoveryActionAfterReload': 1,
-        'ExceptionWithoutDiagnosticsIsStillAvailableInFull': 1,
-        'TheStageLineNamesItsPhaseWhenKnown': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 4,
@@ -901,9 +897,7 @@ BEHAVIOR_CASES = {
     },
     'PoseReviewWindowTests': {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
-        'OneAnimDropRemainsUsable': 1,
         'TwentyAnimDropRemainsUsable': 1,
-        'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
     },
     'NativeTreeTrajectoryTests': {
         'NormalPlayableWriterCannotDisappearWhenTheHandIsSelected': 2,

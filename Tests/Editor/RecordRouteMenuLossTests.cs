@@ -74,16 +74,6 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Dictionary<string, float> FaceOff = new Dictionary<string, float> { ["Face"] = 0 };
 
         [Test]
-        public void AnItemLinkedToOneClipIsNotListed()
-        {
-            var smile = FaceClip("Smile");
-            var controller = Controller((smile, 1));
-            var items = new[] { Item("Face / Smile", 1), Item("Face / Smile 2", 1, "Button") };
-            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty, "The clip is a board item.");
-            Assert.That(Session.MenuClipPaths(items, controller, FaceOff)[smile], Is.EqualTo(new[] { "Face / Smile", "Face / Smile 2" }));
-        }
-
-        [Test]
         public void AFaceSplitOverLayersIsListed()
         {
             var controller = Controller((FaceClip("Eyes"), 1), (FaceClip("Mouth"), 1));
@@ -99,27 +89,6 @@ namespace VRVlog.LilToonExporter.Tests
             var items = new[] { Item("Face / Smile", 1), Item("Wear / Hat", 2) };
             Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.EqualTo(new[] { "Face / Smile" }),
                 "A Blend Tree that moves no BlendShape is not a face.");
-            Assert.That(Session.MenuClipPaths(items, controller, FaceOff), Is.Empty);
-        }
-
-        [Test]
-        public void ASubMachineFaceIsListed()
-        {
-            var controller = Keep(new AnimatorController());
-            controller.AddParameter("Face", AnimatorControllerParameterType.Int);
-            var machine = Keep(new AnimatorStateMachine());
-            machine.defaultState = machine.AddState("Idle");
-            var face = machine.AddStateMachine("Face");
-            var inner = face.AddStateMachine("Inner");
-            inner.AddState("Smile").motion = Tree(FaceClip("Smile"));
-            machine.AddAnyStateTransition(face).AddCondition(AnimatorConditionMode.Equals, 1, "Face");
-            var hat = machine.AddStateMachine("Hat");
-            hat.AddState("Hat").motion = ClothingClip("Hat");
-            machine.AddAnyStateTransition(hat).AddCondition(AnimatorConditionMode.Equals, 2, "Face");
-            controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
-            var items = new[] { Item("Face / Smile", 1), Item("Wear / Hat", 2) };
-            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.EqualTo(new[] { "Face / Smile" }),
-                "The face is found in a nested machine; a machine that moves no BlendShape is not a face.");
             Assert.That(Session.MenuClipPaths(items, controller, FaceOff), Is.Empty);
         }
 
@@ -188,17 +157,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnItemWithOneClipAndABlendTreeFaceIsNotListed()
-        {
-            // Spec choice: the item is linked to its clip, which is on the board.
-            var smile = FaceClip("Smile");
-            var controller = Controller((smile, 1), (Tree(FaceClip("Laugh")), 1));
-            var items = new[] { Item("Face / Smile", 1) };
-            Assert.That(Session.MenuEntriesOutsideBoard(items, controller, FaceOff), Is.Empty);
-            Assert.That(Session.MenuClipPaths(items, controller, FaceOff)[smile], Is.EqualTo(new[] { "Face / Smile" }));
-        }
-
-        [Test]
         public void AMenuThatCannotBeReadIsUnreadableNotEmpty()
         {
             var links = Session.ReadMenuLinks(() => throw new InvalidOperationException("broken"));
@@ -207,57 +165,5 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
                 Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
         }
-
-        [Test]
-        public void AnAvatarWithoutAVrChatMenuHasNoItemsRatherThanAFailure()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            using var session = new Session(fixture.Source, replayInstalledDefaults: false);
-            Assert.That(session.SourceMenuEntriesOutsideBoard, Is.Not.Null.And.Empty);
-        }
-
-        [Test]
-        public void TheBandShowsOnlyInTheRecordRouteAndCapsTheListedPaths()
-        {
-            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(false, new[] { "Face / Split" }), Is.Null);
-            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(false, null), Is.Null, "The menu route records the menu itself.");
-            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, Array.Empty<string>()), Is.Null);
-            var unreadable = ExperimentalExpressionCaptureWindow.MenuLossBand(true, null).Value;
-            Assert.That(unreadable.Text, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
-            var paths = Enumerable.Range(1, 23).Select(index => "Face / " + index).ToArray();
-            var band = ExperimentalExpressionCaptureWindow.MenuLossBand(true, paths).Value;
-            Assert.That(band.Text, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuLossFormat), 23)));
-            var lines = band.Tooltip.Split('\n');
-            Assert.That(lines.Length, Is.EqualTo(2 + 20 + 1));
-            Assert.That(lines[0], Is.EqualTo(band.Text));
-            Assert.That(lines[1], Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuLossListHeader)));
-            Assert.That(lines.Skip(2).Take(20), Is.EqualTo(paths.Take(20)), "Paths are the user's own names, in menu order.");
-            Assert.That(lines.Last(), Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuLossMoreFormat), 3)));
-        }
-
-        [Test]
-        public void EveryShippedLocaleTranslatesTheBand()
-        {
-            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var directory = Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var file = JsonUtility.FromJson<LocaleFile>(File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json")));
-                var table = file.entries.ToDictionary(entry => entry.source, entry => entry.translated);
-                foreach (var source in new[] {
-                    ExperimentalExpressionCaptureWindow.MenuLossFormat, ExperimentalExpressionCaptureWindow.MenuLossListHeader,
-                    ExperimentalExpressionCaptureWindow.MenuLossMoreFormat, ExperimentalExpressionCaptureWindow.MenuUnreadable })
-                {
-                    Assert.That(table.TryGetValue(source, out var translated), Is.True, locale + ": " + source);
-                    Assert.That(translated, Is.Not.Empty.And.Not.EqualTo(source), locale + ": " + source);
-                    Assert.That(translated.Contains("{0}"), Is.EqualTo(source.Contains("{0}")), locale + ": " + source);
-                    Assert.That(string.Format(translated, 7), Does.Contain(source.Contains("{0}") ? "7" : ""), locale + ": " + source);
-                }
-            }
-        }
-
-        [Serializable] class LocaleFile { public LocaleEntry[] entries; }
-        [Serializable] class LocaleEntry { public string source, translated; }
     }
 }

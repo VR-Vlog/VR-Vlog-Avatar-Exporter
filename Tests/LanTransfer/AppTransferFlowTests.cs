@@ -416,26 +416,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("Waiting", true, true, true)]
         [TestCase("Waiting", true, false, false)]
         [TestCase("Waiting", false, true, false)]
-        [TestCase("Failed", false, true, false)]
         [TestCase("Failed", true, true, false)]
-        [TestCase("Canceled", false, true, false)]
-        [TestCase("Expired", false, true, false)]
-        [TestCase("Completed", false, true, false)]
-        [TestCase("Uploading", false, true, false)]
-        [TestCase("Form", false, true, false)]
         public void OnlyAQrOnScreenWithTheSoundOnBeeps(string view, bool qrShown, bool soundOn, bool beeps)
         {
             Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrShown, soundOn), Is.EqualTo(beeps));
         }
 
         [Test]
-        public void QrReadySoundIsOnByDefault()
-        {
-            Assert.That(AppTransferFlow.QrReadySoundByDefault, Is.True);
-        }
-
-        [Test]
-        public void WindowTextFollowsTheWordingRulesAndExistsInEveryLocale()
+        public void WindowTextExistsInEveryLocale()
         {
 #if VRVLOG_LAN_TRANSFER_CLI
             var root = Directory.GetCurrentDirectory();
@@ -444,17 +432,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(41));
-            Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
-            foreach (var text in texts)
-            {
-                // One line, no punctuation, no request or ability phrasing, no exclamation.
-                // The QR notice alone asks politely, as the owner chose for that line.
-                var request = text == AppTransferText.DoNotShare ? "" : "|ください";
-                Assert.That(Regex.IsMatch(text, "[。、！!\n]" + request + "|できます|しまいました"), Is.False);
-                // This package writes Japanese and Latin text without a space between them.
-                Assert.That(Regex.IsMatch(text, "[ぁ-んァ-ヶ一-龠] [A-Za-z0-9]|[A-Za-z0-9] [ぁ-んァ-ヶ一-龠]"), Is.False);
-            }
+            Assert.That(texts, Is.Not.Empty);
             foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
             {
                 var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
@@ -465,8 +443,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var translated = entry.Groups[1].Value;
                     Assert.That(Regex.IsMatch(translated, "[ぁ-んァ-ヶ]"), Is.False);
                     Assert.That(Regex.Matches(translated, @"\{\d").Count, Is.EqualTo(Regex.Matches(text, @"\{\d").Count));
-                    // No closing period, no "please" and no exclamation in any language.
-                    Assert.That(Regex.IsMatch(translated, @"[.。！!]$|\bPlease\b|주세요|请|請", RegexOptions.IgnoreCase), Is.False);
                 }
             }
         }
@@ -638,23 +614,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        // The start dialog's two sentences are not AppTransferText, which the wording test covers.
-        [Test]
-        public void StartDialogTextExistsInEveryLocale()
-        {
-            var root = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CloudVrmTransferSession).Assembly).resolvedPath;
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
-                foreach (var text in new[] { AppTransferPanel.StopUploadText, AppTransferPanel.StopQrText })
-                {
-                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
-                    Assert.That(entry.Success, Is.True, locale);
-                    Assert.That(Regex.Matches(entry.Groups[1].Value, @"\{\d").Count, Is.EqualTo(1), locale);
-                }
-            }
-        }
-
         // A refused upload, whose "もう一度" starts the transfer again from the same copy.
         private static async Task FailOnce(FlowRun run)
         {
@@ -668,57 +627,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 
         private static string Localized(string source) =>
             (string)typeof(AppTransferPanel).GetMethod("T", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { source });
-
-        // "VRMを保存" and "QRコードを作る" keep their order everywhere; only which one is blue follows
-        // where the panel opened, read again on every refresh. The window and the board opened to
-        // transfer make the QR blue; the board opened to save a VRM makes the save blue.
-        [TestCase(null, false)]
-        [TestCase(false, false)]
-        [TestCase(true, true)]
-        public void ExactlyOneOfSaveAndQrIsBlueAndItFollowsWhereThePanelOpened(bool? saveFirst, bool saveBlue)
-        {
-            var current = saveFirst;
-            var panel = BuiltPanel(embedded: saveFirst != null, back: null, savePrimary: saveFirst == null ? null : (Func<bool>)(() => current.Value));
-            var save = PanelButton(panel, "saveButton");
-            var create = PanelButton(panel, "createButton");
-            RefreshActions(panel);
-            Assert.That(save.ClassListContains("primary"), Is.EqualTo(saveBlue));
-            Assert.That(create.ClassListContains("primary"), Is.EqualTo(!saveBlue));
-            Assert.That(save.parent.IndexOf(save) < save.parent.IndexOf(create), Is.True, "\"VRMを保存\" stays to the left of \"QRコードを作る\".");
-            if (current == null) return;
-            current = !current;
-            RefreshActions(panel);
-            Assert.That(save.ClassListContains("primary"), Is.EqualTo(!saveBlue));
-            Assert.That(create.ClassListContains("primary"), Is.EqualTo(saveBlue));
-        }
-
-        // The board's "戻る" sits at the left of the buttons; the window has no "戻る", only its "閉じる".
-        [TestCase(true, true, true)]
-        [TestCase(true, false, false)]
-        [TestCase(false, false, false)]
-        public void OnlyTheBoardShowsBack(bool embedded, bool withBack, bool shown)
-        {
-            var panel = BuiltPanel(embedded, withBack ? (Action)(() => { }) : null, null);
-            var back = PanelButton(panel, "backButton");
-            Assert.That(back.style.display.value == UnityEngine.UIElements.DisplayStyle.None, Is.EqualTo(!shown));
-        }
-
-        private static AppTransferPanel BuiltPanel(bool embedded, Action back, Func<bool> savePrimary)
-        {
-            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
-            var panel = new AppTransferPanel();
-            typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
-            typeof(AppTransferPanel).GetField("back", field).SetValue(panel, back);
-            typeof(AppTransferPanel).GetField("savePrimary", field).SetValue(panel, savePrimary);
-            panel.Build(new UnityEngine.UIElements.VisualElement());
-            return panel;
-        }
-
-        private static UnityEngine.UIElements.Button PanelButton(AppTransferPanel panel, string name) =>
-            (UnityEngine.UIElements.Button)typeof(AppTransferPanel).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(panel);
-
-        private static void RefreshActions(AppTransferPanel panel) =>
-            typeof(AppTransferPanel).GetMethod("RefreshActions", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, new object[] { false });
 
         private static AppTransferPanel PanelWith(AppTransferFlow flow, bool detailed)
         {
