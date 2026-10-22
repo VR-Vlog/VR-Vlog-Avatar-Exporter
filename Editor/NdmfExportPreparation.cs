@@ -114,7 +114,7 @@ namespace VRVlog.LilToonExporter
         // VRChat constraints run in edit mode but are read by ConstraintExport
         // on the copy; they only pose the copy as the source already is.
         internal static bool PreservesExportBehaviour(Behaviour behaviour) => behaviour != null && (
-            behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint") ||
+            behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint" || contract.FullName == "VRVlog.LilToonExporter.Vendor.UniVRM10.IVrm10Constraint") ||
             behaviour.GetType().FullName?.StartsWith("VRC.SDK3.Dynamics.Constraint.Components.", StringComparison.Ordinal) == true ||
             behaviour.GetType().FullName == PhysBoneSpringExport.PhysBoneType ||
             behaviour.GetType().FullName == "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
@@ -137,6 +137,9 @@ namespace VRVlog.LilToonExporter
                 // Remove it from the owned copy only; the source keeps it.
                 foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
                     UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
+                // The project's own UniVRM components and MToon materials become
+                // the exporter's vendored ones before any script runs on the copy.
+                ForeignUniVrm.Adopt(copy);
                 foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
                 {
                     if (behaviour == null) continue;
@@ -491,7 +494,24 @@ namespace VRVlog.LilToonExporter
                             if (afterTransforming != null)
                             {
                                 afterTransforming(lease);
-                                Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing }));
+                                // AAO reads the root controller unless it knows a platform
+                                // component; it does not know the bundled Vrm10Instance and
+                                // throws on a null controller, so lend it an empty one, as
+                                // AAO skips the controller for the com.vrmc.vrm Vrm10Instance.
+                                var animator = clone.GetComponent<Animator>();
+                                var placeholder = animator != null && animator.runtimeAnimatorController == null
+                                    && clone.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>() != null
+                                    ? new UnityEditor.Animations.AnimatorController { hideFlags = HideFlags.HideAndDontSave } : null;
+                                if (placeholder != null) animator.runtimeAnimatorController = placeholder;
+                                try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
+                                finally
+                                {
+                                    if (placeholder != null)
+                                    {
+                                        if (animator != null && animator.runtimeAnimatorController == placeholder) animator.runtimeAnimatorController = null;
+                                        Object.DestroyImmediate(placeholder);
+                                    }
+                                }
                             }
                         }
                     }

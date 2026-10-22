@@ -1,0 +1,33 @@
+{
+    "name": "VRVlog.LilToonExporter.Vendor.VRM10",
+    "rootNamespace": "",
+    "references": [
+        "GUID:ec066f73946b413306b470c9b285d5df",
+        "GUID:6b6594aa8012b4bd44ef4f6bbf552d2d",
+        "GUID:311029e08122405cf6772e54d292e596",
+        "GUID:4ee69c8b381378d52e0f13da3736fa77",
+        "GUID:fc4d58f5b275dee6f7cad6a9097f7467",
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:d8b63aba1907145bea998dd612889d6b",
+        "GUID:5e9a8e7b86b5bdf42435065c63a18bb1",
+        "GUID:78f7730ea4d4956c99d01054dce3aa29",
+        "GUID:f06555f75b070af458a003d92f9efb00"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.burst",
+            "expression": "0.0.1",
+            "define": "ENABLE_VRM10_BURST"
+        }
+    ],
+    "noEngineReferences": false
+}

@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;

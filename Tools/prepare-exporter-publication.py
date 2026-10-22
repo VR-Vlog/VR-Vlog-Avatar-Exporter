@@ -29,7 +29,8 @@ PUBLISHER_WORKFLOW = ".github/workflows/build-listing.yml"
 ZIP_REPOSITORIES = (PUBLISHER_REPOSITORY, LEGACY_PUBLISHER_REPOSITORY,
                     "mitsuya0077/VR-Vlog-lilToon-Exporter")
 PREFLIGHT_FILE = "vpm-mirror-preflight.json"
-REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter", "com.vrmc.gltf", "com.vrmc.vrm")
+# UniVRM is bundled inside the exporter; earlier dependency packages stay only as published history.
+REQUIRED_PACKAGES = ("com.vrvlog.liltoon-vrm-exporter",)
 MAX_FILE_BYTES = 4 * 1024 * 1024
 MAX_PUBLICATION_BYTES = 8 * 1024 * 1024
 MAX_FILES = 1000
@@ -275,7 +276,7 @@ def validate_listing(raw):
     require(data.get("url") == CANONICAL_URL, "Built listing must retain the canonical URL")
     packages = data.get("packages")
     require(isinstance(packages, dict) and all(name in packages for name in REQUIRED_PACKAGES),
-            "Built listing is missing the exporter or required dependencies")
+            "Built listing is missing the exporter")
     for name, package in packages.items():
         require(isinstance(name, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name),
                 "Invalid listed package name")

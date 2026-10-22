@@ -3,9 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -298,7 +299,7 @@ namespace VRVlog.LilToonExporter.Tests
             expression.MorphTargetBindings = new[] { new MorphTargetBinding { RelativePath = oldPath, Index = 0, Weight = .4f } };
             settings.Expression.Happy = settings.Expression.Angry = expression;
             settings.FirstPerson.Renderers.Add(new RendererFirstPersonFlags { Renderer = oldPath,
-                FirstPersonFlag = UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly });
+                FirstPersonFlag = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly });
             var original = f.Source.AddComponent<Vrm10Instance>(); original.Vrm = settings;
             var instance = f.Copy.AddComponent<Vrm10Instance>(); instance.Vrm = settings;
             VRM10Object owned = null;
@@ -330,7 +331,7 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(ownedExpression.MorphTargetBindings[0].RelativePath, Is.EqualTo(expected));
                         Assert.That(ownedExpression.MorphTargetBindings[0].Weight, Is.EqualTo(.4f));
                         Assert.That(owned.FirstPerson.Renderers[0].Renderer, Is.EqualTo(expected));
-                        Assert.That(owned.FirstPerson.Renderers[0].FirstPersonFlag, Is.EqualTo(UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly));
+                        Assert.That(owned.FirstPerson.Renderers[0].FirstPersonFlag, Is.EqualTo(VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly));
                     }
                     Assert.That(original.Vrm, Is.SameAs(settings));
                     Assert.That(settings.Expression.Happy, Is.SameAs(expression));
@@ -619,7 +620,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 3).ToArray();
                 Mesh.bindposes = new[] { joint.worldToLocalMatrix, bones[HumanBodyBones.Head].worldToLocalMatrix };
                 Mesh.AddBlendShapeFrame("Hair detail", 100, Enumerable.Repeat(new Vector3(.02f, .01f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
-                material = new Material(Shader.Find("VRM10/MToon10"));
+                material = new Material(Shader.Find(MToon10Meta.UnityShaderName));
                 foreach (var name in new[] { "Front", "Back" })
                 {
                     var skin = Child(Source.transform, name).gameObject.AddComponent<SkinnedMeshRenderer>();

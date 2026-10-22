@@ -35,7 +35,7 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
 | lilToon | Any version from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4, stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
-| UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
+| UniVRM / UniGLTF | Not required; UniVRM 0.131.4 is bundled with renamed namespaces and shaders, so an installed UniVRM of any version does not conflict |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; checked with 3.5.0 or later and below 3.11.0, including pre-releases below 3.11.0. Expression files with VRC Animator Play Audio need 3.5.2 or later and below 3.11.0 |
 | NDMF | Optional; a stable release from 1.6.0 up to (but not including) 2.0.0 when the avatar uses Modular Avatar or another NDMF tool |
@@ -51,7 +51,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions. VPM resolves the UniVRM dependencies.
+3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -61,7 +61,7 @@ https://vrvlog.fun/exporter/index.json
 
 Existing personal and organization repository registrations remain supported. Keep the current registration; no migration, second registration or reinstall is required. All listing endpoints are synchronized after approved publication.
 
-For manual installation, use **ZIPで導入** on the installation page. Download the exporter, UniGLTF and VRM ZIPs and extract each into a separate folder under the project's `Packages` directory, with its `package.json` directly inside that folder. Avoid installing the same UniVRM package twice.
+For manual installation, use **ZIPで導入** on the installation page. Download the exporter ZIP and extract it into a folder under the project's `Packages` directory, with its `package.json` directly inside that folder.
 
 Back up your Unity project before updating. Re-export from the original avatar to apply exporter changes to an existing VRM.
 

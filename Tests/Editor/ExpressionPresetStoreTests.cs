@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using UnityEngine.TestTools;
 using Session = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSession;

@@ -1,5 +1,5 @@
 using System;
-using UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using UnityEditor;
 using UnityEngine;
 

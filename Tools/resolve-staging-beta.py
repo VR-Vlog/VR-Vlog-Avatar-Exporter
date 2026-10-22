@@ -95,15 +95,12 @@ def release_context(event, event_name, expected_sha, channel, root=ROOT, api=Non
     return "refs/heads/main", verify_checkout(expected_sha, root)
 
 
-def package_inputs(root):
+def package_version(root):
     package = json.loads((root / "package.json").read_text(encoding="utf-8"))
-    compatibility = json.loads((root / "Compatibility/dependencies.json").read_text(encoding="utf-8"))
     version = package.get("version") if isinstance(package, dict) else None
-    dependency = compatibility.get("uniVrm", {}).get("releaseVersion")
     require(isinstance(version, str) and (BETA.fullmatch(version) or STABLE.fullmatch(version)),
             "Staging source must use X.Y.Z-beta.N or an explicitly manual stable version")
-    require(isinstance(dependency, str) and STABLE.fullmatch(dependency), "Invalid pinned UniVRM version")
-    return version, dependency
+    return version
 
 
 def candidate_hash(data):
@@ -124,7 +121,7 @@ def resolve(event, event_name, root=ROOT, api=None):
     api = api or verifier.gh_api
     run = authenticate_candidate(event, event_name, api)
     sha = verify_checkout(run["head_sha"], root)
-    version, dependency = package_inputs(root)
+    version = package_version(root)
     listing = api(PREFIX + "/actions/runs/" + str(run["id"]) + "/artifacts?per_page=100")
     require(isinstance(listing, dict) and isinstance(listing.get("artifacts"), list)
             and type(listing.get("total_count")) is int
@@ -139,7 +136,7 @@ def resolve(event, event_name, root=ROOT, api=None):
     if STABLE.fullmatch(version):
         return {"publish": "false"}
     return {"publish": "true", "version": version, "channel": "beta", "expected_commit": sha,
-            "package_sha256": digest, "candidate_run_id": str(run["id"]), "univrm_version": dependency}
+            "package_sha256": digest, "candidate_run_id": str(run["id"])}
 
 
 def verify_published_tag(environment, root=ROOT, api=None):
@@ -154,7 +151,7 @@ def verify_published_tag(environment, root=ROOT, api=None):
     sha = verify_checkout(environment.get("GITHUB_SHA"), root)
     tag_sha = subprocess.check_output(["git", "rev-parse", ref + "^{commit}"], cwd=root, text=True).strip()
     require(tag_sha == sha, "Published tag differs from the listing checkout")
-    source_version, _ = package_inputs(root)
+    source_version = package_version(root)
     require(source_version == version, "Published tag version differs from its package manifest")
     release = api(PREFIX + "/releases/tags/v" + version)
     require(isinstance(release, dict) and release.get("tag_name") == "v" + version
