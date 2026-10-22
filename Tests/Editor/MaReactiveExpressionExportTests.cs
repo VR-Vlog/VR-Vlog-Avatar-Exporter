@@ -24,14 +24,6 @@ namespace VRVlog.LilToonExporter.Tests
         static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
             .Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
 
-        // MA 1.12 added the MMD world relay together with its VRChat settings;
-        // earlier versions have neither, so there is nothing to switch off.
-        static void DisableMmdWorldSupport(GameObject root)
-        {
-            var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
-            if (settingsType != null) settingsType.GetProperty("MMDWorldSupport").SetValue(root.AddComponent(settingsType), false);
-        }
-
         [Test]
         public void MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion()
         {
@@ -148,10 +140,6 @@ namespace VRVlog.LilToonExporter.Tests
             RequirePackages();
             var mergeType = Installed(Ma + "ModularAvatarMergeBlendTree");
             if (mergeType == null) Assert.Ignore("Install the real MA Merge Motion component.");
-            // Before MA 1.12 the component is Merge Blend Tree and only takes a
-            // BlendTree, so the plain clip cases start at 1.12.
-            var motionProperty = mergeType.GetProperty("Motion");
-            if (motionProperty == null && !nestedTree) Assert.Ignore("Merging a plain clip needs Modular Avatar 1.12.0 or later.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var descriptor = fixture.Source.AddComponent(Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"));
             ConfigureGeometry(fixture.Mesh);
@@ -208,8 +196,7 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                 }
                 var merge = tool.AddComponent(mergeType);
-                if (motionProperty != null) motionProperty.SetValue(merge, motion);
-                else mergeType.GetField("BlendTree").SetValue(merge, motion);
+                mergeType.GetProperty("Motion").SetValue(merge, motion);
                 var mode = mergeType.GetField("PathMode"); mode.SetValue(merge, Enum.Parse(mode.FieldType, pathMode == 0 ? "Absolute" : "Relative"));
                 if (pathMode == 2)
                 {
@@ -218,7 +205,8 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) })
                         .Invoke(reference, new object[] { fixture.Source.transform }), Is.SameAs(explicitRoot));
                 }
-                DisableMmdWorldSupport(fixture.Source);
+                var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
+                settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
                 Assert.That(gate.GetComponentsInParent<Component>(true).All(value => value.GetType().FullName != Ma + "ModularAvatarMenuItem"), Is.True);
                 var authored = fixture.Source.GetComponentsInChildren<Component>(true).Cast<Object>()
                     .Concat(AssetDatabase.FindAssets("", new[] { folder }).SelectMany(guid => AssetDatabase.LoadAllAssetsAtPath(AssetDatabase.GUIDToAssetPath(guid))))
@@ -338,7 +326,8 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) }).Invoke(reference, new object[] { changer }), Is.Not.Null,
                         "The installed MA must resolve every authored fixture target before export.");
                 }
-            DisableMmdWorldSupport(fixture.Source);
+            var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
+            settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
             var folderName = "__MaReactiveExport_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
             Vrm10Instance imported = null;

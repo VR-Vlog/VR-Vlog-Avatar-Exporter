@@ -29,7 +29,7 @@
     "modularAvatarReference": "1.18.7",
     "vrchatSdkMinimum": "3.5.0",
     "vrchatSdkBelow": "3.11.0",
-    "modularAvatarMinimum": "1.11.2",
+    "modularAvatarMinimum": "1.12.2",
     "modularAvatarBelow": "1.19.0"
   }
 }
