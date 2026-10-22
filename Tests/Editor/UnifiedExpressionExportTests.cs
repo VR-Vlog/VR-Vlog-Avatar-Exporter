@@ -493,6 +493,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("en")]
         [TestCase("ko")]
+        [TestCase("zh-Hans")]
+        [TestCase("zh-Hant")]
         public void UnifiedExpressionFailuresHaveLocalizedActionsAndPreserveTargetNames(string locale)
         {
             var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRVlog.LilToonExporter.ExporterLocalization")).First(value => value != null);

@@ -702,7 +702,7 @@ BEHAVIOR_CASES = {
         'StandardEmissionEvidenceUsesItsActualGammaProxy': 3,
         'SupportedUnifiedRouteWithoutBilateralEyeRigSurvivesBothExportModes': 8,
         'UeEvidencePairsOnlyCompatibleLegacySidesAcrossRenderers': 2,
-        'UnifiedExpressionFailuresHaveLocalizedActionsAndPreserveTargetNames': 2,
+        'UnifiedExpressionFailuresHaveLocalizedActionsAndPreserveTargetNames': 4,
     },
     'MaSceneReferencePreparationTests': {
         'InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar': 2,
