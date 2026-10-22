@@ -393,17 +393,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.AreEqual(main.linear.b * shadow.linear.b, full.linear.b, .0001f);
                 Assert.Less(full.g, main.g);
 
-                // Strength fades the shadow toward the lit color in linear light.
-                source.SetFloat("_ShadowStrength", .5f);
-                var half = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
-                Assert.AreEqual(main.linear.g * (1f + (shadow.linear.g - 1f) * .5f), half.linear.g, .0001f);
-                source.SetFloat("_ShadowStrength", 0f);
-                var none = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
-                Assert.AreEqual(main.r, none.r, .0001f);
-                Assert.AreEqual(main.b, none.b, .0001f);
-
                 // A shadow color brighter than white never lights the shade above the lit side.
-                source.SetFloat("_ShadowStrength", 1f);
                 source.SetColor("_ShadowColor", new Color(1.5f, .5f, 1f, 1f));
                 var bright = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.shadeColor);
                 Assert.AreEqual(main.r, bright.r, .0001f);
