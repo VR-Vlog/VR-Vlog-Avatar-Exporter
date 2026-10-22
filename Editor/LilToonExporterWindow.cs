@@ -635,22 +635,25 @@ namespace VRVlog.LilToonExporter
         internal static System.Reflection.MethodInfo DetailedTransferMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferWindow", false), "OpenDetailed", typeof(GameObject));
 
-        // The same step as the expression board's third page: returns the panel as a VisualElement.
+        // The same step as the expression board's third page: returns the panel as a VisualElement, given
+        // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while
+        // it is turned off, and the board then shows its own page without the QR.
         internal static System.Reflection.MethodInfo EmbeddedTransferMethod() =>
-            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded", typeof(GameObject));
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded",
+                typeof(GameObject), typeof(Action), typeof(Func<bool>));
 
         // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
         internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
 
-        private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, Type parameter)
+        private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, params Type[] parameters)
         {
             try
             {
                 var type = Type.GetType("VRVlog.LilToonExporter.LanTransfer.CloudVrmTransferWindow, VRVlog.LanTransfer.Editor", false);
                 if (type == null || !Equals(type.GetProperty("IsAvailable", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)?.GetValue(null), true)) return null;
                 return owner(type)?.GetMethod(name, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-                    null, new[] { parameter }, null);
+                    null, parameters, null);
             }
             catch { return null; }
         }
