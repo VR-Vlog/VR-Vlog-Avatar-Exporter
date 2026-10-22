@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using Unity.Collections;
 using UnityEngine;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests

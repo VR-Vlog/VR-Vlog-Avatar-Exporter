@@ -677,9 +677,6 @@ class StagingBetaTests(unittest.TestCase):
 
     def source(self, root, version="1.2.3-beta.1"):
         (root / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
-        (root / "Compatibility").mkdir()
-        (root / "Compatibility/dependencies.json").write_text(
-            json.dumps({"uniVrm": {"releaseVersion": "0.131.0"}}), encoding="utf-8")
 
     def resolve_fixture(self, root, *, version="1.2.3-beta.1", metadata=None, after=None):
         self.source(root, version)
@@ -697,7 +694,7 @@ class StagingBetaTests(unittest.TestCase):
             result, digest, api = self.resolve_fixture(Path(directory))
         self.assertEqual({"publish": "true", "version": "1.2.3-beta.1", "channel": "beta",
                           "expected_commit": SHA, "package_sha256": digest,
-                          "candidate_run_id": "42", "univrm_version": "0.131.0"}, result)
+                          "candidate_run_id": "42"}, result)
         self.assertEqual(mock.call(staging.PREFIX + "/actions/artifacts/99/zip", binary=True), api.call_args_list[3])
 
     def test_stable_candidate_requires_manual_publication_and_other_prereleases_fail(self):

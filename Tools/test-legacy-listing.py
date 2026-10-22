@@ -56,11 +56,11 @@ class LegacyListingTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     sync.make_legacy(source, previous)
 
-    def test_bad_identity_checksum_origin_and_dependencies_are_rejected(self):
+    def test_bad_identity_checksum_origin_and_missing_exporter_are_rejected(self):
         bad = []
         for key, value in (("id", "another.repo"), ("url", sync.LEGACY_URL)):
             data = listing(); data[key] = value; bad.append(data)
-        data = listing(); del data["packages"]["com.vrmc.vrm"]; bad.append(data)
+        data = listing(); del data["packages"][sync.EXPORTER]; bad.append(data)
         for key, value in (("zipSHA256", "a"), ("url", "https://example.com/package.zip"), ("version", "2.0.0")):
             data = listing(); data["packages"][sync.EXPORTER]["versions"]["1.0.0"][key] = value; bad.append(data)
         for data in bad:

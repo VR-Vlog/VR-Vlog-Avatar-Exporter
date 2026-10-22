@@ -5,7 +5,7 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -198,9 +198,9 @@ namespace VRVlog.LilToonExporter.Tests
             var clone = Own(Object.Instantiate(avatar));
             using var session = new ExportGimmickSession(avatar, clone, null);
             session.Apply(null, null, null);
-            using var arrays = new UniGLTF.NativeArrayManager();
+            using var arrays = new VRVlog.LilToonExporter.Vendor.UniGLTF.NativeArrayManager();
             var exporter = new ModelExporter();
-            var model = exporter.Export(new UniGLTF.GltfExportSettings(), arrays, clone);
+            var model = exporter.Export(new VRVlog.LilToonExporter.Vendor.UniGLTF.GltfExportSettings(), arrays, clone);
             Assert.That(model.MeshGroups.Count, Is.EqualTo(1));
             Assert.That(exporter.Materials, Is.EquivalentTo(new[] { normal }));
             Assert.That(clone.transform.Find("effect"), Is.Not.Null);

@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import liltoon_catalogue  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
+# The UniVRM copy bundled under Editor/Vendor/UniVRM (Tools/vendor-univrm.py).
+BUNDLED_UNIVRM = ROOT / 'Editor/Vendor/UniVRM/VERSION.json'
 REPOSITORIES = {'lilToon': 'lilxyzw/lilToon', 'UniVRM': 'vrm-c/UniVRM',
                 'NDMF': 'bdunderscore/ndmf', 'Modular Avatar': 'bdunderscore/modular-avatar'}
 
@@ -21,9 +23,13 @@ def release_version(tag):
     return tuple(map(int, value.split('.')))
 
 
-def compare(config, releases):
+def bundled_univrm(path=BUNDLED_UNIVRM):
+    return json.loads(Path(path).read_text(encoding='utf-8'))['version']
+
+
+def compare(config, releases, univrm=None):
     known = {'lilToon': config['lilToon']['verified']['maximum'],
-             'UniVRM': max(config['uniVrm']['versions'], key=release_version),
+             'UniVRM': univrm or bundled_univrm(),
              'NDMF': config['authoring']['ndmfReference'],
              'Modular Avatar': config['authoring']['modularAvatarReference']}
     result = []

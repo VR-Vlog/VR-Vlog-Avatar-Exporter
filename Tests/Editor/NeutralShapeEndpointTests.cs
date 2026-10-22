@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
-using UniGLTF.Extensions.VRMC_vrm;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using Object = UnityEngine.Object;
 

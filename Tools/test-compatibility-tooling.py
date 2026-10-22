@@ -48,7 +48,7 @@ class UnityResultTests(unittest.TestCase):
 
     def check(self):
         ET.ElementTree(self.root).write(self.xml)
-        return unity_runner.validate_result(self.xml, True)
+        return unity_runner.validate_result(self.xml)
 
     def test_all_required_suites_pass(self):
         self.assertEqual(len(self.check()), 30)
@@ -71,7 +71,7 @@ class UnityResultTests(unittest.TestCase):
             with self.assertRaises(SystemExit): self.check()
 
     def test_missing_result_is_not_success(self):
-        with self.assertRaises(FileNotFoundError): unity_runner.validate_result(self.xml, True)
+        with self.assertRaises(FileNotFoundError): unity_runner.validate_result(self.xml)
 
 
 class ExporterProfileResultTests(unittest.TestCase):
@@ -92,7 +92,7 @@ class ExporterProfileResultTests(unittest.TestCase):
 
     def check(self):
         ET.ElementTree(self.root).write(self.xml)
-        return unity_runner.validate_result(self.xml, True, self.profile)
+        return unity_runner.validate_result(self.xml, self.profile)
 
     def remove(self, suite, method=None):
         name = unity_runner.NAMESPACE + suite
@@ -114,7 +114,7 @@ class ExporterProfileResultTests(unittest.TestCase):
                 self.root.extend(removed)
 
     def test_no_required_regression_or_parameter_variant_can_disappear(self):
-        required = unity_runner.required_regressions(True, self.profile)
+        required = unity_runner.required_regressions(self.profile)
         for suite, methods in required.items():
             for method in methods:
                 with self.subTest(suite=suite, method=method):
@@ -135,13 +135,13 @@ class ExporterProfileResultTests(unittest.TestCase):
         with self.assertRaises(SystemExit): self.check()
 
     def test_shared_physbone_suite_selects_behavior_without_claiming_optional_integration(self):
-        behavior = unity_runner.profile_filters(True, 'exporter-behavior')
+        behavior = unity_runner.profile_filters('exporter-behavior')
         name = unity_runner.NAMESPACE + 'PhysBoneSpringExportTests'
         self.assertNotIn(name, behavior)
         self.assertIn(name + '.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance', behavior)
         self.assertNotIn(name + '.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport', behavior)
-        self.assertIn(name, unity_runner.profile_filters(True, 'exporter-integration'))
-        required = unity_runner.required_regressions(True, 'exporter-integration')['PhysBoneSpringExportTests']
+        self.assertIn(name, unity_runner.profile_filters('exporter-integration'))
+        required = unity_runner.required_regressions('exporter-integration')['PhysBoneSpringExportTests']
         self.assertIn('ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance', required)
         self.assertIn('InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport', required)
 
@@ -243,37 +243,21 @@ class ExporterProfileResultTests(unittest.TestCase):
 
     def test_malformed_xml_is_not_success(self):
         self.xml.write_text('<test-run result="Passed"><test-case', encoding='utf-8')
-        with self.assertRaises(ET.ParseError): unity_runner.validate_result(self.xml, True, self.profile)
+        with self.assertRaises(ET.ParseError): unity_runner.validate_result(self.xml, self.profile)
 
 
 class UnityProfilePolicyTests(unittest.TestCase):
     def test_default_filter_set_is_unchanged(self):
-        self.assertEqual(unity_runner.profile_filters(True, 'compatibility'), [
+        self.assertEqual(unity_runner.profile_filters('compatibility'), [
             unity_runner.NAMESPACE + suite for suite in (
                 'DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests',
                 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests')])
-        self.assertEqual(len(unity_runner.profile_filters(False, 'compatibility')), 2)
 
-    def test_every_release_of_the_patch_line_is_supported_and_listing_is_reported(self):
-        policy = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-        support = unity_runner.unity_packages.univrm_support
-        self.assertEqual(support(policy, '0.131.2'), {'supported': True, 'listed': True})
-        for version in ('0.131.4', '0.131.10'):
-            with self.subTest(version=version):
-                self.assertNotIn(version, policy['uniVrm']['versions'])
-                self.assertEqual(support(policy, version), {'supported': True, 'listed': False})
-                unity_runner.profile_filters(True, 'exporter-behavior')
-        for version in ('0.132.0', '0.131.4-beta.1', '0.131.4+local', '0.130.9', '1.131.0', '0.131', '0.131.01', '', None):
-            with self.subTest(version=version):
-                self.assertEqual(support(policy, version), {'supported': False, 'listed': False})
-
-    def test_missing_or_unsupported_dependencies_cannot_start_behavior_profiles(self):
-        for profile in ['exporter-behavior', 'exporter-integration', 'unknown']:
-            with self.subTest(profile=profile):
-                with self.assertRaises(SystemExit): unity_runner.profile_filters(False, profile)
+    def test_unknown_profile_cannot_start(self):
+        with self.assertRaises(SystemExit): unity_runner.profile_filters('unknown')
 
     def test_whole_required_classes_are_selected(self):
-        filters = unity_runner.profile_filters(True, 'exporter-integration')
+        filters = unity_runner.profile_filters('exporter-integration')
         self.assertEqual(len(filters), len(set(filters)))
         for suite in [*unity_runner.BEHAVIOR_CASES, *unity_runner.INTEGRATION_CASES]:
             self.assertIn(unity_runner.NAMESPACE + suite, filters)
@@ -282,16 +266,16 @@ class UnityProfilePolicyTests(unittest.TestCase):
         for profile in ('exporter-behavior', 'exporter-integration'):
             for suite, variants in (('AdditionalPlayableCallbackTests', 53), ('AdditionalParameterConstantTests', 78), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 76), ('SelectedLayerControlTests', 41), ('SelectedExpressionAppearanceTests', 62), ('HeldAutomaticExpressionTests', 109), ('FacialDepthEnvelopeTests', 30), ('ParameterDriverExpressionTests', 126), ('VrChatMenuExpressionTests', 79), ('GestureBlendTreeTests', 35)):
                 self.assertIn(unity_runner.NAMESPACE + suite,
-                              unity_runner.profile_filters(True, profile))
-                self.assertEqual(sum(unity_runner.required_regressions(True, profile)[suite].values()), variants)
+                              unity_runner.profile_filters(profile))
+                self.assertEqual(sum(unity_runner.required_regressions(profile)[suite].values()), variants)
 
     def test_mesh_deleter_and_ma_appearance_are_explicit_integration_requirements(self):
-        behavior = unity_runner.profile_filters(True, 'exporter-behavior')
-        integration = unity_runner.profile_filters(True, 'exporter-integration')
+        behavior = unity_runner.profile_filters('exporter-behavior')
+        integration = unity_runner.profile_filters('exporter-integration')
         for suite in ('MeshDeleterIntegrationTests', 'MaDeletionExportTests', 'MaPermanentAppearanceExportTests', 'AppearancePreparationTests'):
             self.assertNotIn(unity_runner.NAMESPACE + suite, behavior)
             self.assertIn(unity_runner.NAMESPACE + suite, integration)
-        required = unity_runner.required_regressions(True, 'exporter-integration')
+        required = unity_runner.required_regressions('exporter-integration')
         self.assertEqual(required['MeshDeleterIntegrationTests'], {
             'DeletedSharedMeshAndMorphSurviveOneClickExportAndReimport': 4})
         self.assertEqual(sum(required['AppearancePreparationTests'].values()), 12)
@@ -499,7 +483,7 @@ class LilToonExpectationTests(unittest.TestCase):
         self.assertEqual(unity_runner.installed_liltoon(self.project),
                          {'expected': None, 'installed': '2.0.0', 'source': 'embedded'})
 
-    def run_main(self, expected, unity_changes_to=None, univrm='0.131.1', supported=True, profile=None):
+    def run_main(self, expected, unity_changes_to=None, univrm='0.131.1', profile=None):
         output = Path(self.temp.name) / 'out'
         argv = ['run-unity-compatibility.py', '--unity', 'Unity', '--project', str(self.project),
                 '--expect-univrm', univrm, '--expect-unity', '2022.3.22f1', '--output', str(output)]
@@ -507,7 +491,7 @@ class LilToonExpectationTests(unittest.TestCase):
             argv += ['--expect-liltoon', expected]
         if profile:
             argv += ['--profile', profile]
-        required = unity_runner.required_regressions(supported, 'compatibility')
+        required = unity_runner.required_regressions('compatibility')
         def unity(command, **_):
             if profile:
                 return mock.Mock(returncode=1)  # Only whether Unity was launched matters.
@@ -515,7 +499,7 @@ class LilToonExpectationTests(unittest.TestCase):
                 write_project(self.project, unity_changes_to)
             xml = Path(command[command.index('-testResults') + 1])
             root = ET.Element('test-run', result='Passed')
-            for suite, count in unity_runner.compatibility_counts(supported).items():
+            for suite, count in unity_runner.compatibility_counts().items():
                 name = unity_runner.NAMESPACE + suite
                 method = next(iter(required.get(suite, {'Case': 0})))
                 for index in range(count):
@@ -539,33 +523,25 @@ class LilToonExpectationTests(unittest.TestCase):
         self.assertEqual(len(reports), 1)
         self.assertEqual(reports[0]['lilToon'], {'expected': '2.2.1', 'installed': '2.2.1', 'source': 'embedded'})
 
-    def test_unlisted_patch_of_the_line_runs_as_supported_and_is_recorded_as_unlisted(self):
+    def test_any_project_univrm_or_none_runs_every_suite_and_is_recorded(self):
+        # The exporter writes with its bundled UniVRM; the project's own copy is only recorded.
         write_project(self.project, '2.3.4')
-        reports = self.run_main(None, univrm='0.131.1')
-        self.assertEqual((reports[0]['uniVrmSupported'], reports[0]['uniVrmListed']), (True, True))
-        for path in (Path(self.temp.name) / 'out').glob('*.json'):
-            path.unlink()
-        reports = self.run_main(None, univrm='0.131.4')
-        self.assertEqual(len(reports), 1)
-        self.assertEqual((reports[0]['expectedUniVrm'], reports[0]['uniVrmSupported'], reports[0]['uniVrmListed']),
-                         ('0.131.4', True, False))
-        self.assertGreater(reports[0]['tests'], 2, 'The real-UniVRM suites run, not diagnostics only')
-
-    def test_behavior_profile_starts_unity_for_an_unlisted_patch_but_not_for_other_lines(self):
-        write_project(self.project, '2.3.4')
-        with self.assertRaisesRegex(SystemExit, 'Unity failed'):
-            self.run_main(None, univrm='0.131.4', profile='exporter-behavior')
-        self.assertEqual(self.unity_calls, 1)
-        for univrm in ('0.132.0', '0.131.4-beta.1'):
+        for univrm in ('missing', '0.131.1', '0.132.0', '0.131.4-beta.1'):
             with self.subTest(univrm=univrm):
-                with self.assertRaisesRegex(SystemExit, 'require a supported'):
-                    self.run_main(None, univrm=univrm, supported=False, profile='exporter-behavior')
-                self.assertEqual(self.unity_calls, 0)
                 for path in (Path(self.temp.name) / 'out').glob('*.json'):
                     path.unlink()
-                reports = self.run_main(None, univrm=univrm, supported=False)
-                self.assertEqual([(r['expectedUniVrm'], r['uniVrmSupported'], r['uniVrmListed'], r['tests']) for r in reports],
-                                 [(univrm, False, False, 2)])
+                reports = self.run_main(None, univrm=univrm)
+                self.assertEqual([(r['expectedUniVrm'], r['tests']) for r in reports],
+                                 [(univrm, sum(unity_runner.compatibility_counts().values()))])
+                self.assertNotIn('uniVrmSupported', reports[0])
+
+    def test_behavior_profile_starts_unity_whatever_univrm_the_project_has(self):
+        write_project(self.project, '2.3.4')
+        for univrm in ('missing', '0.132.0'):
+            with self.subTest(univrm=univrm):
+                with self.assertRaisesRegex(SystemExit, 'Unity failed'):
+                    self.run_main(None, univrm=univrm, profile='exporter-behavior')
+                self.assertEqual(self.unity_calls, 1)
 
     def test_mismatch_never_launches_unity_or_writes_a_receipt(self):
         write_project(self.project, '2.3.4')
@@ -605,7 +581,6 @@ class VersionProjectTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.base = Path(self.temp.name).resolve()
-        self.policy = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
         self.cache = self.base / 'cache'
         self.cache.mkdir()
         self.deps = self.dependencies('deps')
@@ -642,27 +617,27 @@ class VersionProjectTests(unittest.TestCase):
         with mock.patch.object(sys, 'argv', argv), mock.patch('builtins.print'):
             version_projects.main()
 
-    def test_dependencies_must_be_one_supported_univrm_and_known_packages(self):
-        self.assertEqual(set(version_projects.dependency_packages(self.deps, self.policy)),
+    def test_dependencies_are_optional_known_packages_with_any_one_univrm(self):
+        self.assertEqual(set(version_projects.dependency_packages(self.deps)),
                          {'com.vrmc.gltf', 'com.vrmc.vrm', 'nadena.dev.ndmf'})
+        self.assertEqual(version_projects.dependency_packages(None), {})
+        # The exporter bundles UniVRM, so a project needs none and may carry any version.
+        for index, changes in enumerate(({'com.vrmc.gltf': None, 'com.vrmc.vrm': None},
+                                         {'com.vrmc.vrm': '0.132.0', 'com.vrmc.gltf': '0.132.0'},
+                                         {'com.vrmc.vrm': '0.131.4-beta.1', 'com.vrmc.gltf': '0.131.4-beta.1'})):
+            with self.subTest(changes=changes):
+                found = version_projects.dependency_packages(self.dependencies('any' + str(index), **changes))
+                self.assertEqual(found.get('com.vrmc.vrm', (None, None))[1], changes['com.vrmc.vrm'])
         cases = [
-            ({'com.vrmc.vrm': '0.131.1'}, 'one supported'),
-            ({'com.vrmc.vrm': '0.132.0', 'com.vrmc.gltf': '0.132.0'}, 'one supported'),
-            ({'com.vrmc.vrm': '0.131.4-beta.1', 'com.vrmc.gltf': '0.131.4-beta.1'}, 'one supported'),
-            ({'com.vrmc.vrm': '0.131.4', 'com.vrmc.gltf': '0.131.3'}, 'one supported'),
+            ({'com.vrmc.vrm': '0.131.1'}, 'same version'),
+            ({'com.vrmc.gltf': None}, 'same version'),
             ({'jp.lilxyzw.liltoon': '2.3.4'}, 'Unexpected package'),
             ({'com.vrvlog.liltoon-vrm-exporter': '0.0.0'}, 'Unexpected package'),
-            ({'com.vrmc.gltf': None}, 'missing com.vrmc.gltf'),
         ]
         for index, (changes, message) in enumerate(cases):
             with self.subTest(changes=changes):
                 with self.assertRaisesRegex(SystemExit, message):
-                    version_projects.dependency_packages(self.dependencies('bad' + str(index), **changes), self.policy)
-
-    def test_unlisted_patch_of_the_line_can_be_verified(self):
-        self.assertNotIn('0.131.4', self.policy['uniVrm']['versions'])
-        folder = self.dependencies('unlisted', **{'com.vrmc.vrm': '0.131.4', 'com.vrmc.gltf': '0.131.4'})
-        self.assertEqual(version_projects.dependency_packages(folder, self.policy)['com.vrmc.vrm'][1], '0.131.4')
+                    version_projects.dependency_packages(self.dependencies('bad' + str(index), **changes))
 
     def test_manifest_pins_test_packages_and_tests_the_referenced_exporter(self):
         manifest = version_projects.manifest(ROOT)
@@ -793,8 +768,11 @@ class UpstreamTests(unittest.TestCase):
 
     def test_numeric_version_order_and_existing_release(self):
         self.assertGreater(upstream.release_version('v0.131.10'), upstream.release_version('0.131.2'))
-        self.releases['UniVRM']['tag_name'] = max(self.config['uniVrm']['versions'], key=upstream.release_version)
+        # UniVRM is compared with the bundled copy, not with a dependency listed in the manifest.
+        self.releases['UniVRM']['tag_name'] = 'v' + upstream.bundled_univrm()
         self.assertFalse(upstream.compare(self.config, self.releases)[1]['needsCompatibilityReview'])
+        self.releases['UniVRM']['tag_name'] = 'v0.131.10'
+        self.assertTrue(upstream.compare(self.config, self.releases, univrm='0.131.4')[1]['needsCompatibilityReview'])
 
     def test_unrecognized_and_preview_release_never_reports_safe(self):
         for tag in ['0.131.2-preview.1', '0.131', 'latest', ' 0.131.2']:
@@ -806,8 +784,7 @@ class UpstreamTests(unittest.TestCase):
 
 
 class LilToonRangeGeneratorTests(unittest.TestCase):
-    FILES = ['Compatibility/dependencies.json', 'Formats/Runtime/LilToon234Catalogue.cs', 'package.json',
-             'Editor/VRVlog.LilToonExporter.Editor.asmdef', 'Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef']
+    FILES = ['Compatibility/dependencies.json', 'Formats/Runtime/LilToon234Catalogue.cs']
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -841,15 +818,16 @@ class LilToonRangeGeneratorTests(unittest.TestCase):
     def test_version_order_is_numeric(self):
         self.assertGreater(generator.version_tuple('2.10.0'), generator.version_tuple('2.3.4'))
 
-    def test_univrm_version_defines_stay_inside_the_patch_line(self):
-        # A half-open bound at the next minor would admit its prereleases.
+    def test_univrm_is_bundled_so_no_assembly_or_package_dependency_is_generated(self):
         outputs = generator.outputs(self.root)
-        for name in self.FILES[3:]:
-            with self.subTest(name=name):
-                asm = json.loads(outputs[name])
-                self.assertEqual({item['expression'] for item in asm['versionDefines']},
-                                 {'[0.131.0,0.131.' + str(generator.UNIVRM_PATCH_CEILING) + ']'})
-                self.assertEqual(asm['defineConstraints'], ['VRVLOG_VRM_0_131', 'VRVLOG_GLTF_0_131'])
+        self.assertEqual(list(outputs), ['Editor/Compatibility/DependencyPolicy.Generated.cs'])
+        self.assertNotIn('UniVrm', outputs['Editor/Compatibility/DependencyPolicy.Generated.cs'])
+        path = self.root / 'Compatibility/dependencies.json'
+        config = json.loads(path.read_text(encoding='utf-8'))
+        config['uniVrm'] = {'vpmRange': '0.131.x'}
+        path.write_text(json.dumps(config), encoding='utf-8')
+        with self.assertRaises(AssertionError):
+            generator.outputs(self.root)
 
 
 if __name__ == '__main__':

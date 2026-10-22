@@ -5,10 +5,11 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using F = VRVlog.LilToon.LilToonFullContract;
 using Object = UnityEngine.Object;
 
@@ -178,7 +179,7 @@ namespace VRVlog.LilToonExporter.Tests
                     // Keep the same source mesh in both renderers through the
                     // bridge, without the normal pipeline's mesh uniquing.
                     var snapshot = LilToonFullSnapshot.Capture(fixture.Root);
-                    var fallback = new Material(Shader.Find("VRM10/MToon10"));
+                    var fallback = new Material(Shader.Find(MToon10Meta.UnityShaderName));
                     try
                     {
                         bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings { ExportVertexColor = true },
