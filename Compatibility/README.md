@@ -67,16 +67,30 @@ identical through 3.10.5. Results:
 
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
-or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
-to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
-`IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
-`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
-stable versions stop before that API is touched, naming the installed version and
-the range. When the version cannot be read (MA placed under `Assets`, a
-pre-release), the freeze tries the API and, if it is missing, stops saying the
-version was not read. Avatars without those components export with any MA version. MA 1.18.x
-itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
-`ndmfMinimum` (1.8.3).
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.10.4
+to below 1.19.0, stable releases only). The freeze reflects MA's preview API.
+Everything it reads is the same from 1.10.4 (the first release with
+`ReactiveObjectAnalyzer.OptimizeShapes`) through 1.18.7 except Shape Changer
+Delete and Mesh Cutter, which the freeze removes from the mesh with MA's own
+method, chosen by which MA type exists rather than by the version number:
+1.18.0 and later report `IMeshSelector` and use
+`RemoveVerticesFromMesh.FilterPrimitivesOnly`; 1.14.0 to 1.17.1 report
+`IVertexFilter` and use `RemoveVerticesFromMesh.RemoveVertices`; 1.13.4 and
+earlier have no Mesh Cutter, report Delete as a float on `deletedShape.<name>`
+and use `RemoveBlendShapeFromMesh.RemoveBlendshapes` (with the float as the
+threshold from 1.13.0, deleting above 0.5 before). Material Swap appears in
+1.13.0 and Mesh Cutter in 1.14.0; older versions simply have nothing of that
+kind to freeze. Pre-releases are not in the range. 1.19.0-alpha.0 to alpha.2
+were checked: the freeze itself works on them, but MA 1.19 builds the menu FX
+differently and menu expressions do not export as on 1.18 (see
+`Documentation~/decisions/2026-10-22-ma-1-19-alpha.md`). Other stable versions
+stop before that API is touched, naming the installed version and the range.
+When the version cannot be read (MA placed under `Assets`, a pre-release), the
+freeze tries the API and, if it is missing, stops saying the version was not
+read. Avatars without those components export with any MA
+version. Each MA release requires its own NDMF range (1.10.4 needs 1.5.4,
+1.14.0 needs 1.9.0, 1.18.x needs 1.11.0 or later), which VCC/ALCOM resolves; the
+exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
 
 ## Supported lilToon versions
 
