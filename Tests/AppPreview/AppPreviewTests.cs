@@ -18,22 +18,20 @@ namespace VRVlog.LilToonExporter.Tests
         const float Step = 1f / 30;
 
         [Test]
-        public async Task AppModeShowsTheExportedLilToonMaterials()
+        public async Task AppModeShowsLilToonAndMToonModeIgnoresIt()
         {
             var bytes = ExportFixture();
-            using var load = await Load(bytes, false);
-            Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
-            Assert.That(load.MaterialStatus, Does.StartWith("full-liltoon:"));
-            Assert.That(AppPreviewWindow.MaterialSummary(load.MaterialStatus), Is.EqualTo(ExporterLocalization.T("lilToon で表示")));
-        }
-
-        [Test]
-        public async Task MToonModeIgnoresTheLilToonData()
-        {
-            var bytes = ExportFixture();
-            using var load = await Load(bytes, true);
-            Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
-            Assert.That(load.MaterialStatus, Is.EqualTo("standard-mtoon"));
+            using (var load = await Load(bytes, false))
+            {
+                Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
+                Assert.That(load.MaterialStatus, Does.StartWith("full-liltoon:"));
+                Assert.That(AppPreviewWindow.MaterialSummary(load.MaterialStatus), Is.EqualTo(ExporterLocalization.T("lilToon で表示")));
+            }
+            using (var load = await Load(bytes, true))
+            {
+                Assert.That(load.Root, Is.Not.Null, load.ErrorCode + " " + load.ErrorMessage);
+                Assert.That(load.MaterialStatus, Is.EqualTo("standard-mtoon"));
+            }
         }
 
         [Test]

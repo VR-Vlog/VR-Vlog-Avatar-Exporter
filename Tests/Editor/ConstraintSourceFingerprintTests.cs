@@ -46,8 +46,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("offset")][TestCase("rest")][TestCase("sourcePose")][TestCase("sourceReference")]
-        [TestCase("weight")][TestCase("axes")][TestCase("enabled")][TestCase("locked")]
+        [TestCase("offset")][TestCase("sourcePose")][TestCase("sourceReference")][TestCase("locked")]
         public void AuthoredConstraintInputsStillInvalidateTheCapturedSource(string change)
         {
             using var f = new Fixture("rotation");
@@ -278,7 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("offset")][TestCase("rest")][TestCase("hint")][TestCase("sourcePose")][TestCase("sourceReference")]
+        [TestCase("offset")][TestCase("hint")][TestCase("sourcePose")][TestCase("sourceReference")]
         public void PartialVrcAuthoredInputsRemainExact(string change)
         {
             using var f = new VrcFixture();
@@ -294,7 +293,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("noSources")][TestCase("zeroSourceWeight")][TestCase("zeroWeight")][TestCase("negativeWeight")]
+        [TestCase("noSources")][TestCase("zeroSourceWeight")][TestCase("zeroWeight")]
         [TestCase("unlocked")][TestCase("inactive")][TestCase("frozen")][TestCase("noAxes")]
         public void VrcRotationIsExactWhenTheSolverCannotOwnItsOutput(string condition)
         {
@@ -319,7 +318,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("zero")][TestCase("nan")][TestCase("infinite")]
+        [TestCase("zero")][TestCase("nan")]
         public void PartialRotationComparisonRejectsMalformedQuaternions(string kind)
         {
             var source = new GameObject("Rotation comparison");

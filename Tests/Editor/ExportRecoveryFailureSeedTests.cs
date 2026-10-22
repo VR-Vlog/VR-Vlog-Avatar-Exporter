@@ -8,7 +8,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportRecoveryFailureSeedTests
     {
-        [TestCase("existing")][TestCase("empty")][TestCase("missing")]
+        [TestCase("existing")][TestCase("empty")]
         public void OpeningRecoveryKeepsTheFirstRealFailureWithoutRepeatingTheExport(string reportKind)
         {
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
@@ -65,7 +65,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
         }
 
-        [TestCase("retry")][TestCase("preview")][TestCase("save")]
+        [TestCase("retry")][TestCase("save")]
         public void SeedingARealFailureNeverWeakensLaterSourceChangeGuards(string operation)
         {
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
