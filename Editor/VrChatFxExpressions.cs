@@ -61,7 +61,7 @@ namespace VRVlog.LilToonExporter
         {
             if (source.Controller == null) return;
             if (!source.NeutralInputInventoryComplete) NeutralInputProof.Read(avatar, source);
-            if ((policy?.SkipAll == true || policy?.ExcludedBranches.Count > 0) && !source.NeutralInputInventoryComplete)
+            if (policy?.SkipAll == true && !source.NeutralInputInventoryComplete)
             {
                 source.Messages.Add("メニューの除外範囲の入力を完全に確認できないため、FXの自動表情探索を省略しました。");
                 return;
@@ -77,7 +77,7 @@ namespace VRVlog.LilToonExporter
                 {
                     // Recovery exclusions are authoritative even when the menu's
                     // original selection can also be inferred from FX conditions.
-                    if ((policy?.SkipAll == true || policy?.ExcludedBranches.Count > 0) &&
+                    if (policy?.SkipAll == true &&
                         candidate.Values.Keys.Any(source.MenuInputs.Contains)) continue;
                     var assignment = Assignment(candidate.Values);
                     var key = candidate.Layer + "/" + candidate.Path + "/" + assignment;
