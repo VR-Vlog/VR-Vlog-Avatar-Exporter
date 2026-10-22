@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
-        // comes from an export window showing this avatar, else the avatar's
+        // comes from a board showing its own information page for this avatar, else the avatar's
         // remembered settings; an avatar without any starts from the default.
         public void SelectAvatar(GameObject avatar)
         {
@@ -41,8 +41,8 @@ namespace VRVlog.LilToonExporter
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
-                // A board opened for the transfer hides its author and license; they are asked here.
-                if (window.TransferMode) continue;
+                // A board whose third page is the transfer panel hides its author and license; they are asked here.
+                if (!window.ShowsOwnInfo) continue;
                 if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
                 var shown = window.LicenseFor(avatar);
                 if (shown != null) license = shown;

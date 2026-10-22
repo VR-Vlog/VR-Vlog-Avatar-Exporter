@@ -2479,6 +2479,41 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A board lends its license to the transfer only while its own information page is what the user edits.
+        // Where the third page is the transfer panel, the board's license is never shown, so the panel starts
+        // from the avatar's remembered terms instead of the board's untouched default.
+        [Test]
+        public void ABoardShowingThePanelDoesNotLendItsUntouchedLicense()
+        {
+            const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var avatar = new GameObject("LicenseAvatar");
+            try
+            {
+                typeof(ExperimentalExpressionCaptureWindow).GetField("source", field).SetValue(window, avatar);
+                typeof(ExperimentalExpressionCaptureWindow).GetField("licenseOptions", field).SetValue(window,
+                    new AvatarLicenseOptions { AllowRedistribution = true, CopyrightInformation = "Board" });
+                var panelUsable = LilToonExporterWindow.EmbeddedTransferMethod() != null;
+                Assert.That(window.ShowsOwnInfo, Is.EqualTo(!panelUsable));
+                var transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                var license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
+                Assert.That(license.CopyrightInformation == "Board", Is.EqualTo(!panelUsable));
+                // The transfer mode never lends it.
+                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", field).SetValue(window, true);
+                Assert.That(window.ShowsOwnInfo, Is.False);
+                transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
+                Assert.That(license.CopyrightInformation, Is.Not.EqualTo("Board"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+                Object.DestroyImmediate(avatar);
+            }
+        }
+
         // The panel's "戻る" asks while the page uploads or shows its QR. "転送を続ける" stays on the page;
         // "中止して移動" and a page with nothing to lose go to the objects page.
         [Test]

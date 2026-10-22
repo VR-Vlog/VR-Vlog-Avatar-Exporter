@@ -163,6 +163,10 @@ namespace VRVlog.LilToonExporter
         // The "アプリに転送" window starts from what this window shows: these
         // values live only in the open window and are not stored anywhere else.
         internal string Author => author;
+        // Whether the third page is the board's own information page, the only place it shows and edits its
+        // author and license: the normal mode without the transfer module (or with it turned off).
+        internal bool ShowsOwnInfo => !transferMode && LilToonExporterWindow.EmbeddedTransferMethod() == null;
+
         internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
         internal bool TransferMode => transferMode;
         // The board header counts the same 13 slots ("割当x/13").
@@ -941,7 +945,7 @@ namespace VRVlog.LilToonExporter
         {
             var row = GUILayoutUtility.GetRect(100, StepIndicator.Height, GUILayout.ExpandWidth(true));
             var layout = StepIndicator.Compute(row);
-            var names = StepIndicator.Names(panelUsable);
+            var names = StepIndicator.Names(panelUsable || transferMode);
             var shown = StepIndicator.Shown(session != null, page);
             var repaint = Event.current.type == EventType.Repaint;
             if (repaint) stepLayout = layout;
@@ -1911,7 +1915,7 @@ namespace VRVlog.LilToonExporter
             if (page == ExpressionsPage)
             { next = "次へ：除外するオブジェクト"; enabled = BoardBlockReason(includePending: false) == null; action = () => GoTo(ObjectsPage); }
             else if (page == ObjectsPage && transferMode)
-            { next = NextLabel(panelUsable); enabled = BoardBlockReason(includePending: false) == null; action = () => ApplyThen(OpenTransferDetails); }
+            { next = NextLabel(true); enabled = BoardBlockReason(includePending: false) == null; action = () => ApplyThen(OpenTransferDetails); }
             else if (page == ObjectsPage && panelUsable)
             { next = NextLabel(true); enabled = true; action = () => ApplyThen(OpenTransferDetails); }
             else if (page == ObjectsPage)
