@@ -284,7 +284,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var transfer = Transfer(fixture.Source);
                 object stamp = null;
-                Assert.That(transfer.Export(fixture.Source, "Avatar", path, () => stamp = transfer.SourceStamp(fixture.Source)), Is.Null);
+                Assert.That(transfer.Export(fixture.Source, "Avatar", path, () => stamp = transfer.SourceStamp(fixture.Source, false)), Is.Null);
                 // Nothing the export does after the file is written counts as a change.
                 Assert.That(transfer.SourceUnchanged(stamp, fixture.Source), Is.True);
                 // Placing the avatar in the scene does not reach the file.
@@ -297,12 +297,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(transfer.SourceUnchanged(stamp, fixture.Source), Is.False, "An object shown or hidden changes the file.");
                 child.SetActive(!child.activeSelf);
 
-                stamp = transfer.SourceStamp(fixture.Source);
+                stamp = transfer.SourceStamp(fixture.Source, false);
                 ExpressionPresetStore.Save(ExpressionPresetStore.KeyFor(fixture.Source),
                     new[] { ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Hair detail") });
                 Assert.That(transfer.ChoicesUnchanged(stamp), Is.False, "A choice saved on a board changes the file.");
 
-                stamp = transfer.SourceStamp(fixture.Source);
+                stamp = transfer.SourceStamp(fixture.Source, false);
                 ExportSettingsStore.Save(fixture.Source, ExportSettingsStore.Load(fixture.Source));
                 Assert.That(transfer.ChoicesUnchanged(stamp), Is.False, "Saved export settings change the file.");
 
@@ -318,6 +318,26 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if (File.Exists(path)) File.Delete(path);
             }
+        }
+
+        // The open board keeps the blink, the added poses and the added expressions in memory only, and the
+        // detailed transfer writes them: a change there also means the saved file is not what it would send.
+        [Test]
+        public void ADetailedStampAlsoMatchesTheInputsOfTheOpenBoard()
+        {
+            using var fixture = new SavedFixture();
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            try
+            {
+                var transfer = Transfer(fixture.Source);
+                var stamp = transfer.SourceStamp(fixture.Source, true);
+                Assert.That(transfer.ChoicesUnchanged(stamp), Is.True);
+                var blink = typeof(ExperimentalExpressionCaptureWindow).GetField("automaticBlink", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                blink.SetValue(board, !(bool)blink.GetValue(board));
+                Assert.That(transfer.ChoicesUnchanged(stamp), Is.False, "Another blink on the board changes the file.");
+                Assert.That(transfer.ChoicesUnchanged(transfer.SourceStamp(fixture.Source, false)), Is.True, "The quick transfer starts from the stores.");
+            }
+            finally { Object.DestroyImmediate(board); }
         }
     }
 }

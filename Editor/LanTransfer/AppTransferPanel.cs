@@ -399,18 +399,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             string copied = null, failure = null;
             try
             {
-                using (var from = flow.OpenSnapshot())
-                    if (from != null) copied = AppTransferFlow.CopyTo(from, destination);
+                using (var from = sent == null ? null : flow.OpenSnapshot())
+                    if (from != null) copied = AppTransferFlow.CopyTo(from, destination, sent.Hash);
             }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
                 || exception is NotSupportedException || exception is ObjectDisposedException)
             { failure = exception.Message ?? ""; }
-            if (failure == null && (sent == null || copied == null || copied != sent.Hash))
-            {
-                // The transfer ended before the copy, or the copy is not what was sent: keep nothing that claims to be it.
-                if (copied != null) AppTransferFlow.Discard(destination);
-                failure = T(SaveFailedText);
-            }
+            // The transfer ended before the copy, or the copy is not what was sent: CopyTo placed nothing,
+            // so a file the user chose to replace is still there.
+            if (failure == null && copied == null) failure = T(SaveFailedText);
             if (failure != null) { savedCopy = null; saveProblem = failure; savedWritten = null; }
             else SavedCopy(destination, missingShaders, sent);
             Refresh();
@@ -441,18 +438,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Null when the file cannot be read back: it is then never reused.
         private WrittenVrm Written(string hash, string key, GameObject source) =>
-            hash == null || Exporter == null ? null : new WrittenVrm(hash, key, Exporter.SourceStamp(source));
+            hash == null || Exporter == null ? null : new WrittenVrm(hash, key, Exporter.SourceStamp(source, detailed));
 
         // "QRコードを作る" after "VRMをPCに保存" sends the saved file while the name, author and VRM terms are
         // the ones it was written with and nothing it was made from has changed. Cheap, for the result line:
-        // after a change in a scene it says nothing, and RunExport checks the avatar itself.
+        // after a change in a scene it says nothing. RunExport checks the avatar itself on every press, as
+        // a file reimported on disk changes it without any change in a scene.
         private bool MayReuseSavedCopy(bool checkAvatar)
         {
             var written = savedWritten;
             if (savedCopy == null || saveProblem != null || written == null || Exporter == null) return false;
             if (written.Terms != SaveKey(avatarName.Trim()) || !Exporter.ChoicesUnchanged(written.Stamp)) return false;
-            if (!written.SceneChanged) return true;
-            if (!checkAvatar) return false;
+            if (!checkAvatar) return !written.SceneChanged;
             if (!Exporter.SourceUnchanged(written.Stamp, avatar)) return false;
             written.SceneChanged = false;
             return true;
@@ -466,11 +463,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             try
             {
                 using (var from = new FileStream(savedCopy, FileMode.Open, FileAccess.Read, FileShare.Read))
-                    copied = AppTransferFlow.CopyTo(from, snapshotPath);
+                    copied = AppTransferFlow.CopyTo(from, snapshotPath, savedWritten.Hash);
             }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
                 || exception is NotSupportedException) { }
-            if (copied != null && copied == savedWritten.Hash) return true;
+            if (copied != null) return true;
             AppTransferFlow.Discard(snapshotPath);
             savedWritten = null;
             return false;
@@ -572,14 +569,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 }
                 saved = true;
                 missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
-                // Saving it later copies this file; the stamp is taken now, as the file is written. A file
-                // that left out a failing stage is not what "VRMを保存" writes: saving then exports again.
-                sentWritten = (Exporter?.LastOmittedStageCount() ?? 0) > 0 ? null : Written(AppTransferFlow.FileHashOf(path), key, target);
+                // Saving it later copies this file. A file that left out a failing stage is not what
+                // "VRMを保存" writes: saving then exports again.
+                var complete = (Exporter?.LastOmittedStageCount() ?? 0) == 0;
                 // Grow for the warning now, while the upload is shown, so the QR never moves once it is on screen.
                 if (missingShaders > 0) FitTransferSize();
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
+                // The stamp is taken now, as the file is written; the upload hashed the snapshot already.
+                sentWritten = complete ? Written(flow.SnapshotHash, key, target) : null;
                 Refresh();
             }
             string failure;
@@ -1057,7 +1056,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
             internal Action<GameObject, string> RememberTransferName;
-            internal Func<GameObject, object> SourceStamp;
+            internal Func<GameObject, bool, object> SourceStamp;
             internal Func<object, GameObject, bool> SourceUnchanged;
             internal Func<object, bool> ChoicesUnchanged;
 
@@ -1087,7 +1086,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),
                         TermsKey = (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), target, "TermsKey"),
                         RememberTransferName = (Action<GameObject, string>)Delegate.CreateDelegate(typeof(Action<GameObject, string>), target, "RememberTransferName"),
-                        SourceStamp = (Func<GameObject, object>)Delegate.CreateDelegate(typeof(Func<GameObject, object>), target, "SourceStamp"),
+                        SourceStamp = (Func<GameObject, bool, object>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, object>), target, "SourceStamp"),
                         SourceUnchanged = (Func<object, GameObject, bool>)Delegate.CreateDelegate(typeof(Func<object, GameObject, bool>), target, "SourceUnchanged"),
                         ChoicesUnchanged = (Func<object, bool>)Delegate.CreateDelegate(typeof(Func<object, bool>), target, "ChoicesUnchanged"),
                     };

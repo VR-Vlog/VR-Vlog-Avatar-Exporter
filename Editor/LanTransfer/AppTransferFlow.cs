@@ -199,7 +199,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Writes what from reads to destination and returns the SHA-256 of the bytes written. The bytes go to
         // a temporary file next to destination first, so a failed copy leaves whatever was there before.
-        internal static string CopyTo(Stream from, string destination)
+        // Bytes whose SHA-256 is not expected are not placed either: null, and destination is untouched.
+        internal static string CopyTo(Stream from, string destination, string expected)
         {
             var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
@@ -212,6 +213,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         from.CopyTo(hashing);
                     hash = LanTransferProtocol.Hex(sha.Hash);
                 }
+                if (hash != expected) return null;
                 if (File.Exists(destination)) File.Replace(temporary, destination, null);
                 else File.Move(temporary, destination);
                 return hash;

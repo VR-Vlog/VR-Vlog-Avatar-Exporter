@@ -272,7 +272,12 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     // An older file there is replaced as a whole.
                     File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
                     string written;
-                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination);
+                    // Bytes that are not what was sent are not placed: the older file stays.
+                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination, new string('0', 64));
+                    Assert.That(written, Is.EqualTo(null));
+                    Assert.That(File.ReadAllBytes(destination), Is.EqualTo(new byte[] { 1, 2, 3 }));
+                    Assert.That(Directory.GetFiles(folder).Length, Is.EqualTo(1));
+                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination, run.Flow.SnapshotHash);
                     Assert.That(written, Is.EqualTo(run.Flow.SnapshotHash));
                     Assert.That(AppTransferFlow.FileHashOf(destination), Is.EqualTo(written));
                     Assert.That(File.ReadAllBytes(destination).SequenceEqual(sentBytes), Is.True);

@@ -265,6 +265,30 @@ namespace VRVlog.LilToonExporter
         internal static ExperimentalExpressionCaptureWindow ForTransfer(GameObject avatar) => avatar == null ? null :
             Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().FirstOrDefault(window => window != null && window.source == avatar && window.session != null);
 
+        // What the board writes and no store records: the blink, the added poses and the excluded and
+        // renamed ones, and the added expressions. A file saved from the transfer screen is sent again
+        // only while this is unchanged; the stores count their own changes.
+        internal string InputsKey()
+        {
+            var key = new System.Text.StringBuilder();
+            var blink = ExportBlinkOptions();
+            key.Append(blink == null ? "auto" : JsonUtility.ToJson(blink)).Append('\n');
+            if (session != null)
+            {
+                var poses = session.PoseOptions;
+                foreach (var pose in poses.Manual)
+                    key.Append(pose.Clip != null ? pose.Clip.GetInstanceID() : 0).Append('\t').Append(pose.Time).Append('\t')
+                        .Append(pose.Name).Append('\t').Append(pose.Category).Append('\n');
+                foreach (var id in poses.Excluded.OrderBy(id => id, StringComparer.Ordinal)) key.Append(id).Append('\n');
+                foreach (var pair in poses.Names.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                    key.Append(pair.Key).Append('\t').Append(pair.Value).Append('\n');
+            }
+            foreach (var input in clipInputs)
+                key.Append(input.Clip != null ? input.Clip.GetInstanceID() : 0).Append('\t').Append(input.Time).Append('\t')
+                    .Append(input.Name).Append('\n');
+            return key.ToString();
+        }
+
         bool ConfirmChangeAvatar() => clipInputs.Count == 0 && (session == null || session.PoseOptions.Manual.Count == 0) ||
             EditorUtility.DisplayDialog(ExporterLocalization.T("アバターを変更"), ExporterLocalization.T("追加した表情・ポーズの一覧をリセットします。保存済みVRMは残ります。"), ExporterLocalization.T("変更する"), ExporterLocalization.T("戻る"));
 

@@ -202,8 +202,14 @@ namespace VRVlog.LilToonExporter
         // What a file written now is made of besides its name and terms: the avatar as the recovery window
         // checks it, and the choices the expression boards and the export window save. Taken once the file
         // is written; SourceUnchanged is true while none of them has changed since.
-        public object SourceStamp(GameObject avatar) => avatar == null ? null
-            : new WrittenSource(ExportRecoverySourceStamp.Capture(avatar), ExportSettingsStore.Revision, ExpressionPresetStore.Revision);
+        // The detailed transfer also records the inputs of its open board; the quick one exports from a
+        // hidden board that starts from the stores every time.
+        public object SourceStamp(GameObject avatar, bool detailed) => avatar == null ? null
+            : new WrittenSource(ExportRecoverySourceStamp.Capture(avatar), ExportSettingsStore.Revision, ExpressionPresetStore.Revision,
+                avatar, detailed ? BoardInputs(avatar) : null);
+
+        // Empty when no board is open for the avatar: the detailed export then has nothing to write from.
+        private static string BoardInputs(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.InputsKey() ?? "";
 
         public bool SourceUnchanged(object stamp, GameObject avatar) => stamp is WrittenSource written && written.Matches(avatar);
 
@@ -214,15 +220,21 @@ namespace VRVlog.LilToonExporter
         {
             private readonly ExportRecoverySourceStamp source;
             private readonly int settingsRevision, presetRevision;
+            private readonly GameObject avatar;
+            // Null for the quick transfer.
+            private readonly string boardInputs;
 
-            internal WrittenSource(ExportRecoverySourceStamp source, int settingsRevision, int presetRevision)
+            internal WrittenSource(ExportRecoverySourceStamp source, int settingsRevision, int presetRevision, GameObject avatar, string boardInputs)
             {
                 this.source = source;
                 this.settingsRevision = settingsRevision;
                 this.presetRevision = presetRevision;
+                this.avatar = avatar;
+                this.boardInputs = boardInputs;
             }
 
-            internal bool ChoicesMatch() => settingsRevision == ExportSettingsStore.Revision && presetRevision == ExpressionPresetStore.Revision;
+            internal bool ChoicesMatch() => settingsRevision == ExportSettingsStore.Revision && presetRevision == ExpressionPresetStore.Revision &&
+                (boardInputs == null || boardInputs == BoardInputs(avatar));
             internal bool Matches(GameObject avatar) => ChoicesMatch() && source.Matches(avatar);
         }
 
