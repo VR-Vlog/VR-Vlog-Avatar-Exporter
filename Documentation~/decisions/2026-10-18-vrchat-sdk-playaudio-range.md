@@ -2,6 +2,7 @@
 
 - 日付: 2026-10-18
 - 対象: `Compatibility/dependencies.json`・`Tools/generate-compatibility.py`・`Editor/Compatibility/DependencyPolicy*.cs`・`Editor/ExperimentalExpressionControllerScope.cs`・`Tools/DependencyCompatibilityTests.cs`・`Tests/Editor/PhysBoneSpringExportTests.cs`・README 3 種・`Compatibility/README.md`・`Compatibility/Evidence/VrchatSdkRange/`・`CHANGELOG.md`
+- 置き換え: 下限とプレリリースの扱いは `2026-10-22-vrchat-sdk-range-widen.md` で変えた（3.5.0 以上 3.11.0 未満、範囲内のプレリリースを含む）。
 
 ## 背景
 

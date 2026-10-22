@@ -188,9 +188,9 @@ namespace VRVlog.LilToonExporter
                 var basePackage = UnityEditor.PackageManager.PackageInfo.FindForAssembly(type.BaseType.Assembly);
                 if (type.BaseType.FullName != "VRC.SDKBase.VRC_AnimatorPlayAudio" || package?.name != "com.vrchat.avatars" ||
                     basePackage?.name != "com.vrchat.base" || !DependencyPolicy.SupportsVrchatSdkAudio(package.version, basePackage.version))
-                    throw new InvalidOperationException("このSDKの音声処理は表情への影響を確認できません: " + type.FullName +
-                        "（VRChat SDK " + (package?.version ?? "?") + " / " + (basePackage?.version ?? "?") +
-                        "。対応範囲: " + DependencyPolicy.VrchatSdkMinimum + "以上" + DependencyPolicy.VrchatSdkBelow + "未満）");
+                    throw new InvalidOperationException(string.Format(ExporterLocalization.T(
+                        "VRChat SDK {0}（Base {1}）の音声再生（VRC Animator Play Audio）を含む表情は収録できません。対応するのは、BaseとAvatarsが同じバージョンで{2}以上{3}未満のときです。VCC／ALCOMでVRChat SDKを変更すると収録できます。"),
+                        package?.version ?? "?", basePackage?.version ?? "?", DependencyPolicy.VrchatSdkMinimum, DependencyPolicy.VrchatSdkBelow));
                 var reactive = avatar.GetComponentsInChildren<Renderer>(true).SelectMany(renderer => renderer.sharedMaterials)
                     .Where(material => material != null).Any(material => material.HasProperty("_UseAudioLink") && material.GetFloat("_UseAudioLink") != 0 ||
                         material.shader != null && material.shader.name.IndexOf("AudioLink", StringComparison.OrdinalIgnoreCase) >= 0);
