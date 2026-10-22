@@ -63,6 +63,17 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
                 Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
             }
+            // Its third page itself, with the board's "戻る" and which button is blue. It is also
+            // what tells the board that page is usable in the normal mode.
+            var embedded = (MethodInfo)exporter.GetMethod("EmbeddedTransferMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(embedded != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (embedded != null)
+            {
+                Assert.That(embedded.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(embedded.Name, Is.EqualTo("CreateEmbedded"));
+                Assert.That(embedded.GetParameters().Select(parameter => parameter.ParameterType),
+                    Is.EqualTo(new[] { typeof(UnityEngine.GameObject), typeof(Action), typeof(Func<bool>) }));
+            }
         }
 
         [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]

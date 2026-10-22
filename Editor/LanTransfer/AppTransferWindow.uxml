@@ -36,7 +36,7 @@
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:ScrollView>
-        <!-- Outside the scroll, so the terms, the consent, the reason and the button stay in view while the VRM terms are open. -->
+        <!-- Outside the scroll, so the terms, the consent and the reason stay in view above the buttons while the VRM terms are open. -->
         <ui:VisualElement class="hairline" />
         <ui:VisualElement class="form-footer">
             <ui:VisualElement name="consent" class="consent">
@@ -48,6 +48,7 @@
                     <ui:Toggle name="consent-toggle" class="check" />
                     <ui:Label name="consent-text" class="t check-text" />
                 </ui:VisualElement>
+                <ui:Label name="consent-hint" class="t mini grey consent-hint" />
                 <ui:VisualElement name="privacy" class="privacy">
                     <ui:VisualElement class="row row--terms">
                         <ui:VisualElement class="label-col" />
@@ -59,9 +60,8 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:Label name="reason" class="t reason" />
-            <ui:Button name="create" class="primary create" />
             <ui:Label name="create-hint" class="t mini grey create-hint" />
+            <ui:Label name="reason" class="t reason" />
         </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="transfer" class="fill">
@@ -102,16 +102,19 @@
                 </ui:VisualElement>
             </ui:ScrollView>
             <ui:VisualElement class="hairline" />
-            <ui:VisualElement class="footer">
-                <ui:Button name="regenerate" class="footer-button regenerate" />
-                <ui:VisualElement class="fill" />
-                <ui:Button name="close" class="footer-button close" />
-            </ui:VisualElement>
         </ui:VisualElement>
-        <!-- Under both the form and the QR screen, so saving stays in one place through the transfer. -->
-        <ui:VisualElement class="hairline" />
+        <!-- Under both the form and the QR screen in one order, so "VRMを保存" stays in one place through
+             the transfer. The order is fixed; which of "VRMを保存" and "QRコードを作る" is blue follows where it opened (AppTransferPanel). -->
+        <ui:VisualElement name="actions" class="actions">
+            <ui:Button name="back" class="action back" />
+            <ui:VisualElement class="fill" />
+            <ui:Button name="save" class="action save" />
+            <ui:Button name="create" class="action primary create" />
+            <ui:Button name="regenerate" class="action regenerate" />
+            <ui:Button name="close" class="action close" />
+        </ui:VisualElement>
+        <!-- The last "VRMを保存" and where it is, below the buttons. -->
         <ui:VisualElement name="save-row" class="save-row">
-            <ui:Button name="save" class="save" />
             <ui:Label name="save-result" class="t mini grey save-result" />
             <ui:Label name="save-open" class="t mini link save-open" />
         </ui:VisualElement>

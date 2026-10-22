@@ -444,7 +444,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(40));
+            Assert.That(texts.Length, Is.EqualTo(41));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {
@@ -668,6 +668,57 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 
         private static string Localized(string source) =>
             (string)typeof(AppTransferPanel).GetMethod("T", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { source });
+
+        // "VRMを保存" and "QRコードを作る" keep their order everywhere; only which one is blue follows
+        // where the panel opened, read again on every refresh. The window and the board opened to
+        // transfer make the QR blue; the board opened to save a VRM makes the save blue.
+        [TestCase(null, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void ExactlyOneOfSaveAndQrIsBlueAndItFollowsWhereThePanelOpened(bool? saveFirst, bool saveBlue)
+        {
+            var current = saveFirst;
+            var panel = BuiltPanel(embedded: saveFirst != null, back: null, savePrimary: saveFirst == null ? null : (Func<bool>)(() => current.Value));
+            var save = PanelButton(panel, "saveButton");
+            var create = PanelButton(panel, "createButton");
+            RefreshActions(panel);
+            Assert.That(save.ClassListContains("primary"), Is.EqualTo(saveBlue));
+            Assert.That(create.ClassListContains("primary"), Is.EqualTo(!saveBlue));
+            Assert.That(save.parent.IndexOf(save) < save.parent.IndexOf(create), Is.True, "\"VRMを保存\" stays to the left of \"QRコードを作る\".");
+            if (current == null) return;
+            current = !current;
+            RefreshActions(panel);
+            Assert.That(save.ClassListContains("primary"), Is.EqualTo(!saveBlue));
+            Assert.That(create.ClassListContains("primary"), Is.EqualTo(saveBlue));
+        }
+
+        // The board's "戻る" sits at the left of the buttons; the window has no "戻る", only its "閉じる".
+        [TestCase(true, true, true)]
+        [TestCase(true, false, false)]
+        [TestCase(false, false, false)]
+        public void OnlyTheBoardShowsBack(bool embedded, bool withBack, bool shown)
+        {
+            var panel = BuiltPanel(embedded, withBack ? (Action)(() => { }) : null, null);
+            var back = PanelButton(panel, "backButton");
+            Assert.That(back.style.display.value == UnityEngine.UIElements.DisplayStyle.None, Is.EqualTo(!shown));
+        }
+
+        private static AppTransferPanel BuiltPanel(bool embedded, Action back, Func<bool> savePrimary)
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            var panel = new AppTransferPanel();
+            typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
+            typeof(AppTransferPanel).GetField("back", field).SetValue(panel, back);
+            typeof(AppTransferPanel).GetField("savePrimary", field).SetValue(panel, savePrimary);
+            panel.Build(new UnityEngine.UIElements.VisualElement());
+            return panel;
+        }
+
+        private static UnityEngine.UIElements.Button PanelButton(AppTransferPanel panel, string name) =>
+            (UnityEngine.UIElements.Button)typeof(AppTransferPanel).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(panel);
+
+        private static void RefreshActions(AppTransferPanel panel) =>
+            typeof(AppTransferPanel).GetMethod("RefreshActions", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, new object[] { false });
 
         private static AppTransferPanel PanelWith(AppTransferFlow flow, bool detailed)
         {
