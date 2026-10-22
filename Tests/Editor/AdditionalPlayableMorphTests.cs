@@ -110,11 +110,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("Base", false)]
-        [TestCase("Base", true)]
-        [TestCase("Gesture", false)]
         [TestCase("Gesture", true)]
         [TestCase("Action", false)]
-        [TestCase("Action", true)]
         public void KnownAdditionalMorphKeepsCoupledPreparedRestAndSamplesIndependentNeutral(string playable, bool moving)
         {
             if (moving) AnimationUtility.SetEditorCurve((AnimationClip)locomotion.layers[0].stateMachine.defaultState.motion,

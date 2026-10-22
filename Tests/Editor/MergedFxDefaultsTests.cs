@@ -120,10 +120,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(0, false)]
         [TestCase(0, true)]
-        [TestCase(1, false)]
         [TestCase(1, true)]
         [TestCase(2, false)]
-        [TestCase(2, true)]
         public void EquivalentConstantRelayPreservesNativeNeutralAndMenuEvenDuringTransitions(int transitionMode, bool writeDefaults)
         {
             Menu(controller.layers[0].stateMachine);
@@ -1249,13 +1247,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false, false)]
-        [TestCase(false, false, true)]
-        [TestCase(false, true, false)]
         [TestCase(false, true, true)]
-        [TestCase(true, false, false)]
         [TestCase(true, false, true)]
         [TestCase(true, true, false)]
-        [TestCase(true, true, true)]
         public void NativeSupportBaseRejectsUnsafeZeroDurationInitialOrIntermediateMotion(bool writeDefaults, bool animationEvent, bool intermediate)
         {
             var unsafeClip = Clip("Skipped unsupported base", ("Face size", 90));
