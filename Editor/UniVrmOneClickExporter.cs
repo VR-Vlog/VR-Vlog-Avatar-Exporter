@@ -627,7 +627,11 @@ namespace VRVlog.LilToonExporter
                 // below and is listed as approximated, also when it is the only one.
                 var approximated = new HashSet<Material>(fullSnapshot?.Approximated ?? Array.Empty<Material>());
                 foreach (var material in approximated)
-                    recoveryReport.Fallbacks.Add(ExportFallbackKind.MaterialApproximated, material.name, reason: ExporterLocalization.T(ApproximatedLilToonReason));
+                {
+                    var reason = ExporterLocalization.T(ApproximatedLilToonReason);
+                    warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
+                    recoveryReport.Fallbacks.Add(ExportFallbackKind.MaterialApproximated, material.name, reason: reason);
+                }
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
