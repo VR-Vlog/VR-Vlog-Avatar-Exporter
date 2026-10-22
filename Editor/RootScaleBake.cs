@@ -7,23 +7,28 @@ namespace VRVlog.LilToonExporter
     // and never writes the root's own TRS. In VRChat the root scale sets the
     // avatar size, so move it into the direct children while exporting; their
     // world matrices stay the same. Root position and rotation are not baked
-    // on purpose: the avatar is exported at the origin facing forward.
+    // on purpose: the avatar is exported at the origin facing forward. The
+    // root's place in the scene still reaches the scene roots through the
+    // world matrices ConvertCoordinate works on, so the root is put at the
+    // origin with no rotation while exporting.
     internal sealed class RootScaleBake : IDisposable
     {
         private readonly Transform root;
-        private readonly Vector3 rootScale;
+        private readonly Vector3 rootPosition, rootScale;
+        private readonly Quaternion rootRotation;
         private readonly (Transform, Vector3, Vector3)[] children;
 
         private RootScaleBake(Transform root, (Transform, Vector3, Vector3)[] children)
         {
-            this.root = root; rootScale = root.localScale; this.children = children;
+            this.root = root; rootPosition = root.localPosition; rootRotation = root.localRotation; rootScale = root.localScale;
+            this.children = children;
         }
 
         internal static RootScaleBake Apply(GameObject avatar)
         {
             var root = avatar.transform;
             var scale = root.localScale;
-            if (scale == Vector3.one) return new RootScaleBake(root, Array.Empty<(Transform, Vector3, Vector3)>());
+            if (scale == Vector3.one) return Place(new RootScaleBake(root, Array.Empty<(Transform, Vector3, Vector3)>()));
             if (!Finite(scale) || Mathf.Abs(scale.x * scale.y * scale.z) <= 1e-12f)
                 throw new InvalidOperationException(root.name + ": ルートの拡縮を保存できません。ゼロまたは不正な拡縮が含まれています。");
             // Validate every child before changing any of them.
@@ -42,13 +47,19 @@ namespace VRVlog.LilToonExporter
                 child.localPosition = baked[i].Position; child.localScale = baked[i].Scale;
             }
             root.localScale = Vector3.one;
+            return Place(bake);
+        }
+
+        private static RootScaleBake Place(RootScaleBake bake)
+        {
+            bake.root.localPosition = Vector3.zero; bake.root.localRotation = Quaternion.identity;
             return bake;
         }
 
         public void Dispose()
         {
             if (root == null) return;
-            root.localScale = rootScale;
+            root.localPosition = rootPosition; root.localRotation = rootRotation; root.localScale = rootScale;
             foreach (var (child, position, scale) in children)
                 if (child != null) { child.localPosition = position; child.localScale = scale; }
         }
