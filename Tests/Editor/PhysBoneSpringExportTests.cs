@@ -157,7 +157,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A humanoid whose only renderer has no MeshFilter used to be saved as a
-        // VRM with no mesh. The board's export runs this check before any stage.
+        // VRM with no mesh. The check the board's export runs rejects it; where
+        // the check sits in the export is not covered here.
         [Test]
         public void MeshRendererWithoutMeshFilterSourceStopsBeforeExport()
         {

@@ -2032,8 +2032,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Throws<InvalidOperationException>(() => replacement.LoadSettings(json));
         }
 
-        // The board lists a menu face by its clip; the source and its
-        // controller stay as they were.
+        // A face listed by its clip exports from an avatar with a menu and a
+        // descriptor, and the source stays as it was. Listing a clip does not
+        // play the menu, so the controller check only guards against that.
         [TestCase("listed")]
         [TestCase("audio-reactive")]
         public async Task ExistingMenuFaceExportsFromTheBoardListWithoutChangingItsController(string callback)
