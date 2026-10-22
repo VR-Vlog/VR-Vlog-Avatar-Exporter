@@ -52,8 +52,8 @@ namespace VRVlog.LilToonExporter.Compatibility
         static readonly int[] VrchatSdkLow = ParseRelease(VrchatSdkMinimum) ?? throw new InvalidOperationException("Invalid VrchatSdkMinimum.");
         static readonly int[] VrchatSdkHigh = ParseRelease(VrchatSdkBelow) ?? throw new InvalidOperationException("Invalid VrchatSdkBelow.");
 
-        // Modular Avatar releases whose preview API (IMeshSelector, the
-        // reactive object analysis) the appearance freeze reflects:
+        // Modular Avatar releases whose preview API (ReactiveObjectAnalyzer and
+        // each version's own mesh deletion) the appearance freeze reflects:
         // ModularAvatarMinimum <= v < ModularAvatarBelow, plus the verified
         // ModularAvatarPrereleases.
         public static bool SupportsModularAvatarAppearance(string version)
