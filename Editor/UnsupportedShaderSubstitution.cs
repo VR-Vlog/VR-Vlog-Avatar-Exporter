@@ -313,13 +313,15 @@ namespace VRVlog.LilToonExporter
         // ShaderLab of the first SubShader (the one Unity uses on desktop
         // hardware): a pass that draws color writes depth when its own ZWrite,
         // else the SubShader's, says On; Unity's default without a command is
-        // On. Shadow and depth-only passes do not draw color. A surface shader
-        // has no Pass blocks; only a SubShader command decides it.
+        // On. Shadow and depth-only passes do not draw color. The color passes a
+        // surface shader generates take the SubShader command, even when the
+        // shader also writes its own shadow pass.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
-            if (!ColorPasses(text, ZWriteCommand, out var shared, out var passes, out _)) return false;
+            if (!ColorPasses(text, ZWriteCommand, out var shared, out var passes, out var surface, out _)) return false;
             bool? On(Match match) => match == null ? (bool?)null : match.Groups[2].Success
                 ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+            if (surface && (On(shared) ?? false)) return true;
             if (passes == null) return On(shared) ?? false;
             return passes.Any(pass => On(pass) ?? On(shared) ?? true);
         }
@@ -330,20 +332,22 @@ namespace VRVlog.LilToonExporter
         // as drawing color.
         internal static bool ShaderDrawsNoColor(string text, Func<string, float> property)
         {
-            if (!ColorPasses(text, ColorMaskCommand, out var shared, out var passes, out var borrows) || borrows) return false;
+            if (!ColorPasses(text, ColorMaskCommand, out var shared, out var passes, out var surface, out var borrows) || borrows) return false;
             bool? None(Match match) => match == null ? (bool?)null : match.Groups[2].Success
                 ? property(match.Groups[2].Value) < .5f : match.Groups[1].Value == "0";
+            if (surface && !(None(shared) ?? false)) return false;
             if (passes == null) return None(shared) ?? false;
             return passes.All(pass => None(pass) ?? None(shared) ?? false);
         }
 
         // Splits the first SubShader into the command its own scope sets and
         // the command each color pass sets (null where the scope has none).
-        // passes is null for a surface shader, which has no Pass blocks;
-        // borrows tells that a UsePass adds passes from another shader.
-        static bool ColorPasses(string text, Regex command, out Match shared, out List<Match> passes, out bool borrows)
+        // passes is null when there are no Pass blocks; surface tells that
+        // the shader also generates color passes, which take the SubShader
+        // command; borrows tells that a UsePass adds passes from another shader.
+        static bool ColorPasses(string text, Regex command, out Match shared, out List<Match> passes, out bool surface, out bool borrows)
         {
-            shared = null; passes = null; borrows = false;
+            shared = null; passes = null; surface = false; borrows = false;
             text = Comments.Replace(text, "");
             var start = Regex.Match(text, @"\bSubShader\s*\{");
             if (!start.Success) return false;
@@ -363,6 +367,7 @@ namespace VRVlog.LilToonExporter
             outside.Append(subShader, at, subShader.Length - at);
             Match Find(string scope) { var match = command.Match(scope); return match.Success ? match : null; }
             shared = Find(outside.ToString());
+            surface = Regex.IsMatch(outside.ToString(), @"#pragma\s+surface\b");
             if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).Select(Find).ToList();
             return true;
         }

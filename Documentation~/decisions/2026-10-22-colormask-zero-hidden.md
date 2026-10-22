@@ -34,5 +34,5 @@
 
 ## 検証
 
-- EditMode: `UnsupportedShaderSubstitutionTests.AStencilWriterStaysWithoutColorAndDepth`・`TheFirstSubShaderDecidesWhetherAnyPassDrawsColor`（13 通り）・`TheFirstSubShaderDecidesWhetherColorPassesWriteDepth`（共通化後も同じ 10 通り）、`MaterialFallbackTests.ColorMaskZeroFallbackIsInvisible`（`_ColorMask` 0 と 15）。
+- EditMode: `UnsupportedShaderSubstitutionTests.AStencilWriterStaysWithoutColorAndDepth`・`TheFirstSubShaderDecidesWhetherAnyPassDrawsColor`（15 通り。サーフェスシェーダーが自前の影パスを持つ場合を含む）・`TheFirstSubShaderDecidesWhetherColorPassesWriteDepth`（共通化後も同じ 11 通り）、`MaterialFallbackTests.ColorMaskZeroFallbackIsInvisible`（`_ColorMask` 0 と 15）。
 - 白い殻が出ていたアバターと数体で、書き出した VRM の該当材質が描かれないことを確かめた。

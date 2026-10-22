@@ -107,6 +107,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { Pass { ZWrite [_Other] } }", false)]
         [TestCase("SubShader { Pass { ZWrite Off } } SubShader { Pass { ZWrite On } }", false)]
         [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert alpha:fade\n ENDCG }", false)]
+        [TestCase("SubShader { ZWrite [_ZWriteOn] CGPROGRAM #pragma surface surf Lambert keepalpha\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } ZWrite On } }", true)]
         public void TheFirstSubShaderDecidesWhetherColorPassesWriteDepth(string shaderLab, bool expected)
         {
             Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));
@@ -140,6 +141,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { Pass { ColorMask RGBA } } SubShader { Pass { ColorMask 0 } }", false)]
         [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG }", true)]
         [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert\n ENDCG }", false)]
+        [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", false)]
+        [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
         public void TheFirstSubShaderDecidesWhetherAnyPassDrawsColor(string shaderLab, bool expected)
         {
             Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, name => name == "_Mask" ? 0 : 15), Is.EqualTo(expected));
