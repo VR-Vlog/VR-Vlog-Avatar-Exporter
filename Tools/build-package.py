@@ -34,15 +34,15 @@ VENDOR_FILES = {"Editor/Vendor.meta", "Editor/Vendor/UniVRM/LICENSE.txt", "Edito
 # Formats/ is the shared format package. The exporter ships its sources, but
 # not its nested manifest: a VPM install keeps exactly one package.json.
 FORMATS_EXCLUDED = {"Formats/package.json", "Formats/package.json.meta"}
+# The retired local-network transfer's BouncyCastle DLL stays excluded by name.
 TRANSFER_DLLS = {"bouncycastle.cryptography.dll", "zxing.dll"}
 TRANSFER_DLL_HASHES = {
-    "Editor/LanTransfer/Dependencies/BouncyCastle.Cryptography.dll": "d61c1f2ba929a230a58e101ccd850e21f2675fa6b9814ec279633e8a089c3495",
     "Editor/LanTransfer/Dependencies/zxing.dll": "f3b823b6fd6492525a7547989056883def5d43be1e12c4f63fa54df73e3c5cfc",
 }
 TRANSFER_DLL_PATHS = set(TRANSFER_DLL_HASHES)
 TRANSFER_FILES = {
     "Editor/LanTransfer.meta", "Documentation~/LanTransfer.md", "Documentation~/CloudTransfer.md",
-    "ThirdPartyNotices/LanTransfer.md", "ThirdPartyNotices/BouncyCastle-LICENSE.txt", "ThirdPartyNotices/ZXing-LICENSE.txt",
+    "ThirdPartyNotices/LanTransfer.md", "ThirdPartyNotices/ZXing-LICENSE.txt",
 }
 TRANSFER_REFERENCE = re.compile(
     r"\b(?:LanTransfer\w*|CloudTransfer\w*|CloudDevelopment\w*|(?:Cloud|Lan)VrmTransfer\w*|CloudEncryptedSnapshot|ZXing|BouncyCastle)\b"
@@ -71,7 +71,7 @@ def included(name, transfer=False):
                          or name.removesuffix(".meta") in TRANSFER_FILES
                          or path.name.lower().removesuffix(".meta") in TRANSFER_DLLS):
         return False
-    # Prereleases ship only the two pinned transfer DLLs at reviewed paths.
+    # Prereleases ship only the pinned transfer DLL at its reviewed path.
     if path.name.lower().removesuffix(".meta") in TRANSFER_DLLS:
         return transfer and name.removesuffix(".meta") in TRANSFER_DLL_PATHS
     return (name in ROOT_FILES or transfer and name == "Documentation~/CloudTransfer.md"
@@ -107,7 +107,7 @@ def verify_transfer_dependencies(contents, transfer):
         return
     present = TRANSFER_DLL_PATHS & set(contents)
     if present != TRANSFER_DLL_PATHS:
-        raise ValueError("Both pinned transfer DLLs must be included")
+        raise ValueError("All pinned transfer DLLs must be included")
     for name, expected in TRANSFER_DLL_HASHES.items():
         if hashlib.sha256(contents[name]).hexdigest() != expected:
             raise ValueError("Pinned transfer DLL hash mismatch: " + name)

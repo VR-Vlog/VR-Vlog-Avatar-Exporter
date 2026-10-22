@@ -7,7 +7,6 @@
   "autoReferenced": false,
   "overrideReferences": true,
   "precompiledReferences": [
-    "BouncyCastle.Cryptography.dll",
     "zxing.dll"
   ],
   "noEngineReferences": false,

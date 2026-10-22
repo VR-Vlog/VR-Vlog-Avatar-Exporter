@@ -202,7 +202,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         internal static string NewSnapshotPath() => TransferTempDirectory.NewFile("VRVlogCloudTransfers", Extension);
-        internal static void Discard(string snapshotPath) => LanVrmTransferServer.TryDelete(snapshotPath);
+        internal static void Discard(string snapshotPath) => TransferTempDirectory.TryDelete(snapshotPath);
 
         // Writes what from reads to destination and returns the SHA-256 of the bytes written. The bytes go to
         // a temporary file next to destination first, so a failed copy leaves whatever was there before.
