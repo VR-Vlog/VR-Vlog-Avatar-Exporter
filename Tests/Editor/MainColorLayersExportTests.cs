@@ -77,6 +77,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("2.0.0")] [TestCase("2.2.1")] [TestCase("2.3.4")] [TestCase(Compatibility.DependencyPolicy.LilToonUnknownVersion)]
+        // No version gate (2026-10-22): versions outside 2.0.0-2.3.4 export too.
+        [TestCase("1.10.3")] [TestCase("2.3.5")] [TestCase("2.3.4-beta")]
         public void ExportRecordsInstalledLilToonVersionAndKeepsCatalogueVersion(string installed)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -96,15 +98,16 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); }
         }
 
-        [TestCase(null)] [TestCase("1.10.3")] [TestCase("2.3.5")] [TestCase("2.3.4-beta")]
-        public void ExportStopsForLilToonOutsideTheSupportedRange(string installed)
+        // The only version-based stop left is lilToon not being installed.
+        [Test]
+        public void ExportStopsWhenLilToonIsMissing()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
             try
             {
                 foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
-                Assert.Throws<NotSupportedException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: installed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+                Assert.Throws<NotSupportedException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: null, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
             }
             finally { Object.DestroyImmediate(material); }
         }
