@@ -377,17 +377,21 @@ namespace VRVlog.LilToonExporter
                     // ZTest Off and Always (and Disabled from a property) test no depth.
                     var zTest = Command(ZTestCommand, DepthComparisons, pass) ?? Command(ZTestCommand, DepthComparisons, shared) ?? 4;
                     var cull = Command(CullCommand, CullModes, pass) ?? Command(CullCommand, CullModes, shared) ?? 2;
-                    values = stencil.After(values, zTest != 0 && zTest != 8 && zTest != 9, cull != 1, cull != 2);
+                    var depthTested = zTest != 0 && zTest != 8 && zTest != 9;
+                    // A fragment that clips, discards or uses alpha to coverage leaves pixels unwritten.
+                    var everyPixel = !depthTested && cull == 0 && !Discards.IsMatch(pass);
+                    values = stencil.After(values, depthTested, cull != 1, cull != 2, everyPixel);
                 }
                 return !drawn;
             }
-            if (surface && !Hidden(shared)) return false;
             if (passes == null) return Hidden(shared);
+            if (surface && !Hidden(shared)) return false;
             return passes.All(Hidden);
         }
 
         static readonly Regex ZTestCommand = new Regex(@"\bZTest\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
         static readonly Regex CullCommand = new Regex(@"\bCull\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
+        static readonly Regex Discards = new Regex(@"\bclip\s*\(|\bdiscard\b|\bAlphaToMask\s+(On|\[)", RegexOptions.IgnoreCase);
         // Indices are UnityEngine.Rendering.CompareFunction and CullMode; Off is
         // the ZTest keyword for no depth test.
         static readonly string[] DepthComparisons = { "Disabled", "Never", "Less", "Equal", "LEqual", "Greater", "NotEqual", "GEqual", "Always", "Off" };
@@ -480,9 +484,10 @@ namespace VRVlog.LilToonExporter
             // The values the stencil can hold after the pass. A pixel can be
             // drawn several times (overlapping triangles, both faces), so the
             // operations repeat until nothing new appears. A pass that tests no
-            // depth and draws both faces reaches every pixel of the mesh, so
-            // the values before it only remain where it writes them back.
-            internal HashSet<int> After(HashSet<int> values, bool depthTested, bool frontDrawn, bool backDrawn)
+            // depth, draws both faces and keeps every fragment reaches every
+            // pixel of the mesh, so the values before it only remain where it
+            // writes them back.
+            internal HashSet<int> After(HashSet<int> values, bool depthTested, bool frontDrawn, bool backDrawn, bool everyPixel)
             {
                 var faces = new List<Face>();
                 if (frontDrawn) faces.Add(front);
@@ -490,7 +495,7 @@ namespace VRVlog.LilToonExporter
                 IEnumerable<int> Step(IEnumerable<int> from) => from.SelectMany(value => faces.SelectMany(face => Outcomes(face, value, depthTested)));
                 var reached = new HashSet<int>(Step(values));
                 for (var frontier = reached.ToList(); frontier.Count > 0;) frontier = Step(frontier).Where(reached.Add).ToList();
-                if (depthTested || !frontDrawn || !backDrawn) reached.UnionWith(values);
+                if (!everyPixel) reached.UnionWith(values);
                 return reached;
             }
         }

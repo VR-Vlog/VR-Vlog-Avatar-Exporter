@@ -24,7 +24,7 @@
   - `UsePass` で別のシェーダーのパスを借りる SubShader は、借りた先を読めないので色を描くものとする。
   - ステンシルはパスの `Stencil` ブロック、なければ SubShader のブロックで決める。ステンシルが 0 の状態から、パスを順に流して、ステンシルが取りうる値の集合を追う。`Ref`・`ReadMask`・`WriteMask`・`Comp`・`Pass`・`Fail`・`ZFail`（`Front`・`Back` 付きを含む）を読み、`[_Prop]` はその材質の値で決める。
   - 色を描くパスは、その時点で取りうるどの値でも、表と裏の両方の比較が不合格のときだけ描かないとする。自分の前のパスが書いた値に一致して描くパスは描くものとする。
-  - 1 つの画素に同じパスの三角形が何度も重なりうるので、ステンシルを書く操作は新しい値が出なくなるまで繰り返して集合に足す。深度テストのあるパス（`ZTest` が `Always`・`Off` 以外）は描かれない画素があるので、前の値も残し、`ZFail` の値も足す。`ZTest Always` で `Cull Off` のパスはメッシュのすべての画素を通るので、前の値はそのパスが書いた値に置き換わる。
+  - 1 つの画素に同じパスの三角形が何度も重なりうるので、ステンシルを書く操作は新しい値が出なくなるまで繰り返して集合に足す。深度テストのあるパス（`ZTest` が `Always`・`Off` 以外）は描かれない画素があるので、前の値も残し、`ZFail` の値も足す。`ZTest Always` で `Cull Off` のパスはメッシュのすべての画素を通るので、前の値はそのパスが書いた値に置き換わる。ただし `clip`・`discard`・`AlphaToMask On` のあるパスは書かない画素が残るので、前の値も残す。
   - Pass のないサーフェスシェーダーは SubShader の `ColorMask` とステンシルだけで決める。
   - 読み方（最初の SubShader・コメントの除去・パスと SubShader の分け方）は深度の判定（`ShaderWritesDepth`）と共通の `ColorPasses` にまとめた。
 - MToon の互換表示: lilToon の `_ColorMask` が 0 の材質は、FakeShadow と同じく、材質の枠は残して色のアルファを 0 にし、深度を書かない半透明にする（アウトラインも出さない）。lilToon の拡張には元の値をそのまま渡すので、lilToon で描くときは `_ColorMask` 0 のとおり何も描かれない。
@@ -43,5 +43,5 @@
 ## 検証
 
 - EditMode: `UnsupportedShaderSubstitutionTests.AStencilWriterStaysWithoutColorAndDepth`・`TheFirstSubShaderDecidesWhetherAnyPassDrawsColor`（15 通り。サーフェスシェーダーが自前の影パスを持つ場合を含む）・`TheFirstSubShaderDecidesWhetherColorPassesWriteDepth`（共通化後も同じ 11 通り）、`MaterialFallbackTests.ColorMaskZeroFallbackIsInvisible`（`_ColorMask` 0 と 15）。
-- EditMode: `AStencilTestThatFailsOnAClearedBufferDrawsNothing`（15 通り。`Ref`・`ReadMask`・`[Prop]`・`CompFront`／`CompBack`・パス側の上書き・ステンシルを待たない 2 つ目のパス・自分で書いた値に一致して描くパス・`ZTest Always` と `Cull Off` で消してから待つパス・深度テストのあるパスで消すパス・`IncrSat` で書く値）。全体では、この変更の前の develop と同じ 35 件だけが失敗する（いずれも検証環境に無いパッケージ・既知の失敗）。
+- EditMode: `AStencilTestThatFailsOnAClearedBufferDrawsNothing`（16 通り。`Ref`・`ReadMask`・`[Prop]`・`CompFront`／`CompBack`・パス側の上書き・ステンシルを待たない 2 つ目のパス・自分で書いた値に一致して描くパス・`ZTest Always` と `Cull Off` で消してから待つパス・深度テストのあるパスで消すパス・`IncrSat` で書く値・`clip` のあるパスで書く値）。全体では、この変更の前の develop と同じ 35 件だけが失敗する（いずれも検証環境に無いパッケージ・既知の失敗）。
 - 白い殻が出ていたアバターと別の 4 体を書き出して描画した。白い殻が出ていたアバターは殻が消えて元のアバターとの画素差が平均 25 から 2 へ下がり、残りの 4 体は変更前と画素単位で同じだった。

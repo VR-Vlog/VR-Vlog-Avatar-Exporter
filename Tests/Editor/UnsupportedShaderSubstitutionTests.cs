@@ -156,6 +156,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 CompFront Always CompBack Always PassFront Replace PassBack Replace } } Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 CompFront Equal CompBack Equal PassFront Zero PassBack Zero Fail Keep } } Pass { Cull Front ZTest Always Blend One One ColorMask RGB Stencil { Ref 121 Comp Equal Pass Zero } } }", true)]
         [TestCase("SubShader { Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } } Pass { Cull Off ColorMask 0 Stencil { Ref 121 Comp Equal Pass Zero } } Pass { ZTest Always ColorMask RGB Stencil { Ref 121 Comp Equal } } }", false)]
         [TestCase("SubShader { Pass { ColorMask 0 Stencil { Ref 1 Comp Always Pass IncrSat } } Pass { Stencil { Ref 2 Comp Equal } } }", false)]
+        [TestCase("SubShader { Pass { Cull Off ZTest Always ColorMask 0 Stencil { Ref 121 Comp Always Pass Replace } CGPROGRAM clip(c.a - 0.5); ENDCG } Pass { Stencil { Ref 121 Comp NotEqual } } }", false)]
         [TestCase("SubShader { Stencil { Ref 2 Comp Equal } Pass { } }", true)]
         [TestCase("SubShader { Pass { Stencil { Ref [_Ref] Comp [_Comp] } } }", true)]
         [TestCase("SubShader { Pass { Stencil { Ref [_Zero] Comp Equal } } }", false)]
