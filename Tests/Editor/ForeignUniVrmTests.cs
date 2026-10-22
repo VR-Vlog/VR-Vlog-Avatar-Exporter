@@ -149,6 +149,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(first == null, Is.True, "The superseded conversion is released.");
         }
 
+        [Test] public void ConversionsAreReleasedBeforeADomainReload()
+        {
+            var avatar = new GameObject("Avatar"); owned.Add(avatar);
+            Attach(avatar, ProjectSettings(ProjectBlink(true, 1f)));
+            var settings = ForeignUniVrm.AuthoredSettings(avatar);
+            var copy = new GameObject("Copy"); owned.Add(copy);
+            Attach(copy, ProjectSettings(ProjectBlink(true, 1f)));
+            ForeignUniVrm.Adopt(copy);
+            var adopted = copy.GetComponent<Vrm10Instance>().Vrm;
+            Assert.That(settings, Is.Not.Null);
+            Assert.That(adopted, Is.Not.Null);
+
+            ForeignUniVrm.ReleaseAll();
+            Assert.That(settings == null, Is.True, "The cached settings conversion is released.");
+            Assert.That(adopted == null, Is.True, "What was made for the copy is released.");
+            var again = ForeignUniVrm.AuthoredSettings(avatar);
+            Assert.That(again, Is.Not.Null);
+            Assert.That(again.Expression.Blink.IsBinary, Is.True);
+        }
+
         [Test] public void AdoptGivesTheCopyBundledComponentsAndMaterialsOnly()
         {
             var shader = Shader.Find("VRM10/MToon10");
