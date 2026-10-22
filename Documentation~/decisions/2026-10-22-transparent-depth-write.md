@@ -12,6 +12,7 @@
 - lilToon 2.3.4 の半透明シェーダー（`lts_trans.shader`）は `_ZWrite` の既定値が 1 で、深度を書きながら半透明で描く。手前の面を描いたあとは奥の面が描かれないので、メッシュの奥側は透けない。
 - 標準 MToon の互換表示（`CreateMToonFallback`）は半透明を `TransparentWithZWriteMode.Off` のまま書き出していた。MToon は深度を書かずに半透明で描くので、同じメッシュの奥の面が手前に重なって見える。
 - lilToon 以外のシェーダーを lilToon の半透明へ置き換えるとき、元のシェーダーが深度を書くかを見ていなかった。
+- サーフェスシェーダーが影のパスだけを自分で書いていると、書かれたパスがすべて影なので深度を書かないと読んでいた。色のパスは Unity が作り、SubShader の `ZWrite` が掛かる。
 
 ## 決定
 
@@ -21,7 +22,7 @@ Unity とシェーダーの定義から読めることだけで決める。ア�
 - 置き換え: 半透明に置き換えるとき、lilToon の `_ZWrite` を元のシェーダーに合わせる。
   - 元のシェーダーが `_ZWrite` を宣言していれば、その値を使う（Standard の Fade・Transparent など）。
   - 宣言がなければ、シェーダーのファイル（`.shader`）の最初の SubShader を読む。色を描くパスのうち 1 つでも、パス自身の `ZWrite`、なければ SubShader の `ZWrite`、どちらもなければ Unity の既定値（On）で深度を書くなら 1 にする。影（ShadowCaster）・Meta・深度だけのパスは色を描かないので見ない。`ZWrite [_Prop]` はその材質の値で決める。コメントは除いてから読む。
-  - Pass のないサーフェスシェーダーは SubShader の `ZWrite` だけで決め、なければ 0 にする。
+  - サーフェスシェーダー（Pass の外に `#pragma surface` がある SubShader）は、Unity が作る色のパスに SubShader の `ZWrite` が掛かる。SubShader の `ZWrite` が On なら、影のパスを自分で書いていても 1 にする。Pass がなく `ZWrite` もなければ 0 にする。
   - ファイルを読めないシェーダー（Unity の組み込み・見つからないシェーダー）は 0 にする。Unity 組み込みの半透明シェーダーは深度を書かない。
 
 ## 成り立たない場合
@@ -33,5 +34,5 @@ Unity とシェーダーの定義から読めることだけで決める。ア�
 
 ## 検証
 
-- EditMode: `MaterialFallbackTests.TransparentFallbackWritesDepthWhenLilToonDoes`（`_ZWrite` 1 と 0）、`UnsupportedShaderSubstitutionTests.ABlendedSourceKeepsWhetherItWritesDepth`・`TheFirstSubShaderDecidesWhetherColorPassesWriteDepth`（10 通り）。
+- EditMode: `MaterialFallbackTests.TransparentFallbackWritesDepthWhenLilToonDoes`（`_ZWrite` 1 と 0）、`UnsupportedShaderSubstitutionTests.ABlendedSourceKeepsWhetherItWritesDepth`・`TheFirstSubShaderDecidesWhetherColorPassesWriteDepth`（11 通り）。
 - 100 体の見え方の比較（元のアバター／修正前／修正後、正面・45°・背面）。

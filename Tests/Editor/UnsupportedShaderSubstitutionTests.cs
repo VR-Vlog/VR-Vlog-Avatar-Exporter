@@ -107,6 +107,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { Pass { ZWrite [_Other] } }", false)]
         [TestCase("SubShader { Pass { ZWrite Off } } SubShader { Pass { ZWrite On } }", false)]
         [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert alpha:fade\n ENDCG }", false)]
+        [TestCase("SubShader { ZWrite [_ZWriteOn] CGPROGRAM #pragma surface surf Lambert keepalpha\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } ZWrite On } }", true)]
         public void TheFirstSubShaderDecidesWhetherColorPassesWriteDepth(string shaderLab, bool expected)
         {
             Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));

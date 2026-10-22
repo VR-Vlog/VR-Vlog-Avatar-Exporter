@@ -287,8 +287,9 @@ namespace VRVlog.LilToonExporter
         // ShaderLab of the first SubShader (the one Unity uses on desktop
         // hardware): a pass that draws color writes depth when its own ZWrite,
         // else the SubShader's, says On; Unity's default without a command is
-        // On. Shadow and depth-only passes do not draw color. A surface shader
-        // has no Pass blocks; only a SubShader command decides it.
+        // On. Shadow and depth-only passes do not draw color. The color passes a
+        // surface shader generates take the SubShader command, even when the
+        // shader also writes its own shadow pass.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
             text = Comments.Replace(text, "");
@@ -314,6 +315,7 @@ namespace VRVlog.LilToonExporter
                 return match.Groups[2].Success ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
             }
             var shared = Command(outside.ToString());
+            if (Regex.IsMatch(outside.ToString(), @"#pragma\s+surface\b") && (shared ?? false)) return true;
             if (passes.Count == 0) return shared ?? false;
             return passes.Where(pass => !DepthOnlyPass.IsMatch(pass)).Any(pass => Command(pass) ?? shared ?? true);
         }
