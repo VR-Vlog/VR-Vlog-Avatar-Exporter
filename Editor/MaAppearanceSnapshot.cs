@@ -56,7 +56,7 @@ namespace VRVlog.LilToonExporter
                 CopyOverride(simulator, analyzer, "PropertyOverrides", "ForcePropertyOverrides", parameterMap, analyzeClone ? map : null);
                 CopyOverride(simulator, analyzer, "MenuItemOverrides", "ForceMenuItems", parameterMap, analyzeClone ? map : null);
                 var analysis = analyzerType.GetMethod("Analyze").Invoke(analyzer, new object[] { analyzeClone ? clone : source });
-                var states = (IDictionary)Field(analysis, "InitialStates");
+                var states = InitialStates(analysis);
                 // Simulator selections describe the appearance to freeze, not
                 // the complete set of states a menu can select. Analyze the
                 // unforced copy separately so selecting a menu in SceneView
@@ -75,13 +75,12 @@ namespace VRVlog.LilToonExporter
                 // Freeze irreversible geometry and constant appearance using
                 // MA's own resolved simulator selection. Reversible reactions
                 // stay authored so the canonical build can generate their FX.
-                foreach (DictionaryEntry state in states)
+                foreach (var state in states)
                 {
-                    var original = (Object)Field(state.Key, "TargetObject");
+                    var (original, name) = Property(state.Key);
                     if (original == null) continue;
                     var target = original;
                     if (!analyzeClone && !map.TryGetValue(original, out target)) continue;
-                    var name = (string)Field(state.Key, "PropertyName");
                     // The original weights/material/visibility are the off
                     // endpoint from which MA generates reversible reactions.
                     // Writing the currently selected pose here would turn both
@@ -144,8 +143,57 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        static (Object Target, string Name) Property(object key) =>
-            ((Object)Field(key, "TargetObject"), (string)Field(key, "PropertyName"));
+        // MA 1.18 and 1.19.0-alpha.0 key the analysis by TargetProp and report
+        // InitialStates. 1.19.0-alpha.1 keys it by typed targets and reports
+        // the initially active action per target instead. Both are read as the
+        // 1.18 (object, property name) key and value, so the freeze below is
+        // the same for either. Other targets (Reactive Move, parameters) are
+        // not frozen and read as (null, null).
+        static (Object Target, string Name) Property(object key)
+        {
+            switch (key.GetType().Name)
+            {
+                case "TargetProp":
+                case "PropertyTarget": return ((Object)Field(key, "TargetObject"), (string)Field(key, "PropertyName"));
+                case "ObjectActiveTarget": return ((Object)Field(key, "Target"), "m_IsActive");
+                case "ShapeKeyTarget": return ((Object)Field(key, "Renderer"), "blendShape." + Field(key, "ShapeName"));
+                case "MaterialSlotTarget": return ((Object)Field(key, "Renderer"), "m_Materials.Array.data[" + Field(key, "MaterialIndex") + "]");
+                case "MeshSectionTarget":
+                    return ((Object)Field(key, "Renderer"), (bool)Field(key, "IsShape")
+                        ? "deletedShape." + Field(key, "ShapeName") : "deletedMeshByMask." + Field(key, "Selector"));
+                default: return (null, null);
+            }
+        }
+
+        // 1.18 values: active 1/0, shape weight, Material, and IMeshSelector
+        // for a deletion (null keeps the section).
+        static List<KeyValuePair<object, object>> InitialStates(object analysis)
+        {
+            var result = new List<KeyValuePair<object, object>>();
+            var states = analysis.GetType().GetField("InitialStates", Members);
+            if (states != null)
+            {
+                foreach (DictionaryEntry entry in (IDictionary)states.GetValue(analysis))
+                    result.Add(new KeyValuePair<object, object>(entry.Key, entry.Value));
+                return result;
+            }
+            foreach (DictionaryEntry action in (IDictionary)Field(analysis, "InitialActions"))
+            {
+                object value;
+                switch (action.Value.GetType().Name)
+                {
+                    case "DriveActiveState": value = (bool)Field(action.Value, "Active") ? 1f : 0f; break;
+                    case "SetShapeKey":
+                    case "FloatPropAction":
+                    case "ObjectPropAction": value = Field(action.Value, "Value"); break;
+                    case "SetMaterial": value = Field(action.Value, "Material"); break;
+                    case "HideMeshSection": value = Field(action.Value, "Selector"); break;
+                    default: continue;
+                }
+                result.Add(new KeyValuePair<object, object>(action.Key, value));
+            }
+            return result;
+        }
 
         // Let MA describe dependencies between reactions. Menu conditions and
         // authored activation curves can vary; object toggles propagate that
@@ -161,7 +209,7 @@ namespace VRVlog.LilToonExporter
                 foreach (DictionaryEntry property in properties)
                 {
                     var key = Property(property.Key);
-                    if (key.Name.StartsWith("deletedShape.", StringComparison.Ordinal) || result.Contains(key)) continue;
+                    if (key.Target == null || key.Name.StartsWith("deletedShape.", StringComparison.Ordinal) || result.Contains(key)) continue;
                     foreach (var rule in (IEnumerable)Field(property.Value, "actionGroups"))
                         foreach (var condition in (IEnumerable)Field(rule, "ControllingConditions"))
                         {
@@ -307,7 +355,14 @@ namespace VRVlog.LilToonExporter
             }
             analyzer.GetType().GetProperty(property).SetValue(analyzer, value);
         }
-        static object Field(object obj, string name) => obj.GetType().GetField(name, Members).GetValue(obj);
+        // 1.19 targets and actions expose properties where 1.18 had fields.
+        static object Field(object obj, string name)
+        {
+            var type = obj.GetType();
+            var field = type.GetField(name, Members);
+            if (field != null) return field.GetValue(obj);
+            return (type.GetProperty(name, Members) ?? throw new MissingMemberException(type.FullName, name)).GetValue(obj);
+        }
         static Type Required(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false))
             .FirstOrDefault(t => t != null) ?? throw new TypeLoadException(name);
         static void Map(Transform source, Transform clone, IDictionary<Object, Object> map)

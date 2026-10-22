@@ -76,15 +76,19 @@ Results:
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
 or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
-to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
+to below 1.19.0), plus the pre-releases in `modularAvatarPrereleases`
+(1.19.0-alpha.0 to alpha.2). The freeze reflects MA's preview API;
 `IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
-`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
-stable versions stop before that API is touched, naming the installed version and
-the range. When the version cannot be read (MA placed under `Assets`, a
-pre-release), the freeze tries the API and, if it is missing, stops saying the
-version was not read. Avatars without those components export with any MA version. MA 1.18.x
+`IVertexFilter`). 1.19.0-alpha.1 replaces the `InitialStates` analysis with typed
+targets and `InitialActions`; the freeze reads either as the 1.18 property names
+and values. Other versions, including unlisted `X.Y.Z-pre` releases, stop before
+that API is touched, naming the installed version and the range. When the version
+cannot be read (MA placed under `Assets`, build metadata), the freeze tries the
+API and, if it is missing, stops saying the version was not read. Avatars without those components export with any MA version. MA 1.18.x
 itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
-`ndmfMinimum` (1.8.3).
+`ndmfMinimum` (1.8.3). MA 1.19.0-alpha.1 and later require NDMF 1.15.0-beta.1, so
+the NDMF pre-releases in `ndmfPrereleases` (1.15.0-beta.1, 1.15.0-beta.2) also
+pass; other NDMF pre-releases stop.
 
 ## Supported lilToon versions
 

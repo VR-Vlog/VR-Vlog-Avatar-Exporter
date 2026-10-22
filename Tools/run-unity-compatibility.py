@@ -741,7 +741,7 @@ BEHAVIOR_CASES = {
         'InstalledModularAvatarRejectsTargetOutsideSelectedSubtreeBeforeCloning': 2,
         'InvalidInactiveRigIsValidatedRegardlessOfSkinVisibility': 2,
         'InvalidInactiveWardrobeRequiresProcessingAndIsValidated': 2,
-        'KnownVersionsResolveCompleteBridge': 3,
+        'KnownVersionsResolveCompleteBridge': 5,
         'LoggedBuildErrorStopsExportAndReleasesGeneratedAssets': 1,
         'MissingBakedExpressionStopsExport': 1,
         'MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf': 1,
@@ -757,7 +757,7 @@ BEHAVIOR_CASES = {
         'SettingsPointingIntoAnotherSceneObjectStopBeforeAnyPass': 1,
         'SharedSettingsPointingIntoOriginalAvatarStopBeforeAnyPass': 2,
         'UnsavedSharedAssetsAreIsolatedBeforeAnyPassCanMutateThem': 1,
-        'UnvalidatedVersionsFailBeforeProcessing': 4,
+        'UnvalidatedVersionsFailBeforeProcessing': 5,
         'UsesGenericOnlyWhenSourceHasNoPrimaryPlatform': 1,
     },
     'GestureBlendTreeTests': {

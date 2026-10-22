@@ -47,7 +47,7 @@ namespace VRVlog.LilToonExporter
         private sealed class CopyAvatarRoot { internal Component Marker; }
         internal const string UnknownRendererRelocation = "Modular Avatar / NDMF の処理で表情の対象Rendererが変わりましたが、元の変形との対応を一意に確定できません。統合・分割ツールの設定を確認してください。";
         private const string CompatibilityMessage =
-            "アバターの準備に必要な NDMF API を利用できません。NDMF " + DependencyPolicy.NdmfMinimum + " 以降の 1.x が必要です。確認済み構成: MA " + DependencyPolicy.ModularAvatarReference + " / NDMF " + DependencyPolicy.NdmfReference + "。" + DependencyPolicy.Recovery;
+            "アバターの準備に必要な NDMF API を利用できません。NDMF " + DependencyPolicy.NdmfMinimum + " 以降の 1.x（プレリリースは " + DependencyPolicy.NdmfPrereleases + "）が必要です。確認済み構成: MA " + DependencyPolicy.ModularAvatarReference + " / NDMF " + DependencyPolicy.NdmfReference + "。" + DependencyPolicy.Recovery;
 
 #if UNITY_5_3_OR_NEWER
         private static readonly Dictionary<Scene, List<WeakReference>> copyScenes =
@@ -919,8 +919,7 @@ namespace VRVlog.LilToonExporter
             {
                 const BindingFlags publicInstance = BindingFlags.Public | BindingFlags.Instance;
                 const BindingFlags staticMembers = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-                if (version == null || version.Contains("-") || !Version.TryParse(version, out var parsed) ||
-                    parsed.Major != DependencyPolicy.NdmfMajor || parsed < Version.Parse(DependencyPolicy.NdmfMinimum)) throw new InvalidOperationException(CompatibilityMessage);
+                if (!DependencyPolicy.SupportsNdmf(version)) throw new InvalidOperationException(CompatibilityMessage);
                 var processor = find("nadena.dev.ndmf.AvatarProcessor");
                 var context = find("nadena.dev.ndmf.BuildContext");
                 var phase = find("nadena.dev.ndmf.BuildPhase");
