@@ -21,6 +21,8 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 
 The exporter does not reproduce every shader effect, Animator behavior or VRChat gimmick. See the [detailed scope and limitations in Japanese](README.md#対応範囲と制限).
 
+Materials on shaders other than lilToon are replaced with official lilToon. For toon shaders with a lighting type (`_LightingMode`) and switchable sections, each section is mapped onto the lilToon item with the same role: shadows (border and blur per lighting type, shadow colors, a second shadow), the light limits, color adjustment (hue, saturation, brightness, gamma, gradation), two matcaps, rim light, outline, emission (including blinking), alpha mask and stencil. Sections official lilToon does not have (decals, dissolve, glitter, AudioLink and others) are not exported; the material and section names are listed before saving. Hue (when the source rotates it in OKLab), saturation and ramp-texture shadows are close approximations, not exact.
+
 With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, which is the default, the export leaves out what does nothing in a VRM:
 
 - VRChat-only gimmicks: an object with a Modular Avatar menu or animator merge that contains a camera, sound, particles, a light, a contact or a constraint, and whose meshes are not drawn like the avatar (lilToon, MToon or a shader shared with the body). It is removed as a whole. Outfits bound to the body's bones and props drawn like the avatar stay. Gimmicks without VRChat-only parts are only listed for review.
