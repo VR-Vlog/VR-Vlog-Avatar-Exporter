@@ -127,7 +127,7 @@ namespace VRVlog.LilToonExporter
             cancel = new CancellationTokenSource();
             loading = true; loadStarted = EditorApplication.timeSinceStartup;
             loadedStandardMToon = StandardMToon;
-            lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
+            lilToonVersion = LilToonExporterWindow.InstalledLilToonVersion();
             IAppPreviewSession result = null;
             string failure = null, detail = null;
             try
@@ -205,7 +205,7 @@ namespace VRVlog.LilToonExporter
         {
             EditorApplication.update += OnEditorUpdate;
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
-            lilToonVersion = LilToonExporterWindow.FindLilToonPackage()?.version;
+            lilToonVersion = LilToonExporterWindow.InstalledLilToonVersion();
             // After a script reload OnDisable has released the load; say so
             // instead of showing only the open button.
             if (fileName != null && load == null && !loading && errorText == null)
@@ -412,7 +412,7 @@ namespace VRVlog.LilToonExporter
                 }
                 var status = Row();
                 if (load != null) GUI.Label(status, new GUIContent(MaterialDetail(load.MaterialStatus, loadedStandardMToon), load.MaterialStatus), clipped);
-                GUI.Label(Row(), lilToonVersion == null ? T("lilToon がありません") : "lilToon " + lilToonVersion, clipped);
+                GUI.Label(Row(), lilToonVersion == null ? T("lilToon がありません") : "lilToon " + Compatibility.DependencyPolicy.DisplayLilToon(lilToonVersion, T), clipped);
                 var mismatch = Row();
                 if (lilToonVersion != null && lilToonVersion != PinnedLilToon) GUI.Label(mismatch, T("lilToon 2.3.4 とバージョンが違います"), warning);
             }
