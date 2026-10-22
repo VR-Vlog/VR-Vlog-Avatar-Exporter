@@ -199,11 +199,13 @@ def generate(source, target):
     if target.exists() and any(target.iterdir()):
         raise SystemExit(f"{target} is not empty; delete the folder first so no stale file stays")
     resources = Path("UniGLTF/Runtime/UniHumanoid/Resources")
+    # Folders under Resources move with their files, so no meta is left for an upstream path.
+    folders = {resources / RESOURCES_DIR / folder.relative_to(resources) if resources in folder.parents else folder
+               for folder in folders}
+    folders.add(resources / RESOURCES_DIR)
     for path, rel in files:
         if resources in rel.parents:
             rel = resources / RESOURCES_DIR / rel.relative_to(resources)
-            for parent in [resources / RESOURCES_DIR]:
-                folders.add(parent)
         out = target / rel
         meta_text, meta_bom = read_text(path.with_name(path.name + ".meta"))
         if path.suffix in {".cs", ".shader", ".hlsl", ".asmdef", ".asset"}:
