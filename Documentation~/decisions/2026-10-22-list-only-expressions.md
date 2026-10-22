@@ -1,7 +1,7 @@
 # 表情ボードの一覧をそのまま VRM の表情として書き出す
 
 - 日付: 2026-10-22
-- 対象: `Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/VrChatExpressionMenu.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`
+- 対象: `Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/VrChatExpressionMenu.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/FaceEmoExpressions.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/Editor/FaceEmoMergedUnderlayTests.cs`
 
 ## 背景
 
@@ -15,7 +15,9 @@
 - 一覧の各クリップは、ジェスチャーの表情と同じ `VrChatGestureExpressions.ReadClip` で読む。そのあとは今までと同じく `VrChatExpressionBaker` → `VrmMenuExpressions.Add` で書く。時間で値が変わるクリップは `VRVLOG_expression_animations` にアニメーションとして入り、静止した表情は最後のコマになる。
 - Radial Puppet のように Motion Time の状態だけが再生するクリップは、メニューの書き出しと同じく1コマ（表情ボードのコマ）で止める。Motion Time でない状態も同じクリップを再生するときは、動く表情のまま。
 - `ReadClip` が受け付けないクリップ（表情以外の変更を含むものなど）は、表情ボードのコマの BlendShape の値で静止した表情にする。表情の BlendShape を1つも含まないものは書き出さない。
-- 一覧の表情は出どころを gesture として拡張に書く。
+- Modular Avatar などのビルドツールが動かしたメッシュの表情は、表情ボードの喜怒哀楽の枠と同じく、動かした先のメッシュで読む。
+- FaceEmo に登録されたクリップは、FaceEmo の表情と同じ読み方をする。FaceEmo の共通の DEFAULT FACE と常時の上書きが、これまでどおり下に入る。
+- 一覧の表情は出どころを gesture（FaceEmo に登録されたクリップは faceemo）として拡張に書く。
 - 表情ボードの書き出しの欄の文言は「この一覧をそのまま書き出し」にした。
 
 ## 比べた結果
