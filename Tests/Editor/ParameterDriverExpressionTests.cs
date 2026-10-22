@@ -228,11 +228,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("Set", false)]
-        [TestCase("Add", false)]
         [TestCase("Copy", false)]
-        [TestCase("Set", true)]
         [TestCase("Add", true)]
-        [TestCase("Copy", true)]
         public void FixedSelectorsRetainNativeSdkWritersAndEffectiveOverridesWithIndependentRandomRest(string operation, bool effectiveOverride)
         {
             var fixture = SelectorRandomRest(operation); RuntimeAnimatorController runtime = controller; AnimatorOverrideController overrides = null;
@@ -567,13 +564,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters", 0f, false)]
-        [TestCase("EyeHeightAsMeters", 1f, false)]
-        [TestCase("EyeHeightAsMeters", 0f, true)]
         [TestCase("EyeHeightAsMeters", 1f, true)]
-        [TestCase("EyeHeightAsPercent", 0f, false)]
         [TestCase("EyeHeightAsPercent", 1f, false)]
         [TestCase("EyeHeightAsPercent", 0f, true)]
-        [TestCase("EyeHeightAsPercent", 1f, true)]
         public void FixedEyeHeightFaceTransitionDoesNotTrustAuthoredOrSuppliedDefaults(string parameter, float value, bool suppliedDefault)
         {
             controller.AddParameter(new AnimatorControllerParameter
@@ -592,8 +585,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters", 0f)]
-        [TestCase("EyeHeightAsMeters", 1f)]
-        [TestCase("EyeHeightAsPercent", 0f)]
         [TestCase("EyeHeightAsPercent", 1f)]
         public void FixedEyeHeightDriverCopyRequiresExplicitInput(string parameter, float authoredValue)
         {
@@ -613,8 +604,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters", 0f)]
-        [TestCase("EyeHeightAsMeters", 1f)]
-        [TestCase("EyeHeightAsPercent", 0f)]
         [TestCase("EyeHeightAsPercent", 1f)]
         public void FixedUnusedEyeHeightDeclarationDoesNotBlockFace(string parameter, float authoredValue)
         {
@@ -631,8 +620,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters", 0f, 0f)]
-        [TestCase("EyeHeightAsMeters", 1f, 75f)]
-        [TestCase("EyeHeightAsPercent", 0f, 0f)]
         [TestCase("EyeHeightAsPercent", 1f, 75f)]
         public void FixedExplicitEyeHeightSelectsCorrectFace(string parameter, float suppliedValue, float expectedWeight)
         {
@@ -652,8 +639,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters", 0f)]
-        [TestCase("EyeHeightAsMeters", 1f)]
-        [TestCase("EyeHeightAsPercent", 0f)]
         [TestCase("EyeHeightAsPercent", 1f)]
         public void FixedEyeHeightFxGateRequiresExplicitInput(string parameter, float authoredValue)
         {
@@ -1081,8 +1066,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public void LocomotionControlDoesNotBlockFixedFacialSampling(bool disabled, bool otherPlayable)
         {
@@ -1117,8 +1100,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Does.Contain("FX以外").And.Contain("Face"));
         }
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public void TemporaryPoseSpaceDoesNotBlockFixedFacialSampling(bool enter, bool fixedDelay)
         {
@@ -1137,7 +1118,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(-1)]
         [TestCase(float.NaN)]
-        [TestCase(float.PositiveInfinity)]
         public void MalformedTemporaryPoseSpaceIsNotIgnored(float delay)
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);

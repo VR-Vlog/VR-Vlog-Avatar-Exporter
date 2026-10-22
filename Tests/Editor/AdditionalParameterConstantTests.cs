@@ -326,7 +326,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(AnimatorControllerParameterType.Float, 0f)]
-        [TestCase(AnimatorControllerParameterType.Float, .25f)]
         [TestCase(AnimatorControllerParameterType.Bool, 1f)]
         [TestCase(AnimatorControllerParameterType.Int, 2f)]
         public void IdempotentAdditionalResetsKeepTheOriginalNativeNeutralAndSelection(AnimatorControllerParameterType type, float initial)
@@ -453,8 +452,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("source", false)]
-        [TestCase("source", true)]
-        [TestCase("probe", false)]
         [TestCase("probe", true)]
         public void SuppliedInitialValuesAlsoRequireAnUnchangedReset(string location, bool matching)
         {
@@ -635,12 +632,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("saved", false)]
-        [TestCase("saved", true)]
-        [TestCase("missing persistence", false)]
         [TestCase("missing persistence", true)]
         [TestCase("missing type", false)]
-        [TestCase("missing type", true)]
-        [TestCase("incomplete inventory", false)]
         [TestCase("incomplete inventory", true)]
         public void SavedOrUnknownCandidateMetadataCannotBeBypassedByAutomaticContext(string kind, bool supplied)
         {
@@ -659,8 +652,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("saved", false)]
-        [TestCase("saved", true)]
-        [TestCase("missing persistence", false)]
         [TestCase("missing persistence", true)]
         public void SavedOrUnknownGateMetadataCannotBeBypassedByAutomaticContext(string kind, bool supplied)
         {

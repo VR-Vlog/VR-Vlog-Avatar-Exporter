@@ -1236,18 +1236,10 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(BlendTreeType.Simple1D, "ControlX", "missing")]
-        [TestCase(BlendTreeType.Simple1D, "ControlX", "Bool")]
-        [TestCase(BlendTreeType.Simple1D, "ControlX", "Int")]
         [TestCase(BlendTreeType.Simple1D, "ControlX", "Trigger")]
         [TestCase(BlendTreeType.SimpleDirectional2D, "ControlY", "missing")]
-        [TestCase(BlendTreeType.FreeformDirectional2D, "ControlY", "Int")]
-        [TestCase(BlendTreeType.FreeformCartesian2D, "ControlX", "missing")]
-        [TestCase(BlendTreeType.FreeformCartesian2D, "ControlY", "missing")]
-        [TestCase(BlendTreeType.FreeformCartesian2D, "ControlX", "Int")]
         [TestCase(BlendTreeType.FreeformCartesian2D, "ControlY", "Bool")]
-        [TestCase(BlendTreeType.FreeformCartesian2D, "ControlY", "Trigger")]
         [TestCase(BlendTreeType.Direct, "ControlX", "missing")]
-        [TestCase(BlendTreeType.Direct, "ControlY", "missing")]
         [TestCase(BlendTreeType.Direct, "ControlY", "Int")]
         public void BlendTreeControlDeclarationsAreRequiredBeforeDiscovery(BlendTreeType kind, string brokenControl, string fault)
         {

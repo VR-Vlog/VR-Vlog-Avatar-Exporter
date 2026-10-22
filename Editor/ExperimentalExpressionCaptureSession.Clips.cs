@@ -474,7 +474,9 @@ namespace VRVlog.LilToonExporter
             // binding the data to the final VRM's Humanoid nodes.
             using var poses = new PoseExportSession(Source, poseOptions.Copy(), exclusions.Contains);
             poses.CollectPrepared(Copy, warnings);
-            var failed = poses.Entries.FirstOrDefault(entry => entry.Source.Contains("手動") && entry.Error != null && !poseOptions.Excluded.Contains(entry.Id));
+            // A moving pose over 8,192 frames is listed and left out by the limit check, as in the normal export.
+            var failed = poses.Entries.FirstOrDefault(entry => entry.Source.Contains("手動") && entry.Error != null && !entry.OverFrameLimit &&
+                !poseOptions.Excluded.Contains(entry.Id));
             if (failed != null) throw new InvalidOperationException(ExporterLocalization.T("ポーズを書き出せません: ") + failed.Name + " / " + failed.Error);
             PoseLimitChooser.Apply(poses, warnings, report);
             var document = GlbDocument.Read(bytes);
