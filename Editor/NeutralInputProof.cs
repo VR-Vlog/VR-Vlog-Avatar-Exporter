@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter
             using var data = new SerializedObject(asset);
             data.Update();
             var parameters = data.FindProperty("parameters");
-            if (parameters == null || !parameters.isArray || parameters.arraySize > VrChatExpressionMenu.MaximumControlVisits) return false;
+            if (parameters == null || !parameters.isArray) return false;
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var invalid = new HashSet<string>(StringComparer.Ordinal);
             for (var index = 0; index < parameters.arraySize; index++)
@@ -98,32 +98,27 @@ namespace VRVlog.LilToonExporter
         {
             var pending = new Stack<UnityEngine.Object>();
             var visited = new HashSet<int>();
-            var controlVisits = 0;
-            var inputVisits = 0;
             pending.Push(root);
             while (pending.Count != 0)
             {
                 var asset = pending.Pop();
                 if (asset == null || asset.GetType().FullName != MenuType) return false;
                 if (!visited.Add(asset.GetInstanceID())) continue;
-                if (visited.Count > VrChatExpressionMenu.MaximumMenuVisits) return false;
                 using var data = new SerializedObject(asset);
                 data.Update();
                 var controls = data.FindProperty("controls");
-                if (controls == null || !controls.isArray || controls.arraySize > VrChatExpressionMenu.MaximumControlVisits - controlVisits) return false;
+                if (controls == null || !controls.isArray) return false;
                 for (var index = 0; index < controls.arraySize; index++)
                 {
-                    controlVisits++;
                     var control = controls.GetArrayElementAtIndex(index);
                     var kind = EnumName(control.FindPropertyRelative("type"));
                     if (kind != "Button" && kind != "Toggle" && kind != "SubMenu" && kind != "TwoAxisPuppet" &&
                         kind != "FourAxisPuppet" && kind != "RadialPuppet") return false;
-                    if (!ReadInput(control.FindPropertyRelative("parameter"), inputs, ref inputVisits)) return false;
+                    if (!ReadInput(control.FindPropertyRelative("parameter"), inputs)) return false;
                     var subParameters = control.FindPropertyRelative("subParameters");
-                    if (subParameters == null || !subParameters.isArray || subParameters.arraySize >
-                        VrChatExpressionMenu.MaximumControlVisits * 5 - inputVisits) return false;
+                    if (subParameters == null || !subParameters.isArray) return false;
                     for (var subIndex = 0; subIndex < subParameters.arraySize; subIndex++)
-                        if (!ReadInput(subParameters.GetArrayElementAtIndex(subIndex), inputs, ref inputVisits)) return false;
+                        if (!ReadInput(subParameters.GetArrayElementAtIndex(subIndex), inputs)) return false;
                     if (kind != "SubMenu") continue;
                     var subMenu = control.FindPropertyRelative("subMenu");
                     if (!Is(subMenu, SerializedPropertyType.ObjectReference) || subMenu.objectReferenceValue == null) return false;
@@ -133,9 +128,9 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        static bool ReadInput(SerializedProperty parameter, HashSet<string> inputs, ref int visits)
+        static bool ReadInput(SerializedProperty parameter, HashSet<string> inputs)
         {
-            if (++visits > VrChatExpressionMenu.MaximumControlVisits * 5 || parameter == null) return false;
+            if (parameter == null) return false;
             var name = parameter.FindPropertyRelative("name");
             if (!Is(name, SerializedPropertyType.String)) return false;
             if (!string.IsNullOrEmpty(name.stringValue)) inputs.Add(name.stringValue);

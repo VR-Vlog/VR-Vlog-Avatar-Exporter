@@ -36,9 +36,16 @@ namespace VRVlog.LilToonExporter
         // A menu entry that provably cannot select a body pose. It stays in
         // the review list but is not an export warning.
         internal bool NotBodyPose;
+        // A moving pose longer than one animation may be (8,192 frames).
+        internal bool OverFrameLimit;
         internal readonly List<PoseLayer> Layers = new List<PoseLayer>();
         internal HumanoidPoseData Data;
         internal HumanoidAnimationData Animation;
+    }
+    // One moving pose has more frames than the app reads for one animation.
+    internal sealed class PoseFrameLimitException : InvalidOperationException
+    {
+        internal PoseFrameLimitException(string message) : base(message) { }
     }
     internal sealed class ManualPose
     {
@@ -197,9 +204,9 @@ namespace VRVlog.LilToonExporter
             void CheckBudget(int frames)
             {
                 if (frames > maximumFrames)
-                    throw new InvalidOperationException(maximumFrames < HumanoidAnimationData.MaximumFramesPerAnimation
-                        ? "動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。"
-                        : "動くポーズのフレーム数が8192を超えました。クリップの長さやカーブの密度を減らしてください。");
+                    throw maximumFrames < HumanoidAnimationData.MaximumFramesPerAnimation
+                        ? new InvalidOperationException("動くポーズの合計フレーム数が32768を超えました。不要な項目を除外してください。")
+                        : new PoseFrameLimitException("動くポーズのフレーム数が8192を超えました。クリップの長さやカーブの密度を減らしてください。");
                 if (deadline.Elapsed.TotalSeconds > 30)
                     throw new InvalidOperationException("動くポーズの解析が30秒を超えました。クリップの長さやカーブの密度を減らしてください。");
             }

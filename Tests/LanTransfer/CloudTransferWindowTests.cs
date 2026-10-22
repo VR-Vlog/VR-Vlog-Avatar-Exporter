@@ -55,22 +55,34 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(detailed.DeclaringType, Is.EqualTo(typeof(AppTransferWindow)));
                 Assert.That(detailed.Name, Is.EqualTo("OpenDetailed"));
             }
+            // The board asks its third page whether it transfers the same way.
+            var transferring = (MethodInfo)exporter.GetMethod("EmbeddedTransferringMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(transferring != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (transferring != null)
+            {
+                Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
+            }
         }
 
-        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 10000)]
-        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 10001)]
-        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string path, int priority)
+        [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]
+        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "アプリに転送（通常）...", 1)]
+        public void AppTransferIsAMenuBarAndHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string name, int order)
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
-            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Single();
-            Assert.That(entry.menuItem, Is.EqualTo(path));
-            Assert.That(entry.validate, Is.False);
-            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu.
-            // The two entries are next to each other, the quick one first.
-            Assert.That(entry.priority, Is.EqualTo(priority));
+            var entries = typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
+            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu
+            // and where its export always was in the menu bar. The two entries are next to each
+            // other, the quick one first.
+            Assert.That(entries.Select(entry => (entry.menuItem, entry.validate, entry.priority)), Is.EquivalentTo(new[]
+            {
+                ("GameObject/VR Vlog/" + name, false, 10000 + order),
+                ("VR Vlog/" + name, false, 1000 + order),
+            }));
             var validation = typeof(AppTransferWindow).GetMethod(canOpen, flags);
-            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
-            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).menuItem, Is.EqualTo(path));
+            var validations = validation.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
+            Assert.That(validations.All(entry => entry.validate), Is.True);
+            Assert.That(validations.Select(entry => entry.menuItem), Is.EquivalentTo(new[] { "GameObject/VR Vlog/" + name, "VR Vlog/" + name }));
             var selection = Selection.objects;
             var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
             var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
@@ -108,7 +120,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
         {
             var exporter = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
-            var bound = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+            var bound = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
                 .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
@@ -360,9 +372,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             WithPrivacyPreference(() =>
             {
-                var type = typeof(AppTransferWindow);
+                var type = typeof(AppTransferPanel);
                 var avatar = new GameObject("vrvlog-app-transfer-privacy");
-                var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+                var window = new AppTransferPanel();
                 try
                 {
                     type.GetField("avatar", Instance).SetValue(window, avatar);
@@ -392,7 +404,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     CloudVrmTransferWindow.PrivacyConsentAccepted = true;
                     Assert.That(reason.Invoke(window, null), Is.Null);
                 }
-                finally { Object.DestroyImmediate(window); Object.DestroyImmediate(avatar); }
+                finally { Object.DestroyImmediate(avatar); }
             });
         }
 
@@ -402,19 +414,15 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var diagnostics = Type.GetType("VRVlog.LilToonExporter.Compatibility.DependencyDiagnostics, VRVlog.LilToonExporter.Compatibility", true);
             var installed = diagnostics.GetMethod("Installed").Invoke(null, null);
             var dependencyError = (string)diagnostics.GetMethod("Error").Invoke(null, new[] { installed });
-            var resolvable = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+            var resolvable = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
                 .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null) != null;
-            var window = ScriptableObject.CreateInstance<AppTransferWindow>();
-            try
-            {
-                var exporter = typeof(AppTransferWindow).GetProperty("Exporter", Instance).GetValue(window);
-                // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
-                Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
-                var problem = (string)typeof(AppTransferWindow).GetField("exporterProblem", Instance).GetValue(window);
-                if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
-                if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
-            }
-            finally { Object.DestroyImmediate(window); }
+            var window = new AppTransferPanel();
+            var exporter = typeof(AppTransferPanel).GetProperty("Exporter", Instance).GetValue(window);
+            // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
+            Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
+            var problem = (string)typeof(AppTransferPanel).GetField("exporterProblem", Instance).GetValue(window);
+            if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
+            if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
         }
 
         [Test]

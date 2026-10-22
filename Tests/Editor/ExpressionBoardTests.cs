@@ -219,16 +219,14 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ListCanBeRecordedOnlyWithinTheRecordRules()
+        public void ListOfAnyLengthCanBeRecorded()
         {
             var board = Board(null, new[] { Item(Clip("Face A")), Item(Clip("Face B")) });
             Assert.That(board.UsesRecordRoute, Is.False);
-            Assert.That(board.CanRecordList, Is.True);
             var repeated = Board(null, new[] { Item(Clip("Face A")), Item(Clip("Face A")) });
-            Assert.That(repeated.CanRecordList, Is.True, "A repeated name is numbered when recorded.");
-            var many = Board(null, Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 1).Select(index => Item(Clip("Face " + index))).ToArray());
-            Assert.That(many.CanRecordList, Is.False);
-            Assert.That(many.ExceedsLimit, Is.False, "The ordinary route still saves over the limit.");
+            Assert.That(repeated.ExportedCustom().Count, Is.EqualTo(2), "A repeated name is numbered when recorded.");
+            var many = Board(null, Enumerable.Range(0, 65).Select(index => Item(Clip("Face " + index))).ToArray());
+            Assert.That(many.ExportedCustom().Count, Is.EqualTo(65));
         }
 
         [Test]
@@ -373,19 +371,16 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void MoreThanTheLimitBlocksOnlyTheRecordRoute()
+        public void ARecordRouteOverSixtyFourFacesRecordsThemAll()
         {
-            var faces = Enumerable.Range(0, ExperimentalExpressionCaptureSession.MaximumExpressions + 3).Select(index => Item(Clip("face " + index))).ToArray();
+            var faces = Enumerable.Range(0, 67).Select(index => Item(Clip("face " + index))).ToArray();
             var board = Board(null, faces);
-            Assert.That(board.OverLimitBy, Is.EqualTo(3));
-            Assert.That(board.ExceedsLimit, Is.False, "The ordinary route records nothing, so the limit does not apply.");
+            Assert.That(board.ExportedCustom().Count, Is.EqualTo(67));
             board.Move(faces[0].Clip, Place.Excluded);
-            Assert.That(board.ExceedsLimit, Is.True);
-            Assert.That(board.OverLimitBy, Is.EqualTo(2));
-            board.Move(faces[1].Clip, Place.Excluded); board.Move(faces[2].Clip, Place.Slot(ExpressionPreset.happy));
-            Assert.That(board.OverLimitBy, Is.Zero);
-            Assert.That(board.ExceedsLimit, Is.False);
-            Assert.That(board.ExportedCustom().Count, Is.EqualTo(ExperimentalExpressionCaptureSession.MaximumExpressions));
+            Assert.That(board.UsesRecordRoute, Is.True);
+            Assert.That(board.ExportedCustom().Count, Is.EqualTo(66));
+            board.Move(faces[1].Clip, Place.Slot(ExpressionPreset.happy));
+            Assert.That(board.ExportedCustom().Count, Is.EqualTo(65));
         }
 
         [Test]

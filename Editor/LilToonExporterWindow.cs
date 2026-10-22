@@ -556,7 +556,13 @@ namespace VRVlog.LilToonExporter
             var warnings = new List<string>();
             var report = new ExportRecoveryReport();
             byte[] bytes;
-            try { bytes = create(new ExportRecoveryOptions(), report, warnings); }
+            // Poses over the app's limits are asked once here; a later retry
+            // from the recovery window reuses the choice saved for the avatar.
+            try
+            {
+                using (new PoseLimitChooser.Scope(source, interactive && !ExportFallbackConfirmation.IsBatchMode()))
+                    bytes = create(new ExportRecoveryOptions(), report, warnings);
+            }
             catch (OperationCanceledException) { return null; }
             catch (Exception exception)
             {
@@ -614,7 +620,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.4";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.5";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional
@@ -626,6 +632,14 @@ namespace VRVlog.LilToonExporter
         // assembly and namespace as the entry above.
         internal static System.Reflection.MethodInfo DetailedTransferMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferWindow", false), "OpenDetailed", typeof(GameObject));
+
+        // The same step as the expression board's third page: returns the panel as a VisualElement.
+        internal static System.Reflection.MethodInfo EmbeddedTransferMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded", typeof(GameObject));
+
+        // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
+        internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
 
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, Type parameter)
         {

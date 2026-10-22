@@ -105,7 +105,6 @@ namespace VRVlog.LilToonExporter
             // the session; the avatar remains in its own diagnostic scene.
             retainedPreview = preview; return true;
         }
-        internal const int MaximumExpressions = 64;
 
         internal ExperimentalExpressionCaptureSession(GameObject source) : this(source, true) { }
 
@@ -352,8 +351,6 @@ namespace VRVlog.LilToonExporter
                     pose.InstalledSourceId = entry.Id;
                     if (names.Contains(name))
                     { result.Skipped.Add(name + ": 同名の表情を登録済みです。"); continue; }
-                    if (Expressions.Count + staged.Count >= MaximumExpressions)
-                        throw new InvalidOperationException(ExporterLocalization.T("記録できる表情は64件までです。取り込む候補を絞ってください。"));
                     names.Add(name); staged.Add(pose); result.Imported.Add(name);
                 }
                 // A failure never publishes half an import or changes the preview.
@@ -399,7 +396,6 @@ namespace VRVlog.LilToonExporter
         {
             RequireValid();
             name = ValidateName(name);
-            if (Expressions.Count >= MaximumExpressions) throw new InvalidOperationException(ExporterLocalization.T("記録できる表情は64件までです。"));
             if (Expressions.Any(pose => pose.Name == name)) throw new InvalidOperationException(ExporterLocalization.T("同じ名前の表情があります。別の名前を入力してください。"));
             var pose = Snapshot(name);
             if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。変形を調整してから記録してください。"));
@@ -502,8 +498,7 @@ namespace VRVlog.LilToonExporter
             try { settings = JsonUtility.FromJson<Settings>(json); }
             catch (Exception error) { throw new InvalidOperationException(ExporterLocalization.T("記録設定を読み込めません。"), error); }
             if (settings == null || settings.Version != 1 || settings.MeshHashes == null ||
-                !settings.MeshHashes.SequenceEqual(Channels.Select(channel => channel.MeshHash)) || settings.Expressions == null ||
-                settings.Expressions.Count > MaximumExpressions)
+                !settings.MeshHashes.SequenceEqual(Channels.Select(channel => channel.MeshHash)) || settings.Expressions == null)
                 throw new InvalidOperationException(ExporterLocalization.T("記録設定の形式またはメッシュが一致しません。"));
             ValidatePose(settings.Baseline);
             var names = new HashSet<string>(StringComparer.Ordinal);
@@ -620,6 +615,7 @@ namespace VRVlog.LilToonExporter
                 if (!HasGeometryChange(pose) && string.IsNullOrEmpty(pose.InstalledSourceId))
                     throw new InvalidOperationException(pose.Name + ExporterLocalization.T(": 基準の顔と形状が同じです。"));
             }
+            expressions = MergeIdentical(expressions, recoveryReport);
             var exportCopy = NdmfExportPreparation.InstantiateOwnedCopy(Copy);
             exportCopy.name = Copy.name;
             var meshes = new List<Mesh>();
@@ -769,7 +765,7 @@ namespace VRVlog.LilToonExporter
                         }
                     }
                     mappedRecovery.Actions.Add(new ExportRecoveryAction { Id = action.Id, Kind = action.Kind, Material = material,
-                        Renderer = renderer, MenuRoot = action.MenuRoot, MenuOwner = action.MenuOwner, MenuPath = action.MenuPath });
+                        Renderer = renderer });
                 }
                 var bytes = UniVrmOneClickExporter.Export(exportCopy, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
@@ -781,7 +777,7 @@ namespace VRVlog.LilToonExporter
                     descriptorVisemes: visemes);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(bytes);
                 // The exporter's clone keeps this root scale and bakes it into the VRM.
-                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
+                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale, recoveryReport);
             }
             finally
             {
@@ -797,6 +793,25 @@ namespace VRVlog.LilToonExporter
             if (string.IsNullOrEmpty(name) || name.Length > 128 || name.Any(char.IsControl))
                 throw new InvalidOperationException(ExporterLocalization.T("表情名は制御文字を含まない1〜128文字で入力してください。"));
             return name;
+        }
+
+        // Recorded faces with exactly the same weights on every row are one
+        // face to the app, as menu faces are (VrmMenuExpressions.Add): the
+        // first in the list is written and each later one is listed in the
+        // result as merged into it. Presets hold their own faces, so none
+        // points at a merged one.
+        internal static Pose[] MergeIdentical(IEnumerable<Pose> poses, ExportRecoveryReport report = null)
+        {
+            var kept = new List<Pose>();
+            foreach (var pose in poses)
+            {
+                var same = kept.FirstOrDefault(other => other.Rows.Count == pose.Rows.Count && other.Rows.Zip(pose.Rows, (a, b) =>
+                    a.Path == b.Path && a.Shapes.SequenceEqual(b.Shapes) && a.Weights.SequenceEqual(b.Weights)).All(equal => equal));
+                if (same == null) { kept.Add(pose); continue; }
+                report?.Fallbacks.Record(ExportOutcome.Kept, ExporterLocalization.T(UniVrmOneClickExporter.MergedExpressionCategory), pose.Name,
+                    string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MergedExpressionFormat), same.Name));
+            }
+            return kept.ToArray();
         }
 
         internal static Pose ClonePose(Pose pose) => new Pose { Name = pose.Name, InstalledSourceId = pose.InstalledSourceId, Rows = pose.Rows.Select(row => new Row {
