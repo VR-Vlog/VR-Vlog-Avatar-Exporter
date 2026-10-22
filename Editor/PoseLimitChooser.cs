@@ -16,6 +16,8 @@ namespace VRVlog.LilToonExporter
     // Within the limits nothing is asked and every pose is kept. Over them a
     // normal export asks once (PoseLimitWindow); quick transfer and batch runs
     // use the choice saved for the avatar, or the default (drop from the end).
+    // A moving pose too large to keep also opens the window, but when the rest
+    // fits every other pose is kept and nothing is saved, as in quick transfer.
     internal static class PoseLimitChooser
     {
         sealed class EditorDialog : IPoseLimitDialog
@@ -65,13 +67,25 @@ namespace VRVlog.LilToonExporter
             {
                 if (!Dialog.Ask(plan, avatar)) throw new OperationCanceledException();
                 // The window only allows an answer within the limits; a test
-                // dialog may not, so the export still fits.
+                // dialog may not, so the export still fits. When everything
+                // fits (the window showed a pose too large to keep) nothing is
+                // dropped and the saved choice stays as it was.
                 plan.Choose(plan.Dropped);
                 scope.Answer = plan.Dropped;
-                ExportSettingsStore.SaveLimitChoice(avatar, plan.IsDefault ? Enumerable.Empty<string>() : plan.Dropped);
+                if (plan.Exceeds) Save(plan, avatar);
             }
             foreach (var row in plan.Rows.Where(row => !row.Keep)) session.LimitExcluded.Add(row.Id);
             Record(plan, warnings, report);
+        }
+
+        // This answer replaces the saved choice for the rows listed now; ids
+        // saved for poses not listed this time (left out in the review list,
+        // or removed for now) are kept. The default is not stored.
+        static void Save(PoseLimitPlan plan, GameObject avatar)
+        {
+            var listed = new HashSet<string>(plan.Rows.Select(row => row.Id), StringComparer.Ordinal);
+            var others = ExportSettingsStore.LoadLimitChoice(avatar).Where(id => !listed.Contains(id));
+            ExportSettingsStore.SaveLimitChoice(avatar, plan.IsDefault ? others : others.Concat(plan.Dropped));
         }
 
         static void Record(PoseLimitPlan plan, ICollection<string> warnings, ExportRecoveryReport report)

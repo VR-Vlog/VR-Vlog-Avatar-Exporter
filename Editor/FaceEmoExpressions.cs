@@ -674,19 +674,28 @@ namespace VRVlog.LilToonExporter
                 if (clip == null) throw new InvalidOperationException("FaceEmoに登録されたアニメーションGUIDを解決できません。");
                 entry.Name = path + " / " + clip.name;
                 entry.ExportName = exportName ?? clip.name;
-                PlayerSelection selected;
-                if (bindings == null)
-                {
-                    VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source);
-                    selected = ResolvePlayer(source.Controller, clip, clip);
-                }
-                else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, source);
-                if (bindings?.DeferPermanentOverrides == true) bindings.Defer(entry, selected);
-                else VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, selected.Layer, selected.WriteDefaults,
-                    excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State);
+                ReadClip(avatar, clip, entry, source, excludedPath, bindings);
             }
             catch (InvalidOperationException error) { entry.Error = error.Message; }
             source.Entries.Add(entry);
+        }
+
+        // The list-only export reads a listed clip FaceEmo registers through
+        // here too, so its permanent overrides and, for an entry whose Id
+        // starts with "faceemo/", the common DEFAULT FACE apply as they do here.
+        internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry, VrChatExpressionMenu.Source source,
+            Func<string, bool> excludedPath, BindingSnapshot bindings)
+        {
+            PlayerSelection selected;
+            if (bindings == null)
+            {
+                VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source);
+                selected = ResolvePlayer(source.Controller, clip, clip);
+            }
+            else selected = bindings.ReadClip(avatar, clip, entry, source.Controller, source);
+            if (bindings?.DeferPermanentOverrides == true) bindings.Defer(entry, selected);
+            else VrChatExpressionSampler.ApplyPermanentOverrides(avatar, source.Controller, entry, selected.Layer, selected.WriteDefaults,
+                excludedPath: bindings == null ? excludedPath : bindings.PreparedExcludedPath, metadata: source, sourceState: selected.State);
         }
 
         private static AnimationClip Resolve(object animation)
