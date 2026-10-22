@@ -13,7 +13,7 @@ namespace VRVlog.LilToonExporter
         internal bool SkipAll;
         // The export writes the board's list instead: no menu, gesture, FX,
         // authored or FaceEmo face is played, and nothing is said about it.
-        internal bool SkipPlayback;
+        internal bool SkipPlayback { get; set; }
         // With SkipPlayback, the board's list: each clip is read as one face,
         // in avatar-relative paths. Time is the board's frame, used when the
         // clip cannot be read as a gesture clip. Object keeps the behavior
