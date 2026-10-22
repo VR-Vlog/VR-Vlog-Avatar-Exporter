@@ -165,6 +165,22 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_EmissionMainStrength"), Is.EqualTo(1f));
         }
 
+        [Test] public void AMatcapThatMultipliesTheColorUsesTheLilToonMultiplyMode()
+        {
+            var shader = Shader.Find("VRChat/Mobile/MatCap Lit");
+            if (shader == null) Assert.Ignore("Install the VRChat SDK for its mobile MatCap shader.");
+            var matcap = Texture("matcap");
+            var source = Own(new Material(shader) { name = "Matcap" });
+            Assert.That(Substitute(source).GetFloat("_UseMatCap"), Is.EqualTo(0f), "The default white image multiplies by 1.");
+            source.SetTexture("_MatCap", matcap);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_MatCapTex"), Is.SameAs(matcap));
+            Assert.That(output.GetFloat("_MatCapBlendMode"), Is.EqualTo(3f));
+            Assert.That(output.GetFloat("_MatCapBlend"), Is.EqualTo(1f));
+            Assert.That(output.GetColor("_MatCapColor"), Is.EqualTo(Color.white));
+        }
+
         [Test] public void AShadeImageEqualToTheMainImageBecomesARatioToTheMainColor()
         {
             var main = Texture("main");

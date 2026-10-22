@@ -316,6 +316,56 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [TestCase(1f)]
+        [TestCase(.5f)]
+        public void MultiplyMatcapDarkensTheBaseAndShadeColorsByItsAverage(float blend)
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon for the MatCap properties.");
+            var source = new Material(shader);
+            var tint = new Color(.25f, .5f, 1f, 1f);
+            // The corners lie outside the circle that view-space normals reach.
+            var matcap = new Texture2D(16, 16, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point };
+            var created = new List<Material>();
+            try
+            {
+                var pixels = new Color[16 * 16];
+                for (var i = 0; i < pixels.Length; i++)
+                    pixels[i] = (i % 16 < 2 || i % 16 > 13) && (i / 16 < 2 || i / 16 > 13) ? Color.black : tint;
+                matcap.SetPixels(pixels); matcap.Apply();
+                source.SetColor("_Color", Color.white);
+                source.SetFloat("_UseShadow", 0f);
+                source.SetFloat("_UseMatCap", 1f);
+                source.SetTexture("_MatCapTex", matcap);
+                source.SetColor("_MatCapColor", Color.white);
+                source.SetFloat("_MatCapBlend", blend);
+                source.SetFloat("_MatCapBlendMode", 3f);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, null);
+                var expected = Color.Lerp(Color.white, tint, blend);
+                foreach (var name in new[] { "_Color", "_ShadeColor" })
+                {
+                    var color = fallback.GetColor(name).linear;
+                    Assert.AreEqual(expected.r, color.r, .01f, name);
+                    Assert.AreEqual(expected.g, color.g, .01f, name);
+                    Assert.AreEqual(expected.b, color.b, .01f, name);
+                }
+                Assert.IsNull(fallback.GetTexture("_MatcapTex"), "MToon would add it.");
+
+                // A blend mask varies over the surface, so it is left out as before.
+                source.SetTexture("_MatCapBlendMask", matcap);
+                Assert.AreEqual(Color.white, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.color));
+                source.SetTexture("_MatCapBlendMask", null);
+                source.SetFloat("_MatCapBlendMode", 1f);
+                Assert.AreEqual(Color.white, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.color), "An added MatCap stays separate.");
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(matcap);
+            }
+        }
+
         [Test]
         public void SecondShadowColorIsMixedIntoTheShadeColor()
         {

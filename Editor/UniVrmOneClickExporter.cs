@@ -1135,15 +1135,15 @@ namespace VRVlog.LilToonExporter
             switch (type)
             {
                 case MaterialColorType.color:
-                    var color = Color(source, "_Color", UnityEngine.Color.white);
+                    var color = Multiply(Color(source, "_Color", UnityEngine.Color.white), MatcapMultiplyFactor(source));
                     if (LilToonMaterialReader.IsFakeShadow(source)) color.a = 0f;
                     return color;
-                case MaterialColorType.shadeColor: return source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
+                case MaterialColorType.shadeColor: return Multiply(source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
                     ? MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white),
                         MobileMaterialMath.Shadow2ndShade(Color(source, "_ShadowColor", UnityEngine.Color.gray), Color(source, "_Shadow2ndColor", UnityEngine.Color.clear),
                             Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f)),
                         Float(source, "_ShadowStrength", 1f))
-                    : Color(source, "_Color", UnityEngine.Color.white);
+                    : Color(source, "_Color", UnityEngine.Color.white), MatcapMultiplyFactor(source));
                 // lilToon 2.3.4 scales emission by lerp(1, invLighting, _EmissionFluorescence),
                 // and invLighting is 0 under normal light. MToon emission is not
                 // light-dependent, so use that lit-scene value: 1 - fluorescence.
@@ -1185,5 +1185,52 @@ namespace VRVlog.LilToonExporter
         private static bool MatcapAdditive(Material material) =>
             material.HasProperty("_UseMatCap") && material.GetFloat("_UseMatCap") > 0.5f &&
             Mathf.RoundToInt(Float(material, "_MatCapBlendMode", 1f)) != 3;
+
+        // MToon only adds a MatCap. lilToon's multiply mode (3) gives
+        // lerp(col, col * matcap, _MatCapBlend * matcap.a) (lilToon 2.3.4
+        // lilBlendColor), so fold its average over the MatCap sphere into the
+        // base and shade colors instead. A blend mask varies over the surface
+        // and has no single value, so such a MatCap is still omitted.
+        internal static Color MatcapMultiplyFactor(Material material)
+        {
+            if (material == null || !material.HasProperty("_UseMatCap") || material.GetFloat("_UseMatCap") <= 0.5f ||
+                Mathf.RoundToInt(Float(material, "_MatCapBlendMode", 1f)) != 3 ||
+                Texture(material, "_MatCapBlendMask") != null) return UnityEngine.Color.white;
+            var tint = Color(material, "_MatCapColor", UnityEngine.Color.white);
+            var blend = Mathf.Clamp01(Float(material, "_MatCapBlend", 1f));
+            var texture = Texture(material, "_MatCapTex");
+            const int size = 64;
+            // lilToon's default MatCap image is white.
+            var pixels = texture != null ? TextureColors.ReadLinear(texture, size, size) : new[] { UnityEngine.Color.white };
+            var sum = Vector3.zero;
+            var count = 0;
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                if (texture != null)
+                {
+                    // Only the inscribed circle is sampled by view-space normals.
+                    var u = (i % size + .5f) / size - .5f;
+                    var v = (i / size + .5f) / size - .5f;
+                    if (u * u + v * v > .25f) continue;
+                }
+                var src = pixels[i] * tint.linear;
+                var alpha = blend * Mathf.Clamp01(pixels[i].a * tint.a);
+                sum += new Vector3(1 + alpha * (src.r - 1), 1 + alpha * (src.g - 1), 1 + alpha * (src.b - 1));
+                count++;
+            }
+            sum /= count;
+            return float.IsNaN(sum.x + sum.y + sum.z) || float.IsInfinity(sum.x + sum.y + sum.z)
+                ? UnityEngine.Color.white : new Color(Mathf.Max(0, sum.x), Mathf.Max(0, sum.y), Mathf.Max(0, sum.z), 1);
+        }
+
+        // Multiplies an sRGB material color by a linear factor; alpha is kept.
+        private static Color Multiply(Color srgb, Color linearFactor)
+        {
+            if (linearFactor == UnityEngine.Color.white) return srgb;
+            var linear = srgb.linear;
+            var result = new Color(linear.r * linearFactor.r, linear.g * linearFactor.g, linear.b * linearFactor.b).gamma;
+            result.a = srgb.a;
+            return result;
+        }
     }
 }

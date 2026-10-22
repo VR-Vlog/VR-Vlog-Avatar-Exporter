@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter
     // treats them as ordinary lilToon materials.
     internal static class UnsupportedShaderSubstitution
     {
-        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
+        internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色・MatCapのみ）: ";
         internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
         internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
@@ -198,6 +198,10 @@ namespace VRVlog.LilToonExporter
         static readonly string[] EmissionStrengths = { "_EmissionStrength", "_EmissionIntensity" };
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
+        // Shaders that multiply the surface color by a MatCap image, with the
+        // image's property name. VRChat's mobile MatCap shader returns
+        // albedo * matcap * lighting; lilToon's multiply mode (3) matches.
+        static readonly (string shader, string texture)[] MultiplyMatcaps = { ("VRChat/Mobile/MatCap Lit", "_MatCap") };
 
         static Material FromGeneric(Material source, SourceValues values, out bool colorSkipped)
         {
@@ -239,6 +243,7 @@ namespace VRVlog.LilToonExporter
 
             ApplyEmission(source, values, material);
             ApplyShade(values, material, main, color);
+            ApplyMatcap(source, values, material);
 
             foreach (var name in new[] { "_Cull", "_CullMode" })
                 if (values.TryFloat(name, out var cull) && (cull == 0 || cull == 1 || cull == 2)) { Set(material, "_Cull", cull); break; }
@@ -354,6 +359,23 @@ namespace VRVlog.LilToonExporter
         // lilToon multiplies its shadow color by the lit color unless a shadow
         // texture is given. A shade texture equal to the main image therefore
         // becomes a ratio to the main color.
+        static void ApplyMatcap(Material source, SourceValues values, Material material)
+        {
+            var shaderName = source.shader != null ? source.shader.name : "";
+            foreach (var (shader, texture) in MultiplyMatcaps)
+            {
+                if (shaderName != shader) continue;
+                // The shader's default image is white, which multiplies by 1.
+                if (!values.Texture(texture, out var image, out _, out _) || !Flat(image)) return;
+                material.SetTexture("_MatCapTex", image);
+                Set(material, "_UseMatCap", 1);
+                Set(material, "_MatCapBlendMode", 3);
+                Set(material, "_MatCapBlend", 1);
+                material.SetColor("_MatCapColor", Color.white);
+                return;
+            }
+        }
+
         static void ApplyShade(SourceValues values, Material material, Texture main, Color mainColor)
         {
             var hasColor = false; var shade = Color.white;
