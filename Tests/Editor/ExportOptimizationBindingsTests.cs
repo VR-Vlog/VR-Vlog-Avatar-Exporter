@@ -4,12 +4,13 @@ using System.Linq;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
-using UniGLTF.Extensions.VRMC_vrm;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.TestTools;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -56,7 +57,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Execute the installed UniVRM merger on an independent native
             // renderer; it keeps the first declaration rather than summing them.
-            var mergerType = typeof(Vrm10Instance).Assembly.GetType("UniVRM10.MorphTargetBindingMerger");
+            var mergerType = typeof(Vrm10Instance).Assembly.GetType("VRVlog.LilToonExporter.Vendor.UniVRM10.MorphTargetBindingMerger");
             Assert.That(mergerType, Is.Not.Null);
             var copy = Object.Instantiate(root);
             try
@@ -454,7 +455,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void MovingMaterialEvidenceFollowsMappedSlotsAndOwnedFallbackCopies(string kind, bool becomesInert)
         {
             var original = Skin(source, "face", "UE/JawOpen");
-            var material = Own(new Material(Shader.Find("VRM10/MToon10")) { name = "original material" });
+            var material = Own(new Material(Shader.Find(MToon10Meta.UnityShaderName)) { name = "original material" });
             material.SetColor("_Color", Color.red);
             material.SetColor("_EmissionColor", Color.black);
             material.mainTextureScale = new Vector2(2, 3); material.mainTextureOffset = new Vector2(.1f, .2f);
@@ -919,7 +920,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var target = routes[0].Renderer; var meshBeforeApply = target.sharedMesh; var materialsBeforeApply = target.sharedMaterials;
                 var settingsBeforeApply = clone.GetComponent<Vrm10Instance>().Vrm; var copies = 0;
                 var optimizedAuthored = custom ? settingsBeforeApply.Expression.CustomClips.Single() : settingsBeforeApply.Expression.Happy;
-                Assert.That(optimizedAuthored.name, Is.Not.EqualTo(expression.name), "Installed AAO must really rename its copied ScriptableObject.");
+                // AAO duplicates only the UniVRM types it compiles against, so
+                // the bundled clip reaches Apply unrenamed and unduplicated.
+                Assert.That(optimizedAuthored.name, Is.EqualTo(expression.name));
                 Assert.That(RegisteredAssetIdentity(preparation.ObjectRegistry, optimizedAuthored), Is.SameAs(capturedIdentity), "The asset registry identity must remain usable after Finish.");
                 var generatedCustom = Own(ScriptableObject.CreateInstance<VRM10Expression>()); generatedCustom.name = "generated custom(Clone)";
                 generatedCustom.MorphTargetBindings = new[] { new MorphTargetBinding(UnityEditor.AnimationUtility.CalculateTransformPath(target.transform, clone.transform), target.sharedMesh.GetBlendShapeIndex(routes[0].Shape), .1f) };

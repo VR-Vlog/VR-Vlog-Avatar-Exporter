@@ -1,0 +1,1705 @@
+{
+  "unity": "2022.3.22f1",
+  "filterFocused": [
+    "NdmfPreparationTests",
+    "NdmfBlinkPreparationTests",
+    "NdmfLostMorphFollowTests",
+    "InstalledNdmfNeutralExportTests",
+    "MaSceneReferencePreparationTests",
+    "AppearancePreparationTests",
+    "MaReactiveExpressionExportTests",
+    "MaDeletionExportTests",
+    "MaPermanentAppearanceExportTests",
+    "ExportOptimizationBindingsTests",
+    "ExperimentalExpressionCaptureTests"
+  ],
+  "ndmfMinimumAtCommit": {
+    "38d29c1": "1.6.0",
+    "62d19f0": "1.6.0",
+    "d6f720f": "1.6.0",
+    "9d294c3": "1.6.0",
+    "53f9773": "1.6.0"
+  },
+  "modularAvatarMinimumAtCommit": {
+    "38d29c1": "1.18.0",
+    "62d19f0": "1.18.0",
+    "d6f720f": "1.12.2",
+    "9d294c3": "1.12.2",
+    "53f9773": "1.12.2"
+  },
+  "packageSha256": {
+    "nadena.dev.ndmf@1.6.0": "bde2a2fd2782fa38c3c1300bfc5d7967a56757181d982ef68ebaa4e0dc636b9c",
+    "nadena.dev.ndmf@1.7.2": "9669c70fdf9d568f748680f1dedabf1b8b98d5059edc53800e3401e190cc17f6",
+    "nadena.dev.ndmf@1.7.10": "3f9a38f98a5df02856d1d1a886c01c3ce967c16ba1a282accc20dbb0881d953d",
+    "nadena.dev.ndmf@1.8.0": "829c2159bd1e350bd0ba600a736df0e9942d917c9c440c52fcd47ddef9de8ec4",
+    "nadena.dev.ndmf@1.8.3": "e43cdee949d30e09ff0be58d00965f69660271980675f68dc7af91b302409ad9",
+    "nadena.dev.modular-avatar@1.11.2": "efb15827bf717e21ce1e744a3a6396cf7119ac84a3be92d85ac38dbeab838660",
+    "nadena.dev.modular-avatar@1.12.2": "5ef9ed8217ae076100564be4299c073ca998b5c489cbfeca5b9ce6521eb86b31",
+    "nadena.dev.modular-avatar@1.12.5": "6d1f37a2d5c6945a52a6290992db6349cb54146301be258652e1c090ebb2d3db",
+    "nadena.dev.modular-avatar@1.13.0": "f06a6489ec721e4b25f4027db73a48b24ea9ccf7ee673c97268e6bacd951764d"
+  },
+  "sets": {
+    "P4": {
+      "ndmf": "1.6.0",
+      "modularAvatar": null,
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "P1": {
+      "ndmf": "1.7.2",
+      "modularAvatar": "1.12.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "P2": {
+      "ndmf": "1.8.3",
+      "modularAvatar": "1.12.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "F4": {
+      "ndmf": "1.6.0",
+      "modularAvatar": null,
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "F4b": {
+      "ndmf": "1.6.0",
+      "modularAvatar": null,
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "F1": {
+      "ndmf": "1.6.0",
+      "modularAvatar": "1.11.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "D1": {
+      "ndmf": "1.7.2",
+      "modularAvatar": "1.12.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "D2": {
+      "ndmf": "1.8.3",
+      "modularAvatar": "1.12.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "G4": {
+      "ndmf": "1.8.3",
+      "modularAvatar": null,
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "C2": {
+      "ndmf": "1.7.2",
+      "modularAvatar": "1.12.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "B1": {
+      "ndmf": "1.8.3",
+      "modularAvatar": "1.11.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "B2": {
+      "ndmf": "1.7.10",
+      "modularAvatar": "1.11.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "N1": {
+      "ndmf": "1.6.0",
+      "modularAvatar": "1.11.2",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "N2": {
+      "ndmf": "1.7.10",
+      "modularAvatar": "1.12.5",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "N3": {
+      "ndmf": "1.8.0",
+      "modularAvatar": "1.13.0",
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    },
+    "N4": {
+      "ndmf": "1.6.0",
+      "modularAvatar": null,
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "aao": null
+    }
+  },
+  "runs": [
+    {
+      "set": "P4",
+      "run": "focused",
+      "commit": "53f9773",
+      "pc": "PC 1",
+      "project": "N4",
+      "counts": {
+        "total": 342,
+        "passed": 210,
+        "failed": 20,
+        "skipped": 112
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 38,
+          "failed": 0,
+          "skipped": 17
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 10
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 10
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 142,
+          "failed": 20,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "P1",
+      "run": "focused",
+      "commit": "53f9773",
+      "pc": "PC 1",
+      "project": "D1",
+      "counts": {
+        "total": 342,
+        "passed": 265,
+        "failed": 11,
+        "skipped": 66
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 50,
+          "failed": 0,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 9,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 145,
+          "failed": 8,
+          "skipped": 9
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2
+      }
+    },
+    {
+      "set": "P2",
+      "run": "focused",
+      "commit": "53f9773",
+      "pc": "PC 1",
+      "project": "D2",
+      "counts": {
+        "total": 342,
+        "passed": 298,
+        "failed": 23,
+        "skipped": 21
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 54,
+          "failed": 1,
+          "skipped": 0
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 18,
+          "failed": 11,
+          "skipped": 0
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 2
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 14
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 154,
+          "failed": 8,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaSceneReferencePreparationTests.InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesSelectedAvatarWithoutASourceRootMarker": 2,
+        "MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy": 4,
+        "MaSceneReferencePreparationTests.InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar": 2,
+        "MaSceneReferencePreparationTests.InstalledMaUsesSelectedAvatarRelativePathWhenTheSourceHasAnEnclosingAvatarRoot": 1,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "F4",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "N4",
+      "counts": {
+        "total": 342,
+        "passed": 209,
+        "failed": 21,
+        "skipped": 112
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 38,
+          "failed": 0,
+          "skipped": 17
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 10
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 10
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 141,
+          "failed": 21,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExcludedObjectsBrokenByAnAvatarEditWaitInTheList": 1,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "F4b",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "N4",
+      "note": "second run of F4",
+      "counts": {
+        "total": 342,
+        "passed": 210,
+        "failed": 20,
+        "skipped": 112
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 38,
+          "failed": 0,
+          "skipped": 17
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 10
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 10
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 142,
+          "failed": 20,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "F1",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "N1",
+      "counts": {
+        "total": 342,
+        "passed": 234,
+        "failed": 42,
+        "skipped": 66
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 50,
+          "failed": 0,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 7,
+          "skipped": 3
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 15,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 3,
+          "skipped": 3
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 4,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 143,
+          "failed": 10,
+          "skipped": 9
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap": 2,
+        "AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters": 4,
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 1,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaDeletionExportTests.InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings": 3,
+        "MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry": 4,
+        "MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape": 2,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild": 6,
+        "MaReactiveExpressionExportTests.MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion": 1
+      }
+    },
+    {
+      "set": "D1",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "D1",
+      "counts": {
+        "total": 342,
+        "passed": 264,
+        "failed": 12,
+        "skipped": 66
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 50,
+          "failed": 0,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 9,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 144,
+          "failed": 9,
+          "skipped": 9
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "ExperimentalExpressionCaptureTests.SavedExcludedObjectsThatLeaveNoPreviewWaitInTheList": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2
+      }
+    },
+    {
+      "set": "D2",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "D2",
+      "counts": {
+        "total": 342,
+        "passed": 298,
+        "failed": 23,
+        "skipped": 21
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 54,
+          "failed": 1,
+          "skipped": 0
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 18,
+          "failed": 11,
+          "skipped": 0
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 2
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 3
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 14
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 154,
+          "failed": 8,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaSceneReferencePreparationTests.InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesSelectedAvatarWithoutASourceRootMarker": 2,
+        "MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy": 4,
+        "MaSceneReferencePreparationTests.InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar": 2,
+        "MaSceneReferencePreparationTests.InstalledMaUsesSelectedAvatarRelativePathWhenTheSourceHasAnEnclosingAvatarRoot": 1,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "G4",
+      "run": "focused",
+      "commit": "9d294c3",
+      "pc": "PC 1",
+      "project": "G4",
+      "counts": {
+        "total": 342,
+        "passed": 212,
+        "failed": 20,
+        "skipped": 110
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 39,
+          "failed": 0,
+          "skipped": 16
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 10
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 10
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 14
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 142,
+          "failed": 20,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    },
+    {
+      "set": "C2",
+      "run": "focused",
+      "commit": "d6f720f",
+      "pc": "PC 1",
+      "project": "C2",
+      "note": "earlier run",
+      "counts": {
+        "total": 342,
+        "passed": 239,
+        "failed": 13,
+        "skipped": 90
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 49,
+          "failed": 1,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 3,
+          "failed": 0,
+          "skipped": 9
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 144,
+          "failed": 9,
+          "skipped": 9
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "NdmfPreparationTests.UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy": 1
+      }
+    },
+    {
+      "set": "B1",
+      "run": "focused",
+      "commit": "62d19f0",
+      "pc": "PC 1",
+      "project": "B1",
+      "note": "earlier run",
+      "counts": {
+        "total": 342,
+        "passed": 266,
+        "failed": 52,
+        "skipped": 24
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 54,
+          "failed": 1,
+          "skipped": 0
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 18,
+          "failed": 11,
+          "skipped": 0
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 8,
+          "skipped": 2
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 15,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 4,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 14
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 152,
+          "failed": 10,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap": 2,
+        "AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters": 4,
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 2,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry": 4,
+        "MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape": 2,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild": 6,
+        "MaReactiveExpressionExportTests.MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion": 1,
+        "MaSceneReferencePreparationTests.InstalledMaBoneProxyResolvesItsPathUnderTheExportCopyRootWithoutASourceMarker": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesAnInactiveNestedArmatureWithItsDeclaredTargets": 1,
+        "MaSceneReferencePreparationTests.InstalledMaMergesSelectedAvatarWithoutASourceRootMarker": 2,
+        "MaSceneReferencePreparationTests.InstalledMaMergesValidDirectTargetWithMissingPathOnlyOnTheExportCopy": 4,
+        "MaSceneReferencePreparationTests.InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar": 2,
+        "MaSceneReferencePreparationTests.InstalledMaUsesSelectedAvatarRelativePathWhenTheSourceHasAnEnclosingAvatarRoot": 1,
+        "NdmfPreparationTests.InstalledModularAvatarMergesSleeveRigAndPreservesSourceAndExpression": 1
+      }
+    },
+    {
+      "set": "B2",
+      "run": "focused",
+      "commit": "62d19f0",
+      "pc": "PC 1",
+      "project": "B2",
+      "note": "earlier run",
+      "counts": {
+        "total": 342,
+        "passed": 233,
+        "failed": 19,
+        "skipped": 90
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 55,
+          "passed": 49,
+          "failed": 1,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 1,
+          "skipped": 9
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 4,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 143,
+          "failed": 10,
+          "skipped": 9
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 1,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry": 4,
+        "NdmfPreparationTests.UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy": 1
+      }
+    },
+    {
+      "set": "N1",
+      "run": "focused",
+      "commit": "38d29c1",
+      "pc": "PC 1",
+      "project": "N1",
+      "note": "earlier run",
+      "counts": {
+        "total": 341,
+        "passed": 226,
+        "failed": 34,
+        "skipped": 81
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 54,
+          "passed": 42,
+          "failed": 7,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 1,
+          "skipped": 9
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 4,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 143,
+          "failed": 19,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 1,
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaPermanentAppearanceExportTests.MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry": 4,
+        "NdmfPreparationTests.ActiveMergePreservesAnInactiveTargetAttachmentChain": 1,
+        "NdmfPreparationTests.ActiveSkinRetainsItsInactiveRigTagAndAncestors": 2,
+        "NdmfPreparationTests.InactiveAuthoringIsRetainedRegardlessOfRendererVisibility": 2,
+        "NdmfPreparationTests.MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf": 1,
+        "NdmfPreparationTests.UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy": 1
+      }
+    },
+    {
+      "set": "N2",
+      "run": "focused",
+      "commit": "38d29c1",
+      "pc": "PC 1",
+      "project": "N2",
+      "note": "earlier run",
+      "counts": {
+        "total": 341,
+        "passed": 229,
+        "failed": 31,
+        "skipped": 81
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 54,
+          "passed": 42,
+          "failed": 7,
+          "skipped": 5
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 1,
+          "skipped": 9
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 142,
+          "failed": 20,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 1,
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "NdmfPreparationTests.ActiveMergePreservesAnInactiveTargetAttachmentChain": 1,
+        "NdmfPreparationTests.ActiveSkinRetainsItsInactiveRigTagAndAncestors": 2,
+        "NdmfPreparationTests.InactiveAuthoringIsRetainedRegardlessOfRendererVisibility": 2,
+        "NdmfPreparationTests.MixedActiveAndInactiveAuthoringRetainsBothBeforeNdmf": 1,
+        "NdmfPreparationTests.UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy": 1
+      }
+    },
+    {
+      "set": "N3",
+      "run": "focused",
+      "commit": "38d29c1",
+      "pc": "PC 1",
+      "project": "N3",
+      "note": "earlier run",
+      "counts": {
+        "total": 341,
+        "passed": 281,
+        "failed": 36,
+        "skipped": 24
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 54,
+          "passed": 54,
+          "failed": 0,
+          "skipped": 0
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 0
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 8,
+          "skipped": 2
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 15,
+          "skipped": 0
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 29,
+          "failed": 0,
+          "skipped": 14
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 152,
+          "failed": 10,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "AppearancePreparationTests.ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap": 2,
+        "AppearancePreparationTests.ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters": 4,
+        "AppearancePreparationTests.InstalledMaResolvesShapeMaterialAndVisibilityBeforeBaseShape": 2,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarReplacementUsesFinalRendererKeyForNeutralWithoutAnAuthoredRoute": 1,
+        "InstalledNdmfNeutralExportTests.InstalledModularAvatarRetargetsMovedRendererDefaultFxAndAuthoredEndpointInRealVrm": 2,
+        "MaReactiveExpressionExportTests.AuthoredActivationKeepsInactiveDependentShape": 2,
+        "MaReactiveExpressionExportTests.MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload": 6,
+        "MaReactiveExpressionExportTests.MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild": 6,
+        "MaReactiveExpressionExportTests.MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion": 1
+      }
+    },
+    {
+      "set": "N4",
+      "run": "focused",
+      "commit": "38d29c1",
+      "pc": "PC 1",
+      "project": "N4",
+      "note": "earlier run",
+      "counts": {
+        "total": 341,
+        "passed": 209,
+        "failed": 20,
+        "skipped": 112
+      },
+      "fixtures": {
+        "NdmfPreparationTests": {
+          "total": 54,
+          "passed": 37,
+          "failed": 0,
+          "skipped": 17
+        },
+        "NdmfBlinkPreparationTests": {
+          "total": 2,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 2
+        },
+        "NdmfLostMorphFollowTests": {
+          "total": 10,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 10
+        },
+        "InstalledNdmfNeutralExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "MaSceneReferencePreparationTests": {
+          "total": 29,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 29
+        },
+        "AppearancePreparationTests": {
+          "total": 12,
+          "passed": 2,
+          "failed": 0,
+          "skipped": 10
+        },
+        "MaReactiveExpressionExportTests": {
+          "total": 15,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 15
+        },
+        "MaDeletionExportTests": {
+          "total": 6,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 6
+        },
+        "MaPermanentAppearanceExportTests": {
+          "total": 4,
+          "passed": 0,
+          "failed": 0,
+          "skipped": 4
+        },
+        "ExportOptimizationBindingsTests": {
+          "total": 43,
+          "passed": 28,
+          "failed": 0,
+          "skipped": 15
+        },
+        "ExperimentalExpressionCaptureTests": {
+          "total": 162,
+          "passed": 142,
+          "failed": 20,
+          "skipped": 0
+        }
+      },
+      "failedCases": {
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces": 2,
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport": 4,
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded": 1,
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed": 2,
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave": 2,
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed": 1,
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks": 2,
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName": 1,
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload": 1,
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces": 4
+      }
+    }
+  ]
+}

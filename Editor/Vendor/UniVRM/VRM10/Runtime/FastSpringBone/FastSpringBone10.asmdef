@@ -1,0 +1,25 @@
+{
+    "name": "VRVlog.LilToonExporter.Vendor.FastSpringBone10",
+    "rootNamespace": "",
+    "references": [
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:78f7730ea4d4956c99d01054dce3aa29"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.burst",
+            "expression": "0.0.1",
+            "define": "ENABLE_SPRINGBONE_BURST"
+        }
+    ],
+    "noEngineReferences": false
+}

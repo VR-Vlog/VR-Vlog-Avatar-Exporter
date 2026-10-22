@@ -13,7 +13,7 @@
 - 判定は `DependencyPolicy.SupportsModularAvatarAppearance` に置き、`X.Y.Z` の数字だけの正式版で、1.18.0 以上 1.19.0 未満のときに通す。プレリリースとビルドメタデータ付きは止める。
 - 固定の対象になるコンポーネントがあるときだけ、MA のコンポーネントの型が入っているアセンブリから `PackageInfo.FindForAssembly` でパッケージを引き、`nadena.dev.modular-avatar` の版を読む。範囲外なら、リフレクションに入る前に、入っている版・対応範囲・直し方（VCC／ALCOM で 1.18.x に変更）・アバターは変更していないこと・これらのコンポーネントがなければどの版でも書き出せることを表示して止める。文言は `DependencyPolicy.ModularAvatarAppearanceError` に置き、ほかの Exporter のメッセージと同じく `Editor/Locales/*.json` で翻訳する。
 - 固定の対象になるコンポーネントがないアバターは、これまでと同じく MA の版を見ない。
-- NDMF の下限 `ndmfMinimum` は 1.8.3 のまま変えない。
+- NDMF の下限 `ndmfMinimum` は 1.8.3 のまま変えない。（2026-10-22 追記: `2026-10-22-ndmf-lower-range.md` で 1.6.0 に下げた。）
 
 ## 確認したこと
 
@@ -22,7 +22,7 @@
 - 1.19.0-alpha.1 と alpha.2 では `AnalysisResult` が `Shapes` と `InitialActions` に変わり、`InitialStates` と `TargetProp` がなくなった。固定はこれらを読むので動かない。上限を 1.19.0 未満にした。
 - Unity の実プロジェクトで MA 1.13.4 を入れると、これまでも固定の時点でメッセージを出して止まっていた（対応範囲は出ていなかった）。
 - MA の VPM リストでは、1.18.0 が NDMF 1.11.0 以上、1.18.1〜1.18.3 が 1.14.3 以上、1.18.4〜1.18.7 が 1.14.7 以上を要求する。MA 1.18.x を入れたプロジェクトでは、NDMF は VCC／ALCOM がこの条件で揃える。
-- NDMF の下限 1.8.3 は、MA を使わない NDMF だけの機能のための値で、Exporter が呼ぶ NDMF の API は 1.8.0〜1.15.0-beta.2 で同じだった。1.8.0 より前は `INDMFPlatformProvider` などがないので、下限は下げられない。
+- NDMF の下限 1.8.3 は、MA を使わない NDMF だけの機能のための値で、Exporter が呼ぶ NDMF の API は 1.8.0〜1.15.0-beta.2 で同じだった。1.8.0 より前は `INDMFPlatformProvider` などがないので、下限は下げられない。（2026-10-22 追記: 1.8.0 より前はプラットフォームを使わない形で処理するようにして、下限を 1.6.0 に下げた。`2026-10-22-ndmf-lower-range.md` を参照。）
 - Unity 2022.3.22f1 の実プロジェクトで確かめた（詳細は `Compatibility/Evidence/ModularAvatarRange/`）。MA 1.18.0（NDMF 1.11.0）と 1.18.7（NDMF 1.14.8）では、表示の固定のテスト 33 件がすべて通った。1.18.0 の構成では exporter-integration も 2131 件中 2122 件が通り、失敗は 0 件だった。MA 1.13.4 では、固定の対象がある 25 件が新しいメッセージで止まった。
 - NDMF 1.8.3 と 1.11.0 では、書き出し中に出た NDMF のエラー表示から選ぶと、書き出し用の複製ではなく同じ名前の元のオブジェクトが選ばれる。1.14.8 では複製が選ばれる。書き出されるファイルは変わらないので、NDMF の下限は変えない。
 

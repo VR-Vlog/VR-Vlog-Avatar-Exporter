@@ -7,28 +7,6 @@ public static class DependencyCompatibilityTests
     static void Check(bool value, string message) { count++; if (!value) throw new Exception(message); }
     public static void Run()
     {
-        Check(DependencyPolicy.UniVrmRange == "0.131.x", "Accepted UniVRM patch line");
-        Check(DependencyPolicy.UniVrmVersions == "0.131.0, 0.131.1, 0.131.2, 0.131.3", "Verified UniVRM patches");
-        var line = new[] { "0.131.0", "0.131.1", "0.131.2", "0.131.3", "0.131.4", "0.131.10" };
-        foreach (var version in line)
-        {
-            Check(DependencyPolicy.SupportsUniVrm(version), "Patch line release " + version);
-            Check(DependencyPolicy.UniVrmError(version, version) == null, "Matched supported pair " + version);
-            DependencyPolicy.RequireUniVrm(version, version);
-            foreach (var other in line)
-                if (other != version) Check(DependencyPolicy.UniVrmError(version, other) != null, "Mixed pair must fail");
-        }
-        foreach (var version in new[] { null, "", "0.130.1", "0.130.131", "0.132.0", "1.131.0", "0.13.1", "0.1310.0", "0.131.01",
-            "0.131.1-preview.1", "0.131.4-beta.1", "0.131.1+local", " 0.131.1", "0.131.1 ", "0.131.1.0", "0.131", "0.131.x" })
-        {
-            Check(!DependencyPolicy.SupportsUniVrm(version), "Unregistered version cannot select a backend");
-            Check(DependencyPolicy.UniVrmError(version, "0.131.1") != null, "Invalid VRM");
-            Check(DependencyPolicy.UniVrmError("0.131.1", version) != null, "Invalid glTF");
-            bool rejected = false;
-            try { DependencyPolicy.RequireUniVrm(version, version); }
-            catch (InvalidOperationException) { rejected = true; }
-            Check(rejected, "Direct export also fails before conversion");
-        }
         Check(DependencyPolicy.VrchatSdkMinimum == "3.5.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
         // A pre-release counts as its X.Y.Z (VRCAnimatorPlayAudio is the same in every 3.5.2+ pre-release).
         foreach (var version in new[] { "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6",
@@ -83,10 +61,10 @@ public static class DependencyCompatibilityTests
             "Caller-supplied translation applies to the unknown MA version format");
         Check(DependencyPolicy.ModularAvatarAppearanceError("1.11.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.11.1", StringComparison.Ordinal),
             "Caller-supplied translation applies to the MA format");
-        Check(DependencyPolicy.NdmfMinimum == "1.8.3" && DependencyPolicy.NdmfPrereleases == "1.15.0-beta.1, 1.15.0-beta.2", "NDMF range");
-        foreach (var version in new[] { "1.8.3", "1.13.0", "1.14.8", "1.15.0", "1.99.0", "1.15.0-beta.1", "1.15.0-beta.2" })
+        Check(DependencyPolicy.NdmfMinimum == "1.6.0" && DependencyPolicy.NdmfPrereleases == "1.15.0-beta.1, 1.15.0-beta.2", "NDMF range");
+        foreach (var version in new[] { "1.6.0", "1.8.3", "1.13.0", "1.14.8", "1.15.0", "1.99.0", "1.15.0-beta.1", "1.15.0-beta.2" })
             Check(DependencyPolicy.SupportsNdmf(version), "NDMF bridge " + version);
-        foreach (var version in new[] { null, "", "1.8.2", "0.9.0", "2.0.0", "1.15.0-beta.0", "1.15.0-beta.3", "1.14.8-alpha.0", "1.14.8+local",
+        foreach (var version in new[] { null, "", "1.5.7", "0.9.0", "2.0.0", "1.15.0-beta.0", "1.15.0-beta.3", "1.14.8-alpha.0", "1.14.8+local",
             "1.14.8.0", "1.14", " 1.14.8", "01.14.8" })
             Check(!DependencyPolicy.SupportsNdmf(version), "NDMF bridge stops " + (version ?? "null"));
         Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");

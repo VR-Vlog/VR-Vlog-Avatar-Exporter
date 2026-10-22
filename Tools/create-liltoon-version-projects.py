@@ -1,9 +1,10 @@
 """Create one empty Unity test project per lilToon release, for the focused runner.
 
 Each project is Unity 2022.3 with the Built-in render pipeline. It embeds the
-official lilToon VPM release ZIP for that version, copies the pinned UniVRM
-(and optional VRChat SDK / NDMF / Modular Avatar) packages supplied by the
-caller, and references this exporter checkout with `file:` and `testables`.
+official lilToon VPM release ZIP for that version, copies the optional packages
+supplied by the caller (VRChat SDK / NDMF / Modular Avatar / AAO, and a project
+UniVRM of any version; the exporter bundles its own UniVRM), and references this
+exporter checkout with `file:` and `testables`.
 lilToon is downloaded from its GitHub release (or a pre-filled cache); the ZIP
 must match the SHA-256 listed below (or one given with --sha256) and is
 recorded. Nothing is committed or installed into this repository.
@@ -42,12 +43,14 @@ RELEASE_SHA256 = {
     '2.4.1': '90f8bed7cdd7435f4904bca3d885a81a1811bd25036d712f21942c531d940247',
 }
 EXPORTER = 'com.vrvlog.liltoon-vrm-exporter'
+# A project's own UniVRM is optional and may be any version; it only checks that
+# the bundled copy coexists with it.
 UNIVRM = ('com.vrmc.gltf', 'com.vrmc.vrm')
 # Optional authoring packages needed by the exporter-behavior/integration profiles.
 OPTIONAL = ('com.vrchat.base', 'com.vrchat.avatars', 'nadena.dev.ndmf',
             'nadena.dev.modular-avatar', 'com.anatawa12.avatar-optimizer')
 # Fixed registry packages from Compatibility/README.md step 3 plus the modules
-# the UniVRM, VRChat SDK and exporter assemblies load.
+# the bundled UniVRM, VRChat SDK and exporter assemblies load.
 REGISTRY = {
     'com.unity.collections': '2.1.4',
     'com.unity.test-framework': '1.4.6',
@@ -72,8 +75,10 @@ def read_package(folder):
     return data
 
 
-def dependency_packages(folder, policy):
-    """Return {name: (path, version)} for the caller's pinned dependency packages."""
+def dependency_packages(folder):
+    """Return {name: (path, version)} for the caller's optional packages; None means none."""
+    if folder is None:
+        return {}
     if not Path(folder).is_dir():
         raise SystemExit('--dependencies is not a folder: ' + str(folder))
     found = {}
@@ -87,14 +92,9 @@ def dependency_packages(folder, policy):
         if name in found:
             raise SystemExit('Duplicate package in --dependencies: ' + name)
         found[name] = (child, data['version'])
-    missing = [name for name in UNIVRM if name not in found]
-    if missing:
-        raise SystemExit('--dependencies is missing ' + ', '.join(missing))
-    versions = {found[name][1] for name in UNIVRM}
-    # Any release of the accepted patch line, listed in uniVrm.versions or not,
-    # so a new patch can be verified before it is listed.
-    if len(versions) != 1 or not unity_packages.univrm_support(policy, next(iter(versions)))['supported']:
-        raise SystemExit('UniGLTF and VRM must be one supported UniVRM version (a release of uniVrm.vpmRange in Compatibility/dependencies.json)')
+    present = [name for name in UNIVRM if name in found]
+    if present and (len(present) != len(UNIVRM) or len({found[name][1] for name in UNIVRM}) != 1):
+        raise SystemExit('A project UniVRM needs com.vrmc.gltf and com.vrmc.vrm of the same version')
     return found
 
 
@@ -205,8 +205,9 @@ def resolved_versions(project, names):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--output', required=True, type=Path, help='Folder that receives one project per version')
-    parser.add_argument('--dependencies', required=True, type=Path,
-                        help='Folder of unpacked pinned packages: com.vrmc.gltf and com.vrmc.vrm, optionally VRChat SDK, NDMF, MA, AAO')
+    parser.add_argument('--dependencies', type=Path,
+                        help='Folder of unpacked optional packages: VRChat SDK, NDMF, MA, AAO, or a project UniVRM '
+                             '(com.vrmc.gltf and com.vrmc.vrm of any one version)')
     parser.add_argument('--versions', default=','.join(DEFAULT_VERSIONS), help='Comma-separated lilToon releases')
     parser.add_argument('--exporter', type=Path, default=ROOT, help='Exporter checkout referenced with file: (default: this checkout)')
     parser.add_argument('--liltoon-cache', type=Path, help='Folder of jp.lilxyzw.liltoon-<version>.zip (default: OUTPUT/_liltoon)')
@@ -230,8 +231,7 @@ def main():
         if version not in versions or not re.fullmatch(r'[0-9a-f]{64}', digest):
             raise SystemExit('--sha256 must be VERSION=<64 lowercase hex digits> for a requested version: ' + item)
         pinned[version] = digest
-    policy = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-    dependencies = dependency_packages(args.dependencies, policy)
+    dependencies = dependency_packages(args.dependencies)
     exporter = args.exporter.resolve()
     if read_package(exporter)['name'] != EXPORTER:
         raise SystemExit('--exporter is not the exporter package: ' + str(exporter))

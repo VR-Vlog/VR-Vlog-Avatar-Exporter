@@ -11,19 +11,8 @@
       "maximum": "2.4.1"
     }
   },
-  "uniVrm": {
-    "adapter": "univrm-0.131",
-    "vpmRange": "0.131.x",
-    "releaseVersion": "0.131.0",
-    "versions": {
-      "0.131.0": "3b99078d26b362733ad9bf463f98c83b8a1b4c9f",
-      "0.131.1": "66558744b7fa50790d7cec217c6dd94b58c7441e",
-      "0.131.2": "a4711bbf8c4d10659d3e5568c2e3d7d595005e51",
-      "0.131.3": "9750dadc592f421c356bf0376c73e61abbe323e3"
-    }
-  },
   "authoring": {
-    "ndmfMinimum": "1.8.3",
+    "ndmfMinimum": "1.6.0",
     "ndmfMajor": 1,
     "ndmfReference": "1.14.8",
     "modularAvatarReference": "1.18.7",

@@ -90,6 +90,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             lock (gate)
             {
                 if (master == null) throw new ObjectDisposedException(nameof(CloudVrmTransferSource));
+                // Readers already closed (an upload that ended, a saved copy) need nothing more.
+                readers.RemoveAll(closed => !closed.CanRead);
                 var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 64 * 1024, FileOptions.SequentialScan);
                 readers.Add(reader);
                 return reader;

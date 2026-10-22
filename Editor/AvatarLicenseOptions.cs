@@ -1,6 +1,6 @@
 using System;
-using UniGLTF.Extensions.VRMC_vrm;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 
 namespace VRVlog.LilToonExporter
 {

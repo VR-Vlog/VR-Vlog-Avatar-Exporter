@@ -26,10 +26,6 @@ on:
       candidate_run_id:
         description: Successful Build release candidate run for this commit and ZIP
         required: true
-      univrm_version:
-        description: Pinned UniVRM version
-        required: true
-        default: 0.131.0
 
 permissions: {}
 
@@ -52,7 +48,6 @@ jobs:
       expected_commit: ${{ steps.candidate.outputs.expected_commit }}
       package_sha256: ${{ steps.candidate.outputs.package_sha256 }}
       candidate_run_id: ${{ steps.candidate.outputs.candidate_run_id }}
-      univrm_version: ${{ steps.candidate.outputs.univrm_version }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -88,7 +83,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EXPORTER_VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.version || inputs.version }}
-          UNIVRM_VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.univrm_version || inputs.univrm_version }}
           RELEASE_CHANNEL: ${{ github.event_name == 'workflow_run' && 'beta' || inputs.channel }}
           EXPECTED_COMMIT: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.expected_commit || inputs.expected_commit }}
         run: |
@@ -124,57 +118,10 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{64}", expected) or actual != expected:
               raise SystemExit("Built ZIP differs from the validated release candidate: " + actual)
           PY
-      - name: Build UniVRM dependency packages
-        env:
-          UNIVRM_VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.univrm_version || inputs.univrm_version }}
-        run: |
-          # Rebuilt dependency ZIPs never match the published bytes (entry order and
-          # mtimes differ), and the listing builder lists the newest release's copy.
-          # Attach them only for a UniVRM version the canonical listing lacks.
-          published=$(python3 - <<'PY'
-          import json, os, urllib.request
-          url = "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/index.json"
-          request = urllib.request.Request(url, headers={"Cache-Control": "no-cache"})
-          with urllib.request.urlopen(request, timeout=60) as response:
-              packages = json.load(response)["packages"]
-          version = os.environ["UNIVRM_VERSION"]
-          listed = [version in packages.get(name, {}).get("versions", {}) for name in ("com.vrmc.gltf", "com.vrmc.vrm")]
-          if any(listed) and not all(listed):
-              raise SystemExit("Only one UniVRM dependency package is published for this version")
-          print("true" if all(listed) else "false")
-          PY
-          )
-          if [ "$published" = true ]; then
-            echo "UniVRM ${UNIVRM_VERSION} dependency packages are already published; the new release reuses them."
-            exit 0
-          fi
-          UNIVRM_COMMIT=$(python3 -c 'import json, os; d=json.load(open("Compatibility/dependencies.json")); print(d["uniVrm"]["versions"][os.environ["UNIVRM_VERSION"]])')
-          curl --fail --location --retry 3 "https://github.com/vrm-c/UniVRM/archive/${UNIVRM_COMMIT}.tar.gz" -o /tmp/univrm.tar.gz
-          mkdir -p /tmp/univrm artifacts/unigltf artifacts/vrm10
-          tar -xzf /tmp/univrm.tar.gz -C /tmp/univrm --strip-components=1
-          rsync -a /tmp/univrm/Packages/UniGLTF/ artifacts/unigltf/
-          rsync -a /tmp/univrm/Packages/VRM10/ artifacts/vrm10/
-          cp /tmp/univrm/LICENSE.txt artifacts/unigltf/UPSTREAM-LICENSE.txt
-          cp /tmp/univrm/LICENSE.txt artifacts/vrm10/UPSTREAM-LICENSE.txt
-          python3 - <<'PY'
-          import json, os
-          gltf = json.load(open("artifacts/unigltf/package.json", encoding="utf-8-sig"))
-          vrm = json.load(open("artifacts/vrm10/package.json", encoding="utf-8-sig"))
-          assert gltf["name"] == "com.vrmc.gltf"
-          assert vrm["name"] == "com.vrmc.vrm"
-          assert gltf["version"] == os.environ["UNIVRM_VERSION"]
-          assert vrm["version"] == os.environ["UNIVRM_VERSION"]
-          assert vrm["dependencies"]["com.vrmc.gltf"] == os.environ["UNIVRM_VERSION"]
-          assert "com.vrmc.vrmshaders" not in gltf.get("dependencies", {})
-          assert "com.vrmc.vrmshaders" not in vrm.get("dependencies", {})
-          PY
-          (cd artifacts/unigltf && zip -qr ../com.vrmc.gltf-${UNIVRM_VERSION}.zip .)
-          (cd artifacts/vrm10 && zip -qr ../com.vrmc.vrm-${UNIVRM_VERSION}.zip .)
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.version || inputs.version }}
-          UNIVRM_VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.univrm_version || inputs.univrm_version }}
           EXPECTED_COMMIT: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.expected_commit || inputs.expected_commit }}
         run: |
           if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
@@ -195,9 +142,6 @@ jobs:
           PY
           mapfile -t release_flags < release-flags.txt
           assets=("artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip")
-          if [ -f "artifacts/com.vrmc.gltf-${UNIVRM_VERSION}.zip" ]; then
-            assets+=("artifacts/com.vrmc.gltf-${UNIVRM_VERSION}.zip" "artifacts/com.vrmc.vrm-${UNIVRM_VERSION}.zip")
-          fi
           gh release create "v${VERSION}" \
             "${assets[@]}" \
             --title "VR Vlog lilToon VRM Exporter ${VERSION}" \

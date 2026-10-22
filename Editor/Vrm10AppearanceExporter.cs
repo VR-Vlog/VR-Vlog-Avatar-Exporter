@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
-using VrmLib;
+using VRVlog.LilToonExporter.Vendor.VrmLib;
 
 namespace VRVlog.LilToonExporter
 {

@@ -14,9 +14,10 @@ MITライセンスで公開しています。
 | --- | --- |
 | Unity | 2022.3 |
 | lilToon | バージョンを問わず書き出せます。アプリではlilToon 2.3.4として描画するので2.3.4を推奨します（0.12.0-beta.4以降。0.12.0-beta.1〜beta.3は2.0.0〜2.3.4、安定版0.11.15は2.3.4だけ）。VCC・ALCOMのほか、unitypackageで`Assets`の下に入れたlilToonでも書き出せます |
-| UniVRM | 0.131.x（0.131.0〜0.131.3で確認済み）。VCC・ALCOMでは自動導入 |
+| UniVRM | 導入不要。UniVRM 0.131.4を名前空間・シェーダー名を変えて同梱しているので、導入済みのUniVRMとはバージョンにかかわらず衝突しません |
 | VR Vlog | 0.1.1（ビルド345）以降 |
 | VRChat SDK | 任意。3.5.0以上3.11.0未満（3.11.0未満のベータ版を含む）で確認しています。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、3.5.2以上3.11.0未満が必要です |
+| NDMF | 任意。Modular AvatarなどNDMFで動くツールを使うアバターは、NDMF 1.6.0以上2.0.0未満の正式版が必要です。Modular Avatar 1.19.0-alpha.2用に、プレリリースの1.15.0-beta.1・beta.2も通します |
 | Modular Avatar | 任意。Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは1.12.2以上1.19.0未満か、プレリリースの1.19.0-alpha.2。これらを使わないアバターはバージョンを問いません |
 
 Modular Avatarを使う場合は、事前に導入してください。
@@ -54,12 +55,10 @@ https://vrvlog.fun/exporter/index.json
 <summary>ZIPで手動導入する場合</summary>
 
 1. [インストールページ](https://vrvlog.fun/exporter/)の「ZIPで導入」を開く。
-2. エクスポーター・UniGLTF・VRMの3つのZIPをダウンロードする。
-3. `Packages` 内の別々のフォルダーへ展開する。
-4. 各フォルダーの直下に `package.json` があることを確認する。
+2. エクスポーターのZIPをダウンロードする。
+3. `Packages` 内のフォルダーへ展開する。
+4. フォルダーの直下に `package.json` があることを確認する。
 5. Unityの読み込みが終わるのを待つ。
-
-同じUniVRMパッケージを重複して導入しないでください。
 
 </details>
 

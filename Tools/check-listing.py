@@ -38,7 +38,7 @@ def zip_manifest(data):
         return json.loads(archive.read(manifests[0]).decode("utf-8-sig"))
 
 
-def validate(listing, package, source, compatibility, *, expected_version=None,
+def validate(listing, package, source, *, expected_version=None,
              preserve_version="0.11.11", fixture_base=None, read_zip=download):
     expected_version = expected_version or package["version"]
     require(package["name"] == EXPORTER, "Unexpected current package name")
@@ -47,9 +47,8 @@ def validate(listing, package, source, compatibility, *, expected_version=None,
     if fixture_base is not None:
         require(fixture_base == FIXTURE_BASE, "Only the explicit loopback fixture is allowed")
     versions = listing.get("packages", {})
+    # UniVRM is bundled inside the exporter, so no dependency package is listed beside it.
     required = [(EXPORTER, expected_version), (EXPORTER, preserve_version)]
-    dependency_version = compatibility["uniVrm"]["releaseVersion"]
-    required += [(name, dependency_version) for name in sorted(package["vpmDependencies"])]
     checked = []
     for name, version in dict.fromkeys(required):
         entry = versions.get(name, {}).get("versions", {}).get(version)
@@ -96,14 +95,13 @@ def main():
     parser.add_argument("--listing", required=True, type=Path)
     parser.add_argument("--package", type=Path, default=ROOT / "package.json")
     parser.add_argument("--source", type=Path, default=ROOT / "source.json")
-    parser.add_argument("--compatibility", type=Path, default=ROOT / "Compatibility/dependencies.json")
     parser.add_argument("--expected-version")
     parser.add_argument("--preserve-version", default="0.11.11")
     parser.add_argument("--fixture-base-url")
     args = parser.parse_args()
     read_json = lambda path: json.loads(path.read_text(encoding="utf-8-sig"))
     result = validate(read_json(args.listing), read_json(args.package), read_json(args.source),
-                      read_json(args.compatibility), expected_version=args.expected_version,
+                      expected_version=args.expected_version,
                       preserve_version=args.preserve_version, fixture_base=args.fixture_base_url)
     print(json.dumps(result, indent=2))
 

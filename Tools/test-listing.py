@@ -16,13 +16,11 @@ spec.loader.exec_module(check)
 class ListingTests(unittest.TestCase):
     def setUp(self):
         self.package = {"name": check.EXPORTER, "version": "0.11.11-beta.1",
-                        "vpmDependencies": {"com.vrmc.gltf": "0.131.x", "com.vrmc.vrm": "0.131.x"}}
+                        "vpmDependencies": {}}
         self.source = {"id": "com.vrvlog.packages", "url": "https://example.invalid/index.json"}
-        self.compatibility = {"uniVrm": {"releaseVersion": "0.131.0"}}
         self.listing = dict(self.source, packages={})
         self.zips = {}
-        for name, version in [(check.EXPORTER, "0.11.11"), (check.EXPORTER, "0.11.11-beta.1"),
-                              ("com.vrmc.gltf", "0.131.0"), ("com.vrmc.vrm", "0.131.0")]:
+        for name, version in [(check.EXPORTER, "0.11.11"), (check.EXPORTER, "0.11.11-beta.1")]:
             manifest = dict(self.package, version=version) if name == check.EXPORTER else {"name": name, "version": version}
             url = f"https://github.com/{check.REPOSITORY}/releases/download/v0.11.11-beta.1/{name}-{version}.zip"
             if name == check.EXPORTER:
@@ -40,16 +38,16 @@ class ListingTests(unittest.TestCase):
         return stream.getvalue()
 
     def run_check(self, **kwargs):
-        return check.validate(self.listing, self.package, self.source, self.compatibility,
+        return check.validate(self.listing, self.package, self.source,
                               read_zip=self.zips.__getitem__, **kwargs)
 
     def current(self):
         return self.listing["packages"][check.EXPORTER]["versions"][self.package["version"]]
 
-    def test_stable_and_beta_and_pinned_dependencies_are_verified(self):
+    def test_stable_and_beta_are_verified(self):
         result = self.run_check()
         self.assertEqual("passed", result["status"])
-        self.assertEqual(4, len(result["verifiedPackages"]))
+        self.assertEqual(2, len(result["verifiedPackages"]))
         self.assertEqual("0.11.11", result["preservedStableVersion"])
 
     def test_loopback_fixture_uses_the_same_hash_and_manifest_checks(self):
@@ -58,7 +56,7 @@ class ListingTests(unittest.TestCase):
                 old = entry["url"]
                 entry["url"] = f"{check.FIXTURE_BASE}/{entry['name']}-{entry['version']}.zip"
                 self.zips[entry["url"]] = self.zips[old]
-        self.assertEqual(4, len(self.run_check(fixture_base=check.FIXTURE_BASE)["verifiedPackages"]))
+        self.assertEqual(2, len(self.run_check(fixture_base=check.FIXTURE_BASE)["verifiedPackages"]))
 
     def test_missing_current_or_stable_is_rejected(self):
         for version in ("0.11.11", self.package["version"]):
@@ -67,11 +65,6 @@ class ListingTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Missing listed package"):
                     self.run_check()
                 self.listing["packages"][check.EXPORTER]["versions"][version] = saved
-
-    def test_missing_pinned_dependency_is_rejected(self):
-        del self.listing["packages"]["com.vrmc.gltf"]
-        with self.assertRaisesRegex(ValueError, "Missing listed package"):
-            self.run_check()
 
     def test_version_key_cannot_hide_another_manifest(self):
         self.current()["version"] = "0.11.11"
@@ -107,11 +100,11 @@ class ListingTests(unittest.TestCase):
                 entry = self.current()
                 saved = copy.deepcopy(entry)
                 if change_zip:
-                    data = self.archive(dict(self.package, vpmDependencies={}))
+                    data = self.archive(dict(self.package, vpmDependencies={"other.package": "1.0.x"}))
                     self.zips[entry["url"]] = data
                     entry["zipSHA256"] = hashlib.sha256(data).hexdigest()
                 else:
-                    entry["vpmDependencies"] = {}
+                    entry["vpmDependencies"] = {"other.package": "1.0.x"}
                 with self.assertRaisesRegex(ValueError, "dependency policy differs"):
                     self.run_check()
                 entry.update(saved)
