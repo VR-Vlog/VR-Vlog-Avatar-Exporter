@@ -28,7 +28,10 @@ namespace VRVlog.LilToonExporter
             var effects = new List<string>();
             var main = material.GetTexture("_MainTex");
             var color = material.GetColor("_Color");
-            colorSkipped = ToonColorAdjust(values, material);
+            // Left-out adjustments are named among the dropped effects; the
+            // generic notice would list hue and saturation, which are kept here.
+            colorSkipped = false;
+            ToonColorAdjust(values, material, effects);
             ToonRenderMode(values, material, GenericMode(source, values), effects);
             ToonShade(values, material, color, effects);
             Set(material, "_LightMaxLimit", values.Float("_LightingCapEnabled", 1) > .5f ? Mathf.Max(0, values.Float("_LightingCap", 1)) : 10);
@@ -76,18 +79,18 @@ namespace VRVlog.LilToonExporter
 
         // Color adjustment applied after the main color: hue, saturation,
         // brightness and gamma become _MainTexHSVG, the gradation map lilToon's
-        // own. Returns true when an adjustment was left out.
-        static bool ToonColorAdjust(SourceValues values, Material material)
+        // own. What is left out is reported by name.
+        static void ToonColorAdjust(SourceValues values, Material material, List<string> effects)
         {
             if (values.TryVector("_MainTexPan", out var pan) && Finite(pan) && (pan.x != 0 || pan.y != 0))
                 material.SetVector("_MainTex_ScrollRotate", new Vector4(pan.x, pan.y, 0, 0));
             var hsvg = new Vector4(0, 1, 1, 1);
-            var skipped = false;
+            var gradient = false;
             if (values.Float("_MainColorAdjustToggle", 0) > .5f)
             {
                 // One mask per adjustment (R hue, G brightness, B saturation,
                 // A gamma); lilToon has a single mask for all of them.
-                if (values.Texture("_MainColorAdjustTexture", out var mask, out _, out _) && mask != null) skipped = true;
+                if (values.Texture("_MainColorAdjustTexture", out var mask, out _, out _) && mask != null) Drop(effects, "Color Adjust Mask");
                 else
                 {
                     var hue = values.Float("_MainHueShift", 0);
@@ -99,29 +102,35 @@ namespace VRVlog.LilToonExporter
                             hue = Mathf.Repeat(hue, 1);
                             hsvg.x = hue > .5f ? hue - 1 : hue;
                         }
-                        else skipped = true;
+                        else Drop(effects, "Hue Shift");
                     }
                     hsvg.y = Mathf.Max(0, 1 + values.Float("_Saturation", 0));
                     var brightness = values.Float("_MainBrightness", 0);
-                    if (brightness != 0 && values.Float("_MainBrightnessGlobalMask", 0) > 0) skipped = true;
+                    if (brightness != 0 && values.Float("_MainBrightnessGlobalMask", 0) > 0) Drop(effects, "Brightness Mask");
                     else hsvg.z = Mathf.Max(0, 1 + brightness);
                     hsvg.w = Mathf.Max(.01f, values.Float("_MainGamma", 1));
                     if (values.Float("_ColorGradingToggle", 0) > .5f && values.Float("_MainGradationStrength", 0) > 0 &&
                         values.Texture("_MainGradationTex", out var gradation, out _, out _) && Flat(gradation))
                     {
-                        if (values.Float("_MainGradationMaskChannel", 0) > 0) skipped = true;
+                        if (values.Float("_MainGradationMaskChannel", 0) > 0) Drop(effects, "Gradation Mask");
                         else
                         {
                             material.SetTexture("_MainGradationTex", gradation);
                             Set(material, "_MainGradationStrength", Mathf.Clamp01(values.Float("_MainGradationStrength", 0)));
+                            gradient = true;
                         }
                     }
                 }
-                if (values.Float("_MainChromatize", 0) != 0) skipped = true;
-                if (values.TryVector("_MainTintColor", out var tint) && tint.w > 0) skipped = true;
+                if (values.Float("_MainChromatize", 0) != 0) Drop(effects, "Chromatize");
+                if (values.TryVector("_MainTintColor", out var tint) && tint.w > 0) Drop(effects, "Tint");
             }
             material.SetVector("_MainTexHSVG", hsvg);
-            return skipped;
+            // lilToon adjusts the main image before multiplying _Color, the
+            // source after. Brightness scales both alike; hue, saturation, gamma
+            // and the gradation agree only under a white _Color.
+            var main = material.HasProperty("_Color") ? material.GetColor("_Color") : Color.white;
+            var white = Mathf.Abs(main.r - 1) < .004f && Mathf.Abs(main.g - 1) < .004f && Mathf.Abs(main.b - 1) < .004f;
+            if (!white && (hsvg.x != 0 || hsvg.y != 1 || hsvg.w != 1 || gradient)) Drop(effects, "Color Adjust with Main Color");
         }
 
         static void ToonRenderMode(SourceValues values, Material material, Mode mode, List<string> effects)
@@ -202,7 +211,15 @@ namespace VRVlog.LilToonExporter
                     material.SetColor("_ShadowBorderColor", new Color(edge.x * edge.w, edge.y * edge.w, edge.z * edge.w, 1));
                 // The source multiplies a shadow texture by the base color; lilToon
                 // replaces the base color with it unless the main strength is 1.
-                if (values.Texture("_ShadowColorTex", out var texture, out _, out _) && Flat(texture)) Set(material, "_ShadowMainStrength", 1);
+                if (values.Texture("_ShadowColorTex", out var texture, out _, out _) && Flat(texture))
+                {
+                    Set(material, "_ShadowMainStrength", 1);
+                    // The strength is shared, so a visible second layer without
+                    // its own image is multiplied by the base color twice.
+                    if (values.TryVector("_Shadow2ndColor", out var second) && second.w > 0 &&
+                        !(values.Texture("_Shadow2ndColorTex", out var texture2, out _, out _) && Flat(texture2)))
+                        Drop(effects, "Multiplied Shadow Layers");
+                }
                 Set(material, "_UseShadow", 1);
                 return;
             }
@@ -227,7 +244,7 @@ namespace VRVlog.LilToonExporter
                     break;
                 }
                 case 4:
-                    ToonShadeMap(values, material, mainColor);
+                    ToonShadeMap(values, material, mainColor, effects);
                     break;
                 default:
                     // Lambert N·L from 0 to 1 is 0.5 to 1 on the half-Lambert axis.
@@ -246,7 +263,7 @@ namespace VRVlog.LilToonExporter
         // Shade map: the shadow lies below step - feather and the lit side
         // above step. Replace uses the shade color as is; Multiply multiplies
         // it by the base color.
-        static void ToonShadeMap(SourceValues values, Material material, Color mainColor)
+        static void ToonShadeMap(SourceValues values, Material material, Color mainColor, List<string> effects)
         {
             var step = values.Float("_BaseColor_Step", .5f);
             var feather = Mathf.Max(.001f, values.Float("_BaseShade_Feather", .0001f));
@@ -255,22 +272,30 @@ namespace VRVlog.LilToonExporter
             var multiply = values.Float("_ShadingShadeMapBlendType", 0) > .5f;
             var useBase = values.Float("_Use_BaseAs1st", 0) > .5f;
             if (!values.Texture("_1st_ShadeMap", out var map, out _, out _) || !Flat(map)) map = null;
-            ToonShadeLayer(material, "_ShadowColor", "_ShadowColorTex", map, values.TryVector("_1st_ShadeColor", out var color) ? color : Vector4.one,
-                useBase, multiply, mainColor);
+            var main = ToonShadeLayer(material, "_ShadowColor", "_ShadowColorTex", map,
+                values.TryVector("_1st_ShadeColor", out var color) ? color : Vector4.one, useBase, multiply, mainColor);
             var step2 = values.Float("_ShadeColor_Step", 0);
-            if (step2 <= 0) return;
-            var feather2 = Mathf.Max(.001f, values.Float("_1st2nd_Shades_Feather", .0001f));
-            Set(material, "_Shadow2ndBorder", Mathf.Clamp01(step2 - feather2 / 2));
-            Set(material, "_Shadow2ndBlur", Mathf.Clamp(feather2, .001f, 1));
-            var second = values.Float("_Use_1stAs2nd", 0) > .5f;
-            if (!second && (!values.Texture("_2nd_ShadeMap", out map, out _, out _) || !Flat(map))) map = null;
-            ToonShadeLayer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map, values.TryVector("_2nd_ShadeColor", out color) ? color : Vector4.one,
-                second && useBase, multiply, mainColor);
+            if (step2 > 0)
+            {
+                var feather2 = Mathf.Max(.001f, values.Float("_1st2nd_Shades_Feather", .0001f));
+                Set(material, "_Shadow2ndBorder", Mathf.Clamp01(step2 - feather2 / 2));
+                Set(material, "_Shadow2ndBlur", Mathf.Clamp(feather2, .001f, 1));
+                var second = values.Float("_Use_1stAs2nd", 0) > .5f;
+                if (!second && (!values.Texture("_2nd_ShadeMap", out map, out _, out _) || !Flat(map))) map = null;
+                var main2 = ToonShadeLayer(material, "_Shadow2ndColor", "_Shadow2ndColorTex", map,
+                    values.TryVector("_2nd_ShadeColor", out color) ? color : Vector4.one, second && useBase, multiply, mainColor);
+                // One _ShadowMainStrength serves both layers, so a layer that
+                // multiplies an image and one that does not cannot both match.
+                if (main != main2) Drop(effects, "Multiplied Shadow Layers");
+                main |= main2;
+            }
+            if (main) Set(material, "_ShadowMainStrength", 1);
         }
 
         // lilToon's shadow is lerp(albedo, texture, texture.a) × color, then
-        // × albedo again by _ShadowMainStrength.
-        static void ToonShadeLayer(Material material, string colorName, string textureName, Texture map, Color color, bool useBase, bool multiply,
+        // × albedo again by _ShadowMainStrength. Returns true when the layer
+        // needs that second multiplication.
+        static bool ToonShadeLayer(Material material, string colorName, string textureName, Texture map, Color color, bool useBase, bool multiply,
             Color mainColor)
         {
             color.a = 1;
@@ -278,8 +303,8 @@ namespace VRVlog.LilToonExporter
             // An absolute shade color without an image becomes a ratio to the
             // main color, which lilToon multiplies back.
             else if (!useBase && !multiply) color = Ratio(color, mainColor);
-            if (multiply && (useBase || map != null)) Set(material, "_ShadowMainStrength", 1);
             material.SetColor(colorName, color);
+            return multiply && (useBase || map != null);
         }
 
         static Color Ratio(Color value, Color basis)
@@ -371,6 +396,52 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // The source reads one channel of a mask; lilToon multiplies the matcap
+        // by its mask's RGB and the rim and emission by RGBA. The red channel is
+        // the same only for a grey, opaque image. False when the image has color
+        // or transparency, null when it cannot be read (no graphics device).
+        static bool? GreyMask(Texture texture)
+        {
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
+            const int Size = 32;
+            var target = RenderTexture.GetTemporary(Size, Size, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+            var active = RenderTexture.active;
+            Texture2D read = null;
+            try
+            {
+                Graphics.Blit(texture, target);
+                RenderTexture.active = target;
+                read = new Texture2D(Size, Size, TextureFormat.RGBAFloat, false, true);
+                read.ReadPixels(new Rect(0, 0, Size, Size), 0, 0, false);
+                read.Apply(false);
+                foreach (var c in read.GetPixels())
+                    if (Mathf.Abs(c.r - c.g) > .02f || Mathf.Abs(c.r - c.b) > .02f || c.a < .98f) return false;
+                return true;
+            }
+            catch (Exception) { return null; }
+            finally
+            {
+                RenderTexture.active = active;
+                RenderTexture.ReleaseTemporary(target);
+                if (read != null) UnityEngine.Object.DestroyImmediate(read);
+            }
+        }
+
+        // A red-channel mask is copied when it is grey (or cannot be checked);
+        // otherwise it is reported and the effect is left unmasked.
+        static bool CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
+            List<string> effects, string label)
+        {
+            if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return false;
+            if (values.Float(channel, 0) == 0 && values.Float(invert, 0) < .5f && GreyMask(mask) != false)
+            {
+                SetTexture(material, target, mask, scale, offset);
+                return true;
+            }
+            Drop(effects, label);
+            return false;
+        }
+
         // prefix "" is the first matcap and "2" the second; lilToon's second
         // matcap carries "2nd".
         static void ToonMatcap(SourceValues values, Material material, string prefix, string suffix, List<string> effects)
@@ -410,12 +481,7 @@ namespace VRVlog.LilToonExporter
             Set(material, L("NormalStrength"), Mathf.Clamp01(values.Float(P("Normal"), 1)));
             var size = texture == null ? 0 : Mathf.Max(texture.width, texture.height);
             Set(material, L("Lod"), size > 1 ? (1 - Mathf.Clamp01(values.Float(P("Smoothness"), 1))) * Mathf.Floor(Mathf.Log(size, 2)) : 0);
-            if (values.Texture(P("Mask"), out var mask, out var maskScale, out var maskOffset) && Flat(mask))
-            {
-                if (values.Float(P("MaskChannel"), 0) == 0 && values.Float(P("MaskInvert"), 0) < .5f)
-                    SetTexture(material, L("BlendMask"), mask, maskScale, maskOffset);
-                else Drop(effects, label + " Mask");
-            }
+            CopyMask(values, material, P("Mask"), P("MaskChannel"), P("MaskInvert"), L("BlendMask"), effects, label + " Mask");
             var uv = values.Float(P("UVMode"), 1);
             if (uv == 3 || uv == 4) Drop(effects, label + " UV Mode");
             if (values.Float(P("HueShiftEnabled"), 0) > .5f) Drop(effects, label + " Hue Shift");
@@ -469,11 +535,7 @@ namespace VRVlog.LilToonExporter
                 SetTexture(material, "_RimColorTex", texture, scale, offset);
                 if (values.Texture("_RimMask", out var unused, out _, out _) && Flat(unused)) Drop(effects, "Rim Mask");
             }
-            else if (values.Texture("_RimMask", out var mask, out scale, out offset) && Flat(mask))
-            {
-                if (values.Float("_RimMaskChannel", 0) == 0 && values.Float("_RimMaskInvert", 0) < .5f) SetTexture(material, "_RimColorTex", mask, scale, offset);
-                else Drop(effects, "Rim Mask");
-            }
+            else CopyMask(values, material, "_RimMask", "_RimMaskChannel", "_RimMaskInvert", "_RimColorTex", effects, "Rim Mask");
             if (values.Float("_RimLightingInvert", 0) > .5f) Drop(effects, "Rim Lighting Invert");
             if (values.Float("_RimLinear", 0) > .5f) Drop(effects, "Rim Linear");
         }
@@ -512,12 +574,7 @@ namespace VRVlog.LilToonExporter
             if (Get(material, "_UseEmission") < .5f) return;
             if (values.TryVector("_EmissionMapPan", out var pan) && Finite(pan) && (pan.x != 0 || pan.y != 0))
                 material.SetVector("_EmissionMap_ScrollRotate", new Vector4(pan.x, pan.y, 0, 0));
-            if (values.Texture("_EmissionMask", out var mask, out var scale, out var offset) && Flat(mask))
-            {
-                if (values.Float("_EmissionMaskChannel", 0) == 0 && values.Float("_EmissionMaskInvert", 0) < .5f)
-                    SetTexture(material, "_EmissionBlendMask", mask, scale, offset);
-                else Drop(effects, "Emission Mask");
-            }
+            CopyMask(values, material, "_EmissionMask", "_EmissionMaskChannel", "_EmissionMaskInvert", "_EmissionBlendMask", effects, "Emission Mask");
             // Both blink with sin(time × velocity + phase); the source between min
             // and max, lilToon between 1 - x and 1 of its color.
             var max = values.Float("_EmissiveBlink_Max", 1);

@@ -74,6 +74,9 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _RimBlendStrength ("Blend Strength", Range(0, 1)) = 1
         _RimStrength ("Emission", Range(0, 20)) = 0
         _RimPoiBlendMode ("Blend Mode", Int) = 0
+        _RimMask ("Mask", 2D) = "white" {}
+        _RimMaskChannel ("Mask Channel", Int) = 0
+        _RimMaskInvert ("Invert Mask", Float) = 0
         // Outline.
         _EnableOutlines ("Outline", Float) = 0
         _LineWidth ("Width", Float) = 1

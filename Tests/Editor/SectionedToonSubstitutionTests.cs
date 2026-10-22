@@ -134,21 +134,86 @@ namespace VRVlog.LilToonExporter.Tests
             source.SetFloat("_Saturation", .5f); source.SetFloat("_MainBrightness", -.5f); source.SetFloat("_MainGamma", 1.2f);
             source.SetFloat("_MainHueShiftToggle", 1); source.SetFloat("_MainHueShift", .75f);
 
-            var output = Substitute(source, out var colorSkipped, out _);
+            var output = Substitute(source, out var colorSkipped, out var dropped);
             Assert.That(Vector4.Distance(output.GetVector("_MainTexHSVG"), new Vector4(-.25f, 1.5f, .5f, 1.2f)), Is.LessThan(1e-5f),
                 output.GetVector("_MainTexHSVG").ToString("F4"));
             Assert.That(colorSkipped, Is.False);
+            Assert.That(dropped, Is.Empty);
         }
 
-        [Test] public void AnAnimatedHueShiftIsReportedAsLeftOut()
+        [Test] public void AnAnimatedHueShiftIsReportedByName()
         {
             var source = Probe();
             source.SetFloat("_MainColorAdjustToggle", 1);
             source.SetFloat("_MainHueShiftToggle", 1); source.SetFloat("_MainHueShift", .2f); source.SetFloat("_MainHueShiftSpeed", 1);
 
-            var output = Substitute(source, out var colorSkipped, out _);
+            var output = Substitute(source, out var colorSkipped, out var dropped);
             Assert.That(output.GetVector("_MainTexHSVG").x, Is.EqualTo(0f));
-            Assert.That(colorSkipped, Is.True);
+            Assert.That(colorSkipped, Is.False, "The generic notice would say hue and saturation are not kept.");
+            Assert.That(dropped, Is.EqualTo(new[] { "Hue Shift" }));
+        }
+
+        [Test] public void AdjustingColorsUnderATintedMainColorIsReported()
+        {
+            var source = Probe();
+            source.SetColor("_Color", new Color(1, .5f, .5f, 1));
+            source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_Saturation", .5f);
+
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetVector("_MainTexHSVG").y, Is.EqualTo(1.5f).Within(1e-6));
+            Assert.That(dropped, Is.EqualTo(new[] { "Color Adjust with Main Color" }));
+        }
+
+        [Test] public void OnlyBrightnessUnderATintedMainColorIsNotReported()
+        {
+            var source = Probe();
+            source.SetColor("_Color", new Color(1, .5f, .5f, 1));
+            source.SetFloat("_MainColorAdjustToggle", 1); source.SetFloat("_MainBrightness", -.25f);
+
+            Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty, "Scaling the brightness and multiplying the color commute.");
+        }
+
+        [Test] public void MultiplyingShadeLayersThatNeedTheBaseDifferentlyAreReported()
+        {
+            var map = Own(new Texture2D(4, 4) { name = "shade" });
+            var source = Probe();
+            source.SetFloat("_LightingMode", 4); source.SetFloat("_ShadingShadeMapBlendType", 1);
+            source.SetTexture("_1st_ShadeMap", map); source.SetFloat("_ShadeColor_Step", .3f);
+
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetTexture("_ShadowColorTex"), Is.SameAs(map));
+            Assert.That(output.GetFloat("_ShadowMainStrength"), Is.EqualTo(1f).Within(1e-6));
+            Assert.That(dropped, Is.EqualTo(new[] { "Multiplied Shadow Layers" }));
+        }
+
+        Texture2D Mask(Color color)
+        {
+            var mask = Own(new Texture2D(4, 4, TextureFormat.RGBA32, false) { name = "mask" });
+            mask.SetPixels(Enumerable.Repeat(color, 16).ToArray());
+            mask.Apply(false);
+            return mask;
+        }
+
+        [Test] public void AGreyRedChannelMaskIsCopied()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the mask needs a graphics device.");
+            var mask = Mask(new Color(.5f, .5f, .5f, 1));
+            var source = Probe(); source.SetFloat("_EnableRimLighting", 1); source.SetTexture("_RimMask", mask);
+
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetTexture("_RimColorTex"), Is.SameAs(mask));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        [Test] public void AColoredRedChannelMaskIsReportedInsteadOfTintingTheRim()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the mask needs a graphics device.");
+            var source = Probe(); source.SetFloat("_EnableRimLighting", 1); source.SetTexture("_RimMask", Mask(new Color(1, 0, .5f, 1)));
+
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetTexture("_RimColorTex"), Is.Null, "lilToon multiplies the rim by the whole RGBA.");
+            Assert.That(dropped, Is.EqualTo(new[] { "Rim Mask" }));
         }
 
         [Test] public void TheStrongestMatcapBlendPicksLilToonsMode()
