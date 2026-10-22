@@ -278,7 +278,7 @@ VR Vlogアプリ内の問い合わせも利用できます。
 
 - [lilToon由来のシェーダー処理](ThirdPartyNotices/lilToon.md)
 - [UniVRM／UniGLTF](ThirdPartyNotices/UniVRM.md)
-- [転送用のBouncy Castle・ZXing.Net](ThirdPartyNotices/LanTransfer.md)（0.11.15の安定版にも同梱）
+- [転送用のZXing.Net](ThirdPartyNotices/LanTransfer.md)（0.11.15の安定版にも同梱）
 - [Avatar Optimizerの明示的な修正パッチ](Documentation~/DependencyPatches/README.md)・[同梱ライセンス](Documentation~/DependencyPatches/AAO-LICENSE.txt)
 
 アバターなどの素材・掲載画像には各権利者の利用条件が適用されます。[画像の出典・クレジット](Website/assets/README.md)

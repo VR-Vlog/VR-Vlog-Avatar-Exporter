@@ -111,35 +111,5 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             return failed;
         }
     }
-
-    public static class LanTransferCliRunner
-    {
-        public static int Run()
-        {
-            int passed = 0, failed = 0;
-            var fixture = new LanTransferTests();
-            foreach (var method in fixture.GetType().GetMethods())
-            {
-                var cases = method.GetCustomAttributes(typeof(NUnit.Framework.TestCaseAttribute), true);
-                if (cases.Length == 0 && method.GetCustomAttributes(typeof(NUnit.Framework.TestAttribute), true).Length == 0) continue;
-                foreach (var test in cases.Length == 0 ? new object[] { null } : cases)
-                {
-                    try
-                    {
-                        method.Invoke(fixture, test == null ? null : ((NUnit.Framework.TestCaseAttribute)test).Arguments);
-                        Console.WriteLine("PASS " + method.Name); passed++;
-                    }
-                    catch
-                    {
-                        // Method names are fixed source identifiers. Keep generated credentials and
-                        // arbitrary exception messages out of console and CI artifacts even on failure.
-                        Console.WriteLine("FAIL " + method.Name + " (failure details withheld)"); failed++;
-                    }
-                }
-            }
-            Console.WriteLine("LAN transfer tests: passed=" + passed + ", failed=" + failed);
-            return failed;
-        }
-    }
 }
 #endif

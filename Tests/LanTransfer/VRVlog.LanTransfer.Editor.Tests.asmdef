@@ -4,6 +4,6 @@
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"],
   "overrideReferences": true,
-  "precompiledReferences": ["BouncyCastle.Cryptography.dll", "zxing.dll"],
+  "precompiledReferences": ["zxing.dll"],
   "autoReferenced": false
 }
