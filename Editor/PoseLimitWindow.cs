@@ -6,7 +6,8 @@ using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
-    // Asked once during an export whose poses exceed the app's limits. The
+    // Asked once during an export whose poses exceed the app's limits, or
+    // that has a moving pose too large to keep (then it only shows it). The
     // list starts at the saved choice or the default; writing is possible only
     // within the limits. Rows and columns have fixed sizes so long names and
     // other fonts never move the layout.
@@ -130,9 +131,20 @@ namespace VRVlog.LilToonExporter
             var nameWidth = 160f;
             var noticeWidth = 220f;
             GUI.Label(new Rect(line.x, line.y, line.width - nameWidth - noticeWidth - 16f, line.height), T(Heading), titleStyle);
-            GUI.Label(new Rect(line.xMax - nameWidth - noticeWidth - 8f, line.y, noticeWidth, line.height), T(OverLimit), plan.Within ? rightMutedStyle : Colored(rightStyle, Over));
+            GUI.Label(new Rect(line.xMax - nameWidth - noticeWidth - 8f, line.y, noticeWidth, line.height), Notice, Colored(rightStyle, Over));
             GUI.Label(new Rect(line.xMax - nameWidth, line.y, nameWidth, line.height), new GUIContent(avatarName, avatarName), rightMutedStyle);
         }
+
+        // Shown only while a limit is exceeded; the width stays reserved.
+        internal string Notice => plan.Within ? "" : T(OverLimit);
+
+        // Rows can be chosen only when keeping them all exceeds a limit. When
+        // the window opens just for a pose too large to keep, the rest is kept.
+        internal bool Choosable => plan.Exceeds;
+
+        // Compared with the defaults taken when the window opened, so a
+        // repaint does not run the default again.
+        internal bool AtDefault => defaults == null || plan.Rows.Select(row => row.Keep).SequenceEqual(defaults);
 
         // The kind on the left, as in the other limits the app may add later.
         void DrawCard(Rect area)
@@ -172,7 +184,7 @@ namespace VRVlog.LilToonExporter
             GUI.Label(new Rect(line.x + 60f, line.y, 110f, line.height), Number(plan.Rows.Count) + " → " + Number(plan.KeptCount),
                 Colored(cellStyle, plan.CountOver ? Over : Fits));
             GUI.Label(new Rect(line.x + 170f, line.y, 140f, line.height), string.Format(T(LimitFormat), VRVlog.Poses.HumanoidPoseData.MaximumPoses), mutedStyle);
-            using (new EditorGUI.DisabledScope(plan.IsDefault))
+            using (new EditorGUI.DisabledScope(AtDefault))
                 if (GUI.Button(new Rect(line.xMax - DefaultWidth, line.y, DefaultWidth, line.height), T(DefaultButton))) plan.Default();
 
             var third = area.width / 3f;
@@ -182,7 +194,7 @@ namespace VRVlog.LilToonExporter
             Stat(stats, AnimationBytesLabel, Megabytes(plan.AnimationBytes) + " / 16MB", plan.AnimationBytesOver);
             stats.x += third;
             Stat(stats, PoseBytesLabel, Megabytes(plan.PoseBytes) + " / 2MB", plan.PoseBytesOver);
-            GUI.Label(new Rect(area.x, line.y + 66f, area.width, 18f), T(DefaultNote), mutedStyle);
+            if (Choosable) GUI.Label(new Rect(area.x, line.y + 66f, area.width, 18f), T(DefaultNote), mutedStyle);
 
             var table = new Rect(area.x, area.y + SummaryHeight, area.width, Mathf.Max(0f, area.height - SummaryHeight));
             DrawTable(table);
@@ -207,8 +219,11 @@ namespace VRVlog.LilToonExporter
             var selectable = plan.Rows.Where(row => row.Selectable).ToList();
             var all = selectable.Count > 0 && selectable.All(row => row.Keep);
             EditorGUI.showMixedValue = !all && selectable.Any(row => row.Keep);
-            var next = EditorGUI.Toggle(new Rect(columns.x + 14f, columns.y + 2f, 18f, 18f), all);
+            bool next;
+            using (new EditorGUI.DisabledScope(!Choosable))
+                next = EditorGUI.Toggle(new Rect(columns.x + 14f, columns.y + 2f, 18f, 18f), all);
             EditorGUI.showMixedValue = false;
+            if (!Choosable) next = all;
             GUI.Label(new Rect(columns.x + 34f, columns.y + 2f, KeepWidth - 40f, 18f), T(KeepColumn), mutedStyle);
             if (next != all) foreach (var row in selectable) row.Keep = next;
             var x = columns.x + KeepWidth;
@@ -233,10 +248,10 @@ namespace VRVlog.LilToonExporter
             var row = plan.Rows[index];
             if (index % 2 == 1) EditorGUI.DrawRect(rect, Stripe);
             var dim = !row.Keep;
-            using (new EditorGUI.DisabledScope(!row.Selectable))
+            using (new EditorGUI.DisabledScope(!row.Selectable || !Choosable))
             {
                 var keep = GUI.Toggle(new Rect(rect.x + 14f, rect.y + 2f, 18f, 18f), row.Keep, GUIContent.none);
-                if (row.Selectable) row.Keep = keep;
+                if (row.Selectable && Choosable) row.Keep = keep;
             }
             var text = dim ? mutedStyle : cellStyle;
             var changed = row.Selectable && defaults != null && index < defaults.Length && row.Keep != defaults[index];
@@ -275,7 +290,8 @@ namespace VRVlog.LilToonExporter
             var button = new Rect(area.xMax - Margin - ButtonWidth, y, ButtonWidth, 26f);
             var noteRect = new Rect(area.x + Margin + 152f, y + 4f, Mathf.Max(0f, button.x - 12f - area.x - Margin - 152f), 18f);
             var within = plan.Within;
-            var note = within ? T(SavedNote) : Shortfall();
+            // Nothing is saved when there was nothing to choose.
+            var note = within ? (Choosable ? T(SavedNote) : "") : Shortfall();
             GUI.Label(noteRect, new GUIContent(note, note), within ? rightMutedStyle : Colored(rightStyle, Over));
             using (new EditorGUI.DisabledScope(!within))
             {
