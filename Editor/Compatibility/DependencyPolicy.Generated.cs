@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         public const string VrchatSdkBelow = "3.11.0";
         public const string ModularAvatarMinimum = "1.18.0";
         public const string ModularAvatarBelow = "1.19.0";
-        public const string ModularAvatarPrereleases = "1.19.0-alpha.0, 1.19.0-alpha.1, 1.19.0-alpha.2";
+        public const string ModularAvatarPrereleases = "1.19.0-alpha.2";
         public const string NdmfPrereleases = "1.15.0-beta.1, 1.15.0-beta.2";
         public const int NdmfMajor = 1;
         public const int UniVrmMajor = 0;

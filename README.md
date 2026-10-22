@@ -17,7 +17,7 @@ MITライセンスで公開しています。
 | UniVRM | 0.131.x（0.131.0〜0.131.3で確認済み）。VCC・ALCOMでは自動導入 |
 | VR Vlog | 0.1.1（ビルド345）以降 |
 | VRChat SDK | 任意。3.5.0以上3.11.0未満（3.11.0未満のベータ版を含む）で確認しています。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、3.5.2以上3.11.0未満が必要です |
-| Modular Avatar | 任意。Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは1.18.0以上1.19.0未満。これらを使わないアバターは版を問いません |
+| Modular Avatar | 任意。Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは1.18.0以上1.19.0未満か、プレリリースの1.19.0-alpha.2。これらを使わないアバターは版を問いません |
 
 Modular Avatarを使う場合は、事前に導入してください。
 

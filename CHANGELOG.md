@@ -2,6 +2,7 @@
 
 ## 未リリース
 
+- Modular Avatarのプレリリース1.19.0-alpha.2でも、Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterの現在の表示を固定して書き出せるようにしました。alpha.1から変わったMAの解析結果を1.18と同じ形に読み替え、1.19で変わったReactive Componentsのアニメーターの形（BlendTree）からも、1.18と同じメニュー由来の表情を取り込みます。alpha.2が必要とするNDMF 1.15.0-beta.1・beta.2も通します。alpha.0・alpha.1と、確かめていないプレリリース（1.19.0-alpha.3など）は、対応範囲外の版として書き出しの前に止まります。
 ## 0.12.0-beta.6
 
 この版はプレリリース（ベータ版）です。ALCOM の **Show pre-release packages** を有効にすると選択できます。安定版 0.11.15 は引き続き利用できます。

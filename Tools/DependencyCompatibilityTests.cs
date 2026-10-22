@@ -44,21 +44,22 @@ public static class DependencyCompatibilityTests
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.6-beta.2", "3.10.6"), "A pre-release Avatars with a stable Base stops");
         Check(DependencyPolicy.ModularAvatarMinimum == "1.18.0" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
-        Check(DependencyPolicy.ModularAvatarPrereleases == "1.19.0-alpha.0, 1.19.0-alpha.1, 1.19.0-alpha.2", "Verified MA pre-releases");
-        foreach (var version in new[] { "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10", "1.19.0-alpha.0", "1.19.0-alpha.1", "1.19.0-alpha.2" })
+        Check(DependencyPolicy.ModularAvatarPrereleases == "1.19.0-alpha.2", "Verified MA pre-releases");
+        foreach (var version in new[] { "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10", "1.19.0-alpha.2" })
         {
             Check(DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance freeze " + version);
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "No MA error " + version);
         }
         // A pre-release that was not verified is read and stops: MA changed
-        // its analysis within the 1.19.0 alphas.
+        // its analysis within the 1.19.0 alphas, and alpha.0 and alpha.1 merge
+        // animations differently from alpha.2.
         foreach (var version in new[] { "1.17.1", "1.13.4", "1.10.0", "1.19.0", "2.0.0", "0.18.7",
-            "1.19.0-alpha.3", "1.19.0-beta.0", "1.18.7-beta.1", "1.18.0-rc.1", "1.19.0-alpha.2+local" })
+            "1.19.0-alpha.0", "1.19.0-alpha.1", "1.19.0-alpha.3", "1.19.0-beta.0", "1.18.7-beta.1", "1.18.0-rc.1", "1.19.0-alpha.2+local" })
         {
             Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + version);
             Check(!DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is read " + version);
             var error = DependencyPolicy.ModularAvatarAppearanceError(version);
-            Check(error != null && error.Contains("1.18.0以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.0, 1.19.0-alpha.1, 1.19.0-alpha.2です") &&
+            Check(error != null && error.Contains("1.18.0以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.2です") &&
                 error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "MA error names the range, the fix and that the avatar is unchanged");
             Check(error.Contains("Modular Avatar " + version), "MA error names the installed version");
@@ -73,7 +74,7 @@ public static class DependencyCompatibilityTests
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "Unknown MA version does not stop " + (version ?? "null"));
             var error = DependencyPolicy.ModularAvatarUnknownVersionError(version);
             Check(error.StartsWith("Modular Avatarのバージョンを読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
-                error.Contains("1.18.0以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.0, 1.19.0-alpha.1, 1.19.0-alpha.2です") &&
+                error.Contains("1.18.0以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.2です") &&
                 error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "Unknown MA version error says the version was not read, the range and the fix");
         }

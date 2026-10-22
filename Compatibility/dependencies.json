@@ -31,7 +31,7 @@
     "vrchatSdkBelow": "3.11.0",
     "modularAvatarMinimum": "1.18.0",
     "modularAvatarBelow": "1.19.0",
-    "modularAvatarPrereleases": ["1.19.0-alpha.0", "1.19.0-alpha.1", "1.19.0-alpha.2"],
+    "modularAvatarPrereleases": ["1.19.0-alpha.2"],
     "ndmfPrereleases": ["1.15.0-beta.1", "1.15.0-beta.2"]
   }
 }
