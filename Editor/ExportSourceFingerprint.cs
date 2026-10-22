@@ -45,14 +45,16 @@ namespace VRVlog.LilToonExporter
             foreach (var axis in new[] { scale.x, scale.y, scale.z }) hash.Text(axis.ToString("G6", System.Globalization.CultureInfo.InvariantCulture));
             hash.Boolean(rootRotationInput);
             if (rootRotationInput) { var rotation = root.rotation; hash.Vector(new Vector4(rotation.x, rotation.y, rotation.z, rotation.w)); }
-            // An input outside the avatar sets the pose the copy keeps; only
-            // its placement relative to the root reaches the file.
+            // An input outside the avatar sets the pose that is baked. An export
+            // from the source sees it relative to the root; the board's copy
+            // stays where the source was and sees it in world space. Both are
+            // kept, so moving the avatar with such an input still stops.
             var frame = Matrix4x4.TRS(root.position, rootRotationDriven ? Quaternion.identity : root.rotation, Vector3.one).inverse;
             foreach (var input in externalInputs.OrderBy(value => value.GetInstanceID()))
             {
                 hash.Integer(input.GetInstanceID());
-                var relative = frame * input.localToWorldMatrix;
-                for (var i = 0; i < 16; i++) hash.Long((long)Math.Round(relative[i] * 1e5));
+                var world = input.localToWorldMatrix; var relative = frame * world;
+                for (var i = 0; i < 16; i++) { hash.Float(world[i]); hash.Long((long)Math.Round(relative[i] * 1e5)); }
             }
             var visited = new HashSet<Object>(); var assets = new HashSet<string>(StringComparer.Ordinal);
             var queue = new Queue<Object>(source.GetComponentsInChildren<Component>(true).Cast<Object>());

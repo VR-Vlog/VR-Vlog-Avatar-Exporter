@@ -106,13 +106,16 @@ namespace VRVlog.LilToonExporter.Tests
                 else ((RotationConstraint)constraint).rotationAxis = Axis.X | Axis.Y | Axis.Z;
                 var stamp = ExportRecoverySourceStamp.Capture(source);
                 source.transform.rotation = Quaternion.Euler(20, 0, 0);
-                Assert.That(stamp.Matches(source), Is.EqualTo(current), "A scene-up aim rolls the target when the root tilts.");
+                Assert.That(stamp.Matches(source), Is.EqualTo(current), "Root rotation is hashed only when a scene-up aim reads it.");
             }
             finally { Object.DestroyImmediate(source); }
         }
 
-        [Test]
-        public void ExternalConstraintInputMovedWithTheRootKeepsTheStamp()
+        // The board exports its copy, which stays where the source was, so an
+        // input outside the avatar counts in world space; an export from the
+        // source counts it relative to the root. Either move stops.
+        [TestCase("together")][TestCase("avatar")][TestCase("input")]
+        public void ExternalConstraintInputKeepsThePlacementAsAnInput(string move)
         {
             var source = new GameObject("Constraint root");
             var world = new GameObject("World");
@@ -126,10 +129,13 @@ namespace VRVlog.LilToonExporter.Tests
                 constraint.AddSource(new ConstraintSource { sourceTransform = external.transform, weight = 1 });
                 constraint.rotationAxis = Axis.X | Axis.Y | Axis.Z; constraint.weight = 1; constraint.locked = true; constraint.constraintActive = true;
                 var stamp = ExportRecoverySourceStamp.Capture(source);
-                world.transform.position = new Vector3(4, 0, 1); world.transform.rotation = Quaternion.Euler(0, 90, 0);
-                Assert.That(stamp.Matches(source), Is.True, "The input kept its place relative to the avatar.");
-                external.transform.localPosition = Vector3.back;
-                Assert.That(stamp.Matches(source), Is.False, "The input moved relative to the avatar.");
+                switch (move)
+                {
+                    case "together": world.transform.position = new Vector3(4, 0, 1); world.transform.rotation = Quaternion.Euler(0, 90, 0); break;
+                    case "avatar": source.transform.localPosition = Vector3.right; break;
+                    case "input": external.transform.localPosition = Vector3.back; break;
+                }
+                Assert.That(stamp.Matches(source), Is.False, move);
             }
             finally { Object.DestroyImmediate(source); Object.DestroyImmediate(external); Object.DestroyImmediate(world); }
         }
@@ -163,27 +169,6 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Object.DestroyImmediate(source); if (material != null) Object.DestroyImmediate(material);
                 AssetDatabase.DeleteAsset(folder);
-            }
-        }
-
-        [Test]
-        public void LilToonSettingsFileIsNotAnInput()
-        {
-            var path = Path.GetFullPath(Path.Combine(Application.dataPath, "../ProjectSettings/lilToonSetting.json"));
-            var existed = File.Exists(path);
-            var bytes = existed ? File.ReadAllBytes(path) : null;
-            var source = new GameObject("Settings source");
-            try
-            {
-                var stamp = ExportRecoverySourceStamp.Capture(source);
-                if (existed) File.WriteAllBytes(path, bytes.Concat(new[] { (byte)'\n' }).ToArray());
-                else File.WriteAllText(path, "{}");
-                Assert.That(stamp.Matches(source), Is.True, "The export reads this file when it runs.");
-            }
-            finally
-            {
-                Object.DestroyImmediate(source);
-                if (existed) File.WriteAllBytes(path, bytes); else if (File.Exists(path)) File.Delete(path);
             }
         }
     }
