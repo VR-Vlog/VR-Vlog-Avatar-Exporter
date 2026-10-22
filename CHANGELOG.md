@@ -2,6 +2,8 @@
 
 ## 未リリース
 
+- lilToonをunitypackageで読み込んで`Assets`の下に入れたプロジェクトでも書き出せるようにしました。これまではPackage ManagerにlilToonが無いと「lilToonが見つかりません（VCC／ALCOMでlilToonを追加）」で止まっていました。lilToon自身の`package.json`からバージョンを読み、依存関係の診断と書き出しの画面の **動作環境** に「2.3.4（Assetsに導入: Assets/lilToon）」のように場所も出します。バージョンが読めないときも止めず、「アプリではlilToon 2.3.4として描画します（導入済みのバージョンは不明）」と表示して書き出します。
+
 ## 0.12.0-beta.5
 
 この版はプレリリース（ベータ版）です。ALCOM の **Show pre-release packages** を有効にすると選択できます。安定版 0.11.15 は引き続き利用できます。

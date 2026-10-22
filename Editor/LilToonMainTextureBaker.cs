@@ -152,6 +152,30 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        const string LayerAlphaShaderName = "Hidden/VRVlog/LayerAlphaBaker";
+        const string PackageIncludeRoot = "Packages/" + Compatibility.LilToonInstallation.PackageName + "/";
+        static Shader layerAlphaUnderAssets;
+        static string layerAlphaUnderAssetsFolder;
+
+        // LayerAlphaBaker includes lilToon by its package path. lilToon under
+        // Assets leaves that path empty, so compile the same source against
+        // the Assets folder instead.
+        internal static Shader LayerAlphaShader()
+        {
+            var shader = Shader.Find(LayerAlphaShaderName);
+            var folder = Compatibility.LilToonInstallation.Find()?.AssetsFolder;
+            if (shader == null || folder == null) return shader;
+            if (layerAlphaUnderAssets != null && layerAlphaUnderAssetsFolder == folder) return layerAlphaUnderAssets;
+            if (layerAlphaUnderAssets != null) UnityEngine.Object.DestroyImmediate(layerAlphaUnderAssets);
+            layerAlphaUnderAssets = ShaderUtil.CreateShaderAsset(LayerAlphaSource(System.IO.File.ReadAllText(System.IO.Path.GetFullPath(AssetDatabase.GetAssetPath(shader))), folder), false);
+            layerAlphaUnderAssets.hideFlags = HideFlags.HideAndDontSave;
+            layerAlphaUnderAssetsFolder = folder;
+            return layerAlphaUnderAssets;
+        }
+
+        internal static string LayerAlphaSource(string source, string lilToonFolder) =>
+            source.Replace(PackageIncludeRoot, lilToonFolder.TrimEnd('/') + "/");
+
         // origin identifies the material's first use (renderer path and slot)
         // so the baked texture name is the same on every export.
         internal static void Bake(Material material, List<Texture2D> textures, ICollection<string> warnings, string origin = null)
@@ -161,8 +185,8 @@ namespace VRVlog.LilToonExporter
                 .SelectMany(layer => LayerIssues(material, layer, "")).ToArray();
             if (issues.Length > 0) throw new MaterialBakeException(issues);
             var layerAlpha = NeedsLayerAlphaBake(material);
-            var shader = Shader.Find(layerAlpha ? "Hidden/VRVlog/LayerAlphaBaker" : "Hidden/ltsother_baker");
-            if (shader == null || !shader.isSupported) throw new InvalidOperationException("lilToonのベイク用シェーダーを利用できません。");
+            var shader = layerAlpha ? LayerAlphaShader() : Shader.Find("Hidden/ltsother_baker");
+            if (shader == null || !shader.isSupported || ShaderUtil.ShaderHasError(shader)) throw new InvalidOperationException("lilToonのベイク用シェーダーを利用できません。");
             var baker = new Material(shader);
             RenderTexture target = null;
             Texture2D result = null;
@@ -225,7 +249,12 @@ namespace VRVlog.LilToonExporter
                 }
                 target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
                 GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                Graphics.Blit(material.GetTexture("_MainTex") ?? Texture2D.whiteTexture, target, baker, 0);
+                // The pixels are read back at once: compile the pass now instead
+                // of drawing the Editor's placeholder while it compiles.
+                var asyncCompilation = ShaderUtil.allowAsyncCompilation;
+                ShaderUtil.allowAsyncCompilation = false;
+                try { Graphics.Blit(material.GetTexture("_MainTex") ?? Texture2D.whiteTexture, target, baker, 0); }
+                finally { ShaderUtil.allowAsyncCompilation = asyncCompilation; }
                 RenderTexture.active = target;
                 result = new Texture2D(width, height, TextureFormat.RGBA32, false, false)
                 {
