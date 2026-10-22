@@ -107,7 +107,8 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
-                Assert.Throws<NotSupportedException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: null, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+                var error = Assert.Throws<NotSupportedException>(() => UniVrmOneClickExporter.Export(fixture.Source, "Installed lilToon", "Tests", exporterVersion: "0.11.12", lilToonVersion: null, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }));
+                Assert.That(error.Message, Is.EqualTo(Compatibility.DependencyPolicy.LilToonError(null, ExporterLocalization.T)), "Stopped by the missing lilToon, not by another check.");
             }
             finally { Object.DestroyImmediate(material); }
         }
