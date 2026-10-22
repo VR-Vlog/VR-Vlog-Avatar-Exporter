@@ -581,12 +581,6 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        internal static bool ShouldShowFailureAfterFailedAttempt(ExportRecoverySession session)
-        {
-            if (session == null) throw new ArgumentNullException(nameof(session));
-            return session.IsInvalidated || !session.WasCanceled;
-        }
-
         private string AvatarName()
         {
             return avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar";
@@ -629,11 +623,6 @@ namespace VRVlog.LilToonExporter
         // entry so exporting also works in packages without the transfer module.
         internal static System.Reflection.MethodInfo SavedVrmTransferMethod() =>
             TransferMethod(type => type, "OpenSavedVrmForDevelopment", typeof(string));
-
-        // The second step of the detailed "アプリに転送", in the same optional
-        // assembly and namespace as the entry above.
-        internal static System.Reflection.MethodInfo DetailedTransferMethod() =>
-            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferWindow", false), "OpenDetailed", typeof(GameObject));
 
         // The same step as the expression board's third page: returns the panel as a VisualElement, given
         // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while

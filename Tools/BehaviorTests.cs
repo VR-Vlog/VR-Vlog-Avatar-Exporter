@@ -49,8 +49,6 @@ public static class ExporterBehaviorTests
 
         VRVlog.LilToonExporter.Tests.BaseShapeFixture.Run(Check);
         VRVlog.LilToonExporter.Tests.MenuExpressionFixture.Run(Check);
-        VRVlog.LilToonExporter.Tests.MenuTraversalFixture.Run(Check);
-        VRVlog.LilToonExporter.Tests.FixedExpressionCurveFixture.Run(Check);
         VRVlog.LilToonExporter.Tests.AnimatedExpressionFixture.Run(Check);
         VRVlog.LilToonExporter.Tests.UnifiedExpressionFixture.Run(Check);
         CheckMaterials();

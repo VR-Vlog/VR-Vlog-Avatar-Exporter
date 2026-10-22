@@ -530,8 +530,6 @@ BEHAVIOR_CASES = {
         'NeutralAdditiveAutomaticSupportKeepsNativeDefaultsWithoutBakingMovingBlink': 1,
         'InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation': 1,
         'AdditiveDirectClipIsRejectedWithoutGuessingItsReferencePose': 1,
-        'ApplyingCommittedFxDefaultsChangesOnlyTheCopy': 1,
-        'ApplyingDefaultsRequiresAnIndependentExportCopy': 1,
         'ConstantIndependentEffectAppliesToNeutralAndSelectedExpression': 2,
         'ConstantRelayProofDoesNotAcceptAnSdkBehaviourEvenWhenClipsMatch': 1,
         'ConstantRelayProofRejectsOutputOrCallbackDifferences': 7,

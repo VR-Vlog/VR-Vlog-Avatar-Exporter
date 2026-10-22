@@ -382,7 +382,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void PreflightExclusionsAndApprovedOmissionsUseMaterialIdentity()
+        public void PreflightExclusionsUseMaterialIdentity()
         {
             var avatar = new GameObject("Avatar");
             var pet = new GameObject("Pet");
@@ -400,13 +400,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var error = Assert.Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar, excluded));
                 Assert.That(error.Issues.Count, Is.EqualTo(1));
                 Assert.That(error.Issues.Single().Material, Is.SameAs(bodyMaterial));
-                var originalOptions = new MaterialBakeOptions();
-                var approved = originalOptions.WithOmissions(error.Issues);
-                Assert.DoesNotThrow(() => LilToonMainTextureBaker.ValidateAvatar(avatar, excluded, approved));
-                Assert.Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar, excluded, originalOptions));
-                var remaining = Assert.Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar, null, approved));
-                Assert.That(remaining.Issues.Count, Is.EqualTo(1));
-                Assert.That(remaining.Issues.Single().Material, Is.SameAs(petMaterial));
                 Assert.That(bodyMaterial.GetFloat("_UseMain2ndTex"), Is.EqualTo(1));
                 Assert.That(petMaterial.GetFloat("_UseMain2ndTex"), Is.EqualTo(1));
             }
@@ -415,47 +408,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(avatar);
                 Object.DestroyImmediate(bodyMaterial);
                 Object.DestroyImmediate(petMaterial);
-            }
-        }
-
-        [Test]
-        public void ApprovedLayerOmissionChangesOnlyExportCopy()
-        {
-            var avatar = new GameObject("Avatar");
-            var source = CreateLayerMaterial("2nd");
-            var created = new List<Material>();
-            var textures = new List<Texture2D>();
-            GameObject clone = null;
-            try
-            {
-                source.SetFloat("_Main2ndTexShouldFlipMirror", 1);
-                var renderer = avatar.AddComponent<MeshRenderer>();
-                renderer.sharedMaterial = source;
-                var before = EditorJsonUtility.ToJson(source);
-                var error = Assert.Throws<MaterialBakeException>(() => LilToonMainTextureBaker.ValidateAvatar(avatar));
-                var options = new MaterialBakeOptions().WithOmissions(error.Issues);
-                clone = Object.Instantiate(avatar);
-                var warnings = new List<string>();
-                LilToonMainTextureBaker.Prepare(clone, created, textures, warnings, false, false, options);
-                var copy = clone.GetComponent<MeshRenderer>().sharedMaterial;
-                Assert.That(copy, Is.Not.SameAs(source));
-                Assert.That(created.Count, Is.EqualTo(1));
-                Assert.That(created.Single(), Is.SameAs(copy));
-                Assert.That(copy.GetFloat("_UseMain2ndTex"), Is.Zero);
-                Assert.That(copy.GetTexture("_MainTex"), Is.SameAs(source.GetTexture("_MainTex")));
-                Assert.That(copy.GetColor("_Color"), Is.EqualTo(source.GetColor("_Color")));
-                Assert.That(textures, Is.Empty, "Omitting the only layer needs no GPU bake.");
-                Assert.That(warnings.Count, Is.GreaterThan(0));
-                Assert.That(renderer.sharedMaterial, Is.SameAs(source));
-                Assert.That(EditorJsonUtility.ToJson(source), Is.EqualTo(before));
-            }
-            finally
-            {
-                if (clone != null) Object.DestroyImmediate(clone);
-                Object.DestroyImmediate(avatar);
-                foreach (var material in created) Object.DestroyImmediate(material);
-                foreach (var texture in textures) Object.DestroyImmediate(texture);
-                Object.DestroyImmediate(source);
             }
         }
 

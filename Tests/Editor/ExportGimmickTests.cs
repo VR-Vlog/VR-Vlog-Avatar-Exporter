@@ -66,7 +66,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Assert.That(ExportGimmickDetection.Inspect(Render("NadeShadow", unspecified)).Unit, Is.EqualTo(GimmickExclusionUnit.Review));
             var fake = Child("NadeSystem"); Child("HeadSystem", fake.transform); Child("Proxies", fake.transform);
-            Assert.That(ExportGimmickDetection.KnownNadeRoot(fake), Is.False);
+            Assert.That(PettingSystemRoot(fake), Is.False);
             Assert.That(ExportGimmickDetection.Analyze(avatar).Any(f => f.Unit == GimmickExclusionUnit.Hierarchy), Is.False);
         }
 
@@ -297,6 +297,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static Type FindType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
+        static bool PettingSystemRoot(GameObject target) =>
+            ExportGimmickDetection.Matches(ExportGimmickRules.All.First(rule => rule.Id == ExportGimmickRules.PettingSystem), target.transform);
 
         static ExportGimmickRule AnchorRule(params string[] linked) => new ExportGimmickRule
         {
@@ -497,9 +499,9 @@ namespace VRVlog.LilToonExporter.Tests
             }
             Contact("RxHeadMain", "NadeRxHeadMain");
             Contact("RightHandSystem/RxRight", "NadeRxRightHand");
-            Assert.That(ExportGimmickDetection.KnownNadeRoot(root), Is.False);
+            Assert.That(PettingSystemRoot(root), Is.False);
             Contact("LeftHandSystem/RxLeft", "NadeRxLeftHand");
-            Assert.That(ExportGimmickDetection.KnownNadeRoot(root), Is.True);
+            Assert.That(PettingSystemRoot(root), Is.True);
             var finding = ExportGimmickDetection.Analyze(avatar).Single(f => f.RuleId != null);
             Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.PettingSystem));
             Assert.That(finding.Evidence, Is.EqualTo("structure"));

@@ -413,21 +413,6 @@ namespace VRVlog.LilToonExporter
 
         internal void PreviewClip(AnimationClip clip, float time = 0) => ApplyUnchecked(BuildClipPose(clip, time, "プレビュー"));
 
-        internal ImportResult ImportClips(IEnumerable<ClipInput> inputs)
-        {
-            RequireValid();
-            var result = new ImportResult(); var staged = new List<Pose>();
-            var names = new HashSet<string>(Expressions.Select(pose => pose.Name), StringComparer.Ordinal);
-            foreach (var input in inputs)
-            {
-                var pose = BuildClipPoseUnchecked(input.Clip, input.Time, input.Name);
-                if (!names.Add(pose.Name)) { result.Skipped.Add(pose.Name + ": 同名の表情を登録済みです。"); continue; }
-                staged.Add(pose); result.Imported.Add(pose.Name);
-            }
-            Expressions.AddRange(staged); // Atomic: invalid files never publish a partial batch or change the preview.
-            return result;
-        }
-
         // Replace only records owned by this window's file list. Validate the
         // complete batch before changing any record; manual/loaded faces stay.
         // A repeated name gets " (2)", " (3)"... in list order, the same rule
