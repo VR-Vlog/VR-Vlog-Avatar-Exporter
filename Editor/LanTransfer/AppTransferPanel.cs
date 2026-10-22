@@ -1036,7 +1036,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
             warningText.text = T(AppTransferText.DoNotShare);
             FitWarning();
-            Reserve(warningRow, waiting);
+            // Its place is kept in every state, so it does not move when the QR appears.
+            Reserve(warningRow, AppTransferFlow.ShowsDoNotShare(view));
             var counting = waiting || view == AppTransferView.Expired;
             statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
             var seconds = waiting ? flow.Remaining : 0;
