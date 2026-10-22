@@ -390,8 +390,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 var file = Path.GetFileName(savedCopy);
                 result = savedCopyMissingShaders > 0 ? string.Format(T(SavedCopyMissingShadersText), file, savedCopyMissingShaders)
                     : string.Format(T(SavedCopyText), file);
-                detail = savedCopy;
                 warn = savedCopyMissingShaders > 0;
+                // The row has room for the count only; the tooltip says what to do, as the QR screen's warning does.
+                detail = warn ? savedCopy + "\n" + string.Format(T(MissingShadersText), savedCopyMissingShaders) : savedCopy;
             }
             saveResult.text = result;
             saveResult.tooltip = detail;

@@ -2394,7 +2394,13 @@ namespace VRVlog.LilToonExporter
                 if (extensions.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var animations))
                     poseCount += VRVlog.Poses.HumanoidAnimationData.Read(animations).Count;
                 saved = new SavedExpressionVrm(path, bytes, savedFaces, poseCount, missingShaders);
-                if (savedTo != null) { Repaint(); return; }
+                if (savedTo != null)
+                {
+                    // The transfer screen has one line; the notes the status line would list go to the Console, as for a transfer.
+                    if (warnings != null && warnings.Any()) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", warnings));
+                    Repaint();
+                    return;
+                }
                 status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
