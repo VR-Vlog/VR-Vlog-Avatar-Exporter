@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter
     internal static class PhysBoneSpringExport
     {
         internal const string PhysBoneType = "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBone";
-        const string ColliderType = "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider";
+        internal const string ColliderType = "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider";
         internal const string EndpointName = "VRVlog Spring Endpoint";
 
         internal sealed class Result

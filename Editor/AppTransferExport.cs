@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
@@ -30,14 +28,6 @@ namespace VRVlog.LilToonExporter
         private int countedRevision = -1, excludedCount;
         // Materials whose shader was missing in the last saved export. The window warns under its QR.
         private int lastMissingShaderCount;
-
-        internal delegate ExportRecoverySession SaveNormallyHandler(GameObject source, string destination,
-            Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
-            Action<byte[], IEnumerable<string>> completed, IEnumerable<GameObject> previewExcludedObjects,
-            ExportGimmickOptions previewGimmicks, bool interactive, Action openBlinkSettings);
-
-        // The save path of the export windows. Tests replace it to see how it is called.
-        internal static SaveNormallyHandler SaveNormally = LilToonExporterWindow.ExportAndSaveNormally;
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
@@ -79,7 +69,9 @@ namespace VRVlog.LilToonExporter
                     countedRevision = ExportSettingsStore.Revision;
                     excludedCount = ExportSettingsStore.Load(avatar).Exclusions().Length;
                 }
-                return string.Format(ExporterLocalization.T("表情は名前から自動・書き出さないオブジェクト{0}件"), excludedCount);
+                // The quick transfer prepares the board as "通常" opens it: the
+                // avatar's last assignment, automatic where there is none.
+                return string.Format(ExporterLocalization.T("表情は前回の割り当て（なければ自動）・書き出さないオブジェクト{0}件"), excludedCount);
             }
             var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
             return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/{1}・書き出さないオブジェクト{2}件"),
@@ -129,9 +121,10 @@ namespace VRVlog.LilToonExporter
             AvatarLicenseSettingsUi.DrawFields(license);
         }
 
-        // Writes the VRM to destination through the entry the export windows use,
-        // with the avatar's remembered export settings (exclusions, gimmicks,
-        // blink, poses) and the license shown here.
+        // Writes what "通常" writes for this avatar when nothing on the expression
+        // board is touched: a board is prepared out of sight, as opening "通常"
+        // prepares it, and exports with the name, author and license of this
+        // window. Only the result list is not asked about before saving.
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
@@ -144,31 +137,11 @@ namespace VRVlog.LilToonExporter
             lastMissingShaderCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
-            // The report of the attempt that produced the bytes being saved.
-            ExportFallbackReport fallbacks = null;
-            var create = targetSettings.Creator(avatar, name, targetAuthor);
-            void Completed(byte[] bytes, IEnumerable<string> warnings)
-            {
-                lastMissingShaderCount = ExportResultList.MissingShaders(fallbacks);
-                // Like the export windows, the details of this export go to the Console.
-                // Nothing asked about what the export worked around, so the whole result list goes there once.
-                var details = (warnings ?? Array.Empty<string>()).ToArray();
-                if (fallbacks != null && fallbacks.Count > 0) Debug.LogWarning(ExportResultList.Build(fallbacks, details, destination).Text());
-                else if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
-                ExportSettingsStore.SaveTransferName(avatar, name);
-                saved();
-            }
-            // The quick transfer does not stop to ask about what the export worked
-            // around; an export that cannot be saved still fails with its reason.
-            var recovery = SaveNormally(avatar, destination, (options, report, warnings) =>
-            {
-                var exported = create(options, report, warnings);
-                fallbacks = report?.Fallbacks;
-                return exported;
-            }, Completed, targetSettings.Exclusions(), targetSettings.Gimmicks(), false, null);
-            if (recovery == null) return null;
-            ExportFailureWindow.Show(recovery, () => Completed(recovery.LastSuccess.Bytes, recovery.LastSuccess.Warnings));
-            return recovery.Failure?.Message ?? "";
+            ExperimentalExpressionCaptureWindow board;
+            try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
+            catch (OperationCanceledException) { return null; }
+            try { return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, false); }
+            finally { UnityEngine.Object.DestroyImmediate(board); }
         }
 
         // Writes what the expression board for this avatar shows, with the name,
@@ -183,13 +156,22 @@ namespace VRVlog.LilToonExporter
             lastMissingShaderCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
+            return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
+        }
+
+        // The one export of both transfers: the board writes the VRM; a saved
+        // transfer remembers its name for the avatar.
+        private string ExportFrom(ExperimentalExpressionCaptureWindow board, GameObject avatar, string name, string targetAuthor,
+            ExportSettings targetSettings, string destination, Action saved, bool interactive)
+        {
             return board.TransferExport(name, targetAuthor, targetSettings.License.Copy(), destination, () =>
             {
-                // The board sets the count before it calls back.
+                // The board sets the count before it calls back. A plain field:
+                // still read when the recovery window saves after the board closed.
                 lastMissingShaderCount = board.LastMissingShaderCount;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
-            });
+            }, interactive);
         }
 
         // The author and the license edited here are remembered for the next

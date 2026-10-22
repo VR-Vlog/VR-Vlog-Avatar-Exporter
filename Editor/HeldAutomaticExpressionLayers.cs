@@ -225,7 +225,7 @@ namespace VRVlog.LilToonExporter
                 var clip = Clip(state); if (clip == null) return false;
                 foreach (var binding in outputs)
                 {
-                    if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) return false;
+                    if (!PoseSampling.IsBlendShape(binding)) return false;
                     var skin = (binding.path.Length == 0 ? avatar.transform : avatar.transform.Find(binding.path))?.GetComponent<SkinnedMeshRenderer>();
                     var shape = skin?.sharedMesh == null ? -1 : skin.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length));
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
@@ -569,7 +569,7 @@ namespace VRVlog.LilToonExporter
                     { safe = false; break; }
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (binding.type != typeof(SkinnedMeshRenderer) || !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                        if (!PoseSampling.IsBlendShape(binding))
                         { safe = false; break; }
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
                         VrChatGestureExpressions.ReadCurve(curve);

@@ -495,7 +495,8 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { retained });
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show() restores the size saved for this window type; set ours after it.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 for (var frame = 0; frame < 8; frame++) { window.Repaint(); yield return null; }
                 var errors = (System.Collections.Generic.Dictionary<AnimationClip, string>)type.GetField("clipErrors", flags).GetValue(window);
                 Assert.That(errors[clip], Is.Not.Null);
@@ -585,6 +586,83 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var comparison in Resources.FindObjectsOfTypeAll<ExportRecoveryComparisonWindow>()) Object.DestroyImmediate(comparison);
                 foreach (var failure in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failure);
                 if (window != null) Object.DestroyImmediate(window); Object.DestroyImmediate(clip); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        // Answers the result list at once, as if the user pressed 保存する.
+        sealed class SavingFallbackDialog : IExportFallbackDialog
+        {
+            internal int Calls;
+            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
+            {
+                Calls++;
+                save();
+            }
+        }
+
+        // Both transfers ("かんたん" passes interactive false, "通常" true): a
+        // failing stage follows the project-wide choice (省いて続ける). On, the
+        // stage is left out and listed in the result list, which only the
+        // interactive transfer asks about; off, both stop and open the
+        // recovery window. interactive never changes whether the file is written.
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        [TestCase(false, true)]
+        public void TransferFollowsTheStageChoice(bool continueOnFailure, bool interactive)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon"));
+            var texture = new RenderTexture(16, 16, 0);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stage-" + Guid.NewGuid().ToString("N") + ".vrm");
+            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
+            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var originalDialog = ExportFallbackConfirmation.Dialog;
+            var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
+            var dialog = new SavingFallbackDialog();
+            var saved = 0;
+            try
+            {
+                // The test runner may be a batch run; pretend an Editor session so
+                // the interactive transfer really asks.
+                ExportFallbackConfirmation.Dialog = dialog;
+                ExportFallbackConfirmation.IsBatchMode = () => false;
+                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, continueOnFailure);
+                material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                var failure = window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved++, interactive);
+                if (continueOnFailure)
+                {
+                    Assert.That(failure, Is.Null);
+                    Assert.That(saved, Is.EqualTo(1));
+                    Assert.That(File.Exists(path), Is.True);
+                    Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.False);
+                    Assert.That(dialog.Calls, Is.EqualTo(interactive ? 1 : 0), "Only the interactive transfer asks about the left-out stage.");
+                }
+                else
+                {
+                    Assert.That(failure, Is.Not.Null);
+                    Assert.That(saved, Is.Zero);
+                    Assert.That(File.Exists(path), Is.False);
+                    Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.True);
+                    Assert.That(dialog.Calls, Is.Zero);
+                }
+            }
+            finally
+            {
+                ExportFallbackConfirmation.Dialog = originalDialog;
+                ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
+                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
+                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+                foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);
+                Object.DestroyImmediate(window); Object.DestroyImmediate(material); Object.DestroyImmediate(texture);
                 if (File.Exists(path)) File.Delete(path);
             }
         }
@@ -1108,6 +1186,103 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
         }
 
+        // The expression menu gives two faces and the board lists them with a
+        // third face the menu does not have. Recording the list would replace
+        // the menu faces (and their motion) with still ones, so the ordinary
+        // route keeps the menu result and says some list faces were not exported.
+        [Test]
+        public void OrdinaryRouteKeepsTheMenuWhenItGivesSomeButFewerFaces()
+        {
+            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var listOnly = new AnimationClip { name = "Listed only" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-menu-kept-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var names = new[] { "Face A", "Face B" };
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                controller.AddParameter("Face", AnimatorControllerParameterType.Int);
+                var machine = controller.layers[0].stateMachine;
+                var neutral = machine.AddState("Neutral"); neutral.writeDefaultValues = false; machine.defaultState = neutral;
+                var clips = new AnimationClip[names.Length];
+                for (var index = 0; index < names.Length; index++)
+                {
+                    var state = machine.AddState(names[index]); state.writeDefaultValues = false;
+                    clips[index] = new AnimationClip { name = names[index] };
+                    AnimationUtility.SetEditorCurve(clips[index], EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                        AnimationCurve.Constant(0, 1, 75 - index * 20));
+                    AssetDatabase.AddObjectToAsset(clips[index], controller); state.motion = clips[index];
+                    var transition = neutral.AddTransition(state); transition.hasExitTime = false; transition.duration = 0;
+                    transition.AddCondition(AnimatorConditionMode.Equals, index + 1, "Face");
+                }
+                // A face only the board lists; its weight differs from both menu faces.
+                AnimationUtility.SetEditorCurve(listOnly, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Constant(0, 1, 15));
+                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
+                using (var data = new SerializedObject(menu))
+                {
+                    var controls = data.FindProperty("controls"); controls.arraySize = names.Length;
+                    for (var index = 0; index < names.Length; index++)
+                    {
+                        var item = controls.GetArrayElementAtIndex(index); item.FindPropertyRelative("name").stringValue = names[index];
+                        var control = item.FindPropertyRelative("type"); control.enumValueIndex = Array.IndexOf(control.enumNames, "Toggle");
+                        item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Face";
+                        item.FindPropertyRelative("value").floatValue = index + 1;
+                    }
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var descriptor = fixture.Source.AddComponent(descriptorType);
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customExpressions").boolValue = true; data.FindProperty("expressionsMenu").objectReferenceValue = menu;
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                    var layer = list.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
+                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, clips.Append(listOnly).Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.UsesRecordRoute, Is.False);
+                Assert.That(board.OtherCount, Is.EqualTo(names.Length + 1));
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                // The menu faces stay with their animation extension: the list was not recorded in their place.
+                Assert.That(custom.Keys, Is.SupersetOf(names));
+                Assert.That(custom.Keys, Has.No.Member(listOnly.name));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(names.Length));
+                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension), Is.True);
+                Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
+                var status = (string)type.GetField("status", flags).GetValue(window);
+                Assert.That(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat, Does.EndWith("のうち書き出していない表情があります"));
+                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 1);
+                Assert.That(status.Split('\n').Count(value => value == line), Is.EqualTo(1));
+                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), names.Length, names.Length + 1)));
+                var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
+                Assert.That(saved.Expressions, Is.EqualTo(names.Length), "The saved count is the menu faces the VRM has.");
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(listOnly); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]
@@ -1468,11 +1643,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
 
-        [TestCase("ja", "VRM書き出し", "この割り当てでVRMを保存")]
-        [TestCase("en", "VRM Export", "Save VRM with this assignment")]
-        [TestCase("ko", "VRM 내보내기", "이 할당으로 VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "按此分配保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "依此分配儲存 VRM")]
+        [TestCase("ja", "VRM書き出し", "VRMを保存")]
+        [TestCase("en", "VRM Export", "Save VRM")]
+        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
+        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
+        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1485,30 +1660,30 @@ namespace VRVlog.LilToonExporter.Tests
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
-                Assert.That(window.titleContent.image, Is.SameAs(ExporterWindowIcon.Texture));
-                Assert.That(ExporterLocalization.T("この割り当てでVRMを保存"), Is.EqualTo(save));
+                Assert.That(window.titleContent.image, Is.Null);
+                Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
                 Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
                 if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
             }
             finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
 
-        // A window restored from the saved layout has its tab text but no image;
-        // after a script reload the shared texture is found again, not made twice.
+        // The logo is drawn in the header at the top of the window, not on the tab.
+        // Closing a window keeps the shared texture, and after a script reload the
+        // same texture is found again instead of being made twice.
         [Test]
-        public void WindowIconSurvivesLayoutRestoreAndScriptReload()
+        public void HeaderLogoIsSharedAndSurvivesScriptReload()
         {
             var icon = ExporterWindowIcon.Texture;
             Assert.That(icon, Is.Not.Null);
             Assert.That((icon.width, icon.height), Is.EqualTo((128, 128)));
+            Assert.That(ExporterWindowHeader.Height, Is.EqualTo(61f));
             ExperimentalExpressionCaptureWindow window = null;
             try
             {
                 ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
-                window.titleContent = new GUIContent("VRM書き出し");
-                ExporterWindowIcon.Restore(window);
-                Assert.That(window.titleContent.text, Is.EqualTo("VRM書き出し"));
-                Assert.That(window.titleContent.image, Is.SameAs(icon));
+                window.Repaint();
+                Assert.That(window.titleContent.image, Is.Null);
             }
             finally { window?.Close(); }
             Assert.That(icon != null, "closing a window must not destroy the shared icon");
@@ -2060,7 +2235,8 @@ namespace VRVlog.LilToonExporter.Tests
                 EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Linear(0, 10, 1, 70 + index));
             try
             {
-                window.position = new Rect(40, 40, 700, 1100); window.Show();
+                // Show() restores the size saved for this window type; set ours after it.
+                window.Show(); window.position = new Rect(40, 40, 700, 1100);
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
                 type.GetField("recommendations", flags).SetValue(window, clips.Select(clip => new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
@@ -2353,6 +2529,82 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.BlocksExport, Is.True);
                 Assert.That(window.TransferExport("Avatar", "SampleAuthor", new AvatarLicenseOptions(), Path.Combine(Path.GetTempPath(), "unused.vrm"), () => { }),
                     Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardNeedsFix)));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); fixture.Dispose();
+                UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+                AssetDatabase.DeleteAsset(scenePath);
+            }
+        }
+
+        // The pages move by 戻る and 次へ. Leaving the objects page applies its
+        // edits first; a list the preview cannot take keeps the user on the page
+        // with the edits and the reason, and the next try moves on once it is fixed.
+        [Test]
+        public void LeavingTheObjectsPageAppliesItsEditsFirst()
+        {
+            var scenePath = "Assets/ExcludedObjects-" + Guid.NewGuid().ToString("N") + ".unity";
+            var scene = UnityEditor.SceneManagement.EditorSceneManager.NewScene(UnityEditor.SceneManagement.NewSceneSetup.EmptyScene, UnityEditor.SceneManagement.NewSceneMode.Single);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var fixture = new AttachmentConnectionTests.Fixture();
+            void Drain()
+            {
+                for (var step = 0; step < 10 && type.GetField("pending", flags).GetValue(window) != null; step++)
+                    type.GetMethod("Advance", flags).Invoke(window, null);
+                Assert.That(type.GetField("pending", flags).GetValue(window), Is.Null);
+            }
+            try
+            {
+                Assert.That(UnityEditor.SceneManagement.EditorSceneManager.SaveScene(scene, scenePath), Is.True);
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ExpressionsPage));
+                window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, meshes);
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビュー未反映　ページを移るときに反映します")));
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EqualTo(meshes));
+                Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビューに反映できませんでした・理由は一覧の下にあります")));
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.Empty);
+
+                var kept = meshes.Skip(1).ToList();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, kept);
+                type.GetField("excludedObjectError", flags).SetValue(window, null);
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
+                Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.Null);
+                Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.EquivalentTo(kept));
+
+                // The status line (here a save report) stays with the page it came from.
+                type.GetField("status", flags).SetValue(window, "saved");
+                window.GoTo(ExperimentalExpressionCaptureWindow.ObjectsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(type.GetField("status", flags).GetValue(window), Is.Null);
+                window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ExpressionsPage));
+
+                // An apply still waiting that another action replaces does not leave the board blocked.
+                type.GetField("excludedObjectEdits", flags).SetValue(window, kept.ToList());
+                type.GetMethod("ApplyThen", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.True);
+                type.GetMethod("Queue", flags).Invoke(window, new object[] { (Action)(() => { }) });
+                Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
+                Drain();
+                type.GetField("excludedObjectEdits", flags).SetValue(window, null);
+
+                // The transfer has no information page: its third step is the next window.
+                type.GetField("transferMode", flags).SetValue(window, true);
+                window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
             }
             finally
             {

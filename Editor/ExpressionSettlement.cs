@@ -55,8 +55,7 @@ namespace VRVlog.LilToonExporter
             }
             var elapsed = 0f;
             void Step(float seconds) { graph.Evaluate(seconds); afterUpdate?.Invoke(); elapsed += seconds; }
-            relevantCurve = relevantCurve ?? ((layer, clip, binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-                binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal));
+            relevantCurve = relevantCurve ?? ((layer, clip, binding) => PoseSampling.IsBlendShape(binding));
             var layers = controller.layers;
             var states = StateIndex(controller);
             (AnimatorState State, List<AnimatorStateMachine> Ancestors) Resolve(int layer, int hash) =>
@@ -229,14 +228,20 @@ namespace VRVlog.LilToonExporter
                     .Any(clip => AnimationUtility.GetCurveBindings(clip).Any(binding => relevantCurve(layer, clip, binding) ||
                         binding.type == typeof(Animator) && binding.path == "" && parameterNames.Contains(binding.propertyName)));
             }
+            // A layer that keeps restarting into its state shows that state
+            // throughout; the fixed pose check requires its curves to be
+            // constant and its callbacks to change nothing.
+            bool Restarts(int layer) => RestartsInto(controller, layer, Entered(layer), Parameters(playable, controller), Resolve);
             void Final(float seconds)
             {
                 // A restart inside one long step can leave the clock past its
                 // old value, so compare with the time the clock should reach.
-                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer), Matters: Matters(layer))).ToArray();
+                var before = Active().Select(layer => (Layer: layer, State: Entered(layer), Time: Clock(layer), Rate: Rate(layer), Matters: Matters(layer),
+                    Restarts: Restarts(layer))).ToArray();
                 Step(seconds);
-                foreach (var (layer, state, time, rate, matters) in before)
-                    if ((playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate) &&
+                foreach (var (layer, state, time, rate, matters, restarts) in before)
+                    if (!(restarts && Entered(layer) == state && Restarts(layer)) &&
+                        (playable.IsInTransition(layer) || Entered(layer) != state || Clock(layer) + .0001f < time + (seconds - Frame) * rate) &&
                         (matters || Matters(layer)))
                         throw new InvalidOperationException(UntraceableTransitions);
             }
@@ -306,6 +311,7 @@ namespace VRVlog.LilToonExporter
                 var duration = transition.durationUnit == DurationUnit.Fixed ? transition.duration :
                     transition.duration * playable.GetCurrentAnimatorStateInfo(layer).length;
                 if (!Finite(duration) || !Finite(transition.normalizedTime)) throw new InvalidOperationException(InvalidTransitionTime);
+                if (Restarting(playable, controller, layer, parameters, resolve)) return null;
                 if (Interruptible(playable, layer, resolve)) return (0, false, true);
                 return (Math.Max(0, (1 - transition.normalizedTime) * duration), false, false);
             }
@@ -325,6 +331,40 @@ namespace VRVlog.LilToonExporter
             var time = info.normalizedTime;
             var wait = info.loop && exit < 1 ? Mathf.Repeat(exit - (time - Mathf.Floor(time)), 1) : Math.Max(0, exit - time);
             return (wait * info.length, true, false);
+        }
+
+        // An Any State edge into the current state that can transition to
+        // self, waits for no exit time and whose conditions hold starts again
+        // whenever its transition ends, so the layer never leaves its self
+        // transition and stays in this state. Its end is not an event. A
+        // trigger is consumed by the restart, so it does not hold.
+        private static bool Restarting(AnimatorControllerPlayable playable, AnimatorController controller, int layer,
+            IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
+        {
+            var hash = playable.GetCurrentAnimatorStateInfo(layer).fullPathHash;
+            return playable.GetNextAnimatorStateInfo(layer).fullPathHash == hash && RestartsInto(controller, layer, hash, parameters, resolve);
+        }
+
+        // Whether such an edge holds for the state, whether or not its
+        // transition is running at this instant. A zero-length edge or a
+        // sample between two restarts shows no transition at all.
+        internal static bool RestartsInto(AnimatorControllerPlayable playable, AnimatorController controller, int layer)
+        {
+            var states = StateIndex(controller);
+            return RestartsInto(controller, layer, playable.GetCurrentAnimatorStateInfo(layer).fullPathHash, Parameters(playable, controller),
+                (index, hash) => states.TryGetValue((index, hash), out var found) ? found : (null, null));
+        }
+
+        private static bool RestartsInto(AnimatorController controller, int layer, int hash,
+            IDictionary<string, float> parameters, Func<int, int, (AnimatorState State, List<AnimatorStateMachine> Ancestors)> resolve)
+        {
+            var (state, ancestors) = resolve(layer, hash);
+            if (state == null) return false;
+            var triggers = new HashSet<string>(controller.parameters.Where(parameter => parameter.type == AnimatorControllerParameterType.Trigger)
+                .Select(parameter => parameter.name), StringComparer.Ordinal);
+            return ancestors.SelectMany(machine => machine.anyStateTransitions).Any(value => value.destinationState == state &&
+                value.canTransitionToSelf && !value.mute && !value.hasExitTime &&
+                value.conditions.All(condition => !triggers.Contains(condition.parameter)) && ExpressionDependencies.IsTrue(value, parameters));
         }
 
         // VRChat evaluates every frame, so another edge can cut a running

@@ -329,24 +329,6 @@ namespace VRVlog.LilToonExporter
             internal readonly List<string> Skipped = new List<string>();
         }
 
-        internal bool SelectCandidateByDefault(VrChatExpressionMenu.Entry entry)
-        {
-            if (entry.Error != null || entry.Unevaluated.Count != 0 || entry.Animation.Count != 0) return false;
-            foreach (var value in entry.Values)
-            {
-                var row = Baseline.Rows.SingleOrDefault(item => item.Path == value.Path);
-                var shape = row == null ? -1 : Array.IndexOf(row.Shapes, value.Shape);
-                if (shape >= 0 && Mathf.Abs(row.Weights[shape] - value.Weight) > .001f) return true;
-            }
-            // A named authored neutral face still belongs in the expression
-            // catalog; unchanged settings toggles remain unchecked by default.
-            var label = entry.Name.Split('/').Last().Trim();
-            return entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true ||
-                Candidates.Controller != null && Candidates.Controller.animationClips.Any(clip => clip.name == label &&
-                    AnimationUtility.GetCurveBindings(clip).Any(binding => binding.type == typeof(SkinnedMeshRenderer) &&
-                        binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)));
-        }
-
         internal ImportResult ImportCandidates(IEnumerable<VrChatExpressionMenu.Entry> entries)
         {
             RequireValid();
@@ -557,6 +539,11 @@ namespace VRVlog.LilToonExporter
         {
             // The export always hashes the source again, even inside a batch.
             RequireValid(always: true);
+            // The same checks as the other user-facing exports (ExportSettings.Export):
+            // stop before any stage on a source VRM cannot carry. A failing stage
+            // still stops here and offers the recovery window.
+            UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
+            UniVrmOneClickExporter.ValidateSourceHasMesh(Source);
             // Stop on an unsupported or differently built lilToon before preparing the export copy.
             var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
@@ -574,6 +561,12 @@ namespace VRVlog.LilToonExporter
                         : BlinkPresets.Contains(item.Preset) ? BlinkMorphs(item.Assignment, pose) : PresetMorphs(item.Assignment);
                     return (item.Preset, Pose: pose, Morphs: morphs, Automatic: item.Assignment.Automatic && !item.Assignment.IsNone);
                 }).ToArray();
+            // Gaze and neutral the board leaves open are filled from names as in
+            // the quick export; only the user's own "none" keeps one empty.
+            var keepEmpty = selectedPresets
+                .Where(item => item.Assignment.IsNone && !item.Assignment.Automatic &&
+                    (LookAtPresets.Contains(item.Preset) || item.Preset == ExpressionPreset.neutral))
+                .Select(item => item.Preset.ToString()).ToArray();
             var leftEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkLeft).Assignment;
             var rightEye = selectedPresets.FirstOrDefault(item => item.Preset == ExpressionPreset.blinkRight).Assignment;
             if (leftEye != null && !leftEye.IsNone && BlinkSideOverlap(ExpressionPreset.blinkLeft, leftEye, rightEye) is string overlap)
@@ -590,12 +583,17 @@ namespace VRVlog.LilToonExporter
             // replaceCustomFaces asks for exactly the recorded custom faces, even
             // none, so both shortcuts that keep the menu faces are skipped.
             if (!replaceCustomFaces && expressions.Length == 0 && presetFaces.Length == 0)
-                return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
+            {
+                var ordinary = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                     exporterVersion: LilToonExporterWindow.PackageVersion(),
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, inferEmotionPresets: false,
+                    inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                UniVrmOneClickExporter.ValidateOutputHasMesh(ordinary);
+                return ordinary;
+            }
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
             if (!replaceCustomFaces && expressions.Length == 0)
@@ -603,13 +601,16 @@ namespace VRVlog.LilToonExporter
                 var authored = new List<Object>();
                 try
                 {
-                    return UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
+                    var authoredVrm = UniVrmOneClickExporter.Export(Source, avatarName, author, warnings,
                         exporterVersion: LilToonExporterWindow.PackageVersion(),
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
                         authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
-                        inferEmotionPresets: false, excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                        inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
+                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions);
+                    UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
+                    return authoredVrm;
                 }
                 finally { foreach (var asset in authored) if (asset != null) Object.DestroyImmediate(asset); }
             }
@@ -690,6 +691,19 @@ namespace VRVlog.LilToonExporter
                 // Recorded names and presets identify each target; _2, _3
                 // settle repeated renderer paths.
                 var usedNames = DeterministicNames.BlendShapeNames(exportCopy);
+                // Appends the change from Baseline to `to` on one channel as a
+                // new blend shape and binds it, counting the added vertex data.
+                void AppendCapture(List<MorphTargetBinding> into, int channel, string kind, string key, Pose to)
+                {
+                    var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[channel].Path);
+                    var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash(kind, Channels[channel].Path, key), usedNames);
+                    addedBytes += Channels[channel].Mesh.vertexCount * 36L;
+                    if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
+                    AvatarBaseShape.AppendExpression(Channels[channel].Mesh, renderer.sharedMesh, target,
+                        Baseline.Rows[channel].Weights, to.Rows[channel].Weights, PlayerSettings.legacyClampBlendShapeWeights);
+                    renderer.SetBlendShapeWeight(renderer.sharedMesh.blendShapeCount - 1, 0);
+                    into.Add(new MorphTargetBinding(Channels[channel].Path, renderer.sharedMesh.blendShapeCount - 1, 1f));
+                }
                 foreach (var pose in expressions)
                 {
                     var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
@@ -703,28 +717,14 @@ namespace VRVlog.LilToonExporter
                     for (var i = 0; i < Channels.Count; i++)
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) continue;
-                        var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[i].Path, pose.Name), usedNames);
-                        addedBytes += Channels[i].Mesh.vertexCount * 36L;
-                        if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
-                        AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
-                            Baseline.Rows[i].Weights, pose.Rows[i].Weights, PlayerSettings.legacyClampBlendShapeWeights);
-                        renderer.SetBlendShapeWeight(renderer.sharedMesh.blendShapeCount - 1, 0);
-                        bindings.Add(new MorphTargetBinding(Channels[i].Path, renderer.sharedMesh.blendShapeCount - 1, 1f));
+                        AppendCapture(bindings, i, "Capture", pose.Name, pose);
                     }
                     if (bindings.Count == 0)
                     {
                         // Preserve a named installed neutral face. A zero-delta
                         // target also keeps existing VRM/app morph-based catalogs
                         // aware of the entry and its override/reset semantics.
-                        var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[0].Path);
-                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("Capture", Channels[0].Path, pose.Name), usedNames);
-                        addedBytes += Channels[0].Mesh.vertexCount * 36L;
-                        if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
-                        AvatarBaseShape.AppendExpression(Channels[0].Mesh, renderer.sharedMesh, target,
-                            Baseline.Rows[0].Weights, Baseline.Rows[0].Weights, PlayerSettings.legacyClampBlendShapeWeights);
-                        renderer.SetBlendShapeWeight(renderer.sharedMesh.blendShapeCount - 1, 0);
-                        bindings.Add(new MorphTargetBinding(Channels[0].Path, renderer.sharedMesh.blendShapeCount - 1, 1f));
+                        AppendCapture(bindings, 0, "Capture", pose.Name, Baseline);
                     }
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.CustomClips.Add(expression);
@@ -740,14 +740,7 @@ namespace VRVlog.LilToonExporter
                     for (var i = 0; i < (face.Pose != null ? Channels.Count : 0); i++)
                     {
                         if (Baseline.Rows[i].Weights.SequenceEqual(face.Pose.Rows[i].Weights)) continue;
-                        var renderer = VrChatExpressionSampler.FindRenderer(exportCopy, Channels[i].Path);
-                        var target = DeterministicNames.Unique("__VRVlog_Capture_" + DeterministicNames.Hash("CapturePreset", Channels[i].Path, face.Preset.ToString()), usedNames);
-                        addedBytes += Channels[i].Mesh.vertexCount * 36L;
-                        if (addedBytes > 128L * 1024 * 1024) throw new InvalidOperationException(ExporterLocalization.T("追加表情の形状データが128 MiBを超えます。"));
-                        AvatarBaseShape.AppendExpression(Channels[i].Mesh, renderer.sharedMesh, target,
-                            Baseline.Rows[i].Weights, face.Pose.Rows[i].Weights, PlayerSettings.legacyClampBlendShapeWeights);
-                        renderer.SetBlendShapeWeight(renderer.sharedMesh.blendShapeCount - 1, 0);
-                        bindings.Add(new MorphTargetBinding(Channels[i].Path, renderer.sharedMesh.blendShapeCount - 1, 1f));
+                        AppendCapture(bindings, i, "CapturePreset", face.Preset.ToString(), face.Pose);
                     }
                     expression.MorphTargetBindings = bindings.ToArray();
                     settings.Expression.AddClip(face.Preset, expression);
@@ -758,7 +751,7 @@ namespace VRVlog.LilToonExporter
                     .SelectMany(renderer => renderer.sharedMaterials).Where(material => material != null).Distinct()
                     .ToDictionary(material => (Material)preparation.IsolatedCopyOf(material), material => material);
                 var mappedRecovery = new ExportRecoveryOptions();
-                foreach (var action in recoveryOptions?.Actions ?? new List<ExportRecoveryAction>())
+                foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(recoveryOptions))
                 {
                     var material = action.Material != null ? (Material)preparation.IsolatedCopyOf(action.Material) : null;
                     Renderer renderer = null;
@@ -784,7 +777,9 @@ namespace VRVlog.LilToonExporter
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: mappedRecovery, recoveryReport: recoveryReport, recoverySource: Source,
                     recoveryMaterialSource: material => materialOrigins.TryGetValue(material, out var original) ? original : material,
-                    inferEmotionPresets: false, descriptorVisemes: visemes);
+                    inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
+                    descriptorVisemes: visemes);
+                UniVrmOneClickExporter.ValidateOutputHasMesh(bytes);
                 // The exporter's clone keeps this root scale and bakes it into the VRM.
                 return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
             }

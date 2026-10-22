@@ -51,7 +51,7 @@ namespace VRVlog.LilToonExporter
                     }
                     if (clip == null) throw new InvalidOperationException("未対応のAnimator Motionです。");
                     var bindings = AnimationUtility.GetCurveBindings(clip).Where(b => excludedPath?.Invoke(b.path) != true).ToArray();
-                    if (!bindings.Any(IsMorph)) continue; // Hand/bone motions are not facial expressions.
+                    if (!bindings.Any(PoseSampling.IsBlendShape)) continue; // Hand/bone motions are not facial expressions.
                     ReadClip(avatar, clip, entry, excludedPath, source);
                     VrChatExpressionSampler.ApplyPermanentOverrides(avatar, runtime, entry, target.Layer, target.State.writeDefaultValues,
                         excludedPath, metadata: source, sourceState: target.State);
@@ -75,7 +75,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static bool HasChangingMorph(AnimationClip clip, Func<string, bool> excludedPath) =>
-            AnimationUtility.GetCurveBindings(clip).Where(binding => IsMorph(binding) && excludedPath?.Invoke(binding.path) != true)
+            AnimationUtility.GetCurveBindings(clip).Where(binding => PoseSampling.IsBlendShape(binding) && excludedPath?.Invoke(binding.path) != true)
                 .Any(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
 
         private static bool SameOutcome(VrChatExpressionMenu.Entry first, VrChatExpressionMenu.Entry second)
@@ -257,16 +257,20 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException("マテリアル・オブジェクトの差し替えを含む表情アニメーションは未対応です。");
             if (projection != null)
             {
-                projection.WarnOmitted(AnimationUtility.GetCurveBindings(clip).Where(IsMorph), entry?.Messages);
+                projection.WarnOmitted(AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape), entry?.Messages);
                 if (entry != null) entry.UsesFacialProjection = true;
             }
             var result = new List<VrChatExpressionMenu.MorphValue>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
                 if (excludedPath?.Invoke(binding.path) == true) continue;
-                if (!IsMorph(binding))
+                if (!PoseSampling.IsBlendShape(binding))
                 {
-                    if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)) continue;
+                    if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding) || NeutralShapePlan.IsInertDynamicsBinding(binding)) continue;
+                    // A hand pose beside the face cannot change a BlendShape;
+                    // the FX sampler already settles it. Animator parameter
+                    // curves can drive other layers and stay rejected.
+                    if (PoseSampling.IsHumanoidChannel(binding)) continue;
                     if (plan?.AllowsEvaluationBinding(clip, binding) == true) continue;
                     throw new InvalidOperationException("BlendShape以外の変化を含む表情アニメーションです: " + binding.propertyName);
                 }
@@ -298,7 +302,7 @@ namespace VRVlog.LilToonExporter
             var animated = new List<VrChatExpressionMenu.AnimatedMorph>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
-                if (excludedPath?.Invoke(binding.path) == true || !IsMorph(binding)) continue;
+                if (excludedPath?.Invoke(binding.path) == true || !PoseSampling.IsBlendShape(binding)) continue;
                 if (!values.Any(value => value.Path == binding.path && "blendShape." + value.Shape == binding.propertyName)) continue;
                 var curve = ReadCurve(AnimationUtility.GetEditorCurve(clip, binding));
                 curve.Range(out var minimum, out var maximum);
@@ -336,7 +340,5 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsGesture(string name) => name == "GestureLeft" || name == "GestureRight" ||
             name == "GestureLeftWeight" || name == "GestureRightWeight";
-        private static bool IsMorph(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-            binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal);
     }
 }

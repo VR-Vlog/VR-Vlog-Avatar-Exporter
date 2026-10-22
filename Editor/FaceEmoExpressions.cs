@@ -59,8 +59,7 @@ namespace VRVlog.LilToonExporter
                 var underlay = new List<VrChatExpressionMenu.MorphValue>();
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (excludedPath?.Invoke(binding.path) == true || binding.type != typeof(SkinnedMeshRenderer) ||
-                        !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) continue;
+                    if (excludedPath?.Invoke(binding.path) == true || !PoseSampling.IsBlendShape(binding)) continue;
                     var curve = VrChatGestureExpressions.ReadCurve(AnimationUtility.GetEditorCurve(clip, binding));
                     curve.Range(out var minimum, out var maximum);
                     if (minimum != maximum)

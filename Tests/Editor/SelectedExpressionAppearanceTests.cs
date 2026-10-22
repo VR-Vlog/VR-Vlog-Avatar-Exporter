@@ -202,6 +202,22 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void DynamicsEnabledCurveDoesNotRejectTheGesturePose()
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
+                assembly.GetType(PhysBoneSpringExport.ColliderType)).FirstOrDefault(value => value != null);
+            if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCPhysBoneCollider.");
+            var collider = (Behaviour)dummy.AddComponent(type); collider.enabled = false;
+            Curve("Dummy", type, "m_Enabled", AnimationCurve.Constant(0, 1, 1));
+            var before = new[] { avatar, (Object)skin, collider, clip }.Select(EditorJsonUtility.ToJson).ToArray();
+            var pose = VrChatGestureExpressions.ReadPose(avatar, clip);
+            Assert.That(pose.Single().Shape, Is.EqualTo("Face size"));
+            Assert.That(pose.Single().Weight, Is.EqualTo(20));
+            Assert.That(collider.enabled, Is.False);
+            Assert.That(new[] { avatar, (Object)skin, collider, clip }.Select(EditorJsonUtility.ToJson), Is.EqualTo(before));
+        }
+
+        [Test]
         public void UnusedEndpointTangentsDoNotInvalidateAnOtherwiseConstantNoOp()
         {
             var binding = Appearance("color"); var curve = AnimationUtility.GetEditorCurve(clip, binding); var keys = curve.keys;

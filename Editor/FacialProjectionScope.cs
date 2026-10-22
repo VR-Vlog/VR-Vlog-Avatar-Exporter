@@ -316,7 +316,7 @@ namespace VRVlog.LilToonExporter
             => clips.Where(clip => clip != null).Distinct().Any(clip =>
                 AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true) ||
                 AnimationUtility.GetCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true &&
-                    binding.type != typeof(Animator) && !(binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal)) &&
+                    binding.type != typeof(Animator) && !PoseSampling.IsBlendShape(binding) &&
                     !SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)));
 
         internal void WarnOmitted(IEnumerable<EditorCurveBinding> bindings, ICollection<string> messages)

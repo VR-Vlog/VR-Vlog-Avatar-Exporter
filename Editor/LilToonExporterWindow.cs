@@ -140,12 +140,13 @@ namespace VRVlog.LilToonExporter
 
         public static void Open()
         {
-            var window = ExporterWindowIcon.Restore(GetWindow<LilToonExporterWindow>(true, ExporterLocalization.T("VR Vlog VRM書き出し")));
+            var window = GetWindow<LilToonExporterWindow>(true, ExporterLocalization.T("VR Vlog VRM書き出し"));
             window.minSize = new Vector2(430f, 430f);
         }
 
         private void OnGUI()
         {
+            ExporterWindowHeader.Layout(ExporterLocalization.T("VRM書き出し"));
             using (var scroll = new EditorGUILayout.ScrollViewScope(scrollPosition))
             {
                 scrollPosition = scroll.scrollPosition;
@@ -439,7 +440,8 @@ namespace VRVlog.LilToonExporter
             foreach (var finding in ExportGimmickChoices.Listed(gimmickFindings))
             {
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-                EditorGUILayout.ObjectField(finding.Target, typeof(GameObject), true);
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.ObjectField(finding.Target, typeof(GameObject), true);
                 EditorGUILayout.LabelField(ExporterLocalization.T(finding.Reason), EditorStyles.wordWrappedLabel);
                 if (finding.Unit == GimmickExclusionUnit.Review)
                 {
@@ -601,7 +603,7 @@ namespace VRVlog.LilToonExporter
         {
             var details = (warnings ?? Array.Empty<string>()).ToArray();
             if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
-            var resultWindow = this != null ? this : ExporterWindowIcon.Restore(GetWindow<LilToonExporterWindow>(true, ExporterLocalization.T("VR Vlog VRM書き出し")));
+            var resultWindow = this != null ? this : GetWindow<LilToonExporterWindow>(true, ExporterLocalization.T("VR Vlog VRM書き出し"));
             resultWindow.lastSavedPath = destination;
             resultWindow.lastSavedSummary = string.Format(ExporterLocalization.T("{0:N0}バイト・VRChat表情 {1}件"), bytes.Length, VrmMenuExpressions.CountRegistered(bytes));
             resultWindow.lastSavedWarnings = details;
@@ -612,7 +614,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.2";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.3";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional

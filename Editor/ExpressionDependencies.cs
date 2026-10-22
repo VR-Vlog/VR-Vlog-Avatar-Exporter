@@ -829,8 +829,7 @@ namespace VRVlog.LilToonExporter
                     .Any(binding => excludedPath?.Invoke(binding.path) != true)) continue;
                 var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
-                if (bindings.Length == 0 || bindings.Any(binding => binding.type != typeof(SkinnedMeshRenderer) ||
-                    !binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal) ||
+                if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding) ||
                     !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
                 result.Add(index, clip);
             }
@@ -1044,6 +1043,28 @@ namespace VRVlog.LilToonExporter
                 }
             }
             return false;
+        }
+
+        // Every condition is known and holds. An edge without conditions
+        // holds as well.
+        internal static bool IsTrue(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues)
+        {
+            if (fixedValues == null) return false;
+            foreach (var condition in transition.conditions)
+            {
+                if (!fixedValues.TryGetValue(condition.parameter, out var value)) return false;
+                switch (condition.mode)
+                {
+                    case AnimatorConditionMode.If: if (value == 0) return false; break;
+                    case AnimatorConditionMode.IfNot: if (value != 0) return false; break;
+                    case AnimatorConditionMode.Equals: if (value != condition.threshold) return false; break;
+                    case AnimatorConditionMode.NotEqual: if (value == condition.threshold) return false; break;
+                    case AnimatorConditionMode.Greater: if (value <= condition.threshold) return false; break;
+                    case AnimatorConditionMode.Less: if (value >= condition.threshold) return false; break;
+                    default: return false;
+                }
+            }
+            return true;
         }
 
         private static bool? TypedCondition(AnimatorCondition condition, IDictionary<string, float> fixedValues,
@@ -1418,7 +1439,7 @@ namespace VRVlog.LilToonExporter
                     if (excluded) continue;
                 }
                 info.HasBindings = true;
-                if (binding.type == typeof(SkinnedMeshRenderer) && binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal))
+                if (PoseSampling.IsBlendShape(binding))
                 {
                     info.Morphs.Add(binding);
                     if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;

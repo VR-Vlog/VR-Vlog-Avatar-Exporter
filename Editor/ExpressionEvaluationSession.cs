@@ -186,45 +186,7 @@ namespace VRVlog.LilToonExporter
             try
             {
                 if (++session.entries > 4096) throw new InvalidOperationException("Parameter Driverの進入回数が上限を超えました。循環する表情は変換できません。");
-                var program = session.programs[programIndex];
-                if (program.LayerWeight != null)
-                {
-                    var weight = program.LayerWeight;
-                    // The SDK's base layer remains at full weight. All other
-                    // indices retain their authored slot in this owned copy.
-                    if (!weight.FixedBaseLayer && weight.LayerIndex > 0) playable.SetLayerWeight(weight.LayerIndex, weight.GoalWeight);
-                    return;
-                }
-                if (program.FxControl)
-                {
-                    // Every observed command must preserve full FX weight.
-                    // A transient disable cannot be safely sampled and reset.
-                    if (program.FxWeight != 1)
-                        throw new InvalidOperationException(program.Location + " / VRCPlayableLayerControl: FXの重みを変更する状態は固定表情に変換できません。");
-                    session.neutralFxObserved = true;
-                    return;
-                }
-                double Read(string name)
-                {
-                    switch (session.types[name])
-                    {
-                        case AnimatorControllerParameterType.Bool: return playable.GetBool(name) ? 1 : 0;
-                        case AnimatorControllerParameterType.Int: return playable.GetInteger(name);
-                        case AnimatorControllerParameterType.Float: return playable.GetFloat(name);
-                        default: throw new InvalidOperationException("Triggerは固定表情に変換できません。");
-                    }
-                }
-                void Write(string name, double value)
-                {
-                    switch (session.types[name])
-                    {
-                        case AnimatorControllerParameterType.Bool: playable.SetBool(name, value != 0); break;
-                        case AnimatorControllerParameterType.Int: playable.SetInteger(name, (int)value); break;
-                        case AnimatorControllerParameterType.Float: playable.SetFloat(name, (float)value); break;
-                    }
-                }
-                var local = session.types.ContainsKey("IsLocal") ? Read("IsLocal") != 0 : session.defaultLocal;
-                VrChatParameterDriver.Execute(program, session.types, session.expressionParameters, session.dependencies.Parameters, local, Read, Write, session.suppliedInputs);
+                session.Run(session.programs[programIndex], playable, true);
             }
             catch (Exception error)
             {
@@ -232,6 +194,74 @@ namespace VRVlog.LilToonExporter
                 // callbacks. Surface failures synchronously after Evaluate.
                 session.failure = error as InvalidOperationException ?? new InvalidOperationException("Parameter Driverの評価に失敗しました: " + error.Message, error);
             }
+        }
+
+        // Entering the state again would leave the layer weights, parameters
+        // and FX state as they are. A program that cannot be evaluated counts
+        // as a change.
+        internal static bool RepeatsWithoutEffect(ExpressionDriverBehaviour adapter, AnimatorControllerPlayable playable)
+        {
+            if (!Sessions.TryGetValue(adapter.Session, out var session) || session.failure != null) return false;
+            try { return !session.Run(session.programs[adapter.Program], playable, false); }
+            catch (InvalidOperationException) { return false; }
+        }
+
+        // Runs a program on state entry, or only reports with apply false.
+        // Returns whether it changes anything.
+        private bool Run(VrChatParameterDriver.Program program, AnimatorControllerPlayable playable, bool apply)
+        {
+            if (program.LayerWeight != null)
+            {
+                var weight = program.LayerWeight;
+                // The SDK's base layer remains at full weight. All other
+                // indices retain their authored slot in this owned copy.
+                if (weight.FixedBaseLayer || weight.LayerIndex <= 0) return false;
+                var changes = playable.GetLayerWeight(weight.LayerIndex) != weight.GoalWeight;
+                if (apply) playable.SetLayerWeight(weight.LayerIndex, weight.GoalWeight);
+                return changes;
+            }
+            if (program.FxControl)
+            {
+                // Every observed command must preserve full FX weight.
+                // A transient disable cannot be safely sampled and reset.
+                if (program.FxWeight != 1)
+                    throw new InvalidOperationException(program.Location + " / VRCPlayableLayerControl: FXの重みを変更する状態は固定表情に変換できません。");
+                var changes = !neutralFxObserved;
+                if (apply) neutralFxObserved = true;
+                return changes;
+            }
+            double Read(string name)
+            {
+                switch (types[name])
+                {
+                    case AnimatorControllerParameterType.Bool: return playable.GetBool(name) ? 1 : 0;
+                    case AnimatorControllerParameterType.Int: return playable.GetInteger(name);
+                    case AnimatorControllerParameterType.Float: return playable.GetFloat(name);
+                    default: throw new InvalidOperationException("Triggerは固定表情に変換できません。");
+                }
+            }
+            var changed = false;
+            void Write(string name, double value)
+            {
+                switch (types[name])
+                {
+                    case AnimatorControllerParameterType.Bool:
+                        changed |= playable.GetBool(name) != (value != 0);
+                        if (apply) playable.SetBool(name, value != 0);
+                        break;
+                    case AnimatorControllerParameterType.Int:
+                        changed |= playable.GetInteger(name) != (int)value;
+                        if (apply) playable.SetInteger(name, (int)value);
+                        break;
+                    case AnimatorControllerParameterType.Float:
+                        changed |= playable.GetFloat(name) != (float)value;
+                        if (apply) playable.SetFloat(name, (float)value);
+                        break;
+                }
+            }
+            var local = types.ContainsKey("IsLocal") ? Read("IsLocal") != 0 : defaultLocal;
+            VrChatParameterDriver.Execute(program, types, expressionParameters, dependencies.Parameters, local, Read, Write, suppliedInputs);
+            return changed;
         }
 
         internal void Check() { if (failure != null) throw failure; }

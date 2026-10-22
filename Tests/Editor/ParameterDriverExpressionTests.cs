@@ -407,7 +407,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before)); Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(serialized));
         }
 
-        private static StateMachineBehaviour SdkBehaviour(AnimatorState state, string name)
+        internal static StateMachineBehaviour SdkBehaviour(AnimatorState state, string name)
         {
             var type = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
             if (type == null) Assert.Ignore("Install the real VRChat SDK to run playable-control integration tests.");

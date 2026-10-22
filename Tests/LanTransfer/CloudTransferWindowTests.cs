@@ -57,15 +57,15 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 48)]
-        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 49)]
+        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 10000)]
+        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 10001)]
         public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string path, int priority)
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
             var entry = (MenuItem)typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Single();
             Assert.That(entry.menuItem, Is.EqualTo(path));
             Assert.That(entry.validate, Is.False);
-            // Without a priority in the creation block the Hierarchy context menu does not list the entry.
+            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu.
             // The two entries are next to each other, the quick one first.
             Assert.That(entry.priority, Is.EqualTo(priority));
             var validation = typeof(AppTransferWindow).GetMethod(canOpen, flags);

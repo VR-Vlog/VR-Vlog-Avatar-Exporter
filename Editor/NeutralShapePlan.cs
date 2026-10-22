@@ -81,7 +81,7 @@ namespace VRVlog.LilToonExporter
                     !plan.unboundAppearanceBindings.Contains(binding) && !HarmlessActivation(prepared, clip, binding) &&
                     !(unchangedClips?.Contains(clip) == true && SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)));
                 if (!changedAppearance) continue;
-                foreach (var morph in bindings.Where(binding => IsMorph(binding) && plan.CommittedMorphs.Contains(binding)))
+                foreach (var morph in bindings.Where(binding => PoseSampling.IsBlendShape(binding) && plan.CommittedMorphs.Contains(binding)))
                     plan.PreservedMorphs.Add(morph);
             }
             plan.CommittedMorphs.ExceptWith(plan.PreservedMorphs);
@@ -168,7 +168,7 @@ namespace VRVlog.LilToonExporter
                 }
                 if (appearance.Count == 0) continue;
                 visualClips.Add(clip, Describe(clip, appearance[0]));
-                foreach (var morph in bindings.Where(IsMorph))
+                foreach (var morph in bindings.Where(PoseSampling.IsBlendShape))
                 {
                     if (!plan.CommittedMorphs.Contains(morph)) continue;
                     if (clipOwners[clip].All(index => invariantMorphs[index].Contains(morph))) continue;
@@ -336,7 +336,7 @@ namespace VRVlog.LilToonExporter
             // checks. Missing optional morph targets are resolved separately.
             if (binding.type == null || binding.path == null || string.IsNullOrEmpty(binding.propertyName))
                 throw new InvalidOperationException(ExporterLocalization.T("FXの見た目の曲線の参照が不正です: ") + Describe(clip, binding));
-            if (binding.type == typeof(Animator) || IsMorph(binding)) return;
+            if (binding.type == typeof(Animator) || PoseSampling.IsBlendShape(binding)) return;
             if (!targets.TryGetValue(binding.path, out var matches))
             { unboundAppearanceBindings.Add(binding); return; }
             if (matches.Length != 1)
@@ -373,7 +373,7 @@ namespace VRVlog.LilToonExporter
 
         internal void PreserveTemporalRest(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (!CommittedMorphs.Contains(binding) || !IsMorph(binding))
+            if (!CommittedMorphs.Contains(binding) || !PoseSampling.IsBlendShape(binding))
                 throw new InvalidOperationException("時間で変わる初期BlendShapeの対象を確定できません。");
             if (TemporalMorphs.Add(binding)) temporalReasons.Add(binding, Describe(clip, binding));
         }
@@ -389,7 +389,7 @@ namespace VRVlog.LilToonExporter
 
         internal string EvaluationBindingRejection(AnimationClip clip, EditorCurveBinding binding)
         {
-            if (HarmlessActivation(avatar, clip, binding) || unboundAppearanceBindings.Contains(binding)) return null;
+            if (HarmlessActivation(avatar, clip, binding) || IsInertDynamicsBinding(binding) || unboundAppearanceBindings.Contains(binding)) return null;
             if (!appearanceBindings.Contains(binding)) return existingProperties.Contains(binding)
                 ? ExporterLocalization.T("対象プロパティは存在しますが、通常入力での到達範囲外、またはBlendShapeへの影響が未対応です")
                 : "記録されていない見た目の曲線です（通常入力での到達範囲外、または未対応のプロパティ）";
@@ -436,8 +436,18 @@ namespace VRVlog.LilToonExporter
             return matches.Length == 0 || matches.Length == 1 && matches[0].gameObject.activeSelf == (value != 0);
         }
 
-        private static bool IsMorph(EditorCurveBinding binding) => binding.type == typeof(SkinnedMeshRenderer) &&
-            binding.propertyName.StartsWith("blendShape.", StringComparison.Ordinal);
+        // AvatarDynamics components are collision and contact inputs. They
+        // contribute neither to the blend shape weights the probe reads nor to
+        // the exported appearance, and the probe disables every Behaviour, so
+        // enabling one runs nothing (none of them runs in edit mode either).
+        // Their enable curves pass as evaluation support.
+        internal static bool IsInertDynamicsBinding(EditorCurveBinding binding)
+        {
+            if (binding.isPPtrCurve || binding.propertyName != "m_Enabled") return false;
+            var name = binding.type?.FullName;
+            return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
+                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
+        }
 
         private static bool IsMaterial(EditorCurveBinding binding) => typeof(Renderer).IsAssignableFrom(binding.type) &&
             (binding.propertyName.StartsWith("material.", StringComparison.Ordinal) ||
