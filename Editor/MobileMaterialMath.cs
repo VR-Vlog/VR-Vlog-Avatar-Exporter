@@ -41,9 +41,9 @@ namespace VRVlog.LilToonExporter
             var weight = Mathf.Clamp01(strength);
             main = main.linear;
             shade = shade.linear;
-            return new Color(main.r * Mathf.Min(1f, 1f + (shade.r - 1f) * weight),
-                main.g * Mathf.Min(1f, 1f + (shade.g - 1f) * weight),
-                main.b * Mathf.Min(1f, 1f + (shade.b - 1f) * weight), 1f).gamma;
+            return new Color(main.r * Math.Min(1f, 1f + (shade.r - 1f) * weight),
+                main.g * Math.Min(1f, 1f + (shade.g - 1f) * weight),
+                main.b * Math.Min(1f, 1f + (shade.b - 1f) * weight), 1f).gamma;
         }
 
         // lilToon blends _Shadow2ndColor over the 1st shadow color by its alpha
