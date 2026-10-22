@@ -112,7 +112,7 @@ BEHAVIOR_CASES = {
         'AStageIsNamedWithItsPhase': 1,
         'AnExcludedRendererWithAMissingShaderIsNotCounted': 1,
         'AnExportWithoutFallbacksNeverAsks': 1,
-        'BatchAndNonInteractiveCallersSaveWithoutTheList': 2,
+        'BatchModeSavesWithoutTheList': 1,
         'EveryShippedLocaleTranslatesTheResultWords': 1,
         'KeptItemsAreListedOnceWithoutAsking': 1,
         'NonInteractiveSavingKeepsTheEarlierBehaviour': 1,

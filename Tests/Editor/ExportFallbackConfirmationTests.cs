@@ -94,12 +94,11 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportStageGuard.DisplayName(ExportStage.PhysBone), Is.EqualTo("揺れ物"));
         }
 
-        [TestCase(false, false)][TestCase(true, true)]
-        public void BatchAndNonInteractiveCallersSaveWithoutTheList(bool interactive, bool batch)
+        [Test] public void BatchModeSavesWithoutTheList()
         {
-            ExportFallbackConfirmation.IsBatchMode = () => batch;
+            ExportFallbackConfirmation.IsBatchMode = () => true;
             var saved = 0;
-            ExportFallbackConfirmation.Confirm(AllFallbacks(), null, "a.vrm", null, interactive, () => saved++);
+            ExportFallbackConfirmation.Confirm(AllFallbacks(), null, "a.vrm", null, interactive: true, () => saved++);
             Assert.That(saved, Is.EqualTo(1));
             Assert.That(dialog.Calls, Is.Empty);
         }
