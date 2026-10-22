@@ -1,7 +1,7 @@
 # UI の細かい文言・配置・見た目だけを確かめるテストを消す
 
 - 日付: 2026-10-23
-- 対象: `Tests/Editor/StepIndicatorTests.cs`（削除）・`Tests/Editor/ExpressionSlotLayoutTests.cs`（削除）・`Tests/Editor/AppPreviewWindowTests.cs`・`Tests/Editor/ExpressionBoardTests.cs`・`Tests/Editor/ExportGimmickChoicesTests.cs`・`Tests/Editor/ExportDetailsTextTests.cs`・`Tests/Editor/VrVlogMenuExportTests.cs`・`Tests/LanTransfer/VrVlogMenuTests.cs`・`Tests/Editor/PoseReviewWindowTests.cs`・`Tests/Editor/RecordRouteMenuLossTests.cs`・`Tests/Editor/PoseLimitPlanTests.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`Tests/LanTransfer/CloudTransferWindowTests.cs`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tools/run-unity-compatibility.py`
+- 対象: `Tests/Editor/StepIndicatorTests.cs`（削除）・`Tests/Editor/ExpressionSlotLayoutTests.cs`（削除）・`Tests/Editor/AppPreviewWindowTests.cs`・`Tests/Editor/ExpressionBoardTests.cs`・`Tests/Editor/ExportGimmickChoicesTests.cs`・`Tests/Editor/ExportDetailsTextTests.cs`・`Tests/Editor/VrVlogMenuExportTests.cs`・`Tests/LanTransfer/VrVlogMenuTests.cs`・`Tests/Editor/PoseReviewWindowTests.cs`・`Tests/Editor/RecordRouteMenuLossTests.cs`・`Tests/Editor/PoseLimitPlanTests.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`Tests/LanTransfer/CloudTransferWindowTests.cs`・`Tools/run-unity-compatibility.py`
 
 ## 背景
 
@@ -35,7 +35,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
   主経路で代わりに守れるか: 消した分は見た目と言い回しで、転送する中身には関わらない。通知音の既定値は `CloudTransferWindowTests.QrReadySoundDefaultsOnAndIsSaved` が見ている。
 - `CloudTransferWindowTests.cs`: 転送のメニュー項目のパス・優先度とアバターのルートの判定の 1 本（2 ケース）を消した。プライバシーの同意、他の VRM を消さないこと、ウィンドウを閉じたときに自分のコピーだけを消すことは残した。
   主経路で代わりに守れるか: ルート 1 つのときだけ押せることは `VrVlogMenuTests.EveryEntryActingOnAnAvatarIsGreyWithoutExactlyOneAvatarRoot` が全項目で見ている。
-- `ExperimentalExpressionCaptureTests.cs`: 見出しのロゴ、転送をやめる確認の文言と翻訳の 2 本を消し、ロケール表の読み込みの 5 ケースを日本語と英語の 2 ケースにした。書き出し・再読み込み・保存・修正の回帰はすべて残した。カードの × の control id のテストは修正 a8eade7 の回帰なので残した。
+- `ExperimentalExpressionCaptureTests.cs`: 別の PR（#394）が同じファイルを直しているため、今回は触らない。
   主経路で代わりに守れるか: 消した分は見た目と文言で、書き出しには関わらない。
 - `Tools/run-unity-compatibility.py`: `BEHAVIOR_CASES` から `ExportDetailsTextTests` と `PoseReviewWindowTests` の消したメソッドを外した。
 
@@ -66,5 +66,4 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 | PoseLimitPlanTests | 21 / 22 | 13 / 14 |
 | AppTransferFlowTests | 31 / 75 | 27 / 61 |
 | CloudTransferWindowTests | 23 / 29 | 22 / 27 |
-| ExperimentalExpressionCaptureTests | 84 / 176 | 82 / 171 |
-| 合計 | 261 / 425 | 174 / 303 |
+| 合計 | 177 / 249 | 92 / 132 |
