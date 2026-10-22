@@ -74,6 +74,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Avatar.Mesh.blendShapeCount, Is.EqualTo(3));
         }
 
+        // The list-only export reads a listed clip FaceEmo registers as FaceEmo
+        // does, so the common DEFAULT FACE still lies under its partial face.
+        [Test]
+        public void ListOnlyExportReadsARegisteredClipOverTheCommonFace()
+        {
+            using var f = new Fixture();
+            var expected = f.RegisteredBranch(false).Entries.Single().Values.Select(value => (value.Path, value.Shape, value.Weight)).ToArray();
+            var snapshot = FaceEmoExpressions.CaptureRegistered(f.Avatar.Copy, f.Registered);
+            var menu = VrChatExpressionSampler.Analyze(f.Avatar.Copy, menuPolicy: new VrChatMenuImportPolicy { SkipPlayback = true,
+                ListFaces = new[] { ("Listed", (Object)f.BranchClip, 0f) } }, faceEmoBindings: snapshot);
+            var entry = menu.Entries.Single();
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Id, Does.StartWith("faceemo/")); Assert.That(entry.Source, Is.EqualTo(ExpressionSource.FaceEmo));
+            Assert.That(entry.Name, Is.EqualTo("Listed"));
+            Assert.That(entry.Values.Select(value => (value.Path, value.Shape, value.Weight)), Is.EquivalentTo(expected));
+            f.Prepare(menu); f.ApplyCommon(menu);
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Values.Single(value => value.Shape == "Mouth").Weight, Is.EqualTo(20));
+            Assert.That(entry.Values.Where(value => value.Shape == "Open").Select(value => value.Path), Is.EquivalentTo(new[] { "Front", "Back" }));
+            Assert.That(entry.Values.Where(value => value.Shape == "Open").Select(value => value.Weight), Is.All.EqualTo(100));
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void DuplicateCommonSamplesCoalesceOrRejectBeforePublication(bool conflicting)
@@ -219,6 +241,8 @@ namespace VRVlog.LilToonExporter.Tests
             internal readonly List<Mesh> Owned = new List<Mesh>();
             internal PreparedExpressionBindings Bindings;
             internal SkinnedMeshRenderer Merged;
+            internal AnimationClip BranchClip;
+            internal RegisteredList Registered;
             private readonly string directory;
             private readonly AnimatorController controller;
             internal Fixture()
@@ -254,6 +278,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var list = new RegisteredList { Modes = new object[] { new RegisteredMode { DisplayName = "Pattern", Branches = new object[] {
                     new RegisteredBranch { BaseAnimation = new RegisteredAnimation { GUID = AssetDatabase.AssetPathToGUID(directory + "/Branch.anim") } }
                 } } } };
+                BranchClip = clip; Registered = list;
                 var menu = new VrChatExpressionMenu.Source(); var serial = 0;
                 FaceEmoExpressions.ReadRegistered(Avatar.Copy, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
                 Assert.That(menu.Entries, Has.Count.EqualTo(1)); Assert.That(menu.Entries.Single().Error, Is.Null); return menu;
