@@ -325,11 +325,11 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); Object.DestroyImmediate(clip); }
         }
 
-        [TestCase("position")]
-        [TestCase("rotation")]
-        [TestCase("scale")]
-        [TestCase("active")]
-        public void ParentOnlyChangesInvalidateTheCapturedSourceAppearance(string change)
+        [TestCase("position", true)]
+        [TestCase("rotation", true)]
+        [TestCase("scale", false)]
+        [TestCase("active", false)]
+        public void ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile(string change, bool current)
         {
             using var f = new RecoveryFixture();
             var parent = new GameObject("Source parent");
@@ -343,7 +343,8 @@ namespace VRVlog.LilToonExporter.Tests
                 if (change == "rotation") parent.transform.rotation = Quaternion.Euler(0, 25, 0);
                 if (change == "scale") parent.transform.localScale = Vector3.one * 1.1f;
                 if (change == "active") parent.SetActive(false);
-                Assert.That(stamp.Matches(f.Source), Is.False, change);
+                // The export puts the root at the origin facing forward; its world scale is kept.
+                Assert.That(stamp.Matches(f.Source), Is.EqualTo(current), change);
                 if (change != "active") Assert.That(f.Source.transform.localToWorldMatrix, Is.Not.EqualTo(sourceLocal));
                 Assert.That(f.Source.transform.localPosition, Is.EqualTo(Vector3.zero));
                 Assert.That(f.Renderer.sharedMaterial, Is.SameAs(f.Material));

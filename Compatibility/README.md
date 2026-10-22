@@ -55,16 +55,41 @@ Results:
 
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
-or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
-to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
-`IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
-`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
-stable versions stop before that API is touched, naming the installed version and
-the range. When the version cannot be read (MA placed under `Assets`, a
-pre-release), the freeze tries the API and, if it is missing, stops saying the
-version was not read. Avatars without those components export with any MA version. MA 1.18.x
-itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
-`ndmfMinimum` (1.8.3).
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.12.2
+to below 1.19.0, stable releases only). The freeze reflects MA's preview API.
+Everything it reads is the same from 1.10.4 (the first release with
+`ReactiveObjectAnalyzer.OptimizeShapes`) through 1.18.7 except Shape Changer
+Delete and Mesh Cutter, which the freeze removes from the mesh with MA's own
+method, chosen by which MA type exists rather than by the version number:
+1.18.0 and later report `IMeshSelector` and use
+`RemoveVerticesFromMesh.FilterPrimitivesOnly` (as before this range change; it
+is the path MA's preview uses, which drops the deleted triangles and keeps the
+vertices, while MA's build calls `RemoveVertices`); 1.14.0 to 1.17.1 report
+`IVertexFilter` and use `RemoveVerticesFromMesh.RemoveVertices`; 1.13.4 and
+earlier have no Mesh Cutter, report Delete as a float on `deletedShape.<name>`
+and use `RemoveBlendShapeFromMesh.RemoveBlendshapes` (with the float as the
+threshold from 1.13.0, deleting above 0.5 before). Material Swap appears in
+1.13.0 and Mesh Cutter in 1.14.0; older versions simply have nothing of that
+kind to freeze. Pre-releases are not in the range. Other stable versions
+stop before that API is touched, naming the installed version and the range.
+When the version cannot be read (MA placed under `Assets`, a pre-release), the
+freeze tries the API and, if it is missing, stops saying the version was not
+read. Avatars without those components export with any MA
+version. 1.10.4 to 1.11.7 freeze, but the FX their own build makes does not
+export menu expressions that switch a Shape Changer: Int and Float menus also
+change something other than BlendShapes (a GameObject's `m_IsActive` on 1.11.x,
+a leftover `deletedShape.<name>` curve on 1.10.4), and a Bool menu makes Unity reject
+the merged FX transition. 1.12.0 and 1.12.1 do not compile with NDMF 1.8.3
+(`IVirtualizeMotion` is missing), the exporter's NDMF floor. 1.12.2 is the first
+release that compiles with it and passes every check, so the range starts there.
+Each MA release requires its own NDMF range (1.12.2 needs 1.7.2,
+1.14.0 needs 1.9.0, 1.18.0 needs 1.11.0, 1.18.4 and later need 1.14.7), which
+VCC/ALCOM resolves; the exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
+MA 1.14.0 and 1.14.1 change an Int or Bool menu parameter to Float in place
+during their own build, and NDMF logs an error for it while the build goes on;
+MA 1.14.2 fixed this. Users on 1.14.0 or 1.14.1 with Int or Bool menu toggles
+should update MA to 1.14.2 or later. Results:
+[Evidence/ModularAvatarRange](Evidence/ModularAvatarRange/README.md).
 
 ## Supported lilToon versions
 
