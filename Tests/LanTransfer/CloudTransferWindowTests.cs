@@ -415,6 +415,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 var type = typeof(AppTransferPanel);
                 var avatar = new GameObject("vrvlog-app-transfer-save");
+                var other = new GameObject("vrvlog-app-transfer-save-other");
                 var window = new AppTransferPanel();
                 try
                 {
@@ -424,9 +425,12 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var entry = Activator.CreateInstance(entryType, true);
                     entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
                     string savedName = null, failure = null;
+                    var later = false;
+                    Action<string, int> pending = null;
                     entryType.GetField("SaveCopy", Instance).SetValue(entry, (Func<GameObject, string, bool, Action<string, int>, string>)((target, name, detailed, saved) =>
                     {
                         savedName = name;
+                        if (later) { pending = saved; return ""; }
                         if (failure == null) saved("C:/fixture/out.vrm", 2);
                         return failure;
                     }));
@@ -448,13 +452,21 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(type.GetField("savedCopy", Instance).GetValue(window), Is.Null);
                     Assert.That(type.GetField("saveProblem", Instance).GetValue(window), Is.EqualTo(failure));
 
+                    // The result list saves later; by then the panel may show another avatar, whose row stays as it is.
+                    later = true;
+                    save.Invoke(window, null);
+                    type.GetField("avatar", Instance).SetValue(window, other);
+                    pending("C:/fixture/late.vrm", 0);
+                    Assert.That(type.GetField("savedCopy", Instance).GetValue(window), Is.Null);
+                    type.GetField("avatar", Instance).SetValue(window, avatar);
+
                     // The transfer's own export holds the Editor; the button waits for it.
                     var flow = new AppTransferFlow();
                     type.GetField("flow", Instance).SetValue(window, flow);
                     flow.BeginExport();
                     Assert.That(canSave.GetValue(window), Is.False);
                 }
-                finally { Object.DestroyImmediate(avatar); }
+                finally { Object.DestroyImmediate(avatar); Object.DestroyImmediate(other); }
             });
         }
 

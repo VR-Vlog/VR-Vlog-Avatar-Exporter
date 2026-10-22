@@ -353,12 +353,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (!CanSaveCopy) return;
             var name = string.IsNullOrWhiteSpace(avatarName) ? avatar.name.Trim() : avatarName.Trim();
+            if (name.Length == 0) name = "avatar";
+            var source = avatar;
             string failure;
             try
             {
                 failure = Exporter.SaveCopy(avatar, name, detailed, (path, missing) =>
                 {
-                    // Also later, when the recovery window saves once the user fixed what failed.
+                    // Also later, when the result list or recovery window saves; by then the panel may
+                    // show another avatar, whose row must not claim this file.
+                    if (avatar != source) return;
                     savedCopy = path;
                     savedCopyMissingShaders = missing;
                     saveProblem = null;
