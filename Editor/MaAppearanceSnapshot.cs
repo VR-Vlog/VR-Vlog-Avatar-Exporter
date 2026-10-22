@@ -70,7 +70,15 @@ namespace VRVlog.LilToonExporter
                     if (dynamic.Contains(Property(shape.Key)))
                         foreach (var rule in (IEnumerable)Field(shape.Value, "actionGroups"))
                             if (Field(rule, "ControllingObject") is Component controller) retained.Add(controller);
-                var selectorType = Required(Ma + "editor.IMeshSelector");
+                // MA 1.18 describes Shape Changer Delete and
+                // Mesh Cutter as IMeshSelector, 1.14 to 1.17 as IVertexFilter.
+                // Up to 1.13 a delete is a float on deletedShape.<name> and MA
+                // removes the vertices that blend shape moves (1.13 passes the
+                // value as the threshold; earlier versions delete above 0.5).
+                var selectorType = Optional(Ma + "editor.IMeshSelector") ?? Optional(Ma + "editor.IVertexFilter");
+                if (selectorType == null && components.Any(c => c.GetType().Name == "ModularAvatarMeshCutter"))
+                    throw new TypeLoadException(Ma + "editor.IMeshSelector");
+                MethodInfo removeShapes = null;
                 var selectors = new Dictionary<SkinnedMeshRenderer, IList>();
                 // Freeze irreversible geometry and constant appearance using
                 // MA's own resolved simulator selection. Reversible reactions
@@ -100,18 +108,46 @@ namespace VRVlog.LilToonExporter
                         var slots = renderer.sharedMaterials;
                         if (index >= 0 && index < slots.Length) { slots[index] = replacement; renderer.sharedMaterials = slots; }
                     }
-                    else if (target is SkinnedMeshRenderer cut && state.Value != null && selectorType.IsInstanceOfType(state.Value))
+                    else if (target is SkinnedMeshRenderer cut && state.Value != null && selectorType != null && selectorType.IsInstanceOfType(state.Value))
                     {
                         if (!selectors.TryGetValue(cut, out var list))
                             selectors.Add(cut, list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(selectorType)));
                         list.Add(state.Value);
                     }
+                    else if (target is SkinnedMeshRenderer deleted && selectorType == null && name.StartsWith("deletedShape.", StringComparison.Ordinal) && state.Value is float threshold)
+                    {
+                        removeShapes = removeShapes ?? Required(Ma + "editor.RemoveBlendShapeFromMesh").GetMethod("RemoveBlendshapes", Members)
+                            ?? throw new MissingMethodException(Ma + "editor.RemoveBlendShapeFromMesh", "RemoveBlendshapes");
+                        // IEnumerable<(int, float)> from 1.13, IEnumerable<int> before.
+                        var item = removeShapes.GetParameters()[1].ParameterType.GetGenericArguments()[0];
+                        var index = deleted.sharedMesh == null ? -1 : deleted.sharedMesh.GetBlendShapeIndex(name.Substring(13));
+                        if (index < 0 || item == typeof(int) && threshold <= .5f) continue;
+                        if (!selectors.TryGetValue(deleted, out var list))
+                            selectors.Add(deleted, list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(item)));
+                        list.Add(item == typeof(int) ? (object)index : (index, threshold));
+                    }
                 }
                 foreach (var pair in selectors)
                 {
                     if (pair.Key.sharedMesh == null) continue;
-                    var mesh = (Mesh)Required(Ma + "editor.RemoveVerticesFromMesh").GetMethod("FilterPrimitivesOnly", Members)
-                        .Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, pair.Value });
+                    Mesh mesh;
+                    if (selectorType == null) mesh = (Mesh)removeShapes.Invoke(null, new object[] { pair.Key.sharedMesh, pair.Value });
+                    else
+                    {
+                        var remove = Required(Ma + "editor.RemoveVerticesFromMesh");
+                        var primitives = remove.GetMethod("FilterPrimitivesOnly", Members);
+                        if (primitives != null) mesh = (Mesh)primitives.Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, pair.Value });
+                        else
+                        {
+                            // 1.14 to 1.17 take (TargetProp, IVertexFilter) and read only the filter.
+                            var vertices = remove.GetMethod("RemoveVertices", Members) ?? throw new MissingMethodException(remove.FullName, "RemoveVertices");
+                            var tuple = vertices.GetParameters()[2].ParameterType.GetGenericArguments()[0];
+                            var targets = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(tuple));
+                            var none = Activator.CreateInstance(tuple.GetGenericArguments()[0]);
+                            foreach (var selector in pair.Value) targets.Add(Activator.CreateInstance(tuple, none, selector));
+                            mesh = (Mesh)vertices.Invoke(null, new object[] { pair.Key, pair.Key.sharedMesh, targets });
+                        }
+                    }
                     owned.Add(mesh);
                     pair.Key.sharedMesh = mesh;
                 }
@@ -131,7 +167,8 @@ namespace VRVlog.LilToonExporter
                     }
                     if (component.GetType().Name == "ModularAvatarMeshCutter")
                         foreach (var filter in component.GetComponents<Component>())
-                            if (filter != null && filter.GetType().GetInterfaces().Any(i => i.FullName == Ma + "vertex_filters.IMeshSelectorBehavior"))
+                            if (filter != null && filter.GetType().GetInterfaces().Any(i => i.FullName == Ma + "vertex_filters.IMeshSelectorBehavior" ||
+                                i.FullName == Ma + "vertex_filters.IVertexFilterBehavior"))
                                 Object.DestroyImmediate(filter);
                     Object.DestroyImmediate(component);
                 }
@@ -308,8 +345,9 @@ namespace VRVlog.LilToonExporter
             analyzer.GetType().GetProperty(property).SetValue(analyzer, value);
         }
         static object Field(object obj, string name) => obj.GetType().GetField(name, Members).GetValue(obj);
-        static Type Required(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false))
-            .FirstOrDefault(t => t != null) ?? throw new TypeLoadException(name);
+        static Type Required(string name) => Optional(name) ?? throw new TypeLoadException(name);
+        static Type Optional(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false))
+            .FirstOrDefault(t => t != null);
         static void Map(Transform source, Transform clone, IDictionary<Object, Object> map)
         {
             map.Add(source.gameObject, clone.gameObject);
