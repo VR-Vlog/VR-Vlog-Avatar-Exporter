@@ -199,6 +199,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var display = CloudTransferProtocol.DisplayName(name);
             Assert.That(display.Length, Is.EqualTo(256));
             Assert.That(display, Is.EqualTo(name.Substring(0, 256)));
+            Assert.That(CloudTransferProtocol.DisplayName("a\ud800b\udc00c"), Is.EqualTo("abc"), "Lone surrogates are dropped.");
+            var quoted = CloudTransferProtocol.Qr(LinkId, LinkToken, "a\"\\b", 1, LinkHash, 1791910000, LinkKey);
+            Assert.That(CloudTransferProtocol.Fields.Read(quoted.Substring(LanTransferProtocol.QrPrefix.Length)).Text("name"), Is.EqualTo("a\"\\b"));
             var qr = CloudTransferProtocol.Qr(new string('0', 32), new string('A', 43), display, CloudTransferProtocol.MaximumSize, new string('0', 64), 2147483647, new string('A', 86));
             Assert.That(Encoding.UTF8.GetByteCount(qr), Is.LessThanOrEqualTo(4096));
         }
