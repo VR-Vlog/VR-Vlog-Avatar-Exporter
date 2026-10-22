@@ -22,13 +22,15 @@ namespace VRVlog.LilToonExporter
         internal const float MaxLabels = 420;
         // Shares of the name boxes in step order. The first name is the shortest in
         // every locale; the second and third are the long ones ("Objects to exclude",
-        // "Name and usage terms").
+        // "Save and send the VRM").
         static readonly float[] Shares = { .8f, 1.1f, 1.1f };
 
         internal static int Count => Shares.Length;
 
-        internal static string[] Names(bool transferMode) =>
-            new[] { "1 表情の設定", "2 除外するオブジェクト", transferMode ? "3 名前と利用条件" : "3 VRMの情報" };
+        // The third page saves and sends the VRM where the transfer module is there and turned on;
+        // without it the page is the VRM's information and its save.
+        internal static string[] Names(bool panelUsable) =>
+            new[] { "1 表情の設定", "2 除外するオブジェクト", panelUsable ? "3 VRMの保存と転送" : "3 VRMの情報" };
 
         // "1 表情の設定" is ("1", "表情の設定"): the number goes in the circle.
         internal static (string Number, string Name) Split(string text)
