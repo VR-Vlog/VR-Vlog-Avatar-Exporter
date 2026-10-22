@@ -144,6 +144,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static bool ShouldBeepForQr(AppTransferView view, bool qrShown, bool soundOn) =>
             soundOn && qrShown && view == AppTransferView.Waiting;
 
+        // "QRを他の人に見せたり…" is read before the QR appears: from the export, through the upload,
+        // and under the QR. Once there is no QR coming (done, failed, canceled, expired) it goes.
+        internal static bool ShowsDoNotShare(AppTransferView view) =>
+            view == AppTransferView.Exporting || view == AppTransferView.Uploading || view == AppTransferView.Waiting;
+
         // The phone stores the transfer under this name and lists the avatar
         // without the extension. This string is also the QR and AAD name.
         internal static string TransferName(string name)

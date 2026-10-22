@@ -1141,7 +1141,10 @@ namespace VRVlog.LilToonExporter
                 // a green-channel width mask, so they are not interchangeable.
                 OutlineWidthMultiplyTexture = outlineEnabled ? OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures, outlineMasks) : null,
                 OutlineColorFactorSrgb = FallbackColor(source, MaterialColorType.outlineColor, suppressSharedTextureEmission),
-                OutlineLightingMixFactor = Mathf.Clamp01(Float(source, "_OutlineEnableLighting", 0f)),
+                // lilToon's _OutlineEnableLighting (default 1) only lets scene light
+                // tint the outline; MToon's mix multiplies it by the lit albedo,
+                // which turns the outline nearly black. Keep the authored color.
+                OutlineLightingMixFactor = 0f,
             };
             if (source.HasProperty("_MainTex"))
             {
