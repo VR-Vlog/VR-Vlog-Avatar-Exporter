@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -147,6 +148,114 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(textures, Is.Empty);
             }
             finally { Destroy(material, created, textures, main); }
+        }
+
+        [Test]
+        public void NormalMatcapWithoutAnImageLeavesTheMainImage()
+        {
+            var material = Create(0);
+            var main = Solid(Color.white);
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                material.SetTexture("_MatCapTex", null);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                // MToon adds nothing without the image, so darkening would only lose light.
+                Assert.AreSame(main, fallback.GetTexture("_MainTex"));
+                Assert.That(textures, Is.Empty);
+            }
+            finally { Destroy(material, created, textures, main); }
+        }
+
+        [Test]
+        public void MaterialsWithTheSameInputsShareOneBake()
+        {
+            var first = Create(3);
+            var second = Create(3);
+            var matcap = Solid(new Color(.5f, .25f, 1, 1));
+            var main = Solid(Color.white);
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                foreach (var material in new[] { first, second })
+                {
+                    material.SetTexture("_MainTex", main);
+                    material.SetTexture("_MatCapTex", matcap);
+                }
+                var bakes = new MatcapApproximation.Bakes(true);
+                var a = UniVrmOneClickExporter.CreateMToonFallback(first, created, null, false, textures, matcapBakes: bakes);
+                var b = UniVrmOneClickExporter.CreateMToonFallback(second, created, null, false, textures, matcapBakes: bakes);
+                Assert.That(textures, Has.Count.EqualTo(1));
+                Assert.AreSame(a.GetTexture("_MainTex"), b.GetTexture("_MainTex"));
+                second.SetColor("_Color", new Color(.5f, .5f, .5f, 1));
+                var c = UniVrmOneClickExporter.CreateMToonFallback(second, created, null, false, textures, matcapBakes: bakes);
+                Assert.That(textures, Has.Count.EqualTo(2), "A different main color is its own bake.");
+                Assert.AreNotSame(a.GetTexture("_MainTex"), c.GetTexture("_MainTex"));
+                // Disabled bakes keep the source images.
+                var d = UniVrmOneClickExporter.CreateMToonFallback(first, created, null, false, textures, matcapBakes: new MatcapApproximation.Bakes(false));
+                Assert.AreSame(main, d.GetTexture("_MainTex"));
+                Assert.That(textures, Has.Count.EqualTo(2));
+            }
+            finally { Object.DestroyImmediate(second); Destroy(first, created, textures, matcap, main); }
+        }
+
+        // 55 materials need 111 images without the bakes and 166 with them.
+        [TestCase(55, false)]
+        [TestCase(4, true)]
+        public void BakesThatPassTheImageLimitAreLeftOut(int count, bool baked)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var quad = new Mesh { name = "MatCap quad" };
+            var matcap = Solid(Color.white);
+            var mask = Image(Color.black, Color.white, Color.black, Color.white);
+            var materials = new List<Material>();
+            var images = new List<Texture2D> { matcap, mask };
+            try
+            {
+                quad.vertices = new[] { new Vector3(0, 1, 0), new Vector3(.1f, 1, 0), new Vector3(0, 1.1f, 0) };
+                quad.triangles = new[] { 0, 1, 2 };
+                quad.uv = new[] { Vector2.zero, Vector2.right, Vector2.up };
+                quad.normals = Enumerable.Repeat(Vector3.back, 3).ToArray();
+                for (var i = 0; i < count; i++)
+                {
+                    // Distinct colors keep the images from being merged.
+                    var main = Solid(new Color(i / 64f, .5f, 1 - i / 64f, 1));
+                    var normal = Solid(new Color(.5f, .5f, i / 64f, 1));
+                    images.Add(main);
+                    images.Add(normal);
+                    var material = Create(0);
+                    material.name = "MatCap " + i;
+                    material.SetTexture("_MainTex", main);
+                    material.SetTexture("_MatCapTex", matcap);
+                    material.SetTexture("_MatCapBlendMask", mask);
+                    material.SetFloat("_MatCapMainStrength", 1);
+                    material.SetFloat("_UseBumpMap", 1);
+                    material.SetTexture("_BumpMap", normal);
+                    materials.Add(material);
+                    var part = new GameObject("Part " + i);
+                    part.transform.SetParent(fixture.Source.transform, false);
+                    part.AddComponent<MeshFilter>().sharedMesh = quad;
+                    part.AddComponent<MeshRenderer>().sharedMaterial = material;
+                }
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var glb = GlbDocument.Read(bytes);
+                var extensions = glb.Json.TryGetValue("extensions", out var raw) ? raw as Dictionary<string, object> : null;
+                Assert.That(extensions != null && extensions.ContainsKey(LilToonMobileProfile.ExtensionName), Is.True, "The bakes must not cost the lilToon extension.");
+                var textures = LilToonGlbExtension.StandardCounts(bytes).Textures;
+                Assert.That(textures, Is.LessThanOrEqualTo(LilToonMobileProfile.MaximumTextures));
+                if (baked) Assert.That(textures, Is.GreaterThan(2 * count + 1), "Under the limit the bakes stay.");
+                else Assert.That(textures, Is.EqualTo(2 * count + 1), "Over the limit the export is made again without them.");
+            }
+            finally
+            {
+                foreach (var material in materials) Object.DestroyImmediate(material);
+                foreach (var image in images) Object.DestroyImmediate(image);
+                Object.DestroyImmediate(quad);
+            }
         }
 
         private static Material Create(int mode)

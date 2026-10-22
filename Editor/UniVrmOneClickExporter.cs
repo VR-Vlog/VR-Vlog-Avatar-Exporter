@@ -110,17 +110,27 @@ namespace VRVlog.LilToonExporter
                 report.Diagnostics.Clear();
             };
             // A restarted attempt must not repeat the warnings of a discarded one.
+            // A strict attempt starts from the caller's warnings, which it used
+            // to add to directly, so the checks for repeated warnings see them.
             List<string> attemptWarnings = null;
+            var callerWarnings = guard.ContinueOnFailure || warnings == null ? 0 : warnings.Count;
+            byte[] Attempt(bool bakeMatcaps) => guard.Retry(() =>
+            {
+                attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
+                return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
+                    suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, bakeMatcaps);
+            }, failure => report.Fallbacks.Clear());
             try
             {
-                var bytes = guard.Retry(() =>
+                byte[] bytes;
+                try { bytes = Attempt(true); }
+                catch (MatcapApproximation.OverLimit)
                 {
-                    attemptWarnings = guard.ContinueOnFailure && warnings != null ? new List<string>() : null;
-                    return ExportCore(source, avatarName, author, attemptWarnings ?? warnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
-                        suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                        authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets);
-                }, failure => report.Fallbacks.Clear());
-                CopyWarnings(attemptWarnings, warnings);
+                    report.Fallbacks.Clear();
+                    bytes = Attempt(false);
+                }
+                CopyWarnings(attemptWarnings, callerWarnings, warnings);
                 RecordOmissions(guard, report, warnings, omittedDiagnostics);
                 report.Stage = "完了";
                 report.Phase = ExportPhase.ResultList;
@@ -130,7 +140,7 @@ namespace VRVlog.LilToonExporter
             }
             catch (Exception error)
             {
-                CopyWarnings(attemptWarnings, warnings);
+                CopyWarnings(attemptWarnings, callerWarnings, warnings);
                 var cause = ExportStageGuard.Unwrap(error);
                 // A diagnostic failure must never replace the original export error.
                 if (report.Diagnostics.Count == 0)
@@ -339,10 +349,10 @@ namespace VRVlog.LilToonExporter
             else warnings?.Add(warning);
         }
 
-        static void CopyWarnings(List<string> attempt, ICollection<string> warnings)
+        static void CopyWarnings(List<string> attempt, int skip, ICollection<string> warnings)
         {
             if (attempt == null || warnings == null) return;
-            foreach (var warning in attempt) warnings.Add(warning);
+            foreach (var warning in attempt.Skip(skip)) warnings.Add(warning);
         }
 
         static void RecordOmissions(ExportStageGuard guard, ExportRecoveryReport report, ICollection<string> warnings,
@@ -362,7 +372,7 @@ namespace VRVlog.LilToonExporter
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
-            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets)
+            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, bool bakeMatcaps)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -691,8 +701,9 @@ namespace VRVlog.LilToonExporter
                 var outlineScales = new Dictionary<Material, float>();
                 try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
                 catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                var matcapBakes = new MatcapApproximation.Bakes(bakeMatcaps);
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales);
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales, matcapBakes: matcapBakes);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -724,6 +735,10 @@ namespace VRVlog.LilToonExporter
                         int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
                         visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
                     }, warnings: warnings);
+                // The MatCap images must not cost a file the lilToon extension
+                // or its save: over the app's image limit, export without them.
+                if (matcapBakes.Images.Count > 0 && LilToonGlbExtension.StandardCounts(exported).Textures > LilToonMobileProfile.MaximumTextures)
+                    throw new MatcapApproximation.OverLimit();
                 recoveryReport.Stage = "出力検査";
                 recoveryReport.Phase = ExportPhase.Export;
                 // Output stages transform finished bytes; a failing one keeps the
@@ -809,7 +824,7 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
-            catch (Exception error)
+            catch (Exception error) when (!(error is MatcapApproximation.OverLimit))
             {
                 // Capture Unity-object targets before temporary objects disappear.
                 try { recoveryReport.Fail(source, ExportStageGuard.Unwrap(error)); } catch { }
@@ -971,12 +986,13 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
-            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null)
+            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null, MatcapApproximation.Bakes matcapBakes = null)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
             // fallback materials have been serialized. Never cache across exports.
             var outlineMasks = new Dictionary<Texture, Texture2D>();
+            matcapBakes = matcapBakes ?? new MatcapApproximation.Bakes(true);
             var others = new Dictionary<Material, Material>();
             var unassigned = new List<string>();
             var assigned = false;
@@ -1012,7 +1028,7 @@ namespace VRVlog.LilToonExporter
                         try
                         {
                             var outlineScale = outlineScales != null && outlineScales.TryGetValue(source, out var scale) ? scale : 1f;
-                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale);
+                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes);
                         }
                         catch (Exception error) when (lenient && !(error is OperationCanceledException))
                         {
@@ -1076,7 +1092,8 @@ namespace VRVlog.LilToonExporter
             return material;
         }
 
-        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null, float outlineScale = 1f)
+        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null, float outlineScale = 1f,
+            MatcapApproximation.Bakes matcapBakes = null)
         {
             // Validate the full mobile subset before producing any fallback output.
             LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);
@@ -1096,7 +1113,7 @@ namespace VRVlog.LilToonExporter
             var shadeTexture = ShadeTexture(source);
             // MToon cannot darken with its MatCap; normal and multiply MatCaps
             // are averaged into the main image (lilToon 2.3.4 lilGetMatCap).
-            var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures)) ?? Texture(source, "_MainTex");
+            var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures, matcapBakes)) ?? Texture(source, "_MainTex");
             var parametricRim = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission);
             var context = new MToon10Context(material)
             {
@@ -1132,7 +1149,7 @@ namespace VRVlog.LilToonExporter
                 // MToon's rim image also scales its MatCap. Without a parametric
                 // rim it carries the MatCap mask and main-color tint instead.
                 RimMultiplyTexture = rimEnabled ? Texture(source, "_RimColorTex")
-                    : !hidden && parametricRim.maxColorComponent <= 0f ? MatcapApproximation.Weight(source, textures) : null,
+                    : !hidden && parametricRim.maxColorComponent <= 0f ? MatcapApproximation.Weight(source, textures, matcapBakes) : null,
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
