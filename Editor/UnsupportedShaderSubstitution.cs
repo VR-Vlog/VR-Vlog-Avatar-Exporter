@@ -193,9 +193,10 @@ namespace VRVlog.LilToonExporter
         static readonly string[] Cutoffs = { "_Cutoff", "_AlphaCutoff", "_Clipping_Level", "_AlphaClipThreshold", "_Cutout" };
         static readonly string[] NormalTextures = { "_BumpMap", "_NormalMap", "_NormalTex" };
         static readonly string[] NormalScales = { "_BumpScale", "_NormalScale", "_NormalMapScale" };
-        static readonly string[] EmissionTextures = { "_EmissionMap", "_EmissiveMap", "_Emissive_Tex", "_EmissionTex", "_EmissiveTex" };
+        static readonly string[] EmissionTextures = { "_EmissionMap", "_EmissiveMap", "_Emissive_Tex", "_EmissionTex", "_EmissiveTex", "_Emission" };
         static readonly string[] EmissionColors = { "_EmissionColor", "_Emissive_Color", "_EmissiveColor" };
-        static readonly string[] EmissionToggles = { "_EnableEmission", "_UseEmission", "_EmissionEnabled" };
+        static readonly string[] EmissionToggles = { "_EnableEmission", "_UseEmission", "_EmissionEnabled", "_ES_Enable" };
+        static readonly string[] EmissionKeywords = { "_EMISSION", "_ES_ENABLE" };
         static readonly string[] EmissionStrengths = { "_EmissionStrength", "_EmissionIntensity" };
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
@@ -384,9 +385,9 @@ namespace VRVlog.LilToonExporter
             foreach (var name in EmissionTextures)
                 if (values.Texture(name, out var value, out var valueScale, out var valueOffset) && Flat(value))
                 { texture = value; scale = valueScale; offset = valueOffset; break; }
-            var hasColor = false; var color = Color.black;
+            var hasColor = false; var color = Color.black; string colorName = null;
             foreach (var name in EmissionColors)
-                if (values.TryVector(name, out var vector) && Finite(vector)) { color = vector; hasColor = true; break; }
+                if (values.TryVector(name, out var vector) && Finite(vector)) { color = vector; hasColor = true; colorName = name; break; }
             // Colors are saved in sRGB and the source shader scales the linear
             // value, as the MToon fallback reads it (_EmissionColor.linear).
             foreach (var name in EmissionStrengths)
@@ -398,11 +399,17 @@ namespace VRVlog.LilToonExporter
                 }
             bool enabled;
             var toggle = EmissionToggles.FirstOrDefault(name => values.TryFloat(name, out _));
+            var keywords = EmissionKeywords.Where(name => values.DeclaresKeyword(source, name)).ToArray();
             if (toggle != null) enabled = values.Float(toggle, 0) > .5f;
-            else if (values.DeclaresKeyword(source, "_EMISSION")) enabled = values.Keyword("_EMISSION");
-            else enabled = hasColor || texture != null;
+            else if (keywords.Length > 0) enabled = keywords.Any(values.Keyword);
+            // Without a switch, an image or an authored color tells that the
+            // surface glows; the shader's own default color does not.
+            else enabled = texture != null || hasColor && !values.IsDefault(source, colorName);
             if (hasColor && color.maxColorComponent <= 0) enabled = false;
             if (!enabled) return;
+            // Emission tinted by the base color instead of an image; lilToon
+            // multiplies by the albedo the same way with _EmissionMainStrength.
+            if (values.Float("_EmissionBaseColorAsMap", 0) > .5f) Set(material, "_EmissionMainStrength", 1);
             if (texture != null)
             {
                 material.SetTexture("_EmissionMap", texture);
@@ -548,6 +555,15 @@ namespace VRVlog.LilToonExporter
             internal bool SavedLilToon(Material material) =>
                 (material.shader == null || material.shader.name == MissingShader) &&
                 TryFloat("_lilToonVersion", out _) && TryFloat("_TransparentMode", out _);
+
+            // Whether a color still has the value the live shader declares. A
+            // missing shader has no declaration, so nothing counts as default.
+            internal bool IsDefault(Material material, string name)
+            {
+                if (name == null || material.shader == null || material.shader.name == MissingShader || !vectors.TryGetValue(name, out var value)) return false;
+                var index = material.shader.FindPropertyIndex(name);
+                return index >= 0 && material.shader.GetPropertyDefaultVectorValue(index) == value;
+            }
 
             // A live shader tells whether the keyword exists; saved data only
             // lists keywords that were on, which is still the authored state.

@@ -154,6 +154,47 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.a, Is.EqualTo(.7f).Within(1e-6), "Alpha is not scaled.");
         }
 
+        [Test] public void AShaderSwitchDecidesTheEmissionEvenWithAWhiteColor()
+        {
+            var glow = Texture("glow");
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionSwitchProbe")) { name = "Switch" });
+            source.SetTexture("_EmissionMap", glow);
+            Assert.That(Substitute(source).GetFloat("_UseEmission"), Is.EqualTo(0f), "The switch is off by default.");
+            source.SetFloat("_ES_Enable", 1);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(glow));
+        }
+
+        [Test] public void WithoutASwitchTheShaderDefaultColorAloneDoesNotGlow()
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionNoSwitchProbe")) { name = "Always" });
+            Assert.That(Substitute(source).GetFloat("_UseEmission"), Is.EqualTo(0f), "Nothing authored means nothing glows.");
+            source.SetColor("_EmissionColor", new Color(1, 0, 0, 1));
+            Assert.That(Substitute(source).GetFloat("_UseEmission"), Is.EqualTo(1f), "An authored color glows.");
+        }
+
+        [Test] public void AnEmissionImageNamedEmissionMasksTheColor()
+        {
+            var mask = Texture("mask");
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionNoSwitchProbe")) { name = "Masked" });
+            source.SetTexture("_Emission", mask); source.SetColor("_EmissionColor", new Color(.6f, .6f, .6f, 1));
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_EmissionMap"), Is.SameAs(mask));
+        }
+
+        [Test] public void EmissionTintedByTheBaseColorUsesTheAlbedo()
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/EmissionNoSwitchProbe")) { name = "Tinted" });
+            source.SetColor("_EmissionColor", new Color(.5f, .5f, .5f, 1));
+            Assert.That(Substitute(source).GetFloat("_EmissionMainStrength"), Is.EqualTo(0f));
+            source.SetFloat("_EmissionBaseColorAsMap", 1);
+            var output = Substitute(source);
+            Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f));
+            Assert.That(output.GetFloat("_EmissionMainStrength"), Is.EqualTo(1f));
+        }
+
         [Test] public void AShadeImageEqualToTheMainImageBecomesARatioToTheMainColor()
         {
             var main = Texture("main");

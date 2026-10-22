@@ -222,6 +222,46 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // Half black, half white: a moving gradation glows at half strength on
+        // average; a still one stays at u = 0, between the first and last texel.
+        [TestCase(1f, .5f)]
+        [TestCase(0f, .5f)]
+        [TestCase(-1f, .5f)]
+        public void GradatedEmissionUsesTheAverageOfTheGradation(float speed, float expected)
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon for the gradation properties.");
+            var source = new Material(shader);
+            var image = new Texture2D(2, 2);
+            var gradation = new Texture2D(8, 4, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point };
+            try
+            {
+                var pixels = new Color[8 * 4];
+                for (var i = 0; i < pixels.Length; i++) pixels[i] = i % 8 < 4 ? Color.black : Color.white;
+                gradation.SetPixels(pixels); gradation.Apply();
+                source.SetTexture("_EmissionMap", image);
+                source.SetFloat("_UseEmission", 1f);
+                source.SetFloat("_EmissionBlend", 1f);
+                source.SetColor("_EmissionColor", Color.white);
+                source.SetFloat("_EmissionUseGrad", 1f);
+                source.SetTexture("_EmissionGradTex", gradation);
+                source.SetFloat("_EmissionGradSpeed", speed);
+                var emission = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.emissionColor);
+                Assert.AreEqual(expected, emission.r, .01f);
+                Assert.AreEqual(expected, emission.g, .01f);
+                Assert.AreEqual(expected, emission.b, .01f);
+                source.SetFloat("_EmissionUseGrad", 0f);
+                Assert.AreEqual(1f, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.emissionColor).r, .00001f,
+                    "Without the gradation the emission is unchanged.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+                Object.DestroyImmediate(image);
+                Object.DestroyImmediate(gradation);
+            }
+        }
+
         [TestCase(null, 1f)]
         [TestCase(0f, 1f)]
         [TestCase(.5f, .5f)]

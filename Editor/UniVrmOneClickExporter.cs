@@ -1154,7 +1154,7 @@ namespace VRVlog.LilToonExporter
                 // light-dependent, so use that lit-scene value: 1 - fluorescence.
                 case MaterialColorType.emissionColor: return EnabledOrTexture(source, "_UseEmission", "_EmissionMap") && !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission)
                     ? Color(source, "_EmissionColor", UnityEngine.Color.black).linear * Mathf.Clamp01(Float(source, "_EmissionBlend", 1f))
-                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) : UnityEngine.Color.black;
+                        * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) * LilToonEmissionPolicy.GradientFactor(source) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return MatcapAdditive(source)
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
