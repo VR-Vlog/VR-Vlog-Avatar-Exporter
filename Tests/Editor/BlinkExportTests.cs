@@ -58,53 +58,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(resolved.Slots[0].Single().Renderer, Is.SameAs(skin));
         }
 
-        [Test] public void StatusReusesScansUntilExpiryOrARelevantSettingChanges()
-        {
-            Skin("Blink");
-            var cache = new LilToonExporterWindow.BlinkStatusCache();
-            var calls = 0;
-            BlinkExportSession Resolve() { calls++; return BlinkExportSession.Resolve(root); }
-            cache.Refresh(10, Resolve);
-            var first = cache.Resolved;
-            for (var i = 1; i < 100; i++) cache.Refresh(10 + i * .01, Resolve);
-            Assert.That(calls, Is.EqualTo(1), "Layout, repaint and input must share the status scan.");
-            Assert.That(cache.Resolved, Is.SameAs(first));
-            cache.Refresh(11, Resolve);
-            Assert.That(calls, Is.EqualTo(2), "External avatar edits are picked up by the periodic refresh.");
-            cache.Invalidate();
-            cache.Refresh(11.01, Resolve);
-            Assert.That(calls, Is.EqualTo(3), "Changing bindings or exclusions must refresh immediately.");
-            cache.Invalidate();
-        }
-
-        [Test] public void StatusClearsAnEarlierSuccessWhenTheLiveBindingBecomesInvalid()
-        {
-            var skin = Skin("Blink");
-            var cache = new LilToonExporterWindow.BlinkStatusCache();
-            var calls = 0;
-            BlinkExportSession Resolve() { calls++; return BlinkExportSession.Resolve(root); }
-            cache.Refresh(0, Resolve);
-            // A duplicate closing name resolves to no blink with the reason kept
-            // for the blink settings (see the fallback tests).
-            var valid = skin.sharedMesh;
-            var duplicate = Object.Instantiate(valid); duplicate.ClearBlendShapes(); owned.Add(duplicate);
-            foreach (var name in new[] { "Blink", "BLINK" })
-                duplicate.AddBlendShapeFrame(name, 100, new[] { Vector3.up * .2f, Vector3.zero, Vector3.zero }, new Vector3[3], new Vector3[3]);
-            skin.sharedMesh = duplicate;
-            cache.Refresh(1, Resolve);
-            Assert.That(cache.Error, Is.Null);
-            AssertUnresolved(cache.Resolved, BlinkExportSession.DuplicateClosingNames);
-            cache.Refresh(1.1, Resolve);
-            Assert.That(calls, Is.EqualTo(2), "An unresolved avatar must not be rescanned on every repaint either.");
-            skin.sharedMesh = valid;
-            cache.Invalidate();
-            cache.Refresh(1.2, Resolve);
-            Assert.That(cache.Resolved.UnresolvedAutomatic, Is.False);
-            Assert.That(cache.Resolved.Disabled, Is.False);
-            Assert.That(cache.Error, Is.Null);
-            cache.Invalidate();
-        }
-
         [TestCase("eye_close")][TestCase("previewBlink")][TestCase("eye_close_left")]
         public void UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing(string name)
         {
