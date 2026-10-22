@@ -173,20 +173,16 @@ namespace VRVlog.LilToonExporter
         public static void Open()
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
-            // "転送を続ける" keeps the transfer on the third page, and the board as it was.
-            if (!window.LeaveTransferMode(window.TransferPanelTransferring)) window.Focus();
+            window.LeaveTransferMode();
         }
 
-        // "VRM書き出し" on this board: false when the user kept the transfer on its third page. The third
-        // page is the transfer in both modes, so a transfer asks first in both; "中止して移動" ends it here.
-        internal bool LeaveTransferMode(bool transferring)
+        // "VRM書き出し" on this board. The third page is the same panel in both modes, so nothing leaves
+        // it: a transfer on it goes on, and only the blue button moves from "QRコードを作る" to "VRMを保存".
+        internal void LeaveTransferMode()
         {
-            if (!ConfirmLeavingTransfer(transferring)) return false;
-            if (transferring) CancelTransferPanel();
             transferMode = false;
             titleContent = new GUIContent(ExporterLocalization.T("VRM書き出し"));
             minSize = new Vector2(600, 760);
-            return true;
         }
 
         // "VRMを書き出す..." from an avatar's context menu: the window with that avatar
@@ -203,10 +199,11 @@ namespace VRVlog.LilToonExporter
         internal bool ChooseForExport(GameObject avatar, bool transferring)
         {
             var change = avatar != null && source != avatar && session != null;
-            if (!ConfirmLeavingTransfer(transferring)) return false;
+            // Another avatar takes the third page and its transfer away; the same one keeps the transfer going.
+            if (change && !ConfirmLeavingTransfer(transferring)) return false;
             if (change && !ConfirmChangeAvatar()) return false;
-            if (transferring) CancelTransferPanel();
-            LeaveTransferMode(false);
+            if (change && transferring) CancelTransferPanel();
+            LeaveTransferMode();
             if (avatar == null || source == avatar) return true;
             if (change) Queue(() => { ChangeAvatar(); SelectSource(avatar); });
             else { SelectSource(avatar); Repaint(); }

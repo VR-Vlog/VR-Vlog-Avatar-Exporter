@@ -2436,8 +2436,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A menu entry that takes the board off its third page asks only while that page
-        // uploads or shows its QR, in both modes. "VRM書き出し" from the menu keeps the transfer on
-        // "転送を続ける".
+        // uploads or shows its QR. "VRM書き出し" from the menu keeps the page, so it never asks.
         [Test]
         public void LeavingTheTransferPageFromTheMenuAsksOnlyWhileItTransfers()
         {
@@ -2454,38 +2453,22 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(asked, Is.EqualTo(new[] { (ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferTitle),
                     ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferBody)) }));
 
+                // "VRM書き出し" keeps the third page, which is the same panel in both modes, so a transfer on it
+                // goes on without asking; only the mode (the blue button) changes.
                 typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                // "転送を続ける" keeps the transfer mode.
-                Assert.That(window.LeaveTransferMode(true), Is.False);
-                Assert.That(window.TransferMode, Is.True);
-                Assert.That(asked.Count, Is.EqualTo(2));
-                // Without a transfer on the page it leaves without asking.
-                Assert.That(window.LeaveTransferMode(false), Is.True);
+                window.LeaveTransferMode();
                 Assert.That(window.TransferMode, Is.False);
                 Assert.That(window.titleContent.text, Is.EqualTo(ExporterLocalization.T("VRM書き出し")));
-                Assert.That(asked.Count, Is.EqualTo(2));
-                // "中止して移動" leaves it.
+                Assert.That(asked.Count, Is.EqualTo(1));
+                // "VRMを書き出す..." on a board not prepared for an avatar has no transfer to lose: it asks nothing.
                 typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                answer = true;
-                Assert.That(window.LeaveTransferMode(true), Is.True);
-                Assert.That(window.TransferMode, Is.False);
-                Assert.That(asked.Count, Is.EqualTo(3));
-                // Already exporting: the third page is the transfer here too, so a transfer still asks.
-                answer = false;
-                Assert.That(window.LeaveTransferMode(true), Is.False);
-                Assert.That(asked.Count, Is.EqualTo(4));
-                Assert.That(window.LeaveTransferMode(false), Is.True);
-                Assert.That(asked.Count, Is.EqualTo(4));
-                // "VRMを書き出す..." for another avatar: "転送を続ける" keeps the transfer and its avatar.
-                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                answer = false;
                 var other = new GameObject("Other");
                 try
                 {
-                    Assert.That(window.ChooseForExport(other, true), Is.False);
-                    Assert.That(window.TransferMode, Is.True);
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.Null);
-                    Assert.That(asked.Count, Is.EqualTo(5));
+                    Assert.That(window.ChooseForExport(other, true), Is.True);
+                    Assert.That(window.TransferMode, Is.False);
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.SameAs(other));
+                    Assert.That(asked.Count, Is.EqualTo(1));
                 }
                 finally { Object.DestroyImmediate(other); }
             }
