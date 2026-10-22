@@ -159,8 +159,9 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(board); }
         }
 
-        // The board session keeps the stage choice it is given; only the
-        // non-interactive save applies the project-wide continue setting.
+        // The board session keeps the stage choice it is given; the board save
+        // applies the project-wide continue setting to every transfer, quick
+        // or not (TransferFollowsTheStageChoice).
         [Test]
         public void TheBoardExportKeepsTheStageChoiceItIsGiven()
         {

@@ -590,11 +590,27 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The quick transfer saves without asking: a failing stage follows the
-        // project-wide choice (省いて続ける) instead of opening the recovery window.
-        [TestCase(true)]
-        [TestCase(false)]
-        public void NonInteractiveTransferFollowsTheStageChoice(bool continueOnFailure)
+        // Answers the result list at once, as if the user pressed 保存する.
+        sealed class SavingFallbackDialog : IExportFallbackDialog
+        {
+            internal int Calls;
+            public void Show(ExportResultList result, GameObject avatar, Action save, Action changeSettings, Action openBlinkSettings)
+            {
+                Calls++;
+                save();
+            }
+        }
+
+        // Both transfers ("かんたん" passes interactive false, "通常" true): a
+        // failing stage follows the project-wide choice (省いて続ける). On, the
+        // stage is left out and listed in the result list, which only the
+        // interactive transfer asks about; off, both stop and open the
+        // recovery window. interactive never changes whether the file is written.
+        [TestCase(true, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        [TestCase(false, true)]
+        public void TransferFollowsTheStageChoice(bool continueOnFailure, bool interactive)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
@@ -605,22 +621,30 @@ namespace VRVlog.LilToonExporter.Tests
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-quick-stage-" + Guid.NewGuid().ToString("N") + ".vrm");
             var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
             var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            var originalDialog = ExportFallbackConfirmation.Dialog;
+            var originalBatchMode = ExportFallbackConfirmation.IsBatchMode;
+            var dialog = new SavingFallbackDialog();
             var saved = 0;
             try
             {
+                // The test runner may be a batch run; pretend an Editor session so
+                // the interactive transfer really asks.
+                ExportFallbackConfirmation.Dialog = dialog;
+                ExportFallbackConfirmation.IsBatchMode = () => false;
                 EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, continueOnFailure);
                 material.SetFloat("_UseMain2ndTex", 1); material.SetTexture("_Main2ndTex", texture);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 type.GetField("source", flags).SetValue(window, fixture.Source);
                 type.GetField("automaticBlink", flags).SetValue(window, false);
                 type.GetMethod("Prepare", flags).Invoke(window, null);
-                var failure = window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved++, interactive: false);
+                var failure = window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved++, interactive);
                 if (continueOnFailure)
                 {
                     Assert.That(failure, Is.Null);
                     Assert.That(saved, Is.EqualTo(1));
                     Assert.That(File.Exists(path), Is.True);
                     Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.False);
+                    Assert.That(dialog.Calls, Is.EqualTo(interactive ? 1 : 0), "Only the interactive transfer asks about the left-out stage.");
                 }
                 else
                 {
@@ -628,10 +652,13 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(saved, Is.Zero);
                     Assert.That(File.Exists(path), Is.False);
                     Assert.That(Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Any(), Is.True);
+                    Assert.That(dialog.Calls, Is.Zero);
                 }
             }
             finally
             {
+                ExportFallbackConfirmation.Dialog = originalDialog;
+                ExportFallbackConfirmation.IsBatchMode = originalBatchMode;
                 if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
                 else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
                 foreach (var failureWindow in Resources.FindObjectsOfTypeAll<ExportFailureWindow>()) Object.DestroyImmediate(failureWindow);

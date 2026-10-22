@@ -192,8 +192,7 @@ namespace VRVlog.LilToonExporter
             if (same || avatar == null) { window.Repaint(); return true; }
             window.Queue(() =>
             {
-                window.ChangeAvatar();
-                window.SelectSource(avatar);
+                window.PrepareForTransfer(avatar);
                 if (!EditorApplication.isPlayingOrWillChangePlaymode) window.Prepare();
             });
             return true;
@@ -208,12 +207,21 @@ namespace VRVlog.LilToonExporter
             var window = CreateInstance<ExperimentalExpressionCaptureWindow>();
             try
             {
-                window.transferMode = true;
-                window.SelectSource(avatar);
+                window.PrepareForTransfer(avatar);
                 window.Prepare();
                 return window;
             }
             catch { DestroyImmediate(window); throw; }
+        }
+
+        // Everything both transfers set on a board before Prepare, in one place
+        // so "かんたん" starts from the same defaults as "通常". A new setting
+        // gets its default in ChangeAvatar or Prepare, never here per transfer.
+        void PrepareForTransfer(GameObject avatar)
+        {
+            transferMode = true;
+            ChangeAvatar();
+            SelectSource(avatar);
         }
 
         // The open board prepared for this avatar, or null.
@@ -2206,8 +2214,10 @@ namespace VRVlog.LilToonExporter
         // author and license of the transfer window. Returns null when it saved
         // (saved has run) or was canceled, and the reason when it failed; the
         // recovery window then saves the same destination and runs saved.
-        // The quick transfer passes interactive false: what the export worked
-        // around is not asked about before saving.
+        // interactive only changes what is asked or shown, never the bytes: the
+        // quick transfer passes false, so what the export worked around is not
+        // asked about before saving and goes to the Console instead, and a
+        // board that blocks the export also says why.
         internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved, bool interactive = true)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
@@ -2230,7 +2240,8 @@ namespace VRVlog.LilToonExporter
         }
 
         // One save path for the file and the transfer. A transfer (written set)
-        // leaves the saved file of this window as it was.
+        // leaves the saved file of this window as it was. interactive decides
+        // only the dialogs and the Console text, not what is written.
         ExportRecoverySession Save(string path, string name, string targetAuthor, AvatarLicenseOptions license, bool interactive, Action written)
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
@@ -2288,9 +2299,10 @@ namespace VRVlog.LilToonExporter
                 // A retry from the recovery window runs outside any batch; in
                 // one attempt the standard faces use the hash Export has taken.
                 using var batch = ExperimentalExpressionCaptureSession.Batch();
-                // Nothing is asked in the quick transfer (a non-interactive transfer),
-                // so a failing stage follows the project-wide choice as it did before.
-                if (!interactive && written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
+                // Both transfers let a failing stage follow the project-wide choice,
+                // as the export window does, so "かんたん" and "通常" write the same
+                // bytes. Saving the board's own VRM (no written) stays strict.
+                if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report, expressions, poses,
                     presets.Select(value => value.Copy()).ToArray(), replaceCustomFaces);
