@@ -4,8 +4,8 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
-using UniGLTF;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -29,10 +29,15 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, 2)]
         public async Task InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(bool useShapeDelete, int previewMode)
         {
-            var marker = Named("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
-            if (marker == null || Named("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null ||
-                Named("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter") == null)
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker = Named("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Named("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (marker == null || Named("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null)
                 Assert.Ignore("Install the real Modular Avatar and NDMF packages for the deletion integration test.");
+            // Mesh Cutter first appears in MA 1.14.0; Shape Changer Delete is
+            // checked on every version in the supported range.
+            if (!useShapeDelete && Named("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter") == null)
+                Assert.Ignore("Mesh Cutter needs Modular Avatar 1.14.0 or later.");
             var shader = Shader.Find("lilToon");
             if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter.");
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -205,7 +210,9 @@ namespace VRVlog.LilToonExporter.Tests
                 preferencesJson = EditorJsonUtility.ToJson(preferences); globalJson = EditorJsonUtility.ToJson(globalPreferences);
                 preferencesDirty = EditorUtility.IsDirty(preferences); globalDirty = EditorUtility.IsDirty(globalPreferences);
                 plugin = preferenceType.GetMethod("SetPreviewPluginEnabled", Members); validate = preferenceType.GetMethod("OnValidate", Members);
-                var toggle = Required("nadena.dev.modular_avatar.core.editor.MeshDeleterPreview").GetField("EnableNode", Members).GetValue(null);
+                // Before MA 1.14.0 the Shape Changer preview also previews Delete.
+                var toggle = (Named("nadena.dev.modular_avatar.core.editor.MeshDeleterPreview")
+                    ?? Required("nadena.dev.modular_avatar.core.editor.ShapeChangerPreview")).GetField("EnableNode", Members).GetValue(null);
                 nodePublished = toggle.GetType().GetProperty("IsEnabled", Members).GetValue(toggle);
                 nodeValue = nodePublished.GetType().GetProperty("Value", Members); previousNode = (bool)nodeValue.GetValue(nodePublished);
                 try

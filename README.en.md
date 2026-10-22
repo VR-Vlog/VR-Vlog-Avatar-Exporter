@@ -35,10 +35,11 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
 | lilToon | Any version from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4, stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
-| UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
+| UniVRM / UniGLTF | Not required; UniVRM 0.131.4 is bundled with renamed namespaces and shaders, so an installed UniVRM of any version does not conflict |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; checked with 3.5.0 or later and below 3.11.0, including pre-releases below 3.11.0. Expression files with VRC Animator Play Audio need 3.5.2 or later and below 3.11.0 |
-| Modular Avatar | Optional; 1.18.0 or later and below 1.19.0 when the avatar uses Shape Changer, Object Toggle, Material Setter, Material Swap or Mesh Cutter. Other avatars export with any version |
+| NDMF | Optional; a stable release from 1.6.0 up to (but not including) 2.0.0 when the avatar uses Modular Avatar or another NDMF tool; the pre-releases 1.15.0-beta.1 and beta.2 also pass for Modular Avatar 1.19.0-alpha.2 |
+| Modular Avatar | Optional; 1.12.2 or later and below 1.19.0, or the verified pre-release 1.19.0-alpha.2, when the avatar uses Shape Changer, Object Toggle, Material Setter, Material Swap or Mesh Cutter. Other avatars export with any version |
 
 Install Modular Avatar and its dependencies beforehand if your avatar uses them. The [dependency policy](Compatibility/dependencies.json) records supported versions; the exporter reports missing or unsupported packages without automatically changing them.
 
@@ -50,7 +51,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions. VPM resolves the UniVRM dependencies.
+3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -60,7 +61,7 @@ https://vrvlog.fun/exporter/index.json
 
 Existing personal and organization repository registrations remain supported. Keep the current registration; no migration, second registration or reinstall is required. All listing endpoints are synchronized after approved publication.
 
-For manual installation, use **ZIPで導入** on the installation page. Download the exporter, UniGLTF and VRM ZIPs and extract each into a separate folder under the project's `Packages` directory, with its `package.json` directly inside that folder. Avoid installing the same UniVRM package twice.
+For manual installation, use **ZIPで導入** on the installation page. Download the exporter ZIP and extract it into a folder under the project's `Packages` directory, with its `package.json` directly inside that folder.
 
 Back up your Unity project before updating. Re-export from the original avatar to apply exporter changes to an existing VRM.
 
@@ -79,7 +80,7 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 3. Assign the avatar's root object from the Hierarchy and select **書き出しを準備**.
 4. Every expression found on the avatar starts in **その他の表情**, which is exported as VRM custom expressions. Drag a face onto one of the five VRM expression slots (happy, angry, sad, relaxed, surprised), or right-click it to move it. Move faces you do not want into **書き出さない表情**. Click a face to preview it. Drop more .anim files from Project onto **その他の表情**. Expressions are optional; model-only export is supported.
 5. Slots filled from names are marked **自動**; confirm them all with **自動の候補○件を確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
-6. The board has three pages: **1 表情の設定** (expressions), **2 除外するオブジェクト** (objects to leave out) and **3 VRMの情報** (VRM info). Add optional body poses and check blinking on page 1, then press **次へ：除外するオブジェクト**. Review VRChat gimmicks and objects to leave out on page 2, then press **次へ：VRMの情報**; changed exclusions are applied to the preview before page 3 opens. On page 3, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**. **戻る** goes back one page.
+6. The board has three pages: **1 表情の設定** (expressions), **2 除外するオブジェクト** (objects to leave out) and **3 VRMの情報** (VRM info). Add optional body poses and check blinking on page 1, then press **次へ：除外するオブジェクト**. Review VRChat gimmicks and objects to leave out on page 2, then press **次へ：VRMの情報**; changed exclusions are applied to the preview before page 3 opens. On page 3, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**. **戻る** goes back one page. In versions with cloud transfer enabled, page 3 is **3 VRMの保存と転送** (save and send the VRM) and the page 2 button reads **次へ：VRMの保存と転送**: page 3 shows the same name, author and **VRMの利用条件** fields as the normal transfer, with **VRMを保存** and **QRコードを作る** side by side. Saving does not need the terms consent. Opened from **VRMを書き出す**, **VRMを保存** is the blue button.
 
 When the body poses exceed the app's limits (128 poses, 32,768 frames of moving poses in total, 16MB of moving pose data, 2MB of still pose data), the **アプリの上限を超えた項目** (items over the app's limits) window opens once during the export. By default it leaves out poses from the end of the list; choose the poses to keep and press **この内容で書き出す** (export with this). The choice is saved in the avatar's export settings and used by later exports, including **アプリに転送（かんたん）**. Poses left out are listed as **同梱ポーズ** (bundled poses) in the export result list. Within the limits the window does not open.
 
@@ -90,7 +91,7 @@ See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for 
 Not yet released: in versions with cloud transfer enabled (pre-releases and stable versions that adopt the transfer), right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）...**, **アプリに転送（通常）...**, a separator and **VRMを書き出す...** in that order. Other versions do not show the transfers.
 
 - **アプリに転送（かんたん）** (quick): confirm the name, author and terms consent, then press **QRコードを作る**. The name and author start from the last transfer of this avatar. It exports exactly what the normal flow exports when nothing on the expression board is changed (the expressions last assigned on the board for this avatar, automatic where none, and the objects excluded earlier); the only difference is that the export result list is not shown. Problems that stop an export still stop it with the reason. **表情とオブジェクトを選ぶ** switches to the normal flow.
-- **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：名前と利用条件** (the exclusions are applied to the preview first). The transfer form appears on the board's third page, 「3 名前と利用条件」; press **QRコードを作る** there. **戻る** on the bottom bar returns to the second page. Leaving the third page or closing the board cancels the transfer in progress.
+- **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：VRMの保存と転送** (the exclusions are applied to the preview first). The transfer form appears on the board's third page, 「3 VRMの保存と転送」; press **QRコードを作る** there (it is the blue button; **VRMを保存** to its left saves the same VRM). **戻る** at the left of the buttons returns to the second page. While uploading or showing the QR, **戻る** first asks "このQRコードは使えなくなります" (this QR code will stop working): **中止して移動** cancels the transfer and leaves, **転送を続ける** stays. Closing the board cancels the transfer in progress without asking.
 
 Required input is the name, the author, consent to the terms (every time) and the privacy policy (first time only). The license is optional: open **VRMの利用条件** to change it, otherwise the last settings or the defaults are used.
 

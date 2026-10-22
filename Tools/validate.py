@@ -30,10 +30,9 @@ number = r"(?:0|[1-9][0-9]*)"
 assert re.fullmatch(rf"{number}\.{number}\.{number}(?:-beta\.{number})?", package["version"])
 assert one_click.index("AvatarBaseShape.Preserve(clone, clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
 assert "foreach (var mesh in temporaryMeshes) UnityEngine.Object.DestroyImmediate(mesh);" in one_click
-assert package["vpmDependencies"] == {
-    "com.vrmc.gltf": "0.131.x",
-    "com.vrmc.vrm": "0.131.x",
-}
+# UniVRM is bundled under Editor/Vendor/UniVRM; the Unity modules it needs come from the Unity registry.
+assert package["vpmDependencies"] == {}
+assert package["dependencies"] == {"com.unity.mathematics": "1.2.6", "com.unity.timeline": "1.7.6"}
 assert listing["url"].startswith("https://") and listing["url"].endswith("/index.json")
 assert listing["url"] == "https://vr-vlog.github.io/VR-Vlog-Avatar-Exporter/index.json"
 assert listing["author"]["url"] == "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter"
@@ -241,9 +240,7 @@ assert "created.Add(material)" in one_click
 assert 'Float(source, "_Cull", 2f) == 2f' in one_click
 assert "context.Validate()" in one_click
 assert "using UnityEditor.PackageManager;" not in one_click
-assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;" in one_click
-assert "PackageManagerPackageInfo.FindForAssembly" in one_click
-assert 'Compatibility.DependencyPolicy.RequireUniVrm(package?.version, gltf?.version)' in one_click
+assert "PackageManagerPackageInfo" not in one_click and "EnsureUniVrmVersion" not in one_click
 assert (root / ".github/workflows/build-listing.yml").is_file()
 assert (root / ".github/workflows/release-vpm.yml").is_file()
 assert (root / "Website/index.html").is_file()
@@ -275,7 +272,7 @@ assert "Generate VPM listing" in listing_workflow
 assert "Generate listing from a local release fixture" in listing_workflow
 assert "--package-listing-source-folder" in listing_workflow
 assert 'test -s "$fixture/output/index.json"' in listing_workflow
-assert 'Compatibility/dependencies.json' in release_workflow
+assert 'Compatibility/dependencies.json' not in release_workflow
 # The existing workflow may retain a historical stable UI default. Publication
 # uses the explicit input and release_policy rejects any manifest mismatch.
 assert re.search(r"version:\n\s+description: Exporter version without the v prefix\n\s+required: true\n\s+default: \d+\.\d+\.\d+\n", release_workflow)
@@ -285,7 +282,6 @@ release_policy = (root / "Tools/release_policy.py").read_text(encoding="utf-8")
 assert '"refs/heads/main"' in release_policy
 assert 'sha != expected_sha' in release_policy
 assert 'version != package["version"]' in release_policy
-assert 'compatibility["uniVrm"]["releaseVersion"]' in release_policy
 assert '["--prerelease", "--latest=false"]' in release_policy
 assert 'Built ZIP differs from the validated release candidate' in release_workflow
 assert 'python3 Tools/release_policy.py > release-flags.txt' in release_workflow
@@ -301,7 +297,8 @@ for workflow_name in ("validate.yml", "release-vpm.yml", "release-candidate.yml"
 assert 'tag v${VERSION} already exists' in release_workflow
 assert 'git ls-remote --exit-code --tags origin' in release_workflow
 # Listing dispatch pins beta to its published tag; check-pipeline.py checks the complete script.
-assert '"com.vrmc.vrmshaders" not in gltf.get("dependencies", {})' in release_workflow
+# UniVRM is bundled, so the release neither builds nor attaches UniVRM packages.
+assert "com.vrmc" not in release_workflow and "univrm" not in release_workflow.lower()
 assert (root / "ThirdPartyNotices/UniVRM.md").is_file()
 assert (root / "LICENSE").is_file()
 assert "instance.Vrm.Meta.CopyTo" not in one_click
@@ -406,7 +403,12 @@ assert "materialCount > LilToonMobileProfile.MaximumMaterials" in injector
 assert (root / "Tests/Editor/GlbDocumentTests.cs").is_file()
 assert (root / "Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef").is_file()
 test_assembly = json.loads((root / "Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef").read_text(encoding="utf-8"))
-assert {"VRM10", "UniGLTF", "VrmLib"}.issubset(test_assembly["references"])
+vendor_assemblies = {"VRVlog.LilToonExporter.Vendor." + name for name in ("VRM10", "UniGLTF", "VrmLib")}
+assert vendor_assemblies.issubset(test_assembly["references"])
+for assembly_path in ("Editor/VRVlog.LilToonExporter.Editor.asmdef", "Tests/Editor/VRVlog.LilToonExporter.Editor.Tests.asmdef"):
+    assembly = json.loads((root / assembly_path).read_text(encoding="utf-8"))
+    assert not assembly.get("defineConstraints") and not assembly.get("versionDefines"), assembly_path
+    assert not any(reference in {"VRM10", "UniGLTF", "VrmLib"} for reference in assembly["references"]), assembly_path
 
 # User-facing UE failures must remain actionable in every shipped locale.
 unified_failure_sources = (

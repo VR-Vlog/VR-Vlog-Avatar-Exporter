@@ -926,8 +926,10 @@ namespace VRVlog.LilToonExporter
         static bool TrackingParameter(string name) => name.StartsWith("FT/", StringComparison.OrdinalIgnoreCase) ||
             name.StartsWith("VRCFT/", StringComparison.OrdinalIgnoreCase) || name.StartsWith("v2/", StringComparison.Ordinal) ||
             UnifiedExpressionRegistry.TryCanonicalize(name, out _);
+        // MA 1.19 builds Reactive Components as BlendTrees driven by $$MA/RC/
+        // parameters, including the constant $$MA/RC/AlwaysOne weight.
         static bool GeneratedParameter(string name) => name.StartsWith("__MA/", StringComparison.Ordinal) ||
-            name.StartsWith("__ActiveSelf", StringComparison.Ordinal);
+            name.StartsWith("__ActiveSelf", StringComparison.Ordinal) || name.StartsWith("$$MA/", StringComparison.Ordinal);
         static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         static string ConstraintKey(Constraint value) => value.Condition.parameter + "\u001f" + (int)value.Condition.mode + "/" +
             value.Condition.threshold.ToString("R", CultureInfo.InvariantCulture) + "/" + value.Negated;

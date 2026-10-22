@@ -44,7 +44,9 @@ namespace VRVlog.LilToonExporter
             "Standard", "Standard (Specular setup)", "VRM/MToon", "VRM10/MToon10",
             "UniGLTF/UniUnlit", "Unlit/Color", "Unlit/Texture", "Unlit/Transparent",
             "Unlit/Transparent Cutout", "VRM/UnlitTexture", "VRM/UnlitCutout",
-            "VRM/UnlitTransparent", "VRM/UnlitTransparentZWrite"
+            "VRM/UnlitTransparent", "VRM/UnlitTransparentZWrite",
+            // The exporter's own UniVRM copy (ForeignUniVrm) under its renamed shaders.
+            "Hidden/VRVlog/LilToonExporter/Vendor/MToon10", "Hidden/VRVlog/LilToonExporter/Vendor/MToon10 URP", "Hidden/VRVlog/LilToonExporter/Vendor/UniUnlit"
         };
 
         internal static bool Portable(Material material) => material != null && material.shader != null &&
@@ -121,7 +123,7 @@ namespace VRVlog.LilToonExporter
         static readonly string[] StructuralEntryTypes = { ExportGimmickRules.MergeAnimator, ExportGimmickRules.MenuInstaller };
         static readonly string[] BoundTypes = { ExportGimmickRules.MergeArmature, ExportGimmickRules.MeshSettings };
         static readonly string[] ContactTypes = { ExportGimmickRules.ContactReceiver, ExportGimmickRules.ContactSender };
-        static readonly HashSet<string> ToonShaders = new HashSet<string>(StringComparer.Ordinal) { "VRM/MToon", "VRM10/MToon10" };
+        static readonly HashSet<string> ToonShaders = new HashSet<string>(StringComparer.Ordinal) { "VRM/MToon", "VRM10/MToon10", "Hidden/VRVlog/LilToonExporter/Vendor/MToon10", "Hidden/VRVlog/LilToonExporter/Vendor/MToon10 URP" };
 
         // Gimmicks of any author, found without a table entry. They may hold
         // what a table rule claimed; a removed one replaces the findings inside

@@ -2,7 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 
@@ -246,7 +246,7 @@ namespace VRVlog.LilToonExporter
             if (VrChatExpressionMenu.Member(descriptor, "VisemeBlendShapes") is IEnumerable visemes)
                 foreach (var shape in visemes.OfType<string>()) Add(visemeRenderer, shape);
             Add(visemeRenderer, VrChatExpressionMenu.Member(descriptor, "MouthOpenBlendShapeName") as string);
-            var expressions = avatar.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
+            var expressions = ForeignUniVrm.AuthoredSettings(avatar)?.Expression;
             foreach (var clip in new[] { expressions?.Blink, expressions?.BlinkLeft, expressions?.BlinkRight })
             {
                 if (clip == null) continue;

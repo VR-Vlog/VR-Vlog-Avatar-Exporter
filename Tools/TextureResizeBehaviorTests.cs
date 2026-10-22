@@ -50,7 +50,7 @@ public static class ExporterTextureResizeBehaviorTests
         Check(Enumerable.Range(0, fourKOutput.Length).All(i => fourKOutput[i] == new byte[] {102,51,204,128}[i%4]), "Constant color and alpha survive downsize exactly");
         var sourceTexture = new UnityEngine.Texture2D { width = 4096, height = 4096, name = "source" };
         var serializer = new MobileTextureSerializer(null);
-        Check(!serializer.CanExportAsEditorAssetFile(sourceTexture, UniGLTF.ColorSpace.sRGB), "Serializer always requests UniVRM semantic conversion");
+        Check(!serializer.CanExportAsEditorAssetFile(sourceTexture, VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace.sRGB), "Serializer always requests UniVRM semantic conversion");
         serializer.ModifyTextureAssetBeforeExporting(sourceTexture);
         Equal(sourceTexture.width, 4096, "Serializer preparation does not modify source");
         TestGlbGraph();

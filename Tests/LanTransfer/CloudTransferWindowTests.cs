@@ -63,6 +63,17 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
                 Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
             }
+            // Its third page itself, with the board's "戻る" and which button is blue. It is also
+            // what tells the board that page is usable in the normal mode.
+            var embedded = (MethodInfo)exporter.GetMethod("EmbeddedTransferMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(embedded != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (embedded != null)
+            {
+                Assert.That(embedded.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(embedded.Name, Is.EqualTo("CreateEmbedded"));
+                Assert.That(embedded.GetParameters().Select(parameter => parameter.ParameterType),
+                    Is.EqualTo(new[] { typeof(UnityEngine.GameObject), typeof(Action), typeof(Func<bool>) }));
+            }
         }
 
         [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]
@@ -125,7 +136,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(12));
+            Assert.That(members.Length, Is.EqualTo(19));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 
@@ -424,6 +435,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
                     var entry = Activator.CreateInstance(entryType, true);
                     entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
+                    entryType.GetField("TermsKey", Instance).SetValue(entry, (Func<string>)(() => "fixture terms"));
                     string savedName = null, failure = null;
                     var later = false;
                     Action<string, int> pending = null;

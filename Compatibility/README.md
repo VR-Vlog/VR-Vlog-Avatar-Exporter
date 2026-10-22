@@ -6,10 +6,13 @@ same command without `--write` to detect drift. Generated source is included in
 the installable package; development manifests and test tools are excluded.
 
 The independent Editor compatibility assembly references only Unity. It owns
-the menu and environment diagnostics. The UniVRM backend and its tests compile
-only when both VRM10 and UniGLTF are in the accepted 0.131 patch line. The runtime
-guard also rejects mixed versions. Missing/unsupported packages therefore do
-not make this exporter's UniVRM references break compilation before diagnostics.
+the menu and environment diagnostics. The exporter backend compiles against the
+UniVRM 0.131.4 copy bundled under `Editor/Vendor/UniVRM` (`Tools/vendor-univrm.py`).
+Its namespaces are renamed to `VRVlog.LilToonExporter.Vendor.*` and its shaders
+to `Hidden/VRVlog/LilToonExporter/Vendor/*`, so creators do not install UniVRM,
+and a UniVRM of any version in the project does not conflict with it or change
+what the exporter writes. Diagnostics list an installed `com.vrmc.*` package as
+information only.
 Compilation errors inside another package can still prevent Unity from loading
 any new editor code; this cannot repair those packages.
 
@@ -22,37 +25,14 @@ includes package versions, compilation state, loaded backend and version defines
 without absolute paths or avatar data. A missing backend alone is not evidence
 of a compile error in another tool.
 
-The VPM requirement stays at `0.131.x` to avoid forcing changes to an existing
-creator project. Every release of that patch line can export when UniGLTF and
-VRM have the same version (`[0.131.0,0.131.999999999]` version defines; prereleases,
-build metadata and other minor lines stop). `uniVrm.versions` lists the patches
-actually verified with their official source commit; a new 0.131 patch is
-accepted before it is listed, and VCC / ALCOM can install it into a creator
-project without anyone touching the exporter.
-
-Accepting unverified patches has a cost. When the version defines named each
-verified patch, an unlisted patch only left the backend out and diagnostics
-explained why. Now the backend compiles against every 0.131.Z. If a later patch
-changes the signature of a UniVRM API the exporter calls, the result is a
-compile error inside this package in the creator's project, not a diagnostics
-message: in an open editor the script reload stops, on the next project open
-Unity offers Safe Mode, and the VRChat SDK refuses to build while compile errors
-exist. Patches in this line do change public API: 0.131.2 to 0.131.3 changed
-the type of `GlbChunk.Bytes` from `ArraySegment` to `ReadOnlyMemory`, which the
-exporter does not use. A behavior change behind an unchanged signature compiles
-and is only found when that patch is verified. 0.131.3 is such a case:
-`NativeArrayManager.CreateNativeArray(T[])` wraps the managed array instead of
-copying it, so each morph's normal array must be a separate allocation.
-
-The mitigation is to verify each new 0.131 patch promptly, before or as soon as
-creators can install it: run the `compatibility`, `exporter-behavior` and
-`exporter-integration` profiles below with that patch (the runner accepts an
-unlisted 0.131 release), then add it to `uniVrm.versions` with its source
-commit (evidence: `Evidence/UniVrm0131x/README.md`). If it breaks, ship an
-exporter fix, or an exporter release whose accepted range excludes that patch.
+The package has no VPM dependency. Updating the bundled UniVRM is a source
+change in this repository: run `Tools/vendor-univrm.py` against the new official
+release, review the diff, then run the `compatibility`, `exporter-behavior` and
+`exporter-integration` profiles below before releasing it.
 `Tools/check-upstream-dependencies.py` reports an upstream UniVRM release newer
-than the newest listed patch. A new minor line (0.132 and later) still requires
-review and a new adapter.
+than the bundled one (`Editor/Vendor/UniVRM/VERSION.json`). The 0.131 patch
+evidence in `Evidence/UniVrm0131x/README.md` is from releases that used the
+creator's own UniVRM.
 Diagnostics never install, upgrade or downgrade packages. MA and NDMF remain optional; existing component,
 API and ownership checks run during preparation. Reference versions are not a
 claim that every avatar or every combination is verified.
@@ -75,16 +55,49 @@ Results:
 
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
-or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.18.0
-to below 1.19.0, stable releases only). The freeze reflects MA's preview API;
-`IMeshSelector` first appears in 1.18.0 (1.17.x and earlier use
-`IVertexFilter`), and 1.19.0-alpha.1 replaces the `InitialStates` analysis. Other
-stable versions stop before that API is touched, naming the installed version and
-the range. When the version cannot be read (MA placed under `Assets`, a
-pre-release), the freeze tries the API and, if it is missing, stops saying the
-version was not read. Avatars without those components export with any MA version. MA 1.18.x
-itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
-`ndmfMinimum` (1.8.3).
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.12.2
+to below 1.19.0), plus the pre-releases in `modularAvatarPrereleases`
+(1.19.0-alpha.2 only; alpha.0 and alpha.1 merge animations differently and
+stop). The freeze reflects MA's preview API.
+Everything it reads is the same from 1.10.4 (the first release with
+`ReactiveObjectAnalyzer.OptimizeShapes`) through 1.18.7 except Shape Changer
+Delete and Mesh Cutter, which the freeze removes from the mesh with MA's own
+method, chosen by which MA type exists rather than by the version number:
+1.18.0 and later report `IMeshSelector` and use
+`RemoveVerticesFromMesh.FilterPrimitivesOnly` (as before this range change; it
+is the path MA's preview uses, which drops the deleted triangles and keeps the
+vertices, while MA's build calls `RemoveVertices`); 1.14.0 to 1.17.1 report
+`IVertexFilter` and use `RemoveVerticesFromMesh.RemoveVertices`; 1.13.4 and
+earlier have no Mesh Cutter, report Delete as a float on `deletedShape.<name>`
+and use `RemoveBlendShapeFromMesh.RemoveBlendshapes` (with the float as the
+threshold from 1.13.0, deleting above 0.5 before). Material Swap appears in
+1.13.0 and Mesh Cutter in 1.14.0; older versions simply have nothing of that
+kind to freeze. 1.19.0-alpha.1 replaces the `InitialStates` analysis with typed
+targets and `InitialActions`; the freeze reads either as the 1.18 property names
+and values. Other versions, including unlisted `X.Y.Z-pre` releases, stop before
+that API is touched, naming the installed version and the range.
+When the version cannot be read (MA placed under `Assets`, build metadata), the
+freeze tries the API and, if it is missing, stops saying the version was not
+read. Avatars without those components export with any MA
+version. 1.10.4 to 1.11.7 freeze, but the FX their own build makes does not
+export menu expressions that switch a Shape Changer: Int and Float menus also
+change something other than BlendShapes (a GameObject's `m_IsActive` on 1.11.x,
+a leftover `deletedShape.<name>` curve on 1.10.4), and a Bool menu makes Unity reject
+the merged FX transition. 1.12.0 and 1.12.1 do not compile with NDMF 1.8.3
+(`IVirtualizeMotion` is missing), the exporter's NDMF floor when this range was set. 1.12.2 is the first
+release that compiles with it and passes every check, so the range starts there.
+Each MA release requires its own NDMF range (1.12.2 needs 1.7.2,
+1.14.0 needs 1.9.0, 1.18.0 needs 1.11.0, 1.18.4 and later need 1.14.7), which
+VCC/ALCOM resolves; the exporter's own NDMF floor is `ndmfMinimum` (1.6.0, see
+[NdmfRange](Evidence/NdmfRange/README.md)).
+MA 1.19.0-alpha.2 requires NDMF 1.15.0-beta.1, so the NDMF pre-releases in
+`ndmfPrereleases` (1.15.0-beta.1, 1.15.0-beta.2) also pass; other NDMF
+pre-releases stop.
+MA 1.14.0 and 1.14.1 change an Int or Bool menu parameter to Float in place
+during their own build, and NDMF logs an error for it while the build goes on;
+MA 1.14.2 fixed this. Users on 1.14.0 or 1.14.1 with Int or Bool menu toggles
+should update MA to 1.14.2 or later. Results:
+[Evidence/ModularAvatarRange](Evidence/ModularAvatarRange/README.md).
 
 ## Supported lilToon versions
 
@@ -225,24 +238,22 @@ A matching hash is not proof of visual equivalence.
    a Unity build. For a lilToon release newer than `lilToon.verified.maximum` it also downloads that tag's
    source and reports whether its shader structure matches the 2.3.4 catalogue. No scheduled CI or paid build was introduced.
 2. Review the official changes. Add a version and immutable source commit to the
-   policy in a branch. For a different UniVRM API family, add a separately gated
-   backend; keep third-party types out of the compatibility assembly. For a
-   different lilToon property/keyword catalogue, review exporter and app readers,
+   policy in a branch, or re-vendor UniVRM as above; keep third-party types out
+   of the compatibility assembly. For a different lilToon property/keyword catalogue, review exporter and app readers,
    shader specialization and format version together. Do not merely relax the
    version/commit check.
-3. In separate empty Unity projects, install the candidate's actual UniGLTF and
-   VRM10 packages from the same source commit, lilToon 2.3.4, this exporter as a
+3. In separate empty Unity projects, install lilToon 2.3.4, this exporter as a
    local development package and Unity Test Framework 1.4.6. Include
    `"testables": ["com.vrvlog.liltoon-vrm-exporter"]` in each manifest. Use
    `com.unity.collections` 2.1.4 for the existing mesh tests. Keep lilToon's Shader
    Setting at its defaults: `LilToonStructureCheckTests` compares every installed
    official lilToon shader with the 2.3.4 catalogue. Never test by changing
    only a supported package's version label and claim a real upstream result.
-4. Run the focused test runner for every version in `uniVrm.versions`, and for
-   a new 0.131 patch before it is listed:
+4. Run the focused test runner. `--expect-univrm` records the project's own
+   UniVRM (`missing` when it has none); the exporter uses its bundled copy either way:
 
    ```text
-   python3 Tools/run-unity-compatibility.py --unity UNITY_EXECUTABLE --project TEST_PROJECT --expect-univrm 0.131.1 --expect-unity 2022.3.22f1 --output TEST_RESULTS
+   python3 Tools/run-unity-compatibility.py --unity UNITY_EXECUTABLE --project TEST_PROJECT --expect-univrm missing --expect-unity 2022.3.22f1 --output TEST_RESULTS
    ```
 
    Use 2022.3.22f1 for the existing creator environment. Also test the app's
@@ -251,13 +262,9 @@ A matching hash is not proof of visual equivalence.
    rejects missing/old results, skipped required tests and unexpected installed
    versions. It tests ordinary and full-lilToon export/reimport, meshes, morphs,
    material bindings, source preservation, renderer selection and skin weights.
-   Like the exporter, the runner treats every release of `uniVrm.vpmRange`
-   (0.131.x without prerelease or build labels) as supported, listed or not; its
-   JSON receipt records `uniVrmSupported` and `uniVrmListed`.
-   `create-liltoon-version-projects.py` accepts the same range.
-5. Repeat with no UniVRM (`--expect-univrm missing`) and an unsupported-package
-   fixture to verify the independent diagnostics. A synthetic unsupported
-   fixture proves exclusion/diagnostics only, never future API compatibility.
+   The JSON receipt records the project's UniVRM as `expectedUniVrm`.
+5. Repeat in a project that also has an official UniVRM installed (any version)
+   to confirm that it does not conflict with the bundled copy.
    Run the existing MA/NDMF tests with the actual optional packages when those
    integrations change. Use the app's loading and full-lilToon behavior tests and
    compare transparent materials, expressions and representative avatars on a
@@ -274,9 +281,9 @@ per version:
 python3 Tools/create-liltoon-version-projects.py --output VERSION_PROJECTS --dependencies PINNED_PACKAGES --unity UNITY_EXECUTABLE
 ```
 
-`PINNED_PACKAGES` contains the unpacked official UniGLTF and VRM packages of one
-supported version and, for the exporter profiles, the VRChat SDK, NDMF and
-Modular Avatar packages. The script embeds the official lilToon VPM release ZIP
+`PINNED_PACKAGES` is optional. For the exporter profiles it contains the
+unpacked VRChat SDK, NDMF and Modular Avatar packages; it may also hold one
+official UniGLTF and VRM pair of the same version to test beside the bundled copy. The script embeds the official lilToon VPM release ZIP
 (default 2.0.0, 2.1.0, 2.1.10, 2.2.1, 2.3.0 and 2.3.4; `--versions` selects others),
 references this checkout with `file:` and `testables`, and records each ZIP's
 source URL and SHA-256 after checking it against the reviewed SHA-256 listed in
@@ -331,9 +338,8 @@ python3 Tools/run-unity-compatibility.py --profile exporter-behavior --unity UNI
 ```
 
 The default `compatibility` profile requires 31 real-package cases
-in a supported environment, or two diagnostic cases in a missing/unsupported one.
-Both exporter profiles require a supported real UniVRM environment, the packages
-listed in step 3, and the actual VRChat SDK, Modular Avatar and NDMF. Use the
+whatever UniVRM the project has, or none. Both exporter profiles require the
+packages listed in step 3 and the actual VRChat SDK, Modular Avatar and NDMF. Use the
 reviewed authoring reference versions in `dependencies.json`; pin and record the
 actual SDK version as well. These test prerequisites do not make MA/NDMF mandatory
 dependencies for ordinary exporter users. The runner installs or changes nothing.
@@ -520,8 +526,8 @@ or license provisioning is introduced by these profiles. Host CI and the release
 workflow run the same AAO patch, LAN and pose checks, but do not launch Unity.
 Keep actual Unity XML and exact tested versions/commits in release review evidence;
 do not substitute a skipped Unity job with a successful source-only check. Repeat
-the relevant profile on the separate 2022.3.62f3 baseline and each supported UniVRM
-version when the change affects that matrix. Existing real-avatar/app/device visual
+the relevant profile on the separate 2022.3.62f3 baseline when the change affects
+that matrix. Existing real-avatar/app/device visual
 checks still apply; generated fixtures do not prove every avatar's appearance.
 
 Development packages must be distinguishable from an already published stable

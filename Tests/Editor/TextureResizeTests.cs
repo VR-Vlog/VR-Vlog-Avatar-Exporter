@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
-using UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var original = source.GetPixels32();
                 var warnings = new List<string>();
-                var bytes = new MobileTextureSerializer(warnings).ExportBytesWithMime(source, srgb ? UniGLTF.ColorSpace.sRGB : UniGLTF.ColorSpace.Linear);
+                var bytes = new MobileTextureSerializer(warnings).ExportBytesWithMime(source, srgb ? VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace.sRGB : VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace.Linear);
                 Assert.That(bytes.mime, Is.EqualTo("image/png"));
                 Assert.That(ImageConversion.LoadImage(decoded, bytes.bytes, false), Is.True);
                 Assert.That(decoded.width, Is.EqualTo(1024));
@@ -95,7 +95,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     exporter.RegisterExportingAsNormal(source);
                     var converted = exporter.Export().Single();
-                    Assert.That(converted.Item2, Is.EqualTo(UniGLTF.ColorSpace.Linear));
+                    Assert.That(converted.Item2, Is.EqualTo(VRVlog.LilToonExporter.Vendor.UniGLTF.ColorSpace.Linear));
                     var bytes = serializer.ExportBytesWithMime(converted.Item1, converted.Item2);
                     Assert.That(ImageConversion.LoadImage(decoded, bytes.bytes, false), Is.True);
                 }

@@ -136,7 +136,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(bool disableKeptRule)
         {
-            var marker=TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker=TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if(marker==null || TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger")==null) Assert.Ignore("Install MA/NDMF.");
             var source=new GameObject("Avatar"); source.AddComponent(marker);
             var face=new GameObject("Face"); face.transform.SetParent(source.transform,false);
@@ -193,7 +195,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(bool named, bool forceOff)
         {
-            var marker = TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker = TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             var menuType = TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarMenuItem");
             if (marker == null || menuType == null || TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
             var source = new GameObject("Avatar"); source.AddComponent(marker);
@@ -202,10 +206,7 @@ namespace VRVlog.LilToonExporter.Tests
             skin.SetBlendShapeWeight(0, 25);
             var selected = new GameObject("Selected menu"); selected.transform.SetParent(source.transform, false);
             var item = selected.AddComponent(menuType);
-            var portable = menuType.GetProperty("PortableControl").GetValue(item);
-            var type = portable.GetType().GetProperty("Type"); type.SetValue(portable, Enum.Parse(type.PropertyType, "Toggle"));
-            portable.GetType().GetProperty("Parameter").SetValue(portable, named ? "SharedMenu" : "");
-            portable.GetType().GetProperty("Value").SetValue(portable, 1f);
+            SetToggle(item, named ? "SharedMenu" : "", 1f);
             menuType.GetField("isDefault").SetValue(item, forceOff);
             AddRule(selected, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", face, ("ShapeName", "Face size"), ("ChangeType", 1), ("Value", 75f));
             var omitted = new GameObject("Excluded gimmick"); omitted.transform.SetParent(source.transform, false);
@@ -249,6 +250,29 @@ namespace VRVlog.LilToonExporter.Tests
             return menu;
         }
         static Type TypeNamed(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name, false)).FirstOrDefault(t => t != null);
+        // MA 1.13 wraps the menu control as PortableControl; earlier versions
+        // only have the VRChat SDK control in the Control field.
+        internal static void SetToggle(Component item, string parameter, float value)
+        {
+            var portable = item.GetType().GetProperty("PortableControl");
+            if (portable != null)
+            {
+                var control = portable.GetValue(item);
+                var kind = control.GetType().GetProperty("Type"); kind.SetValue(control, Enum.Parse(kind.PropertyType, "Toggle"));
+                control.GetType().GetProperty("Parameter").SetValue(control, parameter);
+                control.GetType().GetProperty("Value").SetValue(control, value);
+                return;
+            }
+            var field = item.GetType().GetField("Control");
+            var sdk = field.GetValue(item) ?? Activator.CreateInstance(field.FieldType);
+            var type = sdk.GetType().GetField("type"); type.SetValue(sdk, Enum.Parse(type.FieldType, "Toggle"));
+            var slot = sdk.GetType().GetField("parameter");
+            var named = slot.GetValue(sdk) ?? Activator.CreateInstance(slot.FieldType);
+            named.GetType().GetField("name").SetValue(named, parameter); slot.SetValue(sdk, named);
+            sdk.GetType().GetField("value").SetValue(sdk, value);
+            field.SetValue(item, sdk);
+        }
+
         internal static void AddRule(GameObject root, string componentName, string listName, string itemName, GameObject target, params (string name, object value)[] values)
         {
             const string prefix = "nadena.dev.modular_avatar.core.";

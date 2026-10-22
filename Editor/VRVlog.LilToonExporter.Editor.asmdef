@@ -2,13 +2,13 @@
   "name": "VRVlog.LilToonExporter.Editor",
   "rootNamespace": "VRVlog.LilToonExporter",
   "references": [
-    "UniGLTF",
-    "UniGLTF.Utils",
-    "SpringBoneJobs",
-    "UniGLTF.Editor",
-    "VRM10",
-    "VRM10.MToon10",
-    "VrmLib",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF.Utils",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF.UniUnlit",
+    "VRVlog.LilToonExporter.Vendor.SpringBoneJobs",
+    "VRVlog.LilToonExporter.Vendor.VRM10",
+    "VRVlog.LilToonExporter.Vendor.VRM10.MToon10",
+    "VRVlog.LilToonExporter.Vendor.VrmLib",
     "Unity.Collections",
     "VRVlog.LilToonExporter.Runtime",
     "VRVlog.LilToonExporter.Compatibility",
@@ -20,20 +20,6 @@
   "autoReferenced": true,
   "overrideReferences": false,
   "noEngineReferences": false,
-  "defineConstraints": [
-    "VRVLOG_VRM_0_131",
-    "VRVLOG_GLTF_0_131"
-  ],
-  "versionDefines": [
-    {
-      "name": "com.vrmc.vrm",
-      "expression": "[0.131.0,0.131.999999999]",
-      "define": "VRVLOG_VRM_0_131"
-    },
-    {
-      "name": "com.vrmc.gltf",
-      "expression": "[0.131.0,0.131.999999999]",
-      "define": "VRVLOG_GLTF_0_131"
-    }
-  ]
+  "defineConstraints": [],
+  "versionDefines": []
 }

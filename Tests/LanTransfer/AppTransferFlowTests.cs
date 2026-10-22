@@ -245,10 +245,62 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(run.Flow.Remaining, Is.EqualTo(0L));
                 Assert.That(run.Flow.RemainingFraction, Is.EqualTo(0f));
                 if (expected == AppTransferView.Failed) Assert.That(run.Flow.FailureText(text => text).Length > 0, Is.True);
-                // Once the phone has the avatar the exported copy is deleted; otherwise it stays for a new QR.
-                Assert.That(File.Exists(run.Path), Is.EqualTo(expected != AppTransferView.Completed));
-                Assert.That(run.Flow.CanRegenerate, Is.EqualTo(expected != AppTransferView.Completed));
+                // The exported copy stays after every end, also once the phone has the avatar, so
+                // "VRMを保存" can still save the file that was sent. Stopping deletes it.
+                Assert.That(File.Exists(run.Path), Is.True);
+                Assert.That(run.Flow.SnapshotHash, Is.EqualTo(AppTransferFlow.FileHashOf(run.Path)));
+                run.Flow.Stop();
+                Assert.That(File.Exists(run.Path), Is.False);
+                Assert.That(run.Flow.SnapshotHash == null, Is.True);
             }
+        }
+
+        // "VRMを保存" on the QR screen writes the bytes that were sent and says which ones they are.
+        [Test]
+        public async Task SavingTheSentCopyWritesTheSameBytes()
+        {
+            using (var run = new FlowRun())
+            {
+                var folder = Path.Combine(Path.GetTempPath(), "vrvlog-copy-" + Guid.NewGuid().ToString("N"));
+                Directory.CreateDirectory(folder);
+                try
+                {
+                    var sentBytes = File.ReadAllBytes(run.Path);
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    var destination = Path.Combine(folder, "saved.vrm");
+                    // An older file there is replaced as a whole.
+                    File.WriteAllBytes(destination, new byte[] { 1, 2, 3 });
+                    string written;
+                    // Bytes that are not what was sent are not placed: the older file stays.
+                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination, new string('0', 64));
+                    Assert.That(written, Is.EqualTo(null));
+                    Assert.That(File.ReadAllBytes(destination), Is.EqualTo(new byte[] { 1, 2, 3 }));
+                    Assert.That(Directory.GetFiles(folder).Length, Is.EqualTo(1));
+                    using (var reader = run.Flow.OpenSnapshot()) written = AppTransferFlow.CopyTo(reader, destination, run.Flow.SnapshotHash);
+                    Assert.That(written, Is.EqualTo(run.Flow.SnapshotHash));
+                    Assert.That(AppTransferFlow.FileHashOf(destination), Is.EqualTo(written));
+                    Assert.That(File.ReadAllBytes(destination).SequenceEqual(sentBytes), Is.True);
+                    Assert.That(Directory.GetFiles(folder).Length, Is.EqualTo(1));
+                    // The QR on screen is still the one the copy came from.
+                    Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Waiting));
+                }
+                finally { Directory.Delete(folder, true); }
+            }
+        }
+
+        [Test]
+        public void NothingToSaveWhileExportingOrBeforeAnExport()
+        {
+            using (var flow = new AppTransferFlow())
+            {
+                Assert.That(flow.SnapshotHash == null, Is.True);
+                Assert.That(flow.OpenSnapshot() == null, Is.True);
+                flow.BeginExport();
+                Assert.That(flow.SnapshotHash == null, Is.True);
+                Assert.That(flow.OpenSnapshot() == null, Is.True);
+            }
+            Assert.That(AppTransferFlow.FileHashOf(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".vrm")) == null, Is.True);
         }
 
         [Test]
@@ -392,7 +444,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(40));
+            Assert.That(texts.Length, Is.EqualTo(41));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {
@@ -616,6 +668,57 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 
         private static string Localized(string source) =>
             (string)typeof(AppTransferPanel).GetMethod("T", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { source });
+
+        // "VRMを保存" and "QRコードを作る" keep their order everywhere; only which one is blue follows
+        // where the panel opened, read again on every refresh. The window and the board opened to
+        // transfer make the QR blue; the board opened to save a VRM makes the save blue.
+        [TestCase(null, false)]
+        [TestCase(false, false)]
+        [TestCase(true, true)]
+        public void ExactlyOneOfSaveAndQrIsBlueAndItFollowsWhereThePanelOpened(bool? saveFirst, bool saveBlue)
+        {
+            var current = saveFirst;
+            var panel = BuiltPanel(embedded: saveFirst != null, back: null, savePrimary: saveFirst == null ? null : (Func<bool>)(() => current.Value));
+            var save = PanelButton(panel, "saveButton");
+            var create = PanelButton(panel, "createButton");
+            RefreshActions(panel);
+            Assert.That(save.ClassListContains("primary"), Is.EqualTo(saveBlue));
+            Assert.That(create.ClassListContains("primary"), Is.EqualTo(!saveBlue));
+            Assert.That(save.parent.IndexOf(save) < save.parent.IndexOf(create), Is.True, "\"VRMを保存\" stays to the left of \"QRコードを作る\".");
+            if (current == null) return;
+            current = !current;
+            RefreshActions(panel);
+            Assert.That(save.ClassListContains("primary"), Is.EqualTo(!saveBlue));
+            Assert.That(create.ClassListContains("primary"), Is.EqualTo(saveBlue));
+        }
+
+        // The board's "戻る" sits at the left of the buttons; the window has no "戻る", only its "閉じる".
+        [TestCase(true, true, true)]
+        [TestCase(true, false, false)]
+        [TestCase(false, false, false)]
+        public void OnlyTheBoardShowsBack(bool embedded, bool withBack, bool shown)
+        {
+            var panel = BuiltPanel(embedded, withBack ? (Action)(() => { }) : null, null);
+            var back = PanelButton(panel, "backButton");
+            Assert.That(back.style.display.value == UnityEngine.UIElements.DisplayStyle.None, Is.EqualTo(!shown));
+        }
+
+        private static AppTransferPanel BuiltPanel(bool embedded, Action back, Func<bool> savePrimary)
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            var panel = new AppTransferPanel();
+            typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
+            typeof(AppTransferPanel).GetField("back", field).SetValue(panel, back);
+            typeof(AppTransferPanel).GetField("savePrimary", field).SetValue(panel, savePrimary);
+            panel.Build(new UnityEngine.UIElements.VisualElement());
+            return panel;
+        }
+
+        private static UnityEngine.UIElements.Button PanelButton(AppTransferPanel panel, string name) =>
+            (UnityEngine.UIElements.Button)typeof(AppTransferPanel).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(panel);
+
+        private static void RefreshActions(AppTransferPanel panel) =>
+            typeof(AppTransferPanel).GetMethod("RefreshActions", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, new object[] { false });
 
         private static AppTransferPanel PanelWith(AppTransferFlow flow, bool detailed)
         {

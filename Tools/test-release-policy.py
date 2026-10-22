@@ -5,10 +5,10 @@ from release_policy import validate
 
 class ReleasePolicyTests(unittest.TestCase):
     def request(self, version="0.11.11-beta.1", **overrides):
-        args = dict(version=version, univrm_version="0.131.0", channel="beta",
+        args = dict(version=version, channel="beta",
                     ref="refs/heads/main", sha="a" * 40, expected_sha="a" * 40)
         args.update(overrides)
-        return validate({"version": version}, {"uniVrm": {"releaseVersion": "0.131.0"}}, **args)
+        return validate({"version": version}, **args)
 
     def test_beta_cannot_move_stable_latest(self):
         self.assertEqual(["--prerelease", "--latest=false"], self.request())
@@ -33,13 +33,9 @@ class ReleasePolicyTests(unittest.TestCase):
 
     def test_package_version_must_match_requested_version(self):
         with self.assertRaisesRegex(ValueError, "package.json"):
-            validate({"version": "0.11.11-beta.2"}, {"uniVrm": {"releaseVersion": "0.131.0"}},
-                     version="0.11.11-beta.1", univrm_version="0.131.0", channel="beta",
+            validate({"version": "0.11.11-beta.2"},
+                     version="0.11.11-beta.1", channel="beta",
                      ref="refs/heads/main", sha="a" * 40, expected_sha="a" * 40)
-
-    def test_dependency_pin_cannot_be_overridden(self):
-        with self.assertRaisesRegex(ValueError, "pinned"):
-            self.request(univrm_version="0.131.1")
 
 
 if __name__ == "__main__":

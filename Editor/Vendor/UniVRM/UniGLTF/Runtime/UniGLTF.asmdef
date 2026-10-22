@@ -1,0 +1,27 @@
+{
+    "name": "VRVlog.LilToonExporter.Vendor.UniGLTF",
+    "rootNamespace": "",
+    "references": [
+        "GUID:da3e51d19d51a544fa14d43fee843098",
+        "GUID:f840fa83f13c0c869dafeefa14f11ad4",
+        "GUID:5e9a8e7b86b5bdf42435065c63a18bb1",
+        "GUID:3d354272d3f2f4c3387dbccbaebd0f60"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_EDITOR"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.unity.cloud.ktx",
+            "expression": "3.0.0",
+            "define": "USE_COM_UNITY_CLOUD_KTX"
+        }
+    ],
+    "noEngineReferences": false
+}

@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter
         SavedExpressionVrm saved;
         // Materials whose shader was missing in the last save, the file or the transfer. Read by AppTransferExport.
         internal int LastMissingShaderCount { get; private set; }
+        // Failing stages the last save or transfer left out; "VRMを保存" stops at them instead.
+        internal int LastOmittedStageCount { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -51,14 +53,14 @@ namespace VRVlog.LilToonExporter
         [SerializeField] AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
         string presetKey;
         int presetSkipped;
-        readonly System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string>();
+        readonly System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string>();
         // Eye slots whose error is the closing shape shared with the other eye.
-        readonly System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset>();
-        // Opened from "アプリに転送（通常）": the next window asks the name, author and license.
+        readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
+        // Opened from "アプリに転送（通常）": "QRコードを作る" is the blue button of the third page.
         [SerializeField] bool transferMode;
-        // The page shown: expressions, objects left out, then the VRM information
-        // (in the transfer the third step is the next window). Moving off the
-        // objects page applies its edits to the preview first.
+        // The page shown: expressions, objects left out, then the VRM's save and transfer (the transfer
+        // module's panel, or without it the board's own information and save). Moving off the objects
+        // page applies its edits to the preview first.
         internal const int ExpressionsPage = 0, ObjectsPage = 1, InfoPage = 2;
         int page;
         bool applyingOnLeave;
@@ -161,6 +163,10 @@ namespace VRVlog.LilToonExporter
         // The "アプリに転送" window starts from what this window shows: these
         // values live only in the open window and are not stored anywhere else.
         internal string Author => author;
+        // Whether the third page is the board's own information page, the only place it shows and edits its
+        // author and license: the normal mode without the transfer module (or with it turned off).
+        internal bool ShowsOwnInfo => !transferMode && LilToonExporterWindow.EmbeddedTransferMethod() == null;
+
         internal AvatarLicenseOptions LicenseFor(GameObject avatar) => avatar != null && source == avatar ? licenseOptions?.Copy() : null;
         internal bool TransferMode => transferMode;
         // The board header counts the same 13 slots ("割当x/13").
@@ -171,18 +177,16 @@ namespace VRVlog.LilToonExporter
         public static void Open()
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
-            // "戻る" keeps the transfer on the third page, and the board as it was.
-            if (!window.LeaveTransferMode(window.TransferPanelTransferring)) window.Focus();
+            window.LeaveTransferMode();
         }
 
-        // "VRM書き出し" on this board: false when the user kept the transfer on its third page.
-        internal bool LeaveTransferMode(bool transferring)
+        // "VRM書き出し" on this board. The third page is the same panel in both modes, so nothing leaves
+        // it: a transfer on it goes on, and only the blue button moves from "QRコードを作る" to "VRMを保存".
+        internal void LeaveTransferMode()
         {
-            if (transferMode && !ConfirmLeavingTransfer(transferring)) return false;
             transferMode = false;
             titleContent = new GUIContent(ExporterLocalization.T("VRM書き出し"));
             minSize = new Vector2(600, 760);
-            return true;
         }
 
         // "VRMを書き出す..." from an avatar's context menu: the window with that avatar
@@ -199,9 +203,11 @@ namespace VRVlog.LilToonExporter
         internal bool ChooseForExport(GameObject avatar, bool transferring)
         {
             var change = avatar != null && source != avatar && session != null;
-            if (transferMode && !ConfirmLeavingTransfer(transferring)) return false;
+            // Another avatar takes the third page and its transfer away; the same one keeps the transfer going.
+            if (change && !ConfirmLeavingTransfer(transferring)) return false;
             if (change && !ConfirmChangeAvatar()) return false;
-            LeaveTransferMode(false);
+            if (change && transferring) CancelTransferPanel();
+            LeaveTransferMode();
             if (avatar == null || source == avatar) return true;
             if (change) Queue(() => { ChangeAvatar(); SelectSource(avatar); });
             else { SelectSource(avatar); Repaint(); }
@@ -263,20 +269,50 @@ namespace VRVlog.LilToonExporter
         internal static ExperimentalExpressionCaptureWindow ForTransfer(GameObject avatar) => avatar == null ? null :
             Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().FirstOrDefault(window => window != null && window.source == avatar && window.session != null);
 
+        // What the board writes and no store records: the blink, the added poses and the excluded and
+        // renamed ones, and the added expressions. A file saved from the transfer screen is sent again
+        // only while this is unchanged; the stores count their own changes.
+        internal string InputsKey()
+        {
+            var key = new System.Text.StringBuilder();
+            var blink = ExportBlinkOptions();
+            key.Append(blink == null ? "auto" : JsonUtility.ToJson(blink)).Append('\n');
+            if (session != null)
+            {
+                var poses = session.PoseOptions;
+                foreach (var pose in poses.Manual)
+                    key.Append(pose.Clip != null ? pose.Clip.GetInstanceID() : 0).Append('\t').Append(pose.Time).Append('\t')
+                        .Append(pose.Name).Append('\t').Append(pose.Category).Append('\n');
+                foreach (var id in poses.Excluded.OrderBy(id => id, StringComparer.Ordinal)) key.Append(id).Append('\n');
+                foreach (var pair in poses.Names.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                    key.Append(pair.Key).Append('\t').Append(pair.Value).Append('\n');
+            }
+            foreach (var input in clipInputs)
+                key.Append(input.Clip != null ? input.Clip.GetInstanceID() : 0).Append('\t').Append(input.Time).Append('\t')
+                    .Append(input.Name).Append('\n');
+            return key.ToString();
+        }
+
         bool ConfirmChangeAvatar() => clipInputs.Count == 0 && (session == null || session.PoseOptions.Manual.Count == 0) ||
             EditorUtility.DisplayDialog(ExporterLocalization.T("アバターを変更"), ExporterLocalization.T("追加した表情・ポーズの一覧をリセットします。保存済みVRMは残ります。"), ExporterLocalization.T("変更する"), ExporterLocalization.T("戻る"));
 
-        // Leaving the third page cancels its transfer. The board's own steps and closing do so
-        // without asking, as the page says; a menu entry that takes the board away asks first.
+        // Leaving the third page cancels its transfer. Its "戻る" and a menu entry that takes the board
+        // away ask first while it uploads or shows its QR; closing the board cancels without asking, as
+        // the page says. Cancelling deletes only the transfer's own copy, never a VRM the user saved.
         // The dialog: true cancels the transfer. Tests replace it.
         internal static Func<string, string, bool> ConfirmCancelTransfer = (title, body) =>
-            EditorUtility.DisplayDialog(title, body, ExporterLocalization.T("中止"), ExporterLocalization.T("戻る"));
+            EditorUtility.DisplayDialog(title, body, ExporterLocalization.T(LeaveTransferText), ExporterLocalization.T(KeepTransferText));
+
+        internal const string CancelTransferTitle = "転送を中止";
+        internal const string CancelTransferBody = "このQRコードは使えなくなります";
+        internal const string LeaveTransferText = "中止して移動";
+        internal const string KeepTransferText = "転送を続ける";
 
         bool ConfirmLeavingTransfer() => ConfirmLeavingTransfer(TransferPanelTransferring);
 
-        // True when nothing is uploading or showing its QR, or the user chose "中止".
+        // True when nothing is uploading or showing its QR, or the user chose "中止して移動".
         internal static bool ConfirmLeavingTransfer(bool transferring) => !transferring ||
-            ConfirmCancelTransfer(ExporterLocalization.T("転送を中止"), ExporterLocalization.T("進行中の転送を中止します。表示中のQRは使えなくなります。"));
+            ConfirmCancelTransfer(ExporterLocalization.T(CancelTransferTitle), ExporterLocalization.T(CancelTransferBody));
 
         void OnEnable()
         {
@@ -289,7 +325,7 @@ namespace VRVlog.LilToonExporter
             EditorApplication.update -= Advance; EditorApplication.projectChanged -= CandidateAssetsChanged;
             EditorApplication.hierarchyChanged -= GimmicksChanged;
             // Closing the board cancels a transfer on its third page, as closing the transfer window does.
-            transferPanel?.RemoveFromHierarchy(); transferPanel = null; transferPanelTried = false;
+            CancelTransferPanel();
             pending = null; Cleanup(); ReleaseStyles();
         }
 
@@ -554,8 +590,12 @@ namespace VRVlog.LilToonExporter
                 if (hovered != hoverTile) { hoverTile = hovered; Repaint(); }
             }
             var repaint = current.type == EventType.Repaint;
-            // Off the transfer's third page its panel leaves the window, which cancels a transfer in progress.
-            var transferPage = transferMode && page == InfoPage && session != null && preview != null;
+            // The third page is the transfer module's panel in both modes; in the normal mode without the
+            // module (or with it turned off) it is the board's own information and save. Asked on Layout
+            // only, so the Repaint after it draws the same.
+            if (current.type == EventType.Layout) panelUsable = LilToonExporterWindow.EmbeddedTransferMethod() != null;
+            // Off the third page the panel leaves the window, which cancels a transfer in progress.
+            var transferPage = PanelPage(page, session != null && preview != null, transferMode, panelUsable) && (transferMode || TransferPanel() != null);
             if (!transferPage) transferPanel?.RemoveFromHierarchy();
             // Slots the fold hides drop out of slotRects until they are drawn again.
             if (repaint) { closableTiles.Clear(); thumbnailsShown.Clear(); slotRects.Clear(); boardDrawn = false; }
@@ -566,7 +606,7 @@ namespace VRVlog.LilToonExporter
                 EditorGUILayout.Space(12);
                 var blocked = pending != null || applyingOnLeave || EditorApplication.isPlayingOrWillChangePlaymode;
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
-                    EditorGUILayout.HelpBox(ExporterLocalization.T("Playモードを終了すると編集できます。"), MessageType.Info);
+                    EditorGUILayout.HelpBox(ExporterLocalization.T("Playモードを終了すると編集できます"), MessageType.Info);
                 using (new EditorGUI.DisabledScope(blocked))
                 {
                     if (session == null || page == ExpressionsPage)
@@ -604,7 +644,9 @@ namespace VRVlog.LilToonExporter
                         if (transferPage)
                         {
                             DrawFeedback();
-                            DrawTransferPanel(blocked);
+                            // The panel has its own "戻る" and buttons. The transfer mode without the module keeps
+                            // the board's bar under the message, so the way back stays.
+                            if (!DrawTransferPanel(blocked)) DrawBottomBar();
                         }
                         else
                         {
@@ -640,8 +682,8 @@ namespace VRVlog.LilToonExporter
                                 if (view.height != pageView.height) Repaint();
                                 pageView = view;
                             }
+                            DrawBottomBar();
                         }
-                        DrawBottomBar();
                     }
                 }
                 if (pending != null) EditorGUILayout.LabelField(ExporterLocalization.T("処理しています…"), EditorStyles.miniLabel);
@@ -903,7 +945,7 @@ namespace VRVlog.LilToonExporter
         {
             var row = GUILayoutUtility.GetRect(100, StepIndicator.Height, GUILayout.ExpandWidth(true));
             var layout = StepIndicator.Compute(row);
-            var names = StepIndicator.Names(transferMode);
+            var names = StepIndicator.Names(panelUsable || transferMode);
             var shown = StepIndicator.Shown(session != null, page);
             var repaint = Event.current.type == EventType.Repaint;
             if (repaint) stepLayout = layout;
@@ -1223,13 +1265,13 @@ namespace VRVlog.LilToonExporter
         // ---- Preset slots ----
 
         // Emotions, blink and mouth: the 13 slots always shown.
-        static readonly UniVRM10.ExpressionPreset[] MainPresets = ExperimentalExpressionCaptureSession.PresetGroups
+        static readonly VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] MainPresets = ExperimentalExpressionCaptureSession.PresetGroups
             .Take(ExpressionSlotLayout.MainGroups).SelectMany(group => group.Presets).ToArray();
 
         // The slots on screen: the 13, and gaze and neutral while the fold is
         // open. The header's confirm button counts and confirms these only, so
         // its number matches the dashed slots the user can see.
-        internal static UniVRM10.ExpressionPreset[] ShownPresets(bool extraOpen) => extraOpen
+        internal static VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] ShownPresets(bool extraOpen) => extraOpen
             ? ExperimentalExpressionCaptureSession.PresetGroups.SelectMany(group => group.Presets).ToArray()
             : MainPresets;
 
@@ -1237,7 +1279,7 @@ namespace VRVlog.LilToonExporter
         bool ShowExtraPresets => showExtraPresets ??= EditorPrefs.GetBool(ExtraPresetsPreference, false);
 
         // "割当3/5・未確認2": filled slots, and automatic ones not yet confirmed.
-        string Count(UniVRM10.ExpressionPreset[] presets)
+        string Count(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             var text = string.Format(ExporterLocalization.T("割当{0}/{1}"), board.SlotCount(presets), presets.Length);
             var automatic = board.AutomaticCount(presets);
@@ -1299,7 +1341,7 @@ namespace VRVlog.LilToonExporter
             GUI.EndGroup();
         }
 
-        void DrawGroupCaption(Rect rect, string label, UniVRM10.ExpressionPreset[] presets)
+        void DrawGroupCaption(Rect rect, string label, VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
@@ -1326,7 +1368,7 @@ namespace VRVlog.LilToonExporter
             GUI.Label(summaryRect, new GUIContent(Fit(summary, dimMini, summaryRect.width), summary), dimMini);
         }
 
-        void DrawSlot(UniVRM10.ExpressionPreset preset, Rect rect, bool large)
+        void DrawSlot(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, Rect rect, bool large)
         {
             session.Presets.TryGetValue(preset, out var assignment);
             presetErrors.TryGetValue(preset, out var reason);
@@ -1394,7 +1436,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // What saving does with the slot.
-        string SlotState(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        string SlotState(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             if (assignment != null && !assignment.IsNone) return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : "確定");
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
@@ -1816,7 +1858,7 @@ namespace VRVlog.LilToonExporter
             ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
         }
 
-        void ConfirmAutomatic(UniVRM10.ExpressionPreset[] presets)
+        void ConfirmAutomatic(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             RebuildBoard();
             board.ConfirmAutomatic(presets);
@@ -1873,10 +1915,13 @@ namespace VRVlog.LilToonExporter
             if (page == ExpressionsPage)
             { next = "次へ：除外するオブジェクト"; enabled = BoardBlockReason(includePending: false) == null; action = () => GoTo(ObjectsPage); }
             else if (page == ObjectsPage && transferMode)
-            { next = "次へ：名前と利用条件"; enabled = BoardBlockReason(includePending: false) == null; action = () => ApplyThen(OpenTransferDetails); }
+            { next = NextLabel(true); enabled = BoardBlockReason(includePending: false) == null; action = () => ApplyThen(OpenTransferDetails); }
+            else if (page == ObjectsPage && panelUsable)
+            { next = NextLabel(true); enabled = true; action = () => ApplyThen(OpenTransferDetails); }
             else if (page == ObjectsPage)
-            { next = "次へ：VRMの情報"; enabled = true; action = () => GoTo(InfoPage); }
-            // The transfer page has its own "QRコードを作る"; the place stays empty so nothing moves.
+            { next = NextLabel(false); enabled = true; action = () => GoTo(InfoPage); }
+            // Only the transfer mode without the module: the message says to install it, and the place
+            // stays empty so nothing moves.
             else if (transferMode) return;
             else
             { next = "VRMを保存"; enabled = CanSave; action = () => ApplyThen(Export); }
@@ -1884,6 +1929,9 @@ namespace VRVlog.LilToonExporter
             using (new EditorGUI.DisabledScope(!enabled))
                 if (GUI.Button(nextRect, new GUIContent(Fit(next, accentButton, nextRect.width - 12), next), accentButton)) action();
         }
+
+        // The objects page's next step, named as the third step is (StepIndicator.Names).
+        internal static string NextLabel(bool panelUsable) => panelUsable ? "次へ：VRMの保存と転送" : "次へ：VRMの情報";
 
         // The line between the buttons: what stops the next step in red, the
         // state of the objects page while it waits or applies, or the counts.
@@ -2208,22 +2256,22 @@ namespace VRVlog.LilToonExporter
             foreach (var pair in session.Presets) CheckPreset(pair.Key, pair.Value);
         }
 
-        void CheckPreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        void CheckPreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             presetErrors[preset] = session.PresetError(preset, assignment);
             if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
             else eyeOverlaps.Remove(preset);
         }
 
-        void ChoosePreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        void ChoosePreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             session.SetPreset(preset, assignment);
             SaveChoices();
             CheckPreset(preset, assignment);
             // The left and right eye slots check each other for a shared closing shape.
-            var otherEye = preset == UniVRM10.ExpressionPreset.blinkLeft ? UniVRM10.ExpressionPreset.blinkRight
-                : preset == UniVRM10.ExpressionPreset.blinkRight ? UniVRM10.ExpressionPreset.blinkLeft : (UniVRM10.ExpressionPreset?)null;
-            if (otherEye is UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) CheckPreset(eye, eyeValue);
+            var otherEye = preset == VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkLeft ? VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkRight
+                : preset == VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkRight ? VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkLeft : (VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset?)null;
+            if (otherEye is VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) CheckPreset(eye, eyeValue);
             if (assignment.IsNone) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); return; }
             if (presetErrors[preset] != null) throw new InvalidOperationException(presetErrors[preset]);
             session.PreviewPreset(preset, assignment);
@@ -2232,7 +2280,7 @@ namespace VRVlog.LilToonExporter
 
         // Faces on the board move through the board, so the face leaves its
         // previous place; BlendShapes and "none" are set on the slot directly.
-        void ShowPresetMenu(UniVRM10.ExpressionPreset preset, Rect rect)
+        void ShowPresetMenu(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, Rect rect)
         {
             var menu = new GenericMenu();
             session.Presets.TryGetValue(preset, out var current);
@@ -2298,7 +2346,7 @@ namespace VRVlog.LilToonExporter
             SaveVrm(path, interactive: true);
         }
 
-        // The file name "VRMを保存" suggests, also for "VRMをPCに保存" on the transfer screen.
+        // The file name "VRMを保存" suggests, on the board's own page and on the transfer screen.
         internal static string SaveFileName(GameObject avatar) =>
             (avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar") + "-expressions";
 
@@ -2344,7 +2392,7 @@ namespace VRVlog.LilToonExporter
             return recovery == null ? null : recovery.Failure?.Message ?? "";
         }
 
-        // "VRMをPCに保存" on the transfer screen: the save of "VRMを保存", with the name, author and
+        // "VRMを保存" on the transfer screen: the board's own save, with the name, author and
         // license of the transfer, so the file holds what the QR sends. The result list and the
         // recovery window are those of "VRMを保存"; savedTo gets the path and the missing shader
         // count once the file is written, and the transfer screen shows them. Returns like TransferExport.
@@ -2396,6 +2444,7 @@ namespace VRVlog.LilToonExporter
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
                 // A plain field: still set when the recovery window saves after this board closed.
                 LastMissingShaderCount = missingShaders;
+                LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
                 if (written != null)
                 {
                     // For a transfer, the details of this export go to the Console.
@@ -2552,6 +2601,8 @@ namespace VRVlog.LilToonExporter
         UnityEngine.UIElements.VisualElement transferPanel;
         GameObject transferPanelFor;
         bool transferPanelTried;
+        // Whether the module resolves and is turned on, so the third page is its panel. Set on Layout.
+        bool panelUsable;
 
         // Whether the panel on the third page is uploading or showing its QR. Not when the
         // transfer module cannot be asked.
@@ -2570,28 +2621,55 @@ namespace VRVlog.LilToonExporter
             if (transferPanelTried && transferPanelFor == source) return transferPanel;
             transferPanel?.RemoveFromHierarchy();
             transferPanel = null; transferPanelTried = true; transferPanelFor = source;
-            try { transferPanel = LilToonExporterWindow.EmbeddedTransferMethod()?.Invoke(null, new object[] { source }) as UnityEngine.UIElements.VisualElement; }
+            // Its "戻る" goes to the objects page, asking first while it transfers. "VRMを保存" is the blue
+            // button while the board is in its normal mode, "QRコードを作る" in the transfer mode.
+            try
+            {
+                transferPanel = LilToonExporterWindow.EmbeddedTransferMethod()?.Invoke(null,
+                    new object[] { source, (Action)(() => PanelBack(TransferPanelTransferring)), (Func<bool>)(() => !transferMode) }) as UnityEngine.UIElements.VisualElement;
+            }
             catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
             if (transferPanel != null) transferPanel.style.position = UnityEngine.UIElements.Position.Absolute;
             return transferPanel;
         }
 
-        // The UI Toolkit panel sits over the area this layout leaves for it, between the
-        // steps and the bottom bar; it is placed where the repaint lays the area out.
-        void DrawTransferPanel(bool blocked)
+        // Whether the prepared board's page is the transfer module's panel: the third page in the transfer
+        // mode (which says to install the module when it is missing), and in the normal mode while the
+        // module is there and turned on. Otherwise the normal mode's third page is the board's own.
+        internal static bool PanelPage(int page, bool prepared, bool transferMode, bool panelUsable) =>
+            page == InfoPage && prepared && (transferMode || panelUsable);
+
+        // The panel's "戻る": the transfer on screen ends when the page is left, so it asks first while it
+        // uploads or shows its QR. "転送を続ける" stays on the page.
+        internal void PanelBack(bool transferring)
+        {
+            if (ConfirmLeavingTransfer(transferring)) GoTo(ObjectsPage);
+        }
+
+        // Removing the panel from the window ends its transfer; it is made again for the next visit.
+        void CancelTransferPanel()
+        {
+            transferPanel?.RemoveFromHierarchy(); transferPanel = null; transferPanelTried = false;
+        }
+
+        // The UI Toolkit panel sits over the area this layout leaves for it, below the steps down
+        // to the bottom of the window; it is placed where the repaint lays the area out. False when
+        // there is no panel, and the board draws its own bar.
+        bool DrawTransferPanel(bool blocked)
         {
             var area = GUILayoutUtility.GetRect(0, 0, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
             var panel = TransferPanel();
             if (panel == null)
             {
                 EditorGUI.HelpBox(new Rect(area.x, area.y, area.width, 40), ExporterLocalization.T("QR対応のパッケージを導入してください。"), MessageType.Error);
-                return;
+                return false;
             }
-            if (Event.current.type != EventType.Repaint) return;
+            if (Event.current.type != EventType.Repaint) return true;
             if (panel.parent == null) rootVisualElement.Add(panel);
             panel.style.left = area.x; panel.style.top = area.y;
             panel.style.width = area.width; panel.style.height = area.height;
             panel.SetEnabled(!blocked);
+            return true;
         }
 
         void ShowBlinkConfiguration()

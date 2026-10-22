@@ -1,0 +1,7 @@
+{
+  "upstream": "https://github.com/vrm-c/UniVRM",
+  "version": "0.131.4",
+  "commit": "efd20f62f1bf0ac3fcc34de1e497324c5197d146",
+  "namespacePrefix": "VRVlog.LilToonExporter.Vendor",
+  "generator": "Tools/vendor-univrm.py"
+}

@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 
-def validate(package, compatibility, *, version, univrm_version, channel, ref, sha, expected_sha):
+def validate(package, *, version, channel, ref, sha, expected_sha):
     if ref != "refs/heads/main":
         raise ValueError("Publish only the reviewed main branch")
     if not re.fullmatch(r"[0-9a-f]{40}", expected_sha) or sha != expected_sha:
@@ -18,8 +18,6 @@ def validate(package, compatibility, *, version, univrm_version, channel, ref, s
     patterns = {"stable": stable, "beta": stable + rf"-beta\.{number}"}
     if channel not in patterns or not re.fullmatch(patterns[channel], version):
         raise ValueError("Release channel and version must agree (stable or X.Y.Z-beta.N)")
-    if univrm_version != compatibility["uniVrm"]["releaseVersion"]:
-        raise ValueError("UniVRM version must match the pinned release dependency")
     return ["--prerelease", "--latest=false"] if channel == "beta" else ["--latest"]
 
 
@@ -43,8 +41,7 @@ if __name__ == "__main__":
     ref, sha = publication_context(os.environ, root)
     flags = validate(
         json.loads((root / "package.json").read_text(encoding="utf-8")),
-        json.loads((root / "Compatibility/dependencies.json").read_text(encoding="utf-8")),
-        version=os.environ["EXPORTER_VERSION"], univrm_version=os.environ["UNIVRM_VERSION"],
+        version=os.environ["EXPORTER_VERSION"],
         channel=os.environ["RELEASE_CHANNEL"], ref=ref,
         sha=sha, expected_sha=os.environ["EXPECTED_COMMIT"],
     )

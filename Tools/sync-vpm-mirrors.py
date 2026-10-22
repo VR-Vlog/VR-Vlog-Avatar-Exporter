@@ -156,8 +156,8 @@ def parse_listing(raw, expected_url, *, allow_historical_urls=False):
     require(isinstance(data, dict) and data.get("id") == REPOSITORY_ID, "Unexpected repository identity")
     require(data.get("url") == expected_url, "Unexpected listing root URL")
     packages = data.get("packages")
-    require(isinstance(packages, dict) and all(name in packages for name in
-            (EXPORTER, "com.vrmc.gltf", "com.vrmc.vrm")), "Exporter or required dependencies are missing")
+    # UniVRM is bundled inside the exporter; earlier dependency packages stay only as published history.
+    require(isinstance(packages, dict) and EXPORTER in packages, "Exporter package is missing")
     for name, package in packages.items():
         require(isinstance(name, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name), "Invalid package name")
         versions = package.get("versions") if isinstance(package, dict) else None

@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
-using AimAxis = UniGLTF.Extensions.VRMC_node_constraint.AimAxis;
-using RollAxis = UniGLTF.Extensions.VRMC_node_constraint.RollAxis;
-using UniVRM10;
+using AimAxis = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_node_constraint.AimAxis;
+using RollAxis = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_node_constraint.RollAxis;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -187,22 +187,59 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Warnings.Single(), Does.Contain("省略3件"));
         }
 
-        [TestCase("disabled")][TestCase("inactive")][TestCase("unlocked")][TestCase("weightless")][TestCase("sourceless")]
+        [TestCase("weightless")][TestCase("sourceless")]
         public void ConstraintsThatNeverMoveAnythingAreNotListed(string condition)
         {
             using var f = new Fixture();
             var constraint = f.Constraint<RotationConstraint>(f.B, 1, condition == "sourceless" ? new Transform[0] : new[] { f.A });
-            switch (condition)
-            {
-                case "disabled": constraint.enabled = false; break;
-                case "inactive": constraint.constraintActive = false; break;
-                case "unlocked": constraint.locked = false; break;
-                case "weightless": constraint.weight = 0; break;
-            }
+            if (condition == "weightless") constraint.weight = 0;
             var result = f.Convert();
             Assert.That(result.Sources, Is.Zero);
             Assert.That(f.Report.Results, Is.Empty);
             Assert.That(f.Warnings, Is.Empty);
+        }
+
+        [Test]
+        public void AnUnlockedUnityConstraintIsStillConverted()
+        {
+            // Unity ignores Lock in Play Mode, so the app would move the target
+            // the same as a locked one. Only VRChat's Locked is honoured.
+            using var f = new Fixture();
+            f.Constraint<RotationConstraint>(f.B, 1, f.A).locked = false;
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            var result = f.Convert();
+            Assert.That(f.B.GetComponent<Vrm10RotationConstraint>().Source, Is.EqualTo(f.A));
+            Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
+        }
+
+        [TestCase("disabled")][TestCase("inactive")][TestCase("hidden")][TestCase("inactiveAndUnlocked")]
+        public void AnOffConstraintKeepsThePoseAndIsListed(string condition)
+        {
+            using var f = new Fixture();
+            var constraint = f.Constraint<RotationConstraint>(f.B, 1, f.A);
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            switch (condition)
+            {
+                case "disabled": constraint.enabled = false; break;
+                case "inactive": constraint.constraintActive = false; break;
+                case "hidden": f.B.gameObject.SetActive(false); break;
+                case "inactiveAndUnlocked": constraint.constraintActive = false; constraint.locked = false; break;
+            }
+            var result = f.Convert();
+            AssertListedAsOmitted(f, result, ConstraintExport.OmittedOff);
+        }
+
+        static void AssertListedAsOmitted(Fixture f, ConstraintExport.Result result, string reason)
+        {
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(true), Is.Empty);
+            Assert.That(f.Copy.GetComponent<Vrm10Instance>(), Is.Null);
+            Assert.That((result.Sources, result.Kept, result.Approximated, result.Omitted), Is.EqualTo((1, 0, 0, 1)));
+            Assert.That(f.Entry.Outcome, Is.EqualTo(ExportOutcome.Omitted));
+            Assert.That(f.Entry.Category, Is.EqualTo(ConstraintExport.Category));
+            Assert.That(f.Entry.Reason, Is.EqualTo(reason));
+            Assert.That(f.Entry.Name, Is.EqualTo("B (" + nameof(RotationConstraint) + ")"));
+            Assert.That(f.Entry.Path, Is.EqualTo("Parent/B"));
+            Assert.That(f.Warnings.Single(), Is.EqualTo("コンストレイント変換: 元1件 / 変換0件（うち近似0件） / 省略1件。"));
         }
 
         [Test]
@@ -314,6 +351,33 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(rotation.Source, Is.EqualTo(f.A));
             Assert.That(rotation.Weight, Is.EqualTo(.75f));
             Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
+        }
+
+        [TestCase(true)][TestCase(false)]
+        public void AnUnlockedOrOffVrchatConstraintIsListed(bool isActive)
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            using var f = new Fixture();
+            var component = f.B.gameObject.AddComponent(type);
+            using (var settings = new SerializedObject(component))
+            {
+                settings.FindProperty("IsActive").boolValue = isActive;
+                settings.FindProperty("Locked").boolValue = false;
+                settings.FindProperty("GlobalWeight").floatValue = 1;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = f.A;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            f.A.localRotation = f.B.localRotation = Quaternion.identity;
+            var result = f.Convert();
+            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(result.Omitted, Is.EqualTo(1));
+            Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
+            Assert.That(f.Entry.Reason, Is.EqualTo(isActive ? ConstraintExport.OmittedUnlocked : ConstraintExport.OmittedOff));
+            Assert.That(f.Warnings.Single(), Does.Contain("省略1件"));
         }
 
         [Test]
