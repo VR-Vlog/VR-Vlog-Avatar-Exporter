@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
 using NUnit.Framework;
 using UnityEngine;
 using VRVlog.LilToonExporter.Compatibility;
@@ -11,28 +10,25 @@ namespace VRVlog.LilToonExporter.Tests
     // package; the exporter finds it by lilToon's package.json instead.
     public sealed class LilToonInstallationTests
     {
-        const string Folder = "Temp/VRVlogLilToonInstallationTests";
+        const string Json = "{\"name\": \"jp.lilxyzw.liltoon\", \"version\": \"2.3.4\", \"displayName\": \"lilToon\"}";
+        const string AssetsJson = "Assets/lilToon/package.json";
+        const string AssetsShader = "Assets/lilToon/Shader/lts.shader";
 
-        [SetUp]
-        public void SetUp() => Directory.CreateDirectory(Folder);
-
-        [TearDown]
-        public void TearDown() => Directory.Delete(Folder, true);
-
-        static string Write(string json)
-        {
-            var path = Folder + "/package.json";
-            File.WriteAllText(path, json);
-            return path;
-        }
+        static LilToonInstallation FromPaths(string packageJsonPath, string shaderPath, string text) =>
+            LilToonInstallation.FromAssetPaths(packageJsonPath, () => shaderPath, path =>
+            {
+                Assert.That(path, Is.EqualTo(packageJsonPath));
+                return text;
+            });
 
         [Test]
         public void PackageJsonGivesTheVersionAndFolder()
         {
-            var found = LilToonInstallation.FromPackageJson(Write("{\"name\": \"jp.lilxyzw.liltoon\", \"version\": \"2.3.4\", \"displayName\": \"lilToon\"}"));
+            var found = LilToonInstallation.FromPackageJson(AssetsJson, Json);
             Assert.That(found.Version, Is.EqualTo("2.3.4"));
-            Assert.That(found.AssetsFolder, Is.EqualTo(Folder));
-            Assert.That(found.Report(), Is.EqualTo("2.3.4 (Assets: " + Folder + ")"));
+            Assert.That(found.AssetsFolder, Is.EqualTo("Assets/lilToon"));
+            Assert.That(found.Report(), Is.EqualTo("2.3.4 (Assets: Assets/lilToon)"));
+            Assert.That(found.Describe(text => text), Is.EqualTo("2.3.4（Assetsに導入: Assets/lilToon）"));
         }
 
         [TestCase("{\"name\": \"jp.lilxyzw.liltoon\"}")]
@@ -41,7 +37,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("")]
         public void PackageJsonWithoutAVersionIsUnknown(string json)
         {
-            var found = LilToonInstallation.FromPackageJson(Write(json));
+            var found = LilToonInstallation.FromPackageJson(AssetsJson, json);
             Assert.That(found.Version, Is.EqualTo(DependencyPolicy.LilToonUnknownVersion));
             Assert.That(DependencyPolicy.LilToonError(found.Version), Is.Null);
             Assert.That(DependencyPolicy.LilToonWarning(found.Version), Does.Contain("不明"));
@@ -49,7 +45,40 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test]
         public void PackageJsonOfAnotherPackageIsNotLilToon() =>
-            Assert.That(LilToonInstallation.FromPackageJson(Write("{\"name\": \"com.example.other\", \"version\": \"1.0.0\"}")), Is.Null);
+            Assert.That(LilToonInstallation.FromPackageJson(AssetsJson, "{\"name\": \"com.example.other\", \"version\": \"1.0.0\"}"), Is.Null);
+
+        // The unitypackage import: package.json and shaders under Assets.
+        [Test]
+        public void AssetsPackageJsonIsFound()
+        {
+            var found = FromPaths(AssetsJson, AssetsShader, Json);
+            Assert.That(found.Version, Is.EqualTo("2.3.4"));
+            Assert.That(found.AssetsFolder, Is.EqualTo("Assets/lilToon"));
+        }
+
+        // A moved folder keeps the GUID, so the path follows it.
+        [Test]
+        public void MovedAssetsFolderIsFound() =>
+            Assert.That(FromPaths("Assets/Shaders/lilToon/package.json", null, Json).AssetsFolder, Is.EqualTo("Assets/Shaders/lilToon"));
+
+        // Without package.json (deleted, stale GUID) the shader still counts, version unknown.
+        [TestCase("")]
+        [TestCase("Assets/lilToon/package.json")]
+        public void AssetsShaderWithoutPackageJsonIsUnknown(string packageJsonPath)
+        {
+            var found = FromPaths(packageJsonPath, AssetsShader, null);
+            Assert.That(found.Version, Is.EqualTo(DependencyPolicy.LilToonUnknownVersion));
+            Assert.That(found.AssetsFolder, Is.EqualTo("Assets/lilToon"));
+            Assert.That(found.Describe(text => text), Is.EqualTo("不明（Assetsに導入: Assets/lilToon）"));
+        }
+
+        // Package copies are not an Assets install; the registered package covers them.
+        [TestCase("Packages/jp.lilxyzw.liltoon/package.json", "Packages/jp.lilxyzw.liltoon/Shader/lts.shader")]
+        [TestCase("", "Packages/jp.lilxyzw.liltoon/Shader/lts.shader")]
+        [TestCase("", null)]
+        [TestCase(null, "")]
+        public void NothingUnderAssetsIsNotFound(string packageJsonPath, string shaderPath) =>
+            Assert.That(FromPaths(packageJsonPath, shaderPath, Json), Is.Null);
 
         // Holds for both setups: the registered package wins, and without it
         // the Assets copy feeds the diagnostics and the export.
@@ -64,7 +93,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (registered)
             {
                 Assert.That(found.AssetsFolder, Is.Null);
-                Assert.That(LilToonInstallation.FindUnderAssets(), Is.Null);
             }
             else
             {

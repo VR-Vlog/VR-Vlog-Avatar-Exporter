@@ -43,30 +43,46 @@ namespace VRVlog.LilToonExporter.Compatibility
             return FindUnderAssets();
         }
 
-        public static LilToonInstallation FindUnderAssets()
-        {
-            var path = AssetDatabase.GUIDToAssetPath(PackageJsonGuid);
-            if (UnderAssets(path) && File.Exists(path))
+        public static LilToonInstallation FindUnderAssets() =>
+            FromAssetPaths(AssetDatabase.GUIDToAssetPath(PackageJsonGuid), () =>
             {
-                var found = FromPackageJson(path);
+                var shader = Shader.Find(ShaderName);
+                return shader == null ? null : AssetDatabase.GetAssetPath(shader);
+            }, ReadText);
+
+        // Decides from the asset paths alone, so tests cover the Assets install
+        // in projects where lilToon is a registered package. readText returns
+        // null for a missing file.
+        public static LilToonInstallation FromAssetPaths(string packageJsonPath, Func<string> shaderPath, Func<string, string> readText)
+        {
+            if (UnderAssets(packageJsonPath))
+            {
+                var text = readText(packageJsonPath);
+                var found = text == null ? null : FromPackageJson(packageJsonPath, text);
                 if (found != null) return found;
             }
             // package.json was deleted: lilToon's main shader still shows it is there.
-            var shader = Shader.Find(ShaderName);
-            var shaderPath = shader == null ? null : AssetDatabase.GetAssetPath(shader);
-            return UnderAssets(shaderPath) ? new LilToonInstallation(DependencyPolicy.LilToonUnknownVersion, Folder(shaderPath)) : null;
+            var shader = shaderPath();
+            return UnderAssets(shader) ? new LilToonInstallation(DependencyPolicy.LilToonUnknownVersion, ShaderRoot(shader)) : null;
         }
 
         // A file with this GUID that names another package is not lilToon.
         // An unreadable one still is: only the version is unknown.
-        public static LilToonInstallation FromPackageJson(string assetPath)
+        public static LilToonInstallation FromPackageJson(string assetPath, string text)
         {
             Manifest manifest = null;
-            try { manifest = JsonUtility.FromJson<Manifest>(File.ReadAllText(assetPath)); }
-            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException) { }
+            try { manifest = JsonUtility.FromJson<Manifest>(text); }
+            catch (ArgumentException) { }
             if (!string.IsNullOrEmpty(manifest?.name) && !string.Equals(manifest.name, PackageName, StringComparison.Ordinal)) return null;
             var version = string.IsNullOrEmpty(manifest?.version) ? DependencyPolicy.LilToonUnknownVersion : manifest.version;
             return new LilToonInstallation(version, Folder(assetPath));
+        }
+
+        // Unreadable counts as present with no version, so it reads as empty.
+        static string ReadText(string path)
+        {
+            try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+            catch (Exception) { return ""; }
         }
 
         public string Describe(Func<string, string> translate) => DependencyPolicy.DescribeLilToon(Version, AssetsFolder, translate);
@@ -77,5 +93,13 @@ namespace VRVlog.LilToonExporter.Compatibility
         static bool UnderAssets(string path) => !string.IsNullOrEmpty(path) && path.StartsWith("Assets/", StringComparison.Ordinal);
 
         static string Folder(string assetPath) => Path.GetDirectoryName(assetPath).Replace('\\', '/');
+
+        // lilToon keeps its shaders in <root>/Shader; report the root, as package.json does.
+        static string ShaderRoot(string shaderPath)
+        {
+            var folder = Folder(shaderPath);
+            return folder != "Assets/Shader" && folder.EndsWith("/Shader", StringComparison.Ordinal)
+                ? folder.Substring(0, folder.Length - "/Shader".Length) : folder;
+        }
     }
 }

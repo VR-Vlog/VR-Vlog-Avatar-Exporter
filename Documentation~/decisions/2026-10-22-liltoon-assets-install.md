@@ -25,7 +25,7 @@
 ## 確認したこと
 
 - `Tools/run-compatibility-tests.ps1` で、`unknown` が読めない版として分類され、止めずに「不明」の警告になること、`DisplayLilToon`・`DescribeLilToon` の表示を確かめた。
-- `LilToonInstallationTests` で、`package.json` から版と場所を読むこと、版の無い・壊れた `package.json` は不明になること、ほかのパッケージの `package.json` は lilToon と見なさないことを確かめた。
+- `LilToonInstallationTests` で、`package.json` から版と場所を読むこと、版の無い・壊れた `package.json` は不明になること、ほかのパッケージの `package.json` は lilToon と見なさないことを確かめた。場所の判定は `FromAssetPaths`（パスと読み込みを渡す）に分けたので、lilToon が登録済みの CI でも、`Assets` の下の `package.json`・移したフォルダ・`package.json` が無くシェーダーだけある場合（場所は `Shader` の 1 つ上）・`Packages` の下だけの場合をそれぞれ確かめている。
 - 同じテスト用プロジェクトを 2 つ複製し、lilToon 2.3.4 を `Packages` の下に置いたもの（Package Manager に登録される）と、`Assets/lilToon` に移したもの（何も登録されない）で、Unity 2022.3.22f1 の EditMode テストをすべて流した。`Assets` 側では `Find()` が `Assets/lilToon` と 2.3.4 を返し、環境の診断と書き出しの確認が同じ版を使い、表情ボードの書き出しの経路で 1 回書き出して lilToon の拡張が検証を通ることを確かめた。
 
 ## 影響
