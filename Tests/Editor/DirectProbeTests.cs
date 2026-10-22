@@ -89,7 +89,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var entry = Apply(compare: false);
-            Assert.That(events, Is.EqualTo(new[] { "sampled" }));
+            Assert.That(events, Is.EqualTo(new[] { "sampled: weight" }));
             Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(40).Within(.01));
         }
 
@@ -98,10 +98,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var machine = controller.layers[0].stateMachine;
             var rest = machine.AddState("Rest"); rest.motion = Clip("Lower smile", ("Smile", 30)); rest.writeDefaultValues = false; machine.defaultState = rest;
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var entry = Apply(compare: false);
-            Assert.That(events, Is.EqualTo(new[] { "sampled" }));
-            Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(55).Within(.01));
+            Assert.That(events.Single(), Does.StartWith("sampled: "));
+            Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(80).Within(.01));
         }
 
         [Test]
@@ -110,7 +109,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mask = new AvatarMask(); AssetDatabase.CreateAsset(mask, folder + "/Mask.mask");
             var layers = controller.layers; layers[1].avatarMask = mask; controller.layers = layers;
             try { Apply(compare: false); } catch (InvalidOperationException) { }
-            Assert.That(events.FirstOrDefault(), Is.EqualTo("sampled"));
+            Assert.That(events.FirstOrDefault(), Is.EqualTo("sampled: mask"));
         }
 
         [Test]

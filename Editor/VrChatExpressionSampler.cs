@@ -593,11 +593,12 @@ namespace VRVlog.LilToonExporter
                     // Both probes build the same graph apart from the input,
                     // so the first one decides for both.
                     direct ??= DirectProbe(avatar, probeRuntime, dependencies, explicitMorphs, scalarPlan.CommittedMorphs, excludedPath,
-                        layerIndex ?? -1, nativeSlot && sourceState != null && !hasLayerControls && projection == null &&
-                        stationaryBindings.Count == 0 && parameterLayers.Count == 0 &&
-                        (layerIndex.Value == 0 || originalLayers[layerIndex.Value].defaultWeight == 1) &&
-                        originalLayers[layerIndex.Value].avatarMask == null && avatar.GetComponent<Animator>() != null &&
-                        sourceBehaviours.Length == 0 && sourceMachines.All(machine => machine.behaviours.Length == 0));
+                        layerIndex ?? -1,
+                        !nativeSlot || sourceState == null ? "slot" : hasLayerControls ? "controls" : projection != null ? "projection" :
+                        stationaryBindings.Count > 0 || parameterLayers.Count > 0 ? "stationary" :
+                        layerIndex.Value != 0 && originalLayers[layerIndex.Value].defaultWeight != 1 ? "weight" :
+                        originalLayers[layerIndex.Value].avatarMask != null ? "mask" : avatar.GetComponent<Animator>() == null ? "animator" :
+                        sourceBehaviours.Length > 0 || sourceMachines.Any(machine => machine.behaviours.Length > 0) ? "callbacks" : null);
                     List<MorphValue> values;
                     if (direct == true && !CompareDirectProbe)
                         values = explicitMorphs.Select(binding => new MorphValue
@@ -663,26 +664,33 @@ namespace VRVlog.LilToonExporter
         // capture would reject) still plays.
         private static bool DirectProbe(GameObject avatar, RuntimeAnimatorController probeRuntime, ExpressionDependencies dependencies,
             ISet<EditorCurveBinding> explicitMorphs, ISet<EditorCurveBinding> committedMorphs, Func<string, bool> excludedPath,
-            int layerIndex, bool simpleSlot)
+            int layerIndex, string slotRejection)
         {
-            bool Result(bool value) { DirectProbeObserver?.Invoke(value ? "direct" : "sampled"); return value; }
-            if (!simpleSlot || !committedMorphs.SetEquals(explicitMorphs) || !dependencies.Morphs.SetEquals(explicitMorphs) ||
-                dependencies.Layers.Count != 1 || !dependencies.Layers.Contains(layerIndex) || dependencies.NativeSupportLayers.Count > 0 ||
-                dependencies.IndependentTopOverrideLayer >= 0 || dependencies.HasFxControls || dependencies.WeightControlLayers.Count > 0 ||
-                dependencies.RequireSettledWeightControls || dependencies.Drivers.Count > 0 ||
-                FindExcludedLayers(ExpressionDependencies.Controller(probeRuntime), probeRuntime, excludedPath, dependencies.Parameters).Contains(layerIndex))
-                return Result(false);
+            bool Sampled(string reason) { DirectProbeObserver?.Invoke("sampled: " + reason); return false; }
+            if (slotRejection != null) return Sampled(slotRejection);
+            if (!committedMorphs.SetEquals(explicitMorphs)) return Sampled("committed");
+            if (!dependencies.Morphs.SetEquals(explicitMorphs)) return Sampled("morphs");
+            if (dependencies.Layers.Count != 1 || !dependencies.Layers.Contains(layerIndex)) return Sampled("layers");
+            if (dependencies.NativeSupportLayers.Count > 0) return Sampled("support");
+            // The selected layer itself may be the proven top override.
+            if (dependencies.IndependentTopOverrideLayer >= 0 && dependencies.IndependentTopOverrideLayer != layerIndex) return Sampled("top");
+            if (dependencies.HasFxControls || dependencies.WeightControlLayers.Count > 0 || dependencies.RequireSettledWeightControls)
+                return Sampled("controls");
+            if (dependencies.Drivers.Count > 0) return Sampled("drivers");
+            if (FindExcludedLayers(ExpressionDependencies.Controller(probeRuntime), probeRuntime, excludedPath, dependencies.Parameters).Contains(layerIndex))
+                return Sampled("excluded");
             foreach (var binding in explicitMorphs)
             {
-                if (excludedPath?.Invoke(binding.path) == true) return Result(false);
+                if (excludedPath?.Invoke(binding.path) == true) return Sampled("renderer");
                 SkinnedMeshRenderer renderer;
                 try { renderer = FindRenderer(avatar, binding.path); }
-                catch (InvalidOperationException) { return Result(false); }
+                catch (InvalidOperationException) { return Sampled("renderer"); }
                 if (!renderer.enabled || !renderer.gameObject.activeInHierarchy ||
                     renderer.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0)
-                    return Result(false);
+                    return Sampled("renderer");
             }
-            return Result(true);
+            DirectProbeObserver?.Invoke("direct");
+            return true;
         }
 
         private static void CompareDirect(string name, float input, ISet<EditorCurveBinding> explicitMorphs, List<MorphValue> sampled)
