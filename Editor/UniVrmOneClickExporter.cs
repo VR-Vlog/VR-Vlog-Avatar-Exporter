@@ -648,7 +648,7 @@ namespace VRVlog.LilToonExporter
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
-                }));
+                }, temporaryTextures));
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
