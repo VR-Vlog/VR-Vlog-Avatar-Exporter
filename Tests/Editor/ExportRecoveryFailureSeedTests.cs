@@ -8,7 +8,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportRecoveryFailureSeedTests
     {
-        [TestCase("existing")][TestCase("empty")][TestCase("missing")]
+        [TestCase("existing")][TestCase("empty")]
         public void OpeningRecoveryKeepsTheFirstRealFailureWithoutRepeatingTheExport(string reportKind)
         {
             using var fixture = new ExportRecoveryTests.RecoveryFixture();

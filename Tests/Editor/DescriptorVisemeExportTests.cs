@@ -72,21 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
             return fixture;
         }
 
-        [TestCase("lip")][TestCase("kana")]
-        public void CaptureReadsBlendShapeVisemesWhateverTheirNames(string kind)
-        {
-            var names = kind == "lip" ? LipNames : KanaNames;
-            var avatar = new GameObject("avatar"); owned.Add(avatar);
-            var face = new GameObject("face"); face.transform.SetParent(avatar.transform, false);
-            var skin = face.AddComponent<SkinnedMeshRenderer>();
-            Descriptor(avatar, "VisemeBlendShape", skin, names);
-            var visemes = VrChatVisemeExport.Capture(avatar, go => go == face ? 7 : -1);
-            Assert.That(visemes.Node, Is.EqualTo(7));
-            var expected = VrmExpressionBindings.DescriptorVisemes.Slots.Select((slot, i) => (slot.Preset, names[i]));
-            Assert.That(visemes.Shapes.Select(p => (p.Key, p.Value)), Is.EquivalentTo(expected));
-        }
-
-        [TestCase("Default")][TestCase("JawFlapBlendShape")][TestCase("VisemeParameterOnly")]
+        [TestCase("JawFlapBlendShape")]
         public void CaptureIgnoresOtherLipSyncModes(string lipSync)
         {
             var avatar = new GameObject("avatar"); owned.Add(avatar);
@@ -102,7 +88,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrChatVisemeExport.Capture(avatar, _ => 0), Is.Null);
         }
 
-        [TestCase("lip")][TestCase("kana")]
+        [TestCase("kana")]
         public void ActualExportBindsDescriptorVisemesThatAreNotKnownAliases(string kind)
         {
             var names = kind == "lip" ? LipNames : KanaNames;

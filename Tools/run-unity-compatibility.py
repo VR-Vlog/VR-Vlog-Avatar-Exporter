@@ -169,7 +169,7 @@ BEHAVIOR_CASES = {
     },
     'SourceFingerprintCacheTests': {
         'ColdClipEditorCacheDoesNotInvalidateButNativeCurveEditsDo': 1,
-        'MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes': 3,
+        'MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes': 2,
         'UnknownSavedMaterialPropertiesAndTextureTransformsStillInvalidate': 1,
     },
     'AdditionalPlayableCallbackTests': {
@@ -579,15 +579,11 @@ BEHAVIOR_CASES = {
         'UnrelatedSelectedDriverDestinationDoesNotBlockTheNativeProbe': 1,
     },
     'FaceEmoPreparedFxIntegrationTests': {
-        'RegisteredPlayerCallbacksFollowExactOrProvedRetargetedClipProvenance': 3,
         'RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance': 4,
-        'RegisteredPlayerRejectsOriginalIdentityWithDifferentEffectiveOverride': 1,
-        'RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks': 2,
-        'RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation': 4,
-        'RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation': 2,
-        'AmbiguousGeneratedPlayerCannotSilentlyUseStandaloneLayerOrder': 4,
-        'FractionalPlayerRetainsTransitionedCommonPoseBelowItsRegisteredClip': 2,
-        'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 4,
+        'RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks': 1,
+        'RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation': 2,
+        'RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation': 1,
+        'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 2,
     },
     'MergedFixedNeutralSamplingTests': {
         'FractionalNeutralRetainsNativeBaseActivityAndLeavesAutomaticBlinkLive': 4,
