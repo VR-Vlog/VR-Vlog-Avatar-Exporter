@@ -359,6 +359,21 @@
     white-space: normal;
 }
 
+/* On the board: one line in a row of fixed height, at the size that fits its width (FitWarning). */
+.warning--line {
+    height: 30px;
+    align-items: center;
+}
+
+.warning--line .warning-icon {
+    margin: 0 6px 0 0;
+}
+
+.warning--line .warning-text {
+    white-space: nowrap;
+    -unity-text-align: middle-center;
+}
+
 .status-row {
     height: 18px;
     flex-shrink: 0;

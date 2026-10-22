@@ -132,6 +132,32 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         }
 
         [Test]
+        public void QrFittedToAHeightKeepsWholePixelModulesAndTwoHundredPointsOfSymbol()
+        {
+            foreach (var scale in new[] { 1f, 1.25f, 1.5f, 2f })
+                foreach (var side in new[] { 29, 57, 185 })
+                {
+                    var full = TransferQrCode.DisplaySide(side, scale);
+                    Assert.That(TransferQrCode.FittedSide(side, full, scale), Is.EqualTo(full));
+                    Assert.That(TransferQrCode.FittedSide(side, float.PositiveInfinity, scale), Is.EqualTo(full));
+                    foreach (var room in new[] { 0f, 150f, 260f, 359f, full - 1f })
+                    {
+                        var points = TransferQrCode.FittedSide(side, room, scale);
+                        var pixelsPerModule = points * scale / side;
+                        Assert.That(Math.Abs(pixelsPerModule - Math.Round(pixelsPerModule)) < 0.001, Is.True);
+                        Assert.That(points <= full, Is.True);
+                        var symbol = points * (side - 2 * TransferQrCode.QuietZone) / side;
+                        Assert.That(symbol >= TransferQrCode.SmallestSymbolSide - 0.001, Is.True);
+                        // Larger than the room only where the room is under the smallest symbol.
+                        if (points > room + 0.001)
+                            Assert.That((pixelsPerModule - 1) * (side - 2 * TransferQrCode.QuietZone) / scale < TransferQrCode.SmallestSymbolSide, Is.True);
+                        else
+                            Assert.That((pixelsPerModule + 1) * side / scale > room, Is.True);
+                    }
+                }
+        }
+
+        [Test]
         public async Task FlowShowsTheLinkAfterTheUploadAndCountsDownToTheServiceDeadline()
         {
             var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();

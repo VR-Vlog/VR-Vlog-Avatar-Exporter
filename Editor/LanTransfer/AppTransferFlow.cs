@@ -75,6 +75,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var pixelsPerModule = (int)Math.Ceiling(MinimumSymbolSide * scale / (matrixSide - 2 * QuietZone));
             return matrixSide * pixelsPerModule / scale;
         }
+
+        // On the expression board the QR shares a page of fixed height with the rows around it.
+        internal const int SmallestSymbolSide = 200;
+
+        // DisplaySide, made smaller to fit within maxSide points: whole pixels per module still, and
+        // never under SmallestSymbolSide points of symbol, so a short area scrolls rather than an unreadable QR.
+        internal static float FittedSide(int matrixSide, float maxSide, float pixelsPerPoint = 1f)
+        {
+            var full = DisplaySide(matrixSide, pixelsPerPoint);
+            if (!(maxSide < full)) return full;
+            var scale = pixelsPerPoint > 0f ? pixelsPerPoint : 1f;
+            var fitting = (int)Math.Floor(maxSide * scale / matrixSide);
+            var smallest = (int)Math.Ceiling(SmallestSymbolSide * scale / (matrixSide - 2 * QuietZone));
+            return matrixSide * Math.Max(fitting, smallest) / scale;
+        }
     }
 
     internal enum AppTransferView { Form, Exporting, Uploading, Waiting, Completed, Expired, Canceled, Failed }

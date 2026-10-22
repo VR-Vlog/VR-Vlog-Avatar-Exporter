@@ -25,6 +25,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
         private const float TransferChrome = 253f;
         internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
+        private const float WarningFontSize = 24f, SmallestWarningFontSize = 12f;
         // Above the QR once the export is saved, when materials lost their shader. Kept out of
         // AppTransferText: that list holds one-line texts without punctuation or requests.
         internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
@@ -73,6 +75,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private AppTransferView shownView, polledView;
         // Device pixels per point of the panel, read where IMGUI knows it.
         [NonSerialized] private float pixelsPerPoint;
+        // On the board, the most the QR area may take of the page's height (FitToArea).
+        [NonSerialized] private float embeddedRoom = float.PositiveInfinity;
 
         [NonSerialized] private bool built;
         [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
@@ -83,7 +87,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
         [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
-        [NonSerialized] private Image qrImage;
+        [NonSerialized] private Image qrImage, warningIcon;
+        [NonSerialized] private ScrollView transferScroll;
+        [NonSerialized] private VisualElement transferBody;
         [NonSerialized] private IMGUIContainer uploadBar;
 
         // The third page of the expression board in its transfer mode, for the board's avatar.
@@ -389,10 +395,49 @@ namespace VRVlog.LilToonExporter.LanTransfer
             get
             {
                 var side = Mathf.Max(placeholderSide, 2 * TransferQrCode.QuietZone + 21);
-                var scale = ScaleFactor;
-                var smaller = side - 4 >= 2 * TransferQrCode.QuietZone + 21 ? TransferQrCode.DisplaySide(side - 4, scale) : 0f;
-                return Mathf.Max(TransferQrCode.DisplaySide(side, scale), smaller);
+                var smaller = side - 4 >= 2 * TransferQrCode.QuietZone + 21 ? QrSide(side - 4) : 0f;
+                return Mathf.Max(QrSide(side), smaller);
             }
+        }
+
+        // On the board the QR takes what the page's height leaves it (FitToArea); in the window, its full size.
+        private float QrSide(int matrixSide) => embedded
+            ? TransferQrCode.FittedSide(matrixSide, embeddedRoom, ScaleFactor)
+            : TransferQrCode.DisplaySide(matrixSide, ScaleFactor);
+
+        // The height the board's page leaves for the QR area: the scroll's visible height less every
+        // other row of the QR screen. Those rows have fixed heights, so the text size does not change it,
+        // and resizing the QR area changes the rows' total by as much, so it settles at once.
+        private void FitToArea()
+        {
+            if (!embedded || !built || transfer.resolvedStyle.display == DisplayStyle.None) return;
+            var visible = transferScroll.contentViewport.layout.height;
+            var rows = transferBody.layout.height - slotRow.layout.height;
+            if (float.IsNaN(visible) || float.IsNaN(rows) || visible <= 0f) return;
+            var room = Mathf.Floor(visible - rows);
+            if (Mathf.Abs(room - embeddedRoom) < 0.5f) return;
+            embeddedRoom = room;
+            slotRow.style.height = SlotSide;
+            PlaceSlot();
+        }
+
+        // On the board the QR notice is one line: the largest size up to its own that fits the width.
+        // Too narrow even at the smallest size, it wraps as in the window.
+        private void FitWarning()
+        {
+            if (!embedded || !built) return;
+            var room = warningRow.contentRect.width - warningIcon.layout.width - warningIcon.resolvedStyle.marginLeft - warningIcon.resolvedStyle.marginRight;
+            var current = warningText.resolvedStyle.fontSize;
+            if (float.IsNaN(room) || room <= 0f || current <= 0f || string.IsNullOrEmpty(warningText.text)) return;
+            var width = warningText.MeasureTextSize(warningText.text, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined).x;
+            if (width <= 0f) return;
+            // Two points spare, and one size up is not taken: text width is not quite linear in its size,
+            // so the line stays inside the row and does not flip between two sizes on every refresh.
+            var fitted = Mathf.Min(WarningFontSize, Mathf.Floor(current * (room - 2f) / width));
+            var line = fitted >= SmallestWarningFontSize;
+            warningRow.EnableInClassList("warning--line", line);
+            if (!line) warningText.style.fontSize = StyleKeyword.Null;
+            else if (fitted < current || fitted >= current + 2f || fitted == WarningFontSize) warningText.style.fontSize = fitted;
         }
 
         // The window is at least as large as the QR it is about to show. On a short screen (1080p at 150%)
@@ -520,7 +565,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var headerIcon = root.Q<Image>("header-icon");
             headerIcon.image = ExporterWindowIcon.Texture;
             headerIcon.scaleMode = ScaleMode.ScaleToFit;
-            var warningIcon = root.Q<Image>("warning-icon");
+            warningIcon = root.Q<Image>("warning-icon");
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
@@ -570,7 +615,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The export starts once the panel has drawn the Exporting state.
             slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
             slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
-            root.Q<ScrollView>("transfer-scroll").verticalScroller.valueChanged += _ => PlaceSlot();
+            transferScroll = root.Q<ScrollView>("transfer-scroll");
+            transferBody = transferScroll.Q(className: "body");
+            transferScroll.verticalScroller.valueChanged += _ => PlaceSlot();
+            if (embedded)
+            {
+                transferScroll.contentViewport.RegisterCallback<GeometryChangedEvent>(_ => FitToArea());
+                transferBody.RegisterCallback<GeometryChangedEvent>(_ => FitToArea());
+                warningRow.RegisterCallback<GeometryChangedEvent>(_ => FitWarning());
+            }
             built = true;
             Refresh();
         }
@@ -735,6 +788,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var waiting = view == AppTransferView.Waiting;
             scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
             warningText.text = T(AppTransferText.DoNotShare);
+            FitWarning();
             Reserve(warningRow, waiting);
             var counting = waiting || view == AppTransferView.Expired;
             statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
@@ -762,7 +816,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             slot.style.width = side;
             slot.style.height = side;
             if (qrTexture == null) return;
-            var qr = Mathf.Min(TransferQrCode.DisplaySide(qrTexture.width, ScaleFactor), side);
+            var qr = Mathf.Min(QrSide(qrTexture.width), side);
             var offset = Snap((side - qr) / 2f);
             qrImage.style.left = offset;
             qrImage.style.top = offset;
