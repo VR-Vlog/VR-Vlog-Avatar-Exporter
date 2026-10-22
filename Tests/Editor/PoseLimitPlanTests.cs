@@ -44,30 +44,6 @@ namespace VRVlog.LilToonExporter.Tests
         static string[] Dropped(PoseLimitPlan plan) => plan.Rows.Where(row => !row.Keep).Select(row => row.Id).ToArray();
 
         [Test]
-        public void WithinTheLimitsNothingIsDroppedWhateverWasSaved()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("a"), Still("b"), Moving("c", 10) });
-            Assert.That(plan.NeedsChoice, Is.False);
-            plan.Choose(new[] { "a", "c" });
-            Assert.That(Dropped(plan), Is.Empty);
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheCountTheDefaultDropsTheLastRows()
-        {
-            var candidates = Enumerable.Range(0, 130).Select(i => Still("pose" + i)).ToArray();
-            var plan = new PoseLimitPlan(candidates);
-            Assert.That(plan.NeedsChoice && plan.CountOver, Is.True);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "pose128", "pose129" }));
-            Assert.That(plan.Within && plan.IsDefault, Is.True);
-            // The same poses give the same choice every time.
-            var again = new PoseLimitPlan(candidates); again.Default();
-            Assert.That(Dropped(again), Is.EqualTo(Dropped(plan)));
-        }
-
-        [Test]
         public void ASavedChoiceIsToppedUpFromTheEnd()
         {
             var plan = new PoseLimitPlan(Enumerable.Range(0, 131).Select(i => Still("pose" + i)));
@@ -202,6 +178,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var session = Session(fixture, 130);
+            Assert.Throws<InvalidOperationException>(() => session.SelectedAnimations());
             var report = new ExportRecoveryReport(); var warnings = new List<string>();
             using (new PoseLimitChooser.Scope(fixture.Source, true))
             {

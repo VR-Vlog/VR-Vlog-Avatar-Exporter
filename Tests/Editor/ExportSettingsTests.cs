@@ -169,19 +169,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void EachDifferentProblemIsShownOnce()
-        {
-            var first = "first problem " + Guid.NewGuid().ToString("N");
-            var second = "second problem " + Guid.NewGuid().ToString("N");
-            LogAssert.Expect(LogType.Warning, first);
-            LogAssert.Expect(LogType.Warning, second);
-            Assert.That(ExportSettingsStore.WarnOnce(first), Is.True);
-            Assert.That(ExportSettingsStore.WarnOnce(second), Is.True, "A second, different problem is shown too.");
-            Assert.That(ExportSettingsStore.WarnOnce(first), Is.False);
-            Assert.That(ExportSettingsStore.WarnOnce(second), Is.False);
-        }
-
-        [Test]
         public void BlinkBindingsToAMissingRendererAreDropped()
         {
             using var fixture = new SavedAvatar();

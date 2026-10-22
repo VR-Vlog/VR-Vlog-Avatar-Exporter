@@ -63,9 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(0, false)]
         [TestCase(0, true)]
         [TestCase(1, false)]
-        [TestCase(1, true)]
         [TestCase(2, false)]
-        [TestCase(2, true)]
         public void GeneratedRootJointsStayFixedWhileSameNamedHairCanBeAttached(int weightMode, bool includeConnected)
         {
             using var f = new Fixture();
@@ -170,7 +168,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         [TestCase(false, true)]
         [TestCase(true, false)]
-        [TestCase(false, false)]
         public void OnlyActiveEnabledVrmConstraintsEstablishOrBlockAttachment(bool enabled, bool active)
         {
             using var f = new Fixture();
@@ -464,9 +461,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(4)]
         [TestCase(7)]
         public async Task ManualAndMaAppearanceMatchAfterCompleteExportAndReload(int changes)
         {

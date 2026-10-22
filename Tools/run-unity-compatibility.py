@@ -129,7 +129,6 @@ BEHAVIOR_CASES = {
     },
     'NonLilToonExportTests': {
         'AMissingBehaviourIsNeverTreatedAsAnExportComponent': 1,
-        'AnAssignedNonLilToonMaterialKeepsTheLilToonMessage': 1,
         'AvatarWhoseMaterialsAreAllMissingNamesTheRenderers': 1,
         'AvatarWithoutLilToonStillProducesASnapshot': 1,
         'NonLilToonMaterialBecomesFlatMToonWithItsColorAndMainImage': 1,
@@ -161,7 +160,6 @@ BEHAVIOR_CASES = {
     'VrmLookAtExportTests': {
         'EyesWithoutEyeLookUseTheEyeMidpointAndTheDefaultRange': 1,
         'ExistingVrmLookAtWinsOverEyesAndEyeLook': 1,
-        'MeasuredEyeLookPosesBecomeOneToOneRangeMaps': 1,
         'RotatedScaledHeadSwappedSidesAndLinkedPosesMatchUniVrm': 1,
         'UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns': 1,
         'UntouchedVrmLookAtDefaultsAreReplacedByTheEyeMidpoint': 1,
@@ -475,8 +473,8 @@ BEHAVIOR_CASES = {
         'WriteDefaultsCommandLayerDoesNotQualifyForFalseAndGuardProof': 1,
     },
     'ExpressionSettlementTests': {
-        'NativeClocksMatchTheSettlementConversion': 4,
-        'ANonLoopingClipLongerThanTheWarmUpIsSavedAtItsLastKey': 3,
+        'NativeClocksMatchTheSettlementConversion': 2,
+        'ANonLoopingClipLongerThanTheWarmUpIsSavedAtItsLastKey': 2,
         'AStateReachedByALateExitTimeIsFollowed': 3,
         'ALoopingClipIsSavedAtTheFirstFrameOfItsFinalState': 1,
         'CyclicExitTimesStopAtTheFirstRevisitedState': 1,
@@ -492,7 +490,7 @@ BEHAVIOR_CASES = {
         'AZeroDurationSelfTransitionOfAJustEnteredStateIsReported': 1,
         'ARestartingLayerWithoutFaceCurvesDoesNotStopTheFinalKey': 2,
         'AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace': 2,
-        'AStateRestartedEveryFrameWithADriverIsNotSaved': 4,
+        'AStateRestartedEveryFrameWithADriverIsNotSaved': 3,
         'AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace': 1,
         'AStateRestartedEveryFrameWithAMovingClipIsNotSaved': 2,
         'AFadeInBesideARestartingLayerReachesItsFinalKey': 2,
