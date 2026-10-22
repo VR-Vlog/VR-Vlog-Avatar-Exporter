@@ -43,19 +43,19 @@ public static class DependencyCompatibilityTests
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.6-beta.2", "3.10.6"), "A pre-release Avatars with a stable Base stops");
-        Check(DependencyPolicy.ModularAvatarMinimum == "1.10.4" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
-        foreach (var version in new[] { "1.10.4", "1.10.11", "1.11.7", "1.12.5", "1.13.0", "1.13.4", "1.14.0", "1.16.2", "1.17.1",
+        Check(DependencyPolicy.ModularAvatarMinimum == "1.11.2" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
+        foreach (var version in new[] { "1.11.2", "1.11.7", "1.12.5", "1.13.0", "1.13.4", "1.14.0", "1.16.2", "1.17.1",
             "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10" })
         {
             Check(DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance freeze " + version);
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "No MA error " + version);
         }
-        foreach (var version in new[] { "1.10.3", "1.10.0", "1.9.16", "1.19.0", "2.0.0", "0.18.7" })
+        foreach (var version in new[] { "1.11.1", "1.10.4", "1.10.3", "1.10.0", "1.9.16", "1.19.0", "2.0.0", "0.18.7" })
         {
             Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + version);
             Check(!DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is read " + version);
             var error = DependencyPolicy.ModularAvatarAppearanceError(version);
-            Check(error != null && error.Contains("1.10.4以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+            Check(error != null && error.Contains("1.11.2以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "MA error names the range, the fix and that the avatar is unchanged");
             Check(error.Contains("Modular Avatar " + version), "MA error names the installed version");
         }
@@ -69,12 +69,12 @@ public static class DependencyCompatibilityTests
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "Unknown MA version does not stop " + (version ?? "null"));
             var error = DependencyPolicy.ModularAvatarUnknownVersionError(version);
             Check(error.StartsWith("Modular Avatarのバージョンを読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
-                error.Contains("1.10.4以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+                error.Contains("1.11.2以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "Unknown MA version error says the version was not read, the range and the fix");
         }
         Check(DependencyPolicy.ModularAvatarUnknownVersionError(null, text => "[" + text + "]").StartsWith("[Modular Avatarのバージョン", StringComparison.Ordinal),
             "Caller-supplied translation applies to the unknown MA version format");
-        Check(DependencyPolicy.ModularAvatarAppearanceError("1.10.3", text => "[" + text + "]").StartsWith("[Modular Avatar 1.10.3", StringComparison.Ordinal),
+        Check(DependencyPolicy.ModularAvatarAppearanceError("1.11.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.11.1", StringComparison.Ordinal),
             "Caller-supplied translation applies to the MA format");
         Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");
         // Any installed lilToon exports (mk 2026-10-22). Only a missing one stops;

@@ -1,4 +1,4 @@
-# 表示を固定できる Modular Avatar を 1.10.4 以上に広げる
+# 表示を固定できる Modular Avatar を 1.11.2 以上に広げる
 
 - 日付: 2026-10-22
 - 対象: `Editor/MaAppearanceSnapshot.cs`・`Compatibility/dependencies.json`・`Editor/Compatibility/DependencyPolicy.Generated.cs`・`Tools/DependencyCompatibilityTests.cs`・`Tests/Editor/MaDeletionExportTests.cs`・`Tests/Editor/AppearancePreparationTests.cs`・`Tests/Editor/MaReactiveExpressionExportTests.cs`
@@ -19,7 +19,7 @@ MA の公開ソースを 1.10.0〜1.18.7 の全正式版で読み直した結果
 
 ## 決定
 
-- `modularAvatarMinimum` を 1.10.4 にする。上限（1.19.0 未満）とプレリリースの扱いは変えない。1.19.0-alpha.0〜alpha.2 は確かめたが、対応範囲には入れない（2026-10-22-ma-1-19-alpha）。
+- `modularAvatarMinimum` を 1.11.2 にする。上限（1.19.0 未満）とプレリリースの扱いは変えない。1.19.0-alpha.0〜alpha.2 は確かめたが、対応範囲には入れない（2026-10-22-ma-1-19-alpha）。
 - 版ごとの分岐は、メッシュを削るところだけに置く。分岐は版の番号ではなく、MA にどの型・メソッドがあるかで決める。
   - 削除の型は `IMeshSelector` があればそれ、無ければ `IVertexFilter` を使う。どちらかがあれば、これまでどおり SkinnedMeshRenderer ごとに値を集め、`FilterPrimitivesOnly` があればそれで、無ければ `RemoveVertices` で削る。`RemoveVertices` には `TargetProp` を既定値にした組を渡す（MA は組のフィルタしか読まない）。
   - どちらの型も無いとき（1.13.x 以前）は、`deletedShape.<名前>` の float を集めて `RemoveBlendshapes` で削る。引数の要素が `(int, float)` なら（BlendShape の番号, 値）を、`int` なら値が 0.5 を超えるものの番号を渡す。
@@ -30,12 +30,12 @@ MA の公開ソースを 1.10.0〜1.18.7 の全正式版で読み直した結果
 ## 理由
 
 - 削る方法を MA が自分のビルドで使うのと同じにすれば、固定した結果は、その版の MA でビルドしたときと同じ形のメッシュになる。版の番号で分けると、確かめていない版を番号だけで通すことになるが、型の有無で分ければ、API が変わった版では型が見つからずに止まる。
-- 1.10.0〜1.10.3 は通さない。1.10.0〜1.10.1 は削除を `deletedShape.<名前>` ではなく別の形（`AnalysisResult.DeletedShapes` と `IsDelete` のルール）で返すので、もう一つ経路が要る。1.10.2〜1.10.3 は `OptimizeShapes` が無く、固定の流れの方を変えることになる。どちらも 1.10.4 以上へ更新すれば通る。
+- 1.11.1 以前は通さない。1.10.4〜1.11.1 では固定そのものは動くが、MA 自身のビルドが `deletedShape.<名前>` のカーブを FX に残す（1.11.2 で MA が修正した「deletedShape animation curves are retained in final avatar animations」）。そのため Shape Changer をメニューで切り替える表情は、BlendShape 以外の変化を含むものとして取り込めない（1.10.4 の実プロジェクトで `MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload` の 6 件）。取り込みの側でこのカーブを無視すると、すべての版で表情の取り込みが変わるので、MA の修正が入った 1.11.2 を下限にした。1.10.0〜1.10.1 は削除を別の形（`AnalysisResult.DeletedShapes` と `IsDelete` のルール）で返し、1.10.2〜1.10.3 は `OptimizeShapes` が無いので、どのみち別の経路が要る。どれも 1.11.2 以上へ更新すれば通る。
 - 1.13.x 以前で Delete を固定せずに MA のビルドに任せる案もあった。ただ、固定したコンポーネントは外すので、任せるには Delete を含む Shape Changer だけを残す別の扱いが要る。`RemoveBlendshapes` を呼ぶ分岐の方が短く、ほかの版と同じく固定の時点で削れる。
 
 ## 検証
 
-- `Tools/run-compatibility-tests.ps1`: 1.10.4・1.12.5・1.13.4・1.14.0・1.17.1 などが通り、1.10.3・1.10.0・1.9.16 は版を名指しして止まることを確かめた。止めるときの文に新しい範囲（1.10.4 以上 1.19.0 未満）が入ることも確かめた。
+- `Tools/run-compatibility-tests.ps1`: 1.11.2・1.12.5・1.13.4・1.14.0・1.17.1 などが通り、1.11.1・1.10.4・1.10.3・1.9.16 は版を名指しして止まることを確かめた。止めるときの文に新しい範囲（1.11.2 以上 1.19.0 未満）が入ることも確かめた。
 - `Tests/Editor/MaDeletionExportTests` は、Mesh Cutter の無い版（1.13.x 以前）では Mesh Cutter のケースだけを飛ばし、Shape Changer の Delete のケースは流す。1.14.0 より前の Delete のプレビューは `ShapeChangerPreview` にあるので、プレビューの設定はそちらを切り替える。
 - テストでメニューを作るところは、1.13.0 より前の `ModularAvatarMenuItem.Control`（VRChat SDK のコントロール）にも値を入れる。Merge Motion のテストは、1.12.0 より前は `BlendTree` に入れ、BlendTree しか受け取らないので素のクリップのケースを飛ばす。MMD ワールド向けの設定（`ModularAvatarVRChatSettings`）は 1.12.0 で入ったので、それより前は切り替えずに進む。
 - Unity 2022.3 の実プロジェクトでの結果は `Compatibility/Evidence/ModularAvatarRange` に書く。

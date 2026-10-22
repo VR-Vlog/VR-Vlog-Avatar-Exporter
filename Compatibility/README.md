@@ -75,7 +75,7 @@ Results:
 
 Modular Avatar has its own range only for the appearance freeze, which runs
 when the avatar has Shape Changer, Object Toggle, Material Setter, Material Swap
-or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.10.4
+or Mesh Cutter: `modularAvatarMinimum <= version < modularAvatarBelow` (1.11.2
 to below 1.19.0, stable releases only). The freeze reflects MA's preview API.
 Everything it reads is the same from 1.10.4 (the first release with
 `ReactiveObjectAnalyzer.OptimizeShapes`) through 1.18.7 except Shape Changer
@@ -96,7 +96,10 @@ stop before that API is touched, naming the installed version and the range.
 When the version cannot be read (MA placed under `Assets`, a pre-release), the
 freeze tries the API and, if it is missing, stops saying the version was not
 read. Avatars without those components export with any MA
-version. Each MA release requires its own NDMF range (1.10.4 needs 1.5.4,
+version. 1.10.4 to 1.11.1 freeze, but their own build leaves `deletedShape.<name>`
+curves in the FX (fixed in MA 1.11.2), so menu expressions that switch a Shape
+Changer do not import; the range starts at 1.11.2 for that reason.
+Each MA release requires its own NDMF range (1.11.2 needs 1.6.0,
 1.14.0 needs 1.9.0, 1.18.0 needs 1.11.0, 1.18.4 and later need 1.14.7), which
 VCC/ALCOM resolves; the exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
 MA 1.14.0 and 1.14.1 change an Int or Bool menu parameter to Float in place
