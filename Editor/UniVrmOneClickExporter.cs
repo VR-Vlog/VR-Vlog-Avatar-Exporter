@@ -684,8 +684,15 @@ namespace VRVlog.LilToonExporter
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
+                // MToon's outline width does not follow the renderer scale that lilToon's
+                // does. Measured here because texture baking swaps every lilToon slot for
+                // a copy, and the scales are keyed by the material the slot holds now.
+                // Only reads the copy; on failure the approximation keeps the unscaled width.
+                var outlineScales = new Dictionary<Material, float>();
+                try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure);
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -964,7 +971,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
-            bool lenient = false)
+            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -1002,7 +1009,11 @@ namespace VRVlog.LilToonExporter
                     }
                     if (!converted.TryGetValue(source, out var fallback))
                     {
-                        try { fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks); }
+                        try
+                        {
+                            var outlineScale = outlineScales != null && outlineScales.TryGetValue(source, out var scale) ? scale : 1f;
+                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale);
+                        }
                         catch (Exception error) when (lenient && !(error is OperationCanceledException))
                         {
                             // One unreadable material must not cost the whole file.
@@ -1065,7 +1076,7 @@ namespace VRVlog.LilToonExporter
             return material;
         }
 
-        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null)
+        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null, float outlineScale = 1f)
         {
             // Validate the full mobile subset before producing any fallback output.
             LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);
@@ -1080,8 +1091,8 @@ namespace VRVlog.LilToonExporter
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
             var matcapAdditive = MatcapAdditive(source);
             var rimEnabled = source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > 0.5f;
-            var fakeShadow = LilToonMaterialReader.IsFakeShadow(source);
-            var outlineEnabled = !fakeShadow && LilToonMaterialReader.HasPortableOutline(source);
+            var hidden = HiddenInFallback(source);
+            var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
             var shadeTexture = Texture(source, "_ShadowColorTex");
             if (shadeTexture == Texture2D.whiteTexture) shadeTexture = null;
             var context = new MToon10Context(material)
@@ -1121,8 +1132,9 @@ namespace VRVlog.LilToonExporter
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
-                // world-coordinate width is already expressed in metres.
-                OutlineWidthFactor = Mathf.Max(0f, Float(source, "_OutlineWidth", 0f)) * 0.01f,
+                // world-coordinate width is already expressed in metres, along a
+                // normalized normal, so it also takes the scale lilToon drew with.
+                OutlineWidthFactor = Mathf.Max(0f, Float(source, "_OutlineWidth", 0f)) * 0.01f * outlineScale,
                 // lilToon's _OutlineTex colors the outline; MToon's texture is
                 // a green-channel width mask, so they are not interchangeable.
                 OutlineWidthMultiplyTexture = outlineEnabled ? OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures, outlineMasks) : null,
@@ -1136,10 +1148,16 @@ namespace VRVlog.LilToonExporter
                 context.TextureScale = source.GetTextureScale("_MainTex");
                 context.TextureOffset = source.GetTextureOffset("_MainTex");
             }
-            if (fakeShadow)
+            // lilToon's transparent shaders write depth by default (_ZWrite 1),
+            // so a mesh hides its own far side. MToon blends without depth
+            // unless TransparentWithZWrite is on.
+            if (context.AlphaMode == MToon10AlphaMode.Transparent && Float(source, "_ZWrite", 0f) > 0.5f)
+                context.TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.On;
+            if (hidden)
             {
                 // MToon has no stencil, so FakeShadow would cover the whole mesh
-                // it shares geometry with. Keep its slot (the lilToon extension
+                // it shares geometry with, and a ColorMask 0 stencil writer would
+                // draw a shell it never draws. Keep its slot (the lilToon extension
                 // still references it) but make the portable fallback invisible:
                 // FallbackColor gives alpha 0, which MToon blending clips.
                 context.AlphaMode = MToon10AlphaMode.Transparent;
@@ -1148,6 +1166,11 @@ namespace VRVlog.LilToonExporter
             context.Validate();
             return material;
         }
+
+        // Materials that MToon cannot draw the way lilToon does; their portable
+        // fallback is invisible.
+        static bool HiddenInFallback(Material source) =>
+            LilToonMaterialReader.IsFakeShadow(source) || LilToonMaterialReader.DrawsNoColor(source);
 
         // This is shared by the actual fallback and UE endpoint validation;
         // the latter must compare against this proxy rather than guessed lilToon
@@ -1158,7 +1181,7 @@ namespace VRVlog.LilToonExporter
             {
                 case MaterialColorType.color:
                     var color = Color(source, "_Color", UnityEngine.Color.white);
-                    if (LilToonMaterialReader.IsFakeShadow(source)) color.a = 0f;
+                    if (HiddenInFallback(source)) color.a = 0f;
                     return color;
                 case MaterialColorType.shadeColor: return source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f
                     ? MobileMaterialMath.ShadeColor(Color(source, "_Color", UnityEngine.Color.white),

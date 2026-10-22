@@ -620,7 +620,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.5";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.6";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional
@@ -669,11 +669,14 @@ namespace VRVlog.LilToonExporter
 
         private static string InstalledLilToonStatus()
         {
-            var package = FindLilToonPackage();
-            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
-            return Compatibility.DependencyPolicy.ClassifyLilToon(package.version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
-                ? package.version
-                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), package.version, Compatibility.DependencyPolicy.LilToonVersion);
+            var lilToon = Compatibility.LilToonInstallation.Find();
+            if (lilToon == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
+            if (Compatibility.DependencyPolicy.ClassifyLilToon(lilToon.Version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue)
+                return lilToon.Describe(ExporterLocalization.T);
+            var version = Compatibility.DependencyPolicy.DisplayLilToon(lilToon.Version, ExporterLocalization.T);
+            return lilToon.AssetsFolder == null
+                ? string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), version, Compatibility.DependencyPolicy.LilToonVersion)
+                : string.Format(ExporterLocalization.T("{0}（Assetsに導入: {1}・アプリでは{2}として描画）"), version, lilToon.AssetsFolder, Compatibility.DependencyPolicy.LilToonVersion);
         }
 
         // Stops only without lilToon, or when lilToon's baker that the avatar
@@ -683,20 +686,17 @@ namespace VRVlog.LilToonExporter
         // sourceLilToonVersion is always the catalogue version.
         internal static string RequireLilToon(GameObject avatar, ICollection<string> warnings)
         {
-            var version = FindLilToonPackage()?.version;
+            var version = InstalledLilToonVersion();
             var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
             var warning = Compatibility.DependencyPolicy.LilToonWarning(version, ExporterLocalization.T);
             if (warning != null) warnings?.Add(warning);
-            LilToonStructureCheck.Inspect(avatar, version, warnings);
+            LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);
             return version;
         }
 
-        internal static PackageManagerPackageInfo FindLilToonPackage()
-        {
-            foreach (var package in PackageManagerPackageInfo.GetAllRegisteredPackages())
-                if (string.Equals(package.name, "jp.lilxyzw.liltoon", StringComparison.Ordinal)) return package;
-            return null;
-        }
+        // The package version, LilToonUnknownVersion for lilToon under Assets
+        // without one, or null without lilToon.
+        internal static string InstalledLilToonVersion() => Compatibility.LilToonInstallation.Find()?.Version;
     }
 }

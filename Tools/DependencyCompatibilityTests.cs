@@ -29,16 +29,20 @@ public static class DependencyCompatibilityTests
             catch (InvalidOperationException) { rejected = true; }
             Check(rejected, "Direct export also fails before conversion");
         }
-        Check(DependencyPolicy.VrchatSdkMinimum == "3.5.2" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
-        foreach (var version in new[] { "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6" })
+        Check(DependencyPolicy.VrchatSdkMinimum == "3.5.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
+        // A pre-release counts as its X.Y.Z (VRCAnimatorPlayAudio is the same in every 3.5.2+ pre-release).
+        foreach (var version in new[] { "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6",
+            "3.5.2-beta.1", "3.6.2-constraints.3", "3.10.0-beta.1", "3.10.5-beta.1", "3.10.6-beta.2", "3.10.99" })
         {
             Check(DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio omission " + version);
-            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.5.1"), "Base must be the same release " + version);
+            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.4.2"), "Base must be the same release " + version);
         }
-        foreach (var version in new[] { null, "", "3.5.1", "3.5.0", "3.4.2", "3.5.2-beta.1", "3.11.0", "4.0.0", "3.10.5-beta.1", "3.10", "3.10.5.0", " 3.10.5", "03.10.5" })
+        foreach (var version in new[] { null, "", "3.4.2", "3.4.99", "3.11.0", "3.11.0-beta.1", "3.12.0", "4.0.0", "3.10", "3.10.5.0", " 3.10.5", "03.10.5",
+            "3.10.5+local", "3.10.5-", "3.10.5-.", "3.10.5-beta..1", "3.10.5-beta.", "3.10.5-beta_1", "3.10.5-beta.1+local", "3.10.x" })
             Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio stops " + (version ?? "null"));
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
+        Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.6-beta.2", "3.10.6"), "A pre-release Avatars with a stable Base stops");
         Check(DependencyPolicy.ModularAvatarMinimum == "1.18.0" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
         foreach (var version in new[] { "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10" })
         {
@@ -111,6 +115,22 @@ public static class DependencyCompatibilityTests
             "Caller-supplied translation applies to the error");
         Check(DependencyPolicy.LilToonWarning("2.4.1", text => "[" + text + "]").StartsWith("[", StringComparison.Ordinal),
             "Caller-supplied translation applies to the warning");
+        // lilToon under Assets without a readable version (mk 2026-10-22):
+        // exports with the version warning, which says the version is unknown.
+        var unknown = DependencyPolicy.LilToonUnknownVersion;
+        Check(DependencyPolicy.ClassifyLilToon(unknown) == DependencyPolicy.LilToonSupport.Unreadable, "Unknown version is unreadable");
+        Check(DependencyPolicy.LilToonError(unknown) == null, "Unknown version does not stop");
+        var unknownWarning = DependencyPolicy.LilToonWarning(unknown);
+        Check(unknownWarning == "アプリではlilToon 2.3.4として描画します（導入済みのバージョンは不明）", "Unknown version warns as unknown");
+        Check(DependencyPolicy.LilToonWarning(unknown, text => text == "不明" ? "unknown!" : text).Contains("unknown!"),
+            "Caller-supplied translation applies to the unknown version");
+        Check(DependencyPolicy.DisplayLilToon("2.3.4", text => text) == "2.3.4", "Display a known version");
+        Check(DependencyPolicy.DisplayLilToon(null, text => text) == "未インストール", "Display missing lilToon");
+        Check(DependencyPolicy.DescribeLilToon("2.3.4", null, text => text) == "2.3.4", "Package install shows only the version");
+        Check(DependencyPolicy.DescribeLilToon("2.3.4", "Assets/lilToon", text => text) == "2.3.4（Assetsに導入: Assets/lilToon）",
+            "Assets install shows the version and folder");
+        Check(DependencyPolicy.DescribeLilToon(unknown, "Assets/lilToon/Shader", text => text) == "不明（Assetsに導入: Assets/lilToon/Shader）",
+            "Assets install without a version shows unknown");
         Console.WriteLine("Dependency compatibility: " + count + " assertions passed.");
     }
 }

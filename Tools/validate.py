@@ -188,13 +188,18 @@ assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in reco
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
 assert "UniVrmOneClickExporter.Export" not in window and "settings.Creator(targetAvatar, AvatarName(), targetAuthor)" in window
 assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
-assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
+assert 'var version = InstalledLilToonVersion();' in window and 'return version;' in window
+# lilToon is the registered package or, imported from its unitypackage, found under Assets.
+installation = (root / "Editor/Compatibility/LilToonInstallation.cs").read_text(encoding="utf-8")
+assert 'internal static string InstalledLilToonVersion() => Compatibility.LilToonInstallation.Find()?.Version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-assert 'package.name, "jp.lilxyzw.liltoon"' in window
+assert 'public const string PackageName = "jp.lilxyzw.liltoon";' in installation and 'package.name, PackageName' in installation
+assert installation.index('PackageInfo.GetAllRegisteredPackages()') < installation.index('return FindUnderAssets();')
+assert 'PackageJsonGuid = "397d2fa9e93fb5d44a9540d5f01437fc"' in installation
 assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in window
 # Both export entries compare the shaders the avatar uses with the catalogue;
 # only a missing lilToon (or its baker) stops, other differences are warnings.
-assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, version, warnings);")
+assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);")
 assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 # The export window and batch callers export through ExportSettings, which runs
 # the same check ("アプリに転送" through the board's session, checked above).
@@ -212,8 +217,7 @@ assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.v
 assert f'? info.version : "{package["version"]}"' in window
 assert "using UnityEditor.PackageManager;" not in window
 assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;" in window
-assert "PackageManagerPackageInfo FindLilToonPackage()" in window
-assert "PackageManagerPackageInfo.GetAllRegisteredPackages()" in window
+assert "FindLilToonPackage" not in window and "GetAllRegisteredPackages" not in window
 assert "Vrm10AppearanceExporter.Export" in one_click
 assert one_click.index("NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true)") < one_click.index("VrChatExpressionMenu.Read(source)")
 assert one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)") < one_click.index("NdmfExportPreparation.ValidateCopy(source, clone,") < one_click.index("MaAppearanceSnapshot.Apply(source, clone,")
@@ -232,7 +236,7 @@ assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
 assert "MToon10Meta.UnityShaderName" in one_click
-assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks)" in one_click
+assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale)" in one_click
 assert "created.Add(material)" in one_click
 assert 'Float(source, "_Cull", 2f) == 2f' in one_click
 assert "context.Validate()" in one_click

@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter
             return record;
         }
 
-        private static bool HasOutline(Material m) => Enabled(m, "_UseOutline") || m.shader.name.EndsWith("Outline", StringComparison.Ordinal);
+        internal static bool HasOutline(Material m) => Enabled(m, "_UseOutline") || m.shader.name.EndsWith("Outline", StringComparison.Ordinal);
         private static bool ValidDirection(Vector4 direction) =>
             !float.IsNaN(direction.x) && Math.Abs(direction.x) <= 10000f &&
             !float.IsNaN(direction.y) && Math.Abs(direction.y) <= 10000f &&
@@ -145,6 +145,10 @@ namespace VRVlog.LilToonExporter
         // FakeShadow draws only through a stencil written by another material.
         internal static bool IsFakeShadow(Material material) => material != null && material.shader != null &&
             string.Equals(ShaderVariant(material.shader.name), "lilToonFakeShadow", StringComparison.OrdinalIgnoreCase);
+        // ColorMask 0 draws nothing; the material only writes stencil (or
+        // depth) for another one.
+        internal static bool DrawsNoColor(Material material) => material != null && material.HasProperty("_ColorMask") &&
+            material.GetFloat("_ColorMask") < .5f;
         private static string ShaderFamily(string name, ICollection<string> warnings)
         {
             var variant = ShaderVariant(name);

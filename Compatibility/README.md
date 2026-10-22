@@ -59,10 +59,18 @@ claim that every avatar or every combination is verified.
 
 The VRChat SDK is optional as well. It matters only when an expression file uses
 VRC Animator Play Audio: the capture copy omits that behaviour, and the exporter
-accepts it when VRChat SDK Base and Avatars are the same release with
-`vrchatSdkMinimum <= version < vrchatSdkBelow` (3.5.2 to below 3.11.0). 3.5.2 is
-the first stable release with `VRCAnimatorPlayAudio`; its fields and members are
-identical through 3.10.5. Results:
+accepts it when VRChat SDK Base and Avatars are the same version with
+`vrchatSdkMinimum <= X.Y.Z < vrchatSdkBelow` (3.5.0 to below 3.11.0). A
+pre-release counts as its X.Y.Z, so 3.10.6-beta.2 is accepted and
+3.11.0-beta.1 is not. 3.5.0 is the first SDK that declares Unity 2022.3; 3.4.x
+declares 2019.4. `VRCAnimatorPlayAudio` first ships in 3.5.2-beta.1, so on 3.5.0
+and 3.5.1 there is nothing to omit. Every type and member the exporter reads
+by name (avatar descriptor, expression parameters and menu, PhysBone, VRC
+Constraints, Play Audio) was compared across 62 official releases and
+pre-releases: they are identical wherever they exist, except in the VRC
+Constraints preview builds 3.6.2-constraints.1 and .2. Those store `Sources` as
+an array; the exporter finds no sources there and leaves those constraints out.
+Results:
 [Evidence/VrchatSdkRange](Evidence/VrchatSdkRange/README.md).
 
 Modular Avatar has its own range only for the appearance freeze, which runs
@@ -92,6 +100,20 @@ with it, Unity and the app use the same shader. See
 | Not installed | Stops: "lilToonが見つかりません（VCC／ALCOMでlilToonを追加）" |
 | 2.3.4 | Exports without a version warning |
 | 1.x, another 2.x, newer than 2.3.4, pre-release or unreadable | Exports; the result shows "アプリではlilToon 2.3.4として描画します（導入済みのバージョンは{0}）" |
+| Under `Assets` (imported from the unitypackage) | Same as the rows above for the version read from lilToon's `package.json`; without a readable version it exports with "（導入済みのバージョンは不明）" |
+
+lilToon imported from its unitypackage sits under `Assets` and is not
+registered in Package Manager. When Package Manager has no
+`jp.lilxyzw.liltoon`, the exporter finds lilToon's own `package.json` by its
+GUID `397d2fa9e93fb5d44a9540d5f01437fc` (lilToon reads its version from the
+same file) and reads `version` when the file is under `Assets/`. If that file
+is missing, a `lilToon` shader under `Assets/` still counts as installed, with
+the version unknown. The dependency diagnostics window and the export window's
+environment row show the folder, for example "2.3.4（Assetsに導入:
+Assets/lilToon）", and the copied diagnostics write
+`jp.lilxyzw.liltoon: 2.3.4 (Assets: Assets/lilToon)`. An unknown version is
+recorded as `unknown` in `asset.extras.VRVLOG_lilToonInstalledVersion`. See
+`Documentation~/decisions/2026-10-22-liltoon-assets-install.md`.
 
 Before each export the exporter compares the lilToon shaders the avatar uses
 with the 2.3.4 catalogue (property names, types, runtime texture dimensions,

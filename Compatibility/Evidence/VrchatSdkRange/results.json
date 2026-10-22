@@ -28,6 +28,38 @@
       "ndmf": null,
       "modularAvatar": null,
       "aao": null
+    },
+    "V1": {
+      "vrchatSdk": "3.5.0",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "ndmf": null,
+      "modularAvatar": null,
+      "aao": null
+    },
+    "V2": {
+      "vrchatSdk": "3.5.2",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "ndmf": null,
+      "modularAvatar": null,
+      "aao": null
+    },
+    "V3": {
+      "vrchatSdk": "3.10.5",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "ndmf": null,
+      "modularAvatar": null,
+      "aao": null
+    },
+    "V4": {
+      "vrchatSdk": "3.10.6-beta.2",
+      "uniVrm": "0.131.2",
+      "lilToon": "2.3.4",
+      "ndmf": null,
+      "modularAvatar": null,
+      "aao": null
     }
   },
   "runs": [
@@ -153,6 +185,208 @@
         "passed": 2002,
         "failed": 0,
         "skipped": 129
+      },
+      "failed": []
+    },
+    {
+      "set": "V1",
+      "run": "focused",
+      "commit": "fee2a97 (range 3.5.0 to below 3.11.0 with pre-releases; the later commit changes only the out-of-range message text)",
+      "counts": {
+        "total": 205,
+        "passed": 172,
+        "failed": 19,
+        "skipped": 14
+      },
+      "failed": [
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(False,True)",
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",True,True)",
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded",
+        "ExperimentalExpressionCaptureTests.LeavingTheObjectsPageAppliesItsEditsFirst",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(False,True)",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(True,True)",
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(False)",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(True)",
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName",
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload(True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",True)"
+      ],
+      "skipped": [
+        "ExperimentalExpressionCaptureTests.ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio\")",
+        "ExperimentalExpressionCaptureTests.ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio-reactive\")",
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(False)",
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(True)",
+        "PhysBoneSpringExportTests.AParentTailCannotShareTheChildOwnersFirstJoint",
+        "PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(False)",
+        "PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(True)",
+        "PhysBoneSpringExportTests.ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(True,True,False)",
+        "PhysBoneSpringExportTests.GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid",
+        "PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(False)",
+        "PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(True)"
+      ],
+      "audio": {
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio\")": "Skipped",
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio-reactive\")": "Skipped"
+      }
+    },
+    {
+      "set": "V2",
+      "run": "focused",
+      "commit": "fee2a97 (range 3.5.0 to below 3.11.0 with pre-releases; the later commit changes only the out-of-range message text)",
+      "counts": {
+        "total": 205,
+        "passed": 175,
+        "failed": 18,
+        "skipped": 12
+      },
+      "failed": [
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(False,True)",
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",True,True)",
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(False,True)",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(True,True)",
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(False)",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(True)",
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName",
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload(True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",True)"
+      ],
+      "skipped": [
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(False)",
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(True)",
+        "PhysBoneSpringExportTests.AParentTailCannotShareTheChildOwnersFirstJoint",
+        "PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(False)",
+        "PhysBoneSpringExportTests.ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(True)",
+        "PhysBoneSpringExportTests.ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(True,True,False)",
+        "PhysBoneSpringExportTests.GeneratedEndpointsDoNotTurnAnInertNestedPhysBoneIntoAnotherDriver",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid",
+        "PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(False)",
+        "PhysBoneSpringExportTests.NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal(True)"
+      ],
+      "audio": {
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio\")": "Passed",
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio-reactive\")": "Passed"
+      }
+    },
+    {
+      "set": "V3",
+      "run": "focused",
+      "commit": "fee2a97 (range 3.5.0 to below 3.11.0 with pre-releases; the later commit changes only the out-of-range message text)",
+      "counts": {
+        "total": 205,
+        "passed": 181,
+        "failed": 18,
+        "skipped": 6
+      },
+      "failed": [
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(False,True)",
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",True,True)",
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(False,True)",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(True,True)",
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(False)",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(True)",
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName",
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload(True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",True)"
+      ],
+      "skipped": [
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(False)",
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(True)",
+        "PhysBoneSpringExportTests.ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(True,True,False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid"
+      ],
+      "audio": {
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio\")": "Passed",
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio-reactive\")": "Passed"
+      }
+    },
+    {
+      "set": "V4",
+      "run": "focused",
+      "commit": "fee2a97 (range 3.5.0 to below 3.11.0 with pre-releases; the later commit changes only the out-of-range message text)",
+      "counts": {
+        "total": 205,
+        "passed": 181,
+        "failed": 18,
+        "skipped": 6
+      },
+      "failed": [
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(False,True)",
+        "ExperimentalExpressionCaptureTests.AutomaticAuxiliaryExclusionIsConsistentWithOrWithoutRecordedFaces(True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"descriptor\",True,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",False,True)",
+        "ExperimentalExpressionCaptureTests.ExplicitBlinkMetadataSurvivesModelAndRecordedFaceExport(\"vrm\",True,True)",
+        "ExperimentalExpressionCaptureTests.FourExplicitClipsCanBeDroppedAndRecorded",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(False,True)",
+        "ExperimentalExpressionCaptureTests.ManualBlinkConfigurationFromPrimaryWindowSurvivesModelAndRecordedFaceSave(True,True)",
+        "ExperimentalExpressionCaptureTests.OneExplicitClipCanBeDroppedAndPreviewed",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(False)",
+        "ExperimentalExpressionCaptureTests.PreparingAndExportingDoNotInvokeAvatarEditorCallbacks(True)",
+        "ExperimentalExpressionCaptureTests.RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName",
+        "ExperimentalExpressionCaptureTests.RecordedFacesRetainAuthoredMouthAndGazePresetsAfterReload(True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(False,\"APL\",True)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",False)",
+        "ExperimentalExpressionCaptureTests.RegisteredAndManualBodyPosesSurviveWithOrWithoutRecordedFaces(True,\"APL\",True)"
+      ],
+      "skipped": [
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(False)",
+        "ExperimentalExpressionCaptureTests.InstalledNdmfReportRemainsSafeAfterItsOwnedCopyIsDestroyed(True)",
+        "PhysBoneSpringExportTests.ActualExportImportsSpringsAndMovesHairWithoutChangingOriginal(True,True,False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(False)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(True)",
+        "PhysBoneSpringExportTests.InstalledAvatarOptimizerWithoutAvatarDescriptorStopsInsteadOfSavingAVrmWithoutHumanoid"
+      ],
+      "audio": {
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio\")": "Passed",
+        "ExistingMenuCandidateCanBeDiscoveredPreviewedAndCapturedWithoutChangingItsController(\"audio-reactive\")": "Passed"
+      }
+    },
+    {
+      "set": "V1",
+      "run": "focused-rerun",
+      "tests": [
+        "ExperimentalExpressionCaptureTests.LeavingTheObjectsPageAppliesItsEditsFirst"
+      ],
+      "commit": "fee2a97 (range 3.5.0 to below 3.11.0 with pre-releases; the later commit changes only the out-of-range message text)",
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
       },
       "failed": []
     }
