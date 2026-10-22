@@ -2404,9 +2404,10 @@ namespace VRVlog.LilToonExporter
             var blink = ExportBlinkOptions();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
-            // The list-only export: the faces of the list, read from their
-            // curves, are the VRM's custom expressions. Nothing is recorded and
-            // no menu face is played; the default face is the ordinary one.
+            // The list-only export: the faces of the list, read like gesture
+            // clips (a moving one keeps its animation), are the VRM's custom
+            // expressions. Nothing is recorded and no menu face is played; the
+            // default face is the ordinary one.
             var listFaces = board.ExportedCustom().Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
