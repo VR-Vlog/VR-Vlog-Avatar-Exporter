@@ -5,24 +5,6 @@ namespace VRVlog.LilToonExporter.Compatibility
     // No UniVRM/MA/lilToon types: diagnostics survive an unavailable backend.
     public static partial class DependencyPolicy
     {
-        // Every release of the UniVrmMajor.UniVrmMinor patch line (UniVrmRange).
-        // UniVrmVersions lists the patches verified with real packages.
-        public static bool SupportsUniVrm(string version)
-        {
-            var parsed = version == null ? null : ParseRelease(version);
-            return parsed != null && parsed[0] == UniVrmMajor && parsed[1] == UniVrmMinor;
-        }
-
-        public static string UniVrmError(string vrm, string gltf)
-        {
-            if (!SupportsUniVrm(vrm) || !SupportsUniVrm(gltf))
-                return "UniVRM / UniGLTF の対応バージョン: " + UniVrmRange +
-                    "。現在: " + Display(vrm) + " / " + Display(gltf) + "。";
-            if (!string.Equals(vrm, gltf, StringComparison.Ordinal))
-                return "UniVRM と UniGLTF のバージョンが異なります（" + vrm + " / " + gltf + "）。同じバージョンを選んでください。";
-            return null;
-        }
-
         // VRChat SDK Base/Avatars in which VRCAnimatorPlayAudio may be omitted from
         // an expression capture copy: the same release, VrchatSdkMinimum <= v < VrchatSdkBelow.
         public static bool SupportsVrchatSdkAudio(string avatars, string sdkBase)
@@ -133,12 +115,6 @@ namespace VRVlog.LilToonExporter.Compatibility
         }
 
         public static string Display(string version) => string.IsNullOrEmpty(version) ? "未インストール" : version;
-
-        public static void RequireUniVrm(string vrm, string gltf)
-        {
-            var error = UniVrmError(vrm, gltf);
-            if (error != null) throw new InvalidOperationException(error + Recovery);
-        }
 
         public const string Recovery = " VCC／ALCOMで対応バージョンを確認してください。別のツールと競合する場合は、更新前のプロジェクトのコピーで書き出してください。";
     }

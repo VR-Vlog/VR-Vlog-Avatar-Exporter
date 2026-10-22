@@ -362,7 +362,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Called while UniVRM's exact Unity-object/node/mesh mapping is alive.
-        internal void Bind(UniVRM10.ModelExporter converter, VrmLib.Model model, UniGLTF.ExportingGltfData storage)
+        internal void Bind(VRVlog.LilToonExporter.Vendor.UniVRM10.ModelExporter converter, VRVlog.LilToonExporter.Vendor.VrmLib.Model model, VRVlog.LilToonExporter.Vendor.UniGLTF.ExportingGltfData storage)
         {
             foreach (var entry in sources)
             {

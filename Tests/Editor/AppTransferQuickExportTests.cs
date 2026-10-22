@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using NUnit.Framework;
-using UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;

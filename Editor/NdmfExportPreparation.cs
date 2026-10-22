@@ -114,7 +114,7 @@ namespace VRVlog.LilToonExporter
         // VRChat constraints run in edit mode but are read by ConstraintExport
         // on the copy; they only pose the copy as the source already is.
         internal static bool PreservesExportBehaviour(Behaviour behaviour) => behaviour != null && (
-            behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint") ||
+            behaviour.GetType().GetInterfaces().Any(contract => contract.FullName == "UniVRM10.IVrm10Constraint" || contract.FullName == "VRVlog.LilToonExporter.Vendor.UniVRM10.IVrm10Constraint") ||
             behaviour.GetType().FullName?.StartsWith("VRC.SDK3.Dynamics.Constraint.Components.", StringComparison.Ordinal) == true ||
             behaviour.GetType().FullName == PhysBoneSpringExport.PhysBoneType ||
             behaviour.GetType().FullName == "VRC.SDK3.Dynamics.PhysBone.Components.VRCPhysBoneCollider");
@@ -137,6 +137,9 @@ namespace VRVlog.LilToonExporter
                 // Remove it from the owned copy only; the source keeps it.
                 foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
                     UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
+                // The project's own UniVRM components and MToon materials become
+                // the exporter's vendored ones before any script runs on the copy.
+                ForeignUniVrm.Adopt(copy);
                 foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
                 {
                     if (behaviour == null) continue;

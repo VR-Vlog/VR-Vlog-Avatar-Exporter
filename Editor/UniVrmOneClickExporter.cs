@@ -1,12 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniGLTF;
-using UniVRM10;
-using UniGLTF.Extensions.VRMC_vrm;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using UnityEngine;
-using VRM10.MToon10;
-using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 
 namespace VRVlog.LilToonExporter
 {
@@ -368,7 +367,6 @@ namespace VRVlog.LilToonExporter
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
             if (string.IsNullOrWhiteSpace(author)) throw new InvalidOperationException("作者名を入力してください。");
 
-            EnsureUniVrmVersion();
             // A hidden avatar or hidden parent does not stop the export. Only the
             // owned copy's root is shown; the scene object is never changed, and
             // the avatar's own inactive children stay out as usual.
@@ -938,13 +936,6 @@ namespace VRVlog.LilToonExporter
             foreach (var renderer in empty) renderer.enabled = false;
             warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", empty.Select(renderer =>
                 renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform))));
-        }
-
-        private static void EnsureUniVrmVersion()
-        {
-            var package = PackageManagerPackageInfo.FindForAssembly(typeof(Vrm10Exporter).Assembly);
-            var gltf = PackageManagerPackageInfo.FindForAssembly(typeof(ExportingGltfData).Assembly);
-            Compatibility.DependencyPolicy.RequireUniVrm(package?.version, gltf?.version);
         }
 
         internal static VRM10ObjectMeta CreateMeta(string avatarName, string author, AvatarLicenseOptions licenseOptions = null)

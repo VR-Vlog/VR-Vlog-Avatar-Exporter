@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UniVRM10;
-using VRM10.MToon10;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;

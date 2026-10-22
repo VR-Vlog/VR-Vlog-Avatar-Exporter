@@ -101,9 +101,9 @@ namespace VRVlog.LilToonExporter.Compatibility
         public static string Version(Dictionary<string, string> packages, string name) =>
             packages.TryGetValue(name, out var version) ? version : null;
 
-        public static string Error(Dictionary<string, string> packages) =>
-            DependencyPolicy.UniVrmError(Version(packages, "com.vrmc.vrm"), Version(packages, "com.vrmc.gltf")) ??
-            LilToonError(packages);
+        // The exporter carries its own UniVRM, so the project's UniVRM (any
+        // version, or none) is not a requirement.
+        public static string Error(Dictionary<string, string> packages) => LilToonError(packages);
 
         static string LilToonError(Dictionary<string, string> packages) =>
             DependencyPolicy.LilToonError(Version(packages, "jp.lilxyzw.liltoon"), T);
@@ -113,8 +113,6 @@ namespace VRVlog.LilToonExporter.Compatibility
         public static string StartupError(Dictionary<string, string> packages)
         {
             if (IsBusy) return "Unityがパッケージを読み込み中です。完了すると自動で再確認します。";
-            var uniVrmError = DependencyPolicy.UniVrmError(Version(packages, "com.vrmc.vrm"), Version(packages, "com.vrmc.gltf"));
-            if (uniVrmError != null) return uniVrmError + DependencyPolicy.Recovery;
             // The lilToon message already names its own fix.
             var lilToonError = LilToonError(packages);
             if (lilToonError != null) return lilToonError;
@@ -141,9 +139,12 @@ namespace VRVlog.LilToonExporter.Compatibility
             var packages = Installed();
             var text = new StringBuilder();
             text.AppendLine("Unity: " + Application.unityVersion);
-            foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "com.vrmc.vrm", "com.vrmc.gltf",
+            foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon",
                 "com.vrchat.base", "com.vrchat.avatars", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
                 text.AppendLine(name + ": " + DependencyPolicy.Display(Version(packages, name)));
+            // Information only: the exporter compiles against its bundled UniVRM.
+            foreach (var name in new[] { "com.vrmc.vrm", "com.vrmc.gltf" })
+                text.AppendLine(name + " (not used by the exporter): " + DependencyPolicy.Display(Version(packages, name)));
             text.AppendLine("Status: " + (StartupError(packages) ?? "Ready"));
             text.AppendLine("Compiling: " + EditorApplication.isCompiling + "; Updating: " + EditorApplication.isUpdating +
                 "; Compilation failed: " + EditorUtility.scriptCompilationFailed);
@@ -203,7 +204,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             if (packages == null) OnEnable();
             ExporterWindowHeader.Layout(T("動作環境"));
             EditorGUILayout.LabelField("Unity", Application.unityVersion);
-            foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "com.vrmc.vrm", "com.vrmc.gltf", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
+            foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
                 EditorGUILayout.LabelField(name, DependencyPolicy.Display(DependencyDiagnostics.Version(packages, name)));
             var error = DependencyDiagnostics.StartupError(packages);
             EditorGUILayout.HelpBox(error == null ? T("書き出しに必要なパッケージが揃っています。アバター固有の連携は書き出し時にも確認します。") : T(error),

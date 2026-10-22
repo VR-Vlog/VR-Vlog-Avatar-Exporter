@@ -27,6 +27,10 @@ LOCALE_FILES = LOCALE_ASSETS | {name + ".meta" for name in LOCALE_ASSETS}
 # Tables the editor code loads as TextAssets at run time.
 DATA_ASSETS = {"Editor/ExpressionShapeNames.json"}
 DATA_FILES = DATA_ASSETS | {name + ".meta" for name in DATA_ASSETS}
+# The bundled UniVRM copy (Tools/vendor-univrm.py) ships whole: its shaders
+# include .hlsl files and it loads assets, so no suffix filter applies inside it.
+VENDOR_ROOT = "Editor/Vendor/"
+VENDOR_FILES = {"Editor/Vendor.meta", "Editor/Vendor/UniVRM/LICENSE.txt", "Editor/Vendor/UniVRM/VERSION.json"}
 # Formats/ is the shared format package. The exporter ships its sources, but
 # not its nested manifest: a VPM install keeps exactly one package.json.
 FORMATS_EXCLUDED = {"Formats/package.json", "Formats/package.json.meta"}
@@ -72,7 +76,7 @@ def included(name, transfer=False):
         return transfer and name.removesuffix(".meta") in TRANSFER_DLL_PATHS
     return (name in ROOT_FILES or transfer and name == "Documentation~/CloudTransfer.md"
             or name in LOCALE_FILES or name in DATA_FILES or name in DEPENDENCY_PATCH_FILES
-            or name in {"Runtime.meta", "Formats.meta"}
+            or name in {"Runtime.meta", "Formats.meta"} or name.startswith(VENDOR_ROOT)
             or (path.parts[0] == "Formats" and name not in FORMATS_EXCLUDED
                 and (path.suffix in PACKAGE_SUFFIXES or path.name == "README.md"))
             or (path.parts[0] in {"Editor", "Runtime"} and path.suffix in PACKAGE_SUFFIXES)
@@ -124,12 +128,14 @@ def build(root, output):
     # historical stable packages and the explicit opt-out for any channel.
     transfer = (prerelease(manifest["version"]) or manifest["version"] == "0.11.15") and cloud_transfer
     names = [name for name in tracked_files(root) if included(name, transfer)]
-    required = ROOT_FILES | LOCALE_FILES | DEPENDENCY_PATCH_FILES
+    required = ROOT_FILES | LOCALE_FILES | DEPENDENCY_PATCH_FILES | VENDOR_FILES
     if transfer:
         required |= {"Documentation~/CloudTransfer.md"}
     missing = required - set(names)
     if missing:
         raise ValueError("Required package files are not tracked: " + ", ".join(sorted(missing)))
+    if not any(name.startswith(VENDOR_ROOT) and name.endswith(".hlsl") for name in names):
+        raise ValueError("Required package files are not tracked: the bundled UniVRM shader includes")
     contents = {}
     for name in names:
         path = root / name

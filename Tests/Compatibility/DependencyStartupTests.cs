@@ -31,7 +31,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/VRMを書き出す...", "VR Vlog/アプリに転送（かんたん）...", "VR Vlog/アプリに転送（通常）..." }));
             var expected = Environment.GetEnvironmentVariable("VRVLOG_TEST_UNIVRM");
             if (string.IsNullOrEmpty(expected)) Assert.Ignore("Requires an explicit compatibility environment.");
-            var supported = DependencyPolicy.SupportsUniVrm(expected);
             var deadline = EditorApplication.timeSinceStartup + 300;
             while (DependencyDiagnostics.IsBusy && EditorApplication.timeSinceStartup < deadline) yield return null;
             Assert.That(DependencyDiagnostics.IsBusy, Is.False, "Unity was still importing or compiling after 300 seconds.\n" + DependencyDiagnostics.CreateReport());
@@ -54,10 +53,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var exporter = Resources.FindObjectsOfTypeAll<EditorWindow>()
                     .SingleOrDefault(w => w.GetType().FullName == "VRVlog.LilToonExporter.ExperimentalExpressionCaptureWindow");
                 var diagnostics = Resources.FindObjectsOfTypeAll<DependencyDiagnosticsWindow>();
-                Assert.That(exporter != null, Is.EqualTo(supported), DependencyDiagnostics.CreateReport());
-                if (exporter != null) Assert.That(exporter.titleContent.text, Is.EqualTo("VRM書き出し"));
-                if (exporter != null) Assert.That(exporter.titleContent.image, Is.Null);
-                Assert.That(diagnostics.Length, Is.EqualTo(supported ? 0 : 1));
+                // Opens with or without the project's own UniVRM, of any version.
+                Assert.That(exporter, Is.Not.Null, DependencyDiagnostics.CreateReport());
+                Assert.That(exporter.titleContent.text, Is.EqualTo("VRM書き出し"));
+                Assert.That(exporter.titleContent.image, Is.Null);
+                Assert.That(diagnostics, Is.Empty);
             }
             finally
             {

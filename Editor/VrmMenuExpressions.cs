@@ -114,7 +114,7 @@ namespace VRVlog.LilToonExporter
         }
 
         static readonly HashSet<string> PresetNames = new HashSet<string>(
-            Enum.GetNames(typeof(UniVRM10.ExpressionPreset)).Where(name => name != "custom"), StringComparer.Ordinal);
+            Enum.GetNames(typeof(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset)).Where(name => name != "custom"), StringComparer.Ordinal);
 
         // A custom expression must not take a VRM 1.0 preset name (UniVRM keys
         // imported expressions by name, so custom "happy" would collide with

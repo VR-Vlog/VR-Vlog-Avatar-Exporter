@@ -43,10 +43,9 @@ def parse_listing(raw, expected_url, *, allow_historical_urls=False):
     if data.get("url") != expected_url:
         raise ValueError("Unexpected listing URL")
     packages = data.get("packages")
-    if not isinstance(packages, dict) or not all(
-        name in packages for name in (EXPORTER, "com.vrmc.gltf", "com.vrmc.vrm")
-    ):
-        raise ValueError("Exporter or required dependencies are missing")
+    # UniVRM is bundled inside the exporter; earlier dependency packages stay only as published history.
+    if not isinstance(packages, dict) or EXPORTER not in packages:
+        raise ValueError("Exporter package is missing")
     for name, package in packages.items():
         if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", name):
             raise ValueError("Invalid package name")
