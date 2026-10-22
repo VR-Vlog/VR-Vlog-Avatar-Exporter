@@ -20,8 +20,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import liltoon_catalogue as lc  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-# Tags hashed into the structure table: every stable tag from 2.0.0 to the reference, plus
-# the last 1.x release to show that the hash separates a different structure.
+# Tags hashed into the structure table: every stable tag of the verified range
+# (lilToon.verified in Compatibility/dependencies.json), plus the last 1.x release to show
+# that the hash separates a different structure.
 COMPARISON_TAGS = ("1.10.3",)
 
 
@@ -64,9 +65,10 @@ def list_tags(args):
         names = subprocess.check_output(["git", "-C", str(args.git), "tag", "--list"], text=True).split()
     else:
         names = lc.remote_tags()
-    reference = lc.parse_version(lc.REFERENCE_VERSION)
+    config = json.loads((ROOT / "Compatibility/dependencies.json").read_text(encoding="utf-8"))
+    bounds = lc.verified_range(config)
     stable = [n for n in names if _stable(n)]
-    chosen = [n for n in stable if lc.parse_version("2.0.0") <= lc.parse_version(n) <= reference]
+    chosen = [n for n in stable if lc.in_range(n, bounds)]
     chosen += [n for n in COMPARISON_TAGS if n in stable]
     return sorted(set(chosen), key=lc.parse_version)
 
@@ -130,8 +132,8 @@ def main(argv=None):
     where = structure.add_mutually_exclusive_group(required=True)
     where.add_argument("--git", type=Path, help="local lilToon clone with tags")
     where.add_argument("--fetch", action="store_true", help="download tags from GitHub")
-    structure.add_argument("--tags", nargs="+", help="tags to hash (default: 2.0.0 to %s and %s)"
-                           % (lc.REFERENCE_VERSION, ", ".join(COMPARISON_TAGS)))
+    structure.add_argument("--tags", nargs="+", help="tags to hash (default: the verified range and %s)"
+                           % ", ".join(COMPARISON_TAGS))
     structure.add_argument("--write", action="store_true", help="write %s" % lc.STRUCTURE_PATH)
     structure.add_argument("--output", type=Path, help="write the table to another file")
     structure.add_argument("--max-differences", type=int, default=20)

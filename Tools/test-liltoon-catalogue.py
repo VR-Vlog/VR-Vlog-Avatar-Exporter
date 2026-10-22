@@ -246,7 +246,7 @@ class CommittedCatalogueTests(unittest.TestCase):
         self.assertEqual(self.text, lc.render_catalogue(self.catalogue))
 
     def test_structure_table_passes_for_the_committed_files(self):
-        self.assertEqual([], lc.check_structure_table(self.table, self.catalogue, lc.DEFAULT_SUPPORTED_RANGE))
+        self.assertEqual([], lc.check_structure_table(self.table, self.catalogue, lc.DEFAULT_VERIFIED_RANGE))
         self.assertEqual([], structure_check.check()[2])
 
     def test_one_changed_catalogue_entry_fails_the_check(self):
@@ -264,7 +264,7 @@ class CommittedCatalogueTests(unittest.TestCase):
                 self.assertEqual(1, self.text.count(old))
                 # Each edit still reads as a catalogue, so only the structure hash can catch it.
                 changed = lc.parse_catalogue(self.text.replace(old, new))
-                self.assertNotEqual([], lc.check_structure_table(self.table, changed, lc.DEFAULT_SUPPORTED_RANGE))
+                self.assertNotEqual([], lc.check_structure_table(self.table, changed, lc.DEFAULT_VERIFIED_RANGE))
 
     def test_inconsistent_pass_sections_cannot_be_read(self):
         old = '{"lilToon", "FORWARD,FORWARD_ADD,META,SHADOW_CASTER".Split('
@@ -278,15 +278,16 @@ class StructureTableTests(unittest.TestCase):
         self.catalogue = lc.parse_catalogue((ROOT / lc.CATALOGUE_PATH).read_text(encoding='ascii'))
         self.table = json.loads((ROOT / lc.STRUCTURE_PATH).read_text(encoding='utf-8'))
 
-    def problems(self, table, bounds=lc.DEFAULT_SUPPORTED_RANGE):
+    def problems(self, table, bounds=lc.DEFAULT_VERIFIED_RANGE):
         return lc.check_structure_table(table, self.catalogue, bounds)
 
     def entry(self, table, tag):
         return next(e for e in table['tags'] if e['tag'] == tag)
 
-    def test_committed_table_covers_every_tag_of_the_supported_range(self):
+    def test_committed_table_covers_every_tag_of_the_verified_range(self):
         tags = [e['tag'] for e in self.table['tags']]
         expected = ['2.0.0'] + ['2.1.%d' % n for n in range(11)] + ['2.2.0', '2.2.1'] + ['2.3.%d' % n for n in range(5)]
+        expected += ['2.4.0', '2.4.1']
         self.assertEqual(['1.10.3'] + expected, tags)
         self.assertFalse(self.entry(self.table, '1.10.3')['matchesReference'])
 
@@ -295,7 +296,7 @@ class StructureTableTests(unittest.TestCase):
         entry = self.entry(table, '2.1.5')
         entry['structureHash'] = 'f' * 64
         entry['matchesReference'] = False
-        self.assertTrue(any('2.1.5 is in the supported range' in p for p in self.problems(table)))
+        self.assertTrue(any('2.1.5 is in the verified range' in p for p in self.problems(table)))
 
     def test_a_differing_tag_outside_the_range_is_recorded_without_failing(self):
         self.assertEqual([], self.problems(self.table))
@@ -328,13 +329,13 @@ class StructureTableTests(unittest.TestCase):
             with self.subTest(case=index):
                 self.assertNotEqual([], self.problems(table))
 
-    def test_supported_range_reads_dependencies(self):
-        self.assertEqual(('2.1.0', '2.3.4'), lc.supported_range(
-            {'lilToon': {'supported': {'minimum': '2.1.0', 'maximum': '2.3.4'}}}))
+    def test_verified_range_reads_dependencies(self):
+        self.assertEqual(('2.1.0', '2.3.4'), lc.verified_range(
+            {'lilToon': {'verified': {'minimum': '2.1.0', 'maximum': '2.3.4'}}}))
         with self.assertRaises(KeyError):
-            lc.supported_range({'lilToon': {'version': '2.3.4'}})
+            lc.verified_range({'lilToon': {'version': '2.3.4'}})
         config = json.loads((ROOT / 'Compatibility/dependencies.json').read_text(encoding='utf-8'))
-        self.assertEqual(lc.DEFAULT_SUPPORTED_RANGE, lc.supported_range(config))
+        self.assertEqual(lc.DEFAULT_VERIFIED_RANGE, lc.verified_range(config))
         self.assertTrue(lc.in_range('2.1.10', ('2.0.0', '2.3.4')))
         self.assertFalse(lc.in_range('2.3.5', ('2.0.0', '2.3.4')))
         with self.assertRaises(lc.CatalogueError):

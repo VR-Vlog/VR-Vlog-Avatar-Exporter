@@ -33,12 +33,14 @@ def outputs(root=ROOT):
     assert versions == sorted(versions, key=version_tuple)
     assert vrm['releaseVersion'] in versions
     lil = data['lilToon']
-    # `version` is the catalogue every export conforms to; `supported` is the
-    # installed lilToon range whose migration alone reaches that catalogue.
+    # `version` is the catalogue every export conforms to; `verified` is the range
+    # of lilToon releases whose shader structure was checked to match that
+    # catalogue (Tools/check-liltoon-structure.py). Nothing in the Exporter stops
+    # on it, so it is not generated into the policy.
     assert lil['version'] == '2.3.4' and (lil['schemaMajor'], lil['schemaMinor']) == (2, 0)
-    supported = lil['supported']
-    assert set(supported) == {'minimum', 'maximum'}
-    minimum, maximum, catalogue_version = (version_tuple(supported['minimum']), version_tuple(supported['maximum']),
+    verified = lil['verified']
+    assert set(verified) == {'minimum', 'maximum'}
+    minimum, maximum, catalogue_version = (version_tuple(verified['minimum']), version_tuple(verified['maximum']),
                                            version_tuple(lil['version']))
     assert minimum <= catalogue_version <= maximum
     assert re.fullmatch(r'[a-f0-9]{40}', lil['commit'])
@@ -55,7 +57,6 @@ def outputs(root=ROOT):
             < version_tuple(authoring['modularAvatarBelow']))
     values = {
         'LilToonVersion': lil['version'], 'LilToonCommit': lil['commit'],
-        'LilToonMinimum': supported['minimum'], 'LilToonMaximum': supported['maximum'],
         'UniVrmAdapter': vrm['adapter'], 'UniVrmRange': vrm['vpmRange'], 'UniVrmVersions': ', '.join(versions),
         'NdmfMinimum': authoring['ndmfMinimum'], 'NdmfReference': authoring['ndmfReference'],
         'ModularAvatarReference': authoring['modularAvatarReference'],

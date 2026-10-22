@@ -1,5 +1,7 @@
 # 書き出し前に lilToon のシェーダー構成を 2.3.4 のカタログと照合する
 
+> 2026-10-22の[lilToonのバージョンで書き出しを止めない](2026-10-22-liltoon-no-version-gate.md)で一部を置き換えた（止めるのはベイク用シェーダーの違いだけで、ほかの違いは警告にする）。
+
 - 日付: 2026-10-14
 - 対象: `Editor/LilToonStructureCheck.cs`・`Editor/LilToonStructureCheck.Unity.cs`・`Editor/LilToonExporterWindow.cs`・`Editor/ExperimentalExpressionCaptureSession.cs`・`Editor/Compatibility/DependencyPolicy.cs`・`Editor/Locales`・`Tests/Editor/LilToonStructureCheckTests.cs`・`Tools/LilToonStructureCheckTests.cs`・`Tools/run-compatibility-tests.ps1`・`Tools/run-unity-compatibility.py`
 - Issue: #148 の後半（Epic #145 の WBS 1-5）

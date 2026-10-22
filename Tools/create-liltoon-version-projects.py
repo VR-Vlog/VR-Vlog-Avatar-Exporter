@@ -31,12 +31,15 @@ DEFAULT_VERSIONS = ('2.0.0', '2.1.0', '2.1.10', '2.2.1', '2.3.0', '2.3.4')
 RELEASE_URL = 'https://github.com/lilxyzw/lilToon/releases/download/{0}/jp.lilxyzw.liltoon-{0}.zip'
 # SHA-256 of the official release ZIPs, reviewed when each version was added.
 RELEASE_SHA256 = {
+    '1.10.3': '25264cf7f463a97110b7b7313e6a49ea14d76e515634319043379546294c65e0',
     '2.0.0': 'a45b411d9c433732d92c332114c3709e83161e4f9ec1bbe23725531337810004',
     '2.1.0': '3c18da9be8dce0b921459fddbbbae928c558f2b1888f588f26c173a1ac8ec836',
     '2.1.10': '975cb1e06597f3ce7405cff67073627ca88e8097fb49d1dae88a8141fdfabbd9',
     '2.2.1': '2aab5ddd64ba6aaed0278301c425bb3188ee8542251d38d9f18a12ff6f10f7b9',
     '2.3.0': '211c4e5c0168dfa58701b30e13660b4917b409484c910a6d2121e9f783297945',
     '2.3.4': '34d172761c51aa9469a904704109086aafa6125a4fa0e058766e2ddc73d3b303',
+    '2.4.0': '1d1e718ddc0f1d3c7ac7b18f3ed1041daac5f258039537eb74562c7d7981491f',
+    '2.4.1': '90f8bed7cdd7435f4904bca3d885a81a1811bd25036d712f21942c531d940247',
 }
 EXPORTER = 'com.vrvlog.liltoon-vrm-exporter'
 UNIVRM = ('com.vrmc.gltf', 'com.vrmc.vrm')
