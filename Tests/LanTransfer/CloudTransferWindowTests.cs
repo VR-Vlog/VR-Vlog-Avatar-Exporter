@@ -18,7 +18,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void TransferAvailabilityRemainsEnabledWithoutAddingAnotherToolbarMenu()
         {
-            Assert.That(LanTransferAvailability.Enabled, Is.False);
             var menu = typeof(CloudVrmTransferWindow).GetMethod("OpenDevelopmentTransfer", BindingFlags.NonPublic | BindingFlags.Static);
 #if UNITY_EDITOR
             Assert.That(menu, Is.Not.Null);

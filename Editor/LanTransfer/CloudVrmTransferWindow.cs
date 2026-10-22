@@ -81,7 +81,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 // A caller may still own a snapshot issued by an earlier
                 // version. Ordinary saved VRMs are never in this registry.
-                if (OwnedSnapshots.Remove(ownedSnapshotPath)) LanVrmTransferServer.TryDelete(ownedSnapshotPath);
+                if (OwnedSnapshots.Remove(ownedSnapshotPath)) TransferTempDirectory.TryDelete(ownedSnapshotPath);
                 CloudTransferAvailability.RequireEnabled();
             }
             // Only the explicitly generated output path can be adopted. An
@@ -106,7 +106,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 if (window != null && ReferenceEquals(window.source, prepared)) window.StopAndClean();
                 else prepared?.Dispose();
-                LanVrmTransferServer.TryDelete(ownedSnapshotPath);
+                TransferTempDirectory.TryDelete(ownedSnapshotPath);
                 throw new InvalidOperationException("転送用のVRMを開けませんでした。256 MiB以下の書き出し済みVRMを選択してください。");
             }
         }

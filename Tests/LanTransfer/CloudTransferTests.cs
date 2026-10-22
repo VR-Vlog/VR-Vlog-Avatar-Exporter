@@ -26,7 +26,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             if (CloudTransferAvailability.Enabled) CloudTransferAvailability.RequireEnabled();
             else Assert.Throws<NotSupportedException>(() => CloudTransferAvailability.RequireEnabled());
-            Assert.That(LanTransferAvailability.Enabled, Is.False);
         }
 
         [TestCase("0.11.12", false)]
@@ -80,7 +79,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(File.ReadAllBytes(original), Is.EqualTo(bytes));
                 using (var hash = SHA256.Create()) Assert.That(LanTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original))), Is.EqualTo(before));
             }
-            finally { if (snapshotPath != null) LanVrmTransferServer.TryDelete(snapshotPath); File.Delete(original); }
+            finally { if (snapshotPath != null) TransferTempDirectory.TryDelete(snapshotPath); File.Delete(original); }
         }
 
         [TestCase("short")][TestCase("long")][TestCase("io")]

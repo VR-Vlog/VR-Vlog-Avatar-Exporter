@@ -115,7 +115,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 file = null; cek = null;
                 return result;
             }
-            catch { file?.Dispose(); LanVrmTransferServer.TryDelete(path); throw; }
+            catch { file?.Dispose(); TransferTempDirectory.TryDelete(path); throw; }
             finally
             {
                 if (cek != null) Array.Clear(cek, 0, cek.Length);
@@ -142,7 +142,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             lock (gate)
             {
                 foreach (var reader in readers) reader.Dispose(); readers.Clear(); master?.Dispose(); master = null;
-                LanVrmTransferServer.TryDelete(SnapshotPath);
+                TransferTempDirectory.TryDelete(SnapshotPath);
             }
         }
         public void Dispose()
