@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -27,22 +26,34 @@ namespace VRVlog.LilToonExporter
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             using var hash = new Digest();
-            var drivenRotations = DrivenRotations(source, out var externalInputs, out var partial);
+            var drivenRotations = DrivenRotations(source, out var externalInputs, out var partial, out var sceneUp);
             partialRotations = capturePartial ? partial.OrderBy(value => value.GetInstanceID()).Select(value => new PartialRotation(value)).ToArray() : Array.Empty<PartialRotation>();
             hash.Boolean(source.activeInHierarchy);
+            // The export copy is put at the origin with no rotation before
+            // UniVRM reads it (RootScaleBake), so the root's place in the scene
+            // and its parent never reach the file. Its world scale does: it is
+            // moved into the children. An aim solver with a scene-fixed up
+            // vector sees the root's world rotation, so that case keeps it.
             // A fully driven rotation is the solver's output, including its
-            // frame-to-frame floating point noise. The parent and the other
-            // root channels remain inputs even when the avatar root is driven.
-            var rootRotationCaptured = drivenRotations.Contains(source.transform) || capturePartial && partial.Contains(source.transform);
-            hash.Boolean(rootRotationCaptured);
-            if (rootRotationCaptured)
-            {
-                hash.Matrix(source.transform.parent != null ? source.transform.parent.localToWorldMatrix : Matrix4x4.identity);
-                hash.Vector(source.transform.localPosition); hash.Vector(source.transform.localScale);
-            }
-            else hash.Matrix(source.transform.localToWorldMatrix);
+            // frame-to-frame floating point noise.
+            var root = source.transform;
+            var rootRotationDriven = drivenRotations.Contains(root) || capturePartial && partial.Contains(root);
+            var rootRotationInput = sceneUp && !rootRotationDriven;
+            // World values computed through a rotated parent carry float noise
+            // (a scale of 1 reads 0.99999994), so they are compared settled.
+            var scale = root.lossyScale;
+            foreach (var axis in new[] { scale.x, scale.y, scale.z }) hash.Text(axis.ToString("G6", System.Globalization.CultureInfo.InvariantCulture));
+            hash.Boolean(rootRotationInput);
+            if (rootRotationInput) { var rotation = root.rotation; hash.Vector(new Vector4(rotation.x, rotation.y, rotation.z, rotation.w)); }
+            // An input outside the avatar sets the pose the copy keeps; only
+            // its placement relative to the root reaches the file.
+            var frame = Matrix4x4.TRS(root.position, rootRotationDriven ? Quaternion.identity : root.rotation, Vector3.one).inverse;
             foreach (var input in externalInputs.OrderBy(value => value.GetInstanceID()))
-            { hash.Integer(input.GetInstanceID()); hash.Matrix(input.localToWorldMatrix); }
+            {
+                hash.Integer(input.GetInstanceID());
+                var relative = frame * input.localToWorldMatrix;
+                for (var i = 0; i < 16; i++) hash.Long((long)Math.Round(relative[i] * 1e5));
+            }
             var visited = new HashSet<Object>(); var assets = new HashSet<string>(StringComparer.Ordinal);
             var queue = new Queue<Object>(source.GetComponentsInChildren<Component>(true).Cast<Object>());
             foreach (var transform in source.GetComponentsInChildren<Transform>(true)) queue.Enqueue(transform.gameObject);
@@ -51,7 +62,7 @@ namespace VRVlog.LilToonExporter
                 var value = queue.Dequeue();
                 if (value == null) { hash.Integer(0); continue; }
                 if (!visited.Add(value)) continue;
-                hash.Integer(value.GetInstanceID()); hash.Text(value.GetType().FullName);
+                Identity(hash, value); hash.Text(value.GetType().FullName);
                 hash.Text(value.name); hash.Integer((int)value.hideFlags);
                 var path = AssetDatabase.GetAssetPath(value);
                 if (!string.IsNullOrEmpty(path)) assets.Add(path);
@@ -73,22 +84,27 @@ namespace VRVlog.LilToonExporter
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip)) AnimationUtility.GetEditorCurve(clip, binding);
                 var transform = value as Transform;
                 var driven = transform != null && drivenRotations.Contains(transform);
-                SerializedDataCore(hash, value, queue, driven || capturePartial && transform != null && partial.Contains(transform), driven);
+                SerializedDataCore(hash, value, queue, driven || capturePartial && transform != null && partial.Contains(transform), driven, transform == root);
             }
-            foreach (var path in assets.OrderBy(path => path, StringComparer.Ordinal))
+            // Shader and script files are not written to the VRM: the export
+            // reads the shader a material points to when it runs, and a script
+            // change reloads the domain, which closes the copy. The project's
+            // package list and lilToon settings are not hashed for the same
+            // reasons; the lilToon settings file is read when exporting.
+            foreach (var path in assets.Where(path => !NotWrittenToFile(path)).OrderBy(path => path, StringComparer.Ordinal))
             { hash.Text(path); hash.Text(AssetDatabase.GetAssetDependencyHash(path).ToString()); }
-            foreach (var path in new[] { "ProjectSettings/lilToonSetting.json", "Packages/manifest.json", "Packages/packages-lock.json" })
-            {
-                hash.Text(path);
-                var fullPath = Path.Combine(Application.dataPath, "..", path);
-                hash.Boolean(File.Exists(fullPath));
-                if (File.Exists(fullPath)) hash.File(fullPath);
-            }
             return hash.Finish();
         }
 
-        static HashSet<Transform> DrivenRotations(GameObject source, out HashSet<Transform> externalInputs, out HashSet<Transform> partialRotations)
+        static bool NotWrittenToFile(string path)
         {
+            var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+            return type == typeof(Shader) || type == typeof(MonoScript);
+        }
+
+        static HashSet<Transform> DrivenRotations(GameObject source, out HashSet<Transform> externalInputs, out HashSet<Transform> partialRotations, out bool sceneUp)
+        {
+            sceneUp = false;
             var result = new HashSet<Transform>();
             externalInputs = new HashSet<Transform>();
             partialRotations = new HashSet<Transform>();
@@ -99,7 +115,10 @@ namespace VRVlog.LilToonExporter
                 var partial = false;
                 if (component is AimConstraint aim && aim.constraintActive && aim.locked && aim.weight == 1 && aim.rotationAxis == (Axis.X | Axis.Y | Axis.Z) &&
                     aim.worldUpType != AimConstraint.WorldUpType.None && HasEffectiveSource(aim))
+                {
                     target = aim.transform;
+                    sceneUp |= aim.worldUpType == AimConstraint.WorldUpType.SceneUp || aim.worldUpType == AimConstraint.WorldUpType.Vector;
+                }
                 else if (component is RotationConstraint rotation && rotation.constraintActive && rotation.locked && rotation.weight == 1 && rotation.rotationAxis == (Axis.X | Axis.Y | Axis.Z) && HasEffectiveSource(rotation))
                     target = rotation.transform;
                 else if (IsVrcRotationConstraint(component))
@@ -117,6 +136,7 @@ namespace VRVlog.LilToonExporter
                         var up = settings.FindProperty("WorldUp");
                         if (up == null || up.propertyType != SerializedPropertyType.Enum || up.enumValueIndex < 0 ||
                             up.enumValueIndex >= up.enumNames.Length || up.enumNames[up.enumValueIndex] == "None") continue;
+                        sceneUp |= up.enumNames[up.enumValueIndex] == "SceneUp" || up.enumNames[up.enumValueIndex] == "Vector";
                     }
                     var targetProperty = settings.FindProperty("TargetTransform");
                     if (targetProperty == null) continue;
@@ -196,6 +216,10 @@ namespace VRVlog.LilToonExporter
         static bool True(SerializedObject settings, string name) => settings.FindProperty(name)?.boolValue == true;
         static bool IsVrcRotationConstraint(Object value) => value.GetType().FullName == "VRC.SDK3.Dynamics.Constraint.Components.VRCAimConstraint" ||
             value.GetType().FullName == "VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint";
+        // The root's channels that only place it in the scene. Its scale stays
+        // in: it is hashed here and as the world scale.
+        static bool IsRootPlacement(string path) => path == "m_LocalPosition" || path == "m_LocalRotation" ||
+            path == "m_LocalEulerAnglesHint" || path == "m_Father" || path == "m_RootOrder";
         static bool IsPrefabBookkeeping(string path) => path == "m_CorrespondingSourceObject" || path == "m_PrefabInstance" || path == "m_PrefabAsset";
 
         internal static void MeshData(Digest hash, Mesh mesh)
@@ -324,9 +348,9 @@ namespace VRVlog.LilToonExporter
         }
 
         static void SerializedData(Digest hash, Object value, Queue<Object> queue)
-            => SerializedDataCore(hash, value, queue, false, false);
+            => SerializedDataCore(hash, value, queue, false, false, false);
 
-        static void SerializedDataCore(Digest hash, Object value, Queue<Object> queue, bool drivenRotation, bool drivenEulerHint)
+        static void SerializedDataCore(Digest hash, Object value, Queue<Object> queue, bool drivenRotation, bool drivenEulerHint, bool avatarRoot)
         {
             using var serialized = new SerializedObject(value);
             using var property = serialized.GetIterator();
@@ -346,6 +370,7 @@ namespace VRVlog.LilToonExporter
                     enterChildren = false; continue;
                 }
                 if (drivenRotation && property.propertyPath == "m_LocalRotation" || drivenEulerHint && property.propertyPath == "m_LocalEulerAnglesHint" ||
+                    avatarRoot && IsRootPlacement(property.propertyPath) ||
                     IsVrcRotationConstraint(value) && (property.propertyPath == "cachedExecutionGroupIndex" || property.propertyPath == "latestValidExecutionGroupIndex"))
                 { enterChildren = false; continue; }
                 hash.Text(property.propertyPath); hash.Integer((int)property.propertyType);
@@ -402,8 +427,17 @@ namespace VRVlog.LilToonExporter
 
         static void Reference(Digest hash, Object reference, Queue<Object> queue)
         {
-            hash.Integer(reference == null ? 0 : reference.GetInstanceID());
+            if (reference == null) hash.Integer(0); else Identity(hash, reference);
             if (reference != null && !(reference is Component) && !(reference is GameObject)) queue.Enqueue(reference);
+        }
+
+        // Reimporting a shader file can replace its object; the material
+        // still points to the same asset.
+        static void Identity(Digest hash, Object value)
+        {
+            if (value is Shader && AssetDatabase.TryGetGUIDAndLocalFileIdentifier(value, out var guid, out long local))
+            { hash.Text(guid); hash.Long(local); }
+            else hash.Integer(value.GetInstanceID());
         }
 
         internal sealed class PinnedVectors : IDisposable
@@ -470,19 +504,6 @@ namespace VRVlog.LilToonExporter
                 {
                     if (count == bytes.Length) Flush(); var length = Math.Min(bytes.Length - count, data.Length - offset);
                     Marshal.Copy(IntPtr.Add(data.Data, offset), bytes, count, length); count += length; offset += length;
-                }
-            }
-            internal void File(string path)
-            {
-                using var stream = System.IO.File.OpenRead(path); Long(stream.Length); Flush();
-                // Native Append is seeded per block. Fill each block even if
-                // Read returns short, so identical files have identical framing.
-                while (true)
-                {
-                    var filled = 0; int read;
-                    while (filled < bytes.Length && (read = stream.Read(bytes, filled, bytes.Length - filled)) != 0) filled += read;
-                    if (filled == 0) break;
-                    algorithm.Append(bytes, 0, filled);
                 }
             }
             internal Hash128 Finish()
