@@ -40,7 +40,7 @@ namespace VRVlog.LilToonExporter
             GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
             try { return AnalyzeOnce(avatar, excludedPath, menuPolicy, authoringSource, faceEmoBindings); }
-            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true)
+            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true && menuPolicy?.SkipPlayback != true)
             {
                 var source = AnalyzeOnce(avatar, excludedPath, new VrChatMenuImportPolicy { SkipAll = true, Reason = MenuOverCandidateLimit },
                     authoringSource, faceEmoBindings);
@@ -85,6 +85,7 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
+                if (menuPolicy?.SkipPlayback == true) { AddListFaces(avatar, source, excludedPath, menuPolicy.ListFaces, faceEmoBindings); return source; }
                 // The menu loop fills the first half of the bar; each of the
                 // four imports below takes an eighth of the rest.
                 var step = 0;
@@ -105,6 +106,58 @@ namespace VRVlog.LilToonExporter
         {
             if (EditorUtility.DisplayCancelableProgressBar("VRChatの表情を読み込み中", name, fraction))
                 throw new OperationCanceledException();
+        }
+
+        // The list-only export reads each listed clip as the gesture reader
+        // does, so a moving clip keeps its animation and a still one its
+        // values, and both are baked like any other face. A clip that reader
+        // rejects keeps the board's frame of its visible BlendShapes. A clip
+        // FaceEmo registers is read as FaceEmo's own faces are, so the common
+        // DEFAULT FACE and its permanent overrides still apply.
+        static void AddListFaces(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath,
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
+        {
+            if (faces == null) return;
+            if (faces.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。");
+            for (var index = 0; index < faces.Count; index++)
+            {
+                var face = faces[index];
+                var clip = (AnimationClip)face.Clip;
+                ShowProgress(face.Name, (float)index / faces.Count);
+                var entry = new VrChatExpressionMenu.Entry
+                {
+                    Id = "list/" + index, Name = face.Name, ExportName = face.Name,
+                    Source = VRVlog.Expressions.ExpressionSource.Gesture, Clip = clip
+                };
+                source.Entries.Add(entry);
+                if (faceEmoBindings != null && faceEmoBindings.RegisteredClips.Contains(clip))
+                {
+                    entry.Id = "faceemo/list/" + index; entry.Source = VRVlog.Expressions.ExpressionSource.FaceEmo;
+                    try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, faceEmoBindings); }
+                    catch (InvalidOperationException error) { entry.Error = error.Message; }
+                    continue;
+                }
+                try { VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source); }
+                catch (InvalidOperationException)
+                {
+                    entry.Values.Clear(); entry.Animation.Clear(); entry.Messages.Clear();
+                    entry.Duration = 0; entry.Loop = false; entry.UsesFacialProjection = false;
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape))
+                    {
+                        if (excludedPath?.Invoke(binding.path) == true) continue;
+                        SkinnedMeshRenderer renderer;
+                        try { renderer = FindRenderer(avatar, binding.path); }
+                        catch (InvalidOperationException) { continue; }
+                        if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                        entry.Values.Add(new MorphValue
+                        {
+                            Path = binding.path, Shape = binding.propertyName.Substring("blendShape.".Length),
+                            Weight = AnimationUtility.GetEditorCurve(clip, binding).Evaluate(face.Time)
+                        });
+                    }
+                    if (entry.Values.Count == 0) entry.Error = "顔のBlendShapeを含まないアニメーションです。";
+                }
+            }
         }
 
         // The user-facing export captures one explicit environment. Runtime
