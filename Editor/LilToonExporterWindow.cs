@@ -671,10 +671,12 @@ namespace VRVlog.LilToonExporter
         {
             var lilToon = Compatibility.LilToonInstallation.Find();
             if (lilToon == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
-            var installed = lilToon.Describe(ExporterLocalization.T);
-            return Compatibility.DependencyPolicy.ClassifyLilToon(lilToon.Version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
-                ? installed
-                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), installed, Compatibility.DependencyPolicy.LilToonVersion);
+            if (Compatibility.DependencyPolicy.ClassifyLilToon(lilToon.Version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue)
+                return lilToon.Describe(ExporterLocalization.T);
+            var version = Compatibility.DependencyPolicy.DisplayLilToon(lilToon.Version, ExporterLocalization.T);
+            return lilToon.AssetsFolder == null
+                ? string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), version, Compatibility.DependencyPolicy.LilToonVersion)
+                : string.Format(ExporterLocalization.T("{0}（Assetsに導入: {1}・アプリでは{2}として描画）"), version, lilToon.AssetsFolder, Compatibility.DependencyPolicy.LilToonVersion);
         }
 
         // Stops only without lilToon, or when lilToon's baker that the avatar
