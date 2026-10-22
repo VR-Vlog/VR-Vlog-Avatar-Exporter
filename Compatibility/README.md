@@ -92,6 +92,20 @@ with it, Unity and the app use the same shader. See
 | Not installed | Stops: "lilToonが見つかりません（VCC／ALCOMでlilToonを追加）" |
 | 2.3.4 | Exports without a version warning |
 | 1.x, another 2.x, newer than 2.3.4, pre-release or unreadable | Exports; the result shows "アプリではlilToon 2.3.4として描画します（導入済みのバージョンは{0}）" |
+| Under `Assets` (imported from the unitypackage) | Same as the rows above for the version read from lilToon's `package.json`; without a readable version it exports with "（導入済みのバージョンは不明）" |
+
+lilToon imported from its unitypackage sits under `Assets` and is not
+registered in Package Manager. When Package Manager has no
+`jp.lilxyzw.liltoon`, the exporter finds lilToon's own `package.json` by its
+GUID `397d2fa9e93fb5d44a9540d5f01437fc` (lilToon reads its version from the
+same file) and reads `version` when the file is under `Assets/`. If that file
+is missing, a `lilToon` shader under `Assets/` still counts as installed, with
+the version unknown. The dependency diagnostics window and the export window's
+environment row show the folder, for example "2.3.4（Assetsに導入:
+Assets/lilToon）", and the copied diagnostics write
+`jp.lilxyzw.liltoon: 2.3.4 (Assets: Assets/lilToon)`. An unknown version is
+recorded as `unknown` in `asset.extras.VRVLOG_lilToonInstalledVersion`. See
+`Documentation~/decisions/2026-10-22-liltoon-assets-install.md`.
 
 Before each export the exporter compares the lilToon shaders the avatar uses
 with the 2.3.4 catalogue (property names, types, runtime texture dimensions,
