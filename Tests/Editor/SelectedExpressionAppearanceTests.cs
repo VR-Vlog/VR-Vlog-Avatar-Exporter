@@ -96,6 +96,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("activation")]
+        [TestCase("enabled")]
         [TestCase("color")]
         [TestCase("vector")]
         public void ARealAppearanceChangeStillRejectsTheWholeSelectedClip(string kind)

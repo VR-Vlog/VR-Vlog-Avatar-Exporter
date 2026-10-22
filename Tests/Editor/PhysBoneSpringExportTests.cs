@@ -825,6 +825,7 @@ namespace VRVlog.LilToonExporter.Tests
         public Task ActualExportImportsNestedOwnersWithoutSharedJointsOrChangedAppearance(bool full) =>
             ExportImportsSpringsAndMovesHair(full, false, false, false, true);
 
+        [TestCase(false)]
         [TestCase(true)]
         public async Task InstalledAvatarOptimizerPreservesSpringMotionAndCollisionsAfterFullExport(bool full)
         {

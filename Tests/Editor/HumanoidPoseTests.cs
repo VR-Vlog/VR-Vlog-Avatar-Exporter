@@ -326,6 +326,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Missing", "Equals", false)]
         [TestCase("Duplicate", "Equals", false)]
         [TestCase("Bool", "Equals", false)]
+        [TestCase("Float", "Equals", false)]
+        [TestCase("Int", "If", false)]
         [TestCase("Trigger", "If", false)]
         [TestCase("Int", "Greater", false, 1.5f)]
         public void MenuGraphChecksRealControllerParameterDefinitions(string type, string condition, bool supported, float value = 1)

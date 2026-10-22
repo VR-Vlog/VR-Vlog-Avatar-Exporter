@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter.Tests
             cache.Invalidate();
         }
 
-        [TestCase("eye_close")][TestCase("previewBlink")]
+        [TestCase("eye_close")][TestCase("previewBlink")][TestCase("eye_close_left")]
         public void UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing(string name)
         {
             Skin(name);

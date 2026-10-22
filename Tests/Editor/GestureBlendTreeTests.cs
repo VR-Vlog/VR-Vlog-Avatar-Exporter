@@ -823,6 +823,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("writer")]
         [TestCase("loop")]
         [TestCase("speed")]
+        [TestCase("mirror")]
         public void MotionTimeCannotBypassUnsafeClockInputsOrAmbiguousStateControls(string damage)
         {
             var clip = MotionTimeClip("Unsafe motion time", 2, .8f, 10, 45, 85);
