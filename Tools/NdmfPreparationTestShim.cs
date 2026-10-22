@@ -195,7 +195,7 @@ namespace UnityEditor
 }
 namespace UnityEditor.PackageManager
 {
-    public class PackageInfo { public string version; public static PackageInfo FindForAssembly(Assembly assembly) => null; }
+    public class PackageInfo { public string name, version; public static PackageInfo FindForAssembly(Assembly assembly) => null; public static PackageInfo[] GetAllRegisteredPackages() => new PackageInfo[0]; }
 }
 // Authoring metadata adapter only; the real pipeline tests still require the
 // installed NDMFAvatarRoot and canonical NDMF classes and remain skipped here.
