@@ -5,7 +5,7 @@ namespace VRVlog.LilToonExporter.Compatibility
     {
         public const string LilToonVersion = "2.3.4";
         public const string LilToonCommit = "252fd8cfc46106d4967e95b3f2c788418502f227";
-        public const string NdmfMinimum = "1.8.3";
+        public const string NdmfMinimum = "1.6.0";
         public const string NdmfReference = "1.14.8";
         public const string ModularAvatarReference = "1.18.7";
         public const string VrchatSdkMinimum = "3.5.0";

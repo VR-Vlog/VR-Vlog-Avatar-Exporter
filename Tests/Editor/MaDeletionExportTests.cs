@@ -29,7 +29,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, 2)]
         public async Task InstalledDeletionSurvivesOneClickAndLiveMorphsRegardlessOfPreviewSettings(bool useShapeDelete, int previewMode)
         {
-            var marker = Named("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker = Named("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Named("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (marker == null || Named("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null)
                 Assert.Ignore("Install the real Modular Avatar and NDMF packages for the deletion integration test.");
             // Mesh Cutter first appears in MA 1.14.0; Shape Changer Delete is

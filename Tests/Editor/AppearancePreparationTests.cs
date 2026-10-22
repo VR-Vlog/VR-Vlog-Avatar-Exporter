@@ -136,7 +136,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void ExcludedRulesCannotChangeRetainedAppearanceAndSimulatorOverridesStillMap(bool disableKeptRule)
         {
-            var marker=TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker=TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if(marker==null || TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger")==null) Assert.Ignore("Install MA/NDMF.");
             var source=new GameObject("Avatar"); source.AddComponent(marker);
             var face=new GameObject("Face"); face.transform.SetParent(source.transform,false);
@@ -193,7 +195,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void ExclusionsPreserveSimulatorMenuSelectionForAutomaticAndNamedParameters(bool named, bool forceOff)
         {
-            var marker = TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
+            // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
+            // avatar by its descriptor, as a real avatar would be found.
+            var marker = TypeNamed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             var menuType = TypeNamed("nadena.dev.modular_avatar.core.ModularAvatarMenuItem");
             if (marker == null || menuType == null || TypeNamed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null) Assert.Ignore("Install MA/NDMF and VRChat SDK.");
             var source = new GameObject("Avatar"); source.AddComponent(marker);

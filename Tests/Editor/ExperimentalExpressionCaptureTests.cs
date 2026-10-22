@@ -1602,7 +1602,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(type => type != null);
             var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(type => type != null);
-            Assert.That(proxyType, Is.Not.Null); Assert.That(markerType, Is.Not.Null);
+            Assert.That(proxyType, Is.Not.Null);
+            if (markerType == null) Assert.Ignore("NDMF before 1.8.0 has no NDMFAvatarRoot, and this fixture has no VRChat descriptor to identify the avatar.");
             if (source.GetComponent(markerType) == null) source.AddComponent(markerType);
             var proxy = source.transform.Find("Front").gameObject.AddComponent(proxyType);
             proxyType.GetProperty("target").SetValue(proxy, source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Head));
@@ -2262,6 +2263,10 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.AddObjectToAsset(clip, controller); controller.layers[0].stateMachine.AddState("Face").motion = clip;
                 var mergeType = Sdk("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
                 Assert.That(mergeType, Is.Not.Null, "This experiment uses the real Modular Avatar integration.");
+                // NDMF before 1.8.0 has no generic platform and builds the FX
+                // that Merge Animator merges into from a VRChat descriptor.
+                if (Sdk("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") == null)
+                    typeof(PoseRegistrationTests).GetMethod("Descriptor", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic).Invoke(null, new object[] { fixture.Source });
                 var merge = fixture.Source.AddComponent(mergeType);
                 using (var data = new SerializedObject(merge))
                 {

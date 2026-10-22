@@ -17,6 +17,7 @@ MITライセンスで公開しています。
 | UniVRM | 導入不要。UniVRM 0.131.4を名前空間・シェーダー名を変えて同梱しているので、導入済みのUniVRMとはバージョンにかかわらず衝突しません |
 | VR Vlog | 0.1.1（ビルド345）以降 |
 | VRChat SDK | 任意。3.5.0以上3.11.0未満（3.11.0未満のベータ版を含む）で確認しています。音声再生（VRC Animator Play Audio）を含む表情ファイルを使う場合は、3.5.2以上3.11.0未満が必要です |
+| NDMF | 任意。Modular AvatarなどNDMFで動くツールを使うアバターは、NDMF 1.6.0以上2.0.0未満の正式版が必要です |
 | Modular Avatar | 任意。Shape Changer・Object Toggle・Material Setter・Material Swap・Mesh Cutterを使うアバターは1.12.2以上1.19.0未満。これらを使わないアバターはバージョンを問いません |
 
 Modular Avatarを使う場合は、事前に導入してください。

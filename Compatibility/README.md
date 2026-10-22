@@ -80,11 +80,12 @@ export menu expressions that switch a Shape Changer: Int and Float menus also
 change something other than BlendShapes (a GameObject's `m_IsActive` on 1.11.x,
 a leftover `deletedShape.<name>` curve on 1.10.4), and a Bool menu makes Unity reject
 the merged FX transition. 1.12.0 and 1.12.1 do not compile with NDMF 1.8.3
-(`IVirtualizeMotion` is missing), the exporter's NDMF floor. 1.12.2 is the first
+(`IVirtualizeMotion` is missing), the exporter's NDMF floor when this range was set. 1.12.2 is the first
 release that compiles with it and passes every check, so the range starts there.
 Each MA release requires its own NDMF range (1.12.2 needs 1.7.2,
 1.14.0 needs 1.9.0, 1.18.0 needs 1.11.0, 1.18.4 and later need 1.14.7), which
-VCC/ALCOM resolves; the exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
+VCC/ALCOM resolves; the exporter's own NDMF floor is `ndmfMinimum` (1.6.0, see
+[NdmfRange](Evidence/NdmfRange/README.md)).
 MA 1.14.0 and 1.14.1 change an Int or Bool menu parameter to Float in place
 during their own build, and NDMF logs an error for it while the build goes on;
 MA 1.14.2 fixed this. Users on 1.14.0 or 1.14.1 with Int or Bool menu toggles
