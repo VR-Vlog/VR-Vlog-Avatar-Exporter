@@ -83,8 +83,8 @@ stable versions stop before that API is touched, naming the installed version an
 the range. When the version cannot be read (MA placed under `Assets`, a
 pre-release), the freeze tries the API and, if it is missing, stops saying the
 version was not read. Avatars without those components export with any MA version. MA 1.18.x
-itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
-`ndmfMinimum` (1.8.3).
+itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor is
+`ndmfMinimum` (1.6.0, see [NdmfRange](Evidence/NdmfRange/README.md)).
 
 ## Supported lilToon versions
 

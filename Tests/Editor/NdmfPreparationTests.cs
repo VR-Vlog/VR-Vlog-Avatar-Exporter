@@ -36,6 +36,8 @@ namespace VRVlog.LilToonExporter.Tests
             FakeProcessor.Calls = 0;
             FakeProcessor.Ranges.Clear();
             FakeContext.ReportedErrors.Clear();
+            FakeLegacyContext.Last = null;
+            FakeLegacyProcessor.Ranges.Clear();
         }
 
         [TearDown]
@@ -680,17 +682,42 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.AreEqual(0, FakeProcessor.Calls);
         }
 
+        [TestCase("1.6.0")]
+        [TestCase("1.7.10")]
         [TestCase("1.8.3")]
         [TestCase("1.13.0")]
         [TestCase("1.14.8")]
         public void KnownVersionsResolveCompleteBridge(string version) => Assert.IsNotNull(Resolve(version));
 
         [TestCase(null)]
-        [TestCase("1.8.2")]
+        [TestCase("1.5.7")]
         [TestCase("2.0.0")]
         [TestCase("1.14.8-alpha.0")]
         public void UnvalidatedVersionsFailBeforeProcessing(string version) =>
             Assert.Throws<InvalidOperationException>(() => Resolve(version));
+
+        [TestCase("1.6.0")]
+        [TestCase("1.7.10")]
+        public void BeforePlatformsRunsFromResolvingWithoutAPlatform(string version)
+        {
+            var bridge = NdmfExportPreparation.Bridge.Resolve(LegacyType, version);
+            using (NdmfExportPreparation.ProcessClone(source, clone, bridge, afterTransforming: lease => { })) { }
+            CollectionAssert.AreEqual(new[]
+            {
+                FakeLegacyPhase.Resolving, FakeLegacyPhase.Generating, FakeLegacyPhase.Transforming, FakeLegacyPhase.Transforming,
+                FakeLegacyPhase.Optimizing, FakeLegacyPhase.Optimizing
+            }, FakeLegacyProcessor.Ranges.SelectMany(range => range));
+            Assert.AreSame(clone, FakeLegacyContext.Last.Root);
+            Assert.AreEqual(1, FakeLegacyContext.Last.FinishCount);
+        }
+
+        [Test]
+        public void PartialPlatformApiFailsBeforeProcessing()
+        {
+            Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.Bridge.Resolve(
+                name => name == "nadena.dev.ndmf.platform.PlatformRegistry" ? null : FakeType(name), "1.14.8"));
+            Assert.AreEqual(0, FakeProcessor.Calls);
+        }
 
         [Test]
         public void IncompatibleErrorApiFailsBeforeProcessing()
@@ -840,6 +867,41 @@ namespace VRVlog.LilToonExporter.Tests
                 case "nadena.dev.ndmf.OverrideTemporaryDirectoryScope": return typeof(FakeDirectoryScope);
                 default: return null;
             }
+        }
+
+        // NDMF 1.6.0 to 1.7.x: no platform types, and Resolving comes first.
+        private static Type LegacyType(string name)
+        {
+            switch (name)
+            {
+                case "nadena.dev.ndmf.AvatarProcessor": return typeof(FakeLegacyProcessor);
+                case "nadena.dev.ndmf.BuildContext": return typeof(FakeLegacyContext);
+                case "nadena.dev.ndmf.BuildPhase": return typeof(FakeLegacyPhase);
+                case "nadena.dev.ndmf.OverrideTemporaryDirectoryScope": return typeof(FakeDirectoryScope);
+                default: return null;
+            }
+        }
+
+        public sealed class FakeLegacyPhase
+        {
+            public static readonly FakeLegacyPhase Resolving = new FakeLegacyPhase(), Generating = new FakeLegacyPhase(),
+                Transforming = new FakeLegacyPhase(), Optimizing = new FakeLegacyPhase();
+        }
+        public sealed class FakeLegacyContext
+        {
+            public static FakeLegacyContext Last;
+            public readonly GameObject Root;
+            public int FinishCount;
+            public bool Successful => true;
+            public IDisposable AssetSaver { get; } = new FakeSaver();
+            public FakeLegacyContext(GameObject root, string path, bool isClone) { Root = root; Last = this; }
+            internal void Finish() => FinishCount++;
+        }
+        public static class FakeLegacyProcessor
+        {
+            public static readonly List<FakeLegacyPhase[]> Ranges = new List<FakeLegacyPhase[]>();
+            internal static void ProcessAvatar(FakeLegacyContext context, FakeLegacyPhase first, FakeLegacyPhase last) =>
+                Ranges.Add(new[] { first, last });
         }
 
         public interface IFakeProvider { }

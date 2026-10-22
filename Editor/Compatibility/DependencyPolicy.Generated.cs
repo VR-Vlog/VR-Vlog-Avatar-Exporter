@@ -8,7 +8,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         public const string UniVrmAdapter = "univrm-0.131";
         public const string UniVrmRange = "0.131.x";
         public const string UniVrmVersions = "0.131.0, 0.131.1, 0.131.2, 0.131.3";
-        public const string NdmfMinimum = "1.8.3";
+        public const string NdmfMinimum = "1.6.0";
         public const string NdmfReference = "1.14.8";
         public const string ModularAvatarReference = "1.18.7";
         public const string VrchatSdkMinimum = "3.5.0";

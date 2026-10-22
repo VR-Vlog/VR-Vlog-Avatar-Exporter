@@ -450,10 +450,15 @@ namespace VRVlog.LilToonExporter
                     // Use an exclusively owned folder for this export lease.
                     lease.CreateTemporaryAssetDirectory();
                     directoryScope = (IDisposable)Invoke(() => bridge.DirectoryScope.Invoke(new object[] { lease.temporaryAssetPath }));
-                    var platform = Invoke(() => bridge.PrimaryPlatform.Invoke(null, new object[] { clone })) ??
-                        Invoke(() => bridge.GenericPlatform.GetValue(null));
-                    if (platform == null) throw new InvalidOperationException(CompatibilityMessage);
-                    context = Invoke(() => bridge.Context.Invoke(new object[] { clone, lease.temporaryAssetPath, platform, true }));
+                    if (bridge.PrimaryPlatform == null)
+                        context = Invoke(() => bridge.Context.Invoke(new object[] { clone, lease.temporaryAssetPath, true }));
+                    else
+                    {
+                        var platform = Invoke(() => bridge.PrimaryPlatform.Invoke(null, new object[] { clone })) ??
+                            Invoke(() => bridge.GenericPlatform.GetValue(null));
+                        if (platform == null) throw new InvalidOperationException(CompatibilityMessage);
+                        context = Invoke(() => bridge.Context.Invoke(new object[] { clone, lease.temporaryAssetPath, platform, true }));
+                    }
 #if UNITY_5_3_OR_NEWER
                     RetainCopySceneForReport(clone, context);
 #endif
@@ -905,9 +910,12 @@ namespace VRVlog.LilToonExporter
         }
 
         // The phase-limited entry point and Finish are internal in the official
-        // 1.8.3, 1.13.0 and 1.14.8 sources. Validate the whole bridge before any
-        // processing. The same context must span every range so plugins run
-        // once and the final extension cleanup can publish their mappings.
+        // 1.6.0, 1.7.10, 1.8.3, 1.13.0 and 1.14.8 sources. Validate the whole
+        // bridge before any processing. The same context must span every range
+        // so plugins run once and the final extension cleanup can publish their
+        // mappings. Before 1.8.0 NDMF has no platforms: the context takes no
+        // platform, and Resolving is the first phase (1.8.0 adds FirstChance and
+        // PlatformInit before it, reached through the internal First).
         internal sealed class Bridge
         {
             internal ConstructorInfo Context, DirectoryScope;
@@ -928,19 +936,23 @@ namespace VRVlog.LilToonExporter
                 var registry = find("nadena.dev.ndmf.platform.PlatformRegistry");
                 var generic = find("nadena.dev.ndmf.platform.GenericPlatform");
                 var directory = find("nadena.dev.ndmf.OverrideTemporaryDirectoryScope");
-                if (new[] { processor, context, phase, provider, registry, generic, directory }.Any(t => t == null))
+                if (new[] { processor, context, phase, directory }.Any(t => t == null))
                     throw new InvalidOperationException(CompatibilityMessage);
+                var platforms = provider != null;
+                if (platforms && (registry == null || generic == null)) throw new InvalidOperationException(CompatibilityMessage);
                 var result = new Bridge
                 {
-                    Context = context.GetConstructor(new[] { typeof(GameObject), typeof(string), provider, typeof(bool) }),
+                    Context = context.GetConstructor(platforms
+                        ? new[] { typeof(GameObject), typeof(string), provider, typeof(bool) }
+                        : new[] { typeof(GameObject), typeof(string), typeof(bool) }),
                     DirectoryScope = directory.GetConstructor(new[] { typeof(string) }),
                     Process = processor.GetMethod("ProcessAvatar", staticMembers, null, new[] { context, phase, phase }, null),
                     Finish = context.GetMethod("Finish", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null),
                     Successful = context.GetProperty("Successful", publicInstance),
                     AssetSaver = context.GetProperty("AssetSaver", publicInstance),
-                    PrimaryPlatform = registry.GetMethod("GetPrimaryPlatformForAvatar", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null),
-                    GenericPlatform = generic.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static),
-                    First = phase.GetProperty("First", staticMembers)?.GetValue(null),
+                    PrimaryPlatform = registry?.GetMethod("GetPrimaryPlatformForAvatar", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null),
+                    GenericPlatform = generic?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static),
+                    First = platforms ? phase.GetProperty("First", staticMembers)?.GetValue(null) : phase.GetField("Resolving", staticMembers)?.GetValue(null),
                     Generating = phase.GetField("Generating", staticMembers)?.GetValue(null),
                     Transforming = phase.GetField("Transforming", staticMembers)?.GetValue(null),
                     Optimizing = phase.GetField("Optimizing", staticMembers)?.GetValue(null)
@@ -948,7 +960,7 @@ namespace VRVlog.LilToonExporter
                 if (result.Context == null || result.DirectoryScope == null || !typeof(IDisposable).IsAssignableFrom(directory) ||
                     result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) ||
                     result.Successful?.PropertyType != typeof(bool) || result.Successful.GetMethod == null || result.AssetSaver?.GetMethod == null ||
-                    result.PrimaryPlatform?.ReturnType != provider || result.GenericPlatform?.PropertyType != provider ||
+                    (platforms && (result.PrimaryPlatform?.ReturnType != provider || result.GenericPlatform?.PropertyType != provider)) ||
                     !phase.IsInstanceOfType(result.First) || !phase.IsInstanceOfType(result.Generating) || !phase.IsInstanceOfType(result.Transforming) ||
                     !phase.IsInstanceOfType(result.Optimizing))
                     throw new InvalidOperationException(CompatibilityMessage);
