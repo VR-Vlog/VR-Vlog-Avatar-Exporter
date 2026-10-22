@@ -309,7 +309,8 @@ assert "Never copy contact information" in one_click
 assert "NormalTextureScale = normalEnabled ?" in one_click
 assert "EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionColor," in one_click
 assert "MatcapColorFactorSrgb = FallbackColor(source, MaterialColorType.matcapColor," in one_click
-assert "ParametricRimColorFactorSrgb = FallbackColor(source, MaterialColorType.rimColor," in one_click
+assert "var parametricRim = FallbackColor(source, MaterialColorType.rimColor," in one_click
+assert "ParametricRimColorFactorSrgb = parametricRim," in one_click
 assert 'source.GetFloat("_UseBacklight") > .5f ? Color(source, "_BacklightColor"' in one_click
 assert 'backlightEnabled ? Float(source, "_BacklightDirectivity"' in one_click
 assert "ShadeColorFactorSrgb = FallbackColor(source, MaterialColorType.shadeColor," in one_click
