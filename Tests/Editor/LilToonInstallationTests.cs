@@ -134,7 +134,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo("#include \"Assets/lilToon/Shader/Includes/lil_common.hlsl\""));
         }
 
-        // Where lilToon is under Assets this compiles the rewritten source;
+        // Wherever lilToon is, the source compiles in memory and is reused;
         // a baker that fails to compile draws the error shader instead of the layers.
         [Test]
         public void LayerAlphaBakerCompilesWhereLilToonIs()
