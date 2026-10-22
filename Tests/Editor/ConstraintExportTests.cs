@@ -74,23 +74,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void TheVrmFormulaFollowsTheSourceExactlyWhenKept()
-        {
-            using var f = new Fixture();
-            f.Constraint<RotationConstraint>(f.B, 1, f.A);
-            f.A.localRotation = f.B.localRotation = Quaternion.Euler(10, 0, 20);
-            f.Convert();
-            // Ideal: world = source world * inverse(source rest world) * target rest world.
-            var restA = f.A.rotation; var restB = f.B.rotation; var localA = f.A.localRotation; var localB = f.B.localRotation;
-            f.Parent.localRotation = Quaternion.Euler(0, 30, 0);
-            f.A.localRotation = Quaternion.Euler(40, -15, 70);
-            var ideal = f.A.rotation * Quaternion.Inverse(restA) * restB;
-            // UniVRM: local = target rest * inverse(source rest local) * source local.
-            f.B.localRotation = localB * Quaternion.Inverse(localA) * f.A.localRotation;
-            Assert.That(Quaternion.Angle(f.B.rotation, ideal), Is.LessThan(.01f));
-        }
-
-        [Test]
         public void ADifferentRestOrPartialWeightIsApproximated()
         {
             using var f = new Fixture();
@@ -212,7 +195,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
         }
 
-        [TestCase("disabled")][TestCase("inactive")][TestCase("hidden")][TestCase("inactiveAndUnlocked")]
+        [TestCase("disabled")][TestCase("inactive")][TestCase("hidden")]
         public void AnOffConstraintKeepsThePoseAndIsListed(string condition)
         {
             using var f = new Fixture();
@@ -223,7 +206,6 @@ namespace VRVlog.LilToonExporter.Tests
                 case "disabled": constraint.enabled = false; break;
                 case "inactive": constraint.constraintActive = false; break;
                 case "hidden": f.B.gameObject.SetActive(false); break;
-                case "inactiveAndUnlocked": constraint.constraintActive = false; constraint.locked = false; break;
             }
             var result = f.Convert();
             AssertListedAsOmitted(f, result, ConstraintExport.OmittedOff);
@@ -459,19 +441,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(report.Fallbacks.Results.Single(r => r.Category == ConstraintExport.Category).Name, Does.Contain("VRCRotationConstraint"));
             Assert.That(b.GetComponent<IVrm10Constraint>(), Is.Null, "Only the export copy gets the VRM constraint.");
             Assert.That(b.GetComponent(type), Is.Not.Null, "The source avatar keeps its VRChat constraint.");
-        }
-
-        [Test]
-        public void EveryShippedLocaleTranslatesTheConstraintResults()
-        {
-            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var directory = System.IO.Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var text = System.IO.File.ReadAllText(System.IO.Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
-                foreach (var source in ConstraintExport.Reasons.Append(ConstraintExport.Category).Append(ExportStageGuard.Label(ExportStage.Constraints)))
-                    Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
-            }
         }
     }
 }

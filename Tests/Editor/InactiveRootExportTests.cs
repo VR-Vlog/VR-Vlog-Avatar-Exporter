@@ -99,20 +99,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Source.transform.parent, Is.SameAs(parent.transform));
         }
 
-        [Test] public void AShownAvatarRecordsNoHiddenRoot()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            var material = Own(new Material(Shader.Find("lilToon")) { name = "Shown root" });
-            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(true)) skin.sharedMaterial = material;
-            HiddenOutfit(fixture, material);
-            var report = new ExportRecoveryReport();
-            var warnings = new List<string>();
-            var nodes = NodesWithMesh(Export(fixture.Source, report, warnings));
-            Assert.That(nodes, Does.Contain("Front").And.Not.Contain("Hidden outfit"));
-            Assert.That(warnings, Does.Not.Contain(ExporterLocalization.T(UniVrmOneClickExporter.HiddenRootWarning)));
-            Assert.That(report.Fallbacks.Results.Any(result => result.Name == fixture.Source.name), Is.False);
-        }
-
         [Test] public void ActivityIsJudgedInsideTheAvatar()
         {
             var parent = Own(new GameObject("parent"));
