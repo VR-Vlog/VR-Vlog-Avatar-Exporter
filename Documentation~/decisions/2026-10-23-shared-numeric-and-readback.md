@@ -42,6 +42,6 @@ GPUで描いて画素を読み戻す処理も、同じ手順が複数の場所�
 
 ## 確認したこと
 
-- Unity 無しのハーネス: `Tools/run-bake-tests.ps1`（355件）・`Tools/run-behavior-tests.ps1`（396件・照明855件・テクスチャー縮小57件・スキンのルート7件）・`Tools/run-pose-contract-tests.ps1`（91件）・`Tools/run-ndmf-preparation-tests.ps1`（53ケース）・`Tools/run-compatibility-tests.ps1` が通った。
+- Unity 無しのハーネス: `Tools/run-bake-tests.ps1`（355件）・`Tools/run-behavior-tests.ps1`（389件・照明854件・テクスチャー縮小31件・スキンのルート7件）・`Tools/run-pose-contract-tests.ps1`（91件）・`Tools/run-ndmf-preparation-tests.ps1`（53ケース）・`Tools/run-compatibility-tests.ps1` が通った。
 - Unity で生成したプロジェクトの参照（UnityEngine・VRChat SDK・NDMF など）を使い、`Editor/` のアセンブリを変更前と変更後でUnity無しにコンパイルして、エラーと警告の一覧が行番号のずれ以外同じことを確かめた（同梱のUniVRMはこの方法ではコンパイルしていない）。
 - Unity の EditMode でのコンパイルとテスト、40体のアバターで書き出したVRMのバイト列の比較は別に行う。
