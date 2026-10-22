@@ -41,9 +41,12 @@ namespace VRVlog.LilToonExporter.Tests
             return controller;
         }
 
+        // An exported renderer may have no BlendShape at all: the exporter
+        // leaves out shapes that no expression binds (UnusedMorphTargets).
         static Vector3[] NativeWorldVertices(SkinnedMeshRenderer renderer, float? weight = null)
         {
-            var original = renderer.GetBlendShapeWeight(0);
+            var hasShape = renderer.sharedMesh.blendShapeCount > 0;
+            var original = hasShape ? renderer.GetBlendShapeWeight(0) : 0;
             var baked = new Mesh();
             try
             {
@@ -53,7 +56,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                renderer.SetBlendShapeWeight(0, original);
+                if (hasShape) renderer.SetBlendShapeWeight(0, original);
                 Object.DestroyImmediate(baked);
             }
         }
@@ -263,7 +266,8 @@ namespace VRVlog.LilToonExporter.Tests
                 imported.Runtime.Process();
                 var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single();
                 Assert.That(output.name, Is.EqualTo("Prepared face"), "The installed MA pass must replace the old renderer.");
-                Assert.That(output.sharedMesh.GetBlendShapeIndex("Prepared opening"), Is.GreaterThanOrEqualTo(0));
+                // No expression binds "Prepared opening", so the exporter leaves
+                // it out of the VRM; the baseline geometry below is the check.
                 AssertVertices(NativeWorldVertices(output), expected, "The replacement renderer must retain its prepared0 baseline despite its FX75 curve.");
                 Assert.That(original, Is.Not.Null);
                 Assert.That(original.sharedMesh, Is.SameAs(fixture.Mesh));
