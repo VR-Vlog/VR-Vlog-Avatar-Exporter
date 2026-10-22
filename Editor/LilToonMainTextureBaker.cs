@@ -167,7 +167,7 @@ namespace VRVlog.LilToonExporter
             if (shader == null || folder == null) return shader;
             if (layerAlphaUnderAssets != null && layerAlphaUnderAssetsFolder == folder) return layerAlphaUnderAssets;
             if (layerAlphaUnderAssets != null) UnityEngine.Object.DestroyImmediate(layerAlphaUnderAssets);
-            layerAlphaUnderAssets = ShaderUtil.CreateShaderAsset(LayerAlphaSource(System.IO.File.ReadAllText(AssetDatabase.GetAssetPath(shader)), folder), false);
+            layerAlphaUnderAssets = ShaderUtil.CreateShaderAsset(LayerAlphaSource(System.IO.File.ReadAllText(System.IO.Path.GetFullPath(AssetDatabase.GetAssetPath(shader))), folder), false);
             layerAlphaUnderAssets.hideFlags = HideFlags.HideAndDontSave;
             layerAlphaUnderAssetsFolder = folder;
             return layerAlphaUnderAssets;
