@@ -36,6 +36,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string NeedsShorterName = "名前を短くすると作れます";
         internal const string NeedsAuthor = "作者名を入れると作れます";
         internal const string NeedsConsent = "利用規約に同意すると作れます";
+        // Under the consent: "VRMを保存" next to "QRコードを作る" does not need it.
+        internal const string ConsentHint = "VRMの保存に同意は要りません";
         internal const string NeedsPrivacyConsent = "プライバシーポリシーに同意すると作れます";
         internal const string Exporting = "VRMを書き出しています";
         internal const string ExportFailed = "書き出せませんでした";
