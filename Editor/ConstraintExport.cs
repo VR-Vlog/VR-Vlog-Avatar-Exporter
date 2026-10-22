@@ -203,7 +203,9 @@ namespace VRVlog.LilToonExporter
         {
             if (!(component is IConstraint constraint) || !(component is Behaviour behaviour)) return null;
             var plan = new Plan { Component = component, Target = component.transform, Weight = constraint.weight,
-                On = behaviour.isActiveAndEnabled && constraint.constraintActive, Locked = constraint.locked };
+                // Unity's manual: Lock "has no effect in Play Mode", so an active Unity constraint drives its
+                // target in the app whatever Lock says. Only VRChat's Locked keeps the target still.
+                On = behaviour.isActiveAndEnabled && constraint.constraintActive, Locked = true };
             var axes = Axis.X | Axis.Y | Axis.Z;
             switch (component)
             {

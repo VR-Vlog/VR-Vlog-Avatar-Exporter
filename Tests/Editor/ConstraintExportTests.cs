@@ -200,15 +200,16 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnUnlockedConstraintKeepsThePoseAndIsListed()
+        public void AnUnlockedUnityConstraintIsStillConverted()
         {
-            // With Lock off the target is not moved; only At Rest and Offset
-            // are measured again. Locked, this one would be kept.
+            // Unity ignores Lock in Play Mode, so the app would move the target
+            // the same as a locked one. Only VRChat's Locked is honoured.
             using var f = new Fixture();
             f.Constraint<RotationConstraint>(f.B, 1, f.A).locked = false;
             f.A.localRotation = f.B.localRotation = Quaternion.identity;
             var result = f.Convert();
-            AssertListedAsOmitted(f, result, ConstraintExport.OmittedUnlocked);
+            Assert.That(f.B.GetComponent<Vrm10RotationConstraint>().Source, Is.EqualTo(f.A));
+            Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
         }
 
         [TestCase("disabled")][TestCase("inactive")][TestCase("hidden")][TestCase("inactiveAndUnlocked")]
