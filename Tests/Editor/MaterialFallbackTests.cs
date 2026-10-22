@@ -198,6 +198,35 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [TestCase(0f, true)]
+        [TestCase(15f, false)]
+        public void ColorMaskZeroFallbackIsInvisible(float colorMask, bool hidden)
+        {
+            // A lilToon stencil writer (ColorMask 0) draws nothing itself; MToon
+            // has no ColorMask, so a visible fallback would be a shell.
+            var shader = Shader.Find("lilToon");
+            Assert.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            var created = new List<Material>();
+            try
+            {
+                source.SetFloat("_ColorMask", colorMask);
+                Assert.AreEqual(hidden, LilToonMaterialReader.DrawsNoColor(source));
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, new List<string>());
+                Assert.AreEqual(hidden ? 2 : 0, fallback.GetInt("_AlphaMode"));
+                Assert.AreEqual(0, fallback.GetInt("_TransparentWithZWrite"));
+                Assert.AreEqual(hidden ? 0f : 1f, fallback.GetColor("_Color").a);
+                Assert.AreEqual(hidden ? 0f : 1f, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.color).a);
+                // The lilToon extension still receives the authored color.
+                Assert.AreEqual(1f, source.GetColor("_Color").a);
+            }
+            finally
+            {
+                foreach (var material in created) Object.DestroyImmediate(material);
+                Object.DestroyImmediate(source);
+            }
+        }
+
         [TestCase(1f, 1)]
         [TestCase(0f, 0)]
         public void TransparentFallbackWritesDepthWhenLilToonDoes(float zWrite, int expected)

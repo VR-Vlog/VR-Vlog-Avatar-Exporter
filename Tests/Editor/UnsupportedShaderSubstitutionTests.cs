@@ -112,6 +112,39 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));
         }
 
+        [Test] public void AStencilWriterStaysWithoutColorAndDepth()
+        {
+            // The probe masks every color channel and does not write depth; an
+            // opaque copy that draws would cover the body as a white shell.
+            var writer = Own(new Material(Shader.Find("Hidden/VRVlogTests/StencilWriterProbe")) { name = "Writer" });
+            var substitute = Substitute(writer);
+            Assert.That(substitute.shader.name, Is.EqualTo("lilToon"));
+            Assert.That(substitute.GetFloat("_ColorMask"), Is.EqualTo(0f));
+            Assert.That(substitute.GetFloat("_ZWrite"), Is.EqualTo(0f));
+            // An ordinary opaque source keeps lilToon's defaults.
+            var plain = Substitute(Standard());
+            Assert.That(plain.GetFloat("_ColorMask"), Is.EqualTo(15f));
+            Assert.That(plain.GetFloat("_ZWrite"), Is.EqualTo(1f));
+        }
+
+        [TestCase("SubShader { ColorMask 0 ZWrite Off Pass { Tags { \"LightMode\"=\"ForwardBase\" } } }", true)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { ColorMask 0 } }", true)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { Blend One One ColorMask RGB } }", false)]
+        [TestCase("SubShader { ColorMask 0 Pass { } Pass { ColorMask RGBA } }", false)]
+        [TestCase("SubShader { Pass { ZWrite On } }", false)]
+        [TestCase("SubShader { Pass { ColorMask 0 } Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
+        [TestCase("SubShader { Pass { ColorMask [_Mask] } }", true)]
+        [TestCase("SubShader { Pass { ColorMask [_Unset] } }", false)]
+        [TestCase("SubShader { Pass { /* ColorMask 0 */ ColorMask RGBA // ColorMask 0\n } }", false)]
+        [TestCase("SubShader { Pass { ColorMask 0 } UsePass \"Other/PASS\" }", false)]
+        [TestCase("SubShader { Pass { ColorMask RGBA } } SubShader { Pass { ColorMask 0 } }", false)]
+        [TestCase("SubShader { ColorMask 0 CGPROGRAM #pragma surface surf Lambert\n ENDCG }", true)]
+        [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert\n ENDCG }", false)]
+        public void TheFirstSubShaderDecidesWhetherAnyPassDrawsColor(string shaderLab, bool expected)
+        {
+            Assert.That(UnsupportedShaderSubstitution.ShaderDrawsNoColor(shaderLab, name => name == "_Mask" ? 0 : 15), Is.EqualTo(expected));
+        }
+
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
         {
             var main = Texture("main"); var shade = Texture("shade"); var normal = Texture("normal");

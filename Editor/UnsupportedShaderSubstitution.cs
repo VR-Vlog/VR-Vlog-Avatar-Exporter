@@ -229,6 +229,14 @@ namespace VRVlog.LilToonExporter
             if (mode == Mode.Transparent) Set(material, "_Cutoff", 0);
             // lilToon's transparent shader writes depth by default; follow the source.
             if (mode == Mode.Transparent) Set(material, "_ZWrite", WritesDepth(source, values) ? 1 : 0);
+            // A stencil (or depth) writer draws no color; lilToon keeps that
+            // with its own ColorMask, and an opaque copy must not write depth
+            // the source did not write.
+            if (DrawsNoColor(source, values))
+            {
+                Set(material, "_ColorMask", 0);
+                Set(material, "_ZWrite", WritesDepth(source, values) ? 1 : 0);
+            }
 
             foreach (var name in NormalTextures)
                 if (values.Texture(name, out var normal, out var scale, out var offset) && Flat(normal))
@@ -273,15 +281,33 @@ namespace VRVlog.LilToonExporter
         static bool WritesDepth(Material source, SourceValues values)
         {
             if (values.TryFloat("_ZWrite", out var declared)) return declared > .5f;
+            var text = ShaderText(source);
+            return text != null && ShaderWritesDepth(text, name => values.Float(name, 0));
+        }
+
+        // Whether every pass that draws color has ColorMask 0. Such a material
+        // only writes stencil (or depth) for another material; MToon has no
+        // stencil, so drawing it would cover the mesh behind it.
+        static bool DrawsNoColor(Material source, SourceValues values)
+        {
+            var text = ShaderText(source);
+            // An unset property is lilToon's and Unity's default mask, RGBA (15).
+            return text != null && ShaderDrawsNoColor(text, name => values.Float(name, 15));
+        }
+
+        // The source of a shader file, or null for built-in and missing shaders.
+        static string ShaderText(Material source)
+        {
             var path = source.shader == null || source.shader.name == MissingShader ? null : AssetDatabase.GetAssetPath(source.shader);
-            if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.IsNullOrEmpty(path) || !path.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)) return null;
             // GetFullPath resolves a package path to the folder it is installed in.
             path = Path.GetFullPath(path);
-            return File.Exists(path) && ShaderWritesDepth(File.ReadAllText(path), name => values.Float(name, 0));
+            return File.Exists(path) ? File.ReadAllText(path) : null;
         }
 
         static readonly Regex Comments = new Regex(@"//[^\n]*|/\*.*?\*/", RegexOptions.Singleline);
         static readonly Regex ZWriteCommand = new Regex(@"\bZWrite\s+(On|Off|\[\s*(\w+)\s*\])", RegexOptions.IgnoreCase);
+        static readonly Regex ColorMaskCommand = new Regex(@"\bColorMask\s+(\[\s*(\w+)\s*\]|\w+)", RegexOptions.IgnoreCase);
         static readonly Regex DepthOnlyPass = new Regex(@"""LightMode""\s*=\s*""(ShadowCaster|Meta|DepthOnly|DepthNormals|MotionVectors)""", RegexOptions.IgnoreCase);
 
         // ShaderLab of the first SubShader (the one Unity uses on desktop
@@ -291,31 +317,54 @@ namespace VRVlog.LilToonExporter
         // has no Pass blocks; only a SubShader command decides it.
         internal static bool ShaderWritesDepth(string text, Func<string, float> property)
         {
+            if (!ColorPasses(text, ZWriteCommand, out var shared, out var passes, out _)) return false;
+            bool? On(Match match) => match == null ? (bool?)null : match.Groups[2].Success
+                ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
+            if (passes == null) return On(shared) ?? false;
+            return passes.Any(pass => On(pass) ?? On(shared) ?? true);
+        }
+
+        // Same SubShader rules for ColorMask, whose default is RGBA. A shader
+        // without color passes (only shadow or depth passes) draws no color
+        // either. UsePass borrows a pass this file does not show, so it counts
+        // as drawing color.
+        internal static bool ShaderDrawsNoColor(string text, Func<string, float> property)
+        {
+            if (!ColorPasses(text, ColorMaskCommand, out var shared, out var passes, out var borrows) || borrows) return false;
+            bool? None(Match match) => match == null ? (bool?)null : match.Groups[2].Success
+                ? property(match.Groups[2].Value) < .5f : match.Groups[1].Value == "0";
+            if (passes == null) return None(shared) ?? false;
+            return passes.All(pass => None(pass) ?? None(shared) ?? false);
+        }
+
+        // Splits the first SubShader into the command its own scope sets and
+        // the command each color pass sets (null where the scope has none).
+        // passes is null for a surface shader, which has no Pass blocks;
+        // borrows tells that a UsePass adds passes from another shader.
+        static bool ColorPasses(string text, Regex command, out Match shared, out List<Match> passes, out bool borrows)
+        {
+            shared = null; passes = null; borrows = false;
             text = Comments.Replace(text, "");
             var start = Regex.Match(text, @"\bSubShader\s*\{");
             if (!start.Success) return false;
             var subShader = Block(text, start.Index + start.Length - 1);
+            borrows = Regex.IsMatch(subShader, @"\bUsePass\b");
             var outside = new System.Text.StringBuilder();
-            var passes = new List<string>();
+            var bodies = new List<string>();
             var at = 0;
             foreach (Match pass in Regex.Matches(subShader, @"\bPass\s*\{"))
             {
                 if (pass.Index < at) continue;
                 var body = Block(subShader, pass.Index + pass.Length - 1);
                 outside.Append(subShader, at, pass.Index - at);
-                passes.Add(body);
+                bodies.Add(body);
                 at = pass.Index + pass.Length - 1 + body.Length;
             }
             outside.Append(subShader, at, subShader.Length - at);
-            bool? Command(string scope)
-            {
-                var match = ZWriteCommand.Match(scope);
-                if (!match.Success) return null;
-                return match.Groups[2].Success ? property(match.Groups[2].Value) > .5f : match.Groups[1].Value.Equals("On", StringComparison.OrdinalIgnoreCase);
-            }
-            var shared = Command(outside.ToString());
-            if (passes.Count == 0) return shared ?? false;
-            return passes.Where(pass => !DepthOnlyPass.IsMatch(pass)).Any(pass => Command(pass) ?? shared ?? true);
+            Match Find(string scope) { var match = command.Match(scope); return match.Success ? match : null; }
+            shared = Find(outside.ToString());
+            if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).Select(Find).ToList();
+            return true;
         }
 
         // The text from an opening brace to its closing brace, both included.
