@@ -82,6 +82,43 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(blended.GetFloat("_Cutoff"), Is.EqualTo(0f), "lilToon clips in every mode; a blended source keeps faint pixels.");
         }
 
+        [Test] public void ABlendedSourceKeepsWhetherItWritesDepth()
+        {
+            var fade = Standard("Fade");
+            fade.SetFloat("_Mode", 2); fade.EnableKeyword("_ALPHABLEND_ON"); fade.SetFloat("_ZWrite", 0);
+            Assert.That(Substitute(fade).GetFloat("_ZWrite"), Is.EqualTo(0f), "A declared _ZWrite is the authored value.");
+            // The probe blends and writes depth with a fixed command, without a property.
+            var fixedDepth = Own(new Material(Shader.Find("Hidden/VRVlogTests/DepthWriteProbe")) { name = "Fixed" });
+            var blended = Substitute(fixedDepth);
+            Assert.That(blended.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
+            Assert.That(blended.GetFloat("_ZWrite"), Is.EqualTo(1f));
+            // Built-in blended shaders have no file to read and do not write depth.
+            var builtIn = Own(new Material(Shader.Find("Legacy Shaders/Transparent/Diffuse")) { name = "BuiltIn" });
+            Assert.That(Substitute(builtIn).GetFloat("_ZWrite"), Is.EqualTo(0f));
+        }
+
+        [TestCase("SubShader { Tags { \"Queue\"=\"Transparent\" } Pass { Blend SrcAlpha OneMinusSrcAlpha ZWrite Off } }", false)]
+        [TestCase("SubShader { Pass { Blend SrcAlpha OneMinusSrcAlpha } }", true)]
+        [TestCase("SubShader { ZWrite Off Pass { Blend SrcAlpha OneMinusSrcAlpha } }", false)]
+        [TestCase("SubShader { ZWrite Off Pass { ZWrite On ColorMask 0 } Pass { Blend SrcAlpha OneMinusSrcAlpha } }", true)]
+        [TestCase("SubShader { Pass { ZWrite Off } Pass { Tags { \"LightMode\"=\"ShadowCaster\" } ZWrite On } }", false)]
+        [TestCase("SubShader { Pass { /* ZWrite On */ ZWrite Off // ZWrite On\n } }", false)]
+        [TestCase("SubShader { Pass { ZWrite [_ZWriteOn] CGPROGRAM float4 f() { return 0; } ENDCG } }", true)]
+        [TestCase("SubShader { Pass { ZWrite [_Other] } }", false)]
+        [TestCase("SubShader { Pass { ZWrite Off } } SubShader { Pass { ZWrite On } }", false)]
+        [TestCase("SubShader { CGPROGRAM #pragma surface surf Lambert alpha:fade\n ENDCG }", false)]
+        [TestCase("SubShader { ZWrite [_ZWriteOn] CGPROGRAM #pragma surface surf Lambert keepalpha\n ENDCG Pass { Tags { \"LightMode\"=\"ShadowCaster\" } ZWrite On } }", true)]
+        [TestCase("SubShader { Pass { Blend SrcAlpha OneMinusSrcAlpha ZWrite 0 } }", false)]
+        [TestCase("SubShader { Pass { Blend SrcAlpha OneMinusSrcAlpha ZWrite True } }", true)]
+        [TestCase("subshader { pass { blend srcalpha oneminussrcalpha } }", true)]
+        [TestCase("SubShader { ZWrite On CGPROGRAM #pragma surface surf Lambert alpha:fade\n ENDCG }", false)]
+        [TestCase("SubShader { ZWrite On CGPROGRAM #pragma surface surf Lambert keepalpha\n ENDCG }", true)]
+        [TestCase("SubShader { ZWrite On CGPROGRAM #pragma surface surf Lambert alphatest:_Cutoff\n ENDCG }", true)]
+        public void TheFirstSubShaderDecidesWhetherColorPassesWriteDepth(string shaderLab, bool expected)
+        {
+            Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));
+        }
+
         [Test] public void ToonPropertyNamesMapToShadowClippingAndCull()
         {
             var main = Texture("main"); var shade = Texture("shade"); var normal = Texture("normal");

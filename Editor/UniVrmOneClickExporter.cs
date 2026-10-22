@@ -1148,6 +1148,11 @@ namespace VRVlog.LilToonExporter
                 context.TextureScale = source.GetTextureScale("_MainTex");
                 context.TextureOffset = source.GetTextureOffset("_MainTex");
             }
+            // lilToon's transparent shaders write depth by default (_ZWrite 1),
+            // so a mesh hides its own far side. MToon blends without depth
+            // unless TransparentWithZWrite is on.
+            if (context.AlphaMode == MToon10AlphaMode.Transparent && Float(source, "_ZWrite", 0f) > 0.5f)
+                context.TransparentWithZWriteMode = MToon10TransparentWithZWriteMode.On;
             if (fakeShadow)
             {
                 // MToon has no stencil, so FakeShadow would cover the whole mesh
