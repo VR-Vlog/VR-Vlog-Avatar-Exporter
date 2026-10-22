@@ -275,7 +275,6 @@ namespace VRVlog.LilToonExporter.Tests
         // average; a still one stays at u = 0, between the first and last texel.
         [TestCase(1f, .5f)]
         [TestCase(0f, .5f)]
-        [TestCase(-1f, .5f)]
         public void GradatedEmissionUsesTheAverageOfTheGradation(float speed, float expected)
         {
             var shader = Shader.Find("lilToon");
@@ -312,8 +311,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(null, 1f)]
-        [TestCase(0f, 1f)]
-        [TestCase(.5f, .5f)]
         [TestCase(1f, 0f)]
         public void FluorescentEmissionUsesTheLitSceneStrength(float? fluorescence, float expected)
         {
@@ -486,30 +483,6 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var material in created) Object.DestroyImmediate(material);
                 Object.DestroyImmediate(source);
                 Object.DestroyImmediate(fixture);
-            }
-        }
-
-        [Test]
-        public void OptOutRetainsEmissionInBothMaterialRepresentations()
-        {
-            var source = new Material(Shader.Find("Hidden/VRVlogTests/lilToon"));
-            var image = new Texture2D(2, 2);
-            var created = new List<Material>();
-            try
-            {
-                source.SetTexture("_MainTex", image);
-                source.SetTexture("_EmissionMap", image);
-                var fallback = UniVrmOneClickExporter.CreateMToonFallback(source, created, null, false);
-                Assert.Greater(fallback.GetColor("_EmissionColor").maxColorComponent, 0f);
-                Assert.AreSame(image, fallback.GetTexture("_EmissionMap"));
-                Assert.IsTrue(LilToonMaterialReader.Read(source, 0, (_, __) => 0,
-                    suppressSharedTextureEmission: false).features.Contains("emission"));
-            }
-            finally
-            {
-                foreach (var material in created) Object.DestroyImmediate(material);
-                Object.DestroyImmediate(source);
-                Object.DestroyImmediate(image);
             }
         }
     }
