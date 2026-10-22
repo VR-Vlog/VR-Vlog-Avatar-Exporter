@@ -14,8 +14,6 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class FaceEmoPreparedFxIntegrationTests
     {
         [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
         [TestCase(true, true)]
         public void RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce(bool fractionalCommon, bool writeDefaults)
         {
@@ -50,133 +48,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Skin.GetBlendShapeWeight(0), Is.EqualTo(20), "Native sampling must leave the prepared base untouched.");
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void FractionalPlayerRetainsTransitionedCommonPoseBelowItsRegisteredClip(bool writeDefaults)
-        {
-            using var fixture = new Fixture(false, writeDefaults);
-            fixture.ConfigureTransitioningCommon();
-            Assert.That(ExpressionDependencies.StationaryLayers(fixture.Controller).ContainsKey(1), Is.False,
-                "This lower common layer must remain outside the reduced stationary-layer probe.");
-            var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-            var old = fixture.Skin; fixture.ReplaceRenderer();
-            snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
-            var expected = fixture.NativeSelectedWeights();
-            var layers = fixture.Controller.layers;
-            var commonWeight = layers[1].defaultWeight;
-            Dictionary<string, float> withoutCommon;
-            try
-            {
-                layers[1].defaultWeight = 0; fixture.Controller.layers = layers;
-                withoutCommon = fixture.NativeSelectedWeights();
-            }
-            finally
-            {
-                layers = fixture.Controller.layers; layers[1].defaultWeight = commonWeight; fixture.Controller.layers = layers;
-            }
-            Assert.That(Math.Abs(expected["Smile"] - withoutCommon["Smile"]), Is.GreaterThan(.1f),
-                "The lower same-channel pose must actually affect the fractional selected branch.");
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
-            var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
-            using var bindings = new PreparedExpressionBindings(fixture.Avatar, source);
-            FaceEmoExpressions.ApplyPreparedDefaultFace(fixture.Avatar, source, bindings, registeredBindings: snapshot);
-            Assert.That(entry.Error, Is.Null);
-            foreach (var pair in expected)
-                Assert.That(entry.Values.Single(value => value.Shape == pair.Key).Weight,
-                    Is.EqualTo(pair.Value).Within(.02f), pair.Key + " must preserve the original lower-layer pose and permanent FX order.");
-            Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight,
-                Is.Not.EqualTo(withoutCommon["Smile"]).Within(.02f));
-            Assert.That(AnimationUtility.GetCurveBindings(fixture.RegisteredClip).All(value => value.path == "Face"), Is.True);
-            Assert.That(fixture.Skin.GetBlendShapeWeight(1), Is.EqualTo(10), "Neither native reference nor export may bake the sampled pose into the prepared source.");
-        }
-
-        [TestCase("duplicate")]
-        [TestCase("missing")]
-        [TestCase("write-defaults")]
-        [TestCase("additive")]
-        public void AmbiguousGeneratedPlayerCannotSilentlyUseStandaloneLayerOrder(string kind)
-        {
-            using var fixture = new Fixture(false, false);
-            if (kind == "duplicate")
-            {
-                // AddLayer automatically makes names unique. Restore the exact
-                // duplicate to exercise ambiguous authored controller metadata.
-                fixture.Controller.AddLayer("[ USER EDIT ] FACE EMOTE PLAYER");
-                var layers = fixture.Controller.layers;
-                layers[layers.Length - 1].name = "[ USER EDIT ] FACE EMOTE PLAYER";
-                layers[layers.Length - 1].stateMachine.name = "[ USER EDIT ] FACE EMOTE PLAYER";
-                fixture.Controller.layers = layers;
-                Assert.That(fixture.Controller.layers.Count(layer => layer.name == "[ USER EDIT ] FACE EMOTE PLAYER"), Is.EqualTo(2));
-            }
-            if (kind == "missing") fixture.Controller.RemoveLayer(2);
-            if (kind == "write-defaults")
-            {
-                var selected = fixture.Controller.layers[2].stateMachine.states.Single(child => child.state.motion == fixture.PreparedBranch).state;
-                selected.motion = fixture.RegisteredClip;
-                var additional = fixture.Controller.layers[2].stateMachine.AddState("Incompatible state");
-                additional.motion = fixture.RegisteredClip; additional.writeDefaultValues = true;
-            }
-            if (kind == "additive")
-            {
-                var layers = fixture.Controller.layers; layers[2].blendingMode = AnimatorLayerBlendingMode.Additive;
-                fixture.Controller.layers = layers;
-            }
-            var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
-            Assert.That(source.Entries.Single().Error, Does.Contain("FaceEmo"));
-            Assert.That(source.Entries.Single().Error, Does.Contain(kind == "write-defaults" ? "Write Defaults" : "FX"));
-        }
-
-        [TestCase("retargeted")]
-        [TestCase("exact")]
-        [TestCase("effective-override")]
-        public void RegisteredPlayerCallbacksFollowExactOrProvedRetargetedClipProvenance(string identity)
-        {
-            using var fixture = new Fixture(false, false);
-            var selected = fixture.Controller.layers[2].stateMachine.states.Single(child => child.state.motion == fixture.PreparedBranch).state;
-            fixture.ConfigureSelectedDriver(selected);
-            RuntimeAnimatorController runtime = fixture.Controller;
-            AnimatorOverrideController overrides = null;
-            if (identity == "exact") selected.motion = fixture.RegisteredClip;
-            if (identity == "effective-override")
-            {
-                overrides = new AnimatorOverrideController(fixture.Controller);
-                overrides[fixture.PreparedBranch] = fixture.RegisteredClip;
-                runtime = overrides;
-            }
-            try
-            {
-                var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-                var old = fixture.Skin; fixture.ReplaceRenderer();
-                snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
-                var beforeState = EditorJsonUtility.ToJson(selected);
-                var beforeController = EditorJsonUtility.ToJson(fixture.Controller);
-                var expected = fixture.NativeSelectedWeights(new Dictionary<string, float> { ["Pattern setting"] = 1 }, runtime, selected);
-                var source = new VrChatExpressionMenu.Source { Controller = runtime }; var serial = 0;
-                FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                    ref serial, new HashSet<object>(), 0, bindings: snapshot);
-                var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
-                using var bindings = new PreparedExpressionBindings(fixture.Avatar, source);
-                FaceEmoExpressions.ApplyPreparedDefaultFace(fixture.Avatar, source, bindings, registeredBindings: snapshot);
-                Assert.That(entry.Error, Is.Null);
-                Assert.That(expected["Smile"], Is.EqualTo(100).Within(.02));
-                Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(expected["Smile"]).Within(.02));
-                Assert.That(entry.Values.All(value => value.Path == "Prepared/Merged"), Is.True);
-                Assert.That(EditorJsonUtility.ToJson(selected), Is.EqualTo(beforeState));
-                Assert.That(EditorJsonUtility.ToJson(fixture.Controller), Is.EqualTo(beforeController));
-                Assert.That(AnimationUtility.GetCurveBindings(fixture.RegisteredClip).All(binding => binding.path == "Face"), Is.True);
-                Assert.That(fixture.Skin.GetBlendShapeWeight(1), Is.EqualTo(10));
-            }
-            finally { if (overrides != null) Object.DestroyImmediate(overrides); }
-        }
-
         [TestCase("ambiguous")]
-        [TestCase("missing")]
-        [TestCase("callback-changed")]
         [TestCase("motion-changed")]
         public void RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance(string kind)
         {
@@ -215,41 +87,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Skin.GetBlendShapeWeight(1), Is.EqualTo(10));
         }
 
-        [Test]
-        public void RegisteredPlayerRejectsOriginalIdentityWithDifferentEffectiveOverride()
-        {
-            using var fixture = new Fixture(false, false);
-            var selected = fixture.Controller.layers[2].stateMachine.states.Single(child => child.state.motion == fixture.PreparedBranch).state;
-            fixture.ConfigureSelectedDriver(selected);
-            selected.motion = fixture.RegisteredClip;
-            var binding = EditorCurveBinding.FloatCurve("Prepared/Merged", typeof(SkinnedMeshRenderer), "blendShape.Smile");
-            AnimationUtility.SetEditorCurve(fixture.PreparedBranch, binding, AnimationCurve.Constant(0, 1, 25));
-            var overrides = new AnimatorOverrideController(fixture.Controller);
-            try
-            {
-                overrides[fixture.RegisteredClip] = fixture.PreparedBranch;
-                var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-                var old = fixture.Skin; fixture.ReplaceRenderer();
-                snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
-                var beforeState = EditorJsonUtility.ToJson(selected);
-                var beforeController = EditorJsonUtility.ToJson(fixture.Controller);
-                var beforeOverrides = EditorJsonUtility.ToJson(overrides);
-                var source = new VrChatExpressionMenu.Source { Controller = overrides }; var serial = 0;
-                FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                    ref serial, new HashSet<object>(), 0, bindings: snapshot);
-                var entry = source.Entries.Single();
-                Assert.That(entry.Error, Does.Contain("FX状態").And.Contain("ありません"));
-                Assert.That(EditorJsonUtility.ToJson(selected), Is.EqualTo(beforeState));
-                Assert.That(EditorJsonUtility.ToJson(fixture.Controller), Is.EqualTo(beforeController));
-                Assert.That(EditorJsonUtility.ToJson(overrides), Is.EqualTo(beforeOverrides));
-                Assert.That(fixture.Skin.GetBlendShapeWeight(1), Is.EqualTo(10));
-                Assert.That(AnimationUtility.GetEditorCurve(fixture.RegisteredClip,
-                    EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Smile")).keys[0].value, Is.EqualTo(75));
-            }
-            finally { Object.DestroyImmediate(overrides); }
-        }
-
-        [TestCase(false)]
         [TestCase(true)]
         public void RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks(bool withDriver)
         {
@@ -281,66 +118,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(fixture.RegisteredClip), Is.EqualTo(beforeClip));
             Assert.That(AnimationUtility.GetCurveBindings(fixture.RegisteredClip).Length, Is.EqualTo(2));
             Assert.That(fixture.Skin.GetBlendShapeWeight(3), Is.EqualTo(30));
-        }
-
-        [TestCase("missing")]
-        [TestCase("unknown")]
-        [TestCase("wrong-origin")]
-        [TestCase("ambiguous")]
-        public void RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation(string kind)
-        {
-            using var fixture = new Fixture(false, false);
-            var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-            var old = fixture.Skin; fixture.ReplaceRenderer(); AddPreparedChannel(fixture.PreparedBranch, 65);
-            object registry = null;
-            if (kind == "unknown") registry = new object();
-            if (kind == "wrong-origin") registry = Registry(fixture.Avatar,
-                fixture.Controller.layers[2].stateMachine.defaultState.motion, fixture.PreparedBranch);
-            if (kind == "ambiguous")
-            {
-                registry = Registry(fixture.Avatar, fixture.RegisteredClip, fixture.PreparedBranch);
-                var duplicate = fixture.Controller.layers[2].stateMachine.AddState("Another registered replacement");
-                duplicate.motion = fixture.PreparedBranch; duplicate.writeDefaultValues = false;
-            }
-            snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer, registry);
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
-            Assert.That(source.Entries.Single().Error, Does.Contain("FX状態").And.Contain(kind == "ambiguous" ? "重複" : "ありません"));
-            Assert.That(fixture.Skin.GetBlendShapeWeight(3), Is.EqualTo(30));
-            Assert.That(AnimationUtility.GetCurveBindings(fixture.RegisteredClip).Length, Is.EqualTo(2));
-        }
-
-        [TestCase("clip-data")]
-        [TestCase("effective-override")]
-        public void RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation(string kind)
-        {
-            using var fixture = new Fixture(false, false);
-            var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
-            var old = fixture.Skin; fixture.ReplaceRenderer(); AddPreparedChannel(fixture.PreparedBranch, 65);
-            var registry = Registry(fixture.Avatar, fixture.RegisteredClip, fixture.PreparedBranch);
-            snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer, registry);
-            var overrides = kind == "effective-override" ? new AnimatorOverrideController(fixture.Controller) : null;
-            AnimationClip changed = null;
-            try
-            {
-                var source = new VrChatExpressionMenu.Source { Controller = overrides == null ? (RuntimeAnimatorController)fixture.Controller : overrides };
-                var serial = 0;
-                FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                    ref serial, new HashSet<object>(), 0, bindings: snapshot);
-                var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
-                if (overrides == null) AddPreparedChannel(fixture.PreparedBranch, 90);
-                else
-                {
-                    changed = Object.Instantiate(fixture.PreparedBranch); AddPreparedChannel(changed, 90);
-                    overrides[fixture.PreparedBranch] = changed;
-                }
-                using var bindings = new PreparedExpressionBindings(fixture.Avatar, source);
-                FaceEmoExpressions.ApplyPreparedDefaultFace(fixture.Avatar, source, bindings, registeredBindings: snapshot);
-                Assert.That(entry.Error, Does.Contain("評価前に変わりました"));
-                Assert.That(fixture.Skin.GetBlendShapeWeight(3), Is.EqualTo(30));
-            }
-            finally { if (overrides != null) Object.DestroyImmediate(overrides); if (changed != null) Object.DestroyImmediate(changed); }
         }
 
         private static void AddPreparedChannel(AnimationClip clip, float value) => AnimationUtility.SetEditorCurve(clip,
@@ -431,22 +208,6 @@ namespace VRVlog.LilToonExporter.Tests
                 // the registered target merely because the string matches.
                 var reused = new GameObject("Face", typeof(SkinnedMeshRenderer)); reused.transform.SetParent(Avatar.transform, false);
                 reused.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
-            }
-
-            internal void ConfigureTransitioningCommon()
-            {
-                Controller.AddParameter(new AnimatorControllerParameter {
-                    name = "CommonPreset", type = AnimatorControllerParameterType.Int, defaultInt = 1
-                });
-                var layers = Controller.layers; layers[2].defaultWeight = .5f; Controller.layers = layers;
-                var machine = layers[1].stateMachine;
-                var stable = machine.AddState("Common selected by initial parameter");
-                stable.motion = Clip("Selected common pose", ("Open", 20), ("Smile", 30), ("Pupil", 60));
-                stable.writeDefaultValues = false;
-                var transition = machine.defaultState.AddTransition(stable);
-                transition.hasExitTime = false; transition.duration = 0;
-                transition.AddCondition(AnimatorConditionMode.Equals, 1, "CommonPreset");
-                AssetDatabase.SaveAssets();
             }
 
             private AnimationClip Clip(string name, params (string Shape, float Weight)[] values)

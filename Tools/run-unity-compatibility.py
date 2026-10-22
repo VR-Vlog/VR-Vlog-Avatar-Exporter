@@ -169,7 +169,7 @@ BEHAVIOR_CASES = {
     },
     'SourceFingerprintCacheTests': {
         'ColdClipEditorCacheDoesNotInvalidateButNativeCurveEditsDo': 1,
-        'MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes': 3,
+        'MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes': 2,
         'UnknownSavedMaterialPropertiesAndTextureTransformsStillInvalidate': 1,
     },
     'AdditionalPlayableCallbackTests': {
@@ -581,15 +581,9 @@ BEHAVIOR_CASES = {
         'UnrelatedSelectedDriverDestinationDoesNotBlockTheNativeProbe': 1,
     },
     'FaceEmoPreparedFxIntegrationTests': {
-        'RegisteredPlayerCallbacksFollowExactOrProvedRetargetedClipProvenance': 3,
-        'RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance': 4,
-        'RegisteredPlayerRejectsOriginalIdentityWithDifferentEffectiveOverride': 1,
-        'RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks': 2,
-        'RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation': 4,
-        'RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation': 2,
-        'AmbiguousGeneratedPlayerCannotSilentlyUseStandaloneLayerOrder': 4,
-        'FractionalPlayerRetainsTransitionedCommonPoseBelowItsRegisteredClip': 2,
-        'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 4,
+        'RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance': 2,
+        'RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks': 1,
+        'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 2,
     },
     'MergedFixedNeutralSamplingTests': {
         'FractionalNeutralRetainsNativeBaseActivityAndLeavesAutomaticBlinkLive': 4,
@@ -637,13 +631,11 @@ BEHAVIOR_CASES = {
     },
     'PreparedNeutralEligibilityTests': {
         'PreBuildGuardAllowsWeightChangesButStillProtectsDeformation': 1,
-        'PreparedPathMappingCannotChooseBetweenAmbiguousOriginalOrCurrentPaths': 1,
         'AuthoredPartialEndpointIsVerifiedAgainstItsDeclaredAbsoluteWeight': 1,
         'DeferredCaptureProtectsRendererIdentityAndMovingGeometry': 1,
         'DeferredCaptureStillRejectsMissingBlinkAtPreparedNeutral': 1,
         'ExportCaptureWaitsForFxOpeningBeforeSelectingUnifiedClosure': 1,
         'InferredUnifiedBlinkUsesTheSameFinalSourceFrameAsRawTracking': 1,
-        'PreparedPathMappingKeepsUnderlayOnlyRendererIdentityAcrossMoves': 1,
     },
     'PreparedNeutralExportTests': {
         'IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints': 1,

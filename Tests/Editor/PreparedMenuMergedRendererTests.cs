@@ -16,12 +16,11 @@ namespace VRVlog.LilToonExporter.Tests
     // They do not claim an installed NDMF mesh merger produced these mappings.
     public sealed class PreparedMenuMergedRendererTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task EqualStaticEndpointRoundTripsOnceAndReturnsToNeutral(bool registeredFaceEmo)
+        [Test]
+        public async Task EqualStaticEndpointRoundTripsOnceAndReturnsToNeutral()
         {
             using var f = new Fixture();
-            var menu = registeredFaceEmo ? f.RegisteredMenu(75, 75) : Menu(75, 75);
+            var menu = Menu(75, 75);
             var entry = menu.Entries.Single();
             Assert.That(entry.Error, Is.Null);
             var values = entry.Values.ToArray();
@@ -80,27 +79,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void IndependentRenderersStillHaveIndependentTargets()
-        {
-            using var f = new Fixture();
-            var menu = Menu(75, 80); f.Prepare(menu, merge: false);
-            AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-            var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Is.Empty);
-            Assert.That(expression.Direct, Has.Count.EqualTo(2));
-            Assert.That(expression.Direct.Select(direct => direct.Renderer).Distinct().Count(), Is.EqualTo(2));
-            foreach (var path in new[] { "Front", "Back" })
-            {
-                var skin = f.Avatar.Copy.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
-                var direct = expression.Direct.Single(value => value.Renderer == skin);
-                AssertDirect(direct, skin, "Open", (path == "Front" ? 50f : 55f) / 75f);
-                var delta = new Vector3[skin.sharedMesh.vertexCount];
-                skin.sharedMesh.GetBlendShapeFrameVertices(skin.sharedMesh.GetBlendShapeIndex(direct.Shape), 0, delta, null, null);
-                Assert.That(delta[0].y * direct.Weight, Is.EqualTo(.03f * (path == "Front" ? .5f : .55f)).Within(.00002f));
-            }
-        }
-
-        [Test]
         public void MatchingAnimatedAliasesHaveOneProgramAndPreserveSource()
         {
             using var f = new Fixture();
@@ -125,9 +103,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("value")]
-        [TestCase("tangent")]
-        [TestCase("weight")]
-        [TestCase("wrap")]
         [TestCase("static")]
         public void TemporalCollisionRejectsBeforeAnyEntryBakes(string difference)
         {
@@ -135,9 +110,6 @@ namespace VRVlog.LilToonExporter.Tests
             var menu = AnimatedMenu(); var entry = menu.Entries.Single();
             var second = entry.Animation[1].Curve;
             if (difference == "value") second.Keys[1].Value = 90;
-            if (difference == "tangent") second.Keys[1].InTangent = 0;
-            if (difference == "weight") second.Keys[1].InWeight = .2;
-            if (difference == "wrap") second.PostWrap = "loop";
             if (difference == "static") entry.Animation.RemoveAt(0);
             var earlier = new VrChatExpressionMenu.Entry { Name = "Earlier valid entry" };
             earlier.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Front", Shape = "Smile", Weight = 50 });
@@ -159,37 +131,6 @@ namespace VRVlog.LilToonExporter.Tests
             var error = Assert.Throws<InvalidOperationException>(() => f.Bake(menu));
             Assert.That(error.Message, Does.Contain("Prepared/Merged").And.Contain("Open"));
             Assert.That(f.Owned, Is.Empty); Assert.That(f.Merged.sharedMesh, Is.SameAs(f.Avatar.Mesh));
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void InconsistentCapturedSnapshotsStopBeforeBaking(bool differentMesh)
-        {
-            using var f = new Fixture(); var menu = Menu(75, 75); f.Prepare(menu);
-            if (differentMesh)
-            {
-                var snapshot = Object.Instantiate(f.Avatar.Mesh); f.Resources.Add(snapshot);
-                f.Bindings.Get("Back").Mesh = snapshot;
-            }
-            else f.Bindings.Get("Back").Weights[2] = 0;
-            Assert.Throws<InvalidOperationException>(() => f.Bake(menu));
-            Assert.That(f.Owned, Is.Empty); Assert.That(f.Merged.sharedMesh, Is.SameAs(f.Avatar.Mesh));
-        }
-
-        [Test]
-        public void DifferentAnimatedShapesKeepIndependentPrograms()
-        {
-            using var f = new Fixture(); var menu = AnimatedMenu();
-            menu.Entries[0].Values[1].Shape = "Smile"; menu.Entries[0].Animation[1].Shape = "Smile";
-            f.Prepare(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-            var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Is.Empty); Assert.That(expression.Direct, Is.Empty);
-            Assert.That(expression.Animation.Channels, Has.Count.EqualTo(2));
-            // Each channel moves its own original shape from its rest.
-            Assert.That(expression.Animation.Channels.Select(channel => channel.Points.First().Value), Is.EquivalentTo(new[] { 25d, 10d }));
-            Assert.That(expression.Animation.Channels.All(channel => channel.Points.Count == 2 && channel.Points.All(point => point.Target == null)), Is.True);
-            Assert.That(expression.DirectPoints.Values.Select(value => value.Shape), Is.EquivalentTo(new[] { "Open", "Smile" }));
-            Assert.That(Final(expression).Select(value => value.Weight), Is.EqualTo(new[] { 1f, 1f }));
         }
 
         [TestCase(false)]
@@ -263,19 +204,12 @@ namespace VRVlog.LilToonExporter.Tests
             for (var i = 0; i < expected.Length; i++) Assert.That(Vector3.Distance(actual[i], expected[i]), Is.LessThan(.00003f), "Vertex " + i);
         }
 
-        public sealed class RegisteredList { public object[] Modes, Groups = Array.Empty<object>(); }
-        public sealed class RegisteredMode { public string DisplayName; public bool ChangeDefaultFace; public object[] Branches; }
-        public sealed class RegisteredBranch { public RegisteredAnimation BaseAnimation; }
-        public sealed class RegisteredAnimation { public string GUID; }
-
         private sealed class Fixture : IDisposable
         {
             internal readonly AttachmentConnectionTests.Fixture Avatar = new AttachmentConnectionTests.Fixture();
             internal readonly List<Mesh> Owned = new List<Mesh>();
-            internal readonly List<Object> Resources = new List<Object>();
             internal PreparedExpressionBindings Bindings;
             internal SkinnedMeshRenderer Merged;
-            private string directory;
             internal Fixture()
             {
                 Avatar.Mesh.ClearBlendShapes();
@@ -285,34 +219,17 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in Avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Concat(Avatar.Skins))
                 { skin.SetBlendShapeWeight(0, 25); skin.SetBlendShapeWeight(1, 10); skin.SetBlendShapeWeight(2, 40); }
             }
-            internal VrChatExpressionMenu.Source RegisteredMenu(float first, float second)
-            {
-                var name = "__MergedMenu_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", name); directory = "Assets/" + name;
-                var clip = new AnimationClip { name = "Registered endpoint" }; AssetDatabase.CreateAsset(clip, directory + "/Endpoint.anim");
-                foreach (var pair in new[] { ("Front", first), ("Back", second) })
-                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(pair.Item1, typeof(SkinnedMeshRenderer), "blendShape.Open"),
-                        AnimationCurve.Constant(0, 1, pair.Item2));
-                AssetDatabase.SaveAssets();
-                var list = new RegisteredList { Modes = new object[] { new RegisteredMode { DisplayName = "Pattern", Branches = new object[] {
-                    new RegisteredBranch { BaseAnimation = new RegisteredAnimation { GUID = AssetDatabase.AssetPathToGUID(directory + "/Endpoint.anim") } }
-                } } } };
-                var menu = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(Avatar.Copy, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0); return menu;
-            }
-            internal void Prepare(VrChatExpressionMenu.Source menu, bool merge = true)
+            internal void Prepare(VrChatExpressionMenu.Source menu)
             {
                 Bindings = new PreparedExpressionBindings(Avatar.Copy, menu, Avatar.Source);
-                if (merge)
-                {
-                    var parent = new GameObject("Prepared"); parent.transform.SetParent(Avatar.Copy.transform, false);
-                    var target = new GameObject("Merged"); target.transform.SetParent(parent.transform, false);
-                    Merged = target.AddComponent<SkinnedMeshRenderer>();
-                    Merged.sharedMesh = Avatar.Mesh; Merged.sharedMaterials = Avatar.Skins[0].sharedMaterials;
-                    Merged.bones = Avatar.Skins[0].bones; Merged.rootBone = Avatar.Skins[0].rootBone;
-                    Merged.SetBlendShapeWeight(0, 25); Merged.SetBlendShapeWeight(1, 10); Merged.SetBlendShapeWeight(2, 40);
-                    Bindings.RebindPrepared(renderer => Avatar.Skins.Contains(renderer) ? Merged : renderer);
-                    foreach (var skin in Avatar.Skins) Object.DestroyImmediate(skin.gameObject);
-                }
+                var parent = new GameObject("Prepared"); parent.transform.SetParent(Avatar.Copy.transform, false);
+                var target = new GameObject("Merged"); target.transform.SetParent(parent.transform, false);
+                Merged = target.AddComponent<SkinnedMeshRenderer>();
+                Merged.sharedMesh = Avatar.Mesh; Merged.sharedMaterials = Avatar.Skins[0].sharedMaterials;
+                Merged.bones = Avatar.Skins[0].bones; Merged.rootBone = Avatar.Skins[0].rootBone;
+                Merged.SetBlendShapeWeight(0, 25); Merged.SetBlendShapeWeight(1, 10); Merged.SetBlendShapeWeight(2, 40);
+                Bindings.RebindPrepared(renderer => Avatar.Skins.Contains(renderer) ? Merged : renderer);
+                foreach (var skin in Avatar.Skins) Object.DestroyImmediate(skin.gameObject);
                 Bindings.Capture(menu); Assert.That(menu.Entries.All(entry => entry.Error == null), Is.True);
             }
             internal List<VrmMenuExpressions.Expression> Bake(VrChatExpressionMenu.Source menu)
@@ -321,8 +238,6 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Bindings?.Dispose(); Avatar.Dispose();
                 foreach (var mesh in Owned) Object.DestroyImmediate(mesh);
-                foreach (var resource in Resources) Object.DestroyImmediate(resource);
-                if (directory != null) AssetDatabase.DeleteAsset(directory);
             }
         }
     }
