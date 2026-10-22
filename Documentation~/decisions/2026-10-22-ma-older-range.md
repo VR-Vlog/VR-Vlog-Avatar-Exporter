@@ -26,7 +26,7 @@ MA の公開ソースを 1.10.0〜1.18.7 の全正式版で読み直した結果
   - Mesh Cutter を外すときは、`IMeshSelectorBehavior` と `IVertexFilterBehavior` のどちらを持つフィルタも一緒に外す。
 - 1.18.x の動きは変えない。どちらの型も無いのに Mesh Cutter がある、`RemoveBlendshapes` が無いなど、必要なものが見つからないときは、これまでと同じく例外にして「固定できませんでした」の文で止める。
 - 止めるときの文の「VCC／ALCOMでModular Avatarを1.18.xに変更してください」は変えない。1.18.x は今も対応範囲の中にある。
-- NDMF の下限（`ndmfMinimum` 1.8.3）はこの決定では変えない。
+- NDMF の下限（`ndmfMinimum` 1.8.3）はこの決定では変えない。（同日追記: `2026-10-22-ndmf-lower-range.md` で 1.6.0 に下げた。MA 1.12.2 自身は NDMF 1.7.2 以上を求める）
 
 ## 理由
 

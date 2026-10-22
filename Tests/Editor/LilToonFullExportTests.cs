@@ -540,7 +540,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(full.All(m=>m.name.StartsWith("VRVLOG/")),Is.True);
                 Assert.That(full.Any(m=>m.GetFloat("_UseEmission2nd")==1),Is.True);
                 Assert.That(full.Any(m=>m.GetColor("_Color")==Color.blue),Is.True);
-                var vrm=loaded.GetComponent<UniVRM10.Vrm10Instance>();
+                var vrm=loaded.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>();
                 var expressionType=Type.GetType("FaceMaskVTuber.UniVrmRuntime.LilToonMaterialExpressions, FaceMaskVTuber.UniVrmRuntime");
                 var expressionPlayer=loaded.GetComponent(expressionType);
                 var left=full.Single(m=>m.name.StartsWith("VRVLOG/"+leftIndex+"/"));var right=full.Single(m=>m.name.StartsWith("VRVLOG/"+rightIndex+"/"));
@@ -548,8 +548,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(left.GetShaderPassEnabled("ShadowCaster"),Is.False,"Unity pass enablement uses its LightMode tag.");
                 // With the official set both sides use the same shader, so this checks that values reach the runtime material, not shader equivalence.
                 LilToonFullRenderTests.Compare(new Material(source),new Material(left));
-                var leftKey=sameExpressionName?UniVRM10.ExpressionKey.Happy:UniVRM10.ExpressionKey.CreateCustom("Left");
-                var rightKey=UniVRM10.ExpressionKey.CreateCustom(sameExpressionName?"happy":"Right");
+                var leftKey=sameExpressionName?VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionKey.Happy:VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionKey.CreateCustom("Left");
+                var rightKey=VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionKey.CreateCustom(sameExpressionName?"happy":"Right");
                 var weights=vrm.Vrm.Expression.Clips.Select(c=>vrm.Vrm.Expression.CreateKey(c.Clip)).ToDictionary(k=>k,k=>k.Equals(leftKey)?1f:0f);
                 var apply=expressionType.GetMethod("Apply",BindingFlags.Instance|BindingFlags.NonPublic);apply.Invoke(expressionPlayer,new object[]{weights});
                 Assert.That(((Vector4)left.GetColor("_ShadowColor")-new Vector4(.1f,.2f,.3f,1f)).sqrMagnitude,Is.LessThan(1e-10f));Assert.That(right.GetColor("_Color"),Is.EqualTo(originalRight));

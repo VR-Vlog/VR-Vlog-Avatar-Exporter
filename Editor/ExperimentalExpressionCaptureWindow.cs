@@ -15,6 +15,8 @@ namespace VRVlog.LilToonExporter
         SavedExpressionVrm saved;
         // Materials whose shader was missing in the last save, the file or the transfer. Read by AppTransferExport.
         internal int LastMissingShaderCount { get; private set; }
+        // Failing stages the last save or transfer left out; "VRMを保存" stops at them instead.
+        internal int LastOmittedStageCount { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -51,9 +53,9 @@ namespace VRVlog.LilToonExporter
         [SerializeField] AvatarLicenseOptions licenseOptions = new AvatarLicenseOptions();
         string presetKey;
         int presetSkipped;
-        readonly System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<UniVRM10.ExpressionPreset, string>();
+        readonly System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string> presetErrors = new System.Collections.Generic.Dictionary<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset, string>();
         // Eye slots whose error is the closing shape shared with the other eye.
-        readonly System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<UniVRM10.ExpressionPreset>();
+        readonly System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset> eyeOverlaps = new System.Collections.Generic.HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>();
         // Opened from "アプリに転送（通常）": the next window asks the name, author and license.
         [SerializeField] bool transferMode;
         // The page shown: expressions, objects left out, then the VRM information
@@ -262,6 +264,30 @@ namespace VRVlog.LilToonExporter
         // The open board prepared for this avatar, or null.
         internal static ExperimentalExpressionCaptureWindow ForTransfer(GameObject avatar) => avatar == null ? null :
             Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().FirstOrDefault(window => window != null && window.source == avatar && window.session != null);
+
+        // What the board writes and no store records: the blink, the added poses and the excluded and
+        // renamed ones, and the added expressions. A file saved from the transfer screen is sent again
+        // only while this is unchanged; the stores count their own changes.
+        internal string InputsKey()
+        {
+            var key = new System.Text.StringBuilder();
+            var blink = ExportBlinkOptions();
+            key.Append(blink == null ? "auto" : JsonUtility.ToJson(blink)).Append('\n');
+            if (session != null)
+            {
+                var poses = session.PoseOptions;
+                foreach (var pose in poses.Manual)
+                    key.Append(pose.Clip != null ? pose.Clip.GetInstanceID() : 0).Append('\t').Append(pose.Time).Append('\t')
+                        .Append(pose.Name).Append('\t').Append(pose.Category).Append('\n');
+                foreach (var id in poses.Excluded.OrderBy(id => id, StringComparer.Ordinal)) key.Append(id).Append('\n');
+                foreach (var pair in poses.Names.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+                    key.Append(pair.Key).Append('\t').Append(pair.Value).Append('\n');
+            }
+            foreach (var input in clipInputs)
+                key.Append(input.Clip != null ? input.Clip.GetInstanceID() : 0).Append('\t').Append(input.Time).Append('\t')
+                    .Append(input.Name).Append('\n');
+            return key.ToString();
+        }
 
         bool ConfirmChangeAvatar() => clipInputs.Count == 0 && (session == null || session.PoseOptions.Manual.Count == 0) ||
             EditorUtility.DisplayDialog(ExporterLocalization.T("アバターを変更"), ExporterLocalization.T("追加した表情・ポーズの一覧をリセットします。保存済みVRMは残ります。"), ExporterLocalization.T("変更する"), ExporterLocalization.T("戻る"));
@@ -1223,13 +1249,13 @@ namespace VRVlog.LilToonExporter
         // ---- Preset slots ----
 
         // Emotions, blink and mouth: the 13 slots always shown.
-        static readonly UniVRM10.ExpressionPreset[] MainPresets = ExperimentalExpressionCaptureSession.PresetGroups
+        static readonly VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] MainPresets = ExperimentalExpressionCaptureSession.PresetGroups
             .Take(ExpressionSlotLayout.MainGroups).SelectMany(group => group.Presets).ToArray();
 
         // The slots on screen: the 13, and gaze and neutral while the fold is
         // open. The header's confirm button counts and confirms these only, so
         // its number matches the dashed slots the user can see.
-        internal static UniVRM10.ExpressionPreset[] ShownPresets(bool extraOpen) => extraOpen
+        internal static VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] ShownPresets(bool extraOpen) => extraOpen
             ? ExperimentalExpressionCaptureSession.PresetGroups.SelectMany(group => group.Presets).ToArray()
             : MainPresets;
 
@@ -1237,7 +1263,7 @@ namespace VRVlog.LilToonExporter
         bool ShowExtraPresets => showExtraPresets ??= EditorPrefs.GetBool(ExtraPresetsPreference, false);
 
         // "割当3/5・未確認2": filled slots, and automatic ones not yet confirmed.
-        string Count(UniVRM10.ExpressionPreset[] presets)
+        string Count(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             var text = string.Format(ExporterLocalization.T("割当{0}/{1}"), board.SlotCount(presets), presets.Length);
             var automatic = board.AutomaticCount(presets);
@@ -1299,7 +1325,7 @@ namespace VRVlog.LilToonExporter
             GUI.EndGroup();
         }
 
-        void DrawGroupCaption(Rect rect, string label, UniVRM10.ExpressionPreset[] presets)
+        void DrawGroupCaption(Rect rect, string label, VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             var title = ExporterLocalization.T(label) + "　" + Count(presets);
             GUI.Label(rect, new GUIContent(Fit(title, cardText, rect.width), title), cardText);
@@ -1326,7 +1352,7 @@ namespace VRVlog.LilToonExporter
             GUI.Label(summaryRect, new GUIContent(Fit(summary, dimMini, summaryRect.width), summary), dimMini);
         }
 
-        void DrawSlot(UniVRM10.ExpressionPreset preset, Rect rect, bool large)
+        void DrawSlot(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, Rect rect, bool large)
         {
             session.Presets.TryGetValue(preset, out var assignment);
             presetErrors.TryGetValue(preset, out var reason);
@@ -1394,7 +1420,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // What saving does with the slot.
-        string SlotState(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        string SlotState(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             if (assignment != null && !assignment.IsNone) return ExporterLocalization.T(assignment.Automatic ? "自動の候補" : "確定");
             if (session.HasAuthoredPreset(preset)) return ExporterLocalization.T("元のVRM設定");
@@ -1816,7 +1842,7 @@ namespace VRVlog.LilToonExporter
             ShowFace(ExporterLocalization.T(ExperimentalExpressionCaptureSession.PresetLabel(preset)));
         }
 
-        void ConfirmAutomatic(UniVRM10.ExpressionPreset[] presets)
+        void ConfirmAutomatic(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset[] presets)
         {
             RebuildBoard();
             board.ConfirmAutomatic(presets);
@@ -2208,22 +2234,22 @@ namespace VRVlog.LilToonExporter
             foreach (var pair in session.Presets) CheckPreset(pair.Key, pair.Value);
         }
 
-        void CheckPreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        void CheckPreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             presetErrors[preset] = session.PresetError(preset, assignment);
             if (presetErrors[preset] != null && session.BlinkSidesOverlap(preset, assignment)) eyeOverlaps.Add(preset);
             else eyeOverlaps.Remove(preset);
         }
 
-        void ChoosePreset(UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
+        void ChoosePreset(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, ExperimentalExpressionCaptureSession.PresetAssignment assignment)
         {
             session.SetPreset(preset, assignment);
             SaveChoices();
             CheckPreset(preset, assignment);
             // The left and right eye slots check each other for a shared closing shape.
-            var otherEye = preset == UniVRM10.ExpressionPreset.blinkLeft ? UniVRM10.ExpressionPreset.blinkRight
-                : preset == UniVRM10.ExpressionPreset.blinkRight ? UniVRM10.ExpressionPreset.blinkLeft : (UniVRM10.ExpressionPreset?)null;
-            if (otherEye is UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) CheckPreset(eye, eyeValue);
+            var otherEye = preset == VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkLeft ? VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkRight
+                : preset == VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkRight ? VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset.blinkLeft : (VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset?)null;
+            if (otherEye is VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset eye && session.Presets.TryGetValue(eye, out var eyeValue)) CheckPreset(eye, eyeValue);
             if (assignment.IsNone) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); return; }
             if (presetErrors[preset] != null) throw new InvalidOperationException(presetErrors[preset]);
             session.PreviewPreset(preset, assignment);
@@ -2232,7 +2258,7 @@ namespace VRVlog.LilToonExporter
 
         // Faces on the board move through the board, so the face leaves its
         // previous place; BlendShapes and "none" are set on the slot directly.
-        void ShowPresetMenu(UniVRM10.ExpressionPreset preset, Rect rect)
+        void ShowPresetMenu(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, Rect rect)
         {
             var menu = new GenericMenu();
             session.Presets.TryGetValue(preset, out var current);
@@ -2396,6 +2422,7 @@ namespace VRVlog.LilToonExporter
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
                 // A plain field: still set when the recovery window saves after this board closed.
                 LastMissingShaderCount = missingShaders;
+                LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
                 if (written != null)
                 {
                     // For a transfer, the details of this export go to the Console.

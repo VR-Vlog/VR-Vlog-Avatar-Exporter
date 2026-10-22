@@ -214,11 +214,11 @@ namespace VRVlog.LilToonExporter
         {
             var expressions = Object(vrm, "expressions");
             var presets = Object(expressions, "preset");
-            var open = new HashSet<UniVRM10.ExpressionPreset>(ExpressionNameInference.Emotions.Select(entry => entry.Preset)
+            var open = new HashSet<VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset>(ExpressionNameInference.Emotions.Select(entry => entry.Preset)
                 .Where(preset => IsEmpty(presets, preset.ToString())));
             if (open.Count == 0) return false;
             var changed = false;
-            void Fill(UniVRM10.ExpressionPreset preset, Dictionary<string, object> value, string source, string format = FilledFormat)
+            void Fill(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset preset, Dictionary<string, object> value, string source, string format = FilledFormat)
             {
                 SetFilled(vrm, preset.ToString(), value, source, format, warnings, filled);
                 open.Remove(preset);
@@ -231,7 +231,7 @@ namespace VRVlog.LilToonExporter
             var custom = Object(expressions, "custom");
             if (custom != null && candidates != null && candidates.Count > 0)
             {
-                var menu = new List<(UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name, Dictionary<string, object> Value)>();
+                var menu = new List<(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name, Dictionary<string, object> Value)>();
                 var order = 0;
                 foreach (var pair in custom)
                 {
@@ -250,7 +250,7 @@ namespace VRVlog.LilToonExporter
             // Japanese BlendShape names commonly follow the MMD set, where "怒り",
             // "びっくり" or "にっこり" move only the brows, eyes or mouth. Only
             // Latin whole-face names (e.g. Fcl_ALL_Joy) are used here.
-            var raw = new List<(UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name)>();
+            var raw = new List<(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name)>();
             var rawOrder = 0;
             foreach (var names in MeshTargetNames(nodes, meshes).Select(item => item.Names))
                 foreach (var name in names.OfType<string>())
@@ -280,7 +280,7 @@ namespace VRVlog.LilToonExporter
             // shapes they move name the face parts; only a face whose parts
             // agree on one emotion fills it, best supported first. A label
             // that names an emotion, a part or a side is never overruled.
-            var byShape = new List<(UniVRM10.ExpressionPreset Preset, int Support, int Order, string Name, Dictionary<string, object> Value)>();
+            var byShape = new List<(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset Preset, int Support, int Order, string Name, Dictionary<string, object> Value)>();
             var shapeOrder = 0;
             foreach (var pair in custom)
             {

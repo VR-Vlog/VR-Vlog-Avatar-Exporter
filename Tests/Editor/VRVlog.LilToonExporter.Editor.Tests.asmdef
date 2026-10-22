@@ -7,11 +7,12 @@
     "VRVlog.LilToonExporter.Runtime",
     "VRVlog.LilToonExporter.TestFixtures",
     "VRVlog.LanTransfer.Editor.Tests",
-    "VRM10",
-    "SpringBoneJobs",
-    "UniGLTF",
-    "UniGLTF.Utils",
-    "VrmLib",
+    "VRVlog.LilToonExporter.Vendor.VRM10",
+    "VRVlog.LilToonExporter.Vendor.VRM10.MToon10",
+    "VRVlog.LilToonExporter.Vendor.SpringBoneJobs",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF.Utils",
+    "VRVlog.LilToonExporter.Vendor.VrmLib",
     "VRVlog.AvatarFormats"
   ],
   "includePlatforms": [
@@ -21,20 +22,6 @@
     "TestAssemblies"
   ],
   "autoReferenced": false,
-  "defineConstraints": [
-    "VRVLOG_VRM_0_131",
-    "VRVLOG_GLTF_0_131"
-  ],
-  "versionDefines": [
-    {
-      "name": "com.vrmc.vrm",
-      "expression": "[0.131.0,0.131.999999999]",
-      "define": "VRVLOG_VRM_0_131"
-    },
-    {
-      "name": "com.vrmc.gltf",
-      "expression": "[0.131.0,0.131.999999999]",
-      "define": "VRVLOG_GLTF_0_131"
-    }
-  ]
+  "defineConstraints": [],
+  "versionDefines": []
 }

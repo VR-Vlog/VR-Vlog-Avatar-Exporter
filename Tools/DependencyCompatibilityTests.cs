@@ -7,28 +7,6 @@ public static class DependencyCompatibilityTests
     static void Check(bool value, string message) { count++; if (!value) throw new Exception(message); }
     public static void Run()
     {
-        Check(DependencyPolicy.UniVrmRange == "0.131.x", "Accepted UniVRM patch line");
-        Check(DependencyPolicy.UniVrmVersions == "0.131.0, 0.131.1, 0.131.2, 0.131.3", "Verified UniVRM patches");
-        var line = new[] { "0.131.0", "0.131.1", "0.131.2", "0.131.3", "0.131.4", "0.131.10" };
-        foreach (var version in line)
-        {
-            Check(DependencyPolicy.SupportsUniVrm(version), "Patch line release " + version);
-            Check(DependencyPolicy.UniVrmError(version, version) == null, "Matched supported pair " + version);
-            DependencyPolicy.RequireUniVrm(version, version);
-            foreach (var other in line)
-                if (other != version) Check(DependencyPolicy.UniVrmError(version, other) != null, "Mixed pair must fail");
-        }
-        foreach (var version in new[] { null, "", "0.130.1", "0.130.131", "0.132.0", "1.131.0", "0.13.1", "0.1310.0", "0.131.01",
-            "0.131.1-preview.1", "0.131.4-beta.1", "0.131.1+local", " 0.131.1", "0.131.1 ", "0.131.1.0", "0.131", "0.131.x" })
-        {
-            Check(!DependencyPolicy.SupportsUniVrm(version), "Unregistered version cannot select a backend");
-            Check(DependencyPolicy.UniVrmError(version, "0.131.1") != null, "Invalid VRM");
-            Check(DependencyPolicy.UniVrmError("0.131.1", version) != null, "Invalid glTF");
-            bool rejected = false;
-            try { DependencyPolicy.RequireUniVrm(version, version); }
-            catch (InvalidOperationException) { rejected = true; }
-            Check(rejected, "Direct export also fails before conversion");
-        }
         Check(DependencyPolicy.VrchatSdkMinimum == "3.5.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
         // A pre-release counts as its X.Y.Z (VRCAnimatorPlayAudio is the same in every 3.5.2+ pre-release).
         foreach (var version in new[] { "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6",
@@ -44,38 +22,51 @@ public static class DependencyCompatibilityTests
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.6-beta.2", "3.10.6"), "A pre-release Avatars with a stable Base stops");
         Check(DependencyPolicy.ModularAvatarMinimum == "1.12.2" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
+        Check(DependencyPolicy.ModularAvatarPrereleases == "1.19.0-alpha.2", "Verified MA pre-releases");
         foreach (var version in new[] { "1.12.2", "1.12.3", "1.12.4", "1.12.5", "1.13.0", "1.13.4", "1.14.0", "1.16.2", "1.17.1",
-            "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10" })
+            "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10", "1.19.0-alpha.2" })
         {
             Check(DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance freeze " + version);
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "No MA error " + version);
         }
-        foreach (var version in new[] { "1.12.1", "1.12.0", "1.11.7", "1.11.2", "1.11.1", "1.10.4", "1.10.3", "1.10.0", "1.9.16", "1.19.0", "2.0.0", "0.18.7" })
+        // A pre-release that was not verified is read and stops: MA changed
+        // its analysis within the 1.19.0 alphas, and alpha.0 and alpha.1 merge
+        // animations differently from alpha.2.
+        foreach (var version in new[] { "1.12.1", "1.12.0", "1.11.7", "1.11.2", "1.11.1", "1.10.4", "1.10.3", "1.10.0", "1.9.16", "1.19.0", "2.0.0", "0.18.7",
+            "1.19.0-alpha.0", "1.19.0-alpha.1", "1.19.0-alpha.3", "1.19.0-beta.0", "1.18.7-beta.1", "1.18.0-rc.1", "1.19.0-alpha.2+local" })
         {
             Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA appearance stops " + version);
             Check(!DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is read " + version);
             var error = DependencyPolicy.ModularAvatarAppearanceError(version);
-            Check(error != null && error.Contains("1.12.2以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+            Check(error != null && error.Contains("1.12.2以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.2です") &&
+                error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "MA error names the range, the fix and that the avatar is unchanged");
             Check(error.Contains("Modular Avatar " + version), "MA error names the installed version");
         }
-        // A version that cannot be read (MA under Assets, pre-releases, other
+        // A version that cannot be read (MA under Assets, build metadata, other
         // spellings) does not stop before MA's API is tried.
-        foreach (var version in new[] { null, "", "1.19.0-alpha.0", "1.19.0-alpha.2", "1.18.7-beta.1", "1.18.0-rc.1", "1.18.7+local",
-            "1.18", "1.18.7.0", " 1.18.7", "1.18.7 ", "v1.18.7", "01.18.7", "1.18.07", "1.18.x" })
+        foreach (var version in new[] { null, "", "1.18.7+local",
+            "1.18", "1.18.7.0", " 1.18.7", "1.18.7 ", "v1.18.7", "01.18.7", "1.18.07", "1.18.x", "1.18-beta.1" })
         {
             Check(!DependencyPolicy.SupportsModularAvatarAppearance(version), "MA version is not a supported release " + (version ?? "null"));
             Check(DependencyPolicy.ModularAvatarVersionUnknown(version), "MA version is unknown " + (version ?? "null"));
             Check(DependencyPolicy.ModularAvatarAppearanceError(version) == null, "Unknown MA version does not stop " + (version ?? "null"));
             var error = DependencyPolicy.ModularAvatarUnknownVersionError(version);
             Check(error.StartsWith("Modular Avatarのバージョンを読めなかったため（" + (string.IsNullOrEmpty(version) ? "?" : version) + "）", StringComparison.Ordinal) &&
-                error.Contains("1.12.2以上1.19.0未満") && error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
+                error.Contains("1.12.2以上1.19.0未満と、確認済みのプレリリース1.19.0-alpha.2です") &&
+                error.Contains("1.18.x") && error.Contains("アバターは変更していません"),
                 "Unknown MA version error says the version was not read, the range and the fix");
         }
         Check(DependencyPolicy.ModularAvatarUnknownVersionError(null, text => "[" + text + "]").StartsWith("[Modular Avatarのバージョン", StringComparison.Ordinal),
             "Caller-supplied translation applies to the unknown MA version format");
         Check(DependencyPolicy.ModularAvatarAppearanceError("1.11.1", text => "[" + text + "]").StartsWith("[Modular Avatar 1.11.1", StringComparison.Ordinal),
             "Caller-supplied translation applies to the MA format");
+        Check(DependencyPolicy.NdmfMinimum == "1.6.0" && DependencyPolicy.NdmfPrereleases == "1.15.0-beta.1, 1.15.0-beta.2", "NDMF range");
+        foreach (var version in new[] { "1.6.0", "1.8.3", "1.13.0", "1.14.8", "1.15.0", "1.99.0", "1.15.0-beta.1", "1.15.0-beta.2" })
+            Check(DependencyPolicy.SupportsNdmf(version), "NDMF bridge " + version);
+        foreach (var version in new[] { null, "", "1.5.7", "0.9.0", "2.0.0", "1.15.0-beta.0", "1.15.0-beta.3", "1.14.8-alpha.0", "1.14.8+local",
+            "1.14.8.0", "1.14", " 1.14.8", "01.14.8" })
+            Check(!DependencyPolicy.SupportsNdmf(version), "NDMF bridge stops " + (version ?? "null"));
         Check(DependencyPolicy.LilToonVersion == "2.3.4","Exports conform to the 2.3.4 catalogue");
         // Any installed lilToon exports (mk 2026-10-22). Only a missing one stops;
         // a version other than the catalogue's warns that the app draws 2.3.4.

@@ -6,11 +6,11 @@
     "VRVlog.LilToonExporter.Editor",
     "VRVlog.LilToonExporter.Compatibility",
     "VRVlog.LilToonExporter.Editor.Tests",
-    "VRM10",
-    "SpringBoneJobs",
-    "UniGLTF",
-    "UniGLTF.Utils",
-    "VrmLib"
+    "VRVlog.LilToonExporter.Vendor.VRM10",
+    "VRVlog.LilToonExporter.Vendor.SpringBoneJobs",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF",
+    "VRVlog.LilToonExporter.Vendor.UniGLTF.Utils",
+    "VRVlog.LilToonExporter.Vendor.VrmLib"
   ],
   "includePlatforms": [
     "Editor"

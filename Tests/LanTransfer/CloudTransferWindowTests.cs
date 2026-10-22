@@ -125,7 +125,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(12));
+            Assert.That(members.Length, Is.EqualTo(19));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 
@@ -424,6 +424,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var entryType = type.GetNestedType("ExportEntry", BindingFlags.NonPublic);
                     var entry = Activator.CreateInstance(entryType, true);
                     entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
+                    entryType.GetField("TermsKey", Instance).SetValue(entry, (Func<string>)(() => "fixture terms"));
                     string savedName = null, failure = null;
                     var later = false;
                     Action<string, int> pending = null;

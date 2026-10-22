@@ -272,7 +272,9 @@ namespace VRVlog.LilToonExporter
             {
                 EditorGUILayout.Space(4f);
                 EditorGUILayout.LabelField("lilToon", ExporterLocalization.T(InstalledLilToonStatus()));
-                EditorGUILayout.LabelField("UniVRM", Compatibility.DependencyPolicy.UniVrmRange);
+                // The bundled copy the exporter writes with; the project's UniVRM is not used.
+                EditorGUILayout.LabelField("UniVRM", string.Format(ExporterLocalization.T("{0}（内蔵）"),
+                    VRVlog.LilToonExporter.Vendor.UniGLTF.PackageVersion.VERSION));
             }
         }
 
@@ -620,7 +622,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.7";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.8";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional

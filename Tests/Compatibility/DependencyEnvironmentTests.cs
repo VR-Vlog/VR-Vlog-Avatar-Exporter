@@ -15,26 +15,13 @@ namespace VRVlog.LilToonExporter.Tests
             var packages = DependencyDiagnostics.Installed();
             var vrm = DependencyDiagnostics.Version(packages, "com.vrmc.vrm");
             var gltf = DependencyDiagnostics.Version(packages, "com.vrmc.gltf");
-            if (expected == "missing")
-            {
-                Assert.That(vrm, Is.Null);
-                Assert.That(gltf, Is.Null);
-                Assert.That(DependencyDiagnostics.OpenExporter, Is.Null);
-                Assert.That(DependencyDiagnostics.Error(packages), Is.Not.Null);
-            }
-            else
-            {
-                Assert.That(vrm, Is.EqualTo(expected));
-                Assert.That(gltf, Is.EqualTo(expected));
-                var supported = DependencyPolicy.SupportsUniVrm(expected);
-                Assert.That(DependencyDiagnostics.OpenExporter != null, Is.EqualTo(supported));
-                Assert.That(DependencyPolicy.UniVrmError(vrm, gltf) == null, Is.EqualTo(supported));
-                if (supported)
-                {
-                    Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon")), Is.Null);
-                    Assert.That(DependencyDiagnostics.Error(packages), Is.Null);
-                }
-            }
+            // The project's own UniVRM (none, or any version) only describes the
+            // environment: the exporter compiles against its bundled copy.
+            Assert.That(vrm, Is.EqualTo(expected == "missing" ? null : expected));
+            Assert.That(gltf, Is.EqualTo(expected == "missing" ? null : expected));
+            Assert.That(DependencyDiagnostics.OpenExporter, Is.Not.Null, DependencyDiagnostics.CreateReport());
+            Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon")), Is.Null);
+            Assert.That(DependencyDiagnostics.Error(packages), Is.Null);
         }
     }
 }

@@ -12,7 +12,7 @@ namespace UnityEngine
     public static class Debug { public static void LogWarning(object message) { } }
     public class Object
     {
-        public string name; internal bool destroyed, persistent;
+        public string name; public HideFlags hideFlags; internal bool destroyed, persistent;
         static bool Null(Object value) => ReferenceEquals(value, null) || value.destroyed;
         public static bool operator ==(Object a, Object b) => Null(a) ? Null(b) : !Null(b) && ReferenceEquals(a, b);
         public static bool operator !=(Object a, Object b) => !(a == b);
@@ -96,9 +96,11 @@ namespace UnityEngine
     }
     public enum HumanBodyBones { Hips, Head, LastBone }
     public class Avatar : Object { public bool isValid, isHuman; }
+    public enum HideFlags { None = 0, HideAndDontSave = 61 }
+    public class RuntimeAnimatorController : Object { }
     public class Animator : Component
     {
-        public Avatar avatar;
+        public Avatar avatar; public RuntimeAnimatorController runtimeAnimatorController;
         public readonly Dictionary<HumanBodyBones,Transform> bones = new Dictionary<HumanBodyBones,Transform>();
         public Transform GetBoneTransform(HumanBodyBones bone) => bones.TryGetValue(bone, out var value) ? value : null;
     }
@@ -107,6 +109,7 @@ namespace UnityEditor.Animations
 {
     public class AnimatorStateMachine : UnityEngine.Object { }
     public class AnimatorState : UnityEngine.Object { }
+    public class AnimatorController : UnityEngine.RuntimeAnimatorController { }
 }
 namespace UnityEditor
 {
@@ -252,6 +255,11 @@ public static class NdmfPreparationHostTests
         }
         Console.WriteLine($"NDMF preparation host checks passed: {passed} cases / {NUnit.Framework.Assert.Assertions} assertions; {skipped} installed-package Unity tests skipped. Asset graph adapter, not Unity/MA validation.");
     }
+}
+
+namespace VRVlog.LilToonExporter.Vendor.UniVRM10
+{
+    public class Vrm10Instance : UnityEngine.MonoBehaviour { }
 }
 
 namespace VRVlog.LilToonExporter
