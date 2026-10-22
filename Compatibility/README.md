@@ -95,7 +95,8 @@ freeze tries the API and, if it is missing, stops saying the version was not
 read. Avatars without those components export with any MA
 version. 1.10.4 to 1.11.7 freeze, but the FX their own build makes does not
 export menu expressions that switch a Shape Changer: Int and Float menus also
-turn a GameObject on or off (`m_IsActive`), and a Bool menu makes Unity reject
+change something other than BlendShapes (a GameObject's `m_IsActive` on 1.11.x,
+a leftover `deletedShape.<name>` curve on 1.10.4), and a Bool menu makes Unity reject
 the merged FX transition. 1.12.0 and 1.12.1 do not compile with NDMF 1.8.3
 (`IVirtualizeMotion` is missing), the exporter's NDMF floor. 1.12.2 is the first
 release that compiles with it and passes every check, so the range starts there.
