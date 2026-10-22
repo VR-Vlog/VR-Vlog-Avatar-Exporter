@@ -109,5 +109,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(File.ReadAllText(Path.Combine(target, "keep.txt")), Is.EqualTo("保持"));
             Assert.That(Directory.GetFiles(directory), Is.Empty);
         }
+
+        // The window headers, the full text and the shared diagnostic all name the version in
+        // package.json, which the release bump changes, so a report says which version it came from.
+        [Test]
+        public void HeaderFailureTextAndSharedDiagnosticNameThePackageVersion()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(ExporterWindowHeader).Assembly);
+            Assert.That(package, Is.Not.Null, "The tests run with the exporter installed as a package.");
+            var json = File.ReadAllText(Path.Combine(package.resolvedPath, "package.json"));
+            var version = System.Text.RegularExpressions.Regex.Match(json, "\"version\"\\s*:\\s*\"([^\"]+)\"").Groups[1].Value;
+            Assert.That(version, Is.Not.Empty);
+            Assert.That(ExporterWindowHeader.Version, Is.EqualTo("v" + version));
+            Assert.That(LilToonExporterWindow.PackageVersion(), Is.EqualTo(version));
+
+            var error = Failure();
+            var text = ExportDetailsText.Failure(error.Message, error.ToString(), Array.Empty<ExportRecoveryDiagnostic>(), version);
+            Assert.That(text, Does.StartWith("VR Vlog Exporter " + version + "\n").Or.StartWith("VR Vlog Exporter " + version + "\r\n"));
+            Assert.That(text, Does.EndWith(error.ToString()));
+            Assert.That(ExportDetailsText.Failure(error.Message, error.ToString(), null), Does.Not.Contain("VR Vlog Exporter"));
+
+            var support = ExportRecoveryReport.FromException(null, error).BuildSupportText(version);
+            Assert.That(support, Does.Contain("Exporter: " + version));
+            Assert.That(support, Does.StartWith("VR Vlog exporter recovery report v1\n"));
+        }
     }
 }

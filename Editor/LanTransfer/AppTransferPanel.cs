@@ -789,6 +789,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var headerIcon = root.Q<Image>("header-icon");
             headerIcon.image = ExporterWindowIcon.Texture;
             headerIcon.scaleMode = ScaleMode.ScaleToFit;
+            var versionLabel = root.Q<Label>("version");
+            versionLabel.text = ExporterWindowHeader.Version;
+            Show(versionLabel, ExporterWindowHeader.Version.Length > 0);
             warningIcon = root.Q<Image>("warning-icon");
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
