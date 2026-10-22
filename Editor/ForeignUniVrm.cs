@@ -166,8 +166,8 @@ namespace VRVlog.LilToonExporter
                 while (property.Next(enter))
                 {
                     enter = false;
-                    // Unity's own fields (m_Script, m_GameObject, prefab links, m_Enabled) stay the target's.
-                    if (property.depth == 0 && property.name.StartsWith("m_", StringComparison.Ordinal)) continue;
+                    // Unity's own fields stay the target's; UniVRM's m_ fields (Humanoid's bones) are copied.
+                    if (property.depth == 0 && UnityFields.Contains(property.name)) continue;
                     var other = to.FindProperty(property.propertyPath);
                     if (other == null || other.propertyType != property.propertyType) continue;
                     enter = property.propertyType == SerializedPropertyType.Generic;
@@ -206,6 +206,12 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        static readonly HashSet<string> UnityFields = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "m_ObjectHideFlags", "m_CorrespondingSourceObject", "m_PrefabInstance", "m_PrefabAsset", "m_GameObject",
+            "m_Enabled", "m_EditorHideFlags", "m_Script", "m_Name", "m_EditorClassIdentifier",
+        };
+
         // Dependents first: Vrm10Instance requires Humanoid.
         static void Remove(List<MonoBehaviour> foreign)
         {
@@ -216,7 +222,15 @@ namespace VRVlog.LilToonExporter
                     Requires(other.GetType(), component.GetType()))).ToList();
                 if (free.Count == 0) free = left;
                 foreach (var component in free) Object.DestroyImmediate(component);
-                left = left.Where(component => component != null).ToList();
+                var remaining = left.Where(component => component != null).ToList();
+                // Unity keeps a component another one requires; the rest is left to the copy's cleanup.
+                if (remaining.Count == left.Count)
+                {
+                    Debug.LogWarning("VR Vlog: 他のコンポーネントが必要としているため、書き出し用の複製からUniVRMのコンポーネントを外せませんでした: " +
+                        string.Join(", ", remaining.Select(component => component.GetType().FullName).Distinct()));
+                    break;
+                }
+                left = remaining;
             }
         }
 

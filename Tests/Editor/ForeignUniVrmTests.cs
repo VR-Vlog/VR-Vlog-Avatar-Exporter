@@ -178,6 +178,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(source.GetComponentInChildren<Renderer>().sharedMaterial, Is.SameAs(material));
             Assert.That(material.shader, Is.SameAs(shader));
 
+            // The project Humanoid's own bone mapping is kept, not re-read from the Animator.
+            var head = new GameObject("CustomHead"); owned.Add(head);
+            head.transform.SetParent(source.transform);
+            using (var serialized = new SerializedObject(source.GetComponent(Project("UniHumanoid.Humanoid"))))
+            {
+                serialized.FindProperty("m_Head").objectReferenceValue = head.transform;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var mapped = Object.Instantiate(source); owned.Add(mapped);
+            ForeignUniVrm.Adopt(mapped);
+            var humanoid = mapped.GetComponents<MonoBehaviour>().Single(component => component.GetType().FullName == "VRVlog.LilToonExporter.Vendor.UniHumanoid.Humanoid");
+            using (var serialized = new SerializedObject(humanoid))
+                Assert.That(serialized.FindProperty("m_Head").objectReferenceValue, Is.SameAs(mapped.transform.Find("CustomHead")));
+
             // What was made for the copy goes with it.
             Object.DestroyImmediate(copy);
             var next = new GameObject("Next"); owned.Add(next);
