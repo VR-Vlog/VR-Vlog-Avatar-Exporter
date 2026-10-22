@@ -159,6 +159,29 @@ namespace VRVlog.LilToonExporter
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
         }
 
+        // "VRMをPCに保存" on the transfer screen: what the transfer would send (detailed: the open board,
+        // quick: a board prepared out of sight), saved as "VRMを保存" saves, to a file the user picks.
+        // saved gets the path and the missing shader count once the file is written. Returns null when
+        // it saved or the user canceled, and the reason when it failed.
+        public string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved)
+        {
+            if (saved == null) throw new ArgumentNullException(nameof(saved));
+            if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
+            var open = detailed ? ExperimentalExpressionCaptureWindow.ForTransfer(avatar) : null;
+            if (detailed && open == null) return ExporterLocalization.T(BoardClosed);
+            var destination = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "",
+                ExperimentalExpressionCaptureWindow.SaveFileName(avatar), "vrm");
+            if (string.IsNullOrEmpty(destination)) return null;
+            var targetAuthor = author;
+            var license = RememberTerms(avatar, targetAuthor).License.Copy();
+            if (open != null) return open.SaveTransferCopy(name, targetAuthor, license, destination, saved);
+            ExperimentalExpressionCaptureWindow board;
+            try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
+            catch (OperationCanceledException) { return null; }
+            try { return board.SaveTransferCopy(name, targetAuthor, license, destination, saved); }
+            finally { UnityEngine.Object.DestroyImmediate(board); }
+        }
+
         // The one export of both transfers: the board writes the VRM; a saved
         // transfer remembers its name for the avatar.
         private string ExportFrom(ExperimentalExpressionCaptureWindow board, GameObject avatar, string name, string targetAuthor,

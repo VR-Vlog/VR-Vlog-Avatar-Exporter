@@ -2293,10 +2293,14 @@ namespace VRVlog.LilToonExporter
         {
             RequireAuthor();
             RebuildBoard();
-            var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", AvatarName() + "-expressions", "vrm");
+            var path = EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", SaveFileName(source), "vrm");
             if (string.IsNullOrEmpty(path)) return;
             SaveVrm(path, interactive: true);
         }
+
+        // The file name "VRMを保存" suggests, also for "VRMをPCに保存" on the transfer screen.
+        internal static string SaveFileName(GameObject avatar) =>
+            (avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar") + "-expressions";
 
         // The disabled button is the normal guard; this also stops a call from
         // elsewhere before any record, file or recovery session is started.
@@ -2340,10 +2344,28 @@ namespace VRVlog.LilToonExporter
             return recovery == null ? null : recovery.Failure?.Message ?? "";
         }
 
+        // "VRMをPCに保存" on the transfer screen: the save of "VRMを保存", with the name, author and
+        // license of the transfer, so the file holds what the QR sends. The result list and the
+        // recovery window are those of "VRMを保存"; savedTo gets the path and the missing shader
+        // count once the file is written, and the transfer screen shows them. Returns like TransferExport.
+        internal string SaveTransferCopy(string name, string targetAuthor, AvatarLicenseOptions license, string destination, Action<string, int> savedTo)
+        {
+            if (savedTo == null) throw new ArgumentNullException(nameof(savedTo));
+            if (session == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
+            if (BlocksExport) return ExporterLocalization.T(AppTransferExport.BoardNeedsFix);
+            if (!ExportAuthor.IsValid(targetAuthor)) return ExporterLocalization.T(ExportAuthor.Required);
+            ExportRecoverySession recovery;
+            using (ExperimentalExpressionCaptureSession.Batch())
+                recovery = Save(destination, name, targetAuthor, (license ?? new AvatarLicenseOptions()).Copy(), true, null, savedTo);
+            return recovery == null ? null : recovery.Failure?.Message ?? "";
+        }
+
         // One save path for the file and the transfer. A transfer (written set)
         // leaves the saved file of this window as it was. interactive decides
         // only the dialogs and the Console text, not what is written.
-        ExportRecoverySession Save(string path, string name, string targetAuthor, AvatarLicenseOptions license, bool interactive, Action written)
+        // savedTo (a file saved from the transfer screen) is told instead of this window's status line.
+        ExportRecoverySession Save(string path, string name, string targetAuthor, AvatarLicenseOptions license, bool interactive, Action written,
+            Action<string, int> savedTo = null)
         {
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
@@ -2385,6 +2407,8 @@ namespace VRVlog.LilToonExporter
                     written();
                     return;
                 }
+                // The hidden board of the quick transfer is gone by the time the result list saves.
+                savedTo?.Invoke(path, missingShaders);
                 if (this == null || !ReferenceEquals(session, target)) return;
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var poseCount = extensions.TryGetValue(VRVlog.Poses.HumanoidPoseData.Extension, out var poses)
@@ -2392,6 +2416,13 @@ namespace VRVlog.LilToonExporter
                 if (extensions.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var animations))
                     poseCount += VRVlog.Poses.HumanoidAnimationData.Read(animations).Count;
                 saved = new SavedExpressionVrm(path, bytes, savedFaces, poseCount, missingShaders);
+                if (savedTo != null)
+                {
+                    // The transfer screen has one line; the notes the status line would list go to the Console, as for a transfer.
+                    if (warnings != null && warnings.Any()) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", warnings));
+                    Repaint();
+                    return;
+                }
                 status = (missingShaders > 0 ? string.Format(ExporterLocalization.T(LilToonExporterWindow.SavedWithMissingShadersFormat), missingShaders)
                     : ExporterLocalization.T("VRMを保存しました。")) + (warnings.Any() ? "\n" + string.Join("\n", warnings) : "");
                 Repaint();
