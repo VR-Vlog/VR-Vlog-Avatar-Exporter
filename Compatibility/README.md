@@ -82,7 +82,9 @@ Everything it reads is the same from 1.10.4 (the first release with
 Delete and Mesh Cutter, which the freeze removes from the mesh with MA's own
 method, chosen by which MA type exists rather than by the version number:
 1.18.0 and later report `IMeshSelector` and use
-`RemoveVerticesFromMesh.FilterPrimitivesOnly`; 1.14.0 to 1.17.1 report
+`RemoveVerticesFromMesh.FilterPrimitivesOnly` (as before this range change; it
+is the path MA's preview uses, which drops the deleted triangles and keeps the
+vertices, while MA's build calls `RemoveVertices`); 1.14.0 to 1.17.1 report
 `IVertexFilter` and use `RemoveVerticesFromMesh.RemoveVertices`; 1.13.4 and
 earlier have no Mesh Cutter, report Delete as a float on `deletedShape.<name>`
 and use `RemoveBlendShapeFromMesh.RemoveBlendshapes` (with the float as the

@@ -92,6 +92,10 @@ logs during MA's build, which the test runner counts as a failure:
 pass. 1.14.2 (L8) passes all 15; its changelog lists the fix for adjusting
 parameter types to Float (#1765). 1.14.1 was not run.
 
+1.15.x and 1.16.x did not run either. MA's `RemoveVerticesFromMesh.cs`, which
+the freeze calls on 1.14.0 to 1.17.1, is the same file in 1.14.0 and 1.17.1, so
+those versions rely on the 1.14.2 and 1.17.1 runs and that comparison.
+
 ## Failures outside the range
 
 | Cases | Sets | Cause |
