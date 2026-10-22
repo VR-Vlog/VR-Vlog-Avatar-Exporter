@@ -669,11 +669,12 @@ namespace VRVlog.LilToonExporter
 
         private static string InstalledLilToonStatus()
         {
-            var package = FindLilToonPackage();
-            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
-            return Compatibility.DependencyPolicy.ClassifyLilToon(package.version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
-                ? package.version
-                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), package.version, Compatibility.DependencyPolicy.LilToonVersion);
+            var lilToon = Compatibility.LilToonInstallation.Find();
+            if (lilToon == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
+            var installed = lilToon.Describe(ExporterLocalization.T);
+            return Compatibility.DependencyPolicy.ClassifyLilToon(lilToon.Version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
+                ? installed
+                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), installed, Compatibility.DependencyPolicy.LilToonVersion);
         }
 
         // Stops only without lilToon, or when lilToon's baker that the avatar
@@ -683,20 +684,17 @@ namespace VRVlog.LilToonExporter
         // sourceLilToonVersion is always the catalogue version.
         internal static string RequireLilToon(GameObject avatar, ICollection<string> warnings)
         {
-            var version = FindLilToonPackage()?.version;
+            var version = InstalledLilToonVersion();
             var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
             var warning = Compatibility.DependencyPolicy.LilToonWarning(version, ExporterLocalization.T);
             if (warning != null) warnings?.Add(warning);
-            LilToonStructureCheck.Inspect(avatar, version, warnings);
+            LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);
             return version;
         }
 
-        internal static PackageManagerPackageInfo FindLilToonPackage()
-        {
-            foreach (var package in PackageManagerPackageInfo.GetAllRegisteredPackages())
-                if (string.Equals(package.name, "jp.lilxyzw.liltoon", StringComparison.Ordinal)) return package;
-            return null;
-        }
+        // The package version, LilToonUnknownVersion for lilToon under Assets
+        // without one, or null without lilToon.
+        internal static string InstalledLilToonVersion() => Compatibility.LilToonInstallation.Find()?.Version;
     }
 }

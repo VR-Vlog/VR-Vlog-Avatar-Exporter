@@ -65,6 +65,12 @@ namespace VRVlog.LilToonExporter.Compatibility
         {
             var versions = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var package in PackageInfo.GetAllRegisteredPackages()) versions[package.name] = package.version;
+            // lilToon imported from its unitypackage registers no package.
+            if (!versions.ContainsKey(LilToonInstallation.PackageName))
+            {
+                var assets = LilToonInstallation.FindUnderAssets();
+                if (assets != null) versions[LilToonInstallation.PackageName] = assets.Version;
+            }
             return versions;
         }
 
@@ -76,7 +82,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             LilToonError(packages);
 
         static string LilToonError(Dictionary<string, string> packages) =>
-            DependencyPolicy.LilToonError(Version(packages, "jp.lilxyzw.liltoon"), T);
+            DependencyPolicy.LilToonError(Version(packages, LilToonInstallation.PackageName), T);
 
         public static bool IsBusy => EditorApplication.isCompiling || EditorApplication.isUpdating;
 
@@ -109,11 +115,12 @@ namespace VRVlog.LilToonExporter.Compatibility
         public static string CreateReport()
         {
             var packages = Installed();
+            var lilToon = LilToonInstallation.Find();
             var text = new StringBuilder();
             text.AppendLine("Unity: " + Application.unityVersion);
             foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "com.vrmc.vrm", "com.vrmc.gltf",
                 "com.vrchat.base", "com.vrchat.avatars", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
-                text.AppendLine(name + ": " + DependencyPolicy.Display(Version(packages, name)));
+                text.AppendLine(name + ": " + (name == LilToonInstallation.PackageName && lilToon != null ? lilToon.Report() : DependencyPolicy.Display(Version(packages, name))));
             text.AppendLine("Status: " + (StartupError(packages) ?? "Ready"));
             text.AppendLine("Compiling: " + EditorApplication.isCompiling + "; Updating: " + EditorApplication.isUpdating +
                 "; Compilation failed: " + EditorUtility.scriptCompilationFailed);
@@ -143,11 +150,17 @@ namespace VRVlog.LilToonExporter.Compatibility
     public sealed class DependencyDiagnosticsWindow : EditorWindow
     {
         Dictionary<string, string> packages;
-        void OnEnable() => packages = DependencyDiagnostics.Installed();
+        LilToonInstallation lilToon;
+        void OnEnable() => Refresh();
         void OnInspectorUpdate()
         {
-            packages = DependencyDiagnostics.Installed();
+            Refresh();
             Repaint();
+        }
+        void Refresh()
+        {
+            packages = DependencyDiagnostics.Installed();
+            lilToon = LilToonInstallation.Find();
         }
         void OnGUI()
         {
@@ -155,7 +168,8 @@ namespace VRVlog.LilToonExporter.Compatibility
             ExporterWindowHeader.Layout(T("動作環境"));
             EditorGUILayout.LabelField("Unity", Application.unityVersion);
             foreach (var name in new[] { "com.vrvlog.liltoon-vrm-exporter", "jp.lilxyzw.liltoon", "com.vrmc.vrm", "com.vrmc.gltf", "nadena.dev.modular-avatar", "nadena.dev.ndmf" })
-                EditorGUILayout.LabelField(name, DependencyPolicy.Display(DependencyDiagnostics.Version(packages, name)));
+                EditorGUILayout.LabelField(name, name == LilToonInstallation.PackageName && lilToon != null ? lilToon.Describe(T) :
+                    DependencyPolicy.Display(DependencyDiagnostics.Version(packages, name)));
             var error = DependencyDiagnostics.StartupError(packages);
             EditorGUILayout.HelpBox(error == null ? T("書き出しに必要なパッケージが揃っています。アバター固有の連携は書き出し時にも確認します。") : T(error),
                 error == null || DependencyDiagnostics.IsBusy ? MessageType.Info : MessageType.Warning);
@@ -163,7 +177,7 @@ namespace VRVlog.LilToonExporter.Compatibility
                 if (GUILayout.Button(T("再読み込み")))
                 {
                     DependencyDiagnostics.ReloadBackend();
-                    packages = DependencyDiagnostics.Installed();
+                    Refresh();
                 }
             using (new EditorGUI.DisabledScope(error != null))
                 if (GUILayout.Button(T("書き出し画面を開く"))) DependencyDiagnostics.Open();
