@@ -140,19 +140,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Over 128 bundled poses the first 128 are kept (lenient exports only).
-        static void RecordTrimmedPoses(PoseExportSession poses, ICollection<string> warnings, ExportRecoveryReport report)
-        {
-            var trimmed = poses.TrimmedCount;
-            if (trimmed == 0) return;
-            var reason = string.Format(ExporterLocalization.T(PoseLimitWarning), VRVlog.Poses.HumanoidPoseData.MaximumPoses, trimmed);
-            var name = ExportStageGuard.DisplayName(ExportStage.PoseCapture);
-            warnings?.Add(reason);
-            report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
-            var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
-            entry.Count = trimmed;
-        }
-
         internal const string LostMorphFollowedWarning = "ビルド処理で表情「{0}」の変形「{1}」が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
         internal const string LostMorphOmittedWarning = "ビルド処理で表情「{0}」の変形「{1}」が見つからなくなったため、その変形を省略しました。";
         internal const string LostExpressionOmittedWarning = "ビルド処理で表情「{0}」の変形がすべて見つからなくなったため、この表情を省略しました。";
@@ -222,6 +209,28 @@ namespace VRVlog.LilToonExporter
                 if (expression.EndsNeutral) report.Fallbacks.Add(ExportFallbackKind.ExpressionEndsNeutral, expression.Name);
         }
 
+        internal const string MergedExpressionCategory = "同じ内容の表情";
+        internal const string MergedExpressionFormat = "「{0}」と同じ内容のため1つにまとめました";
+
+        // Faces Add wrote once under an identical face's name are listed by
+        // their own label; the same label again (one clip on both hands) was
+        // never two faces and is not listed. The report also counts the merged
+        // clips no written face plays, so the board can compare its list.
+        internal static void RecordMergedExpressions(IList<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
+        {
+            var category = ExporterLocalization.T(MergedExpressionCategory);
+            var written = expressions.Where(expression => expression.RegisteredName != null).ToList();
+            foreach (var expression in expressions.Where(expression => expression.MergedInto != null))
+            {
+                var kept = written.First(item => item.RegisteredName == expression.MergedInto);
+                if (expression.Name == kept.Name) continue;
+                report.Fallbacks.Record(ExportOutcome.Kept, category, expression.Name,
+                    string.Format(ExporterLocalization.T(MergedExpressionFormat), expression.MergedInto));
+            }
+            report.MergedMenuClips = expressions.Where(expression => expression.MergedInto != null && expression.Clip != null)
+                .Select(expression => expression.Clip).Distinct().Count(clip => written.All(item => item.Clip != clip));
+        }
+
         internal const string InferredPresetCategory = "名前から自動で設定";
 
         // Presets filled from a name or from the shapes a menu face moves
@@ -235,6 +244,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal const string UnofficialLilToonReason = "公式のlilToon 2.3.4のシェーダーではありません";
+        internal const string ApproximatedLilToonReason = "lilToon 2.3.4とプロパティが合わないためMToonで近似します";
         internal const string StandardMaterialLimitWarning = "標準VRMの材質が{0}個あり、アプリの上限の{1}個を超えています。アプリで読み込めない場合があります。";
         internal const string StandardTextureLimitWarning = "標準VRMの画像が{0}枚あり、アプリの上限の{1}枚を超えています。アプリで読み込めない場合があります。";
 
@@ -272,8 +282,6 @@ namespace VRVlog.LilToonExporter
             // The result list selects the object from its path, "" for the root.
             entry.Path = path ?? "";
         }
-
-        internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
 
         internal const string HiddenRootWarning = "アバター本体または親が非表示だったため、書き出し用のコピーだけ表示にして書き出しました。シーンのアバターは変更していません。";
 
@@ -392,24 +400,22 @@ namespace VRVlog.LilToonExporter
             guard.Run(ExportStage.SourceValidation, () => NdmfExportPreparation.ValidateSource(source, exclusions.Contains, deferUnresolvedTargets: true));
             // Re-read the live assets on every export; a preview is never a stale
             // cached source of expression weights after the user edits a clip.
-            var menuPolicy = ExportRecoveryReport.MenuImportPolicy(source, recoveryOptions);
             recoveryReport.Stage = "表情メニュー読込";
             recoveryReport.Phase = ExportPhase.Expressions;
             var menu = guard.Run(ExportStage.ExpressionMenu, () =>
             {
-                var read = VrChatExpressionMenu.Read(source, menuPolicy);
+                var read = VrChatExpressionMenu.Read(source);
                 exclusions.FilterExpressions(read, warnings);
                 return read;
             }, () => new VrChatExpressionMenu.Source());
             // Without the menu, later passes must not read it again either.
-            if (guard.IsOmitted(ExportStage.ExpressionMenu)) menuPolicy = new VrChatMenuImportPolicy { SkipAll = true };
+            var menuPolicy = guard.IsOmitted(ExportStage.ExpressionMenu) ? new VrChatMenuImportPolicy { SkipAll = true } : null;
             var sourceBlink = guard.Run(ExportStage.BlinkCapture,
                 () => BlinkExportSession.CaptureForExport(source, blinkOptions, exclusions.Contains, suppressSharedTextureEmission, suppressHdrTextureEmission),
                 () => BlinkExportSession.CaptureForExport(source, new BlinkExportOptions { Mode = BlinkExportMode.None }, exclusions.Contains,
                     suppressSharedTextureEmission, suppressHdrTextureEmission));
             using var poses = guard.Run(ExportStage.PoseCapture, () => new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy),
                 () => PoseExportSession.None(source));
-            poses.TrimToLimit = guard.ContinueOnFailure;
             recoveryReport.Stage = "コピー作成";
             recoveryReport.Phase = ExportPhase.Precheck;
             var clone = NdmfExportPreparation.InstantiateOwnedCopy(source);
@@ -521,11 +527,14 @@ namespace VRVlog.LilToonExporter
                             recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", "", reason);
                         }
                     }
-                    var preparedMenuPolicy = menuPolicy?.WithOwnedCopies(value => transformed.IsolatedCopyOf(value as UnityEngine.Object));
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
                     menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                        preparedMenuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                        menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                    // The warning comes from the menu's own messages.
+                    if (menu.MenuOmittedForCandidateLimit)
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",
+                            ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit));
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
@@ -533,10 +542,11 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(preparedMenuBindings, menu, warnings));
                     guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
                         preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
-                    guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
+                    guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, menuPolicy));
                     // Our own steps below name their stage. Unnamed, a failure here
                     // would be blamed on the build passes and retried without them.
-                    guard.Watch(ExportStage.PoseCapture, () => RecordTrimmedPoses(poses, warnings, recoveryReport));
+                    // Stopping from the limit window cancels; the guard rethrows it.
+                    guard.Watch(ExportStage.PoseCapture, () => PoseLimitChooser.Apply(poses, warnings, recoveryReport));
                     recoveryReport.Stage = "基準形評価";
                     recoveryReport.Phase = ExportPhase.Expressions;
                     // This beta retains the prepared copy's rest values. Selected
@@ -621,6 +631,16 @@ namespace VRVlog.LilToonExporter
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
+                // Another lilToon version may lack a 2.3.4 property a material
+                // needs. Such a material keeps the MToon approximation written
+                // below and is listed as approximated, also when it is the only one.
+                var approximated = new HashSet<Material>(fullSnapshot?.Approximated ?? Array.Empty<Material>());
+                foreach (var material in approximated)
+                {
+                    var reason = ExporterLocalization.T(ApproximatedLilToonReason);
+                    warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
+                    recoveryReport.Fallbacks.Add(ExportFallbackKind.MaterialApproximated, material.name, reason: reason);
+                }
                 // With no lilToon material at all the lilToon extension has nothing to
                 // carry. Save a plain MToon VRM that is marked as intentionally so.
                 var withoutLilToon = fullSnapshot != null && fullSnapshot.IsEmpty;
@@ -629,11 +649,12 @@ namespace VRVlog.LilToonExporter
                 // otherwise each such material becomes color-and-image MToon and is
                 // listed as approximated.
                 if (withoutLilToon && !guard.ContinueOnFailure &&
-                    ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials).Any(LilToonMaterialReader.IsLilToon))
+                    ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
+                        .Any(material => LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)))
                     throw new InvalidOperationException("公式lilToon材質が見つかりません。");
                 if (withoutLilToon && guard.ContinueOnFailure)
                     foreach (var material in ExportRendererSelection.Enumerate(clone).SelectMany(renderer => renderer.sharedMaterials)
-                                 .Where(material => material != null && LilToonMaterialReader.IsLilToon(material)).Distinct())
+                                 .Where(material => material != null && LilToonMaterialReader.IsLilToon(material) && !approximated.Contains(material)).Distinct())
                     {
                         var reason = ExporterLocalization.T(UnofficialLilToonReason);
                         warnings?.Add(ExporterLocalization.T(MaterialApproximatedWarning) + material.name + " — " + reason);
@@ -663,8 +684,15 @@ namespace VRVlog.LilToonExporter
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
+                // MToon's outline width does not follow the renderer scale that lilToon's
+                // does. Measured here because texture baking swaps every lilToon slot for
+                // a copy, and the scales are keyed by the material the slot holds now.
+                // Only reads the copy; on failure the approximation keeps the unscaled width.
+                var outlineScales = new Dictionary<Material, float>();
+                try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
-                    lenient: guard.ContinueOnFailure);
+                    lenient: guard.ContinueOnFailure, outlineScales: outlineScales);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
                 MakeRendererMeshesUnique(clone, temporaryMeshes);
                 recoveryReport.Stage = "VRM変換";
@@ -713,6 +741,7 @@ namespace VRVlog.LilToonExporter
                     // their names no longer carry a source prefix, so each is
                     // inferred from its menu path as before.
                     var menuOutput = VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings);
+                    RecordMergedExpressions(expressions, recoveryReport);
                     // Empty mouth presets take the VRChat Lip Sync shapes
                     // before the known names, as the expression board does.
                     var output = VrmExpressionBindings.AddMissing(menuOutput, warnings, inferBlink: false,
@@ -942,7 +971,7 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static Dictionary<Material, Material> ReplaceLilToonMaterials(GameObject clone, List<Material> created, List<Texture2D> textures, ICollection<string> warnings, bool suppressSharedTextureEmission, bool convertOthers = false, ExportFallbackReport fallbacks = null,
-            bool lenient = false)
+            bool lenient = false, IReadOnlyDictionary<Material, float> outlineScales = null)
         {
             var converted = new Dictionary<Material, Material>();
             // Shared masks are converted once per export and owned until all
@@ -980,7 +1009,11 @@ namespace VRVlog.LilToonExporter
                     }
                     if (!converted.TryGetValue(source, out var fallback))
                     {
-                        try { fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks); }
+                        try
+                        {
+                            var outlineScale = outlineScales != null && outlineScales.TryGetValue(source, out var scale) ? scale : 1f;
+                            fallback = CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale);
+                        }
                         catch (Exception error) when (lenient && !(error is OperationCanceledException))
                         {
                             // One unreadable material must not cost the whole file.
@@ -1043,7 +1076,7 @@ namespace VRVlog.LilToonExporter
             return material;
         }
 
-        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null)
+        internal static Material CreateMToonFallback(Material source, List<Material> created, ICollection<string> warnings, bool suppressSharedTextureEmission = false, List<Texture2D> textures = null, IDictionary<Texture, Texture2D> outlineMasks = null, float outlineScale = 1f)
         {
             // Validate the full mobile subset before producing any fallback output.
             LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);
@@ -1099,8 +1132,9 @@ namespace VRVlog.LilToonExporter
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
-                // world-coordinate width is already expressed in metres.
-                OutlineWidthFactor = Mathf.Max(0f, Float(source, "_OutlineWidth", 0f)) * 0.01f,
+                // world-coordinate width is already expressed in metres, along a
+                // normalized normal, so it also takes the scale lilToon drew with.
+                OutlineWidthFactor = Mathf.Max(0f, Float(source, "_OutlineWidth", 0f)) * 0.01f * outlineScale,
                 // lilToon's _OutlineTex colors the outline; MToon's texture is
                 // a green-channel width mask, so they are not interchangeable.
                 OutlineWidthMultiplyTexture = outlineEnabled ? OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures, outlineMasks) : null,

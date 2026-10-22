@@ -22,9 +22,10 @@ namespace VRVlog.LilToonExporter
         readonly HashSet<PoseCandidate> authoredEntries = new HashSet<PoseCandidate>();
         readonly bool collect;
         GameObject prepared;
-        // Keep the first 128 selected poses instead of stopping the export.
-        internal bool TrimToLimit;
-        internal int TrimmedCount => TrimToLimit ? Math.Max(0, SelectedCount - HumanoidPoseData.MaximumPoses) : 0;
+        // Poses left out to fit the app's limits (PoseLimitChooser). The
+        // review list still shows them; only the written file leaves them out.
+        internal readonly HashSet<string> LimitExcluded = new HashSet<string>(StringComparer.Ordinal);
+        internal GameObject Source => source;
 
         // A session that collects nothing, used when bundled poses are left out.
         internal static PoseExportSession None(GameObject source) => new PoseExportSession(source, null, collect: false);
@@ -118,7 +119,6 @@ namespace VRVlog.LilToonExporter
             if (!collect) yield break;
             Entries.AddRange(PoseMenuResolver.Read(copy, preparedMenuPolicy ?? menuPolicy));
             var seen = new Dictionary<string, PoseCandidate>();
-            var collectedFrames = 0;
             foreach (var row in Entries.ToArray())
             {
                 if (row.Error == null && seen.TryGetValue(row.Id, out var existing) && existing.Error == null)
@@ -139,7 +139,10 @@ namespace VRVlog.LilToonExporter
                             ? PreparedBoneOmissions(copy, row) : new HashSet<string>();
                         if (row.IsAnimation && !options.Excluded.Contains(row.Id))
                         {
-                            row.Animation = PoseSampling.SampleAnimation(sampleRoot, row, HumanoidAnimationData.MaximumTotalFrames - collectedFrames);
+                            // Only one animation's frames are bounded here; the
+                            // totals are fitted afterwards (PoseLimitPlan) so the
+                            // user chooses what to leave out.
+                            row.Animation = PoseSampling.SampleAnimation(sampleRoot, row);
                             if (omitted.Count > 0)
                             {
                                 var keep = row.Animation.Bones.Select((bone, index) => (bone, index)).Where(value => !omitted.Contains(value.bone.Name))
@@ -147,7 +150,6 @@ namespace VRVlog.LilToonExporter
                                 foreach (var frame in row.Animation.Frames) frame.Rotations = keep.Select(index => frame.Rotations[index]).ToArray();
                                 row.Animation.Bones.RemoveAll(bone => omitted.Contains(bone.Name));
                             }
-                            collectedFrames += row.Animation.Frames.Count;
                         }
                         else if (row.IsAnimation) row.Animation = null;
                         else
@@ -156,7 +158,7 @@ namespace VRVlog.LilToonExporter
                             row.Data.Bones.RemoveAll(bone => omitted.Contains(bone.Name));
                         }
                     }
-                    catch (Exception error) { row.Error = error.Message; }
+                    catch (Exception error) { row.Error = error.Message; row.OverFrameLimit = error is PoseFrameLimitException; }
                 // Clothing / face toggles that cannot reach a body layer would
                 // otherwise bury the real pose warnings.
                 if (row.Error != null) { if (!row.NotBodyPose) warnings?.Add("ポーズ未対応: " + row.Name + " — " + row.Error); }
@@ -201,13 +203,18 @@ namespace VRVlog.LilToonExporter
             foreach (var row in SelectedAnimations())
                 foreach (var bone in row.Bones) bone.Node = Node(bone.Name);
         }
-        internal int SelectedCount => Entries.Count(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
+        internal int SelectedCount => SelectedRows().Count();
+        IEnumerable<PoseCandidate> SelectedRows() => Entries.Where(e => e.Error == null && (e.Data != null || e.Animation != null) &&
+            !options.Excluded.Contains(e.Id) && !LimitExcluded.Contains(e.Id));
+        // The rows the limit check weighs: those selected, and moving poses
+        // over one animation's frames, which it shows but never keeps.
+        internal IEnumerable<PoseCandidate> LimitCandidates() => Entries.Where(e => !options.Excluded.Contains(e.Id) &&
+            (e.Error == null && (e.Data != null || e.Animation != null) || e.OverFrameLimit));
         IEnumerable<PoseCandidate> SelectedEntries()
         {
-            if (!TrimToLimit && SelectedCount > HumanoidPoseData.MaximumPoses)
+            if (SelectedCount > HumanoidPoseData.MaximumPoses)
                 throw new InvalidOperationException("同梱ポーズは128件までです。「ポーズを確認・調整」で不要な項目を除外してください。");
-            var rows = Entries.Where(e => e.Error == null && (e.Data != null || e.Animation != null) && !options.Excluded.Contains(e.Id));
-            return TrimToLimit ? rows.Take(HumanoidPoseData.MaximumPoses) : rows;
+            return SelectedRows();
         }
         internal List<HumanoidPoseData> Selected()
         {

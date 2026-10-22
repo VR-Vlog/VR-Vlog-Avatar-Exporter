@@ -25,11 +25,10 @@ namespace VRVlog.LilToonExporter.Tests
                 .SelectMany(method => method.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>())
                 .Where(item => item.menuItem.StartsWith("VR Vlog/", StringComparison.Ordinal))
                 .Select(item => item.menuItem).ToArray();
-            // One export entry only. The app preview item (with its validate
-            // method) does not export; it lives in the main editor assembly,
-            // which an unsupported UniVRM leaves uncompiled.
-            Assert.That(entries.Count(entry => entry == "VR Vlog/VRMを書き出す"), Is.EqualTo(1));
-            Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/VRMを書き出す", "VR Vlog/アプリでの見え方を確認" }));
+            // One export entry only. The two app transfers (each with its validate
+            // method) come from the transfer module, which only some packages carry.
+            Assert.That(entries.Count(entry => entry == "VR Vlog/VRMを書き出す..."), Is.EqualTo(1));
+            Assert.That(entries.Distinct(), Is.SubsetOf(new[] { "VR Vlog/VRMを書き出す...", "VR Vlog/アプリに転送（かんたん）...", "VR Vlog/アプリに転送（通常）..." }));
             var expected = Environment.GetEnvironmentVariable("VRVLOG_TEST_UNIVRM");
             if (string.IsNullOrEmpty(expected)) Assert.Ignore("Requires an explicit compatibility environment.");
             var supported = DependencyPolicy.SupportsUniVrm(expected);
@@ -51,7 +50,7 @@ namespace VRVlog.LilToonExporter.Tests
                     refresh.Invoke(null, null);
                 }
                 legacyField?.SetValue(null, null);
-                Assert.That(EditorApplication.ExecuteMenuItem("VR Vlog/VRMを書き出す"), Is.True);
+                Assert.That(EditorApplication.ExecuteMenuItem("VR Vlog/VRMを書き出す..."), Is.True);
                 var exporter = Resources.FindObjectsOfTypeAll<EditorWindow>()
                     .SingleOrDefault(w => w.GetType().FullName == "VRVlog.LilToonExporter.ExperimentalExpressionCaptureWindow");
                 var diagnostics = Resources.FindObjectsOfTypeAll<DependencyDiagnosticsWindow>();

@@ -100,9 +100,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Legacy split blink", "Tests", warnings,
                     exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
+                // Both menus select the same state, so they are one face and
+                // are written once under the name emotion inference reads.
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                var names = new[] { "Happy", "Photo face" };
+                Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "Photo face"), Is.False);
+                var names = new[] { "Happy" };
                 var clips = names.Select(name => imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name)).ToArray();
                 // Both menus raise shape 0 from rest 17 to 75 on its single 100
                 // frame, so each references that shape directly at 58/83 on
@@ -120,7 +123,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(imported.Vrm.Expression.BlinkLeft, Is.Not.Null);
                 Assert.That(imported.Vrm.Expression.BlinkRight, Is.Not.Null);
                 foreach (var key in new[] { ExpressionKey.Blink, ExpressionKey.BlinkLeft, ExpressionKey.BlinkRight,
-                    ExpressionKey.CreateCustom(names[0]), ExpressionKey.CreateCustom(names[1]) })
+                    ExpressionKey.CreateCustom(names[0]) })
                     foreach (var input in new[] { 0f, 1f, 0f })
                     {
                         imported.Runtime.Expression.SetWeight(key, input); imported.Runtime.Process();
@@ -135,14 +138,6 @@ namespace VRVlog.LilToonExporter.Tests
                             AssertVertices(Vertices(expected), Vertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
                         }
                     }
-                // Equal named menus now share the directly referenced shape;
-                // UniVRM sums coactivated bindings, so selecting both still adds.
-                var rest = imported.GetComponentsInChildren<SkinnedMeshRenderer>().ToDictionary(skin => skin.name, Vertices);
-                imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(names[0]), 1); imported.Runtime.Process();
-                var single = imported.GetComponentsInChildren<SkinnedMeshRenderer>().ToDictionary(skin => skin.name, Vertices);
-                imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(names[1]), 1); imported.Runtime.Process();
-                foreach (var skin in imported.GetComponentsInChildren<SkinnedMeshRenderer>())
-                    AssertVertices(rest[skin.name].Select((vertex, index) => vertex + 2 * (single[skin.name][index] - vertex)).ToArray(), Vertices(skin), "combined names / " + skin.name);
                 Assert.That(owned.Select(EditorJsonUtility.ToJson), Is.EqualTo(originals));
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(skin => skin.GetBlendShapeWeight(0) == 17 && skin.GetBlendShapeWeight(1) == 0), Is.True);
             }

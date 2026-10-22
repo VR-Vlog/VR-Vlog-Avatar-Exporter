@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var composed = VrChatFxExpressions.ReadGestureState(avatar, source, target.Layer, target.State,
                             entry.Name, excludedPath, entry.ExportName);
-                        if (source.Entries.Count + composed.Count > 512) throw new InvalidOperationException("表情候補が512個を超えています。FXの表情登録を整理してください。");
+                        if (source.Entries.Count + composed.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。FXの表情登録を整理してください。");
                         source.Entries.AddRange(composed);
                         continue;
                     }
@@ -70,7 +70,7 @@ namespace VRVlog.LilToonExporter
                     outcomes.Add(entry);
                 }
                 source.Entries.Add(entry);
-                if (source.Entries.Count > 512) throw new InvalidOperationException("表情候補が512件を超えています。FXの表情登録を整理してください。");
+                if (source.Entries.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512件を超えています。FXの表情登録を整理してください。");
             }
         }
 

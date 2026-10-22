@@ -132,6 +132,32 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         }
 
         [Test]
+        public void QrFittedToAHeightKeepsWholePixelModulesAndTwoHundredPointsOfSymbol()
+        {
+            foreach (var scale in new[] { 1f, 1.25f, 1.5f, 2f })
+                foreach (var side in new[] { 29, 57, 185 })
+                {
+                    var full = TransferQrCode.DisplaySide(side, scale);
+                    Assert.That(TransferQrCode.FittedSide(side, full, scale), Is.EqualTo(full));
+                    Assert.That(TransferQrCode.FittedSide(side, float.PositiveInfinity, scale), Is.EqualTo(full));
+                    foreach (var room in new[] { 0f, 150f, 260f, 359f, full - 1f })
+                    {
+                        var points = TransferQrCode.FittedSide(side, room, scale);
+                        var pixelsPerModule = points * scale / side;
+                        Assert.That(Math.Abs(pixelsPerModule - Math.Round(pixelsPerModule)) < 0.001, Is.True);
+                        Assert.That(points <= full, Is.True);
+                        var symbol = points * (side - 2 * TransferQrCode.QuietZone) / side;
+                        Assert.That(symbol >= TransferQrCode.SmallestSymbolSide - 0.001, Is.True);
+                        // Larger than the room only where the room is under the smallest symbol.
+                        if (points > room + 0.001)
+                            Assert.That((pixelsPerModule - 1) * (side - 2 * TransferQrCode.QuietZone) / scale < TransferQrCode.SmallestSymbolSide, Is.True);
+                        else
+                            Assert.That((pixelsPerModule + 1) * side / scale > room, Is.True);
+                    }
+                }
+        }
+
+        [Test]
         public async Task FlowShowsTheLinkAfterTheUploadAndCountsDownToTheServiceDeadline()
         {
             var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -366,7 +392,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(37));
+            Assert.That(texts.Length, Is.EqualTo(40));
             Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
             foreach (var text in texts)
             {
@@ -405,24 +431,225 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Uploading));
                 var avatar = new UnityEngine.GameObject("vrvlog-app-transfer-reopen", typeof(UnityEngine.Animator));
                 var window = UnityEditor.EditorWindow.GetWindow<AppTransferWindow>(false);
+                var panel = typeof(AppTransferWindow).GetField("panel", field).GetValue(window);
                 try
                 {
-                    typeof(AppTransferWindow).GetField("avatar", field).SetValue(window, avatar);
-                    typeof(AppTransferWindow).GetField("avatarName", field).SetValue(window, "SampleAvatar");
-                    typeof(AppTransferWindow).GetField("flow", field).SetValue(window, run.Flow);
+                    typeof(AppTransferPanel).GetField("avatar", field).SetValue(panel, avatar);
+                    typeof(AppTransferPanel).GetField("avatarName", field).SetValue(panel, "SampleAvatar");
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, run.Flow);
                     AppTransferWindow.Open(avatar);
                     Assert.That(UnityEngine.Resources.FindObjectsOfTypeAll<AppTransferWindow>().Length, Is.EqualTo(1));
-                    Assert.That(typeof(AppTransferWindow).GetField("flow", field).GetValue(window), Is.SameAs(run.Flow));
+                    Assert.That(typeof(AppTransferPanel).GetField("flow", field).GetValue(panel), Is.SameAs(run.Flow));
                     Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Uploading));
-                    Assert.That(typeof(AppTransferWindow).GetField("avatarName", field).GetValue(window), Is.EqualTo("SampleAvatar"));
+                    Assert.That(typeof(AppTransferPanel).GetField("avatarName", field).GetValue(panel), Is.EqualTo("SampleAvatar"));
                     Assert.That(File.Exists(run.Path), Is.True);
                 }
                 finally
                 {
-                    typeof(AppTransferWindow).GetField("flow", field).SetValue(window, null);
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
                     window.Close();
                     UnityEngine.Object.DestroyImmediate(avatar);
                 }
+            }
+        }
+
+        [Test]
+        public async Task DecliningTheStartDialogKeepsTheOtherUploadAndStartsNothing()
+        {
+            using (var running = new FlowRun())
+            using (var next = new FlowRun())
+            {
+                // Until a tick sees the upload end, the flow stays in Uploading.
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                await FailOnce(next);
+                var other = PanelWith(running.Flow, detailed: true);
+                var panel = PanelWith(next.Flow, detailed: false);
+                var asked = new System.Collections.Generic.List<(string Title, string Body)>();
+                WithStartDialog(other, panel, (title, body) => { asked.Add((title, body)); return false; }, () =>
+                {
+                    Retry(panel);
+                    Assert.That(asked.Count, Is.EqualTo(1));
+                    Assert.That(asked[0].Title, Is.EqualTo(Localized(AppTransferText.StartTransfer)));
+                    Assert.That(asked[0].Body, Is.EqualTo(string.Format(Localized(AppTransferPanel.StopUploadText), Localized(AppTransferText.HeadingDetailed))));
+                    // "戻る" leaves both as they were.
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                    Assert.That(File.Exists(running.Path), Is.True);
+                    Assert.That(next.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                });
+            }
+        }
+
+        [Test]
+        public async Task AcceptingTheStartDialogStopsTheOtherQrBeforeStarting()
+        {
+            using (var running = new FlowRun())
+            using (var next = new FlowRun())
+            {
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                await running.Until(() => running.Flow.View == AppTransferView.Waiting);
+                await FailOnce(next);
+                var other = PanelWith(running.Flow, detailed: false);
+                var panel = PanelWith(next.Flow, detailed: true);
+                var asked = new System.Collections.Generic.List<string>();
+                WithStartDialog(other, panel, (title, body) => { asked.Add(body); return true; }, () =>
+                {
+                    Retry(panel);
+                    Assert.That(asked, Is.EqualTo(new[] { string.Format(Localized(AppTransferPanel.StopQrText), Localized(AppTransferText.HeadingQuick)) }));
+                    // The other panel is back at its form with no QR, and this one uploads again.
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Form));
+                    Assert.That(running.Flow.Link == null, Is.True);
+                    Assert.That(next.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                });
+                await next.Until(() => next.Flow.View == AppTransferView.Waiting);
+            }
+        }
+
+        // Opening the window for another avatar while the board's page shows its QR: "変更する"
+        // stops that transfer and deletes its copy, so no second dialog follows.
+        [Test]
+        public async Task AcceptingTheWindowDialogStopsTheOtherTransfer()
+        {
+            using (var running = new FlowRun())
+            {
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                await running.Until(() => running.Flow.View == AppTransferView.Waiting);
+                var other = PanelWith(running.Flow, detailed: true);
+                var target = new UnityEngine.GameObject("vrvlog-app-transfer-other", typeof(UnityEngine.Animator));
+                var asked = new System.Collections.Generic.List<bool>();
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferWindow.MayOpen(target, false, same => { asked.Add(same); return true; }), Is.True);
+                    Assert.That(asked, Is.EqualTo(new[] { false }));
+                    Assert.That(other.Transferring, Is.False);
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Form));
+                    Assert.That(running.Flow.Link == null, Is.True);
+                    Assert.That(File.Exists(running.Path), Is.False);
+                }
+                finally
+                {
+                    AppTransferPanel.Live.Remove(other);
+                    UnityEngine.Object.DestroyImmediate(target);
+                }
+            }
+        }
+
+        [Test]
+        public void DecliningTheWindowDialogKeepsTheOtherTransfer()
+        {
+            using (var running = new FlowRun())
+            {
+                // Until a tick sees the upload end, the flow stays in Uploading.
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                var other = PanelWith(running.Flow, detailed: true);
+                var target = new UnityEngine.GameObject("vrvlog-app-transfer-other", typeof(UnityEngine.Animator));
+                var asked = 0;
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferWindow.MayOpen(target, false, same => { asked++; return false; }), Is.False);
+                    Assert.That(asked, Is.EqualTo(1));
+                    Assert.That(other.Transferring, Is.True);
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                    Assert.That(File.Exists(running.Path), Is.True);
+                }
+                finally
+                {
+                    AppTransferPanel.Live.Remove(other);
+                    UnityEngine.Object.DestroyImmediate(target);
+                }
+            }
+        }
+
+        // The board asks the panel it shows by its element, which is the panel's root.
+        [Test]
+        public void EmbeddedTransferringIsTrueOnlyForTheBoardPanelOnScreenWhileItTransfers()
+        {
+            using (var running = new FlowRun())
+            {
+                var other = PanelWith(running.Flow, detailed: true);
+                var element = new UnityEngine.UIElements.VisualElement();
+                typeof(AppTransferPanel).GetField("root", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(other, element);
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                // Not on screen.
+                Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.False);
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.True);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(new UnityEngine.UIElements.VisualElement()), Is.False);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(null), Is.False);
+                    other.StopTransfer();
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.False);
+                }
+                finally { AppTransferPanel.Live.Remove(other); }
+            }
+        }
+
+        // The start dialog's two sentences are not AppTransferText, which the wording test covers.
+        [Test]
+        public void StartDialogTextExistsInEveryLocale()
+        {
+            var root = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CloudVrmTransferSession).Assembly).resolvedPath;
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
+                foreach (var text in new[] { AppTransferPanel.StopUploadText, AppTransferPanel.StopQrText })
+                {
+                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
+                    Assert.That(entry.Success, Is.True, locale);
+                    Assert.That(Regex.Matches(entry.Groups[1].Value, @"\{\d").Count, Is.EqualTo(1), locale);
+                }
+            }
+        }
+
+        // A refused upload, whose "もう一度" starts the transfer again from the same copy.
+        private static async Task FailOnce(FlowRun run)
+        {
+            run.Failure = "quota";
+            run.Flow.Upload(run.Path, "fixture.vrm");
+            await run.Until(() => run.Flow.View != AppTransferView.Uploading);
+            Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+            Assert.That(run.Flow.CanRegenerate, Is.True);
+            run.Failure = null;
+        }
+
+        private static string Localized(string source) =>
+            (string)typeof(AppTransferPanel).GetMethod("T", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { source });
+
+        private static AppTransferPanel PanelWith(AppTransferFlow flow, bool detailed)
+        {
+            var panel = new AppTransferPanel { Detailed = detailed };
+            typeof(AppTransferPanel).GetField("flow", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(panel, flow);
+            return panel;
+        }
+
+        private static void Retry(AppTransferPanel panel) =>
+            typeof(AppTransferPanel).GetMethod("Retry", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, null);
+
+        // Both panels on screen without their Editor polling, the dialog answered by the test,
+        // and the shared privacy choice accepted so "もう一度" does not return to the form.
+        private static void WithStartDialog(AppTransferPanel other, AppTransferPanel panel, Func<string, string, bool> answer, Action body)
+        {
+            const string key = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(key);
+            var privacy = UnityEditor.EditorPrefs.GetBool(key, false);
+            var dialog = AppTransferPanel.ConfirmStart;
+            try
+            {
+                CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                AppTransferPanel.Live.Add(other);
+                AppTransferPanel.Live.Add(panel);
+                AppTransferPanel.ConfirmStart = answer;
+                body();
+            }
+            finally
+            {
+                AppTransferPanel.ConfirmStart = dialog;
+                AppTransferPanel.Live.Remove(other);
+                AppTransferPanel.Live.Remove(panel);
+                if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(key, privacy);
+                else UnityEditor.EditorPrefs.DeleteKey(key);
             }
         }
 #endif

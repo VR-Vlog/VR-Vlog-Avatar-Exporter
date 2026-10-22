@@ -1,5 +1,7 @@
 # lilToonのカタログ生成スクリプトと構成ハッシュ
 
+> 2026-10-22の[lilToonのバージョンで書き出しを止めない](2026-10-22-liltoon-no-version-gate.md)で一部を置き換えた（`lilToon.supported` を `lilToon.verified`（2.0.0〜2.4.1）に改め、Exporterはこの範囲で止めない）。
+
 - 日付: 2026-10-14
 - 対象: `Tools/liltoon_catalogue.py`・`Tools/generate-liltoon-catalogue.py`・`Tools/check-liltoon-structure.py`・`Tools/check-upstream-dependencies.py`・`Compatibility/liltoon-structure.json`
 - Issue: #148（Epic #145 の WBS 1-4）

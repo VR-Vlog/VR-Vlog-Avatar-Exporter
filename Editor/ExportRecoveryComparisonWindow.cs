@@ -191,10 +191,7 @@ namespace VRVlog.LilToonExporter
             contentScroll = content.scrollPosition;
             EditorGUILayout.LabelField(ExporterLocalization.T("書き出せました。まだ保存していません。"), EditorStyles.boldLabel);
             EditorGUILayout.LabelField(ExporterLocalization.T("保存するファイル: ") + System.IO.Path.GetFileName(session.Destination), EditorStyles.wordWrappedMiniLabel);
-            var skipAllMenus = session.LastSuccess.Options.Actions.Any(action => action.Kind == ExportRecoveryActionKind.SkipVrChatMenus);
-            var appliedActions = session.LastSuccess.Options.Actions.Where(action =>
-                !skipAllMenus || action.Kind != ExportRecoveryActionKind.ExcludeMenuBranch).ToArray();
-            DrawMenuOmissions(appliedActions);
+            var appliedActions = session.LastSuccess.Options.Actions.ToArray();
             if (appliedActions.Length > 0)
             {
                 showAppliedRemedies = EditorGUILayout.Foldout(showAppliedRemedies,
@@ -238,27 +235,6 @@ namespace VRVlog.LilToonExporter
                     if (GUILayout.Button(ExporterLocalization.T("このVRMを保存する"), GUILayout.Height(32))) Save();
                 if (GUILayout.Button(ExporterLocalization.T("保存せずに戻る"), GUILayout.Height(32))) Close();
             }
-        }
-
-        private void DrawMenuOmissions(ExportRecoveryAction[] actions)
-        {
-            var omissions = actions.Where(action => action.Kind == ExportRecoveryActionKind.SkipVrChatMenus ||
-                action.Kind == ExportRecoveryActionKind.ExcludeMenuBranch).ToArray();
-            if (omissions.Length == 0) return;
-            // A still image cannot reveal that expression and pose entries were
-            // not imported. Keep their selected scope visible outside a foldout.
-            EditorGUILayout.LabelField(ExporterLocalization.T("取り込まない表情・ポーズ"), EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(ExporterLocalization.T("以下のメニュー由来の表情・ポーズは、このVRMには入りません。静止画像では確認できないため、範囲を確認してください。"), MessageType.Warning);
-            foreach (var action in omissions)
-            {
-                var diagnostic = AppliedDiagnostic(action);
-                var target = diagnostic?.Target ?? (action.Kind == ExportRecoveryActionKind.SkipVrChatMenus
-                    ? ExporterLocalization.T("すべてのVRChatメニュー") : action.MenuPath);
-                var lost = diagnostic?.LostEffect ?? "指定した範囲のメニュー由来の表情・ポーズは取り込まれません。";
-                EditorGUILayout.LabelField(ExporterLocalization.T("対象: ") + target, EditorStyles.wordWrappedLabel);
-                EditorGUILayout.LabelField(ExporterLocalization.T("変わる点: ") + ExporterLocalization.T(lost), EditorStyles.wordWrappedLabel);
-            }
-            EditorGUILayout.LabelField(ExporterLocalization.T("この対策はメニュー由来の表情・ポーズの取り込みだけを変えます。衣装・髪・骨格のオブジェクト自体は削除しません。"), EditorStyles.wordWrappedMiniLabel);
         }
 
         private ExportRecoveryDiagnostic AppliedDiagnostic(ExportRecoveryAction action) =>

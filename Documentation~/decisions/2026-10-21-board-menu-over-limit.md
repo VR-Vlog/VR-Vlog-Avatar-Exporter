@@ -3,6 +3,7 @@
 - 日付: 2026-10-21
 - 対象: `Editor/ExperimentalExpressionCaptureSession.Clips.cs`（`MenuClipPaths`・`MenuOverLimitNote`）・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`（`SuggestPresets`・`MenuOverLimitMessage`）・`Editor/ExperimentalExpressionCaptureWindow.cs`（`DrawGroupCaption`）・`Editor/Locales/ExporterLocale_{en,ko,zh-Hans,zh-Hant}.json`・`Tests/Editor/BoardMenuOverLimitTests.cs`・`CHANGELOG.md`
 - [表情・ポーズ指定UIの喜怒哀楽の初期値に、VRChatメニューの項目名を使う](2026-10-20-board-menu-emotion-suggestions.md) の「読めない・上限を超えるなど、途中で例外が出たときは対応なしとして扱い」を補う。
+- 2026-10-22 に [書き出し側だけで決めていた表情の読み込みの上限をなくし、同じ内容の表情を1つにまとめる](2026-10-22-remove-export-limits.md) で置き換えた。読み込みの上限がなくなったので、この注記は外した。
 
 ## 背景
 

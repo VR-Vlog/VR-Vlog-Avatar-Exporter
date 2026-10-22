@@ -124,8 +124,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
-            // The same preflight as the export window: range check, structure check, installed version.
-            installed = LilToonExporterWindow.RequireSupportedLilToon(fixture.Source);
+            // The same preflight as the export window: lilToon present, structure check, installed version.
+            installed = LilToonExporterWindow.RequireLilToon(fixture.Source, warnings);
             return UniVrmOneClickExporter.Export(fixture.Source, "Parity " + name, "Tests", warnings,
                 exporterVersion: ExporterVersion, lilToonVersion: installed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
         }

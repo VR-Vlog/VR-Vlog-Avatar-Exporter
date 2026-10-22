@@ -12,9 +12,12 @@ namespace UnityEngine
     {
         public static int Created;
         public string name = "";
+        public HideFlags hideFlags;
         public Object() { Created++; }
         public static void DestroyImmediate(Object value) { }
     }
+
+    public enum HideFlags { None = 0, HideAndDontSave = 61 }
 
     public class Component : Object
     {
@@ -263,6 +266,19 @@ namespace UnityEngine
 
 namespace UnityEditor
 {
+    // The layer-alpha baker is only compiled in memory for lilToon under
+    // Assets, which LilToonInstallation below never reports.
+    public static class ShaderUtil
+    {
+        public static bool allowAsyncCompilation = true;
+        public static bool ShaderHasError(UnityEngine.Shader shader) => false;
+        public static UnityEngine.Shader CreateShaderAsset(string source, bool compileInitialVariants)
+        {
+            UnityEngine.GpuForbidden.Fail("ShaderUtil.CreateShaderAsset");
+            return null;
+        }
+    }
+    public static class AssetDatabase { public static string GetAssetPath(UnityEngine.Object asset) => ""; }
     public static class AnimationUtility
     {
         public static string CalculateTransformPath(UnityEngine.Transform child, UnityEngine.Transform root)
@@ -272,6 +288,16 @@ namespace UnityEditor
                 parts.Push(current.gameObject.name);
             return string.Join("/", parts);
         }
+    }
+}
+
+namespace VRVlog.LilToonExporter.Compatibility
+{
+    public sealed class LilToonInstallation
+    {
+        public const string PackageName = "jp.lilxyzw.liltoon";
+        public readonly string AssetsFolder = null;
+        public static LilToonInstallation Find() => null;
     }
 }
 
