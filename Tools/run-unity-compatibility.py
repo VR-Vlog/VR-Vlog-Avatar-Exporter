@@ -24,9 +24,6 @@ BEHAVIOR_CASES = {
         'ConfirmedExistingFileIsReplacedWithCompleteTextWithoutTemporaryFiles': 1,
         'WriteFailureIsReportedAndPreservesOtherFiles': 1,
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
-        'FailureSnapshotKeepsEveryTargetSharingOneRecoveryActionAfterReload': 1,
-        'ExceptionWithoutDiagnosticsIsStillAvailableInFull': 1,
-        'TheStageLineNamesItsPhaseWhenKnown': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 4,
@@ -901,7 +898,6 @@ BEHAVIOR_CASES = {
     },
     'PoseReviewWindowTests': {
         'IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport': 1,
-        'OneAnimDropRemainsUsable': 1,
         'TwentyAnimDropRemainsUsable': 1,
         'UnsupportedDropIsRejectedAndClosingCancelsPendingWork': 1,
     },
