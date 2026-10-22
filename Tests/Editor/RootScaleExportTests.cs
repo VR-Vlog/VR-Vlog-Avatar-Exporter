@@ -55,6 +55,33 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Quaternion.Angle(f.Copy.transform.rotation, rotation), Is.LessThan(1e-3f));
         }
 
+        // The scale is baked into the children with the root at the origin,
+        // so the root's place does not reach the scaled positions either.
+        [Test]
+        public void ScaledRootAwayFromTheOriginIsExportedAtTheOriginAndIsRestored()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var position = new Vector3(-10, .25f, 3); var rotation = Quaternion.Euler(0, 90, 0);
+            f.Copy.transform.SetPositionAndRotation(position, rotation);
+            f.Copy.transform.localScale = Vector3.one * .5f;
+            var hips = f.Copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Hips);
+            Assert.That(hips.parent, Is.SameAs(f.Copy.transform));
+            f.PrepareMeshesForExport();
+            var locals = f.Copy.GetComponentsInChildren<Transform>(true).ToDictionary(t => t, t => (t.localPosition, t.localRotation, t.localScale));
+            var bytes = Vrm10AppearanceExporter.Export(new GltfExportSettings(), f.Copy, new BuiltInVrm10MaterialExporter(),
+                new MobileTextureSerializer(null), new VRM10ObjectMeta { Name = "Root place and scale fixture", Version = "1", Authors = new List<string> { "Tests" } });
+            var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var node = nodes.Single(n => (string)n["name"] == "Hips");
+            Assert.That(Numbers(node, "translation"), Is.EqualTo(new[] { 0, .5, 0 }).Within(1e-6), "The scaled avatar stands at the origin.");
+            Assert.That(Numbers(node, "scale"), Is.EqualTo(new[] { .5, .5, .5 }).Within(1e-6));
+            Assert.That(node.ContainsKey("rotation") ? Numbers(node, "rotation") : new double[] { 0, 0, 0, 1 },
+                Is.EqualTo(new[] { 0, 0, 0, 1 }).Within(1e-6), "The avatar faces forward.");
+            Assert.That(f.Copy.transform.position, Is.EqualTo(position));
+            Assert.That(Quaternion.Angle(f.Copy.transform.rotation, rotation), Is.LessThan(1e-3f));
+            Assert.That(f.Copy.transform.localScale, Is.EqualTo(Vector3.one * .5f));
+            foreach (var pair in locals) Assert.That((pair.Key.localPosition, pair.Key.localRotation, pair.Key.localScale), Is.EqualTo(pair.Value), pair.Key.name);
+        }
+
         [Test]
         public void PoseAndAnimationHipsOffsetsAreExportedInTheScaledModelSpace()
         {
