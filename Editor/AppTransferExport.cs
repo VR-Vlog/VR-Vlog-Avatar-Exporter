@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
-        // comes from an export window showing this avatar, else the avatar's
+        // comes from a board showing its own information page for this avatar, else the avatar's
         // remembered settings; an avatar without any starts from the default.
         public void SelectAvatar(GameObject avatar)
         {
@@ -41,8 +41,8 @@ namespace VRVlog.LilToonExporter
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
-                // A board opened for the transfer hides its author and license; they are asked here.
-                if (window.TransferMode) continue;
+                // A board whose third page is the transfer panel hides its author and license; they are asked here.
+                if (!window.ShowsOwnInfo) continue;
                 if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
                 var shown = window.LicenseFor(avatar);
                 if (shown != null) license = shown;
@@ -167,8 +167,8 @@ namespace VRVlog.LilToonExporter
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
         }
 
-        // "VRMをPCに保存" on the transfer screen: what the transfer would send (detailed: the open board,
-        // quick: a board prepared out of sight), saved as "VRMを保存" saves, to a file the user picks.
+        // "VRMを保存" on the transfer screen: what the transfer would send (detailed: the open board,
+        // quick: a board prepared out of sight), saved as the board's own save does, to a file the user picks.
         // saved gets the path and the missing shader count once the file is written. Returns null when
         // it saved or the user canceled, and the reason when it failed.
         public string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved)

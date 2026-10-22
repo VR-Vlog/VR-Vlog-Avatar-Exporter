@@ -699,12 +699,15 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("1.8.3")]
         [TestCase("1.13.0")]
         [TestCase("1.14.8")]
+        [TestCase("1.15.0-beta.1")]
+        [TestCase("1.15.0-beta.2")]
         public void KnownVersionsResolveCompleteBridge(string version) => Assert.IsNotNull(Resolve(version));
 
         [TestCase(null)]
         [TestCase("1.5.7")]
         [TestCase("2.0.0")]
         [TestCase("1.14.8-alpha.0")]
+        [TestCase("1.15.0-beta.0")]
         public void UnvalidatedVersionsFailBeforeProcessing(string version) =>
             Assert.Throws<InvalidOperationException>(() => Resolve(version));
 
