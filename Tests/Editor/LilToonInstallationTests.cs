@@ -85,7 +85,15 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
                 var warnings = new List<string>();
-                Assert.That(LilToonExporterWindow.RequireLilToon(fixture.Source, warnings), Is.EqualTo(LilToonInstallation.Find().Version));
+                var installed = LilToonInstallation.Find().Version;
+                Assert.That(LilToonExporterWindow.RequireLilToon(fixture.Source, warnings), Is.EqualTo(installed));
+                // The window's export path: lilToon extension written, installed version recorded.
+                var bytes = new ExportSettings().Export(fixture.Source, "Installed lilToon", "Tests", new List<string>(), null, null);
+                var glb = GlbDocument.Read(bytes);
+                Assert.That(VRVlog.LilToon.LilToonFullContract.Text(VRVlog.LilToon.LilToonFullContract.Root(glb.Json), "sourceLilToonVersion"), Is.EqualTo("2.3.4"));
+                var extras = VRVlog.LilToon.LilToonFullContract.Object(VRVlog.LilToon.LilToonFullContract.Object(glb.Json["asset"])["extras"]);
+                Assert.That(extras[LilToonFullSnapshot.InstalledLilToonVersionKey], Is.EqualTo(installed));
+                Assert.DoesNotThrow(() => VRVlog.LilToon.LilToonFullContract.Validate(glb.Json, bytes.Length, glb.Binary.Length));
             }
             finally { Object.DestroyImmediate(material); }
         }
