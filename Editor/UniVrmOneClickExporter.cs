@@ -529,8 +529,9 @@ namespace VRVlog.LilToonExporter
                     }
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
-                    menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                        menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                    using (ExpressionBoardTimings.Step("export.playback"))
+                        menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
+                            menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
                     // The warning comes from the menu's own messages.
                     if (menu.MenuOmittedForCandidateLimit)
                         recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",
@@ -540,8 +541,10 @@ namespace VRVlog.LilToonExporter
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,
                         excludedPath: expressionBindings.ExcludesPreparedPath);
                     guard.Watch(ExportStage.GimmickDetection, () => gimmicks.Apply(preparedMenuBindings, menu, warnings));
-                    guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
-                        preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
+                    // The default face is timed in two parts around the poses.
+                    using (ExpressionBoardTimings.Step("export.defaultFace"))
+                        guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.ApplyPreparedDefaultFace(clone, menu, preparedMenuBindings,
+                            preparedMenuBindings.ExcludesPreparedPath, faceEmoBindings));
                     guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, menuPolicy));
                     // Our own steps below name their stage. Unnamed, a failure here
                     // would be blamed on the build passes and retried without them.
@@ -553,20 +556,25 @@ namespace VRVlog.LilToonExporter
                     // expressions still use their original FX evaluation above;
                     // all endpoints below share this retained neutral snapshot.
                     warnings?.Add(ExporterLocalization.T("このベータ版ではFXの初期状態の復元を省略し、書き出し用コピーの設定を基本の顔・体形として保存しました。VRChatでの通常時の見た目と異なる場合があります。"));
-                    guard.Watch(ExportStage.Expressions, () => AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights));
-                    guard.Watch(ExportStage.BlinkCapture, () => blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
-                        suppressHdrTextureEmission: suppressHdrTextureEmission));
-                    if (blink.MissingAutomatic)
+                    NeutralShapeSnapshot neutral;
+                    using (ExpressionBoardTimings.Step("export.defaultFace"))
                     {
-                        warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
-                        recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                        guard.Watch(ExportStage.Expressions, () => AvatarBaseShape.NormalizeSourceWeights(clone, UnityEditor.PlayerSettings.legacyClampBlendShapeWeights));
+                        guard.Watch(ExportStage.BlinkCapture, () => blink.ResolvePreparedNeutral(clone, suppressSharedTextureEmission: suppressSharedTextureEmission,
+                            suppressHdrTextureEmission: suppressHdrTextureEmission));
+                        if (blink.MissingAutomatic)
+                        {
+                            warnings?.Add(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning));
+                            recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                        }
+                        if (blink.UnresolvedAutomatic)
+                        {
+                            warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
+                            recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
+                        }
+                        neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
                     }
-                    if (blink.UnresolvedAutomatic)
-                    {
-                        warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
-                        recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
-                    }
-                    var neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
+                    using var bakeTiming = ExpressionBoardTimings.Step("export.bake");
                     authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile));
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
                     guard.Watch(ExportStage.Expressions, () =>
