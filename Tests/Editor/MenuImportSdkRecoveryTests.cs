@@ -97,6 +97,25 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AMenuPastTheCandidateLimitIsLeftOutAndGesturesAreKept()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            using var menus = new SdkFixture(f.Source, true, wardrobe: 600);
+            Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(601));
+
+            var source = VrChatExpressionSampler.Analyze(f.Source);
+
+            Assert.That(source.MenuOmittedForCandidateLimit, Is.True);
+            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Menu), Is.False);
+            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Gesture), Is.True,
+                string.Join(", ", source.Entries.Select(e => e.Source + ":" + e.ExportName)));
+            Assert.That(source.Messages, Has.Some.EqualTo(ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit)));
+
+            var skipped = VrChatExpressionSampler.Analyze(f.Source, menuPolicy: new VrChatMenuImportPolicy { SkipAll = true });
+            Assert.That(skipped.MenuOmittedForCandidateLimit, Is.False, "Leaving the menu out by choice is not reported as the limit.");
+        }
+
+        [Test]
         public void MenuAssetEditsInvalidatePendingSaveUntilReinspection()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
@@ -258,7 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
             readonly bool persistMenus;
             int menuSerial, clipSerial;
             internal SdkFixture(GameObject avatar) : this(avatar, true) { }
-            internal SdkFixture(GameObject avatar, bool persistMenus, bool persistentRootOnly = false)
+            internal SdkFixture(GameObject avatar, bool persistMenus, bool persistentRootOnly = false, int wardrobe = 256)
             {
                 this.persistMenus = persistMenus;
                 var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
@@ -271,7 +290,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Descriptor = avatar.AddComponent(descriptorType); Set(Descriptor, "customExpressions", true); Set(Descriptor, "customizeAnimationLayers", true);
                 Root = NewMenu(forcePersistent: persistentRootOnly); var face = NewMenu(); AddControl(face, "Menu face", "Toggle", "Face", 1);
                 AddControl(Root, "Faces", "SubMenu", subMenu: face);
-                AddControl(Root, "Clothes", "SubMenu", subMenu: EightControlTree(256));
+                AddControl(Root, "Clothes", "SubMenu", subMenu: EightControlTree(wardrobe));
                 Set(Descriptor, "expressionsMenu", Root);
                 var parameters = ScriptableObject.CreateInstance(parameterType); owned.Add(parameters);
                 AssetDatabase.CreateAsset(parameters, directory + "/Parameters.asset");

@@ -1,7 +1,7 @@
 # 書き出し側だけで決めていた表情の読み込みの上限をなくし、同じ内容の表情を1つにまとめる
 
 - 日付: 2026-10-22
-- 対象: `Editor/VrChatExpressionMenu.cs`・`Editor/VrChatFxExpressions.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/ExperimentalExpressionCaptureSession(.Clips/.Presets).cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/ExpressionBoard.cs`・`Editor/ExportRecovery*.cs`・`Editor/ExportFailureWindow.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/Locales/ExporterLocale_{en,ko,zh-Hans,zh-Hant}.json`・`Tests/Editor/*`・`Tools/run-unity-compatibility.py`・`Tools/validate.py`
+- 対象: `Editor/VrChatExpressionMenu.cs`・`Editor/VrChatFxExpressions.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/VrChatGestureExpressions.cs`・`Editor/VrChatAuthoredFaces.cs`・`Editor/FaceEmoExpressions.cs`・`Editor/ExperimentalExpressionCaptureSession(.Clips/.Presets).cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`・`Editor/ExpressionBoard.cs`・`Editor/ExportRecovery*.cs`・`Editor/ExportFailureWindow.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/Locales/ExporterLocale_{en,ko,zh-Hans,zh-Hant}.json`・`Tests/Editor/*`・`Tools/run-unity-compatibility.py`・`Tools/validate.py`
 - [表情メニューが読み込みの上限を超えるとき、表情ボードの感情の行にそのことを出す](2026-10-21-board-menu-over-limit.md) を置き換える。ボードの注記は、出す理由（上限）がなくなったので外した。
 
 ## 背景
@@ -41,6 +41,15 @@ VRChat Expressions Menu の読み込み（項目 256 件・サブメニューの
 - **表情ボードの記録の経路**（その他の表情の一覧のとおりに記録して書き出すとき）も、BlendShape の値が同じ記録を 1 つにまとめ、先に来た名前を残す。
 - 表情ボードは、表情メニューから書き出せた件数と一覧の件数を比べて、足りなければ一覧のとおりに記録する。まとめた分を足りないと数えないよう、ほかの表情にまとめたクリップの数（`ExportRecoveryReport.MergedMenuClips`）を比べる側に足す。
 
+### 表情候補が 512 件を超えるとき
+
+メニューの読み込みに上限がなくなったので、衣装の Toggle が多いメニューでは、メニューの項目とハンドジェスチャー・接触の表情・FaceEmo の合計が 512 件を超えることがある。これまではメニューの上限で先にメニューの段階が止まり、メニューを省いて書き出していたが、上限を外すと表情の段階全体が例外で止まり、ジェスチャーの表情まで書き出せなくなる（クラウドのレビューで P1 として指摘された）。
+
+- ハンドジェスチャー・接触の表情・FaceEmo の読み込みが 512 件を超えると `ExpressionCandidateLimitException` を投げる。`VrChatExpressionSampler.Analyze` はそれを受けたら、メニューを省く（`VrChatMenuImportPolicy.SkipAll`）設定で読み直す。ジェスチャー・FX・FaceEmo の表情は残る。
+- 読み直したときは、メニューのメッセージに「表情候補が512件を超えるため表情メニューの表情を省きました」を出し、書き出し結果の一覧の「表情」に省いたこととして記録する。
+- 最初からメニューを省いていたとき（書き出し失敗の対策を選んだとき）は読み直さない。メニューを省いても 512 件を超えるときは、今までどおり例外で止まる。
+- FX の推定の候補が 512 件を超えるときは、今までどおり候補を足さずにメッセージだけ出す（FX の中で受けて止まらないので、読み直しの対象にならない）。
+
 ## 残した上限
 
 | 上限 | 場所 | 残した理由 |
@@ -48,7 +57,7 @@ VRChat Expressions Menu の読み込み（項目 256 件・サブメニューの
 | ポーズ 128 件・エモート 128 件 | `HumanoidPoseData`・`HumanoidAnimationData` | アプリが読む形式の上限 |
 | マテリアル 64・画像 128 枚・2048px | `LilToonMobileProfile` | アプリが読む形式の上限 |
 | Animator の状態 256 | `PoseMenuResolver` | 今回の対象外（ポーズの解決） |
-| 表情候補の合計 512 件 | `VrChatFxExpressions`・`VrChatGestureExpressions`・`VrChatAuthoredFaces`・`FaceEmoExpressions` | 今回の対象外。メニューの読み込みに上限がなくなったので、メニューの項目（衣装の Toggle なども含む）とほかの候補の合計が 512 件を超えるアバターでは、FX の推定の候補は足されず（メッセージだけ出る）、ハンドジェスチャー・接触の表情・FaceEmo の読み込みは例外で止まる。次に外す候補 |
+| 表情候補の合計 512 件 | `VrChatFxExpressions`・`VrChatGestureExpressions`・`VrChatAuthoredFaces`・`FaceEmoExpressions` | アプリが読む形式の表情は 1024 件・アニメーションは 512 件まで（`ExpressionAnimationData`）で、超えるファイルはアプリが読まない。超えたときの扱いは下の「表情候補が 512 件を超えるとき」 |
 | FaceEmo のグループの深さ 16 | `FaceEmoExpressions` | 今回の対象外 |
 | Parameter Driver の進入 4096 回 | `ExpressionEvaluationSession` | 循環する Parameter Driver を止めるためのもの |
 | 記録設定の JSON 8 MiB・追加の形状 128 MiB | `ExperimentalExpressionCaptureSession` | 壊れた設定ファイルや極端なデータで Editor が止まらないためのもの |
@@ -70,3 +79,12 @@ VRChat Expressions Menu の読み込み（項目 256 件・サブメニューの
   - FX: 深い入れ子・長い優先度の除外・深い条件の連鎖をすべて読むこと、300 件の推定候補がすべて出ること、20 層の菱形のグラフが重複なく終わること。
   - 表情ボード: 100 件を記録できること、同じ値の記録が 1 つになり先の名前が残って結果の一覧に出ること。
   - `IdenticalRegistrationsOfOneGestureClipAreWrittenOnce`: 名前もクリップも違う同じ表情がまとまり、まとめた結果が `MergedMenuClips` に数えられること。
+  - `AMenuPastTheCandidateLimitIsLeftOutAndGesturesAreKept`（VRChat SDK があるときだけ）: 600 項目のメニューとジェスチャーの表情を持つアバターで、メニューの表情が省かれ、ジェスチャーの表情が残り、理由のメッセージが出ること。
+
+## 残したこと（この PR では直していない）
+
+- 同じサブメニューを同じ値の組で 2 回目に読むときは省くので、2 回目の経路の名前（パス）は残らない。名前から喜怒哀楽を推定するときに、2 回目の経路の名前は使われない。
+- 項目の多いメニューや、パラメーターの値ごとに開くサブメニューの多いメニューで、読む時間を測っていない。
+- `MergedMenuClips` は、表情ボードの一覧に出ないクリップのまとめも数える。
+- まとめた表情は、残した表情の取り込み元（メニュー・ジェスチャー）だけを持つ。
+- 表情ボードの記録の経路でまとめるときの残す名前は「先に来た名前」で、メニューの経路の優先順と違う。

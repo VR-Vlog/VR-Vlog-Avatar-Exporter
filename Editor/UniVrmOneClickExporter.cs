@@ -547,6 +547,10 @@ namespace VRVlog.LilToonExporter
                     // authored weights; fractional/additive FX is applied once.
                     menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
                         menuPolicy, source, faceEmoBindings), () => new VrChatExpressionMenu.Source());
+                    // The warning comes from the menu's own messages.
+                    if (menu.MenuOmittedForCandidateLimit)
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",
+                            ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit));
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,

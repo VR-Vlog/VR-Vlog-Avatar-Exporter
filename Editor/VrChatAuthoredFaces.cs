@@ -84,7 +84,7 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; entry.Values.Clear(); entry.Animation.Clear(); }
                     source.Entries.Add(entry);
-                    if (source.Entries.Count > 512) throw new InvalidOperationException("表情候補が512個を超えています。FXの表情登録を整理してください。");
+                    if (source.Entries.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。FXの表情登録を整理してください。");
                 }
             }
         }

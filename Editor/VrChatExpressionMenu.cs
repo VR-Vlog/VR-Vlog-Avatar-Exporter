@@ -11,6 +11,15 @@ namespace VRVlog.LilToonExporter
     internal sealed class VrChatMenuImportPolicy
     {
         internal bool SkipAll;
+        // Why the menu was left out, when it was not the user's choice.
+        internal string Reason { get; set; }
+    }
+
+    // More expression candidates than one export takes. The menu has no
+    // limit of its own, so the export reads again without the menu.
+    internal sealed class ExpressionCandidateLimitException : InvalidOperationException
+    {
+        internal ExpressionCandidateLimitException(string message) : base(message) { }
     }
 
     // The SDK remains optional. Read its public serialized data without taking
@@ -77,6 +86,8 @@ namespace VRVlog.LilToonExporter
             // the import runs without a progress bar.
             internal Action<string> Progress;
 #endif
+            // The menu's faces were left out because the candidates went past the limit.
+            internal bool MenuOmittedForCandidateLimit { get; set; }
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
             internal readonly HashSet<string> ExpressionParameters = new HashSet<string>(StringComparer.Ordinal);
@@ -155,7 +166,7 @@ namespace VRVlog.LilToonExporter
         {
             if (policy?.SkipAll == true)
             {
-                result.Messages.Add(Localize("選択した対策により、VRChatメニュー由来の表情・ポーズの取り込みをすべて省略しました。"));
+                result.Messages.Add(Localize(policy.Reason ?? "選択した対策により、VRChatメニュー由来の表情・ポーズの取り込みをすべて省略しました。"));
                 return;
             }
             WalkEntries(menu, "", "", new Dictionary<string, float>(StringComparer.Ordinal), new HashSet<object>(),
