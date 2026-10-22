@@ -216,6 +216,60 @@ namespace VRVlog.LilToonExporter.Tests
             AssertSame(quick, normal);
         }
 
+        sealed class CountingLimitDialog : IPoseLimitDialog
+        {
+            internal int Asked;
+            public bool Ask(PoseLimitPlan plan, GameObject avatar) { Asked++; return true; }
+        }
+
+        // Moving poses that together exceed the app's 16MB of pose data.
+        // "通常" asks once and the window starts from the default; "かんたん"
+        // asks nothing. Both leave out the last pose and list it.
+        [Test]
+        public void PosesOverTheAppLimitMatch()
+        {
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var assets = new List<string>();
+            var previousDialog = PoseLimitChooser.Dialog;
+            var limits = new CountingLimitDialog();
+            try
+            {
+                var arm = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.LeftUpperArm);
+                var settings = new ExportSettings();
+                for (var i = 0; i < 3; i++)
+                {
+                    // 40 seconds is 2,401 frames; three of them pass 16MB, two do not.
+                    var clip = new AnimationClip();
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(arm, fixture.Source.transform),
+                        typeof(Transform), "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, 40, 60 + i * 10));
+                    var asset = "Assets/AppTransferPose-" + Guid.NewGuid().ToString("N") + ".anim";
+                    AssetDatabase.CreateAsset(clip, asset); assets.Add(asset);
+                    settings.Poses.Manual.Add(new ManualPose { Clip = clip, Name = "ポーズ " + (i + 1) });
+                }
+                ExportSettingsStore.Save(fixture.Source, settings);
+                PoseLimitChooser.Dialog = limits;
+
+                var quick = ExportQuick(fixture.Source);
+                Assert.That(limits.Asked, Is.Zero, "The quick transfer asks nothing.");
+                var normal = ExportNormal(fixture.Source, OpenNormal(fixture.Source));
+                Assert.That(limits.Asked, Is.EqualTo(1), "The normal transfer asks once.");
+                AssertSame(quick, normal);
+                Assert.That(Animations(Read(quick.Path).Json), Is.EqualTo(new[] { "ポーズ 1", "ポーズ 2" }));
+                Assert.That(quick.ResultList, Does.Contain("ポーズ 3"), "The left-out pose is listed.");
+            }
+            finally
+            {
+                PoseLimitChooser.Dialog = previousDialog;
+                foreach (var asset in assets) AssetDatabase.DeleteAsset(asset);
+            }
+        }
+
+        static string[] Animations(Dictionary<string, object> json) =>
+            json.TryGetValue("extensions", out var extensions) && extensions is Dictionary<string, object> map &&
+            map.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var poses) && poses is Dictionary<string, object> extension
+                ? Items(extension, "animations").OfType<Dictionary<string, object>>().Select(item => item["name"] as string).ToArray()
+                : Array.Empty<string>();
+
         // The board state each transfer starts from, as text for the comparison.
         static string[] Defaults(ExperimentalExpressionCaptureWindow window)
         {

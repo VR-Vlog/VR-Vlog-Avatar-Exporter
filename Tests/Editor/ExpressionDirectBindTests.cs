@@ -224,7 +224,9 @@ namespace VRVlog.LilToonExporter.Tests
                     { ["expressions"] = new Dictionary<string, object> { ["custom"] = new Dictionary<string, object>() } } }
             };
             var bytes = VrmMenuExpressions.Add(GlbDocument.Create(root, Array.Empty<byte>()).Write(), expressions);
-            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
+            // Both entries are the rest face, so they are written once.
+            Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
+            Assert.That(expressions[1].MergedInto, Is.EqualTo(expressions[0].RegisteredName));
         }
 
         [Test]

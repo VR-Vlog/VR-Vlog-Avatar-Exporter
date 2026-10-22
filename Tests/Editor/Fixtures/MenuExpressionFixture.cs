@@ -8,6 +8,17 @@ namespace VRVlog.LilToonExporter.Tests
 {
     internal static class MenuExpressionFixture
     {
+        // Binds a direct shape to the morph of the same name on node 0.
+        sealed class IndexBindings : VrmMenuExpressions.IDirectBindings
+        {
+            public Dictionary<string, object> MenuBinding(Dictionary<string, object> json, UnityEngine.SkinnedMeshRenderer renderer, string shape, float weight)
+            {
+                var mesh = (Dictionary<string, object>)((List<object>)json["meshes"])[0];
+                var names = (List<object>)((Dictionary<string, object>)mesh["extras"])["targetNames"];
+                return Obj("node", 0L, "index", (long)names.IndexOf(shape), "weight", (double)weight);
+            }
+        }
+
         private static Dictionary<string, object> Obj(params object[] pairs)
         {
             var result = new Dictionary<string, object>();
@@ -89,13 +100,14 @@ namespace VRVlog.LilToonExporter.Tests
             // and face tracking channel names get " (2)", " (3)"...
             var plainRoot = Obj("asset", Obj("version", "2.0"), "extensions", Obj("VRMC_vrm", Obj("expressions", Obj(
                 "custom", Obj("Authored", Obj("isBinary", false, "morphTargetBinds", Arr(Obj("node", 0L, "index", 0L, "weight", 1.0))))))),
-                "nodes", Arr(Obj("mesh", 0L)), "meshes", Arr(Mesh("composite-a", "composite-b")));
+                "nodes", Arr(Obj("mesh", 0L)), "meshes", Arr(Mesh("composite-a", "composite-b", "face-0", "face-1", "face-2", "face-3", "face-4", "face-5")));
+            // Each face moves its own target: identical faces are written once (below).
             var plain = new List<VrmMenuExpressions.Expression>();
             foreach (var (name, source) in new[] { ("Smile", ExpressionSource.Menu), ("Smile", ExpressionSource.Gesture), ("Smile", ExpressionSource.FaceEmo),
                 ("Authored", ExpressionSource.Menu), ("happy", ExpressionSource.Menu), ("JawOpen", ExpressionSource.Menu) })
             {
                 var item = new VrmMenuExpressions.Expression { Name = name, Source = source };
-                item.Targets.Add("composite-b");
+                item.Targets.Add("face-" + plain.Count);
                 plain.Add(item);
             }
             var plainResult = GlbDocument.Read(VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), plain));
@@ -117,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new VrmMenuExpressions.Expression { Name = "1", InferenceName = "Other / 1" },
                 new VrmMenuExpressions.Expression { Name = "1", InferenceName = "Smile / 1" },
                 new VrmMenuExpressions.Expression { Name = "Wink" } };
-            foreach (var item in paths) item.Targets.Add("composite-b");
+            for (var i = 0; i < paths.Count; i++) paths[i].Targets.Add("face-" + i);
             var pathOutput = VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), paths);
             var candidates = VrmMenuExpressions.EmotionCandidates(paths);
             check(candidates.Count == 3 && candidates["1"] == "Other / 1" && candidates["1 (2)"] == "Smile / 1" && candidates["Wink"] == "Wink",
@@ -130,6 +142,32 @@ namespace VRVlog.LilToonExporter.Tests
                 VrmMenuExpressions.UniqueName("Smile", name => name == "Smile" || name == "Smile (2)") == "Smile (3)" &&
                 VrmMenuExpressions.UniqueName("blink", name => false) == "blink (2)" && VrmMenuExpressions.UniqueName("Blink", name => false) == "Blink",
                 "Only exact VRM preset names are reserved.");
+
+            // Faces with the same binds and weights are written once, however
+            // they are named or ordered; one differing weight keeps both. The
+            // name emotion inference reads is kept, so its preset still fills.
+            var same = new List<VrmMenuExpressions.Expression> {
+                new VrmMenuExpressions.Expression { Name = "1", InferenceName = "Other / 1" },
+                new VrmMenuExpressions.Expression { Name = "Smile" },
+                new VrmMenuExpressions.Expression { Name = "Wink" },
+                new VrmMenuExpressions.Expression { Name = "Near" } };
+            same[0].Direct.AddRange(new (UnityEngine.SkinnedMeshRenderer, string, float)[] { (null, "face-0", 50f), (null, "face-1", 30f) });
+            same[1].Direct.AddRange(new (UnityEngine.SkinnedMeshRenderer, string, float)[] { (null, "face-1", 30f), (null, "face-0", 50f) });
+            same[2].Direct.AddRange(new (UnityEngine.SkinnedMeshRenderer, string, float)[] { (null, "face-0", 50f), (null, "face-1", 31f) });
+            same[3].Direct.AddRange(new (UnityEngine.SkinnedMeshRenderer, string, float)[] { (null, "face-0", 50f), (null, "face-1", 30.0001f) });
+            var sameOutput = VrmMenuExpressions.Add(GlbDocument.Create(plainRoot, binary).Write(), same, new IndexBindings());
+            var sameDocument = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)GlbDocument.Read(sameOutput).Json["extensions"])[ExpressionAnimationData.Extension]);
+            check(sameDocument.Expressions.Select(e => e.Expression).SequenceEqual(new[] { "Smile", "Wink", "Near" }) &&
+                VrmMenuExpressions.CountRegistered(sameOutput) == 3,
+                "Two faces with the same values are one expression; a face with one value different is another.");
+            check(same.Select(e => e.RegisteredName).SequenceEqual(new[] { null, "Smile", "Wink", "Near" }) &&
+                same.Select(e => e.MergedInto).SequenceEqual(new[] { "Smile", null, null, null }),
+                "The merged face names the face it was written as.");
+            var sameFilled = new List<(string Preset, string Source, string Format)>();
+            VrmExpressionBindings.AddMissing(sameOutput, inferBlink: false, inferEmotions: true, filledPresets: sameFilled,
+                emotionCandidates: VrmMenuExpressions.EmotionCandidates(same));
+            check(sameFilled.SequenceEqual(new[] { ("happy", "Smile", VrmExpressionBindings.FilledFormat) }),
+                "The kept name is the one emotion inference reads, so happy still fills from it.");
 
             // The app drops the whole extension when a listed name is a preset
             // or a tracking channel by its own matching; such names are numbered,

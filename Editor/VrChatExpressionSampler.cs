@@ -31,8 +31,26 @@ namespace VRVlog.LilToonExporter
                 renderer.gameObject.activeInHierarchy && AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) == path);
         }
 
+        internal const string MenuOverCandidateLimit = "表情候補が512件を超えるため表情メニューの表情を省きました";
+
+        // The menu is read in full, so it can push the other faces past the
+        // candidate limit. Then the menu's faces are left out and the
+        // gestures, FX and FaceEmo faces are kept, as when the menu fails to read.
         internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath = null, VrChatMenuImportPolicy menuPolicy = null,
             GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
+        {
+            try { return AnalyzeOnce(avatar, excludedPath, menuPolicy, authoringSource, faceEmoBindings); }
+            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true)
+            {
+                var source = AnalyzeOnce(avatar, excludedPath, new VrChatMenuImportPolicy { SkipAll = true, Reason = MenuOverCandidateLimit },
+                    authoringSource, faceEmoBindings);
+                source.MenuOmittedForCandidateLimit = true;
+                return source;
+            }
+        }
+
+        static VrChatExpressionMenu.Source AnalyzeOnce(GameObject avatar, Func<string, bool> excludedPath, VrChatMenuImportPolicy menuPolicy,
+            GameObject authoringSource, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
         {
             using var inspectCache = ExpressionInspectCache.Begin();
             var source = VrChatExpressionMenu.Read(avatar, menuPolicy);
