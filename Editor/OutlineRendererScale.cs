@@ -9,69 +9,60 @@ namespace VRVlog.LilToonExporter
     // (_OutlineWidth cm), so in the scene it grows with the renderer's scale:
     // a MeshRenderer draws its unit normals through a scaled object-to-world
     // matrix, and GPU skinning leaves each normal as long as the skin matrix
-    // scale. The VRM bakes every scale into the mesh, so the same width there
-    // is that many times thinner. Multiply the width by the scale the scene
-    // drew it with, on an owned copy, before the lilToon extension and the
-    // MToon approximation read it.
+    // scale. The VRM keeps the node scales, so the lilToon extension draws
+    // the same way and keeps its width. MToon's world-mode width is in metres
+    // along a normalized normal, so only the MToon approximation needs the
+    // width multiplied by the scale the scene drew it with.
     internal static class OutlineRendererScale
     {
         // Below this the outline differs by less than the float noise of the scale itself.
         private const float Tolerance = 1e-3f;
 
-        internal static void Apply(GameObject copy, ICollection<Material> owned, ICollection<string> warnings = null,
-            Action<Material, Material> copyObserver = null)
+        internal const string SharedScaleWarning = "輪郭の太さ: {0} は大きさの違うメッシュで共有されているため、互換表示の輪郭は頂点の最も多い {1} の大きさ（{2}倍）に合わせました";
+
+        // The scale of each outlined lilToon material whose renderers are not drawn at 1x.
+        internal static Dictionary<Material, float> Measure(GameObject copy, ICollection<string> warnings = null)
         {
             if (copy == null) throw new ArgumentNullException(nameof(copy));
-            if (owned == null) throw new ArgumentNullException(nameof(owned));
-            // A material keeps one width, so renderers drawn at different scales share
-            // the first renderer's scale. Copies keep the name: expressions and the
-            // optimizer evidence find materials by name.
-            var scales = new Dictionary<Material, (float Scale, Renderer Renderer)>();
+            // A material keeps one width, so renderers drawn at different scales
+            // share the scale of the renderer with the most vertices.
+            var chosen = new Dictionary<Material, (float Scale, int Vertices, Renderer Renderer)>();
             var mixed = new HashSet<Material>();
-            var renderers = ExportRendererSelection.Enumerate(copy).ToArray();
-            foreach (var renderer in renderers)
+            foreach (var renderer in ExportRendererSelection.Enumerate(copy))
             {
                 float? scale = null;
+                var vertices = VertexCount(renderer);
                 foreach (var material in renderer.sharedMaterials)
                 {
-                    if (!Scaled(material)) continue;
+                    if (!Outlined(material)) continue;
                     scale ??= Scale(renderer);
-                    if (!scales.TryGetValue(material, out var first)) scales.Add(material, (scale.Value, renderer));
-                    else if (Mathf.Abs(first.Scale - scale.Value) > Tolerance * Mathf.Max(first.Scale, scale.Value)) mixed.Add(material);
+                    if (!chosen.TryGetValue(material, out var first)) { chosen.Add(material, (scale.Value, vertices, renderer)); continue; }
+                    if (Mathf.Abs(first.Scale - scale.Value) > Tolerance * Mathf.Max(first.Scale, scale.Value)) mixed.Add(material);
+                    if (vertices > first.Vertices) chosen[material] = (scale.Value, vertices, renderer);
                 }
             }
-            var replacements = new Dictionary<Material, Material>();
-            foreach (var pair in scales)
+            var result = new Dictionary<Material, float>();
+            foreach (var pair in chosen)
             {
-                var (scale, renderer) = pair.Value;
+                var (scale, _, renderer) = pair.Value;
                 if (Mathf.Abs(scale - 1f) <= Tolerance || !(scale > 0f) || float.IsInfinity(scale)) continue;
-                var original = pair.Key;
-                var material = original;
-                if (!owned.Contains(original))
-                {
-                    material = new Material(original) { name = original.name };
-                    owned.Add(material);
-                    copyObserver?.Invoke(material, original);
-                    replacements.Add(original, material);
-                }
-                material.SetFloat("_OutlineWidth", original.GetFloat("_OutlineWidth") * scale);
-                if (mixed.Contains(original))
-                    warnings?.Add($"輪郭の太さ: {original.name} は大きさの違うメッシュで共有されているため、{renderer.name} の大きさ（{scale:0.###}倍）に合わせました");
+                result.Add(pair.Key, scale);
+                if (mixed.Contains(pair.Key))
+                    warnings?.Add(string.Format(ExporterLocalization.T(SharedScaleWarning), pair.Key.name, renderer.name, scale.ToString("0.###")));
             }
-            if (replacements.Count == 0) return;
-            foreach (var renderer in renderers)
-            {
-                var slots = renderer.sharedMaterials;
-                var changed = false;
-                for (var i = 0; i < slots.Length; i++)
-                    if (slots[i] != null && replacements.TryGetValue(slots[i], out var material)) { slots[i] = material; changed = true; }
-                if (changed) renderer.sharedMaterials = slots;
-            }
+            return result;
         }
 
-        private static bool Scaled(Material material) =>
+        private static bool Outlined(Material material) =>
             material != null && LilToonMaterialReader.IsLilToon(material) && LilToonMaterialReader.HasOutline(material) &&
             material.HasProperty("_OutlineWidth") && material.GetFloat("_OutlineWidth") > 0f;
+
+        private static int VertexCount(Renderer renderer)
+        {
+            var filter = renderer.GetComponent<MeshFilter>();
+            var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
+            return mesh != null ? mesh.vertexCount : 0;
+        }
 
         // The length a unit normal has when the scene draws this renderer.
         internal static float Scale(Renderer renderer)

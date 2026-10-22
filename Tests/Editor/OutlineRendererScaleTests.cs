@@ -17,28 +17,24 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ScaledMeshRendererOutlineIsWidenedOnAnOwnedCopyWithTheSameName()
+        public void ScaledMeshRendererWidensOnlyTheMToonOutline()
         {
             var root = New("Avatar");
             var source = Material(0.14f);
             var renderer = Static(root, "Part", new Vector3(2f, 2f, 2f), source);
-            var owned = new List<Material>();
-            var observed = new List<(Material Copy, Material Original)>();
-            OutlineRendererScale.Apply(root, owned, null, (copy, original) => observed.Add((copy, original)));
-            var exported = renderer.sharedMaterial;
-            cleanup.AddRange(owned);
-            Assert.AreNotSame(source, exported);
-            Assert.AreEqual(source.name, exported.name);
-            Assert.AreEqual(0.28f, exported.GetFloat("_OutlineWidth"), 1e-5f);
-            Assert.AreEqual(0.14f, source.GetFloat("_OutlineWidth"), 1e-6f, "The source material must not change.");
-            CollectionAssert.AreEqual(new[] { exported }, owned);
-            CollectionAssert.AreEqual(new[] { (exported, source) }, observed);
-            // Both readers of the width see the scene-sized outline.
-            var record = LilToonMaterialReader.Read(exported, 0, (_, __) => 0);
-            Assert.AreEqual(0.28f, record.floats.Single(item => item.name == "_OutlineWidth").value, 1e-5f);
-            var fallback = UniVrmOneClickExporter.CreateMToonFallback(exported, owned, new List<string>());
-            cleanup.AddRange(owned);
-            Assert.AreEqual(0.0028f, fallback.GetFloat("_OutlineWidth"), 1e-6f);
+            var scales = OutlineRendererScale.Measure(root);
+            Assert.AreEqual(2f, scales[source], 1e-5f);
+            // The VRM keeps the node scale, so the lilToon record keeps the scene width.
+            Assert.AreEqual(0.14f, source.GetFloat("_OutlineWidth"), 1e-6f, "The material must not change.");
+            var record = LilToonMaterialReader.Read(source, 0, (_, __) => 0);
+            Assert.AreEqual(0.14f, record.floats.Single(item => item.name == "_OutlineWidth").value, 1e-6f);
+            // MToon's width is metres along a normalized normal, so it takes the scale.
+            var created = new List<Material>();
+            UniVrmOneClickExporter.ReplaceLilToonMaterials(root, created, new List<Texture2D>(), new List<string>(), false, outlineScales: scales);
+            cleanup.AddRange(created);
+            Assert.AreNotSame(source, renderer.sharedMaterial);
+            Assert.AreEqual(source.name, renderer.sharedMaterial.name);
+            Assert.AreEqual(0.0028f, renderer.sharedMaterial.GetFloat("_OutlineWidth"), 1e-6f);
         }
 
         [Test]
@@ -47,8 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
             var root = New("Avatar");
             var bone = New("Bone", root.transform);
             var holder = New("Body", root.transform);
-            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
-            cleanup.Add(mesh);
+            var mesh = Triangle(3);
             mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1f }, 3).ToArray();
             mesh.bindposes = new[] { bone.transform.worldToLocalMatrix * holder.transform.localToWorldMatrix };
             var skin = holder.AddComponent<SkinnedMeshRenderer>();
@@ -58,53 +53,42 @@ namespace VRVlog.LilToonExporter.Tests
             skin.sharedMaterial = source;
             // The renderer itself is unscaled; only the bone it follows grows.
             bone.transform.localScale = new Vector3(3f, 3f, 3f);
-            var owned = new List<Material>();
-            OutlineRendererScale.Apply(root, owned);
-            cleanup.AddRange(owned);
             Assert.AreEqual(3f, OutlineRendererScale.Scale(skin), 1e-4f);
-            Assert.AreEqual(0.3f, skin.sharedMaterial.GetFloat("_OutlineWidth"), 1e-5f);
+            Assert.AreEqual(3f, OutlineRendererScale.Measure(root)[source], 1e-4f);
         }
 
         [Test]
-        public void UnitScaleKeepsTheMaterialAndOwnedCopiesChangeInPlace()
+        public void UnitScaleAndMaterialsWithoutAnOutlineAreNotMeasured()
         {
             var root = New("Avatar");
             var unit = Material(0.14f);
-            var unitRenderer = Static(root, "Unit", Vector3.one, unit);
-            var already = Material(0.2f);
-            var ownedRenderer = Static(root, "Owned", new Vector3(0.5f, 0.5f, 0.5f), already);
+            Static(root, "Unit", Vector3.one, unit);
             var noOutline = Material(0.14f);
             noOutline.SetFloat("_UseOutline", 0f);
-            var plainRenderer = Static(root, "Plain", new Vector3(4f, 4f, 4f), noOutline);
-            var owned = new List<Material> { already };
-            OutlineRendererScale.Apply(root, owned);
-            Assert.AreSame(unit, unitRenderer.sharedMaterial);
-            Assert.AreEqual(0.14f, unit.GetFloat("_OutlineWidth"), 1e-6f);
-            Assert.AreSame(already, ownedRenderer.sharedMaterial, "A copy the export already owns needs no second copy.");
-            Assert.AreEqual(0.1f, already.GetFloat("_OutlineWidth"), 1e-6f);
-            Assert.AreSame(noOutline, plainRenderer.sharedMaterial, "A material without an outline is left alone.");
-            CollectionAssert.AreEqual(new[] { already }, owned);
+            Static(root, "Plain", new Vector3(4f, 4f, 4f), noOutline);
+            var scales = OutlineRendererScale.Measure(root);
+            CollectionAssert.IsEmpty(scales);
+            // Without a measured scale the approximation keeps the plain width.
+            var created = new List<Material>();
+            var fallback = UniVrmOneClickExporter.CreateMToonFallback(unit, created, new List<string>());
+            cleanup.AddRange(created);
+            Assert.AreEqual(0.0014f, fallback.GetFloat("_OutlineWidth"), 1e-6f);
         }
 
         [Test]
-        public void ASharedMaterialAtDifferentScalesTakesTheFirstScaleAndWarns()
+        public void ASharedMaterialAtDifferentScalesTakesTheLargestMeshAndWarns()
         {
             var root = New("Avatar");
             var shared = Material(0.1f);
-            var first = Static(root, "First", new Vector3(2f, 2f, 2f), shared);
-            var second = Static(root, "Second", new Vector3(4f, 4f, 4f), shared);
-            var same = Static(root, "Same", new Vector3(2f, 2f, 2f), shared);
-            var owned = new List<Material>();
+            Static(root, "Small", new Vector3(2f, 2f, 2f), shared);
+            Static(root, "Large", new Vector3(4f, 4f, 4f), shared, 6);
+            Static(root, "Same", new Vector3(2f, 2f, 2f), shared);
             var warnings = new List<string>();
-            OutlineRendererScale.Apply(root, owned, warnings);
-            cleanup.AddRange(owned);
-            Assert.AreEqual(1, owned.Count);
-            Assert.AreSame(owned[0], first.sharedMaterial);
-            Assert.AreSame(owned[0], second.sharedMaterial);
-            Assert.AreSame(owned[0], same.sharedMaterial);
-            Assert.AreEqual(0.2f, owned[0].GetFloat("_OutlineWidth"), 1e-5f);
+            var scales = OutlineRendererScale.Measure(root, warnings);
+            Assert.AreEqual(4f, scales[shared], 1e-5f);
             Assert.AreEqual(1, warnings.Count);
             StringAssert.Contains(shared.name, warnings[0]);
+            StringAssert.Contains("Large", warnings[0]);
         }
 
         private GameObject New(string name, Transform parent = null)
@@ -123,13 +107,22 @@ namespace VRVlog.LilToonExporter.Tests
             return material;
         }
 
-        private MeshRenderer Static(GameObject root, string name, Vector3 scale, Material material)
+        private Mesh Triangle(int vertices)
+        {
+            var mesh = new Mesh
+            {
+                vertices = Enumerable.Range(0, vertices).Select(i => new Vector3(i % 2, i / 2, 0f)).ToArray(),
+                triangles = new[] { 0, 1, 2 },
+            };
+            cleanup.Add(mesh);
+            return mesh;
+        }
+
+        private MeshRenderer Static(GameObject root, string name, Vector3 scale, Material material, int vertices = 3)
         {
             var part = New(name, root.transform);
             part.transform.localScale = scale;
-            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
-            cleanup.Add(mesh);
-            part.AddComponent<MeshFilter>().sharedMesh = mesh;
+            part.AddComponent<MeshFilter>().sharedMesh = Triangle(vertices);
             var renderer = part.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = material;
             return renderer;
