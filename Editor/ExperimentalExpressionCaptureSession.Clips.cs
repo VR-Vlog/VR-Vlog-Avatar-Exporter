@@ -431,7 +431,8 @@ namespace VRVlog.LilToonExporter
             return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
         }
 
-        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale)
+        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale,
+            ExportRecoveryReport report = null)
         {
             // APL definitions still belong to the original avatar; generated
             // menu poses belong to the prepared copy. Collect both before
@@ -440,6 +441,7 @@ namespace VRVlog.LilToonExporter
             poses.CollectPrepared(Copy, warnings);
             var failed = poses.Entries.FirstOrDefault(entry => entry.Source.Contains("手動") && entry.Error != null && !poseOptions.Excluded.Contains(entry.Id));
             if (failed != null) throw new InvalidOperationException(ExporterLocalization.T("ポーズを書き出せません: ") + failed.Name + " / " + failed.Error);
+            PoseLimitChooser.Apply(poses, warnings, report);
             var document = GlbDocument.Read(bytes);
             var extensions = (Dictionary<string, object>)document.Json["extensions"];
             var vrm = (Dictionary<string, object>)extensions["VRMC_vrm"];

@@ -777,7 +777,7 @@ namespace VRVlog.LilToonExporter
                     descriptorVisemes: visemes);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(bytes);
                 // The exporter's clone keeps this root scale and bakes it into the VRM.
-                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale);
+                return InjectSourcePoses(bytes, warnings, poses, exportCopy.transform.localScale, recoveryReport);
             }
             finally
             {
