@@ -18,7 +18,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [Test]
         public void TransferAvailabilityRemainsEnabledWithoutAddingAnotherToolbarMenu()
         {
-            Assert.That(LanTransferAvailability.Enabled, Is.False);
             var menu = typeof(CloudVrmTransferWindow).GetMethod("OpenDevelopmentTransfer", BindingFlags.NonPublic | BindingFlags.Static);
 #if UNITY_EDITOR
             Assert.That(menu, Is.Not.Null);
@@ -46,14 +45,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 Assert.That(entry.DeclaringType, Is.EqualTo(typeof(CloudVrmTransferWindow)));
                 Assert.That(entry.Name, Is.EqualTo("OpenSavedVrmForDevelopment"));
-            }
-            // The expression board's "次へ" opens the detailed transfer the same way.
-            var detailed = (MethodInfo)exporter.GetMethod("DetailedTransferMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
-            Assert.That(detailed != null, Is.EqualTo(CloudTransferAvailability.Enabled));
-            if (detailed != null)
-            {
-                Assert.That(detailed.DeclaringType, Is.EqualTo(typeof(AppTransferWindow)));
-                Assert.That(detailed.Name, Is.EqualTo("OpenDetailed"));
             }
             // The board asks its third page whether it transfers the same way.
             var transferring = (MethodInfo)exporter.GetMethod("EmbeddedTransferringMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);

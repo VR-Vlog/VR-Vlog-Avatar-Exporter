@@ -245,7 +245,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportAuthor.Forget(ExportAuthor.Identity(plain));
+                ExportAuthorTests.Forget(ExportAuthor.Identity(plain));
                 Object.DestroyImmediate(plain);
                 if (File.Exists(path)) File.Delete(path);
                 if (File.Exists(path + ".plain")) File.Delete(path + ".plain");

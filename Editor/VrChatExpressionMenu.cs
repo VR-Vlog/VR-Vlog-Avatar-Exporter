@@ -82,9 +82,6 @@ namespace VRVlog.LilToonExporter
 
         internal sealed class Source
         {
-#if !EXPORTER_BEHAVIOR_TESTS
-            // The host runner checks menu traversal/serialization without
-            // Unity geometry evaluation. This session belongs to native Unity.
             internal FacialProjectionScope.Session FacialProjectionSession;
             // FX states the hand-gesture import already read without error.
             // Authored faces skip them instead of reading the same face twice.
@@ -93,7 +90,6 @@ namespace VRVlog.LilToonExporter
             // Shows the expression being read after the menu loop. Null when
             // the import runs without a progress bar.
             internal Action<string> Progress;
-#endif
             // The menu's faces were left out because the candidates went past the limit.
             internal bool MenuOmittedForCandidateLimit { get; set; }
             internal RuntimeAnimatorController Controller;
@@ -242,15 +238,7 @@ namespace VRVlog.LilToonExporter
             return type.GetField(name, flags)?.GetValue(value) ?? type.GetProperty(name, flags)?.GetValue(value);
         }
 
-        static string Localize(string message)
-        {
-#if EXPORTER_BEHAVIOR_TESTS
-            // Host traversal tests intentionally compile without Editor APIs.
-            return message;
-#else
-            return ExporterLocalization.T(message);
-#endif
-        }
+        static string Localize(string message) => ExporterLocalization.T(message);
 
         private static IEnumerable<object> Items(object value) => value is IEnumerable list ? list.Cast<object>() : Enumerable.Empty<object>();
         private static float Number(object value)

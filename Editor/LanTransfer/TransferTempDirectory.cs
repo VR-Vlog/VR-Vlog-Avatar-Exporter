@@ -88,7 +88,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 {
                     using (var stream = new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None)) stream.WriteByte(0);
                 }
-                finally { LanVrmTransferServer.TryDelete(probe); }
+                finally { TryDelete(probe); }
                 SweepStale(directory);
                 return directory;
             }
@@ -127,8 +127,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 var limit = DateTime.UtcNow - StaleAge;
                 foreach (var file in Directory.GetFiles(directory))
                     if (OwnedName.IsMatch(Path.GetFileName(file)) && File.GetLastWriteTimeUtc(file) < limit)
-                        LanVrmTransferServer.TryDelete(file);
+                        TryDelete(file);
             }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        internal static void TryDelete(string path)
+        {
+            try { if (File.Exists(path)) File.Delete(path); }
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
