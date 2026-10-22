@@ -108,7 +108,7 @@ public static class LilToonStructureCheckTests
         remedies = Check.Remedies(renamed).ToList();
         Expect(remedies.Count == 1 && remedies[0].Contains("Fix for Deffered"), "Renamed shadow pass points to the Shader Setting");
         remedies = Check.Remedies(Check.Compare(missing, "lilToon")).ToList();
-        Expect(remedies.Count == 1 && remedies[0].Contains("VCC"), "Property differences point to reinstalling lilToon");
+        Expect(remedies.Count == 1 && remedies[0].Contains("{0}に切り替える"), "Property differences point to the catalogue version");
 
         // The distributed baker lacks four decal parameters of the tag source.
         var baker = FromCatalogue(Check.BakerShader);
@@ -128,11 +128,17 @@ public static class LilToonStructureCheckTests
         bakerPass.Passes.Clear();
         Only(bakerPass, Check.BakerShader, Check.Kind.MissingShader, "");
 
+        // Only the baker stops the export; the shaders the avatar uses warn.
+        foreach (var stop in new[] { bakerMissing, bakerType, bakerPass })
+            Expect(Check.Compare(stop, Check.BakerShader).All(Check.Stops), "Baker differences stop: " + string.Join("; ", Check.Compare(stop, Check.BakerShader)));
+        foreach (var (shader, asShader) in new[] { (type, "lilToon"), (cube, "lilToon"), (missing, "lilToon"), (unknown, "lilToon"), (mode, "lilToon") })
+            Expect(!Check.Compare(shader, asShader).Any(Check.Stops), "Material shader differences only warn: " + asShader);
+
         bool rejected = false;
         try { Check.Compare(lilToon, "Hidden/VRVlogTests/lilToon"); } catch (ArgumentException) { rejected = true; }
         Expect(rejected, "Only catalogue shaders are compared");
 
-        // The message names the shader and the first differences, then the rest as a count.
+        // The stop message names both versions and the first differences, then the rest as a count.
         var many = FromCatalogue("lilToon");
         foreach (var name in new[] { "_Cutoff", "_Invisible", "_AsUnlit", "_FlipNormal", "_ShiftBackfaceUV", "_BackfaceForceShadow", "_VertexLightStrength" })
             Replace(many, name, "vector", "");
@@ -140,12 +146,26 @@ public static class LilToonStructureCheckTests
         Expect(all.Count == 7, "Seven type differences");
         var message = Check.Message(all, "2.1.0", text => text);
         var lines = message.Split('\n');
-        Expect(lines[0] == "導入済みのlilToon 2.1.0のシェーダー構成が2.3.4と一致しません", "Header names both versions: " + lines[0]);
+        Expect(lines[0] == "lilToon 2.1.0のベイク用シェーダーが2.3.4と違うため書き出せません", "Header names both versions: " + lines[0]);
         Expect(lines[1] == "lilToon: プロパティ_Invisibleの型がvectorです（2.3.4はfloat）", "Difference line: " + lines[1]);
         Expect(lines.Length == 1 + Check.ShownDifferences + 2 && lines[1 + Check.ShownDifferences] == "ほか2件", "Only the first differences are listed: " + message);
-        Expect(lines[lines.Length - 1] == "対処: VCC／ALCOMでlilToonを入れ直すか2.3.4に切り替える", "Remedy line: " + lines[lines.Length - 1]);
+        Expect(lines[lines.Length - 1] == "VCC／ALCOMでlilToonを入れ直すか2.3.4に切り替える", "Remedy line: " + lines[lines.Length - 1]);
         var translated = Check.Message(all, "2.1.0", text => "[" + text + "]");
-        Expect(translated.StartsWith("[導入済み", StringComparison.Ordinal) && translated.Contains("[\n対処: ]"), "Every fixed text is translated");
+        Expect(translated.Split('\n').All(line => line.StartsWith("[", StringComparison.Ordinal)), "Every fixed text is translated: " + translated);
+
+        // Warnings: one line per shader and kind saying what the export does, then the remedy.
+        var warnings = Check.Warnings(all, text => text).ToList();
+        Expect(warnings.Count == 2, "One line for the kind and one remedy: " + string.Join(" | ", warnings));
+        Expect(warnings[0].StartsWith("lilToon: 型がlilToon 2.3.4と違うプロパティがあるマテリアルはMToonで近似します（", StringComparison.Ordinal) &&
+            warnings[0].Contains("_Invisible vector→float") && warnings[0].Contains("_VertexLightStrength vector→float"), "Type line lists every property: " + warnings[0]);
+        Expect(warnings[1] == "lilToon 2.3.4に切り替えるとUnityでもアプリと同じ見た目になります", "Remedy names the catalogue version: " + warnings[1]);
+        warnings = Check.Warnings(Check.Compare(unknown, "lilToon"), text => text).ToList();
+        Expect(warnings[0] == "lilToon: lilToon 2.3.4にないプロパティは書き出しません（_VrvNotInCatalogue）", "Unknown property line: " + warnings[0]);
+        warnings = Check.Warnings(noForwardAdd, text => text).ToList();
+        Expect(warnings.Count == 2 && warnings[0].StartsWith("Hidden/lilToonCutoutOutline: 足りないパスはlilToon 2.3.4のパスとして書き出します（FORWARD_ADD", StringComparison.Ordinal) &&
+            warnings[1].Contains("ForwardAddパスを使用"), "Missing ForwardAdd line and its Shader Setting: " + string.Join(" | ", warnings));
+        Expect(Check.Warnings(all, text => "[" + text + "]").All(line => line.StartsWith("[", StringComparison.Ordinal)), "Every warning is translated");
+        Expect(!Check.Warnings(new List<Check.Difference>(), text => text).Any(), "No differences, no warnings");
 
         Console.WriteLine("lilToon structure check tests passed: " + count);
     }

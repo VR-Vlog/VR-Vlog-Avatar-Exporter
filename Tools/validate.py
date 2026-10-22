@@ -191,14 +191,15 @@ assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalizatio
 assert 'var version = FindLilToonPackage()?.version;' in window and 'return version;' in window
 assert '"2.3.4"' not in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 assert 'package.name, "jp.lilxyzw.liltoon"' in window
-assert "RequireSupportedLilToon(GameObject avatar)" in window
-# Both export entries compare the shaders the avatar uses with the catalogue.
-assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Require(avatar, version);")
-assert "LilToonExporterWindow.RequireSupportedLilToon(Source);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
+assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in window
+# Both export entries compare the shaders the avatar uses with the catalogue;
+# only a missing lilToon (or its baker) stops, other differences are warnings.
+assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, version, warnings);")
+assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
 # The export window and batch callers export through ExportSettings, which runs
 # the same check ("アプリに転送" through the board's session, checked above).
 export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
-assert "lilToonVersion: LilToonExporterWindow.RequireSupportedLilToon(avatar)," in export_settings
+assert "lilToonVersion: LilToonExporterWindow.RequireLilToon(avatar, warnings)," in export_settings
 assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
 assert "licenseOptions: License, disableAudioLink: true" in export_settings
 assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings

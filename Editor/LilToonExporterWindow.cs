@@ -656,22 +656,25 @@ namespace VRVlog.LilToonExporter
         private static string InstalledLilToonStatus()
         {
             var package = FindLilToonPackage();
-            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）");
-            return Compatibility.DependencyPolicy.AcceptsLilToon(package.version) ? package.version : string.Format(
-                ExporterLocalization.T("{0}（対応範囲 {1}〜{2} の外）"), package.version,
-                Compatibility.DependencyPolicy.LilToonMinimum, Compatibility.DependencyPolicy.LilToonMaximum);
+            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
+            return Compatibility.DependencyPolicy.ClassifyLilToon(package.version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
+                ? package.version
+                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), package.version, Compatibility.DependencyPolicy.LilToonVersion);
         }
 
-        // Stops before export when the installed lilToon is outside the
-        // supported range or its shaders used by the avatar differ from the
-        // catalogue. Returns the installed version for asset.extras;
+        // Stops only without lilToon, or when lilToon's baker that the avatar
+        // needs is missing or changed. Any other installed version exports:
+        // warnings lists how it differs from the catalogue and what the export
+        // leaves out. Returns the installed version for asset.extras;
         // sourceLilToonVersion is always the catalogue version.
-        internal static string RequireSupportedLilToon(GameObject avatar)
+        internal static string RequireLilToon(GameObject avatar, ICollection<string> warnings)
         {
             var version = FindLilToonPackage()?.version;
             var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
-            LilToonStructureCheck.Require(avatar, version);
+            var warning = Compatibility.DependencyPolicy.LilToonWarning(version, ExporterLocalization.T);
+            if (warning != null) warnings?.Add(warning);
+            LilToonStructureCheck.Inspect(avatar, version, warnings);
             return version;
         }
 

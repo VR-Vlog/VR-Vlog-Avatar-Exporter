@@ -80,36 +80,52 @@ itself requires NDMF 1.11.0 or later; the exporter's own NDMF floor stays
 
 ## Supported lilToon versions
 
-The exporter accepts lilToon 2.0.0-2.3.4 (`lilToon.supported` in
-`dependencies.json`). This is the range where lilToon's own material migration
-alone gives the 2.3.4 structure. On Unity 2022.3.22f1 (Built-in RP), the
-migrated shader properties, types, dimensions, pass names and LightMode of
-2.0.0, 2.1.0, 2.1.10, 2.2.0, 2.2.1, 2.3.0 and 2.3.3 matched 2.3.4 exactly, and
-the structure hash of every tag from 2.0.0 to 2.3.4 matches (see
-[lilToon shader structure](#liltoon-shader-structure)). 1.x keeps 35 properties that 2.3.4 does not
-have and lacks 3 that it has. Shader Setting changes, encrypted materials and
-custom shaders were not measured.
+From 0.12.0-beta.4 the installed lilToon version never stops an export
+(0.12.0-beta.1 to beta.3 accept 2.0.0-2.3.4; stable 0.11.15 accepts only
+2.3.4). The app draws every lilToon material with its embedded 2.3.4 shaders,
+whatever version the source project has, so 2.3.4 is the recommended version:
+with it, Unity and the app use the same shader. See
+`Documentation~/decisions/2026-10-22-liltoon-no-version-gate.md`.
 
-As of 2026-10-18, 2.3.4 is the newest lilToon release and the official VPM
-listing has no pre-release, so the range covers every stable 2.x release. 1.x
-is not accepted: the exporter requires the 2.3.4 property set exactly, 2.0.0
-changed the fur, lighting and Light Volumes shader code, and 1.x packages
-declare Unity 2018.3. Updating the project to lilToon 2.0.0-2.3.4 migrates 1.x
-materials so they export. See
-`Documentation~/decisions/2026-10-18-liltoon-range-review.md`.
-
-Before exporting, these versions stop with the reason and the next step:
-
-| Installed lilToon | What to do |
+| Installed lilToon | Export |
 | --- | --- |
-| Not installed | Add lilToon 2.0.0-2.3.4 in VCC / ALCOM |
-| 1.x or older | Update to 2.0.0-2.3.4; lilToon migrates materials |
-| Newer than 2.3.4 | Return to 2.3.4 or wait for a supporting exporter |
-| Pre-release or unreadable | Select a stable 2.0.0-2.3.4 release |
+| Not installed | Stops: "lilToonが見つかりません（VCC／ALCOMでlilToonを追加）" |
+| 2.3.4 | Exports without a version warning |
+| 1.x, another 2.x, newer than 2.3.4, pre-release or unreadable | Exports; the result shows "アプリではlilToon 2.3.4として描画します（導入済みのバージョンは{0}）" |
 
-Within the range, the exporter also checks before each export that the
-installed lilToon shaders have the same structure as 2.3.4 and stops if they
-differ, for example when a pass was removed in lilToon's Shader Setting.
+Before each export the exporter compares the lilToon shaders the avatar uses
+with the 2.3.4 catalogue (property names, types, runtime texture dimensions,
+named passes and LightMode). Only lilToon's bake shader
+`Hidden/ltsother_baker` stops the export: when it is missing, or a property
+the exporter sets on it is missing or has another type, the message is
+"lilToon {0}のベイク用シェーダーが2.3.4と違うため書き出せません" with the remedy
+to reinstall lilToon in VCC / ALCOM or switch to 2.3.4. Every other difference
+is listed as a warning on the export screen and the export continues:
+
+| Difference in a shader the avatar uses | What the export does |
+| --- | --- |
+| Property that 2.3.4 does not have | Not exported |
+| 2.3.4 runtime property missing, or with another type or texture kind (2D / Cube) | That material is exported as its MToon approximation instead of lilToon; the export result lists it as approximated ("lilToon 2.3.4とプロパティが合わないためMToonで近似します") |
+| 2.3.4 pass missing | Written as the 2.3.4 pass |
+| Pass that 2.3.4 does not have | Not exported |
+| Pass with another LightMode | Written with the 2.3.4 LightMode |
+
+The warnings end with what makes Unity match the app: the lilToon Shader
+Setting lines for "ForwardAdd" and "Fix for Deffered" when those settings
+explain the difference, otherwise "lilToon 2.3.4に切り替えるとUnityでもアプリと同じ見た目になります".
+Nothing in the exporter corrects how the installed shader draws; the warnings
+only say what the file leaves out.
+
+`lilToon.verified` in `dependencies.json` (2.0.0-2.4.1) is not a gate. It
+records the releases whose shader structure hash was checked to match 2.3.4
+(see [lilToon shader structure](#liltoon-shader-structure)); 1.10.3 differs.
+On Unity 2022.3.22f1 (Built-in RP), the migrated shader properties, types,
+dimensions, pass names and LightMode of 2.0.0, 2.1.0, 2.1.10, 2.2.0, 2.2.1,
+2.3.0 and 2.3.3 matched 2.3.4 exactly. 1.x keeps 35 properties that 2.3.4 does
+not have (left out with a warning) and lacks 3 that it has (`_EnvRimBorder`,
+`_EnvRimBlur` and `_Ramp`, none of which the exporter writes). Updating a 1.x
+project to lilToon 2.x still migrates its materials. Shader Setting changes,
+encrypted materials and custom shaders were not measured.
 
 Exported files keep `sourceLilToonVersion` at `2.3.4`, meaning the lilToon
 catalogue that the materials follow, so existing VR Vlog versions read them
@@ -139,6 +155,27 @@ not write this property, so the difference does not reach the exported file.
 These are lilToon's own changes. Correcting them in the exporter would add
 per-version conversions that this project does not maintain.
 
+### Known differences with lilToon 2.4.x
+
+2.4.0 and 2.4.1 have the same structure hash as 2.3.4. Reading the official
+2.3.4 to 2.4.0 to 2.4.1 source diff found these differences; the exporter
+corrects none of them.
+
+- 2.4.0 changed the SubShader Queue of `Hidden/lilToonMultiOutline`
+  (ltsmulti_o) from Transparent-100 (2900) to Geometry (2000). An opaque
+  lilToonMulti material with outline exported from 2.4.x records renderQueue
+  2000 instead of 2900. The app uses the recorded value, so it draws in the
+  order Unity shows with 2.4.x. The structure hash does not include the queue.
+- 2.4.1 changed the light-probe direction in `ShadeSH9ToonDouble`. Only the
+  look in Unity under light probes changes; exported files do not. The
+  **アプリでの見え方** window draws with the installed shader, so its shading
+  can differ slightly from the app.
+- APV sampling (URP only) and VRC Light Volumes 3.0 support change only how
+  Unity draws; the exported file is the same.
+- Editor-side changes (unused texture removal, lilToon2Ramp and others) are not
+  used by the exporter. `lilConstants.currentVersionValue` stays 45, so opening
+  a project with 2.4.x runs no material migration.
+
 ## lilToon shader structure
 
 `Formats/Runtime/LilToon234Catalogue.cs` is generated from the Built-in RP shader
@@ -149,7 +186,11 @@ hashes the shader structure of each lilToon tag into `liltoon-structure.json`
 texture dimensions, named passes and LightMode, without defaults or declaration
 order. `Tools/check-liltoon-structure.py` runs offline in the validation receipt
 and fails when the catalogue no longer matches the table or a tag in the
-supported lilToon range (default 2.0.0-2.3.4) has a different structure. The
+verified lilToon range (`lilToon.verified`, 2.0.0-2.4.1) has a different
+structure. The check guards this record; it does not decide what the exporter
+accepts. When a new lilToon release has the same hash, raise
+`lilToon.verified.maximum`; when it differs, the exporter still exports with it
+and the warnings on the export screen list the differences. The
 definition and the per-tag results are in
 [the decision record](../Documentation~/decisions/2026-10-14-liltoon-structure-hash.md).
 A matching hash is not proof of visual equivalence.
@@ -159,7 +200,7 @@ A matching hash is not proof of visual equivalence.
 1. Run `python3 Tools/check-upstream-dependencies.py --output upstream.json`
    or the manual **Check upstream dependency releases** Actions workflow. This only
    reports stable upstream releases; it neither changes dependencies nor starts
-   a Unity build. For a newer lilToon release it also downloads that tag's
+   a Unity build. For a lilToon release newer than `lilToon.verified.maximum` it also downloads that tag's
    source and reports whether its shader structure matches the 2.3.4 catalogue. No scheduled CI or paid build was introduced.
 2. Review the official changes. Add a version and immutable source commit to the
    policy in a branch. For a different UniVRM API family, add a separately gated
@@ -230,7 +271,9 @@ records the expected and installed lilToon version, with or without this option.
 
 ### Export parity after upgrading lilToon
 
-The supported range rests on one claim: exporting with lilToon X gives the same
+This is evidence for the verified range, not a gate: the exporter accepts any
+installed version whether or not it was run here. It checks one claim:
+exporting with lilToon X gives the same
 file as upgrading the project to 2.3.4 and exporting again, apart from
 `asset.extras.VRVLOG_lilToonInstalledVersion`. Check it per version project:
 
@@ -482,6 +525,9 @@ A successful clean startup does not reproduce every
 user project's import/reload history; record this limit explicitly.
 
 The file format remains schema 2.0 for full lilToon (legacy 1.x remains readable).
-The app's embedded 2.3.4 catalogue and shaders are unchanged. More versions mean
-more validation work; the range gate and the structure check deliberately trade immediate adoption of an
-unknown update for predictable exports and actionable errors.
+The app's embedded 2.3.4 catalogue and shaders are unchanged. The exporter no
+longer stops on the installed lilToon version and the structure check stops only
+for the bake shader, so a new lilToon release exports as soon as creators install
+it. The cost is that a difference in how that release draws in Unity is reported
+only as warning lines on the export screen, and anything the 2.3.4 catalogue
+cannot hold is left out or approximated with MToon.

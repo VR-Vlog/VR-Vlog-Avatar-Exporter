@@ -20,8 +20,8 @@ CATALOGUE_PATH = "Formats/Runtime/LilToon234Catalogue.cs"
 STRUCTURE_PATH = "Compatibility/liltoon-structure.json"
 STRUCTURE_SCHEMA = 1
 REFERENCE_VERSION = "2.3.4"
-# The range recorded in Compatibility/dependencies.json (lilToon.supported); tests use it as a fixture.
-DEFAULT_SUPPORTED_RANGE = ("2.0.0", "2.3.4")
+# The range recorded in Compatibility/dependencies.json (lilToon.verified); tests use it as a fixture.
+DEFAULT_VERIFIED_RANGE = ("2.0.0", "2.4.1")
 
 # Shader files whose names start with these prefixes are internal pass libraries and bakers,
 # not shaders a material can use. Their properties still enter the property table.
@@ -477,10 +477,10 @@ def parse_version(value):
     return tuple(int(x) for x in match.groups())
 
 
-def supported_range(config):
-    """Supported lilToon range from dependencies.json (lilToon.supported)."""
-    supported = config["lilToon"]["supported"]
-    return supported["minimum"], supported["maximum"]
+def verified_range(config):
+    """Verified lilToon range from dependencies.json (lilToon.verified)."""
+    verified = config["lilToon"]["verified"]
+    return verified["minimum"], verified["maximum"]
 
 
 def in_range(tag, bounds):
@@ -624,9 +624,9 @@ def check_structure_table(table, catalogue, bounds):
             problems.append("tag %s has a wrong matchesReference flag" % entry["tag"])
     for bound in bounds:
         if bound not in tags:
-            problems.append("supported range bound %s is not in tags" % bound)
+            problems.append("verified range bound %s is not in tags" % bound)
     for entry in tags.values():
         if in_range(entry["tag"], bounds) and entry["structureHash"] != expected:
-            problems.append("tag %s is in the supported range %s-%s but its structure differs from %s"
+            problems.append("tag %s is in the verified range %s-%s but its structure differs from %s"
                             % (entry["tag"], bounds[0], bounds[1], catalogue["version"]))
     return problems

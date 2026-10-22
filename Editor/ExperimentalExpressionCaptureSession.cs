@@ -539,8 +539,8 @@ namespace VRVlog.LilToonExporter
             // still stops here and offers the recovery window.
             UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
             UniVrmOneClickExporter.ValidateSourceHasMesh(Source);
-            // Stop on an unsupported or differently built lilToon before preparing the export copy.
-            var lilToonVersion = LilToonExporterWindow.RequireSupportedLilToon(Source);
+            // Stop without lilToon before preparing the export copy; other versions only warn.
+            var lilToonVersion = LilToonExporterWindow.RequireLilToon(Source, warnings);
             var expressions = (recordedExpressions ?? Expressions).Select(ClonePose).ToArray();
             var poses = (recordedPoses ?? PoseOptions).Copy();
             ValidatePose(Baseline);
