@@ -57,20 +57,24 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 10000)]
-        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "GameObject/VR Vlog/アプリに転送（通常）", 10001)]
-        public void AppTransferIsAHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string path, int priority)
+        [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]
+        [TestCase("OpenDetailedFromMenu", "CanOpenDetailedFromMenu", "アプリに転送（通常）...", 1)]
+        public void AppTransferIsAMenuBarAndHierarchyContextEntryEnabledForExactlyOneAvatarRoot(string open, string canOpen, string name, int order)
         {
             var flags = BindingFlags.NonPublic | BindingFlags.Static;
-            var entry = (MenuItem)typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Single();
-            Assert.That(entry.menuItem, Is.EqualTo(path));
-            Assert.That(entry.validate, Is.False);
-            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu.
-            // The two entries are next to each other, the quick one first.
-            Assert.That(entry.priority, Is.EqualTo(priority));
+            var entries = typeof(AppTransferWindow).GetMethod(open, flags).GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
+            // The priorities put VR Vlog after the other tools' entries in the Hierarchy context menu
+            // and where its export always was in the menu bar. The two entries are next to each
+            // other, the quick one first.
+            Assert.That(entries.Select(entry => (entry.menuItem, entry.validate, entry.priority)), Is.EquivalentTo(new[]
+            {
+                ("GameObject/VR Vlog/" + name, false, 10000 + order),
+                ("VR Vlog/" + name, false, 1000 + order),
+            }));
             var validation = typeof(AppTransferWindow).GetMethod(canOpen, flags);
-            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).validate, Is.True);
-            Assert.That(((MenuItem)validation.GetCustomAttributes(typeof(MenuItem), false).Single()).menuItem, Is.EqualTo(path));
+            var validations = validation.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>().ToArray();
+            Assert.That(validations.All(entry => entry.validate), Is.True);
+            Assert.That(validations.Select(entry => entry.menuItem), Is.EquivalentTo(new[] { "GameObject/VR Vlog/" + name, "VR Vlog/" + name }));
             var selection = Selection.objects;
             var first = new GameObject("vrvlog-app-transfer-first", typeof(Animator));
             var second = new GameObject("vrvlog-app-transfer-second", typeof(Animator));
