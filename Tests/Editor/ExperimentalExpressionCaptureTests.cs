@@ -2436,7 +2436,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A menu entry that takes the board off its third page asks only while that page
-        // uploads or shows its QR. "VRM書き出し" from the menu keeps the transfer on "戻る".
+        // uploads or shows its QR. "VRM書き出し" from the menu keeps the page, so it never asks.
         [Test]
         public void LeavingTheTransferPageFromTheMenuAsksOnlyWhileItTransfers()
         {
@@ -2450,37 +2450,25 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExperimentalExpressionCaptureWindow.ConfirmLeavingTransfer(false), Is.True);
                 Assert.That(asked, Is.Empty);
                 Assert.That(ExperimentalExpressionCaptureWindow.ConfirmLeavingTransfer(true), Is.False);
-                Assert.That(asked, Is.EqualTo(new[] { (ExporterLocalization.T("転送を中止"), ExporterLocalization.T("進行中の転送を中止します。表示中のQRは使えなくなります。")) }));
+                Assert.That(asked, Is.EqualTo(new[] { (ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferTitle),
+                    ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferBody)) }));
 
+                // "VRM書き出し" keeps the third page, which is the same panel in both modes, so a transfer on it
+                // goes on without asking; only the mode (the blue button) changes.
                 typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                // "戻る" keeps the transfer mode.
-                Assert.That(window.LeaveTransferMode(true), Is.False);
-                Assert.That(window.TransferMode, Is.True);
-                Assert.That(asked.Count, Is.EqualTo(2));
-                // Without a transfer on the page it leaves without asking.
-                Assert.That(window.LeaveTransferMode(false), Is.True);
+                window.LeaveTransferMode();
                 Assert.That(window.TransferMode, Is.False);
                 Assert.That(window.titleContent.text, Is.EqualTo(ExporterLocalization.T("VRM書き出し")));
-                Assert.That(asked.Count, Is.EqualTo(2));
-                // "中止" leaves it.
+                Assert.That(asked.Count, Is.EqualTo(1));
+                // "VRMを書き出す..." on a board not prepared for an avatar has no transfer to lose: it asks nothing.
                 typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                answer = true;
-                Assert.That(window.LeaveTransferMode(true), Is.True);
-                Assert.That(window.TransferMode, Is.False);
-                Assert.That(asked.Count, Is.EqualTo(3));
-                // Already exporting, nothing is asked.
-                Assert.That(window.LeaveTransferMode(true), Is.True);
-                Assert.That(asked.Count, Is.EqualTo(3));
-                // "VRMを書き出す..." for another avatar: "戻る" keeps the transfer and its avatar.
-                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                answer = false;
                 var other = new GameObject("Other");
                 try
                 {
-                    Assert.That(window.ChooseForExport(other, true), Is.False);
-                    Assert.That(window.TransferMode, Is.True);
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.Null);
-                    Assert.That(asked.Count, Is.EqualTo(4));
+                    Assert.That(window.ChooseForExport(other, true), Is.True);
+                    Assert.That(window.TransferMode, Is.False);
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.SameAs(other));
+                    Assert.That(asked.Count, Is.EqualTo(1));
                 }
                 finally { Object.DestroyImmediate(other); }
             }
@@ -2488,6 +2476,118 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = dialog;
                 Object.DestroyImmediate(window);
+            }
+        }
+
+        // A board lends its license to the transfer only while its own information page is what the user edits.
+        // Where the third page is the transfer panel, the board's license is never shown, so the panel starts
+        // from the avatar's remembered terms instead of the board's untouched default.
+        [Test]
+        public void ABoardShowingThePanelDoesNotLendItsUntouchedLicense()
+        {
+            const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var avatar = new GameObject("LicenseAvatar");
+            try
+            {
+                typeof(ExperimentalExpressionCaptureWindow).GetField("source", field).SetValue(window, avatar);
+                typeof(ExperimentalExpressionCaptureWindow).GetField("licenseOptions", field).SetValue(window,
+                    new AvatarLicenseOptions { AllowRedistribution = true, CopyrightInformation = "Board" });
+                var panelUsable = LilToonExporterWindow.EmbeddedTransferMethod() != null;
+                Assert.That(window.ShowsOwnInfo, Is.EqualTo(!panelUsable));
+                var transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                var license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
+                Assert.That(license.CopyrightInformation == "Board", Is.EqualTo(!panelUsable));
+                // The transfer mode never lends it.
+                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", field).SetValue(window, true);
+                Assert.That(window.ShowsOwnInfo, Is.False);
+                transfer = new AppTransferExport();
+                transfer.SelectAvatar(avatar);
+                license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
+                Assert.That(license.CopyrightInformation, Is.Not.EqualTo("Board"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(window);
+                Object.DestroyImmediate(avatar);
+            }
+        }
+
+        // The panel's "戻る" asks while the page uploads or shows its QR. "転送を続ける" stays on the page;
+        // "中止して移動" and a page with nothing to lose go to the objects page.
+        [Test]
+        public void ThePanelBackAsksWhileItTransfersAndKeepingStaysOnThePage()
+        {
+            const System.Reflection.BindingFlags field = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var dialog = ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var asked = 0;
+            var answer = false;
+            try
+            {
+                ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = (title, body) => { asked++; return answer; };
+                foreach (var transferMode in new[] { false, true })
+                {
+                    typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", field).SetValue(window, transferMode);
+                    typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).SetValue(window, ExperimentalExpressionCaptureWindow.InfoPage);
+                    typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
+                    asked = 0;
+                    answer = false;
+                    window.PanelBack(true);
+                    Assert.That(asked, Is.EqualTo(1));
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Null, "Kept, nothing is queued.");
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).GetValue(window), Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
+                    answer = true;
+                    window.PanelBack(true);
+                    Assert.That(asked, Is.EqualTo(2));
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null, "The move to the objects page is queued.");
+                    typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
+                    window.PanelBack(false);
+                    Assert.That(asked, Is.EqualTo(2));
+                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null);
+                }
+            }
+            finally
+            {
+                ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = dialog;
+                Object.DestroyImmediate(window);
+            }
+        }
+
+        // The prepared board's third page is the transfer panel in the transfer mode, and in the normal
+        // mode while the module is there and turned on; otherwise the normal mode keeps its own page.
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, false, true, true)]
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, false, false, false)]
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true, true, true)]
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true, false, true)]
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, false, false, true, false)]
+        [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, false, true, false)]
+        [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, true, true, false)]
+        public void TheThirdPageIsThePanelInBothModesWhereItIsUsable(int page, bool prepared, bool transferMode, bool panelUsable, bool panel)
+        {
+            Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared, transferMode, panelUsable), Is.EqualTo(panel));
+        }
+
+        // The question before leaving the transfer: one line without 句点, buttons that say what they do.
+        [Test]
+        public void TheLeaveDialogTextFollowsTheWordingRulesAndExistsInEveryLocale()
+        {
+            var texts = new[]
+            {
+                ExperimentalExpressionCaptureWindow.CancelTransferTitle, ExperimentalExpressionCaptureWindow.CancelTransferBody,
+                ExperimentalExpressionCaptureWindow.LeaveTransferText, ExperimentalExpressionCaptureWindow.KeepTransferText,
+                ExperimentalExpressionCaptureWindow.NextLabel(true), StepIndicator.Names(true)[2],
+            };
+            foreach (var text in texts)
+                Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|はい|いいえ"), Is.False, text);
+            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
+            var directory = Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var table = File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
+                foreach (var text in texts)
+                    Assert.That(table, Does.Contain("{\"source\":\"" + text + "\",\"translated\":\""), locale + ": " + text);
             }
         }
 

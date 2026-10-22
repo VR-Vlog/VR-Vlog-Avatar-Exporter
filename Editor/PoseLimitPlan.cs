@@ -46,12 +46,17 @@ namespace VRVlog.LilToonExporter
                 row.Keep = row.Selectable;
                 Rows.Add(row);
             }
-            NeedsChoice = !Within || Rows.Any(row => row.TooLarge);
+            Exceeds = !Within;
+            NeedsChoice = Exceeds || Rows.Any(row => row.TooLarge);
         }
 
-        // Over a limit with every row kept, or a moving pose too large to
-        // keep. Within the limits nothing is asked and nothing is dropped,
-        // whatever choice was saved.
+        // Over a limit with every row that can be written kept. Only then are
+        // rows dropped, by the saved choice or the default.
+        internal readonly bool Exceeds;
+
+        // Over a limit, or a moving pose too large to keep. Within the limits
+        // nothing is dropped whatever choice was saved, also when the window
+        // opens only to show a pose too large to keep.
         internal readonly bool NeedsChoice;
 
         internal IEnumerable<Row> Kept => Rows.Where(row => row.Keep);
@@ -74,12 +79,12 @@ namespace VRVlog.LilToonExporter
 
         // Starts from a saved choice (ids no longer listed are ignored) and
         // drops more from the end until the poses fit. Without a choice this
-        // is the default.
+        // is the default. When everything fits the choice is not applied.
         internal void Choose(IEnumerable<string> dropped)
         {
             var set = new HashSet<string>(dropped ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
-            foreach (var row in Rows) row.Keep = row.Selectable && (!NeedsChoice || !set.Contains(row.Id));
-            if (!NeedsChoice) return;
+            foreach (var row in Rows) row.Keep = row.Selectable && (!Exceeds || !set.Contains(row.Id));
+            if (!Exceeds) return;
             DropFromEnd(row => row.Animated, () => FramesOver || AnimationBytesOver);
             DropFromEnd(row => !row.Animated, () => PoseBytesOver);
             DropFromEnd(row => true, () => CountOver);
