@@ -532,10 +532,7 @@
     height: 22px;
     margin: 0;
     flex-shrink: 0;
-    max-width: 50%;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .save-result {
