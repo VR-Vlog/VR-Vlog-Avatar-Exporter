@@ -1,63 +1,10 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace VRVlog.LilToonExporter
 {
     internal static class LilToonGlbExtension
     {
-        public static byte[] Inject(byte[] source, GameObject avatar, string exporterVersion, string lilToonVersion, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
-            IReadOnlyDictionary<Material, int> materialIndices = null)
-        {
-            if (avatar == null) throw new ArgumentNullException(nameof(avatar));
-            var glb = GlbDocument.Read(source);
-            RequireVrm10Root(glb.Json);
-            glb = GlbTextureDownsizer.Resize(glb, warnings);
-            var materialNames = Names(glb.Json, "materials");
-            var imageNames = Names(glb.Json, "images");
-            var textureSources = TextureSources(glb.Json);
-            var fallbackTextureCount = textureSources.Count;
-            var addedTextures = new Dictionary<(Texture, string), int>();
-            if (materialNames.Count > LilToonMobileProfile.MaximumMaterials) throw new InvalidOperationException("Fallback VRM exceeds the mobile material limit.");
-            if (textureSources.Count > LilToonMobileProfile.MaximumTextures) throw new InvalidOperationException("Fallback VRM exceeds the mobile texture limit.");
-            ValidateAllEncodedTextures(glb, textureSources);
-            var extension = new LilToonExtensionRoot { exporterVersion = exporterVersion, sourceLilToonVersion = lilToonVersion };
-            var seen = new HashSet<int>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
-            foreach (var material in renderer.sharedMaterials)
-            {
-                if (!LilToonMaterialReader.IsLilToon(material)) continue;
-                var index = materialIndices != null ? materialIndices[material] : UniqueIndex(materialNames, material.name, "material");
-                if (index < 0 || index >= materialNames.Count) throw new InvalidOperationException("Prepared material index is outside the exported VRM.");
-                if (!seen.Add(index)) continue;
-                RequireMToonFallback(glb.Json, index);
-                var record = LilToonMaterialReader.Read(material, index, (texture, semantic) => ResolveTexture(glb, texture, semantic, index, imageNames, textureSources, fallbackTextureCount, addedTextures, warnings, material.GetTexture("_MainTex")), warnings, suppressSharedTextureEmission);
-                if (LilToonEmissionPolicy.IsSuppressed(material, suppressSharedTextureEmission))
-                {
-                    // Keep ordinary MToon viewers and compatibility-enabled apps
-                    // consistent, including the existing-fallback workflow.
-                    var fallbackMaterial = (Dictionary<string, object>)Array(glb.Json, "materials", false)[index];
-                    fallbackMaterial["emissiveFactor"] = new List<object> { 0.0, 0.0, 0.0 };
-                    fallbackMaterial.Remove("emissiveTexture");
-                }
-                foreach (var texture in record.textures) ValidateEncodedTexture(glb, texture.textureIndex, textureSources);
-                extension.materials.Add(record);
-            }
-            extension.materials.Sort((a, b) => a.materialIndex.CompareTo(b.materialIndex));
-            if (extension.materials.Count == 0) throw new InvalidOperationException("The selected avatar has no supported lilToon materials.");
-            if (!LilToonExtensionValidator.TryValidate(extension, out var error)) throw new InvalidOperationException(error);
-            var extensions = Object(glb.Json, "extensions", true);
-            if (extensions.ContainsKey(LilToonMobileProfile.ExtensionName)) throw new InvalidOperationException("Fallback VRM already contains the lilToon extension.");
-            extensions[LilToonMobileProfile.ExtensionName] = ToDom(extension);
-            var used = Array(glb.Json, "extensionsUsed", true);
-            if (!Contains(used, LilToonMobileProfile.ExtensionName)) used.Add(LilToonMobileProfile.ExtensionName);
-            var required = Array(glb.Json, "extensionsRequired", false);
-            if (required != null && Contains(required, LilToonMobileProfile.ExtensionName)) throw new InvalidOperationException("Custom extension must not be required.");
-            var output = VrmExpressionBindings.AddMissing(glb.Write(), warnings);
-            Validate(output, extension.materials.Count);
-            return output;
-        }
-
         public static void Validate(byte[] bytes, int expectedMaterials = -1)
         {
             var fullDocument = GlbDocument.Read(bytes);
@@ -86,86 +33,7 @@ namespace VRVlog.LilToonExporter
             var required = Array(glb.Json, "extensionsRequired", false); if (required != null && Contains(required, LilToonMobileProfile.ExtensionName)) throw new InvalidOperationException("Extension is incorrectly required.");
         }
 
-        private static Dictionary<string, object> ToDom(LilToonExtensionRoot root)
-        {
-            var materials = new List<object>();
-            foreach (var m in root.materials)
-            {
-                var features = new List<object>();
-                foreach (var x in m.features) features.Add(x);
-                var floats = new List<object>();
-                foreach (var x in m.floats) floats.Add(new Dictionary<string, object>{{"name",x.name},{"value",x.value}});
-                var colors = new List<object>();
-                foreach (var x in m.colors) colors.Add(new Dictionary<string, object>{{"name",x.name},{"r",x.r},{"g",x.g},{"b",x.b},{"a",x.a}});
-                var textures = new List<object>();
-                foreach (var x in m.textures) textures.Add(new Dictionary<string, object>{{"name",x.name},{"textureIndex",x.textureIndex},{"semantic",x.semantic},{"scaleX",x.scaleX},{"scaleY",x.scaleY},{"offsetX",x.offsetX},{"offsetY",x.offsetY}});
-                var material = new Dictionary<string, object>{{"materialIndex",m.materialIndex},{"shaderFamily",m.shaderFamily},{"renderMode",m.renderMode},{"renderQueue",m.renderQueue},{"cullMode",m.cullMode},{"features",features},{"floats",floats},{"colors",colors},{"textures",textures}};
-                if (root.schemaMinor >= 2)
-                {
-                    var vectors = new List<object>();
-                    foreach (var x in m.vectors) vectors.Add(new Dictionary<string, object>{{"name",x.name},{"x",x.x},{"y",x.y},{"z",x.z},{"w",x.w}});
-                    material.Add("vectors", vectors);
-                }
-                materials.Add(material);
-            }
-            return new Dictionary<string, object>{{"schemaMajor",root.schemaMajor},{"schemaMinor",root.schemaMinor},{"exporterVersion",root.exporterVersion},{"sourceLilToonVersion",root.sourceLilToonVersion},{"materials",materials}};
-        }
-        private static List<string> Names(Dictionary<string, object> root, string key) { var r = new List<string>(); var list = Array(root,key,false) ?? new List<object>(); foreach (var x in list) { var o=x as Dictionary<string,object>; r.Add(o != null && o.TryGetValue("name",out var n) ? n as string ?? "" : ""); } return r; }
         private static List<int> TextureSources(Dictionary<string, object> root) { var r=new List<int>(); var list=Array(root,"textures",false)??new List<object>(); foreach(var x in list){var o=x as Dictionary<string,object>; r.Add(o!=null&&o.TryGetValue("source",out var s)?Convert.ToInt32(s):-1);} return r; }
-        private static int ResolveTexture(GlbDocument glb,Texture texture,string semantic,int materialIndex,List<string> imageNames,List<int> textureSources,int fallbackTextureCount,Dictionary<(Texture, string),int> addedTextures,ICollection<string> warnings,Texture mainSampler)
-        {
-            var isBacklight=semantic == "backlight" || semantic == "emissionMask" || semantic == "outlineMask";
-            if(!isBacklight)
-            {
-                var existing=FindTexture(texture.name,imageNames,textureSources,fallbackTextureCount,out var ambiguous);
-                if(!ambiguous)return existing;
-                if(string.Equals(semantic,"normalMap",StringComparison.Ordinal))
-                {
-                    var normalTexture=MaterialTexture(glb.Json,materialIndex,"normalTexture");
-                    if(normalTexture>=0)return normalTexture;
-                    throw new InvalidOperationException($"Fallback VRM has no encoded normal map for material '{materialIndex}'.");
-                }
-                AddWarning(warnings,$"テクスチャ '{texture.name}' は同名候補が複数あるため、元画像を直接埋め込みました。");
-            }
-            // Emission masks share the main sampler in lilToon; outline masks
-            // use its fixed linear/repeat sampler. Include sampler state in the
-            // cache key when the same image is used by different materials.
-            var samplerTexture = semantic == "emissionMask" ? mainSampler ?? Texture2D.whiteTexture : texture;
-            var mag = semantic == "outlineMask" ? 9729L : MagFilter(samplerTexture.filterMode);
-            var min = semantic == "outlineMask" ? 9729L : MinFilter(samplerTexture.filterMode, samplerTexture is Texture2D sampled && sampled.mipmapCount > 1);
-            var wrapS = semantic == "outlineMask" ? 10497L : Wrap(samplerTexture.wrapModeU);
-            var wrapT = semantic == "outlineMask" ? 10497L : Wrap(samplerTexture.wrapModeV);
-            var cacheRole = semantic + ":" + mag + ":" + min + ":" + wrapS + ":" + wrapT;
-            if(addedTextures.TryGetValue((texture, cacheRole),out var cached))return cached;
-            if(textureSources.Count>=LilToonMobileProfile.MaximumTextures)throw new InvalidOperationException("Adding the lilToon texture would exceed the mobile texture limit.");
-            if(!(texture is Texture2D source))throw new NotSupportedException($"Texture '{texture.name}' must be a Texture2D.");
-            if(source.width<=0||source.height<=0)
-                throw new InvalidOperationException($"Texture '{texture.name}' is {source.width}x{source.height}; the mobile maximum is {LilToonMobileProfile.MaximumTextureSize}.");
-            var png=MobileTextureEncoder.EncodeSource(source, semantic != "normalMap" && semantic != "outlineMask" && semantic != "emissionMask", warnings);var offset=glb.AppendBinary(png);
-            var views=Array(glb.Json,"bufferViews",true);var viewIndex=views.Count;
-            views.Add(new Dictionary<string,object>{{"buffer",0L},{"byteOffset",(long)offset},{"byteLength",(long)png.Length}});
-            var images=Array(glb.Json,"images",true);var imageIndex=images.Count;
-            images.Add(new Dictionary<string,object>{{"name",source.name},{"mimeType","image/png"},{"bufferView",(long)viewIndex}});
-            var samplers=Array(glb.Json,"samplers",true);var samplerIndex=samplers.Count;
-            samplers.Add(new Dictionary<string,object>{{"magFilter",mag},{"minFilter",min},{"wrapS",wrapS},{"wrapT",wrapT}});
-            var textures=Array(glb.Json,"textures",true);var textureIndex=textures.Count;
-            textures.Add(new Dictionary<string,object>{{"source",(long)imageIndex},{"sampler",(long)samplerIndex}});
-            imageNames.Add(source.name);textureSources.Add(imageIndex);addedTextures.Add((texture, cacheRole),textureIndex);
-            return textureIndex;
-        }
-        private static int FindTexture(string name,List<string> images,List<int> sources,int limit,out bool ambiguous){var found=-1;ambiguous=false;for(var t=0;t<sources.Count&&t<limit;t++){var s=sources[t];if(s>=0&&s<images.Count&&SameName(images[s],name)){if(found>=0){ambiguous=true;return -1;}found=t;}}return found;}
-        private static int MaterialTexture(Dictionary<string,object> root,int materialIndex,string key)
-        {
-            var materials=Array(root,"materials",false);
-            if(materials==null||materialIndex<0||materialIndex>=materials.Count)return -1;
-            var material=materials[materialIndex] as Dictionary<string,object>;
-            if(material==null||!material.TryGetValue(key,out var raw)||!(raw is Dictionary<string,object> info)||!info.TryGetValue("index",out var index))return -1;
-            return Convert.ToInt32(index);
-        }
-        private static void AddWarning(ICollection<string> warnings,string message){if(warnings!=null&&!warnings.Contains(message))warnings.Add(message);}
-        private static long MagFilter(FilterMode mode)=>mode==FilterMode.Point?9728L:9729L;
-        private static long MinFilter(FilterMode mode,bool mipmapped){if(!mipmapped)return mode==FilterMode.Point?9728L:9729L;return mode==FilterMode.Point?9984L:mode==FilterMode.Trilinear?9987L:9985L;}
-        private static long Wrap(TextureWrapMode mode){switch(mode){case TextureWrapMode.Clamp:return 33071L;case TextureWrapMode.Mirror:return 33648L;case TextureWrapMode.Repeat:return 10497L;default:throw new NotSupportedException($"Texture wrap mode '{mode}' is not supported.");}}
         private static void ValidateAllEncodedTextures(GlbDocument glb,List<int> sources){for(var i=0;i<sources.Count;i++)ValidateEncodedTexture(glb,i,sources);}
         private static void ValidateEncodedTexture(GlbDocument glb,int textureIndex,List<int> sources)
         {
@@ -278,8 +146,6 @@ namespace VRVlog.LilToonExporter
             while(pending.Count>0){var index=pending.Pop();if(!visited.Add(index))continue;var node=RequiredObject(nodes[index],"node");var children=node.TryGetValue("children",out var raw)&&raw is List<object> list?list:null;if(children==null)continue;foreach(var childRaw in children){if(!(childRaw is long child)||child<0||child>=nodes.Count)throw new InvalidOperationException("glTF node child index is invalid.");if(child==descendant)return true;pending.Push((int)child);}}
             return false;
         }
-        private static int UniqueIndex(List<string> names,string name,string kind){var found=-1;for(var i=0;i<names.Count;i++)if(SameName(names[i],name)){if(found>=0)throw new InvalidOperationException($"Ambiguous {kind} name '{name}'.");found=i;}if(found<0)throw new InvalidOperationException($"{kind} '{name}' is not present in fallback VRM.");return found;}
-        private static bool SameName(string a,string b)=>string.Equals(Strip(a),Strip(b),StringComparison.Ordinal); private static string Strip(string n)=>n!=null&&n.EndsWith(" (Instance)",StringComparison.Ordinal)?n.Substring(0,n.Length-11):n??"";
         private static Dictionary<string,object> Object(Dictionary<string,object> r,string k,bool create){if(r.TryGetValue(k,out var x)){if(x is Dictionary<string,object> o)return o;throw new InvalidOperationException($"glTF '{k}' must be an object.");}if(!create)return null;var created=new Dictionary<string,object>(StringComparer.Ordinal);r[k]=created;return created;}
         private static List<object> Array(Dictionary<string,object> r,string k,bool create){if(r.TryGetValue(k,out var x)){if(x is List<object> a)return a;throw new InvalidOperationException($"glTF '{k}' must be an array.");}if(!create)return null;var created=new List<object>();r[k]=created;return created;}
         private static bool Contains(List<object> a,string s){foreach(var x in a)if(string.Equals(x as string,s,StringComparison.Ordinal))return true;return false;}

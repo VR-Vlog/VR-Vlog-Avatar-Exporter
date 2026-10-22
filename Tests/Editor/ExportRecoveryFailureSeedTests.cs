@@ -38,7 +38,7 @@ namespace VRVlog.LilToonExporter.Tests
             fixture.Material.SetFloat("_UseAudioLink", 1);
             var failure = AudioLinkFailure(fixture.Material);
             var report = ExportRecoveryReport.FromException(fixture.Source, failure);
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.8", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-seeded-recovery-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
             var existing = new byte[] { 41, 42, 43 }; var calls = 0;

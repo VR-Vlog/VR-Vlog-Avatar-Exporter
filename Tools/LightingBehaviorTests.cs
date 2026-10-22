@@ -75,14 +75,10 @@ public static class ExporterLightingBehaviorTests
         Near(record.vectors.Single().x, -.3, "Direction is numeric, not gamma-converted color.");
         Near(record.vectors.Single().w, 1, "Local direction flag survives reading.");
 
-        var avatar = new GameObject();
-        avatar.Renderers.Add(new Renderer { sharedMaterials = new[] { source } });
-        var input = MaterialBindingFixture.Build(source.name);
-        var bytes = LilToonGlbExtension.Inject(input, avatar, "0.8.0", "2.3.4");
+        var bytes = LegacyExtension(MaterialBindingFixture.Build(source.name), root);
         LilToonGlbExtension.Validate(bytes, 1);
         var document = GlbDocument.Read(bytes);
         var extension = (Dictionary<string, object>)((Dictionary<string, object>)document.Json["extensions"])[LilToonMobileProfile.ExtensionName];
-        Check((long)extension["schemaMinor"] == 3L, "New output declares schema 1.3.");
         var material = (Dictionary<string, object>)((List<object>)extension["materials"])[0];
         var vector = (Dictionary<string, object>)((List<object>)material["vectors"])[0];
         Near(Convert.ToDouble(vector["y"]), .7, "GLB round trip preserves numeric light direction.");
@@ -122,6 +118,35 @@ public static class ExporterLightingBehaviorTests
         var lite = LilToonMaterialReader.Read(source, 0, (_, __) => 0);
         Near(lite.floats.Single(f => f.name == "_RimShadowMask").value, 0, "Lite keeps its distinct rim shadow default.");
         return $"Lighting schema and conversion checks passed ({assertions} assertions); GPU rendering requires Unity.";
+    }
+
+    // Writes the legacy 1.x extension the way earlier exporter versions did, so
+    // the save check keeps accepting and rejecting those files.
+    private static byte[] LegacyExtension(byte[] fallback, LilToonExtensionRoot root)
+    {
+        var materials = new List<object>();
+        foreach (var m in root.materials)
+        {
+            var material = new Dictionary<string, object>
+            {
+                {"materialIndex", m.materialIndex}, {"shaderFamily", m.shaderFamily}, {"renderMode", m.renderMode},
+                {"renderQueue", m.renderQueue}, {"cullMode", m.cullMode}, {"features", m.features.Cast<object>().ToList()},
+                {"floats", m.floats.Select(x => (object)new Dictionary<string, object> {{"name", x.name}, {"value", x.value}}).ToList()},
+                {"colors", m.colors.Select(x => (object)new Dictionary<string, object> {{"name", x.name}, {"r", x.r}, {"g", x.g}, {"b", x.b}, {"a", x.a}}).ToList()},
+                {"textures", m.textures.Select(x => (object)new Dictionary<string, object> {{"name", x.name}, {"textureIndex", x.textureIndex}, {"semantic", x.semantic}, {"scaleX", x.scaleX}, {"scaleY", x.scaleY}, {"offsetX", x.offsetX}, {"offsetY", x.offsetY}}).ToList()},
+            };
+            if (root.schemaMinor >= 2)
+                material["vectors"] = m.vectors.Select(x => (object)new Dictionary<string, object> {{"name", x.name}, {"x", x.x}, {"y", x.y}, {"z", x.z}, {"w", x.w}}).ToList();
+            materials.Add(material);
+        }
+        var document = GlbDocument.Read(fallback);
+        ((Dictionary<string, object>)document.Json["extensions"])[LilToonMobileProfile.ExtensionName] = new Dictionary<string, object>
+        {
+            {"schemaMajor", root.schemaMajor}, {"schemaMinor", root.schemaMinor}, {"exporterVersion", root.exporterVersion},
+            {"sourceLilToonVersion", root.sourceLilToonVersion}, {"materials", materials},
+        };
+        ((List<object>)document.Json["extensionsUsed"]).Add(LilToonMobileProfile.ExtensionName);
+        return document.Write();
     }
 }
 #endif
