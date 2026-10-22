@@ -9,6 +9,8 @@
 
 オーナーから、遷移やBlendTreeの無い単純なクリップは再生せずにカーブから直接読んで速くするよう指示があった。単純かどうかは、遷移・BlendTree・Write Defaults・レイヤーの重み・ブレンド・重なるレイヤー・ほかのツールが足したものまで含めて厳しく判定し、判定から外れるものは今までどおり再生する。
 
+最初はAvatarMaskとStateMachineBehaviourがあれば一律に再生にしたが、計測に使った6体では直接決めた表情が1つも無かった（判定外の理由はAvatarMask・Behaviour・レイヤーの重みの制御・射影）。Transformを持つAvatarMaskは除いたTransformのBlendShapeも止める（UnityのAvatarMaskの仕様）ので、描画先が有効かを見れば足りる。トラッキング・ロコモーション・ポーズ空間の制御はFXのBlendShapeを書かないので、プローブの結果を変えない。そこでこの2つを判定に入れた。
+
 ## 決定
 
 プローブのグラフで、表情のBlendShapeを書くのが差し替えた選んだレイヤーだけのとき、再生した結果は入力の値（0か100）がそのまま全BlendShapeに乗る。このときは再生せず、入力の値をそのまま結果にする（Offset 0・Scale 1になり、表情の値は変わらない）。
@@ -16,8 +18,8 @@
 直接決めるのは、次をすべて満たすときだけにする。1つでも外れたら今までどおり再生する。
 
 1. 選んだステートが元のFXのレイヤーにあり（`nativeSlot`）、レイヤーの重みを変える制御・射影（`projection`）・常時適用のレイヤー・パラメータで動くレイヤーが無い。
-2. 選んだレイヤーは重み1（レイヤー0は常に1）で、AvatarMaskが無い。アバターにAnimatorがある。
-3. 選んだステートとそのステートマシンにStateMachineBehaviour（Parameter Driverなど）が無い。
+2. 選んだレイヤーは重み1（レイヤー0は常に1）。AvatarMaskは、無いか、Transformを持たないか、表情のBlendShapeの描画先をすべて有効にしているもの。アバターにAnimatorがある。
+3. 選んだステートとそのステートマシンのStateMachineBehaviourは、トラッキング・ロコモーション・ポーズ空間の制御（VRChatの `VRCAnimatorTrackingControl`・`VRCAnimatorLocomotionControl`・`VRCAnimatorTemporaryPoseSpace`）と、Modular Avatarの処理を持たない目印だけ。Parameter Driverやレイヤーの重みの制御など、それ以外が1つでもあれば再生する。
 4. プローブの依存の解析（`ExpressionDependencies.AnalyzeNeutral`）で、表情のBlendShapeを書くレイヤーが選んだレイヤーだけで、支えのレイヤー（Write Defaultsやadditiveで値を足すレイヤー）・重みの制御・Parameter Driverが無い。解析が見つけた最上位のOverrideのレイヤーは、選んだレイヤー自身であってよい。
 5. 解析した表情のBlendShapeが、クリップのBlendShapeと完全に同じ集合で、保存の対象（`CommittedMorphs`）とも同じ。
 6. 選んだレイヤーが書き出しで除くレイヤーに入っておらず、すべてのBlendShapeの描画先が除外されていない・有効・メッシュにそのBlendShapeがある。
@@ -38,5 +40,7 @@ Probe(0)とProbe(100)は入力の値以外は同じグラフなので、Probe(0)
 
 ## 確認したこと
 
-- Unity 2022.3.22f1 の EditMode で `DirectProbeTests` を回し、すべて通った。重み1のレイヤーだけのクリップは直接決めて再生の結果と値・メッセージが一致し、重み0.5・同じBlendShapeを書く下のレイヤー・AvatarMaskでは再生した。
+- Unity 2022.3.22f1 の EditMode で `DirectProbeTests` を回し、すべて通った。重み1のレイヤーだけのクリップは直接決めて再生の結果と値・メッセージが一致し、顔の描画先を有効にしたAvatarMaskでも直接決めて一致した。重み0.5・同じBlendShapeを書く下のレイヤー・顔の描画先を外したAvatarMaskでは再生した。
 - テストアセンブリ全体（4039件）では51件が失敗した。このうち50件は develop で回しても同じく失敗するもの（テスト用プロジェクトにModular Avatar・VRChat SDKなどが無いため）で、残りの1件は `DirectProbeTests` で、上の修正で通った。
+- 書き出しの計測に使っている29体（10/19の6体を含む）を、この変更の前（4b34153）と後で2回ずつ書き出した。差分取り397回のうち直接決めたのは1体の8回で、残りは同じBlendShapeを書くほかのレイヤー142回・FXのどこかにあるレイヤーの重みの制御179回・常時適用のレイヤー28回・Parameter Driver 28回・射影6回・保存の対象の不一致6回で再生した。直接決めた1体は1.13秒から0.75秒になった。書き出したVRMは、すべての組で書き出し元の版の文字列（`exporterVersion`）以外が一致した。1体は前後とも同じ理由で書き出しに失敗した。
+- この判定の厳しさでは、表情の多いアバターの書き出し時間はほぼ変わらない。重みの制御が顔を書くレイヤーに届かないことを依存の解析で示して判定に入れれば重いアバター3体に効くが、解析の網羅性を確かめる必要があるので、この変更には入れていない。
