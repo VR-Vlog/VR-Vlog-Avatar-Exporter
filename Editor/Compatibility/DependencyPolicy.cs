@@ -106,8 +106,21 @@ namespace VRVlog.LilToonExporter.Compatibility
         {
             var support = ClassifyLilToon(version);
             if (support == LilToonSupport.Catalogue || support == LilToonSupport.Missing) return null;
-            return string.Format(translate("アプリではlilToon {1}として描画します（導入済みのバージョンは{0}）"), version, LilToonVersion);
+            return string.Format(translate("アプリではlilToon {1}として描画します（導入済みのバージョンは{0}）"), DisplayLilToon(version, translate), LilToonVersion);
         }
+
+        // Recorded for lilToon under Assets whose package.json gives no
+        // version. It is not X.Y.Z, so it exports with LilToonWarning.
+        public const string LilToonUnknownVersion = "unknown";
+
+        public static string DisplayLilToon(string version, Func<string, string> translate) =>
+            version == LilToonUnknownVersion ? translate("不明") : Display(version);
+
+        // assetsFolder is where lilToon was imported from its unitypackage,
+        // or null for the VCC／ALCOM package.
+        public static string DescribeLilToon(string version, string assetsFolder, Func<string, string> translate) =>
+            assetsFolder == null ? DisplayLilToon(version, translate) :
+            string.Format(translate("{0}（Assetsに導入: {1}）"), DisplayLilToon(version, translate), assetsFolder);
 
         // Numeric X.Y.Z only. Pre-release and build suffixes are not releases.
         static int[] ParseRelease(string version)

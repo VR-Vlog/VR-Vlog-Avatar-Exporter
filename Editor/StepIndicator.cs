@@ -54,6 +54,18 @@ namespace VRVlog.LilToonExporter
         internal static (bool Bold, bool Error, bool Dim) LabelOf(State state, bool error) =>
             (state == State.Current, error, !error && state == State.Upcoming);
 
+        // Where to draw a glyph in the circle, in points on whole device pixels. The
+        // glyph's box (minX..maxX, minY..maxY: device pixels from its pen and
+        // baseline, y up) is centred across. Up and down, the baseline is placed so
+        // that the box of "1" would be centred: the numbers and "!" all stand on the
+        // baseline and reach the same height, but their boxes carry uneven margins.
+        internal static Rect GlyphRect(Rect circle, int minX, int maxX, int minY, int maxY, int oneMinY, int oneMaxY, float pixelsPerPoint)
+        {
+            var left = Mathf.Round(circle.center.x * pixelsPerPoint - (maxX - minX) / 2f);
+            var baseline = Mathf.Round(circle.center.y * pixelsPerPoint + (oneMaxY + oneMinY) / 2f);
+            return new Rect(left / pixelsPerPoint, (baseline - maxY) / pixelsPerPoint, (maxX - minX) / pixelsPerPoint, (maxY - minY) / pixelsPerPoint);
+        }
+
         internal sealed class Layout
         {
             internal Rect[] Circles, Labels, Lines;

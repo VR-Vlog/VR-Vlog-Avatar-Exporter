@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(material); Object.DestroyImmediate(texture); }
         }
 
-        [TestCase("2.0.0")] [TestCase("2.2.1")] [TestCase("2.3.4")]
+        [TestCase("2.0.0")] [TestCase("2.2.1")] [TestCase("2.3.4")] [TestCase(Compatibility.DependencyPolicy.LilToonUnknownVersion)]
         public void ExportRecordsInstalledLilToonVersionAndKeepsCatalogueVersion(string installed)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();

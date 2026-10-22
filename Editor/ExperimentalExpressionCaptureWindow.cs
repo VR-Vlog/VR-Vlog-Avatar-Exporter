@@ -926,7 +926,7 @@ namespace VRVlog.LilToonExporter
         {
             var fill = marker == StepIndicator.Marker.Error ? ErrorColor : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
             GUI.DrawTexture(circle, Disc(marker == StepIndicator.Marker.Ring), ScaleMode.StretchToFill, true, 0, fill, 0, 0);
-            if (marker == StepIndicator.Marker.Error) GUI.Label(circle, "!", stepMarkerText);
+            if (marker == StepIndicator.Marker.Error) DrawStepGlyph(circle, "!", stepMarkerText);
             else if (marker == StepIndicator.Marker.Check)
             {
                 var previous = Handles.color; Handles.color = Color.white;
@@ -934,7 +934,29 @@ namespace VRVlog.LilToonExporter
                     new Vector3(circle.x + circle.width * .44f, circle.y + circle.height * .68f), new Vector3(circle.x + circle.width * .73f, circle.y + circle.height * .34f));
                 Handles.color = previous;
             }
-            else GUI.Label(circle, number, marker == StepIndicator.Marker.Ring ? stepMarkerDim : stepMarkerText);
+            else DrawStepGlyph(circle, number, marker == StepIndicator.Marker.Ring ? stepMarkerDim : stepMarkerText);
+        }
+
+        // A label centres the text's advance and line box, not the digit itself, and
+        // snaps it to whole pixels, so a digit in the circle lands up to 2px off its
+        // centre. Draw the glyph from the font instead, with its box on the centre.
+        void DrawStepGlyph(Rect circle, string text, GUIStyle style)
+        {
+            var font = EditorStyles.miniBoldFont;
+            if (text.Length != 1 || font == null || font.material == null) { GUI.Label(circle, text, style); return; }
+            var scale = EditorGUIUtility.pixelsPerPoint;
+            var size = Mathf.RoundToInt((style.fontSize > 0 ? style.fontSize : font.fontSize) * scale);
+            font.RequestCharactersInTexture(text + "1", size);
+            if (!font.GetCharacterInfo(text[0], out var glyph, size) || !font.GetCharacterInfo('1', out var one, size)) { GUI.Label(circle, text, style); return; }
+            var rect = StepIndicator.GlyphRect(circle, glyph.minX, glyph.maxX, glyph.minY, glyph.maxY, one.minY, one.maxY, scale);
+            if (!font.material.SetPass(0)) { GUI.Label(circle, text, style); return; }
+            GL.Begin(GL.QUADS);
+            GL.Color(style.normal.textColor * GUI.color * GUI.contentColor);
+            GL.TexCoord(glyph.uvTopLeft); GL.Vertex3(rect.xMin, rect.yMin, 0);
+            GL.TexCoord(glyph.uvTopRight); GL.Vertex3(rect.xMax, rect.yMin, 0);
+            GL.TexCoord(glyph.uvBottomRight); GL.Vertex3(rect.xMax, rect.yMax, 0);
+            GL.TexCoord(glyph.uvBottomLeft); GL.Vertex3(rect.xMin, rect.yMax, 0);
+            GL.End();
         }
 
         // A white disc or ring, tinted when drawn; made larger than drawn so the edge stays smooth.
