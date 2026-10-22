@@ -53,7 +53,9 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OutlineKeepsAuthoredColorInsteadOfMultiplyingByAlbedo()
         {
-            var source = new Material(Shader.Find("lilToon"));
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon to read its default outline lighting.");
+            var source = new Material(shader);
             var created = new List<Material>();
             try
             {
