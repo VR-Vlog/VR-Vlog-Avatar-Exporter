@@ -2426,6 +2426,50 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Directory.Delete(directory, true); }
         }
 
+        // A menu entry that takes the board off its third page asks only while that page
+        // uploads or shows its QR. "VRM書き出し" from the menu keeps the transfer on "戻る".
+        [Test]
+        public void LeavingTheTransferPageFromTheMenuAsksOnlyWhileItTransfers()
+        {
+            var dialog = ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer;
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var asked = new System.Collections.Generic.List<(string Title, string Body)>();
+            var answer = false;
+            try
+            {
+                ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = (title, body) => { asked.Add((title, body)); return answer; };
+                Assert.That(ExperimentalExpressionCaptureWindow.ConfirmLeavingTransfer(false), Is.True);
+                Assert.That(asked, Is.Empty);
+                Assert.That(ExperimentalExpressionCaptureWindow.ConfirmLeavingTransfer(true), Is.False);
+                Assert.That(asked, Is.EqualTo(new[] { (ExporterLocalization.T("転送を中止"), ExporterLocalization.T("進行中の転送を中止します。表示中のQRは使えなくなります。")) }));
+
+                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
+                // "戻る" keeps the transfer mode.
+                Assert.That(window.LeaveTransferMode(true), Is.False);
+                Assert.That(window.TransferMode, Is.True);
+                Assert.That(asked.Count, Is.EqualTo(2));
+                // Without a transfer on the page it leaves without asking.
+                Assert.That(window.LeaveTransferMode(false), Is.True);
+                Assert.That(window.TransferMode, Is.False);
+                Assert.That(window.titleContent.text, Is.EqualTo(ExporterLocalization.T("VRM書き出し")));
+                Assert.That(asked.Count, Is.EqualTo(2));
+                // "中止" leaves it.
+                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
+                answer = true;
+                Assert.That(window.LeaveTransferMode(true), Is.True);
+                Assert.That(window.TransferMode, Is.False);
+                Assert.That(asked.Count, Is.EqualTo(3));
+                // Already exporting, nothing is asked.
+                Assert.That(window.LeaveTransferMode(true), Is.True);
+                Assert.That(asked.Count, Is.EqualTo(3));
+            }
+            finally
+            {
+                ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = dialog;
+                Object.DestroyImmediate(window);
+            }
+        }
+
         [Test]
         public void FileRecordsUpdateNamesAndTimeAndDeselectWithoutDeletingManualFaces()
         {
@@ -2648,10 +2692,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Drain();
                 type.GetField("excludedObjectEdits", flags).SetValue(window, null);
 
-                // The transfer has no information page: its third step is the next window.
+                // The transfer's third page shows the transfer panel in place of the information page.
                 type.GetField("transferMode", flags).SetValue(window, true);
                 window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
-                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
+                Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
             }
             finally
             {

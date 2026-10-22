@@ -51,6 +51,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Expired = "期限が切れました";
         internal const string Completed = "取り込みが終わりました";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
+        internal const string StartTransfer = "転送を始める";
+        internal const string StopAndStart = "中止して始める";
+        internal const string LeavingCancels = "ページを移るかボードを閉じると転送を中止します";
     }
 
     // One encoder for both transfer windows, so their QR codes cannot drift.
@@ -71,6 +74,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var scale = pixelsPerPoint > 0f ? pixelsPerPoint : 1f;
             var pixelsPerModule = (int)Math.Ceiling(MinimumSymbolSide * scale / (matrixSide - 2 * QuietZone));
             return matrixSide * pixelsPerModule / scale;
+        }
+
+        // On the expression board the QR shares a page of fixed height with the rows around it.
+        internal const int SmallestSymbolSide = 200;
+
+        // DisplaySide, made smaller to fit within maxSide points: whole pixels per module still, and
+        // never under SmallestSymbolSide points of symbol, so a short area scrolls rather than an unreadable QR.
+        internal static float FittedSide(int matrixSide, float maxSide, float pixelsPerPoint = 1f)
+        {
+            var full = DisplaySide(matrixSide, pixelsPerPoint);
+            if (!(maxSide < full)) return full;
+            var scale = pixelsPerPoint > 0f ? pixelsPerPoint : 1f;
+            var fitting = (int)Math.Floor(maxSide * scale / matrixSide);
+            var smallest = (int)Math.Ceiling(SmallestSymbolSide * scale / (matrixSide - 2 * QuietZone));
+            return matrixSide * Math.Max(fitting, smallest) / scale;
         }
     }
 

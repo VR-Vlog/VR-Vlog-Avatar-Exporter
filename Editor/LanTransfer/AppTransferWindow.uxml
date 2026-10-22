@@ -7,9 +7,10 @@
                 <ui:Label name="heading" class="t heading" />
                 <ui:Label name="subtitle" class="t mini grey subtitle" />
             </ui:VisualElement>
-            <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
         </ui:VisualElement>
-        <ui:VisualElement class="hairline" />
+        <!-- Outside the header, which the expression board hides when it shows this view. -->
+        <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
+        <ui:VisualElement name="header-line" class="hairline" />
         <ui:VisualElement name="form" class="fill">
         <ui:ScrollView name="form-scroll" class="fill">
             <ui:VisualElement class="body">
@@ -17,7 +18,7 @@
                 <ui:Button name="diagnostics" class="diagnostics" />
                 <ui:HelpBox name="playing" message-type="Info" class="box" />
                 <ui:VisualElement name="form-fields">
-                    <ui:VisualElement class="row">
+                    <ui:VisualElement name="avatar-row" class="row">
                         <ui:Label name="avatar-label" class="t label-col" />
                         <uie:ObjectField name="avatar-field" class="field" />
                     </ui:VisualElement>
@@ -67,6 +68,7 @@
             <ui:ScrollView name="transfer-scroll" class="fill">
                 <ui:VisualElement class="body">
                     <ui:HelpBox name="missing-shaders" message-type="Warning" class="box" />
+                    <ui:Label name="leave-note" class="t grey leave-note" />
                     <ui:VisualElement name="slot-row" class="slot-row">
                         <ui:VisualElement name="slot" class="slot">
                             <ui:Image name="qr" class="qr" />
