@@ -352,7 +352,7 @@ namespace VRVlog.LilToonExporter
                 expression.name = VrmMenuExpressions.UniqueName(face.Name,
                     name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
                 expression.IsBinary = true;
-                expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
+                expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
                 var bindings = new List<MorphTargetBinding>();
                 foreach (var morph in ListFaceMorphs(face.Clip, face.Time))
                 {
