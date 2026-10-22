@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("inactive")][TestCase("partialWeight")][TestCase("partialAxes")]
+        [TestCase("disabled")][TestCase("inactive")][TestCase("unlocked")][TestCase("partialWeight")][TestCase("partialAxes")]
         public void RotationRemainsAnExactInputWhenTheSolverDoesNotFullyOwnIt(string condition)
         {
             using var f = new Fixture("rotation");
@@ -293,7 +293,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(f.Source), Is.False);
         }
 
-        [TestCase("noSources")][TestCase("zeroSourceWeight")][TestCase("zeroWeight")][TestCase("frozen")][TestCase("noAxes")]
+        [TestCase("noSources")][TestCase("zeroSourceWeight")][TestCase("zeroWeight")]
+        [TestCase("unlocked")][TestCase("inactive")][TestCase("frozen")][TestCase("noAxes")]
         public void VrcRotationIsExactWhenTheSolverCannotOwnItsOutput(string condition)
         {
             using var f = new VrcFixture();

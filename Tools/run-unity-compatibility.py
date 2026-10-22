@@ -581,8 +581,10 @@ BEHAVIOR_CASES = {
         'UnrelatedSelectedDriverDestinationDoesNotBlockTheNativeProbe': 1,
     },
     'FaceEmoPreparedFxIntegrationTests': {
-        'RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance': 2,
+        'RegisteredPlayerRejectsAmbiguousMissingOrChangedCallbackProvenance': 4,
         'RegisteredPlayerReadsRegistryProvenPreparedAugmentationAndExactCallbacks': 1,
+        'RegisteredPlayerRejectsUnprovedOrAmbiguousPreparedAugmentation': 2,
+        'RegisteredPlayerRejectsPreparedMotionChangesBeforeDeferredEvaluation': 1,
         'RegisteredBranchUsesOriginalPlayerSlotAndNativeCommonWeightOnce': 2,
     },
     'MergedFixedNeutralSamplingTests': {
@@ -631,11 +633,13 @@ BEHAVIOR_CASES = {
     },
     'PreparedNeutralEligibilityTests': {
         'PreBuildGuardAllowsWeightChangesButStillProtectsDeformation': 1,
+        'PreparedPathMappingCannotChooseBetweenAmbiguousOriginalOrCurrentPaths': 1,
         'AuthoredPartialEndpointIsVerifiedAgainstItsDeclaredAbsoluteWeight': 1,
         'DeferredCaptureProtectsRendererIdentityAndMovingGeometry': 1,
         'DeferredCaptureStillRejectsMissingBlinkAtPreparedNeutral': 1,
         'ExportCaptureWaitsForFxOpeningBeforeSelectingUnifiedClosure': 1,
         'InferredUnifiedBlinkUsesTheSameFinalSourceFrameAsRawTracking': 1,
+        'PreparedPathMappingKeepsUnderlayOnlyRendererIdentityAcrossMoves': 1,
     },
     'PreparedNeutralExportTests': {
         'IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints': 1,

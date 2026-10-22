@@ -8,7 +8,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportRecoveryFailureSeedTests
     {
-        [TestCase("empty")]
+        [TestCase("existing")][TestCase("empty")]
         public void OpeningRecoveryKeepsTheFirstRealFailureWithoutRepeatingTheExport(string reportKind)
         {
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
@@ -90,6 +90,18 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(calls, Is.EqualTo(priorCalls)); Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
             }
             finally { if (File.Exists(destination)) File.Delete(destination); }
+        }
+
+        [Test]
+        public void CancellationAndMissingFailureCannotStartRecovery()
+        {
+            using var fixture = new ExportRecoveryTests.RecoveryFixture();
+            var calls = 0;
+            byte[] Create(ExportRecoveryOptions options, ExportRecoveryReport report, System.Collections.Generic.ICollection<string> warnings)
+            { calls++; return new byte[] { 1 }; }
+            Assert.Throws<ArgumentNullException>(() => ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm", Create, null, null));
+            Assert.Throws<ArgumentException>(() => ExportRecoverySession.FromFailedExport(fixture.Source, "unused.vrm", Create, new OperationCanceledException(), null));
+            Assert.That(calls, Is.Zero);
         }
 
         static Exception AudioLinkFailure(Material material) => ExportRecoveryFailure.At(

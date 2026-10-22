@@ -158,6 +158,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(firstDrivers[driver], Is.SameAs(first[0].DriverPrograms[0]));
         }
 
+        [Test]
+        public void UnsavedControllersAreNotCached()
+        {
+            var probe = new AnimatorController { name = "Probe", hideFlags = HideFlags.HideAndDontSave };
+            try
+            {
+                probe.AddLayer("Base");
+                probe.layers[0].stateMachine.AddState("Idle");
+                using var cache = ExpressionInspectCache.Begin();
+                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>());
+                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>());
+                Assert.That(cache.Hits + cache.Misses, Is.EqualTo(0));
+            }
+            finally { Object.DestroyImmediate(probe); }
+        }
+
+        [Test]
+        public void ClosingTheScopeStopsCaching()
+        {
+            using (ExpressionInspectCache.Begin()) Assert.That(ExpressionInspectCache.Current, Is.Not.Null);
+            Assert.That(ExpressionInspectCache.Current, Is.Null);
+        }
+
         private static string Snapshot(ExpressionDependencies.Layer[] layers,
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown)
         {

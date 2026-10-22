@@ -150,5 +150,41 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(original.sharedMesh.GetBlendShapeFrameWeight(0, 1), Is.EqualTo(200));
             Assert.That(original.GetBlendShapeWeight(0), Is.EqualTo(100));
         }
+
+        [Test]
+        public void PreparedPathMappingKeepsUnderlayOnlyRendererIdentityAcrossMoves()
+        {
+            Skin("Selected expression");
+            var underlay = Skin("Default opening"); underlay.name = "Underlay only";
+            prepared = Object.Instantiate(source);
+            var menu = new VrChatExpressionMenu.Source();
+            var entry = new VrChatExpressionMenu.Entry { Name = "FaceEmo selection" };
+            entry.Values.Add(new VrChatExpressionMenu.MorphValue { Path = "Face", Shape = "Selected expression", Weight = 50 });
+            menu.Entries.Add(entry);
+            var bindings = new PreparedExpressionBindings(prepared, menu);
+            var preparedUnderlay = prepared.transform.Find("Underlay only");
+            var parent = new GameObject("Generated"); parent.transform.SetParent(prepared.transform, false);
+            preparedUnderlay.SetParent(parent.transform, false); preparedUnderlay.name = "Moved underlay";
+            Assert.That(bindings.AuthoringPath("Generated/Moved underlay"), Is.EqualTo("Underlay only"));
+            Assert.That(bindings.AuthoringPath("Underlay only"), Is.Null);
+            entry.Values.Add(new VrChatExpressionMenu.MorphValue {
+                Path = bindings.AuthoringPath("Generated/Moved underlay"), Shape = "Default opening", Weight = 100
+            });
+            bindings.Capture(menu);
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(bindings.Get("Underlay only").Renderer, Is.SameAs(preparedUnderlay.GetComponent<SkinnedMeshRenderer>()));
+            Assert.That(bindings.Get("Underlay only").Mesh, Is.SameAs(underlay.sharedMesh));
+        }
+
+        [Test]
+        public void PreparedPathMappingCannotChooseBetweenAmbiguousOriginalOrCurrentPaths()
+        {
+            Skin("Open"); Skin("Open"); prepared = Object.Instantiate(source);
+            var bindings = new PreparedExpressionBindings(prepared, new VrChatExpressionMenu.Source());
+            prepared.transform.GetChild(0).name = "Unique current path";
+            Assert.That(bindings.AuthoringPath("Unique current path"), Is.Null, "The authoring path was ambiguous before NDMF.");
+            prepared.transform.GetChild(0).name = "Face";
+            Assert.That(bindings.AuthoringPath("Face"), Is.Null, "The prepared path cannot identify one renderer.");
+        }
     }
 }
