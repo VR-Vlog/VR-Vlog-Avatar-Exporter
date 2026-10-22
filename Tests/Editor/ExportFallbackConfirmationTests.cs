@@ -159,7 +159,7 @@ namespace VRVlog.LilToonExporter.Tests
             var collider = new GameObject("Collider_box").transform; collider.SetParent(fixture.Source.transform, false);
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var calls = 0; var completed = 0; var blinkSettings = 0;
             dialog.Answer = export;
             Selection.objects = new Object[0];
@@ -202,7 +202,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var completed = 0;
             try
             {

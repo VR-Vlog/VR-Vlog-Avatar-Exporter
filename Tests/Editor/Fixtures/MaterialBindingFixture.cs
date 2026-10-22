@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // Synthetic, texture-free input for material-injection regression tests.
+    // Synthetic, texture-free VRM 1.0 input for save-check regression tests.
     // This is not a visual avatar fixture and contains no user model data.
     internal static class MaterialBindingFixture
     {
@@ -35,14 +35,6 @@ namespace VRVlog.LilToonExporter.Tests
                 "extensions", Obj("VRMC_vrm", Obj("specVersion", "1.0", "meta", meta,
                     "humanoid", Obj("humanBones", humanBones))));
             return GlbDocument.Create(root, Array.Empty<byte>()).Write();
-        }
-
-        public static List<object> InjectedMaterials(byte[] bytes)
-        {
-            var root = GlbDocument.Read(bytes).Json;
-            var extensions = (Dictionary<string, object>)root["extensions"];
-            var lilToon = (Dictionary<string, object>)extensions[LilToonMobileProfile.ExtensionName];
-            return (List<object>)lilToon["materials"];
         }
 
         private static Dictionary<string, object> Obj(params object[] pairs)
