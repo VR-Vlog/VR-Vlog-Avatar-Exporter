@@ -345,11 +345,14 @@ namespace VRVlog.LilToonExporter
         // plays is held at the board's frame. Copies join assets to be destroyed.
         AnimationClip AvatarRelativeClip(AnimationClip clip, float time, List<Object> assets)
         {
+            // The exporter knows a FaceEmo clip by itself and reads it as FaceEmo does.
+            if (faceEmoBindings?.RegisteredClips.Contains(clip) == true) return clip;
             var root = ClipRoot(clip);
             var held = HeldAtOneFrame(clip);
             string Full(string path) => string.IsNullOrEmpty(root) ? path : string.IsNullOrEmpty(path) ? root : root + "/" + path;
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            if (!held && string.IsNullOrEmpty(root) && !bindings.Any(binding => PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(binding.path))) return clip;
+            if (!held && string.IsNullOrEmpty(root) && !bindings.Any(binding => PoseSampling.IsBlendShape(binding) &&
+                (skippedPaths.Contains(binding.path) || PreparedPath(binding.path) != binding.path))) return clip;
             var copy = new AnimationClip { name = clip.name, frameRate = clip.frameRate }; assets.Add(copy);
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
             if (held) settings.loopTime = false;
@@ -357,7 +360,11 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in bindings)
             {
                 var moved = binding; moved.path = Full(binding.path);
-                if (PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(moved.path)) continue;
+                if (PoseSampling.IsBlendShape(binding))
+                {
+                    if (skippedPaths.Contains(moved.path)) continue;
+                    moved.path = PreparedPath(moved.path);
+                }
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 AnimationUtility.SetEditorCurve(copy, moved, held ? AnimationCurve.Constant(0, Mathf.Max(clip.length, 1 / 60f), curve.Evaluate(time)) : curve);
             }
@@ -368,6 +375,16 @@ namespace VRVlog.LilToonExporter
             }
             AnimationUtility.SetAnimationEvents(copy, AnimationUtility.GetAnimationEvents(clip));
             return copy;
+        }
+
+        // A mesh the build tools moved or renamed is read where it now is, as
+        // the board's presets are. One that is gone or merged keeps its path.
+        string PreparedPath(string path)
+        {
+            if (preparation == null || !authoringRenderers.TryGetValue(path, out var original)) return path;
+            var renderer = preparation.PreparedRendererFor(original);
+            var channels = Channels.Where(channel => channel.Renderer == renderer).ToArray();
+            return channels.Length == 1 ? channels[0].Path : path;
         }
 
         // Blink assignments go to the blink export as a manual setting, not as

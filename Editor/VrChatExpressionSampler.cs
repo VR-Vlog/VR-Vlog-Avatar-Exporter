@@ -85,7 +85,7 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) { entry.Error = error.Message; }
                 }
-                if (menuPolicy?.SkipPlayback == true) { AddListFaces(avatar, source, excludedPath, menuPolicy.ListFaces); return source; }
+                if (menuPolicy?.SkipPlayback == true) { AddListFaces(avatar, source, excludedPath, menuPolicy.ListFaces, faceEmoBindings); return source; }
                 // The menu loop fills the first half of the bar; each of the
                 // four imports below takes an eighth of the rest.
                 var step = 0;
@@ -111,9 +111,11 @@ namespace VRVlog.LilToonExporter
         // The list-only export reads each listed clip as the gesture reader
         // does, so a moving clip keeps its animation and a still one its
         // values, and both are baked like any other face. A clip that reader
-        // rejects keeps the board's frame of its visible BlendShapes.
+        // rejects keeps the board's frame of its visible BlendShapes. A clip
+        // FaceEmo registers is read as FaceEmo's own faces are, so the common
+        // DEFAULT FACE and its permanent overrides still apply.
         static void AddListFaces(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath,
-            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces)
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
         {
             if (faces == null) return;
             if (faces.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。");
@@ -128,6 +130,13 @@ namespace VRVlog.LilToonExporter
                     Source = VRVlog.Expressions.ExpressionSource.Gesture, Clip = clip
                 };
                 source.Entries.Add(entry);
+                if (faceEmoBindings != null && faceEmoBindings.RegisteredClips.Contains(clip))
+                {
+                    entry.Id = "faceemo/list/" + index; entry.Source = VRVlog.Expressions.ExpressionSource.FaceEmo;
+                    try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, faceEmoBindings); }
+                    catch (InvalidOperationException error) { entry.Error = error.Message; }
+                    continue;
+                }
                 try { VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source); }
                 catch (InvalidOperationException)
                 {

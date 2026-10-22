@@ -1433,6 +1433,48 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
         }
 
+        // A listed face on a mesh the build tools move is read where the mesh
+        // now is, as the board's presets are, instead of being dropped.
+        [Test]
+        public void ListOnlyExportReadsAFaceOnAMeshTheBuildToolsMove()
+        {
+            if (AppDomain.CurrentDomain.GetAssemblies().All(assembly => assembly.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy") == null))
+                Assert.Ignore("Install Modular Avatar.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            MoveFrontWithInstalledMa(fixture.Source);
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var still = new AnimationClip { name = "Still face" };
+            var moving = new AnimationClip { name = "Moving face" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-moved-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+                AnimationUtility.SetEditorCurve(still, binding, AnimationCurve.Constant(0, 1, 40));
+                AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 0, 2, 80));
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new[] { still, moving }.Select(clip =>
+                    new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = clip, Source = "Fixture" }).ToList());
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom[still.name])["morphTargetBinds"], Is.Not.Empty);
+                var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
+                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]
