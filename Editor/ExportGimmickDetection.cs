@@ -254,9 +254,6 @@ namespace VRVlog.LilToonExporter
                 !KeptFinding(f) && (f.Group == null || !keptGroups.Contains(f.Group))).ToArray();
         }
 
-        internal static bool KnownNadeRoot(GameObject target) => target != null &&
-            Matches(ExportGimmickRules.All.First(rule => rule.Id == ExportGimmickRules.PettingSystem), target.transform);
-
         internal static bool IsType(Component component, IEnumerable<string> names)
         {
             if (component == null) return false;

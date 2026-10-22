@@ -13,6 +13,12 @@ namespace VRVlog.LilToonExporter.Tests
     {
         private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.NonPublic;
 
+        // Tests remove the author they saved in this PC's Editor preferences.
+        internal static void Forget(string identity)
+        {
+            if (!string.IsNullOrEmpty(identity)) EditorPrefs.DeleteKey(ExportAuthor.PreferencePrefix + identity);
+        }
+
         [TestCase(null)]
         [TestCase("")]
         [TestCase("   ")]
@@ -29,7 +35,7 @@ namespace VRVlog.LilToonExporter.Tests
                 ExportAuthor.Remember(identity, author);
                 Assert.That(ExportAuthor.Remembered(identity), Is.EqualTo("SampleAuthor"), "A blank author does not replace the remembered one.");
             }
-            finally { ExportAuthor.Forget(identity); }
+            finally { Forget(identity); }
         }
 
         [Test]
@@ -51,7 +57,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExportAuthor.ForSelection(ExportAuthor.Remembered(second), "TypedName"), Is.EqualTo("TypedName"),
                     "Without a remembered author the field keeps what was typed.");
             }
-            finally { ExportAuthor.Forget(first); ExportAuthor.Forget(second); }
+            finally { Forget(first); Forget(second); }
         }
 
         [Test]
@@ -96,8 +102,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Object.DestroyImmediate(window);
                 Object.DestroyImmediate(other);
-                ExportAuthor.Forget(firstIdentity);
-                ExportAuthor.Forget(secondIdentity);
+                Forget(firstIdentity);
+                Forget(secondIdentity);
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 AssetDatabase.DeleteAsset(scenePath);
             }
@@ -125,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportAuthor.Forget(identity);
+                Forget(identity);
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
                 AssetDatabase.DeleteAsset(scenePath);
             }

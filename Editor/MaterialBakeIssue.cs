@@ -51,20 +51,5 @@ namespace VRVlog.LilToonExporter
 
         internal bool Omits(Material material, string layer) => material != null &&
             omitted.TryGetValue(material, out var layers) && layers.Contains(layer);
-
-        public MaterialBakeOptions WithOmissions(IEnumerable<MaterialBakeIssue> issues)
-        {
-            var result = new MaterialBakeOptions();
-            foreach (var pair in omitted) result.omitted.Add(pair.Key, new HashSet<string>(pair.Value));
-            foreach (var issue in issues)
-            {
-                if (issue.Material == null || (issue.Layer != "2nd" && issue.Layer != "3rd"))
-                    throw new InvalidOperationException("省略するマテリアルを確認できません。アバターを選び直して書き出してください。");
-                if (!result.omitted.TryGetValue(issue.Material, out var layers))
-                    result.omitted.Add(issue.Material, layers = new HashSet<string>());
-                layers.Add(issue.Layer);
-            }
-            return result;
-        }
     }
 }

@@ -83,7 +83,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var priorCalls = calls; var lastSuccess = session.LastSuccess;
                 fixture.Material.SetColor("_Color", Color.red);
                 if (operation == "retry") Assert.That(session.Attempt(null), Is.False);
-                else if (operation == "preview") Assert.Throws<InvalidOperationException>(() => session.CreatePreview(null));
                 else Assert.Throws<InvalidOperationException>(() => session.SavePending());
                 Assert.That(session.IsInvalidated, Is.True); Assert.That(session.CanSave, Is.False);
                 Assert.That(session.AvailableDiagnostics, Is.Empty); Assert.That(session.LastSuccess, Is.SameAs(lastSuccess));

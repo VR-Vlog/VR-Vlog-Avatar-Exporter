@@ -325,7 +325,7 @@ assert 'var targetExclusions = settings.Exclusions();' in window
 assert 'ExportFailureWindow.Show(session, Completed)' in window
 assert 'session = ExportAndSaveNormally(targetAvatar, targetOutput,' in window
 normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
-    'internal static bool ShouldShowFailureAfterFailedAttempt(', 1
+    'private string AvatarName()', 1
 )[0]
 assert 'bytes = create(new ExportRecoveryOptions(), report, warnings);' in normal_export
 assert 'ExportOutputWriter.Write(destination, bytes);' in normal_export
