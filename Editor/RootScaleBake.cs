@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -78,9 +79,5 @@ namespace VRVlog.LilToonExporter
                             "の回転と不均等な拡縮の組み合わせで、現在の形を保てません。");
             return Vector3.Scale(new Vector3(m.m00, m.m11, m.m22), child.localScale);
         }
-
-        private static bool Finite(Vector3 value) =>
-            !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsNaN(value.z) &&
-            !float.IsInfinity(value.x) && !float.IsInfinity(value.y) && !float.IsInfinity(value.z);
     }
 }

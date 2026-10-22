@@ -6,6 +6,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using VRVlog.FaceTracking;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -272,8 +273,6 @@ namespace VRVlog.LilToonExporter
 
         private static bool Moving(Vector4 delta) => Finite(delta.x) && Finite(delta.y) && Finite(delta.z) && Finite(delta.w) &&
             (Mathf.Abs(delta.x) > .00001f || Mathf.Abs(delta.y) > .00001f || Mathf.Abs(delta.z) > .00001f || Mathf.Abs(delta.w) > .00001f);
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         private static Transform Target(GameObject clone, string path) =>
             string.IsNullOrEmpty(path) ? clone.transform : clone.transform.Find(path);

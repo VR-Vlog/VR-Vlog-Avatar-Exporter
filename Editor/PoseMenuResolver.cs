@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -51,7 +52,7 @@ namespace VRVlog.LilToonExporter
                             throw new InvalidOperationException("Expression Parametersが未定義・重複または外部入力に依存します: " + pair.Key);
                         var type = Member(definitions[0], "valueType")?.ToString();
                         var value = pair.Value;
-                        if (!PoseSampling.Finite(value) || !(type == "Bool" && value == 1 ||
+                        if (!Finite(value) || !(type == "Bool" && value == 1 ||
                             type == "Int" && value >= 0 && value <= 255 && value == Math.Floor(value) ||
                             type == "Float" && value >= -1 && value <= 1))
                             throw new InvalidOperationException("Expression Parametersの型・操作値を確定できません: " + pair.Key);
@@ -135,7 +136,7 @@ namespace VRVlog.LilToonExporter
                                 var target = Member(b, "layer")?.ToString();
                                 var weight = Convert.ToSingle(Member(b, "goalWeight"));
                                 var duration = Convert.ToSingle(Member(b, "blendDuration"));
-                                if (duration != 0 || !PoseSampling.Finite(weight) || weight < 0 || weight > 1 || target == null || !weights.ContainsKey(target))
+                                if (duration != 0 || !Finite(weight) || weight < 0 || weight > 1 || target == null || !weights.ContainsKey(target))
                                     throw new InvalidOperationException("時間依存のPlayable Layer重みは未対応です。");
                                 if (controlledWeights.TryGetValue(target, out var previous) && previous != weight)
                                     throw new InvalidOperationException("複数レイヤーから重みが変更されるため順序を確定できません。");
@@ -167,7 +168,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (!weights.TryGetValue(item.type, out var playableWeight)) throw new InvalidOperationException("不明なPlayable Layerです。");
                         var weight = item.index == 0 ? 1 : item.layer.defaultWeight;
-                        if (!PoseSampling.Finite(weight) || weight < 0 || weight > 1) throw new InvalidOperationException("レイヤー重みが不正です。");
+                        if (!Finite(weight) || weight < 0 || weight > 1) throw new InvalidOperationException("レイヤー重みが不正です。");
                         if (weight == 0) continue;
                         // Disabling a body layer can expose a lower static pose.
                         var poseLayer = new PoseLayer { Clip = item.clip, Weight = weight, Mask = item.layer.avatarMask, SkipMuscles = item.skipMuscles,
@@ -347,7 +348,7 @@ namespace VRVlog.LilToonExporter
                                 type == AnimatorControllerParameterType.Float && comparison ||
                                 type == AnimatorControllerParameterType.Int && (comparison || equality);
                             var value = selected[c.parameter];
-                            if (!valid || !PoseSampling.Finite(value) || !PoseSampling.Finite(c.threshold) ||
+                            if (!valid || !Finite(value) || !Finite(c.threshold) ||
                                 type == AnimatorControllerParameterType.Int && (value != Math.Floor(value) || (double)value < int.MinValue || (double)value > int.MaxValue || c.threshold != Math.Floor(c.threshold)))
                                 throw new InvalidOperationException("Animatorパラメーターの型・条件・値を確定できません（Triggerも未対応）: " + c.parameter);
                         }

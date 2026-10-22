@@ -91,18 +91,14 @@ namespace VRVlog.LilToonExporter
             var texture = Texture(material, "_MatCapTex") ?? Texture2D.whiteTexture;
             var scale = material.HasProperty("_MatCapTex") ? material.GetTextureScale("_MatCapTex") : Vector2.one;
             var offset = material.HasProperty("_MatCapTex") ? material.GetTextureOffset("_MatCapTex") : Vector2.zero;
-            var previous = RenderTexture.active;
             var previousSrgb = GL.sRGBWrite;
-            var target = RenderTexture.GetTemporary(size, size, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            var read = new Texture2D(size, size, TextureFormat.RGBAFloat, false, true);
             try
             {
-                GL.sRGBWrite = false;
-                Graphics.Blit(texture, target, scale, (Vector2.one - scale + offset) * 0.5f);
-                RenderTexture.active = target;
-                read.ReadPixels(new Rect(0, 0, size, size), 0, 0, false);
-                read.Apply(false, false);
-                var pixels = read.GetPixels();
+                var pixels = GpuReadback.LinearPixels(size, size, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat, target =>
+                {
+                    GL.sRGBWrite = false;
+                    Graphics.Blit(texture, target, scale, (Vector2.one - scale + offset) * 0.5f);
+                });
                 float alpha = 0f, count = 0f;
                 var product = Vector3.zero;
                 for (var y = 0; y < size; y++)
@@ -121,9 +117,6 @@ namespace VRVlog.LilToonExporter
             finally
             {
                 GL.sRGBWrite = previousSrgb;
-                RenderTexture.active = previous;
-                RenderTexture.ReleaseTemporary(target);
-                UnityEngine.Object.DestroyImmediate(read);
             }
         }
 
@@ -145,9 +138,6 @@ namespace VRVlog.LilToonExporter
             if (shader == null || !shader.isSupported) throw new InvalidOperationException("lilToonのベイク用シェーダーを利用できません。");
             var size = TextureResizePolicy.Size(Math.Max(main.width, maskTexture.width), Math.Max(main.height, maskTexture.height));
             var baker = new Material(shader);
-            var previous = RenderTexture.active;
-            var previousSrgb = GL.sRGBWrite;
-            RenderTexture target = null;
             Texture2D result = null;
             try
             {
@@ -159,23 +149,9 @@ namespace VRVlog.LilToonExporter
                 baker.SetFloat("_VrvScreen", screen);
                 baker.SetFloat("_VrvMeanAlpha", meanAlpha);
                 baker.SetVector("_VrvMeanProduct", meanProduct);
-                target = RenderTexture.GetTemporary(size.Item1, size.Item2, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                // The pixels are read back at once: compile the pass now instead
-                // of drawing the Editor's placeholder while it compiles.
-                var asyncCompilation = ShaderUtil.allowAsyncCompilation;
-                ShaderUtil.allowAsyncCompilation = false;
-                try { Graphics.Blit(main, target, baker, pass); }
-                finally { ShaderUtil.allowAsyncCompilation = asyncCompilation; }
-                RenderTexture.active = target;
-                result = new Texture2D(size.Item1, size.Item2, TextureFormat.RGBA32, false, false)
-                {
-                    name = DeterministicNames.Unique(material.name + "__VRVlog" + suffix + DeterministicNames.Hash(suffix, main.name, maskTexture.name, values),
-                        candidate => owned.Exists(texture => texture != null && texture.name == candidate)),
-                    wrapModeU = main.wrapModeU, wrapModeV = main.wrapModeV, filterMode = main.filterMode
-                };
-                result.ReadPixels(new Rect(0, 0, size.Item1, size.Item2), 0, 0, false);
-                result.Apply(false, false);
+                var name = DeterministicNames.Unique(material.name + "__VRVlog" + suffix + DeterministicNames.Hash(suffix, main.name, maskTexture.name, values),
+                    candidate => owned.Exists(texture => texture != null && texture.name == candidate));
+                result = GpuReadback.BakeRgba32(size.Item1, size.Item2, name, main, target => GpuReadback.BlitCompiled(main, target, baker, pass));
                 owned.Add(result);
                 var baked = result;
                 result = null; // ownership transferred to the export
@@ -184,10 +160,7 @@ namespace VRVlog.LilToonExporter
             }
             finally
             {
-                GL.sRGBWrite = previousSrgb;
-                RenderTexture.active = previous;
                 if (result != null) UnityEngine.Object.DestroyImmediate(result);
-                if (target != null) RenderTexture.ReleaseTemporary(target);
                 UnityEngine.Object.DestroyImmediate(baker);
             }
         }

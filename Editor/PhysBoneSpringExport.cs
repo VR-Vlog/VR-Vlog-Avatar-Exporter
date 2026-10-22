@@ -8,6 +8,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -450,7 +451,6 @@ namespace VRVlog.LilToonExporter
         }
         static Exception Unsupported(Component component, string reason) => new InvalidOperationException(component.name + ": PhysBoneを変換できません: " + reason);
         static IEnumerable<object> Items(object value) => value is IEnumerable items ? items.Cast<object>() : Enumerable.Empty<object>();
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         static float Number(Component source, string name, float fallback)
         { var value = Read(source, name, fallback); if (!Finite(value)) throw Unsupported(source, name + "が非有限値"); return value; }
         static Vector3 Vector(Component source, string name, Vector3 fallback)

@@ -189,6 +189,7 @@ namespace UnityEngine
         public static bool operator !=(Vector2 a, Vector2 b) => !a.Equals(b);
         public override string ToString() => FormattableString.Invariant($"({x}, {y})");
     }
+    public struct Vector3 { public float x, y, z; }
     public struct Vector4 : IEquatable<Vector4>
     {
         public float x, y, z, w;

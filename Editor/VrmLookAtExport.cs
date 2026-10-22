@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -181,7 +182,5 @@ namespace VRVlog.LilToonExporter
 
         static object Child(Dictionary<string, object> value, string key) =>
             value != null && value.TryGetValue(key, out var child) ? child : null;
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

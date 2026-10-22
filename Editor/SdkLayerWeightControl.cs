@@ -2,6 +2,7 @@ using System;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -75,7 +76,5 @@ namespace VRVlog.LilToonExporter
                 };
             }
         }
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -289,7 +290,6 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool Close(float a, float b) => Finite(a) && Finite(b) && Mathf.Abs(a - b) <= 0.0002f * Mathf.Max(1f, Mathf.Abs(a));
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         private static float[] ReadBlendWeights(SkinnedMeshRenderer skin, Mesh mesh)
         {
             var values = new float[mesh.blendShapeCount];

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -375,25 +376,12 @@ namespace VRVlog.LilToonExporter
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
             const int Width = 64;
-            var target = RenderTexture.GetTemporary(Width, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            var active = RenderTexture.active;
-            Texture2D row = null;
             try
             {
-                Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f));
-                RenderTexture.active = target;
-                row = new Texture2D(Width, 1, TextureFormat.RGBAFloat, false, true);
-                row.ReadPixels(new Rect(0, 0, Width, 1), 0, 0, false);
-                row.Apply(false);
-                return row.GetPixels();
+                return GpuReadback.LinearPixels(Width, 1, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f)));
             }
             catch (Exception) { return null; }
-            finally
-            {
-                RenderTexture.active = active;
-                RenderTexture.ReleaseTemporary(target);
-                if (row != null) UnityEngine.Object.DestroyImmediate(row);
-            }
         }
 
         // The pixels as a shader samples them, at the given size. Null when they
@@ -401,25 +389,12 @@ namespace VRVlog.LilToonExporter
         static Color[] Sampled(Texture texture, int width, int height)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
-            var target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            var active = RenderTexture.active;
-            Texture2D read = null;
             try
             {
-                Graphics.Blit(texture, target);
-                RenderTexture.active = target;
-                read = new Texture2D(width, height, TextureFormat.RGBAFloat, false, true);
-                read.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
-                read.Apply(false);
-                return read.GetPixels();
+                return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target));
             }
             catch (Exception) { return null; }
-            finally
-            {
-                RenderTexture.active = active;
-                RenderTexture.ReleaseTemporary(target);
-                if (read != null) UnityEngine.Object.DestroyImmediate(read);
-            }
         }
 
         // The source reads one channel of a mask (R, G, B, A), maybe inverted;
