@@ -14,6 +14,11 @@ namespace VRVlog.LilToonExporter
         // The export writes the board's list instead: no menu, gesture, FX,
         // authored or FaceEmo face is played, and nothing is said about it.
         internal bool SkipPlayback;
+        // With SkipPlayback, the board's list: each clip is read as one face,
+        // in avatar-relative paths. Time is the board's frame, used when the
+        // clip cannot be read as a gesture clip. Object keeps the behavior
+        // tests free of the Unity clip type.
+        internal IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> ListFaces;
         // Why the menu was left out, when it was not the user's choice.
         internal string Reason { get; set; }
     }

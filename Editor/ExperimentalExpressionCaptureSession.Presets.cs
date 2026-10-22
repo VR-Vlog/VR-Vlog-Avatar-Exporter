@@ -338,44 +338,31 @@ namespace VRVlog.LilToonExporter
             instance.Vrm = settings;
         }
 
-        // The list-only export: each face of the board's list becomes a custom
-        // VRM clip on the copy, read from its curves at the board's time like a
-        // standard preset. Weights are clamped to 0-100. A zero, or a shape the
-        // copy does not have, leaves that channel at the default face.
-        // AuthorPresets has given the copy its own VRM settings by now.
-        void AuthorListFaces(GameObject clone, IEnumerable<(string Name, AnimationClip Clip, float Time)> faces, List<Object> assets)
-        {
-            var settings = clone.GetComponent<Vrm10Instance>().Vrm;
-            foreach (var face in faces)
-            {
-                var expression = ScriptableObject.CreateInstance<VRM10Expression>(); assets.Add(expression);
-                expression.name = VrmMenuExpressions.UniqueName(face.Name,
-                    name => settings.Expression.CustomClips.Any(clip => clip != null && clip.name == name));
-                expression.IsBinary = true;
-                expression.OverrideBlink = expression.OverrideMouth = expression.OverrideLookAt = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.ExpressionOverrideType.block;
-                var bindings = new List<MorphTargetBinding>();
-                foreach (var morph in ListFaceMorphs(face.Clip, face.Time))
-                {
-                    SkinnedMeshRenderer renderer;
-                    try { renderer = VrChatExpressionSampler.FindRenderer(clone, morph.Path); }
-                    catch (InvalidOperationException) { continue; }
-                    var index = renderer.sharedMesh.GetBlendShapeIndex(morph.Shape);
-                    if (index >= 0) bindings.Add(new MorphTargetBinding(morph.Path, index, morph.Weight / 100f));
-                }
-                expression.MorphTargetBindings = bindings.ToArray();
-                settings.Expression.CustomClips.Add(expression);
-            }
-        }
-
-        // The clip's BlendShape curves at the given time, in authoring paths.
-        List<(string Path, string Shape, float Weight)> ListFaceMorphs(AnimationClip clip, float time)
+        // The list-only export reads a listed clip from the avatar root, as the
+        // gesture reader does. A clip registered below the root gets a copy
+        // with its paths moved there, and a mesh left out of recording drops
+        // its own curves, as the board does. Copies join assets to be destroyed.
+        AnimationClip AvatarRelativeClip(AnimationClip clip, List<Object> assets)
         {
             var root = ClipRoot(clip);
-            return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
-                string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
-                binding.propertyName.Substring("blendShape.".Length),
-                Mathf.Clamp(AnimationUtility.GetEditorCurve(clip, binding).Evaluate(time), 0f, 100f)))
-                .Where(morph => morph.Item3 > 0 && !skippedPaths.Contains(morph.Item1) && ShapeOnEitherMesh(morph.Item1, morph.Item2)).ToList();
+            string Full(string path) => string.IsNullOrEmpty(root) ? path : string.IsNullOrEmpty(path) ? root : root + "/" + path;
+            var bindings = AnimationUtility.GetCurveBindings(clip);
+            if (string.IsNullOrEmpty(root) && !bindings.Any(binding => PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(binding.path))) return clip;
+            var copy = new AnimationClip { name = clip.name, frameRate = clip.frameRate }; assets.Add(copy);
+            AnimationUtility.SetAnimationClipSettings(copy, AnimationUtility.GetAnimationClipSettings(clip));
+            foreach (var binding in bindings)
+            {
+                var moved = binding; moved.path = Full(binding.path);
+                if (PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(moved.path)) continue;
+                AnimationUtility.SetEditorCurve(copy, moved, AnimationUtility.GetEditorCurve(clip, binding));
+            }
+            foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+            {
+                var moved = binding; moved.path = Full(binding.path);
+                AnimationUtility.SetObjectReferenceCurve(copy, moved, AnimationUtility.GetObjectReferenceCurve(clip, binding));
+            }
+            AnimationUtility.SetAnimationEvents(copy, AnimationUtility.GetAnimationEvents(clip));
+            return copy;
         }
 
         // Blink assignments go to the blink export as a manual setting, not as

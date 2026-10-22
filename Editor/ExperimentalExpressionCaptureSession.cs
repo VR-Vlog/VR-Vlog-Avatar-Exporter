@@ -597,8 +597,9 @@ namespace VRVlog.LilToonExporter
             }
             // Standard presets alone keep that ordinary route. They enter its copy
             // as authored VRM clips, so menu faces and authored presets remain.
-            // listFaces (the list-only export) joins them as custom clips and
-            // plays no menu face; the default face is still the ordinary one.
+            // listFaces (the list-only export) plays no menu face: the exporter
+            // reads the listed clips as its faces, moving ones with their
+            // animation; the default face is still the ordinary one.
             if (!replaceCustomFaces && expressions.Length == 0)
             {
                 var authored = new List<Object>();
@@ -609,13 +610,10 @@ namespace VRVlog.LilToonExporter
                         lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                         licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                         recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
-                        authorCopyExpressions: clone =>
-                        {
-                            AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored);
-                            if (listFaces != null) AuthorListFaces(clone, listFaces, authored);
-                        },
+                        authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
                         inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
-                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions, skipExpressionPlayback: listFaces != null);
+                        excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
+                        listFaces: listFaces?.Select(face => (face.Name, AvatarRelativeClip(face.Clip, authored), face.Time)).ToList());
                     UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                     return authoredVrm;
                 }
