@@ -91,6 +91,27 @@ namespace VRVlog.LilToonExporter.Tests
             StringAssert.Contains("Large", warnings[0]);
         }
 
+        [Test]
+        public void TheExportedMToonOutlineTakesTheScaleAfterTextureBakingCopiesTheMaterial()
+        {
+            var shader = Shader.Find("Hidden/lilToonOutline");
+            if (shader == null) Assert.Ignore("Requires lilToon.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var source = new Material(shader) { name = "Outlined" };
+            cleanup.Add(source);
+            source.SetFloat("_OutlineWidth", 0.3f);
+            foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = source;
+            fixture.Source.transform.localScale = new Vector3(2f, 2f, 2f);
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Outline scale", "Tests", exporterVersion: "0.10.0-preview.1", lilToonVersion: "2.3.4",
+                blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+            var widths = ((List<object>)GlbDocument.Read(bytes).Json["materials"]).Cast<Dictionary<string, object>>()
+                .Where(material => material.TryGetValue("extensions", out var extensions) && ((Dictionary<string, object>)extensions).ContainsKey("VRMC_materials_mtoon"))
+                .Select(material => System.Convert.ToSingle(((Dictionary<string, object>)((Dictionary<string, object>)material["extensions"])["VRMC_materials_mtoon"])["outlineWidthFactor"]))
+                .ToArray();
+            Assert.That(widths, Is.Not.Empty);
+            foreach (var width in widths) Assert.AreEqual(0.006f, width, 1e-5f);
+        }
+
         private GameObject New(string name, Transform parent = null)
         {
             var item = new GameObject(name);

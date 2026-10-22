@@ -628,12 +628,6 @@ namespace VRVlog.LilToonExporter
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
                 }));
-                // Measured while the hierarchy is as the scene drew it: MToon's outline
-                // width does not follow the renderer scale that lilToon's does.
-                // Only reads the copy; on failure the approximation keeps the unscaled width.
-                var outlineScales = new Dictionary<Material, float>();
-                try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
-                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
                     () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
@@ -690,6 +684,13 @@ namespace VRVlog.LilToonExporter
                 guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
+                // MToon's outline width does not follow the renderer scale that lilToon's
+                // does. Measured here because texture baking swaps every lilToon slot for
+                // a copy, and the scales are keyed by the material the slot holds now.
+                // Only reads the copy; on failure the approximation keeps the unscaled width.
+                var outlineScales = new Dictionary<Material, float>();
+                try { outlineScales = OutlineRendererScale.Measure(clone, warnings); }
+                catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 ReplaceLilToonMaterials(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, convertOthers: withoutLilToon, fallbacks: recoveryReport.Fallbacks,
                     lenient: guard.ContinueOnFailure, outlineScales: outlineScales);
                 guard.Run(ExportStage.OptimizerEvidence, () => optimizerBindings.VerifyMaterialEvidence());
