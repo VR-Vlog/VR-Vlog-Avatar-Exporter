@@ -16,7 +16,6 @@ namespace VRVlog.LilToonExporter
     // translation or a larger font clips text instead of moving the panes.
     internal sealed class AppPreviewWindow : EditorWindow
     {
-        const string MenuPath = "VR Vlog/アプリでの見え方を確認";
         const float PaneWidth = 280, MaxStep = 1f / 15;
         const int ExpressionRows = 6, AnimationRows = 4;
         const string StateKey = "VRVlog.LilToonExporter.AppPreview.";
@@ -54,13 +53,11 @@ namespace VRVlog.LilToonExporter
 
         static string T(string source) => ExporterLocalization.T(source);
 
-        [MenuItem(MenuPath, true)]
-        internal static bool CanOpen() => AppPreviewEntry.Backend != null;
-
-        [MenuItem(MenuPath)]
-        static void OpenFromMenu()
+        // The window has no menu entry: the exporter opens it after a save, and this
+        // window's own "VRM ファイルを開く" picks another file.
+        static void OpenFile()
         {
-            if (!CanOpen()) return;
+            if (AppPreviewEntry.Backend == null) return;
             var path = EditorUtility.OpenFilePanel(T("VRM ファイルを開く"), "", "vrm");
             if (!string.IsNullOrEmpty(path)) Window().LoadFile(path);
         }
@@ -543,10 +540,10 @@ namespace VRVlog.LilToonExporter
                 GUI.Label(new Rect(rect.x + 20, middle - line - 4, rect.width - 40, line), new GUIContent(errorText, errorDetail), centered);
                 var button = new Rect(rect.center.x - 100, middle + 4, 200, line);
                 if (CanReload) { if (GUI.Button(button, T("もう一度読み込む"))) Reload(); }
-                else if (GUI.Button(button, T("VRM ファイルを開く"))) OpenFromMenu();
+                else if (GUI.Button(button, T("VRM ファイルを開く"))) OpenFile();
                 return;
             }
-            if (GUI.Button(new Rect(rect.center.x - 110, middle - line, 220, line * 2), T("VRM ファイルを開く"))) OpenFromMenu();
+            if (GUI.Button(new Rect(rect.center.x - 110, middle - line, 220, line * 2), T("VRM ファイルを開く"))) OpenFile();
         }
 
         void HandleInput(Rect rect)
