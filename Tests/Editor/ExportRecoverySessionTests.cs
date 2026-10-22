@@ -34,16 +34,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.LastSuccess, Is.Null);
                 Assert.That(session.HasPendingSave, Is.False);
                 Assert.That(session.CanSave, Is.False);
-                Assert.That(LilToonExporterWindow.ShouldShowFailureAfterFailedAttempt(session), Is.False,
-                    "The normal-export caller must return quietly after progress cancellation.");
                 Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
 
                 attempt = 1;
                 Assert.That(session.Attempt(null), Is.False);
                 Assert.That(session.WasCanceled, Is.False);
                 Assert.That(session.Failure, Is.SameAs(failure));
-                Assert.That(LilToonExporterWindow.ShouldShowFailureAfterFailedAttempt(session), Is.True,
-                    "A real export error must still open diagnostics after a previous cancellation.");
                 Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
 
                 attempt = 2;

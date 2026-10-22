@@ -21,16 +21,6 @@ namespace VRVlog.LilToonExporter
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
 
-        // Source exclusions name the original hierarchy. After authoring passes,
-        // an active retained renderer can occupy an omitted object's old path.
-        // The omission must not transfer to that unrelated retained identity.
-        internal static bool IsExcludedPreparedPath(GameObject avatar, string path, Func<string, bool> originalExcludedPath)
-        {
-            if (originalExcludedPath?.Invoke(path) != true) return false;
-            return !avatar.GetComponentsInChildren<SkinnedMeshRenderer>().Any(renderer => renderer.enabled && renderer.sharedMesh != null &&
-                renderer.gameObject.activeInHierarchy && AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) == path);
-        }
-
         internal const string MenuOverCandidateLimit = "表情候補が512件を超えるため表情メニューの表情を省きました";
 
         // The menu is read in full, so it can push the other faces past the
@@ -194,29 +184,6 @@ namespace VRVlog.LilToonExporter
             if (unresolved.Count != 0)
                 throw new InvalidOperationException("常時適用するFXの変形を確定できません。統合後のBlendShape設定を確認してください。");
             return values;
-        }
-
-        // Invoke on the committed post-Transforming copy. Native animation
-        // evaluation occurs on another disposable copy and writes back weights
-        // only; shared meshes/controllers and the source remain untouched. Call
-        // after Analyze: all expression probes must use the prepared authored
-        // weights rather than evaluating an already blended neutral base again.
-        internal static void ApplyMergedDefaults(GameObject source, GameObject clone, ICollection<string> warnings = null,
-            VrChatMenuImportPolicy menuPolicy = null, Func<string, bool> excludedPath = null)
-        {
-            if (source == null || clone == null) throw new ArgumentNullException(source == null ? nameof(source) : nameof(clone));
-            if (source == clone || clone.transform.IsChildOf(source.transform) || source.transform.IsChildOf(clone.transform) || EditorUtility.IsPersistent(clone))
-                throw new InvalidOperationException("FXの初期状態には原本から独立した書き出し用コピーが必要です。");
-            var metadata = VrChatExpressionMenu.Read(clone, menuPolicy);
-            var values = SampleDefaults(clone, metadata.Controller, metadata.Defaults, excludedPath, metadata);
-            foreach (var value in values)
-            {
-                var renderer = FindRenderer(clone, value.Path);
-                var index = renderer.sharedMesh.GetBlendShapeIndex(value.Shape);
-                if (index < 0) throw new InvalidOperationException("常時適用するFXのBlendShapeが見つかりません: " + value.Shape);
-                renderer.SetBlendShapeWeight(index, value.Weight);
-            }
-            if (values.Count > 0) warnings?.Add("統合後のFXにある常時適用の顔・体形設定を、一時コピーと表情の初期状態へ反映しました。");
         }
 
         // Direct clips (including moving gestures) bypass menu parameter

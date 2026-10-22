@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // registered its active reader. Close every borrowed handle.
                 foreach (var reader in readers) reader.Dispose();
                 readers.Clear(); master?.Dispose(); master = null;
-                LanVrmTransferServer.TryDelete(path);
+                TransferTempDirectory.TryDelete(path);
             }
         }
     }

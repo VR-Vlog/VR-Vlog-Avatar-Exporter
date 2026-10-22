@@ -168,18 +168,6 @@ namespace VRVlog.FaceTracking
             return Clamp(definition.Evaluate(read));
         }
 
-        public static bool IsBlink(string canonical)
-        {
-            string name;
-            return TryCanonicalize(canonical, out name) && (name == "EyeClosed" || name == "EyeClosedLeft" || name == "EyeClosedRight");
-        }
-
-        public static bool IsEyeLook(string canonical)
-        {
-            string name;
-            return TryCanonicalize(canonical, out name) && name.StartsWith("EyeLook", StringComparison.Ordinal);
-        }
-
         /// <summary>
         /// Selects one representation for each anatomical constituent in a
         /// single mesh. Direct forms precede split forms, then side composites,
