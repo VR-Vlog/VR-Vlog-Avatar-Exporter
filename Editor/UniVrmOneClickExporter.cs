@@ -140,19 +140,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Over 128 bundled poses the first 128 are kept (lenient exports only).
-        static void RecordTrimmedPoses(PoseExportSession poses, ICollection<string> warnings, ExportRecoveryReport report)
-        {
-            var trimmed = poses.TrimmedCount;
-            if (trimmed == 0) return;
-            var reason = string.Format(ExporterLocalization.T(PoseLimitWarning), VRVlog.Poses.HumanoidPoseData.MaximumPoses, trimmed);
-            var name = ExportStageGuard.DisplayName(ExportStage.PoseCapture);
-            warnings?.Add(reason);
-            report.Fallbacks.Add(ExportFallbackKind.LimitExceeded, name, reason: reason);
-            var entry = report.Fallbacks.Results.Last(result => result.Stage == null && result.Name == name);
-            entry.Count = trimmed;
-        }
-
         internal const string LostMorphFollowedWarning = "ビルド処理で表情「{0}」の変形「{1}」が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
         internal const string LostMorphOmittedWarning = "ビルド処理で表情「{0}」の変形「{1}」が見つからなくなったため、その変形を省略しました。";
         internal const string LostExpressionOmittedWarning = "ビルド処理で表情「{0}」の変形がすべて見つからなくなったため、この表情を省略しました。";
@@ -272,8 +259,6 @@ namespace VRVlog.LilToonExporter
             // The result list selects the object from its path, "" for the root.
             entry.Path = path ?? "";
         }
-
-        internal const string PoseLimitWarning = "同梱ポーズは先頭の{0}件だけを保存し、残りの{1}件を省略しました。「ポーズを確認・調整」で保存する項目を選べます。";
 
         internal const string HiddenRootWarning = "アバター本体または親が非表示だったため、書き出し用のコピーだけ表示にして書き出しました。シーンのアバターは変更していません。";
 
@@ -409,7 +394,6 @@ namespace VRVlog.LilToonExporter
                     suppressSharedTextureEmission, suppressHdrTextureEmission));
             using var poses = guard.Run(ExportStage.PoseCapture, () => new PoseExportSession(source, poseOptions, exclusions.Contains, menuPolicy),
                 () => PoseExportSession.None(source));
-            poses.TrimToLimit = guard.ContinueOnFailure;
             recoveryReport.Stage = "コピー作成";
             recoveryReport.Phase = ExportPhase.Precheck;
             var clone = NdmfExportPreparation.InstantiateOwnedCopy(source);
@@ -536,7 +520,8 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.PoseCapture, () => poses.CollectPrepared(clone, warnings, preparedMenuPolicy));
                     // Our own steps below name their stage. Unnamed, a failure here
                     // would be blamed on the build passes and retried without them.
-                    guard.Watch(ExportStage.PoseCapture, () => RecordTrimmedPoses(poses, warnings, recoveryReport));
+                    // Stopping from the limit window cancels; the guard rethrows it.
+                    guard.Watch(ExportStage.PoseCapture, () => PoseLimitChooser.Apply(poses, warnings, recoveryReport));
                     recoveryReport.Stage = "基準形評価";
                     recoveryReport.Phase = ExportPhase.Expressions;
                     // This beta retains the prepared copy's rest values. Selected

@@ -58,6 +58,10 @@ namespace VRVlog.LilToonExporter
             // The name of the last successful "アプリに転送". It is not part of
             // ExportSettings, so it never changes the settings' signature.
             public string TransferName;
+            // Poses left out the last time they exceeded the app's limits
+            // (PoseLimitChooser). Empty when the default was kept. Not part of
+            // ExportSettings either.
+            public List<string> LimitExcludedPoses = new List<string>();
         }
 
         [Serializable]
@@ -75,6 +79,7 @@ namespace VRVlog.LilToonExporter
         // here until the editor reloads scripts.
         static readonly Dictionary<int, ExportSettings> Unsaved = new Dictionary<int, ExportSettings>();
         static readonly Dictionary<int, string> UnsavedNames = new Dictionary<int, string>();
+        static readonly Dictionary<int, List<string>> UnsavedLimits = new Dictionary<int, List<string>>();
 
         // Increases on every save that stores something, so an open window can
         // notice that another window saved and reload what it shows.
@@ -102,14 +107,17 @@ namespace VRVlog.LilToonExporter
             var store = Read(out var problem);
             if (problem != null) { WarnOnce(problem); return; }
             store = store ?? new Store();
-            var transferName = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key)?.TransferName;
+            var existing = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key);
+            var transferName = existing?.TransferName;
+            var limitChoice = existing?.LimitExcludedPoses ?? new List<string>();
             store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
             // Defaults are not written, so the file only lists adjusted avatars
-            // and avatars with a remembered transfer name.
-            if (settings.Signature() != new ExportSettings().Signature() || !string.IsNullOrEmpty(transferName))
+            // and avatars with a remembered transfer name or pose choice.
+            if (settings.Signature() != new ExportSettings().Signature() || !string.IsNullOrEmpty(transferName) || limitChoice.Count > 0)
             {
                 var entry = Capture(key, avatar, settings);
                 entry.TransferName = transferName;
+                entry.LimitExcludedPoses = limitChoice;
                 store.Avatars.Add(entry);
             }
             if (Write(store)) Revision++;
@@ -142,7 +150,44 @@ namespace VRVlog.LilToonExporter
             entry.TransferName = name;
             // An entry that only held the name is dropped with it.
             var skipped = 0;
-            if (name != null || Restore(avatar, entry, ref skipped).Signature() != new ExportSettings().Signature()) store.Avatars.Add(entry);
+            if (name != null || entry.LimitExcludedPoses?.Count > 0 ||
+                Restore(avatar, entry, ref skipped).Signature() != new ExportSettings().Signature()) store.Avatars.Add(entry);
+            Write(store);
+        }
+
+        // The poses the user left out when they exceeded the app's limits.
+        // Every export of this avatar, the quick transfer too, starts from it.
+        internal static IReadOnlyCollection<string> LoadLimitChoice(GameObject avatar)
+        {
+            if (avatar == null) return Array.Empty<string>();
+            var key = ExpressionPresetStore.KeyFor(avatar);
+            if (key == null) return UnsavedLimits.TryGetValue(avatar.GetInstanceID(), out var held) ? held.ToArray() : Array.Empty<string>();
+            var ids = (Read(out _) ?? new Store()).Avatars.FirstOrDefault(item => item != null && item.Avatar == key)?.LimitExcludedPoses;
+            return ids?.Where(id => id != null).ToArray() ?? Array.Empty<string>();
+        }
+
+        internal static void SaveLimitChoice(GameObject avatar, IEnumerable<string> dropped)
+        {
+            if (avatar == null) return;
+            var ids = (dropped ?? Enumerable.Empty<string>()).Where(id => id != null).Distinct().OrderBy(id => id, StringComparer.Ordinal).ToList();
+            var key = ExpressionPresetStore.KeyFor(avatar);
+            if (key == null)
+            {
+                if (ids.Count == 0) UnsavedLimits.Remove(avatar.GetInstanceID()); else UnsavedLimits[avatar.GetInstanceID()] = ids;
+                return;
+            }
+            var store = Read(out var problem);
+            if (problem != null) { WarnOnce(problem); return; }
+            store = store ?? new Store();
+            var entry = store.Avatars.FirstOrDefault(item => item != null && item.Avatar == key) ?? Capture(key, avatar, new ExportSettings());
+            store.Avatars.RemoveAll(item => item == null || item.Avatar == key);
+            entry.LimitExcludedPoses = ids;
+            // An entry that only held the choice is dropped with it.
+            var skipped = 0;
+            if (ids.Count > 0 || !string.IsNullOrEmpty(entry.TransferName) ||
+                Restore(avatar, entry, ref skipped).Signature() != new ExportSettings().Signature()) store.Avatars.Add(entry);
+            // Like the transfer name, the choice does not change what the
+            // export windows show, so they are not told to reload.
             Write(store);
         }
 

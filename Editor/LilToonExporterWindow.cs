@@ -556,7 +556,13 @@ namespace VRVlog.LilToonExporter
             var warnings = new List<string>();
             var report = new ExportRecoveryReport();
             byte[] bytes;
-            try { bytes = create(new ExportRecoveryOptions(), report, warnings); }
+            // Poses over the app's limits are asked once here; a later retry
+            // from the recovery window reuses the choice saved for the avatar.
+            try
+            {
+                using (new PoseLimitChooser.Scope(source, interactive && !ExportFallbackConfirmation.IsBatchMode()))
+                    bytes = create(new ExportRecoveryOptions(), report, warnings);
+            }
             catch (OperationCanceledException) { return null; }
             catch (Exception exception)
             {
