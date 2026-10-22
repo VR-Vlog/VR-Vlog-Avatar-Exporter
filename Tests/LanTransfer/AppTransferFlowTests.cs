@@ -432,7 +432,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts, Is.Not.Empty);
+            Assert.That(texts.Length > 0, Is.True);
             foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
             {
                 var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
