@@ -47,6 +47,8 @@ namespace VRVlog.LilToonExporter
             return Finite(scale.x) && Finite(scale.y) && scale.x != 0 && scale.y != 0 && Finite(offset.x) && Finite(offset.y);
         }
 
+#if !EXPORTER_BEHAVIOR_TESTS
+        // Reads the image on the GPU, which the behavior tests do not have.
         // lilToon 2.3.4 multiplies the emission by _EmissionGradTex sampled at
         // (_EmissionGradSpeed * time, 0.5), and the alpha weights the blend.
         // MToon emission does not change over time, so the fallback uses the
@@ -72,6 +74,7 @@ namespace VRVlog.LilToonExporter
             sum /= count;
             return Finite(sum.x) && Finite(sum.y) && Finite(sum.z) ? new Color(sum.x, sum.y, sum.z, 1) : Color.white;
         }
+#endif
 
         private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
