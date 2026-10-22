@@ -155,12 +155,6 @@ namespace VRVlog.LilToonExporter
                     if (session?.WasCanceled == true) EditorGUILayout.HelpBox(ExporterLocalization.T("書き出しをキャンセルしました。前に成功した結果があれば確認できます。"), MessageType.Info);
                     if (issues.Count == 0 && !string.IsNullOrEmpty(message)) EditorGUILayout.HelpBox(ExporterLocalization.T(message), MessageType.Error);
                     if (session != null) EditorGUILayout.LabelField(ExporterLocalization.T("元のアバターは変更しません"), EditorStyles.wordWrappedLabel);
-                    if (issues.Any(IsMenuIssue))
-                    {
-                        EditorGUILayout.HelpBox(ExporterLocalization.T("必要な表情を残し、取り込まないメニューを選んでください。メニューを分割するだけでは合計項目数は減りません。"), MessageType.Info);
-                        if (issues.Any(issue => issue.hasAction && issue.actionKind == ExportRecoveryActionKind.SkipVrChatMenus && selected.Contains(issue.id)))
-                            EditorGUILayout.HelpBox(ExporterLocalization.T("全省略を選ぶと、枝の選択にかかわらずVRChatメニュー由来の表情・ポーズをすべて省略します。"), MessageType.Warning);
-                    }
                     using (new EditorGUI.DisabledScope(busy)) foreach (var issue in issues) DrawIssue(issue);
                     showTechnicalDetails = EditorGUILayout.Foldout(showTechnicalDetails, ExporterLocalization.T("エラーの詳細・問い合わせ"));
                     if (showTechnicalDetails)
@@ -220,8 +214,6 @@ namespace VRVlog.LilToonExporter
                 case ExportRecoveryActionKind.OmitSecondLayer: return "カラー2ndレイヤーを省略する";
                 case ExportRecoveryActionKind.OmitThirdLayer: return "カラー3rdレイヤーを省略する";
                 case ExportRecoveryActionKind.ExcludeHiddenRenderer: return "この補助表示を省略する";
-                case ExportRecoveryActionKind.SkipVrChatMenus: return "VRChatメニュー由来の表情・ポーズをすべて取り込まない";
-                case ExportRecoveryActionKind.ExcludeMenuBranch: return "このメニューの枝を取り込まない";
                 default: throw new ArgumentOutOfRangeException(nameof(kind));
             }
         }
@@ -274,9 +266,6 @@ namespace VRVlog.LilToonExporter
             foreach (var window in Resources.FindObjectsOfTypeAll<ExportFailureWindow>().Where(window => window.session == session)) window.Close();
             foreach (var window in Resources.FindObjectsOfTypeAll<ExportRecoveryComparisonWindow>().Where(window => window.Session == session)) window.Close();
         }
-
-        private static bool IsMenuIssue(IssueView issue) => issue.hasAction &&
-            (issue.actionKind == ExportRecoveryActionKind.SkipVrChatMenus || issue.actionKind == ExportRecoveryActionKind.ExcludeMenuBranch);
 
         private void Schedule(bool reinspect)
         {

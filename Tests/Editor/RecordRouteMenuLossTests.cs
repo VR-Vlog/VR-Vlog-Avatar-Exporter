@@ -201,24 +201,9 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AMenuThatCannotBeReadIsUnreadableNotEmpty()
         {
-            var links = Session.ReadMenuLinks(() => throw new InvalidOperationException("broken"), out var overLimit);
+            var links = Session.ReadMenuLinks(() => throw new InvalidOperationException("broken"));
             Assert.That(links.Outside, Is.Null);
             Assert.That(links.Paths, Is.Empty);
-            Assert.That(overLimit, Is.Null);
-            Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
-                Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
-        }
-
-        [Test]
-        public void AMenuOverTheReadLimitIsUnreadableAndKeepsTheOverLimitNote()
-        {
-            var summary = new VrChatMenuImportSummary { CandidateCount = 300, LimitReason = "candidates" };
-            var links = Session.ReadMenuLinks(() => throw new VrChatMenuImportLimitException(summary), out var overLimit);
-            Assert.That(links.Outside, Is.Null, "The record route still drops those items, so they cannot be checked.");
-            Assert.That(links.Paths, Is.Empty);
-            Assert.That(overLimit, Is.SameAs(summary));
-            Assert.That(Session.MenuOverLimitNote(overLimit),
-                Is.EqualTo(string.Format(ExporterLocalization.T(Session.MenuOverLimitItemsFormat), 300, 256)));
             Assert.That(ExperimentalExpressionCaptureWindow.MenuLossBand(true, links.Outside).Value.Text,
                 Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuUnreadable)));
         }
