@@ -172,6 +172,41 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void ASubmenuCutShortByACycleIsReadAgainFromARouteOutsideTheCycle()
+        {
+            var a = new Menu(); var s = new Menu(); var root = new Menu();
+            a.controls.Add(new Control { name = "A face", type = "Toggle", parameter = new Parameter { name = "Face" }, value = 1 });
+            a.controls.Add(Branch("To S", s, "Side", 1));
+            s.controls.Add(Branch("To A", a, "Mode", 1));
+            root.controls.Add(Branch("Open A", a));
+            root.controls.Add(Branch("Open S", s, "Side", 1));
+            var result = VrChatExpressionMenu.ReadMenu(root);
+            var underBoth = result.Entries.Where(e => e.Name == "Open S / To A / A face").ToList();
+            Assert.That(underBoth, Has.Count.EqualTo(1));
+            Assert.That(underBoth[0].Parameters["Side"], Is.EqualTo(1));
+            Assert.That(underBoth[0].Parameters["Mode"], Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ABackLinkToTheTopDoesNotMakeSharedSubmenusReadOncePerRoute()
+        {
+            var root = new Menu();
+            var next = Leaves(2); next.controls.Add(Branch("Back", root));
+            for (var level = 0; level < 16; level++)
+            {
+                var menu = new Menu();
+                menu.controls.Add(Branch("Left", next)); menu.controls.Add(Branch("Right", next));
+                menu.controls.Add(Branch("Back", root));
+                next = menu;
+            }
+            root.controls.Add(Branch("Start", next));
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var result = VrChatExpressionMenu.ReadMenu(root);
+            Assert.That(watch.Elapsed.TotalSeconds, Is.LessThan(2));
+            Assert.That(result.Entries, Has.Count.EqualTo(2));
+        }
+
+        [Test]
         public void ASharedSubmenuUnderDifferentParentValuesIsReadForEachValue()
         {
             var shared = Leaves(2);

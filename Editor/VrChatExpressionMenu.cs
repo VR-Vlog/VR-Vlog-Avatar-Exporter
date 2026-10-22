@@ -159,19 +159,26 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             WalkEntries(menu, "", "", new Dictionary<string, float>(StringComparer.Ordinal), new HashSet<object>(),
-                new HashSet<(object, string)>(), result);
+                new Dictionary<(object, string), HashSet<object>>(), result);
         }
+
+        static readonly HashSet<object> NoCuts = new HashSet<object>();
 
         // A submenu is read once for each set of values its parents select,
         // so the work follows the size of the menus rather than the number of
         // routes to them. The same submenu under the same values holds the
-        // same expressions, so a second route adds nothing.
-        static void WalkEntries(object menu, string prefix, string idPrefix, Dictionary<string, float> parents,
-            HashSet<object> stack, HashSet<(object, string)> read, Source result)
+        // same expressions, so a second route adds nothing. A read that a
+        // cycle cut short is reused only while the menus it was cut at are
+        // still open, because only then would the second read stop there too.
+        // Returns the open menus this read was cut at.
+        static HashSet<object> WalkEntries(object menu, string prefix, string idPrefix, Dictionary<string, float> parents,
+            HashSet<object> stack, Dictionary<(object, string), HashSet<object>> read, Source result)
         {
-            if (menu == null || menu is UnityEngine.Object obj && obj == null) return;
-            if (stack.Contains(menu)) { result.Messages.Add(prefix + ": 循環しているサブメニューを省略しました"); return; }
-            if (!read.Add((menu, Selection(parents)))) return;
+            if (menu == null || menu is UnityEngine.Object obj && obj == null) return NoCuts;
+            if (stack.Contains(menu)) { result.Messages.Add(prefix + ": 循環しているサブメニューを省略しました"); return new HashSet<object> { menu }; }
+            var key = (menu, Selection(parents));
+            if (read.TryGetValue(key, out var earlier) && earlier.All(stack.Contains)) return earlier;
+            var cuts = new HashSet<object>();
             stack.Add(menu);
             try
             {
@@ -186,7 +193,7 @@ namespace VRVlog.LilToonExporter
                     var values = new Dictionary<string, float>(parents, StringComparer.Ordinal);
                     var parameter = Member(Member(control, "parameter"), "name") as string;
                     if (!string.IsNullOrEmpty(parameter)) values[parameter] = Number(Member(control, "value"));
-                    if (type == "SubMenu") { WalkEntries(Member(control, "subMenu"), name, id, values, stack, read, result); continue; }
+                    if (type == "SubMenu") { cuts.UnionWith(WalkEntries(Member(control, "subMenu"), name, id, values, stack, read, result)); continue; }
                     var entry = new Entry { Id = id + "\n" + name + "\n" + JsonDom.Serialize(values.ToDictionary(p => p.Key, p => (object)p.Value)), Name = name,
                         ExportName = label, ControlType = type, ControlParameter = parameter, Source = VRVlog.Expressions.ExpressionSource.Menu };
                     foreach (var pair in values) entry.Parameters.Add(pair.Key, pair.Value);
@@ -196,6 +203,9 @@ namespace VRVlog.LilToonExporter
                 }
             }
             finally { stack.Remove(menu); }
+            cuts.Remove(menu);
+            read[key] = cuts;
+            return cuts;
         }
 
         // Exact and independent of insertion order, so two routes that set
