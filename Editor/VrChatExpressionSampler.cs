@@ -592,13 +592,22 @@ namespace VRVlog.LilToonExporter
                     var dependencies = nativeSlot ? (probeDependencies ??= AnalyzeProbe()) : AnalyzeProbe();
                     // Both probes build the same graph apart from the input,
                     // so the first one decides for both.
+                    string SlotRejection()
+                    {
+                        if (!nativeSlot || sourceState == null) return "slot";
+                        if (hasLayerControls) return "layer controls";
+                        if (projection != null) return "projection";
+                        if (stationaryBindings.Count > 0 || parameterLayers.Count > 0) return "stationary";
+                        if (layerIndex.Value != 0 && originalLayers[layerIndex.Value].defaultWeight != 1) return "weight";
+                        if (!MaskPasses(originalLayers[layerIndex.Value].avatarMask, explicitMorphs)) return "mask";
+                        if (avatar.GetComponent<Animator>() == null) return "animator";
+                        var callbacks = sourceBehaviours.Concat(sourceMachines.SelectMany(machine => machine.behaviours))
+                            .Where(behaviour => !LeavesProbeOutput(behaviour)).ToArray();
+                        return callbacks.Length > 0 ? "callbacks " + string.Join(",", callbacks.Select(behaviour =>
+                            behaviour == null ? "missing" : behaviour.GetType().Name).Distinct().OrderBy(name => name, StringComparer.Ordinal)) : null;
+                    }
                     direct ??= DirectProbe(avatar, probeRuntime, dependencies, explicitMorphs, scalarPlan.CommittedMorphs, excludedPath,
-                        layerIndex ?? -1,
-                        !nativeSlot || sourceState == null ? "slot" : hasLayerControls ? "controls" : projection != null ? "projection" :
-                        stationaryBindings.Count > 0 || parameterLayers.Count > 0 ? "stationary" :
-                        layerIndex.Value != 0 && originalLayers[layerIndex.Value].defaultWeight != 1 ? "weight" :
-                        originalLayers[layerIndex.Value].avatarMask != null ? "mask" : avatar.GetComponent<Animator>() == null ? "animator" :
-                        sourceBehaviours.Length > 0 || sourceMachines.Any(machine => machine.behaviours.Length > 0) ? "callbacks" : null);
+                        layerIndex ?? -1, SlotRejection());
                     List<MorphValue> values;
                     if (direct == true && !CompareDirectProbe)
                         values = explicitMorphs.Select(binding => new MorphValue
@@ -674,8 +683,9 @@ namespace VRVlog.LilToonExporter
             if (dependencies.NativeSupportLayers.Count > 0) return Sampled("support");
             // The selected layer itself may be the proven top override.
             if (dependencies.IndependentTopOverrideLayer >= 0 && dependencies.IndependentTopOverrideLayer != layerIndex) return Sampled("top");
-            if (dependencies.HasFxControls || dependencies.WeightControlLayers.Count > 0 || dependencies.RequireSettledWeightControls)
-                return Sampled("controls");
+            if (dependencies.HasFxControls) return Sampled("fx controls");
+            if (dependencies.WeightControlLayers.Count > 0) return Sampled("weight controls");
+            if (dependencies.RequireSettledWeightControls) return Sampled("settled controls");
             if (dependencies.Drivers.Count > 0) return Sampled("drivers");
             if (FindExcludedLayers(ExpressionDependencies.Controller(probeRuntime), probeRuntime, excludedPath, dependencies.Parameters).Contains(layerIndex))
                 return Sampled("excluded");
@@ -691,6 +701,30 @@ namespace VRVlog.LilToonExporter
             }
             DirectProbeObserver?.Invoke("direct");
             return true;
+        }
+
+        // A transform mask stops every animated property of a transform it
+        // leaves out, blend shapes included. Accept only a mask without
+        // transforms or one that lists every morph's renderer as active.
+        private static bool MaskPasses(AvatarMask mask, IEnumerable<EditorCurveBinding> morphs)
+        {
+            if (mask == null || mask.transformCount == 0) return true;
+            var active = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < mask.transformCount; index++)
+                if (mask.GetTransformActive(index)) active.Add(mask.GetTransformPath(index));
+            return morphs.All(binding => active.Contains(binding.path));
+        }
+
+        // Tracking, locomotion and pose-space controls act on the body and
+        // tracking only, and the MA marker has no code; none of them changes
+        // what the probe layer writes. Every other callback keeps the probe.
+        private static bool LeavesProbeOutput(StateMachineBehaviour behaviour)
+        {
+            if (behaviour == null) return false;
+            if (VrChatParameterDriver.IsTracking(behaviour) || ExpressionDependencies.IsInertAuthoringMarker(behaviour)) return true;
+            var name = behaviour.GetType().FullName;
+            return name == "VRC.SDK3.Avatars.Components.VRCAnimatorLocomotionControl" || name == "VRC.SDKBase.VRC_AnimatorLocomotionControl" ||
+                name == "VRC.SDK3.Avatars.Components.VRCAnimatorTemporaryPoseSpace" || name == "VRC.SDKBase.VRC_AnimatorTemporaryPoseSpace";
         }
 
         private static void CompareDirect(string name, float input, ISet<EditorCurveBinding> explicitMorphs, List<MorphValue> sampled)

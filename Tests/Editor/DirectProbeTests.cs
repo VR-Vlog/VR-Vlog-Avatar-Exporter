@@ -103,13 +103,33 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Values.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(80).Within(.01));
         }
 
-        [Test]
-        public void AMaskedLayerStillPlays()
+        AvatarMask Mask(bool bodyActive)
         {
-            var mask = new AvatarMask(); AssetDatabase.CreateAsset(mask, folder + "/Mask.mask");
+            var mask = new AvatarMask(); mask.transformCount = 2;
+            mask.SetTransformPath(0, ""); mask.SetTransformActive(0, true);
+            mask.SetTransformPath(1, "Body"); mask.SetTransformActive(1, bodyActive);
+            AssetDatabase.CreateAsset(mask, folder + "/Mask.mask");
             var layers = controller.layers; layers[1].avatarMask = mask; controller.layers = layers;
+            return mask;
+        }
+
+        [Test]
+        public void AMaskThatStopsTheFaceStillPlays()
+        {
+            Mask(bodyActive: false);
             try { Apply(compare: false); } catch (InvalidOperationException) { }
             Assert.That(events.FirstOrDefault(), Is.EqualTo("sampled: mask"));
+        }
+
+        [Test]
+        public void AMaskThatPassesTheFaceIsReadWithoutPlaying()
+        {
+            Mask(bodyActive: true);
+            var played = Apply(compare: true);
+            Assert.That(events, Is.EqualTo(new[] { "direct", "match", "match" }));
+            var read = Apply(compare: false);
+            Assert.That(Values(read), Is.EqualTo(Values(played)));
+            Assert.That(Values(read), Is.EqualTo(new[] { "Body/Smile=80", "Body/Wink=35.5" }));
         }
 
         [Test]
