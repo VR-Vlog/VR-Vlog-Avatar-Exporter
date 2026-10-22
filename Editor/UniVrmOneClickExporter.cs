@@ -1094,6 +1094,10 @@ namespace VRVlog.LilToonExporter
             var hidden = HiddenInFallback(source);
             var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
             var shadeTexture = ShadeTexture(source);
+            // MToon cannot darken with its MatCap; normal and multiply MatCaps
+            // are averaged into the main image (lilToon 2.3.4 lilGetMatCap).
+            var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures)) ?? Texture(source, "_MainTex");
+            var parametricRim = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission);
             var context = new MToon10Context(material)
             {
                 AlphaMode = AlphaMode(source),
@@ -1102,14 +1106,12 @@ namespace VRVlog.LilToonExporter
                 // the safe portable approximation for lilToon's front/off modes.
                 DoubleSidedMode = Float(source, "_Cull", 2f) == 2f ? MToon10DoubleSidedMode.Off : MToon10DoubleSidedMode.On,
                 BaseColorFactorSrgb = FallbackColor(source, MaterialColorType.color, suppressSharedTextureEmission),
-                BaseColorTexture = Texture(source, "_MainTex"),
+                BaseColorTexture = baseTexture,
                 ShadeColorFactorSrgb = FallbackColor(source, MaterialColorType.shadeColor, suppressSharedTextureEmission),
                 ShadingShiftFactor = shadowEnabled ? MobileMaterialMath.ShadowShift(Float(source, "_ShadowBorder", 0.5f), Float(source, "_ShadowBlur", 0.1f)) : 0f,
                 ShadingToonyFactor = shadowEnabled ? MobileMaterialMath.ShadowToony(Float(source, "_ShadowBorder", 0.5f), Float(source, "_ShadowBlur", 0.1f)) : 0f,
                 // An unset MToon shade texture is white, not the base image.
-                ShadeColorTexture = shadowEnabled
-                    ? shadeTexture ?? Texture(source, "_MainTex")
-                    : Texture(source, "_MainTex"),
+                ShadeColorTexture = shadowEnabled ? shadeTexture ?? baseTexture : baseTexture,
                 NormalTexture = normalEnabled ? Texture(source, "_BumpMap") : null,
                 NormalTextureScale = normalEnabled ? Float(source, "_BumpScale", 1f) : 0f,
                 EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionColor, suppressSharedTextureEmission),
@@ -1120,14 +1122,17 @@ namespace VRVlog.LilToonExporter
                 MatcapTexture = matcapAdditive ? Texture(source, "_MatCapTex") : null,
                 // MToon has no directional backlight. When lilToon rim light is
                 // unused, its parametric rim is the closest portable fallback.
-                ParametricRimColorFactorSrgb = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission),
+                ParametricRimColorFactorSrgb = parametricRim,
                 ParametricRimFresnelPowerFactor = Mathf.Max(0f, rimEnabled
                     ? MobileMaterialMath.RimPower(Float(source, "_RimBorder", 0.5f), Float(source, "_RimFresnelPower", 1f))
                     : backlightEnabled ? Float(source, "_BacklightDirectivity", 5f) : 1f),
                 ParametricRimLiftFactor = 0f,
                 RimLightingMixFactor = Mathf.Clamp01(rimEnabled ? Float(source, "_RimEnableLighting", 1f) :
                     matcapAdditive ? Float(source, "_MatCapEnableLighting", 1f) : 1f),
-                RimMultiplyTexture = rimEnabled ? Texture(source, "_RimColorTex") : null,
+                // MToon's rim image also scales its MatCap. Without a parametric
+                // rim it carries the MatCap mask and main-color tint instead.
+                RimMultiplyTexture = rimEnabled ? Texture(source, "_RimColorTex")
+                    : !hidden && parametricRim.maxColorComponent <= 0f ? MatcapApproximation.Weight(source, textures) : null,
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
