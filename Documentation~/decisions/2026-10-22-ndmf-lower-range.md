@@ -5,7 +5,7 @@
 
 ## 背景
 
-Exporter は NDMF の処理を書き出し用の複製に対して自分で回す（`NdmfExportPreparation.Bridge`）。下限 `ndmfMinimum` は 1.8.3 で、それより古い NDMF の入ったプロジェクトでは「アバターの準備に必要な NDMF API を利用できません」で止まっていた。Modular Avatar の下限を 1.11.2 まで下げる作業と並べて、オーナーから NDMF の下限も下げられる限り下げるよう指示があった。
+Exporter は NDMF の処理を書き出し用の複製に対して自分で回す（`NdmfExportPreparation.Bridge`）。下限 `ndmfMinimum` は 1.8.3 で、それより古い NDMF の入ったプロジェクトでは「アバターの準備に必要な NDMF API を利用できません」で止まっていた。Modular Avatar の下限を下げる作業（`2026-10-22-ma-older-range.md`。1.12.2 に決まった）と並べて、オーナーから NDMF の下限も下げられる限り下げるよう指示があった。
 
 ## Exporter が使う NDMF の API
 
@@ -21,7 +21,7 @@ Bridge が型名で読むもの:
 
 ## 決定
 
-- `ndmfMinimum` を 1.6.0 にする。上限は 1.x のまま（`ndmfMajor` 1）。
+- `ndmfMinimum` を 1.6.0 にする。上限は 1.x のまま（`ndmfMajor` 1）。対象は正式版だけで、プレリリースは確かめていない。
 - 1.8.0 より前の NDMF にはプラットフォームの仕組みがない。`INDMFPlatformProvider` が無いときは、`BuildContext(GameObject, string, bool)` で作り、最初のフェーズを `Resolving` にする。1.8.0 以降で増えた FirstChance と PlatformInit は、それより前の版には無いフェーズなので飛ばすものはない。
 - プラットフォームの型が一部だけある形（`INDMFPlatformProvider` はあるが `PlatformRegistry` か `GenericPlatform` が無い）は、従来どおり処理を始める前に止める。
 
@@ -37,16 +37,16 @@ Bridge が型名で読むもの:
 ## 1.6.0 より下げない理由
 
 - 1.5.x 以前の `BuildContext` には `AssetSaver`（`IAssetSaver`）が無い。生成したアセットは 1 つの `AssetContainer` に入れて `Serialize()` で保存する作りで、1.6.0（NDMF の #479）で今の形になった。Exporter は書き出しごとに専用の一時フォルダを用意し、最後に `AssetSaver` を閉じてそのフォルダの中身を確定させる。1.5.x で同じことをするには保存と後片付けを別に書く必要があり、そのための利用者も見込めないので見送る。
-- Modular Avatar 1.11.2（今回の MA の下限）が受け付ける NDMF も 1.6.0 以上で、1.6.0 より古い NDMF と組み合わせる MA の対応版は無い。
+- MA で NDMF 1.6.0 を受け付けるのは 1.11.0 以降（1.11.x は 1.6.0 以上、1.12.2 は 1.7.2 以上）。1.6.0 より古い NDMF と組み合わさるのは MA 1.10.x 以前で、表示の固定の対応範囲（1.12.2 以上）の外にある。
 
 ## 実プロジェクトでの確認
 
-Unity 2022.3.22f1 の実プロジェクトで、NDMF の 1.6.0・1.7.10・1.8.0 と、それぞれを受け付ける MA を組み合わせて NDMF まわりのテストを回した。組み合わせと結果は `Compatibility/Evidence/NdmfRange/README.md` にある。
+Unity 2022.3.22f1 の実プロジェクトで、NDMF の 1.6.0・1.7.2・1.7.10・1.8.0・1.8.3 と、それぞれを受け付ける MA（1.11.2・1.12.2・1.12.5・1.13.0）や MA なしを組み合わせて NDMF まわりのテストを回した。NDMF 1.6.0 と 1.7.x で、1.8.0 以降と違う結果になったのはテストの土台（NDMF のアバターの印も VRChat の記述子も無いアバター）だけで、テストを直した。組み合わせと結果は `Compatibility/Evidence/NdmfRange/README.md` にある。
 
 ## 検討した代替案と不採用理由
 
 - 1.5.x 以前も読む: 上のとおり、アセットの保存と後片付けを版で分ける必要がある。MA の下限より古い版のための分岐になる。
-- 1.7.0 を下限にする: 1.6.x と 1.7.x の差は `INDMFEditorOnly` だけで、Exporter は無くても困らない。MA 1.11.2 が 1.6.0 を受け付けるので、下限をそこに揃える。
+- 1.7.2 を下限にする（表示の固定に対応する MA 1.12.2 の要求に揃える）: MA を使わない NDMF のツールや、表示の固定を使わないアバターの MA 1.11.x は NDMF 1.6.x で動く。Exporter から見た 1.6.x と 1.7.x の差は `INDMFEditorOnly` だけで、無くても困らないので、その組み合わせを止める理由が無い。MA 1.12.2 以上を入れたときは、MA 自身の依存で NDMF 1.7.2 以上になる。
 
 ## 影響
 
