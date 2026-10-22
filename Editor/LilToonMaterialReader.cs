@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter
             return record;
         }
 
-        private static bool HasOutline(Material m) => Enabled(m, "_UseOutline") || m.shader.name.EndsWith("Outline", StringComparison.Ordinal);
+        internal static bool HasOutline(Material m) => Enabled(m, "_UseOutline") || m.shader.name.EndsWith("Outline", StringComparison.Ordinal);
         private static bool ValidDirection(Vector4 direction) =>
             !float.IsNaN(direction.x) && Math.Abs(direction.x) <= 10000f &&
             !float.IsNaN(direction.y) && Math.Abs(direction.y) <= 10000f &&
