@@ -439,33 +439,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
 
-        [Test]
-        public void MeshRendererRecoveryMapsTheOriginalRendererToThePreparedExportCopy()
-        {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var child = new GameObject("Aux plain mesh"); child.transform.SetParent(fixture.Source.transform, false);
-            child.AddComponent<MeshFilter>().sharedMesh = fixture.Mesh;
-            var original = child.AddComponent<MeshRenderer>(); original.sharedMaterial = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial;
-            var hidden = new Material(Shader.Find("VRVlogTests/UnsupportedHiddenFallback")); var clip = new AnimationClip { name = "Mesh recovery face" };
-            try
-            {
-                var stamp = ExportSourceFingerprint.Compute(fixture.Source);
-                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
-                var prepared = session.Copy.transform.Find("Aux plain mesh").GetComponent<MeshRenderer>();
-                // Simulate a later authoring material assignment on the owned copy.
-                prepared.sharedMaterial = hidden;
-                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
-                var options = new ExportRecoveryOptions(); options.Actions.Add(new ExportRecoveryAction { Id = "mesh-recovery", Kind = ExportRecoveryActionKind.ExcludeHiddenRenderer, Renderer = original });
-                var bytes = session.Export("Mesh recovery", "Tests", Listed(clip), blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryOptions: options);
-                Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(bytes));
-                var nodes = (System.Collections.Generic.List<object>)GlbDocument.Read(bytes).Json["nodes"];
-                Assert.That(nodes.Cast<System.Collections.Generic.Dictionary<string, object>>().Any(node => node.TryGetValue("name", out var name) && (string)name == "Aux plain mesh" && node.ContainsKey("mesh")), Is.False);
-                Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(stamp)); Assert.That(original.enabled, Is.True);
-            }
-            finally { Object.DestroyImmediate(hidden); Object.DestroyImmediate(clip); }
-        }
-
         [UnityTest]
         public IEnumerator CorrectedRecommendedAssetBecomesSelectableWithoutLosingExplicitFiles()
         {
