@@ -74,7 +74,8 @@ def read_text(path):
 
 def write_text(path, text, bom=False):
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = text.encode("utf-8")
+    # LF only, as git stores them, so --check gives the same answer on every checkout.
+    data = text.replace("\r\n", "\n").encode("utf-8")
     path.write_bytes((b"\xef\xbb\xbf" if bom else b"") + data)
 
 
@@ -229,7 +230,7 @@ def generate(source, target):
 
     commit = subprocess.run(["git", "-C", str(source), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     version = json.loads((packages / "VRM10" / "package.json").read_text(encoding="utf-8-sig"))["version"]
-    shutil.copyfile(source / "LICENSE.txt", target / "LICENSE.txt")
+    write_text(target / "LICENSE.txt", *read_text(source / "LICENSE.txt"))
     write_text(target / "LICENSE.txt.meta", _text_meta("LICENSE.txt"))
     write_text(target / "VERSION.json", json.dumps({
         "upstream": UPSTREAM_URL, "version": version, "commit": commit,
