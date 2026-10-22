@@ -92,6 +92,8 @@ namespace VRVlog.LilToonExporter
         Vector2? dragMouse;
         // Window-relative slot rectangles, kept for tests and screenshots.
         readonly System.Collections.Generic.Dictionary<Place, Rect> slotRects = new System.Collections.Generic.Dictionary<Place, Rect>();
+        // The step row as last drawn, kept for tests.
+        StepIndicator.Layout stepLayout;
         // Tiles with a × button, which shows only under the mouse; the
         // window repaints when the mouse moves onto or off one of them.
         readonly System.Collections.Generic.List<Rect> closableTiles = new System.Collections.Generic.List<Rect>();
@@ -151,9 +153,9 @@ namespace VRVlog.LilToonExporter
         static Color ThumbEmpty => Skin(0x333333, 0xcfcfcf);
         static readonly Color AccentButtonColor = Hex(0x2c5d87), BadgeColor = new Color(.13f, .13f, .13f, .85f);
         GUIStyle cardText, cardTextDisabled, dimText, errorText, dimMini, dimMiniRight, dimMiniBold, errorMini, boldText, badgeText, closeText, accentButton, centeredDim, dropBox,
-            nameCenter;
+            nameCenter, stepMarkerText, stepMarkerDim, stepErrorBold;
         bool stylesForProSkin;
-        Texture2D accentNormal, accentHover, accentActive;
+        Texture2D accentNormal, accentHover, accentActive, discTexture, ringTexture;
         readonly System.Collections.Generic.Dictionary<(string, GUIStyle, int), string> fitted = new System.Collections.Generic.Dictionary<(string, GUIStyle, int), string>();
 
         // The "アプリに転送" window starts from what this window shows: these
@@ -516,7 +518,7 @@ namespace VRVlog.LilToonExporter
             using (new EditorGUILayout.VerticalScope(new GUIStyle { padding = new RectOffset(16, 16, 12, 12) }))
             {
                 DrawSteps();
-                EditorGUILayout.Space(8);
+                EditorGUILayout.Space(12);
                 var blocked = pending != null || applyingOnLeave || EditorApplication.isPlayingOrWillChangePlaymode;
                 if (EditorApplication.isPlayingOrWillChangePlaymode)
                     EditorGUILayout.HelpBox(ExporterLocalization.T("Playモードを終了すると編集できます。"), MessageType.Info);
@@ -855,27 +857,68 @@ namespace VRVlog.LilToonExporter
 
         // ---- Pages ----
 
-        // Fixed widths, so the row does not follow the font size; a narrow
-        // window shortens all three alike. Done steps are in the text color,
-        // the current one bold and the rest dimmed. Moving is by the bottom bar only.
+        // Circles joined by lines, each followed by the step name: a check for
+        // done steps, the number filled with the accent for the current one and
+        // in a ring for the rest; a step with an error is red with "!". The
+        // places come from the row width only (StepIndicator), so the font size
+        // cannot move them. Moving is by the bottom bar only.
         void DrawSteps()
         {
-            var row = GUILayoutUtility.GetRect(100, 20, GUILayout.ExpandWidth(true));
-            var names = new[] { "1 表情の設定", "2 除外するオブジェクト", transferMode ? "3 名前と利用条件" : "3 VRMの情報" };
-            var widths = new[] { 96f, 150f, 130f };
-            const float separator = 20;
-            var scale = Mathf.Min(1, Mathf.Max(0, row.width - separator * 2) / widths.Sum());
-            var shown = session == null ? ExpressionsPage : page;
-            var x = row.x;
+            var row = GUILayoutUtility.GetRect(100, StepIndicator.Height, GUILayout.ExpandWidth(true));
+            var layout = StepIndicator.Compute(row);
+            var names = StepIndicator.Names(transferMode);
+            var shown = StepIndicator.Shown(session != null, page);
+            var repaint = Event.current.type == EventType.Repaint;
+            if (repaint) stepLayout = layout;
             for (var index = 0; index < names.Length; index++)
             {
-                if (index > 0) { GUI.Label(new Rect(x, row.y, separator, row.height), "›", centeredDim); x += separator; }
-                var style = index == shown ? boldText : index < shown ? cardText : dimText;
+                if (index > 0 && repaint) EditorGUI.DrawRect(layout.Lines[index - 1], CardBorderColor);
                 var text = ExporterLocalization.T(names[index]);
-                var rect = new Rect(x, row.y, widths[index] * scale, row.height);
-                GUI.Label(rect, new GUIContent(Fit(text, style, rect.width), text), style);
-                x = rect.xMax;
+                var (number, name) = StepIndicator.Split(text);
+                var state = StepIndicator.StateOf(index, shown);
+                var error = StepIndicator.HasError(index, excludedObjectError);
+                if (repaint) DrawStepMarker(layout.Circles[index], StepIndicator.MarkerOf(state, error), number.Length > 0 ? number : (index + 1).ToString());
+                var look = StepIndicator.LabelOf(state, error);
+                var style = look.Error ? (look.Bold ? stepErrorBold : errorText) : look.Bold ? boldText : look.Dim ? dimText : cardText;
+                var rect = layout.Labels[index];
+                GUI.Label(rect, new GUIContent(Fit(name, style, rect.width), text), style);
             }
+        }
+
+        void DrawStepMarker(Rect circle, StepIndicator.Marker marker, string number)
+        {
+            var fill = marker == StepIndicator.Marker.Error ? ErrorColor : marker == StepIndicator.Marker.Ring ? DimColor : AccentButtonColor;
+            GUI.DrawTexture(circle, Disc(marker == StepIndicator.Marker.Ring), ScaleMode.StretchToFill, true, 0, fill, 0, 0);
+            if (marker == StepIndicator.Marker.Error) GUI.Label(circle, "!", stepMarkerText);
+            else if (marker == StepIndicator.Marker.Check)
+            {
+                var previous = Handles.color; Handles.color = Color.white;
+                Handles.DrawAAPolyLine(2.4f, new Vector3(circle.x + circle.width * .28f, circle.y + circle.height * .52f),
+                    new Vector3(circle.x + circle.width * .44f, circle.y + circle.height * .68f), new Vector3(circle.x + circle.width * .73f, circle.y + circle.height * .34f));
+                Handles.color = previous;
+            }
+            else GUI.Label(circle, number, marker == StepIndicator.Marker.Ring ? stepMarkerDim : stepMarkerText);
+        }
+
+        // A white disc or ring, tinted when drawn; made larger than drawn so the edge stays smooth.
+        Texture2D Disc(bool ring)
+        {
+            var texture = ring ? ringTexture : discTexture;
+            if (texture != null) return texture;
+            const int size = 96; const float edge = size / 2f, stroke = 6;
+            texture = new Texture2D(size, size, TextureFormat.RGBA32, false) { hideFlags = HideFlags.HideAndDontSave, filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+            var pixels = new Color32[size * size];
+            for (var y = 0; y < size; y++)
+                for (var x = 0; x < size; x++)
+                {
+                    var distance = Vector2.Distance(new Vector2(x + .5f, y + .5f), new Vector2(edge, edge));
+                    var outer = Mathf.Clamp01(edge - distance);
+                    var alpha = ring ? Mathf.Min(outer, Mathf.Clamp01(distance - (edge - stroke))) : outer;
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(alpha * 255));
+                }
+            texture.SetPixels32(pixels); texture.Apply();
+            if (ring) ringTexture = texture; else discTexture = texture;
+            return texture;
         }
 
         bool PreviewPending => excludedObjectEdits != null || GimmicksPending;
@@ -1892,6 +1935,10 @@ namespace VRVlog.LilToonExporter
             closeText = Label(EditorStyles.label, DimColor, TextAnchor.MiddleCenter);
             closeText.hover.textColor = TextColor;
             centeredDim = Label(EditorStyles.miniLabel, DimColor, TextAnchor.MiddleCenter);
+            // The step circles: white on the filled ones, dimmed in the ring.
+            stepMarkerText = Label(EditorStyles.miniBoldLabel, Color.white, TextAnchor.MiddleCenter);
+            stepMarkerDim = Label(EditorStyles.miniBoldLabel, DimColor, TextAnchor.MiddleCenter);
+            stepErrorBold = Label(EditorStyles.boldLabel, ErrorColor);
             // Drop areas: the hint is centred in the box and readable on both skins.
             dropBox = Label(GUI.skin.box, DimColor, TextAnchor.MiddleCenter);
             dropBox.wordWrap = true;
@@ -1915,8 +1962,8 @@ namespace VRVlog.LilToonExporter
 
         void ReleaseTextures()
         {
-            foreach (var texture in new[] { accentNormal, accentHover, accentActive }) if (texture != null) DestroyImmediate(texture);
-            accentNormal = accentHover = accentActive = null;
+            foreach (var texture in new[] { accentNormal, accentHover, accentActive, discTexture, ringTexture }) if (texture != null) DestroyImmediate(texture);
+            accentNormal = accentHover = accentActive = discTexture = ringTexture = null;
         }
 
         void ReleaseStyles() { ReleaseTextures(); cardText = null; fitted.Clear(); }
