@@ -176,6 +176,25 @@ class WorkflowTrustTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             policy.check("release-vpm.yml", data)
 
+    def test_release_publishes_no_univrm_dependency_packages(self):
+        # UniVRM is bundled inside the exporter, so the release carries only the exporter ZIP.
+        mutations = (
+            lambda w: w["on"]["workflow_dispatch"]["inputs"].update(
+                {"univrm_version": {"description": "Pinned UniVRM version", "required": True}}),
+            lambda w: w["jobs"]["resolve-candidate"]["outputs"].update(
+                {"univrm_version": "${{ steps.candidate.outputs.univrm_version }}"}),
+            lambda w: w["jobs"]["release"]["steps"].insert(-1, {"name": "Build UniVRM dependency packages",
+                                                                "run": "zip -qr com.vrmc.vrm-0.131.0.zip ."}),
+            lambda w: w["jobs"]["release"]["steps"][-1].update({"run": w["jobs"]["release"]["steps"][-1]["run"].replace(
+                'assets=("artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip")',
+                'assets=("artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip" "artifacts/com.vrmc.vrm-0.131.0.zip")')}),
+        )
+        for mutation in mutations:
+            data = self.workflow("release-vpm.yml")
+            mutation(data)
+            with self.subTest(mutation=mutation), self.assertRaises(ValueError):
+                policy.check("release-vpm.yml", data)
+
     def test_beta_tag_authentication_cannot_be_skipped_or_moved_after_secrets(self):
         for mutation in ("remove", "skip", "move", "source"):
             data = self.workflow("build-listing.yml")
