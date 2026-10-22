@@ -1077,6 +1077,9 @@ INTEGRATION_CASES = {
     'InstalledAaoNeutralEndpointExportTests': {
         'MaskMergeAndTraceKeepFxNeutralAuthoredEndpointsTrackingAndDeferredBlink': 3,
     },
+    'NdmfAnimationModeSamplingTests': {
+        'ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode': 1,
+    },
     'NdmfBlinkPreparationTests': {
         'InstalledAaoMergeKeepsTheSelectedRendererInCallbackFreeBlinkPreview': 1,
         'InstalledAaoMergeStillOptimizesAndRemapsBlinkForTheExportCallback': 1,

@@ -78,12 +78,14 @@ namespace VRVlog.LilToonExporter
                         var outer = Member(source, "mask") as AvatarMask;
                         var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                         AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
-                        var controllerHasBody = controller.layers.Any(l => States(l.stateMachine).Any(s => HasBody(Clip(s), skipMuscles, bodyPaths) || s.motion is BlendTree));
+                        AnimationClip Replace(AnimationClip clip) => replacements.TryGetValue(clip, out var replacement) ? replacement : clip;
+                        bool Body(AnimatorState s) => s.motion is BlendTree tree ? TreeHasBody(tree, Replace, skipMuscles, bodyPaths) : HasBody(Clip(s), skipMuscles, bodyPaths);
+                        var controllerHasBody = controller.layers.Any(l => States(l.stateMachine).Any(Body));
                         for (var i = 0; i < controller.layers.Length; i++)
                         {
                             var layer = controller.layers[i];
                             var all = States(layer.stateMachine).ToArray();
-                            var hasBody = all.Any(s => HasBody(Clip(s), skipMuscles, bodyPaths)) || all.Any(s => s.motion is BlendTree);
+                            var hasBody = all.Any(Body);
                             var behaviours = all.SelectMany(s => s.behaviours).Concat(Behaviours(layer.stateMachine)).ToArray();
                             // Tracking controls persist across states and can
                             // affect clips in other (even bodyless) layers.
@@ -222,7 +224,8 @@ namespace VRVlog.LilToonExporter
                     var controller = ExpressionDependencies.Controller(runtime); var replacements = ExpressionDependencies.Overrides(runtime);
                     var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                     AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
-                    bool Body(AnimatorState s) => s.motion is BlendTree || HasBody(Clip(s), skipMuscles, bodyPaths);
+                    AnimationClip Replace(AnimationClip clip) => replacements.TryGetValue(clip, out var replacement) ? replacement : clip;
+                    bool Body(AnimatorState s) => s.motion is BlendTree tree ? TreeHasBody(tree, Replace, skipMuscles, bodyPaths) : HasBody(Clip(s), skipMuscles, bodyPaths);
                     // A synced layer replaces motions of another layer's graph.
                     AnimatorStateMachine Machine(AnimatorControllerLayer l) => l.syncedLayerIndex >= 0 ? controller.layers[l.syncedLayerIndex].stateMachine : l.stateMachine;
                     var controllerHasBody = controller.layers.Any(l => l.syncedLayerIndex >= 0 || States(Machine(l)).Any(Body));
@@ -395,6 +398,21 @@ namespace VRVlog.LilToonExporter
                 case AnimatorConditionMode.Less: return value < c.threshold;
                 default: throw new InvalidOperationException("未対応のAnimator条件です。");
             }
+        }
+        // A BlendTree can move the body only through a clip under it. A tree
+        // that only blends BlendShapes or object activity (Modular Avatar
+        // 1.19 builds its Reactive Components this way) is not a body layer.
+        // A motion that is neither a clip nor a tree counts as body.
+        static bool TreeHasBody(BlendTree tree, Func<AnimationClip, AnimationClip> replace, bool skipMuscles, ISet<string> bodyPaths, int depth = 0)
+        {
+            if (depth > 64) throw new InvalidOperationException("BlendTreeの階層が深すぎます。");
+            foreach (var child in tree.children)
+            {
+                if (child.motion == null) continue;
+                if (child.motion is BlendTree inner ? TreeHasBody(inner, replace, skipMuscles, bodyPaths, depth + 1)
+                    : !(child.motion is AnimationClip clip) || HasBody(replace(clip), skipMuscles, bodyPaths)) return true;
+            }
+            return false;
         }
         static bool Tracking(StateMachineBehaviour b) => b != null && (b.GetType().Name == "VRCAnimatorTrackingControl" || b.GetType().Name == "VRCAnimatorLocomotionControl");
         internal static bool HasBody(AnimationClip clip, bool skipMuscles = false, ISet<string> bodyPaths = null) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(b =>
