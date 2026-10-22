@@ -39,6 +39,39 @@ namespace VRVlog.LilToonExporter
         // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
         // when they change nothing, so the board keeps them.
         readonly HashSet<AnimationClip> gestureClips = new HashSet<AnimationClip>();
+        // Clips that Motion Time states play (a Radial Puppet's), and clips
+        // that other states play. A clip only the first kind plays is held at
+        // one frame, as the menu export holds it, instead of being animated.
+        readonly HashSet<AnimationClip> timedClips = new HashSet<AnimationClip>();
+        readonly HashSet<AnimationClip> playedClips = new HashSet<AnimationClip>();
+
+        bool HeldAtOneFrame(AnimationClip clip) => timedClips.Contains(clip) && !playedClips.Contains(clip);
+
+        void CollectTimedClips(RuntimeAnimatorController runtime)
+        {
+            var replacements = new Dictionary<AnimationClip, AnimationClip>();
+            if (runtime is AnimatorOverrideController overrides)
+            {
+                var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+                overrides.GetOverrides(pairs);
+                foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
+                runtime = overrides.runtimeAnimatorController;
+            }
+            if (!(runtime is AnimatorController controller)) return;
+            var layers = controller.layers;
+            IEnumerable<AnimatorState> States(AnimatorStateMachine machine) => machine == null ? Enumerable.Empty<AnimatorState>() :
+                machine.states.Select(child => child.state).Concat(machine.stateMachines.SelectMany(child => States(child.stateMachine)));
+            foreach (var layer in layers)
+            {
+                var synced = layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length;
+                foreach (var state in States(synced ? layers[layer.syncedLayerIndex].stateMachine : layer.stateMachine))
+                {
+                    if (state == null || !((synced ? layer.GetOverrideMotion(state) ?? state.motion : state.motion) is AnimationClip clip)) continue;
+                    if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
+                    (state.timeParameterActive ? timedClips : playedClips).Add(clip);
+                }
+            }
+        }
 
         void CaptureClipRoots()
         {
@@ -52,6 +85,8 @@ namespace VRVlog.LilToonExporter
                     // all its clips shown.
                     try { gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller)); }
                     catch (Exception) { gestureClips.UnionWith(controller.animationClips.Where(clip => clip != null)); }
+                    try { CollectTimedClips(controller); }
+                    catch (Exception) { }
                 }
                 foreach (var clip in controller.animationClips.Where(clip => clip != null))
                 {

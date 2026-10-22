@@ -341,20 +341,25 @@ namespace VRVlog.LilToonExporter
         // The list-only export reads a listed clip from the avatar root, as the
         // gesture reader does. A clip registered below the root gets a copy
         // with its paths moved there, and a mesh left out of recording drops
-        // its own curves, as the board does. Copies join assets to be destroyed.
-        AnimationClip AvatarRelativeClip(AnimationClip clip, List<Object> assets)
+        // its own curves, as the board does. A clip only a Motion Time state
+        // plays is held at the board's frame. Copies join assets to be destroyed.
+        AnimationClip AvatarRelativeClip(AnimationClip clip, float time, List<Object> assets)
         {
             var root = ClipRoot(clip);
+            var held = HeldAtOneFrame(clip);
             string Full(string path) => string.IsNullOrEmpty(root) ? path : string.IsNullOrEmpty(path) ? root : root + "/" + path;
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            if (string.IsNullOrEmpty(root) && !bindings.Any(binding => PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(binding.path))) return clip;
+            if (!held && string.IsNullOrEmpty(root) && !bindings.Any(binding => PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(binding.path))) return clip;
             var copy = new AnimationClip { name = clip.name, frameRate = clip.frameRate }; assets.Add(copy);
-            AnimationUtility.SetAnimationClipSettings(copy, AnimationUtility.GetAnimationClipSettings(clip));
+            var settings = AnimationUtility.GetAnimationClipSettings(clip);
+            if (held) settings.loopTime = false;
+            AnimationUtility.SetAnimationClipSettings(copy, settings);
             foreach (var binding in bindings)
             {
                 var moved = binding; moved.path = Full(binding.path);
                 if (PoseSampling.IsBlendShape(binding) && skippedPaths.Contains(moved.path)) continue;
-                AnimationUtility.SetEditorCurve(copy, moved, AnimationUtility.GetEditorCurve(clip, binding));
+                var curve = AnimationUtility.GetEditorCurve(clip, binding);
+                AnimationUtility.SetEditorCurve(copy, moved, held ? AnimationCurve.Constant(0, Mathf.Max(clip.length, 1 / 60f), curve.Evaluate(time)) : curve);
             }
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
             {

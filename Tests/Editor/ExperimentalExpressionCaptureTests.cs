@@ -1347,6 +1347,53 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
         }
 
+        // A clip only a Motion Time state plays (a Radial Puppet's) stays one
+        // face at the board's frame, as the menu export keeps it, instead of
+        // playing through the radial's range.
+        [Test]
+        public void ListOnlyExportHoldsAMotionTimeFaceAtOneFrame()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var radial = new AnimationClip { name = "Radial face" };
+            var controller = new UnityEditor.Animations.AnimatorController { name = "Radial" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-radial-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(radial, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Linear(0, 0, 2, 80));
+                controller.AddParameter("Radial", AnimatorControllerParameterType.Float);
+                controller.AddLayer("Base");
+                var state = controller.layers[0].stateMachine.AddState("Radial");
+                state.motion = radial; state.timeParameterActive = true; state.timeParameter = "Radial";
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
+                    { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = radial, Source = "Fixture" } });
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["custom"]).Keys, Does.Contain(radial.name));
+                Assert.That(extensions.ContainsKey(VRVlog.Expressions.ExpressionAnimationData.Extension) &&
+                    VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Any(), Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(window); Object.DestroyImmediate(radial);
+                foreach (var layer in controller.layers) Object.DestroyImmediate(layer.stateMachine);
+                Object.DestroyImmediate(controller);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
         // With a face moved to the excluded list the board records its list;
         // two files with the same name are both saved, the second numbered.
         [Test]
