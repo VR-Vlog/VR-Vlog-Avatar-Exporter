@@ -24,9 +24,6 @@ namespace VRVlog.LilToonExporter
             var size = TextureResizePolicy.Size(Math.Max(main.width, Math.Max(emission.width, mask.width)),
                 Math.Max(main.height, Math.Max(emission.height, mask.height)));
             var baker = new Material(shader);
-            var previous = RenderTexture.active;
-            var previousSrgb = GL.sRGBWrite;
-            RenderTexture target = null;
             Texture2D result = null;
             try
             {
@@ -46,18 +43,9 @@ namespace VRVlog.LilToonExporter
                     var offset = material.GetTextureOffset("_MainTex");
                     baker.SetVector("_VrvMainST", new Vector4(scale.x, scale.y, offset.x, offset.y));
                 }
-                target = RenderTexture.GetTemporary(size.Item1, size.Item2, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                Graphics.Blit(main, target, baker);
-                RenderTexture.active = target;
                 // MToon samples every image with the main texture transform.
-                result = new Texture2D(size.Item1, size.Item2, TextureFormat.RGBA32, false, false)
-                {
-                    name = material.name + "__VRVlog_Emission_" + Guid.NewGuid().ToString("N"),
-                    wrapModeU = main.wrapModeU, wrapModeV = main.wrapModeV, filterMode = main.filterMode
-                };
-                result.ReadPixels(new Rect(0, 0, size.Item1, size.Item2), 0, 0, false);
-                result.Apply(false, false);
+                result = GpuReadback.BakeRgba32(size.Item1, size.Item2, material.name + "__VRVlog_Emission_" + Guid.NewGuid().ToString("N"), main,
+                    target => Graphics.Blit(main, target, baker));
                 owned.Add(result);
                 var baked = result;
                 result = null; // ownership transferred to the export
@@ -65,10 +53,7 @@ namespace VRVlog.LilToonExporter
             }
             finally
             {
-                GL.sRGBWrite = previousSrgb;
-                RenderTexture.active = previous;
                 if (result != null) UnityEngine.Object.DestroyImmediate(result);
-                if (target != null) RenderTexture.ReleaseTemporary(target);
                 UnityEngine.Object.DestroyImmediate(baker);
             }
         }

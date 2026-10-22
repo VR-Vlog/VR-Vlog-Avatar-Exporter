@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using VRVlog.LilToon;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -711,8 +712,6 @@ namespace VRVlog.LilToonExporter
         // Every slot the generic mapping fills is a 2D slot.
         static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
-        static bool Finite(Vector4 value) => Finite(value.x) && Finite(value.y) && Finite(value.z) && Finite(value.w);
 
         static void Set(Material material, string name, float value)
         {

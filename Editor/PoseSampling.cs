@@ -12,6 +12,7 @@ using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
 using VRVlog.Poses;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -608,7 +609,6 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(result)) AnimationUtility.SetObjectReferenceCurve(result, binding, null);
             return result;
         }
-        internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         static void ApplyHumanoidRoot(Animator animator, GameObject root, HumanPose baseline, List<PoseLayer> layers, bool preserveUnwrittenBodyChannels = false)
         {

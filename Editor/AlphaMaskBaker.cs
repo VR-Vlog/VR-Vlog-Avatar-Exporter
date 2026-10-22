@@ -50,9 +50,6 @@ namespace VRVlog.LilToonExporter
             if (size.Item1 < source.width || size.Item2 < source.height || size.Item1 < mask.width || size.Item2 < mask.height)
                 warnings?.Add(material.name + ": アルファマスクを含む画像を " + size.Item1 + "×" + size.Item2 + " へ縮小しました。");
             var baker = new Material(shader);
-            var previous = RenderTexture.active;
-            var previousSrgb = GL.sRGBWrite;
-            RenderTexture target = null;
             Texture2D result = null;
             try
             {
@@ -64,18 +61,9 @@ namespace VRVlog.LilToonExporter
                 baker.SetFloat("_AlphaMaskValue", material.GetFloat("_AlphaMaskValue"));
                 var color = material.GetColor("_Color");
                 baker.SetFloat("_ColorAlpha", color.a);
-                target = RenderTexture.GetTemporary(size.Item1, size.Item2, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                Graphics.Blit(source, target, baker);
-                RenderTexture.active = target;
-                result = new Texture2D(size.Item1, size.Item2, TextureFormat.RGBA32, false, false)
-                {
-                    name = DeterministicNames.Unique(material.name + "__VRVlog_Alpha_" + DeterministicNames.Hash("Alpha", origin, material.name),
-                        candidate => owned.Exists(texture => texture != null && texture.name == candidate)),
-                    wrapModeU = source.wrapModeU, wrapModeV = source.wrapModeV, filterMode = source.filterMode
-                };
-                result.ReadPixels(new Rect(0, 0, size.Item1, size.Item2), 0, 0, false);
-                result.Apply(false, false);
+                var name = DeterministicNames.Unique(material.name + "__VRVlog_Alpha_" + DeterministicNames.Hash("Alpha", origin, material.name),
+                    candidate => owned.Exists(texture => texture != null && texture.name == candidate));
+                result = GpuReadback.BakeRgba32(size.Item1, size.Item2, name, source, target => Graphics.Blit(source, target, baker));
                 owned.Add(result);
                 material.SetTexture("_MainTex", result);
                 material.SetColor("_Color", new Color(color.r, color.g, color.b, 1));
@@ -85,10 +73,7 @@ namespace VRVlog.LilToonExporter
             }
             finally
             {
-                GL.sRGBWrite = previousSrgb;
-                RenderTexture.active = previous;
                 if (result != null) UnityEngine.Object.DestroyImmediate(result);
-                if (target != null) RenderTexture.ReleaseTemporary(target);
                 UnityEngine.Object.DestroyImmediate(baker);
             }
         }

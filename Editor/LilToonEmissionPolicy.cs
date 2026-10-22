@@ -1,4 +1,5 @@
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -76,7 +77,5 @@ namespace VRVlog.LilToonExporter
             return Finite(sum.x) && Finite(sum.y) && Finite(sum.z) ? new Color(sum.x, sum.y, sum.z, 1) : Color.white;
         }
 #endif
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

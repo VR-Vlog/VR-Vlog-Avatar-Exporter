@@ -23,6 +23,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/VrmMenuExpressions.cs'),
     (Join-Path $taskRepo 'Formats/Runtime/ExpressionAnimationData.cs'),
     (Join-Path $taskRepo 'Editor/LilToonEmissionPolicy.cs'),
+    (Join-Path $taskRepo 'Editor/NumericChecks.cs'),
     (Join-Path $taskRepo 'Editor/LilToonMaterialReader.cs'),
     (Join-Path $taskRepo 'Editor/LilToonLightingProfile.cs'),
     (Join-Path $taskRepo 'Editor/LilToonExtensionModel.cs'),

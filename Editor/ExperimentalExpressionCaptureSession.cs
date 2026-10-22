@@ -5,6 +5,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -337,8 +338,6 @@ namespace VRVlog.LilToonExporter
             return moves;
         }
 
-        static bool Finite(Vector3 value) => Finite(value.x) && Finite(value.y) && Finite(value.z);
-
         internal string SaveSettings()
         {
             // Recorded arrays remain useful recovery data after source edits.
@@ -476,8 +475,6 @@ namespace VRVlog.LilToonExporter
             ExportSourceFingerprint.MeshData(hash, mesh);
             return hash.Finish().ToString();
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         public void Dispose()
         {

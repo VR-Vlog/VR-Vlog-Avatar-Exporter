@@ -4,6 +4,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -122,8 +123,6 @@ namespace VRVlog.LilToonExporter
                 }
             }
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         internal void RestoreSourceMeshKeys(ModelExporter converter)
         {

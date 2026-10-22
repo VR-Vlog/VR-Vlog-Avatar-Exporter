@@ -5,6 +5,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -214,8 +215,6 @@ namespace VRVlog.LilToonExporter
             }
             finally { Object.DestroyImmediate(composed); }
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         static float Derivative(AnimationCurve curve, float time, bool incoming)
         {
