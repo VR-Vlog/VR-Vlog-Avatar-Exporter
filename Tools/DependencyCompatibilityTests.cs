@@ -29,16 +29,20 @@ public static class DependencyCompatibilityTests
             catch (InvalidOperationException) { rejected = true; }
             Check(rejected, "Direct export also fails before conversion");
         }
-        Check(DependencyPolicy.VrchatSdkMinimum == "3.5.2" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
-        foreach (var version in new[] { "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6" })
+        Check(DependencyPolicy.VrchatSdkMinimum == "3.5.0" && DependencyPolicy.VrchatSdkBelow == "3.11.0", "VRChat SDK audio range");
+        // A pre-release counts as its X.Y.Z (VRCAnimatorPlayAudio is the same in every 3.5.2+ pre-release).
+        foreach (var version in new[] { "3.5.0", "3.5.1", "3.5.2", "3.5.3", "3.6.0", "3.6.1", "3.7.0", "3.7.4", "3.8.0", "3.9.0", "3.10.4", "3.10.5", "3.10.6",
+            "3.5.2-beta.1", "3.6.2-constraints.3", "3.10.0-beta.1", "3.10.5-beta.1", "3.10.6-beta.2", "3.10.99" })
         {
             Check(DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio omission " + version);
-            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.5.1"), "Base must be the same release " + version);
+            Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, "3.4.2"), "Base must be the same release " + version);
         }
-        foreach (var version in new[] { null, "", "3.5.1", "3.5.0", "3.4.2", "3.5.2-beta.1", "3.11.0", "4.0.0", "3.10.5-beta.1", "3.10", "3.10.5.0", " 3.10.5", "03.10.5" })
+        foreach (var version in new[] { null, "", "3.4.2", "3.4.99", "3.11.0", "3.11.0-beta.1", "3.12.0", "4.0.0", "3.10", "3.10.5.0", " 3.10.5", "03.10.5",
+            "3.10.5+local", "3.10.5-", "3.10.5-beta_1", "3.10.5-beta.1+local", "3.10.x" })
             Check(!DependencyPolicy.SupportsVrchatSdkAudio(version, version), "SDK audio stops " + (version ?? "null"));
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", "3.10.4"), "Mixed SDK packages stop");
         Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.5", null), "Missing base stops");
+        Check(!DependencyPolicy.SupportsVrchatSdkAudio("3.10.6-beta.2", "3.10.6"), "A pre-release Avatars with a stable Base stops");
         Check(DependencyPolicy.ModularAvatarMinimum == "1.18.0" && DependencyPolicy.ModularAvatarBelow == "1.19.0", "MA appearance range");
         foreach (var version in new[] { "1.18.0", "1.18.1", "1.18.3", "1.18.4", "1.18.7", "1.18.10" })
         {

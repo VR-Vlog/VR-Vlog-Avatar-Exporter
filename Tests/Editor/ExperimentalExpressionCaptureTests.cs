@@ -1976,6 +1976,9 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            // VRCAnimatorPlayAudio first ships in VRChat SDK 3.5.2; 3.5.0 and 3.5.1 have no audio behaviour to omit.
+            if (callback.StartsWith("audio", StringComparison.Ordinal) && Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorPlayAudio") == null)
+                Assert.Ignore("VRCAnimatorPlayAudio is in VRChat SDK 3.5.2 and later.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
             AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
