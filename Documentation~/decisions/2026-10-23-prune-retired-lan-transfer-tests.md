@@ -35,5 +35,5 @@ mk が 10/23 に「テストって肥大化しすぎているかな？もしそ�
 
 ## 件数
 
-- EditMode のケース数: 4,539 → 4,514（−25）
+- EditMode のケース数: 変更前後で `LanTransferTests` が28ケース→3ケース（−25）。Unity 2022.3.22f1 の EditMode 全件で計測
 - `LanTransferTests` の行数: 409 → 42
