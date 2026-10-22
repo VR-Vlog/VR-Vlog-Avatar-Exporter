@@ -2489,8 +2489,8 @@ namespace VRVlog.LilToonExporter
                 // bytes. Saving the board's own VRM (no written) stays strict.
                 if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
-                var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report,
-                    Array.Empty<ExperimentalExpressionCaptureSession.Pose>(), poses, presets.Select(value => value.Copy()).ToArray(), listFaces: listFaces);
+                var exported = target.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
+                    poses, presets.Select(value => value.Copy()).ToArray());
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,

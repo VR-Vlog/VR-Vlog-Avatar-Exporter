@@ -101,8 +101,6 @@ BEHAVIOR_CASES = {
         'PreviewRendersOpenClosedAndOpenWithinOneUpdateWithoutChangingSource': 1,
         'PreviewUsesTheBilateralPresetAndFallsBackOnlyWhenItIsAbsent': 2,
         'SourceRendererIdentitySurvivesRenameAndSiblingReorder': 1,
-        'StatusClearsAnEarlierSuccessWhenTheLiveBindingBecomesInvalid': 1,
-        'StatusReusesScansUntilExpiryOrARelevantSettingChanges': 1,
         'TheFirstCompatiblePartialFamilyOwnsEachRenderer': 1,
         'UnifiedEyesOnDifferentRenderersFormOneBilateralClosure': 1,
         'UnknownClosingNamesExportWithoutBlinkInsteadOfGuessing': 3,

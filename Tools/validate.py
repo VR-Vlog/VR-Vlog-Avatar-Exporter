@@ -111,7 +111,6 @@ assert 'item.Name == "_BacklightColorTex"' in reader and 'texture == Texture2D.w
 assert "ResolveTexture(glb, texture" in injector
 assert 'LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);' in one_click
 assert 'var warningText' not in window
-assert 'VrmMenuExpressions.CountRegistered(bytes)' in window
 assert "glb.AppendBinary(png)" in injector
 texture_encoder = (root / "Editor/MobileTextureEncoder.cs").read_text(encoding="utf-8")
 assert "PngWriter.Encode(destination)" in texture_encoder
@@ -185,7 +184,7 @@ assert 'Guid.NewGuid().ToString("N")' in recovery_session
 assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
-assert "UniVrmOneClickExporter.Export" not in window and "settings.Creator(targetAvatar, AvatarName(), targetAuthor)" in window
+assert "UniVrmOneClickExporter.Export" not in window
 assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
 assert 'var version = InstalledLilToonVersion();' in window and 'return version;' in window
 # lilToon is the registered package or, imported from its unitypackage, found under Assets.
@@ -200,13 +199,6 @@ assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in wind
 # only a missing lilToon (or its baker) stops, other differences are warnings.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);")
 assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-# The export window and batch callers export through ExportSettings, which runs
-# the same check ("アプリに転送" through the board's session, checked above).
-export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
-assert "lilToonVersion: LilToonExporterWindow.RequireLilToon(avatar, warnings)," in export_settings
-assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
-assert "licenseOptions: License, disableAudioLink: true" in export_settings
-assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
 # Both "アプリに転送" exports go through the expression board's save; the quick
 # one prepares a board out of sight, so it writes what an untouched "通常" writes.
 assert "ExperimentalExpressionCaptureWindow.PrepareHidden(avatar)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
@@ -318,14 +310,9 @@ assert 'Float(source, "_OutlineWidth", 0f)) * 0.01f' in one_click
 assert 'OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures, outlineMasks)' in one_click
 assert "HasPortableOutline(source)" in one_click
 assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_OutlineTex")' not in one_click
-assert 'private string author = "";' in window
 assert 'private string avatarName = "";' not in window
-assert 'var targetOutput = outputPath;' in window
-assert 'var targetExclusions = settings.Exclusions();' in window
-assert 'ExportFailureWindow.Show(session, Completed)' in window
-assert 'session = ExportAndSaveNormally(targetAvatar, targetOutput,' in window
 normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
-    'private string AvatarName()', 1
+    'internal static string PackageVersion()', 1
 )[0]
 assert 'bytes = create(new ExportRecoveryOptions(), report, warnings);' in normal_export
 assert 'ExportOutputWriter.Write(destination, bytes);' in normal_export
@@ -339,7 +326,6 @@ assert '.Attempt(' not in normal_export and '.SavePending(' not in normal_export
 assert 'ExportRecoverySourceStamp' not in normal_export
 assert (root / 'Tests/Editor/ExportFlowTests.cs').is_file()
 assert 'ExportAndSaveNormally(' in (root / 'Tests/Editor/ExportFlowTests.cs').read_text(encoding='utf-8')
-assert 'recoveryOptions: recoveryOptions, recoveryReport: recoveryReport' in export_settings
 assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit' in recovery
 assert 'code == "audio-link"' in recovery and 'Official(audio)' in recovery
 # Recovery compares partial solver output with the original capture separately
@@ -392,12 +378,6 @@ assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
 assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
 assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click
-assert 'return avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar";' in window
-assert 'var name = AvatarName();' in window
-assert 'EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", DefaultFileName(), "vrm")' in window
-assert 'DrawRequiredLabel(ExporterLocalization.T("アバター")' in window
-assert 'DrawRequiredLabel(ExporterLocalization.T("作者名")' in window
-assert 'GUILayout.Button(ExporterLocalization.T("保存先を選んでVRMを書き出す")' in window
 assert "ValidateAllEncodedTextures(glb, textureSources);" in injector
 assert "materialCount > LilToonMobileProfile.MaximumMaterials" in injector
 assert (root / "Tests/Editor/GlbDocumentTests.cs").is_file()

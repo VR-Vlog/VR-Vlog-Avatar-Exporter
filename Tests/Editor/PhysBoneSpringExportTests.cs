@@ -157,7 +157,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A humanoid whose only renderer has no MeshFilter used to be saved as a
-        // VRM with no mesh. ExportSettings.Export stops it before any stage runs.
+        // VRM with no mesh. The board's export runs this check before any stage.
         [Test]
         public void MeshRendererWithoutMeshFilterSourceStopsBeforeExport()
         {
@@ -167,10 +167,8 @@ namespace VRVlog.LilToonExporter.Tests
             body.transform.SetParent(fixture.Source.transform, false);
             body.AddComponent<MeshRenderer>();
             Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateSourceHumanoid(fixture.Source));
-            var warnings = new List<string>();
-            var error = Assert.Throws<InvalidOperationException>(() => new ExportSettings().Export(fixture.Source, "Empty", "Tests", warnings, null, null));
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateSourceHasMesh(fixture.Source));
             Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.SourceHasNoMesh));
-            Assert.That(warnings, Is.Empty);
         }
 
         [Test]
