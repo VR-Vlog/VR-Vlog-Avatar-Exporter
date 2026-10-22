@@ -382,6 +382,9 @@ namespace VRVlog.LilToonExporter
             target.Renderer.SetBlendShapeWeight(shape, value);
         }
 
+        // Stops a save before the export when the source changed after the board opened.
+        internal void RequireCurrentSource() => RequireValid(always: true);
+
         internal void CaptureBaseline()
         {
             RequireValid();

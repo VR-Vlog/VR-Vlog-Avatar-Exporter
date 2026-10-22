@@ -2371,6 +2371,8 @@ namespace VRVlog.LilToonExporter
             if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RebuildBoard();
+            // Recording used to check the source first; the list-only save checks it here.
+            session.RequireCurrentSource();
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
