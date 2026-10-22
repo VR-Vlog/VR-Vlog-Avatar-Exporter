@@ -37,5 +37,5 @@ MA の公開ソースを 1.10.0〜1.18.7 の全正式版で読み直した結果
 
 - `Tools/run-compatibility-tests.ps1`: 1.10.4・1.12.5・1.13.4・1.14.0・1.17.1 などが通り、1.10.3・1.10.0・1.9.16 は版を名指しして止まることを確かめた。止めるときの文に新しい範囲（1.10.4 以上 1.19.0 未満）が入ることも確かめた。
 - `Tests/Editor/MaDeletionExportTests` は、Mesh Cutter の無い版（1.13.x 以前）では Mesh Cutter のケースだけを飛ばし、Shape Changer の Delete のケースは流す。1.14.0 より前の Delete のプレビューは `ShapeChangerPreview` にあるので、プレビューの設定はそちらを切り替える。
-- テストでメニューを作るところは、1.13.0 より前の `ModularAvatarMenuItem.Control`（VRChat SDK のコントロール）にも値を入れる。Merge Motion のテストは、1.12.0 より前は `BlendTree` に入れ、BlendTree しか受け取らないので素のクリップのケースを飛ばす。
+- テストでメニューを作るところは、1.13.0 より前の `ModularAvatarMenuItem.Control`（VRChat SDK のコントロール）にも値を入れる。Merge Motion のテストは、1.12.0 より前は `BlendTree` に入れ、BlendTree しか受け取らないので素のクリップのケースを飛ばす。MMD ワールド向けの設定（`ModularAvatarVRChatSettings`）は 1.12.0 で入ったので、それより前は切り替えずに進む。
 - Unity 2022.3 の実プロジェクトでの結果は `Compatibility/Evidence/ModularAvatarRange` に書く。

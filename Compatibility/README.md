@@ -89,8 +89,13 @@ When the version cannot be read (MA placed under `Assets`, a pre-release), the
 freeze tries the API and, if it is missing, stops saying the version was not
 read. Avatars without those components export with any MA
 version. Each MA release requires its own NDMF range (1.10.4 needs 1.5.4,
-1.14.0 needs 1.9.0, 1.18.x needs 1.11.0 or later), which VCC/ALCOM resolves; the
-exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
+1.14.0 needs 1.9.0, 1.18.0 needs 1.11.0, 1.18.4 and later need 1.14.7), which
+VCC/ALCOM resolves; the exporter's own NDMF floor stays `ndmfMinimum` (1.8.3).
+MA 1.14.0 and 1.14.1 change an Int or Bool menu parameter to Float in place
+during their own build, and NDMF logs an error for it while the build goes on;
+MA 1.14.2 fixed this. Users on 1.14.0 or 1.14.1 with Int or Bool menu toggles
+should update MA to 1.14.2 or later. Results:
+[Evidence/ModularAvatarRange](Evidence/ModularAvatarRange/README.md).
 
 ## Supported lilToon versions
 
