@@ -185,6 +185,29 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // "VRMを書き出す..." from an avatar's context menu: the window with that avatar
+        // chosen, not yet prepared. A board prepared for another avatar asks first, as its
+        // "変更" button does; keeping it leaves the board as it was.
+        public static void OpenFor(GameObject avatar)
+        {
+            var window = GetWindow<ExperimentalExpressionCaptureWindow>();
+            if (!window.ChooseForExport(avatar, window.TransferPanelTransferring)) window.Focus();
+        }
+
+        // Both questions come before anything changes. False when the user kept the transfer
+        // on the third page or the prepared avatar: the board stays as it was.
+        internal bool ChooseForExport(GameObject avatar, bool transferring)
+        {
+            var change = avatar != null && source != avatar && session != null;
+            if (transferMode && !ConfirmLeavingTransfer(transferring)) return false;
+            if (change && !ConfirmChangeAvatar()) return false;
+            LeaveTransferMode(false);
+            if (avatar == null || source == avatar) return true;
+            if (change) Queue(() => { ChangeAvatar(); SelectSource(avatar); });
+            else { SelectSource(avatar); Repaint(); }
+            return true;
+        }
+
         // "アプリに転送（通常）": this board, prepared for the avatar, leads on to
         // the transfer window instead of saving a file. A board already prepared
         // for the avatar keeps its assignments. False when the user kept the

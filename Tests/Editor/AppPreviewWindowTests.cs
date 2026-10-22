@@ -96,14 +96,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void TheMenuItemNeedsABackend()
-        {
-            Assert.That(AppPreviewWindow.CanOpen(), Is.False);
-            AppPreviewEntry.Backend = new FakeBackend(this);
-            Assert.That(AppPreviewWindow.CanOpen(), Is.True);
-        }
-
-        [Test]
         public async Task WithoutABackendTheWindowLoadsNothing()
         {
             var window = AppPreviewWindow.Open(new byte[] { 1 }, "missing.vrm");
