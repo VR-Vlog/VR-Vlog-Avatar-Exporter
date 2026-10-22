@@ -33,7 +33,9 @@
 - **中止して始める** を選ぶと、相手の転送をウィンドウを閉じたときと同じ手順で中止し（一時VRM も削除）、相手を名前と同意の画面に戻してから、こちらを始める。
 - **戻る** はダイアログを閉じるだけで、相手のウィンドウを前に出さない。こちらの画面（表示中の QR や失敗の理由）もそのまま残す。
 - 転送の画面を開くだけでは相手の転送を止めない。止めるのは、こちらで実際に転送を始めるときだけ。
-- 右クリックから **アプリに転送** のウィンドウを開くときの確認（別のアバター・かんたんと通常の切り替え）も同じ記録を見るので、表情ボードの3ページ目の転送も数える。
+- 右クリックから **アプリに転送** のウィンドウを開くときの確認（別のアバター・かんたんと通常の切り替え）も同じ記録を見るので、表情ボードの3ページ目の転送も数える。確認で **変更する**・**作り直す** を選ぶと、その場で相手の転送を中止する（一時VRM も削除し、相手を名前と同意の画面に戻す）。以前は確認のあとも相手の QR が残り、**QRコードを作る** を押したときにもう一度確認が出ていた。
+- 表情ボードの3ページ目が転送中のとき、メニューから **VRMを書き出す** を開くか、別のアバターで **アプリに転送（通常）** を開くと、表情ボードが3ページ目を離れて転送が止まる。どちらも黙って止めていたので、先に確認を出す。タイトルは「転送を中止」、本文は「進行中の転送を中止します。表示中のQRは使えなくなります。」、ボタンは **中止** と **戻る**（既存の文言なので翻訳は足していない）。**戻る** では表情ボードを前に出すだけで、ページも書き出しと転送の切り替えも変えない。表情ボードの **戻る** と閉じるボタンで離れるときは、3ページ目に「ページを移るかボードを閉じると転送を中止します」と出しているので、これまでどおり確認を出さない。
+- 表情ボードは転送のアセンブリを参照できないので、3ページ目のパネルが転送中かどうかは `LilToonExporterWindow.EmbeddedTransferringMethod()` で `AppTransferPanel.EmbeddedTransferring(VisualElement)` をリフレクションで探して聞く（`CreateEmbedded` と同じ方法）。見つからないときは転送中でないとみなす。
 
 ### 表情ボードからパネルへのつなぎ方
 
@@ -47,11 +49,12 @@ Codex 指摘で採ったもの: 戻るは閉じるだけ・相手の名指し・
 
 ## 成り立たない場合・残したこと
 
-- 右クリックから **アプリに転送** のウィンドウを開くときの確認文（「進行中の転送を中止します。表示中のQRは使えなくなります。」）は今回変えていない。ウィンドウを開くだけでは表情ボードの3ページ目の転送は止めず、そのあと **QRコードを作る** を押したときに上の確認がもう一度出る。
+- 右クリックから **アプリに転送** のウィンドウを開くときの確認文（「進行中の転送を中止します。表示中のQRは使えなくなります。」）は今回変えていない。
 - **QRコードでスマホに送る**（VRM 保存後の転送の画面、`CloudVrmTransferWindow`）は別の画面で、この記録の対象外。
 
 ## 確認したこと
 
 - EditMode: `CloudTransferTests.DecliningTheStartDialogKeepsTheOtherUploadAndStartsNothing`（アップロード中の通常のパネルがあるとき、かんたんのパネルで **もう一度** を押して **戻る** を選ぶと、相手はアップロード中のまま一時VRMも残り、こちらは失敗の画面のまま。本文は相手を名指しする）。`CloudTransferTests.AcceptingTheStartDialogStopsTheOtherQrBeforeStarting`（QR を表示中のかんたんのパネルがあるとき、通常のパネルで **中止して始める** を選ぶと、相手は名前と同意の画面に戻って QR が消え、こちらはアップロードを始める）。
-- `WindowTextFollowsTheWordingRulesAndExistsInEveryLocale` で、足した文言が全ロケールにあることを確かめた。`QuickTransferMatchesDefaultNormalTests` は変えずに通る。
+- EditMode: `CloudTransferTests.AcceptingTheWindowDialogStopsTheOtherTransfer`（QR を表示中の通常のパネルがあるとき、別のアバターでウィンドウを開いて **変更する** を選ぶと、相手は名前と同意の画面に戻り、QR と一時VRM が消える）。`CloudTransferTests.DecliningTheWindowDialogKeepsTheOtherTransfer`（**戻る** なら相手はアップロード中のまま一時VRMも残る）。`CloudTransferTests.EmbeddedTransferringIsTrueOnlyForTheBoardPanelOnScreenWhileItTransfers`。`ExperimentalExpressionCaptureTests.LeavingTheTransferPageFromTheMenuAsksOnlyWhileItTransfers`（転送中のときだけ確認を出し、**戻る** なら **VRMを書き出す** に切り替えない）。
+- `WindowTextFollowsTheWordingRulesAndExistsInEveryLocale` で、`AppTransferText` に足した文言が全ロケールにあることを確かめた。開始の確認の本文（`StopUploadText`・`StopQrText`）は `AppTransferText` に入れていないので、`CloudTransferTests.StartDialogTextExistsInEveryLocale` で全ロケールにあることを確かめた。`QuickTransferMatchesDefaultNormalTests` は変えずに通る。
 - 表情ボードの3ページ目（フォーム・アップロード中・QR の表示中）を幅 1000 と 600 で、4 ロケールを幅 600 で撮って目で確かめた。幅 600 と 1000（高さ 760）の QR の表示中で、警告が5ロケールとも1行に収まり、残り時間と **QRを作り直す** がスクロールなしで見えることを確かめた。`CloudTransferTests.QrFittedToAHeightKeepsWholePixelModulesAndTwoHundredPointsOfSymbol` で、高さに合わせた QR が整数ピクセルのモジュールと 200pt 以上の本体を保つことを確かめた。**アプリに転送（かんたん）** のウィンドウは幅 520 で変更前と画素で比べた（違いは輝度 1 の 10 画素だけ）。比較画像は `Documentation~/Verification/transfer-in-board-*.png`。

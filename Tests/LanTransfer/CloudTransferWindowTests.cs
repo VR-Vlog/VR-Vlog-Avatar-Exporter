@@ -55,6 +55,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(detailed.DeclaringType, Is.EqualTo(typeof(AppTransferWindow)));
                 Assert.That(detailed.Name, Is.EqualTo("OpenDetailed"));
             }
+            // The board asks its third page whether it transfers the same way.
+            var transferring = (MethodInfo)exporter.GetMethod("EmbeddedTransferringMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(transferring != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (transferring != null)
+            {
+                Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
+            }
         }
 
         [TestCase("OpenFromMenu", "CanOpenFromMenu", "GameObject/VR Vlog/アプリに転送（かんたん）", 10000)]

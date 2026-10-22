@@ -504,6 +504,105 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // Opening the window for another avatar while the board's page shows its QR: "変更する"
+        // stops that transfer and deletes its copy, so no second dialog follows.
+        [Test]
+        public async Task AcceptingTheWindowDialogStopsTheOtherTransfer()
+        {
+            using (var running = new FlowRun())
+            {
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                await running.Until(() => running.Flow.View == AppTransferView.Waiting);
+                var other = PanelWith(running.Flow, detailed: true);
+                var target = new UnityEngine.GameObject("vrvlog-app-transfer-other", typeof(UnityEngine.Animator));
+                var asked = new System.Collections.Generic.List<bool>();
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferWindow.MayOpen(target, false, same => { asked.Add(same); return true; }), Is.True);
+                    Assert.That(asked, Is.EqualTo(new[] { false }));
+                    Assert.That(other.Transferring, Is.False);
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Form));
+                    Assert.That(running.Flow.Link == null, Is.True);
+                    Assert.That(File.Exists(running.Path), Is.False);
+                }
+                finally
+                {
+                    AppTransferPanel.Live.Remove(other);
+                    UnityEngine.Object.DestroyImmediate(target);
+                }
+            }
+        }
+
+        [Test]
+        public void DecliningTheWindowDialogKeepsTheOtherTransfer()
+        {
+            using (var running = new FlowRun())
+            {
+                // Until a tick sees the upload end, the flow stays in Uploading.
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                var other = PanelWith(running.Flow, detailed: true);
+                var target = new UnityEngine.GameObject("vrvlog-app-transfer-other", typeof(UnityEngine.Animator));
+                var asked = 0;
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferWindow.MayOpen(target, false, same => { asked++; return false; }), Is.False);
+                    Assert.That(asked, Is.EqualTo(1));
+                    Assert.That(other.Transferring, Is.True);
+                    Assert.That(running.Flow.View, Is.EqualTo(AppTransferView.Uploading));
+                    Assert.That(File.Exists(running.Path), Is.True);
+                }
+                finally
+                {
+                    AppTransferPanel.Live.Remove(other);
+                    UnityEngine.Object.DestroyImmediate(target);
+                }
+            }
+        }
+
+        // The board asks the panel it shows by its element, which is the panel's root.
+        [Test]
+        public void EmbeddedTransferringIsTrueOnlyForTheBoardPanelOnScreenWhileItTransfers()
+        {
+            using (var running = new FlowRun())
+            {
+                var other = PanelWith(running.Flow, detailed: true);
+                var element = new UnityEngine.UIElements.VisualElement();
+                typeof(AppTransferPanel).GetField("root", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(other, element);
+                running.Flow.Upload(running.Path, "fixture.vrm");
+                // Not on screen.
+                Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.False);
+                try
+                {
+                    AppTransferPanel.Live.Add(other);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.True);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(new UnityEngine.UIElements.VisualElement()), Is.False);
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(null), Is.False);
+                    other.StopTransfer();
+                    Assert.That(AppTransferPanel.EmbeddedTransferring(element), Is.False);
+                }
+                finally { AppTransferPanel.Live.Remove(other); }
+            }
+        }
+
+        // The start dialog's two sentences are not AppTransferText, which the wording test covers.
+        [Test]
+        public void StartDialogTextExistsInEveryLocale()
+        {
+            var root = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CloudVrmTransferSession).Assembly).resolvedPath;
+            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            {
+                var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
+                foreach (var text in new[] { AppTransferPanel.StopUploadText, AppTransferPanel.StopQrText })
+                {
+                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
+                    Assert.That(entry.Success, Is.True, locale);
+                    Assert.That(Regex.Matches(entry.Groups[1].Value, @"\{\d").Count, Is.EqualTo(1), locale);
+                }
+            }
+        }
+
         // A refused upload, whose "もう一度" starts the transfer again from the same copy.
         private static async Task FailOnce(FlowRun run)
         {

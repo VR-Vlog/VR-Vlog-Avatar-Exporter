@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -76,16 +77,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         private static void Open(GameObject target, bool detailedExport)
         {
-            // Every panel on screen counts, the board's third page too.
-            foreach (var running in AppTransferPanel.Live.ToArray())
-            {
-                if (!running.Transferring) continue;
-                // The same quick transfer keeps its QR; only the window comes forward. A switch
-                // between quick and detailed leaves that QR out of date, so it asks.
-                var same = running.Avatar == target;
-                if (same && !detailedExport && !running.Detailed
-                    || !(same ? AppTransferPanel.ConfirmRedoingTransfer() : AppTransferPanel.ConfirmEndingTransfer())) { running.Host?.Focus(); return; }
-            }
+            if (!MayOpen(target, detailedExport, same => same ? AppTransferPanel.ConfirmRedoingTransfer() : AppTransferPanel.ConfirmEndingTransfer())) return;
             var window = GetWindow<AppTransferWindow>(false);
             var panel = window.Panel;
             // Back to the same form, the name, consent and terms typed there stay.
@@ -98,6 +90,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
             panel.Select(target, true);
             window.minSize = AppTransferPanel.FormMinimumSize;
             window.Show();
+        }
+
+        // Before the window shows the target: a panel uploading or showing its QR, the board's third
+        // page too, is stopped when the user goes on. confirm gets whether it is the same avatar
+        // ("作り直す") or another one ("変更する"). False when that transfer stays, its window in front.
+        internal static bool MayOpen(GameObject target, bool detailedExport, Func<bool, bool> confirm)
+        {
+            foreach (var running in AppTransferPanel.Live.ToArray())
+            {
+                if (!running.Transferring) continue;
+                // The same quick transfer keeps its QR; only the window comes forward. A switch
+                // between quick and detailed leaves that QR out of date, so it asks.
+                var same = running.Avatar == target;
+                if (same && !detailedExport && !running.Detailed || !confirm(same)) { running.Host?.Focus(); return false; }
+                running.StopTransfer();
+            }
+            return true;
         }
 
         private void OnEnable()

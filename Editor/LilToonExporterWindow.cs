@@ -631,6 +631,10 @@ namespace VRVlog.LilToonExporter
         internal static System.Reflection.MethodInfo EmbeddedTransferMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded", typeof(GameObject));
 
+        // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
+        internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
+
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, Type parameter)
         {
             try

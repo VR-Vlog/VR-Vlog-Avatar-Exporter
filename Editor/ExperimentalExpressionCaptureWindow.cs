@@ -171,9 +171,18 @@ namespace VRVlog.LilToonExporter
         public static void Open()
         {
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
-            window.transferMode = false;
-            window.titleContent = new GUIContent(ExporterLocalization.T("VRM書き出し"));
-            window.minSize = new Vector2(600, 760);
+            // "戻る" keeps the transfer on the third page, and the board as it was.
+            if (!window.LeaveTransferMode(window.TransferPanelTransferring)) window.Focus();
+        }
+
+        // "VRM書き出し" on this board: false when the user kept the transfer on its third page.
+        internal bool LeaveTransferMode(bool transferring)
+        {
+            if (transferMode && !ConfirmLeavingTransfer(transferring)) return false;
+            transferMode = false;
+            titleContent = new GUIContent(ExporterLocalization.T("VRM書き出し"));
+            minSize = new Vector2(600, 760);
+            return true;
         }
 
         // "アプリに転送（通常）": this board, prepared for the avatar, leads on to
@@ -185,6 +194,7 @@ namespace VRVlog.LilToonExporter
             var window = GetWindow<ExperimentalExpressionCaptureWindow>();
             window.Focus();
             var same = window.session != null && window.source == avatar;
+            if (!same && window.page == InfoPage && !window.ConfirmLeavingTransfer()) return false;
             if (!same && window.session != null && !window.ConfirmChangeAvatar()) return false;
             window.transferMode = true;
             window.titleContent = new GUIContent(ExporterLocalization.T("アプリに転送（通常）"));
@@ -232,6 +242,18 @@ namespace VRVlog.LilToonExporter
 
         bool ConfirmChangeAvatar() => clipInputs.Count == 0 && (session == null || session.PoseOptions.Manual.Count == 0) ||
             EditorUtility.DisplayDialog(ExporterLocalization.T("アバターを変更"), ExporterLocalization.T("追加した表情・ポーズの一覧をリセットします。保存済みVRMは残ります。"), ExporterLocalization.T("変更する"), ExporterLocalization.T("戻る"));
+
+        // Leaving the third page cancels its transfer. The board's own steps and closing do so
+        // without asking, as the page says; a menu entry that takes the board away asks first.
+        // The dialog: true cancels the transfer. Tests replace it.
+        internal static Func<string, string, bool> ConfirmCancelTransfer = (title, body) =>
+            EditorUtility.DisplayDialog(title, body, ExporterLocalization.T("中止"), ExporterLocalization.T("戻る"));
+
+        bool ConfirmLeavingTransfer() => ConfirmLeavingTransfer(TransferPanelTransferring);
+
+        // True when nothing is uploading or showing its QR, or the user chose "中止".
+        internal static bool ConfirmLeavingTransfer(bool transferring) => !transferring ||
+            ConfirmCancelTransfer(ExporterLocalization.T("転送を中止"), ExporterLocalization.T("進行中の転送を中止します。表示中のQRは使えなくなります。"));
 
         void OnEnable()
         {
@@ -2482,6 +2504,18 @@ namespace VRVlog.LilToonExporter
         UnityEngine.UIElements.VisualElement transferPanel;
         GameObject transferPanelFor;
         bool transferPanelTried;
+
+        // Whether the panel on the third page is uploading or showing its QR. Not when the
+        // transfer module cannot be asked.
+        bool TransferPanelTransferring
+        {
+            get
+            {
+                if (transferPanel?.panel == null) return false;
+                try { return Equals(LilToonExporterWindow.EmbeddedTransferringMethod()?.Invoke(null, new object[] { transferPanel }), true); }
+                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); return false; }
+            }
+        }
 
         UnityEngine.UIElements.VisualElement TransferPanel()
         {

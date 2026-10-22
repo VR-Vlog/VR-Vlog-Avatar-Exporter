@@ -107,6 +107,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return element;
         }
 
+        // Whether the board's panel (CreateEmbedded) is uploading or showing its QR. The board asks
+        // before a menu entry takes it off its page. Resolved by name, as CreateEmbedded is.
+        public static bool EmbeddedTransferring(VisualElement element) => Live.Any(panel => panel.root == element && panel.Transferring);
+
         internal GameObject Avatar => avatar;
         internal bool Detailed { get => detailed; set => detailed = value; }
         internal bool Transferring => flow != null && (flow.View == AppTransferView.Uploading || flow.View == AppTransferView.Waiting);
@@ -209,13 +213,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var heading = T(first.detailed ? AppTransferText.HeadingDetailed : AppTransferText.HeadingQuick);
             var body = string.Format(T(first.flow.View == AppTransferView.Uploading ? StopUploadText : StopQrText), heading);
             if (!ConfirmStart(T(AppTransferText.StartTransfer), body)) return false;
-            foreach (var other in others)
-            {
-                other.StopAndClean();
-                other.SetMinimumSize(FormMinimumSize);
-                other.Refresh();
-            }
+            foreach (var other in others) other.StopTransfer();
             return true;
+        }
+
+        // Another transfer goes on: this one stops as closing would, back at its form.
+        internal void StopTransfer()
+        {
+            StopAndClean();
+            SetMinimumSize(FormMinimumSize);
+            Refresh();
         }
 
         // The window this panel is shown in: its own, or the expression board.
