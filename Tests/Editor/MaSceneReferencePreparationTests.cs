@@ -54,6 +54,7 @@ namespace VRVlog.LilToonExporter.Tests
             var referenceType = InstalledType(MaNamespace + "AvatarObjectReference");
             if (mergeType == null || markerType == null || referenceType?.GetMethod("Get", new[] { typeof(SerializedProperty) }) == null)
                 Assert.Ignore("Install supported Modular Avatar and NDMF for native scene-reference preparation tests.");
+            NdmfPreparationTests.IgnoreNonVRChatAvatarBeforeMa113();
 
             source = Own(new GameObject("scene-reference avatar"));
             source.AddComponent(markerType);
