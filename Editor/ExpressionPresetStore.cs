@@ -49,6 +49,9 @@ namespace VRVlog.LilToonExporter
 
         const int MaximumAvatars = 256;
         internal static string PathOverride;
+        // Counts every Save, also those an unsaved scene keeps only in the open board, so a file
+        // written earlier can tell that the choices it was made from may have changed.
+        internal static int Revision { get; private set; }
         static string FilePath => PathOverride ?? Path.GetFullPath(Path.Combine(Application.dataPath, "..", "UserSettings", "VRVlogLilToonExporter", "ExpressionPresets.json"));
 
         // Scene objects in an unsaved scene have no stable identity; their
@@ -124,6 +127,7 @@ namespace VRVlog.LilToonExporter
         internal static void Save(string key, IEnumerable<PresetAssignment> assignments, IEnumerable<AnimationClip> excluded = null,
             IEnumerable<KeyValuePair<AnimationClip, string>> names = null)
         {
+            Revision++;
             if (string.IsNullOrEmpty(key)) return;
             // A file from another format version or one that cannot be read is
             // left untouched, so other avatars' choices are never lost.

@@ -28,6 +28,8 @@ namespace VRVlog.LilToonExporter
         private int countedRevision = -1, excludedCount;
         // Materials whose shader was missing in the last saved export. The window warns under its QR.
         private int lastMissingShaderCount;
+        // Failing stages the last saved export left out, as LastOmittedStageCount of the board.
+        private int lastOmittedStageCount;
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
@@ -52,6 +54,10 @@ namespace VRVlog.LilToonExporter
         // The number of materials whose shader was missing in the export last saved
         // by Export or ExportDetailed. 0 before a save and after a clean one.
         public int LastMissingShaderCount() => lastMissingShaderCount;
+
+        // The number of failing stages the export last saved by Export or ExportDetailed left out.
+        // "VRMを保存" stops at them, so such a file is not saved as it is.
+        public int LastOmittedStageCount() => lastOmittedStageCount;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -135,6 +141,7 @@ namespace VRVlog.LilToonExporter
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
+            lastOmittedStageCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             ExperimentalExpressionCaptureWindow board;
@@ -154,6 +161,7 @@ namespace VRVlog.LilToonExporter
             if (board == null) return ExporterLocalization.T(BoardClosed);
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
+            lastOmittedStageCount = 0;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
@@ -182,6 +190,54 @@ namespace VRVlog.LilToonExporter
             finally { UnityEngine.Object.DestroyImmediate(board); }
         }
 
+        // The file name "VRMを保存" suggests for this avatar.
+        public string SaveFileName(GameObject avatar) => ExperimentalExpressionCaptureWindow.SaveFileName(avatar);
+
+        // The author and VRM terms an export would write now. Equal strings write the same meta.
+        public string TermsKey() => author + "\n" + JsonUtility.ToJson(license ?? new AvatarLicenseOptions());
+
+        // A transfer that sends a file saved earlier remembers its name as an exported one does.
+        public void RememberTransferName(GameObject avatar, string name) => ExportSettingsStore.SaveTransferName(avatar, name);
+
+        // What a file written now is made of besides its name and terms: the avatar as the recovery window
+        // checks it, and the choices the expression boards and the export window save. Taken once the file
+        // is written; SourceUnchanged is true while none of them has changed since.
+        // The detailed transfer also records the inputs of its open board; the quick one exports from a
+        // hidden board that starts from the stores every time.
+        public object SourceStamp(GameObject avatar, bool detailed) => avatar == null ? null
+            : new WrittenSource(ExportRecoverySourceStamp.Capture(avatar), ExportSettingsStore.Revision, ExpressionPresetStore.Revision,
+                avatar, detailed ? BoardInputs(avatar) : null);
+
+        // Empty when no board is open for the avatar: the detailed export then has nothing to write from.
+        private static string BoardInputs(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.InputsKey() ?? "";
+
+        public bool SourceUnchanged(object stamp, GameObject avatar) => stamp is WrittenSource written && written.Matches(avatar);
+
+        // The cheap part of SourceUnchanged, for a line redrawn several times a second.
+        public bool ChoicesUnchanged(object stamp) => stamp is WrittenSource written && written.ChoicesMatch();
+
+        private sealed class WrittenSource
+        {
+            private readonly ExportRecoverySourceStamp source;
+            private readonly int settingsRevision, presetRevision;
+            private readonly GameObject avatar;
+            // Null for the quick transfer.
+            private readonly string boardInputs;
+
+            internal WrittenSource(ExportRecoverySourceStamp source, int settingsRevision, int presetRevision, GameObject avatar, string boardInputs)
+            {
+                this.source = source;
+                this.settingsRevision = settingsRevision;
+                this.presetRevision = presetRevision;
+                this.avatar = avatar;
+                this.boardInputs = boardInputs;
+            }
+
+            internal bool ChoicesMatch() => settingsRevision == ExportSettingsStore.Revision && presetRevision == ExpressionPresetStore.Revision &&
+                (boardInputs == null || boardInputs == BoardInputs(avatar));
+            internal bool Matches(GameObject avatar) => ChoicesMatch() && source.Matches(avatar);
+        }
+
         // The one export of both transfers: the board writes the VRM; a saved
         // transfer remembers its name for the avatar.
         private string ExportFrom(ExperimentalExpressionCaptureWindow board, GameObject avatar, string name, string targetAuthor,
@@ -192,6 +248,7 @@ namespace VRVlog.LilToonExporter
                 // The board sets the count before it calls back. A plain field:
                 // still read when the recovery window saves after the board closed.
                 lastMissingShaderCount = board.LastMissingShaderCount;
+                lastOmittedStageCount = board.LastOmittedStageCount;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }, interactive);
