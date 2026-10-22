@@ -666,7 +666,7 @@ namespace VRVlog.LilToonExporter
         private static void AddClip(GameObject avatar, object animation, string path, string exportName, VrChatExpressionMenu.Source source, ref int serial, Func<string, bool> excludedPath,
             BindingSnapshot bindings)
         {
-            if (source.Entries.Count >= 512) throw new InvalidOperationException("表情候補が512件を超えています。");
+            if (source.Entries.Count >= 512) throw new ExpressionCandidateLimitException("表情候補が512件を超えています。");
             var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/" + serial++, Name = path, Source = VRVlog.Expressions.ExpressionSource.FaceEmo };
             try
             {

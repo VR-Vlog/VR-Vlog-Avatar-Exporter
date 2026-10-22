@@ -417,9 +417,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // (e2) One gesture clip registered twice (both hands) writes one
-        // expression, still or animated. A different face with the same name,
-        // a separate clip with the same face, or the same face from another
-        // source keeps the suffix: the board lists each clip once.
+        // expression, still or animated, and so does a separate clip with the
+        // same face or the same face from another source. A different face
+        // with the same name keeps the suffix.
         [Test]
         public void IdenticalRegistrationsOfOneGestureClipAreWrittenOnce()
         {
@@ -442,12 +442,18 @@ namespace VRVlog.LilToonExporter.Tests
                 var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
                 Assert.That(document.Expressions.Select(value => (value.Expression, value.Source)), Is.EqualTo(new[]
                 {
-                    ("Smile", ExpressionSource.Gesture), ("Smile (2)", ExpressionSource.Gesture), ("Wave", ExpressionSource.Gesture),
-                    ("Smile (3)", ExpressionSource.Gesture), ("Smile (4)", ExpressionSource.Menu)
+                    ("Smile", ExpressionSource.Gesture), ("Smile (2)", ExpressionSource.Gesture), ("Wave", ExpressionSource.Gesture)
                 }));
-                Assert.That(expressions.Select(value => value.RegisteredName), Is.EqualTo(new[] { "Smile", null, "Smile (2)", "Wave", null, "Smile (3)", "Smile (4)" }));
+                Assert.That(expressions.Select(value => value.RegisteredName), Is.EqualTo(new[] { "Smile", null, "Smile (2)", "Wave", null, null, null }));
+                Assert.That(expressions.Select(value => value.MergedInto), Is.EqualTo(new[] { null, "Smile", null, null, "Wave", "Smile", "Smile" }));
                 Assert.That(document.Animations.Select(value => value.Expression), Is.EqualTo(new[] { "Wave" }));
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(5));
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(3));
+                // Each face here has the label of the face it joined, so the
+                // result lists none; the copied clip is played by no written face.
+                var report = new ExportRecoveryReport();
+                UniVrmOneClickExporter.RecordMergedExpressions(expressions, report);
+                Assert.That(report.Fallbacks.Results, Is.Empty);
+                Assert.That(report.MergedMenuClips, Is.EqualTo(1));
             }
             finally { Object.DestroyImmediate(smile); Object.DestroyImmediate(wave); Object.DestroyImmediate(copy); }
         }

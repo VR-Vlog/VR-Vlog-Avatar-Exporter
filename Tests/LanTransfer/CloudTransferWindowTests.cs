@@ -55,6 +55,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(detailed.DeclaringType, Is.EqualTo(typeof(AppTransferWindow)));
                 Assert.That(detailed.Name, Is.EqualTo("OpenDetailed"));
             }
+            // The board asks its third page whether it transfers the same way.
+            var transferring = (MethodInfo)exporter.GetMethod("EmbeddedTransferringMethod", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
+            Assert.That(transferring != null, Is.EqualTo(CloudTransferAvailability.Enabled));
+            if (transferring != null)
+            {
+                Assert.That(transferring.DeclaringType, Is.EqualTo(typeof(AppTransferPanel)));
+                Assert.That(transferring.Name, Is.EqualTo("EmbeddedTransferring"));
+            }
         }
 
         [TestCase("OpenFromMenu", "CanOpenFromMenu", "アプリに転送（かんたん）...", 0)]
@@ -112,7 +120,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public void AppTransferBindsEveryExportMemberOfTheLoadedExporterByName()
         {
             var exporter = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
-            var bound = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+            var bound = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
                 .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null);
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
@@ -364,9 +372,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             WithPrivacyPreference(() =>
             {
-                var type = typeof(AppTransferWindow);
+                var type = typeof(AppTransferPanel);
                 var avatar = new GameObject("vrvlog-app-transfer-privacy");
-                var window = ScriptableObject.CreateInstance<AppTransferWindow>();
+                var window = new AppTransferPanel();
                 try
                 {
                     type.GetField("avatar", Instance).SetValue(window, avatar);
@@ -396,7 +404,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     CloudVrmTransferWindow.PrivacyConsentAccepted = true;
                     Assert.That(reason.Invoke(window, null), Is.Null);
                 }
-                finally { Object.DestroyImmediate(window); Object.DestroyImmediate(avatar); }
+                finally { Object.DestroyImmediate(avatar); }
             });
         }
 
@@ -406,19 +414,15 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var diagnostics = Type.GetType("VRVlog.LilToonExporter.Compatibility.DependencyDiagnostics, VRVlog.LilToonExporter.Compatibility", true);
             var installed = diagnostics.GetMethod("Installed").Invoke(null, null);
             var dependencyError = (string)diagnostics.GetMethod("Error").Invoke(null, new[] { installed });
-            var resolvable = typeof(AppTransferWindow).GetNestedType("ExportEntry", BindingFlags.NonPublic)
+            var resolvable = typeof(AppTransferPanel).GetNestedType("ExportEntry", BindingFlags.NonPublic)
                 .GetMethod("Resolve", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, null) != null;
-            var window = ScriptableObject.CreateInstance<AppTransferWindow>();
-            try
-            {
-                var exporter = typeof(AppTransferWindow).GetProperty("Exporter", Instance).GetValue(window);
-                // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
-                Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
-                var problem = (string)typeof(AppTransferWindow).GetField("exporterProblem", Instance).GetValue(window);
-                if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
-                if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
-            }
-            finally { Object.DestroyImmediate(window); }
+            var window = new AppTransferPanel();
+            var exporter = typeof(AppTransferPanel).GetProperty("Exporter", Instance).GetValue(window);
+            // An unsupported lilToon or UniVRM leaves the window on the diagnostics message and button.
+            Assert.That(exporter != null, Is.EqualTo(dependencyError == null && resolvable));
+            var problem = (string)typeof(AppTransferPanel).GetField("exporterProblem", Instance).GetValue(window);
+            if (exporter == null) Assert.That(string.IsNullOrEmpty(problem), Is.False);
+            if (dependencyError != null && !EditorApplication.isCompiling && !EditorApplication.isUpdating) Assert.That(problem.StartsWith(dependencyError, StringComparison.Ordinal), Is.True);
         }
 
         [Test]

@@ -34,7 +34,7 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 | Component | Supported version |
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
-| lilToon | 2.0.0–2.3.4 from 0.12.0-beta.1 (stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting |
+| lilToon | Any version from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4, stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting |
 | UniVRM / UniGLTF | Matching 0.131.x packages (verified with 0.131.0–0.131.3) |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; 3.5.2 or later and below 3.11.0 when an expression file uses VRC Animator Play Audio |
@@ -42,9 +42,9 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 
 Install Modular Avatar and its dependencies beforehand if your avatar uses them. The [dependency policy](Compatibility/dependencies.json) records supported versions; the exporter reports missing or unsupported packages without automatically changing them.
 
-Projects with lilToon 1.x or older stop before export. Update lilToon to 2.0.0–2.3.4 in VCC / ALCOM; lilToon migrates the materials and you can export them as they are. lilToon newer than 2.3.4 and pre-release versions also stop: return to 2.3.4 or wait for an exporter release that supports the newer version.
+The installed lilToon version does not stop an export. 1.x, versions newer than 2.3.4 and pre-releases export too, and the export result notes that the app draws the materials as lilToon 2.3.4. The app always draws lilToon materials with 2.3.4, whatever version the project has, so use 2.3.4 if Unity should look the same as the app.
 
-Within the range, the exporter checks before each export that the installed lilToon shaders have the same structure as 2.3.4 and stops if they differ. Materials made in a version before 2.3.4 export with the look they have after updating lilToon to 2.3.4. See [supported lilToon versions](Compatibility/README.md#supported-liltoon-versions) for differences such as backlight alpha.
+Before each export the exporter compares the lilToon shaders the avatar uses with 2.3.4 and lists the differences as warnings on the export screen, then continues: properties that 2.3.4 does not have are left out, a material that lacks a 2.3.4 property or has one with another type or texture kind is exported as an MToon approximation (shown as approximated in the export result), and passes are written as in 2.3.4. Only two cases stop: lilToon is not installed, or its bake shader `Hidden/ltsother_baker` differs from 2.3.4. Materials made in a version before 2.3.4 export with the look they have after updating lilToon to 2.3.4. See [supported lilToon versions](Compatibility/README.md#supported-liltoon-versions) for differences such as backlight alpha and the known differences with lilToon 2.4.x.
 
 ## Installation
 
@@ -81,6 +81,8 @@ The steps below describe stable 0.11.15, adopting beta.2's UI. Previously publis
 5. Slots filled from names are marked **自動**; confirm them all with **自動の候補○件を確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
 6. The board has three pages: **1 表情の設定** (expressions), **2 除外するオブジェクト** (objects to leave out) and **3 VRMの情報** (VRM info). Add optional body poses and check blinking on page 1, then press **次へ：除外するオブジェクト**. Review VRChat gimmicks and objects to leave out on page 2, then press **次へ：VRMの情報**; changed exclusions are applied to the preview before page 3 opens. On page 3, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**. **戻る** goes back one page.
 
+When the body poses exceed the app's limits (128 poses, 32,768 frames of moving poses in total, 16MB of moving pose data, 2MB of still pose data), the **アプリの上限を超えた項目** (items over the app's limits) window opens once during the export. By default it leaves out poses from the end of the list; choose the poses to keep and press **この内容で書き出す** (export with this). The choice is saved in the avatar's export settings and used by later exports, including **アプリに転送（かんたん）**. Poses left out are listed as **同梱ポーズ** (bundled poses) in the export result list. Within the limits the window does not open.
+
 The author is a required VRM field. While it is empty or only spaces, **VRMを保存** stays disabled and the line under the field reads "VRMには作者名が必要です". The author used for a save is remembered per avatar in this PC's Unity Editor preferences and filled in the next time you choose the same avatar. For an avatar without a remembered author, the field keeps what you typed. Only the author name is stored, and nothing is written to the avatar, the project or the VRM. Avatars in an unsaved scene are not remembered.
 
 See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. In 0.11.15, select **QRコードでスマホに送る** in the result section, read the linked privacy policy, check consent, then press **アップロードしてQRを表示**. Scan the QR in a compatible iPhone version of VR Vlog using **モデルを変更 → PCから受け取る**. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
@@ -88,7 +90,7 @@ See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for 
 Not yet released: in versions with cloud transfer enabled (pre-releases and stable versions that adopt the transfer), right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）...**, **アプリに転送（通常）...**, a separator and **VRMを書き出す...** in that order. Other versions do not show the transfers.
 
 - **アプリに転送（かんたん）** (quick): confirm the name, author and terms consent, then press **QRコードを作る**. The name and author start from the last transfer of this avatar. It exports exactly what the normal flow exports when nothing on the expression board is changed (the expressions last assigned on the board for this avatar, automatic where none, and the objects excluded earlier); the only difference is that the export result list is not shown. Problems that stop an export still stop it with the reason. **表情とオブジェクトを選ぶ** switches to the normal flow.
-- **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：名前と利用条件** (the exclusions are applied to the preview first) and **QRコードを作る** in the transfer window. **戻って編集** returns to the board.
+- **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：名前と利用条件** (the exclusions are applied to the preview first). The transfer form appears on the board's third page, 「3 名前と利用条件」; press **QRコードを作る** there. **戻る** on the bottom bar returns to the second page. Leaving the third page or closing the board cancels the transfer in progress.
 
 Required input is the name, the author, consent to the terms (every time) and the privacy policy (first time only). The license is optional: open **VRMの利用条件** to change it, otherwise the last settings or the defaults are used.
 

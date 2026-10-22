@@ -19,6 +19,12 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<Renderer, Material[]> sources = new Dictionary<Renderer, Material[]>();
         readonly Dictionary<Material, Dictionary<string, object>> records = new Dictionary<Material, Dictionary<string, object>>();
         internal bool IsEmpty => records.Count == 0;
+        // Official lilToon materials whose installed shader lacks a 2.3.4
+        // runtime property, or declares one with another type or texture
+        // dimension. They cannot satisfy the catalogue, so the app shows their
+        // MToon approximation (LilToonStructureCheck lists the properties).
+        readonly List<Material> approximated = new List<Material>();
+        internal IReadOnlyList<Material> Approximated => approximated;
         readonly List<object> textures = new List<object>();
         readonly Dictionary<(Texture, bool), int> textureIds = new Dictionary<(Texture, bool), int>();
         // Strongest effective scale among the references to each 8-bit normal
@@ -50,14 +56,21 @@ namespace VRVlog.LilToonExporter
                 var materials = renderer.sharedMaterials;
                 result.sources.Add(renderer, materials);
                 foreach (var material in materials)
-                    if (material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) && !result.records.ContainsKey(material))
-                        result.records.Add(material, result.ReadMaterial(material));
+                    if (material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
+                        !result.records.ContainsKey(material) && !result.approximated.Contains(material))
+                    {
+                        var record = result.ReadMaterial(material);
+                        if (record != null) result.records.Add(material, record);
+                        else result.approximated.Add(material);
+                    }
             }
             // An avatar without lilToon still exports: its materials become MToon
             // defaults and the extension carries no lilToon records.
             return result;
         }
 
+        // Null when the installed shader cannot give every 2.3.4 runtime
+        // property of this shader.
         Dictionary<string, object> ReadMaterial(Material source)
         {
             bool Suppress(bool second) => LilToonEmissionPolicy.IsSuppressed(source,suppressSharedTextureEmission,second) ||
@@ -66,12 +79,15 @@ namespace VRVlog.LilToonExporter
             var values = new List<object>();
             var textureProperties = new List<object>();
             var shader = source.shader;
+            var required = new HashSet<string>(LilToon234Catalogue.RequiredProperties[shader.name], StringComparer.Ordinal);
+            var written = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < shader.GetPropertyCount(); i++)
             {
                 var name = shader.GetPropertyName(i);
                 if (name == "_DummyProperty") continue;
-                if (!LilToon234Catalogue.Properties.TryGetValue(name, out var declaration))
-                    throw new InvalidOperationException("公式2.3.4にないプロパティ: " + name);
+                // Another lilToon version may add properties. The 2.3.4 shader in
+                // the app has no use for them; the structure check lists them.
+                if (!LilToon234Catalogue.Properties.TryGetValue(name, out var declaration)) continue;
                 if (declaration.EndsWith(":editor", StringComparison.Ordinal)) continue;
                 if (declaration.EndsWith(":external", StringComparison.Ordinal))
                 {
@@ -80,6 +96,12 @@ namespace VRVlog.LilToonExporter
                     continue;
                 }
                 var type = shader.GetPropertyType(i);
+                // Only this shader's 2.3.4 runtime properties, with their 2.3.4
+                // type and texture dimension, fit the catalogue record.
+                if (!required.Contains(name) || LilToonStructureCheck.TypeName(type) != declaration.Split(':')[0] ||
+                    type == ShaderPropertyType.Texture && LilToon234Catalogue.TextureFaces.TryGetValue(name, out var faces) &&
+                    LilToonStructureCheck.DimensionName(shader.GetPropertyTextureDimension(i)) != (faces == 6 ? "Cube" : "2D") ||
+                    !written.Add(name)) continue;
                 if (type == ShaderPropertyType.Texture)
                 {
                     var texture = source.GetTexture(name);
@@ -122,15 +144,28 @@ namespace VRVlog.LilToonExporter
                     values.Add(new Dictionary<string, object> { {"name", name}, {"type", declaration.Split(':')[0]}, {"value", new List<object> {value.x, value.y, value.z, value.w}} });
                 }
             }
+            if (!written.SetEquals(required)) return null;
+            // The app draws the 2.3.4 passes. Passes another lilToon version
+            // adds are left out, a changed LightMode takes the 2.3.4 one, and a
+            // missing pass is written with the 2.3.4 LightMode and this
+            // material's choice for it. With the catalogue version this is the
+            // installed pass list unchanged.
+            var modes = LilToon234Catalogue.PassLightModes[shader.name];
             var passes = new List<object>();
+            void AddPass(string name, string lightMode) =>
+                passes.Add(new Dictionary<string, object> { {"name", name}, {"lightMode",lightMode}, {"enabled", source.GetShaderPassEnabled(lightMode)} });
+            bool HasPass(string name) => passes.Cast<Dictionary<string, object>>().Any(p => (string)p["name"] == name);
             for (var i = 0; i < source.passCount; i++)
             {
                 var name = source.GetPassName(i);
                 var lightMode=shader.FindPassTagValue(i,new ShaderTagId("LightMode")).name;
                 if(lightMode=="Never")continue;
-                if (!string.IsNullOrEmpty(name) && !passes.Cast<Dictionary<string, object>>().Any(p => (string)p["name"] == name))
-                    passes.Add(new Dictionary<string, object> { {"name", name}, {"lightMode",lightMode}, {"enabled", source.GetShaderPassEnabled(lightMode)} });
+                if (string.IsNullOrEmpty(name) || HasPass(name) || !modes.TryGetValue(name, out var mode)) continue;
+                // Unity may expose interned ShaderTagId names in uppercase.
+                AddPass(name, string.Equals(lightMode, mode, StringComparison.OrdinalIgnoreCase) ? lightMode : mode);
             }
+            foreach (var name in LilToon234Catalogue.Passes[shader.name])
+                if (!HasPass(name)) AddPass(name, modes[name]);
             var settingPath=Path.GetFullPath(Path.Combine(Application.dataPath,"../ProjectSettings/lilToonSetting.json"));
             var clipping=false;
             if(File.Exists(settingPath))
@@ -409,9 +444,10 @@ namespace VRVlog.LilToonExporter
 
         internal byte[] Inject(byte[] bytes, string exporterVersion, string installedLilToonVersion)
         {
-            // The window stops earlier with a localized message; this guards direct callers.
-            if (!Compatibility.DependencyPolicy.AcceptsLilToon(installedLilToonVersion))
-                throw new NotSupportedException(Compatibility.DependencyPolicy.LilToonError(installedLilToonVersion, ExporterLocalization.T));
+            // The window stops earlier without lilToon; this guards direct callers.
+            // Any installed version is recorded as it is.
+            var error = Compatibility.DependencyPolicy.LilToonError(installedLilToonVersion, ExporterLocalization.T);
+            if (error != null) throw new NotSupportedException(error);
             var glb = GlbDocument.Read(bytes);
             var views = List(glb.Json, "bufferViews");
             var chunks = new List<object>();

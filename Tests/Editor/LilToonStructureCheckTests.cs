@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -60,7 +61,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Check.Check(avatar), Is.Empty);
                 body.sharedMaterials = new[] { other, lilToon };
                 Assert.That(Check.Check(avatar), Is.Empty);
-                Assert.DoesNotThrow(() => Check.Require(avatar, "2.3.4"));
+                var warnings = new List<string>();
+                Assert.DoesNotThrow(() => Check.Inspect(avatar, "2.3.4", warnings));
+                Assert.That(warnings, Is.Empty);
 
                 // Renderers the snapshot does not record are not checked.
                 var hidden = Child("hidden", mesh);
@@ -74,9 +77,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(differences.Count, Is.EqualTo(1), string.Join("; ", differences));
                 Assert.That(differences[0].Kind, Is.EqualTo(Check.Kind.MissingProperty));
                 Assert.That(differences[0].Name, Is.EqualTo("_Cull"));
-                var error = Assert.Throws<System.InvalidOperationException>(() => Check.Require(avatar, "2.3.4"));
-                StringAssert.Contains(Probe, error.Message);
-                StringAssert.Contains("_Cull", error.Message);
+                // Another lilToon's material shader warns and the export goes on.
+                Assert.DoesNotThrow(() => Check.Inspect(avatar, "2.3.4", warnings));
+                var listed = string.Join("\n", warnings);
+                StringAssert.Contains(Probe, listed);
+                StringAssert.Contains("_Cull", listed);
             }
             finally
             {
@@ -99,7 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("missing", "MissingProperty", "_Cull")]
         [TestCase("unknown", "UnknownProperty", "_VrvStructureProbe")]
         [TestCase("light-mode", "PassLightMode", "FORWARD")]
-        public void SyntheticShaderWithOneChangedDeclarationStops(string change, string kind, string name)
+        public void SyntheticShaderWithOneChangedDeclarationIsListed(string change, string kind, string name)
         {
             var shader = ShaderUtil.CreateShaderAsset(Source(change));
             try
@@ -110,9 +115,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(differences.Count, Is.EqualTo(1), string.Join("; ", differences));
                 Assert.That(differences[0].Kind.ToString(), Is.EqualTo(kind));
                 Assert.That(differences[0].Name, Is.EqualTo(name));
-                var message = Check.Message(differences, "2.3.4", text => text);
-                StringAssert.Contains(Probe, message);
-                StringAssert.Contains(name, message);
+                Assert.That(differences.Any(Check.Stops), Is.False, "Only the baker stops");
+                var listed = string.Join("\n", Check.Warnings(differences, text => text));
+                StringAssert.Contains(Probe, listed);
+                StringAssert.Contains(name, listed);
             }
             finally { Object.DestroyImmediate(shader); }
         }

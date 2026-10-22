@@ -1031,10 +1031,13 @@ namespace VRVlog.LilToonExporter.Tests
                         { ["expressions"] = new Dictionary<string, object> { ["custom"] = custom } } }
                 };
                 var bytes = VrmMenuExpressions.Add(GlbDocument.Create(root, Array.Empty<byte>()).Write(), expressions);
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(4));
+                // The two zero rows bind the same marker at the same weight,
+                // so they are one face and are written once.
+                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(3));
+                Assert.That(expressions[1].MergedInto, Is.EqualTo(expressions[0].RegisteredName));
                 var document = GlbDocument.Read(bytes).Json;
                 custom = (Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)((Dictionary<string, object>)document["extensions"])["VRMC_vrm"])["expressions"])["custom"];
-                Assert.That(custom.Count, Is.EqualTo(4));
+                Assert.That(custom.Count, Is.EqualTo(3));
                 foreach (Dictionary<string, object> expression in custom.Values)
                 {
                     Assert.That(expression["isBinary"], Is.True);

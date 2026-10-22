@@ -1,22 +1,18 @@
 using System;
-using System.IO;
 using System.Linq;
 using UnityEditor;
-using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
-using UnityEngine.UIElements;
 using VRVlog.LilToonExporter.Compatibility;
 
 namespace VRVlog.LilToonExporter.LanTransfer
 {
     // "アプリに転送": opened from the VR Vlog menu, in the menu bar or the Hierarchy context
-    // menu of an avatar (ExporterMenu lays both out). One window takes the
-    // name and the consent, exports, uploads the encrypted VRM and shows the QR of the
-    // vrvlog://import#... link. AppTransferFlow decides what is shown and when; this class
-    // builds the UI Toolkit view (AppTransferWindow.uxml/.uss) and connects it to the Editor.
-    // The quick transfer exports with the remembered settings; the detailed one is the second
-    // step after the expression board, and exports what that board shows.
+    // menu of an avatar (ExporterMenu lays both out). The window shows AppTransferPanel, which
+    // takes the name and the consent, exports, uploads the encrypted VRM and shows the QR of the
+    // vrvlog://import#... link. The quick transfer exports with the remembered settings. The
+    // detailed one is the third page of the expression board, which shows the same panel; this
+    // window opens for it only when the exporter cannot run, to say why.
     public sealed class AppTransferWindow : EditorWindow
     {
         internal const string QuickMenu = "アプリに転送（かんたん）...", DetailedMenu = "アプリに転送（通常）...";
@@ -27,12 +23,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             DetailedMenuPriority = ExporterMenu.HierarchyPriority + ExporterMenu.DetailedTransferOrder;
         internal const int QuickMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.QuickTransferOrder,
             DetailedMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.DetailedTransferOrder;
-        private const float HeaderHeight = 60f, Padding = 16f;
-        // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
-        // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
-        // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
-        private const float TransferChrome = 253f;
-        private static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
         // "QRができたら音を鳴らす" on the QR screen, kept for every project on this PC.
         internal const string QrReadySoundPreference = "VRVlog.AppTransfer.QrReadySound";
         internal static bool QrReadySound
@@ -40,52 +30,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             get => EditorPrefs.GetBool(QrReadySoundPreference, AppTransferFlow.QrReadySoundByDefault);
             set => EditorPrefs.SetBool(QrReadySoundPreference, value);
         }
-        // Above the QR once the export is saved, when materials lost their shader. Kept out of
-        // AppTransferText: that list holds one-line texts without punctuation or requests.
-        internal const string MissingShadersText = "シェーダーが見つからないマテリアルが{0}個あり、見た目を正しく再現できていません。アバターに必要なシェーダーをUnityプロジェクトに追加して、もう一度書き出してください";
-        // The height that warning adds to the QR screen: at the minimum width of 420 it wraps to 3 lines
-        // in every translation, plus the box's padding and its 8 bottom margin.
-        private const float MissingShadersHeight = 64f;
-        // The layout and styles next to this script, found by their asset GUIDs.
-        private const string LayoutGuid = "db52aabb2abe4b37909abb5c737b7410", StyleGuid = "6f09c8d6325e47628b30efe33abe0b23";
 
-        [SerializeField] private GameObject avatar;
-        [SerializeField] private string avatarName = "";
-        // Opened from the expression board: the export is what that board shows.
-        [SerializeField] private bool detailed;
-        // Consent is for the avatar on screen, so it is asked again each time.
-        [NonSerialized] private bool consented;
-        // The privacy policy row stays once shown, so ticking it does not move the form.
-        [NonSerialized] private bool showPrivacy;
-        [NonSerialized] private bool? nameFits;
-        [NonSerialized] private AppTransferFlow flow;
-        [NonSerialized] private ExportEntry exporter;
-        [NonSerialized] private bool exporterResolved;
-        [NonSerialized] private string exporterProblem;
-        [NonSerialized] private Texture2D qrTexture;
-        [NonSerialized] private string transferName;
-        [NonSerialized] private int placeholderSide;
-        [NonSerialized] private int exportAttempt;
-        // Materials whose shader was missing in the export the current upload comes from.
-        [NonSerialized] private int missingShaders;
-        [NonSerialized] private bool exportPainted;
-        [NonSerialized] private double exportDeadline;
-        [NonSerialized] private double nextRepaint;
-        [NonSerialized] private AppTransferView shownView, polledView;
-        // Device pixels per point of the panel, read where IMGUI knows it.
-        [NonSerialized] private float pixelsPerPoint;
+        // The avatar, the name and whether it is detailed survive a domain reload with the window.
+        [SerializeField] private AppTransferPanel panel = new AppTransferPanel();
 
-        [NonSerialized] private bool built;
-        [NonSerialized] private VisualElement content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
-        [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
-        [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton;
-        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
-            reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel;
-        [NonSerialized] private ObjectField avatarField;
-        [NonSerialized] private TextField nameField;
-        [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
-        [NonSerialized] private Image qrImage;
-        [NonSerialized] private IMGUIContainer uploadBar;
+        private AppTransferPanel Panel => panel ?? (panel = new AppTransferPanel());
 
         [MenuItem(QuickMenuPath, false, QuickMenuPriority)]
         [MenuItem(QuickMenuBarPath, false, QuickMenuBarPriority)]
@@ -109,7 +58,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected == null) return;
-            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? ExportEntry.Resolve() : null;
+            var entry = DependencyDiagnostics.Error(DependencyDiagnostics.Installed()) == null ? AppTransferPanel.ExportEntry.Resolve() : null;
             if (entry != null) entry.EditDetails(selected);
             // Without the exporter the detailed window says why, under the item the user chose.
             else OpenDetailed(selected);
@@ -121,315 +70,61 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         public static void Open(GameObject target) => Open(target, false);
 
-        // The second step of the detailed transfer, opened by the expression board's
-        // "次へ" for the avatar on that board.
+        // The detailed transfer in a window of its own, for the avatar on the expression board.
         public static void OpenDetailed(GameObject target) => Open(target, true);
 
         private static void Open(GameObject target, bool detailedExport)
         {
-            foreach (var open in Resources.FindObjectsOfTypeAll<AppTransferWindow>())
-            {
-                if (!open.Transferring) continue;
-                // The same quick transfer keeps its QR; only the window comes forward. The board's
-                // "次へ" or a switch between quick and detailed leaves that QR out of date, so it asks.
-                var same = open.avatar == target;
-                if (same && !detailedExport && !open.detailed || !(same ? ConfirmRedoingTransfer() : ConfirmEndingTransfer())) { open.Focus(); return; }
-            }
+            if (!MayOpen(target, detailedExport, same => same ? AppTransferPanel.ConfirmRedoingTransfer() : AppTransferPanel.ConfirmEndingTransfer())) return;
             var window = GetWindow<AppTransferWindow>(false);
-            // Back from the board to the same form, the name, consent and terms typed there stay.
-            if (target != null && window.avatar == target && window.detailed == detailedExport && (window.flow == null || window.flow.View == AppTransferView.Form))
+            var panel = window.Panel;
+            // Back to the same form, the name, consent and terms typed there stay.
+            if (target != null && panel.Avatar == target && panel.Detailed == detailedExport && panel.AtForm)
             {
                 window.Focus();
                 return;
             }
-            window.detailed = detailedExport;
-            window.Select(target, true);
-            window.minSize = FormMinimumSize;
+            panel.Detailed = detailedExport;
+            panel.Select(target, true);
+            window.minSize = AppTransferPanel.FormMinimumSize;
             window.Show();
         }
 
-        private bool Transferring => flow != null && (flow.View == AppTransferView.Uploading || flow.View == AppTransferView.Waiting);
-
-        // Another avatar cancels the upload or the QR on screen, so it is asked first.
-        private static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
-
-        private static bool ConfirmRedoingTransfer() => EditorUtility.DisplayDialog(T("QRを作り直す"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
-
-        private static string T(string source) => ExporterLocalization.T(source);
-        private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
-
-        // The exporter assembly compiles only with a supported UniVRM. Bind it by
-        // name where it is used, as the exporter does for this module.
-        private ExportEntry Exporter
+        // Before the window shows the target: a panel uploading or showing its QR, the board's third
+        // page too, is stopped when the user goes on. confirm gets whether it is the same avatar
+        // ("作り直す") or another one ("変更する"). False when that transfer stays, its window in front.
+        internal static bool MayOpen(GameObject target, bool detailedExport, Func<bool, bool> confirm)
         {
-            get
+            foreach (var running in AppTransferPanel.Live.ToArray())
             {
-                if (exporterResolved) return exporter;
-                exporterResolved = true;
-                // The exporter assembly also loads with an unsupported lilToon; like the
-                // export windows, do not export until the installed versions are supported.
-                var installed = DependencyDiagnostics.Installed();
-                exporter = DependencyDiagnostics.Error(installed) == null ? ExportEntry.Resolve() : null;
-                if (exporter != null) exporter.SelectAvatar(avatar);
-                else exporterProblem = DependencyDiagnostics.StartupError(installed)
-                    ?? "書き出し処理の準備が完了していません。「再読み込み」を押してください。";
-                return exporter;
+                if (!running.Transferring) continue;
+                // The same quick transfer keeps its QR; only the window comes forward. A switch
+                // between quick and detailed leaves that QR out of date, so it asks.
+                var same = running.Avatar == target;
+                if (same && !detailedExport && !running.Detailed || !confirm(same)) { running.Host?.Focus(); return false; }
+                running.StopTransfer();
             }
-        }
-
-        // The name of the avatar's last successful transfer, or null.
-        private string RememberedName(GameObject target)
-        {
-            var remembered = target != null ? Exporter?.RememberedName(target) : null;
-            return string.IsNullOrEmpty(remembered) ? null : remembered;
-        }
-
-        // Whether the expression board this window exports from is open and prepared.
-        private bool BoardReady => !detailed || avatar == null || Exporter?.DetailedProblem(avatar) == null;
-        // The open board has an error its next step names, such as a face that does not work.
-        private bool BoardNeedsFix => detailed && avatar != null && BoardReady && (Exporter?.DetailedNeedsFix(avatar) ?? false);
-
-        private void Select(GameObject target, bool opened)
-        {
-            // A recovery still pending for the previous avatar must not start an upload.
-            exportAttempt++;
-            flow?.Stop();
-            ClearQr();
-            missingShaders = 0;
-            // A name left over from an avatar that no longer exists is not the user's choice for this one.
-            var untouched = opened || avatar == null || !AppTransferFlow.HasListedName(avatarName) || avatarName == avatar.name
-                || avatarName == RememberedName(avatar);
-            avatar = target;
-            // Opening starts from the name of the avatar's last transfer.
-            if (untouched) avatarName = target == null ? "" : opened ? RememberedName(target) ?? target.name : target.name;
-            consented = false;
-            nameFits = null;
-            Exporter?.SelectAvatar(target);
-            minSize = FormMinimumSize;
-            Refresh();
+            return true;
         }
 
         private void OnEnable()
         {
-            EditorApplication.update += Poll;
-            EditorApplication.quitting += StopAndClean;
-            AssemblyReloadEvents.beforeAssemblyReload += StopAndClean;
+            Panel.Window = this;
+            Panel.Enable();
         }
 
-        private void OnDisable()
-        {
-            EditorApplication.update -= Poll;
-            EditorApplication.quitting -= StopAndClean;
-            AssemblyReloadEvents.beforeAssemblyReload -= StopAndClean;
-            StopAndClean();
-        }
+        // Closing cancels the transfer and deletes the exported copy.
+        private void OnDisable() => Panel.Disable();
 
-        // Closing cancels the transfer and deletes the exported copy. Nothing of
-        // the link, key or token is written to a log, a preference or a file.
-        private void StopAndClean()
-        {
-            exportAttempt++;
-            flow?.Stop();
-            ClearQr();
-        }
-
-        private void ClearQr()
-        {
-            if (qrImage != null) qrImage.image = null;
-            if (qrTexture != null) DestroyImmediate(qrTexture);
-            qrTexture = null;
-        }
-
-        private void Poll()
-        {
-            var time = EditorApplication.timeSinceStartup;
-            // Until CreateGUI has run there is no flow; the form also refreshes every 0.2 s below,
-            // so it follows the Editor (Play mode, the privacy choice shared with "スマホに送る").
-            if (flow == null) return;
-            if (!CloudTransferAvailability.Enabled) { StopAndClean(); return; }
-            if (flow.View == AppTransferView.Exporting)
-            {
-                // Exporting blocks the Editor: start once the window has painted that state.
-                // A hidden tab never paints, so do not wait for it longer than a moment.
-                if (exportPainted || time >= exportDeadline) RunExport();
-                return;
-            }
-            flow.Tick(time);
-            var view = flow.View;
-            if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
-            else ClearQr();
-            view = flow.View;
-            if (view == polledView && time < nextRepaint) return;
-            polledView = view;
-            nextRepaint = time + 0.2;
-            Refresh();
-        }
-
-        private void ShowQr()
-        {
-            // A status request can end the wait between the view check and this read.
-            var link = flow.Link;
-            if (link == null) return;
-            ClearQr();
-            try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
-            catch { flow.Fail(AppTransferText.NeedsShorterName); }
-            // The OS notification sound, once per QR that is now on screen.
-            if (AppTransferFlow.ShouldBeepForQr(flow.View, qrTexture != null, QrReadySound)) EditorApplication.Beep();
-        }
-
-        private string Reason()
-        {
-            if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
-            if (BoardNeedsFix) return AppTransferText.NeedsBoardFix;
-            return AppTransferFlow.BlockReason(avatar != null, BoardReady, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
-                CloudVrmTransferWindow.PrivacyConsentAccepted);
-        }
-
-        private void Begin()
-        {
-            if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode || Reason() != null) return;
-            transferName = AppTransferFlow.TransferName(avatarName);
-            placeholderSide = TransferQrCode.Encode(AppTransferFlow.PlaceholderLink(transferName)).Width;
-            Flow.BeginExport();
-            ExpectExportPaint();
-            FitTransferSize();
-            Refresh();
-        }
-
-        // The expression board in its transfer mode, for the avatar on screen. From the quick
-        // transfer this switches to the detailed one, so this window closes.
-        private void EditDetails()
-        {
-            var entry = Exporter;
-            if (entry == null || avatar == null || Transferring) return;
-            // Declining the board's change of avatar keeps this window.
-            if (entry.EditDetails(avatar) && !detailed) Close();
-        }
-
-        // A new QR uploads again from the exported copy. After a failed export there is none, so export again.
-        private void Retry()
-        {
-            ClearQr();
-            // The privacy policy choice is shared with "スマホに送る" and can be withdrawn there.
-            // Exporting again needs an author; without one, return to the form where the field says so.
-            if (!CloudVrmTransferWindow.PrivacyConsentAccepted || !flow.CanRegenerate && Exporter != null && !Exporter.HasAuthor())
-            {
-                flow.Stop();
-                minSize = FormMinimumSize;
-                Refresh();
-                return;
-            }
-            if (flow.CanRegenerate) flow.Regenerate();
-            else if (Exporter != null && !EditorApplication.isPlayingOrWillChangePlaymode) { flow.BeginExport(); ExpectExportPaint(); }
-            Refresh();
-        }
-
-        private void ExpectExportPaint()
-        {
-            exportPainted = false;
-            exportDeadline = EditorApplication.timeSinceStartup + 0.5;
-        }
-
-        private void RunExport()
-        {
-            exportPainted = false;
-            var attempt = ++exportAttempt;
-            // A new export replaces the one the warning was about.
-            missingShaders = 0;
-            string path;
-            // Every folder that could hold the transfer copy refused it: give up before exporting.
-            try { path = AppTransferFlow.NewSnapshotPath(); }
-            catch (InvalidOperationException exception)
-            {
-                flow.ExportFailed(exception.Message ?? "");
-                Refresh();
-                return;
-            }
-            var target = avatar;
-            var name = avatarName.Trim();
-            var wireName = transferName;
-            var fromBoard = detailed;
-            var saved = false;
-            void Saved()
-            {
-                // The recovery window can save long after this attempt was replaced or the window closed.
-                if (this == null || flow == null || attempt != exportAttempt) { AppTransferFlow.Discard(path); return; }
-                saved = true;
-                missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
-                // Grow for the warning now, while the upload is shown, so the QR never moves once it is on screen.
-                if (missingShaders > 0) FitTransferSize();
-                // One export feeds one upload: a second save of the same attempt is ignored.
-                exportAttempt++;
-                flow.Upload(path, wireName);
-                Refresh();
-            }
-            string failure;
-            try { failure = fromBoard ? Exporter.ExportDetailed(target, name, path, Saved) : Exporter.Export(target, name, path, Saved); }
-            catch (Exception exception) { failure = exception.Message ?? ""; AppTransferFlow.Discard(path); }
-            finally { EditorUtility.ClearProgressBar(); }
-            if (saved || attempt != exportAttempt) return;
-            // Nothing was handed to the upload. Delete whatever this attempt left;
-            // a later save from the recovery window writes the file again.
-            AppTransferFlow.Discard(path);
-            if (failure == null) { flow.ExportCanceled(); minSize = FormMinimumSize; }
-            else flow.ExportFailed(failure);
-            Refresh();
-        }
-
-        private float ScaleFactor => pixelsPerPoint > 0f ? pixelsPerPoint : EditorGUIUtility.pixelsPerPoint;
-
-        // The placeholder has the longest numbers a link can have, so the real QR is the same
-        // version or one smaller. Reserve the larger of the two drawn sizes for whole-pixel modules.
-        private float SlotSide
-        {
-            get
-            {
-                var side = Mathf.Max(placeholderSide, 2 * TransferQrCode.QuietZone + 21);
-                var scale = ScaleFactor;
-                var smaller = side - 4 >= 2 * TransferQrCode.QuietZone + 21 ? TransferQrCode.DisplaySide(side - 4, scale) : 0f;
-                return Mathf.Max(TransferQrCode.DisplaySide(side, scale), smaller);
-            }
-        }
-
-        // The window is at least as large as the QR it is about to show. On a short screen (1080p at 150%)
-        // it is no taller than the Unity window, so the buttons stay on screen and the body scrolls instead.
-        private void FitTransferSize()
-        {
-            var side = SlotSide;
-            var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
-            var screen = EditorGUIUtility.GetMainWindowPosition().height;
-            if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
-            var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);
-            minSize = size;
-            if (docked) return;
-            var rect = position;
-            if (rect.width < size.x || rect.height < size.y)
-                position = new Rect(rect.x, rect.y, Mathf.Max(rect.width, size.x), Mathf.Max(rect.height, size.y));
-        }
-
-        private float Snap(float value)
-        {
-            var scale = ScaleFactor;
-            return Mathf.Round(value * scale) / scale;
-        }
-
-        private TAsset Load<TAsset>(string guid, string extension) where TAsset : UnityEngine.Object
-        {
-            var asset = AssetDatabase.LoadAssetAtPath<TAsset>(AssetDatabase.GUIDToAssetPath(guid));
-            if (asset != null) return asset;
-            var script = AssetDatabase.GetAssetPath(MonoScript.FromScriptableObject(this));
-            return string.IsNullOrEmpty(script) ? null : AssetDatabase.LoadAssetAtPath<TAsset>(Path.ChangeExtension(script, extension));
-        }
+        private void CreateGUI() => Panel.Build(rootVisualElement);
 
         // Unity 2022.3's editor text remembers, per character, which fallback font drew it, without the
         // weight: once any editor UI Toolkit panel has drawn a Japanese character in bold, that character
         // comes from the bold Japanese font in normal-weight text too, so a few kana of a line look bold.
-        // The window draws its text from its own font asset instead, made from the OS font the editor
+        // The panel draws its text from its own font asset instead, made from the OS font the editor
         // uses for Japanese on Windows, so no other text shares its lookup. Korean and the Chinese
         // characters Yu Gothic lacks come from its own fallbacks, made from the OS fonts the editor
-        // falls back to: through the editor's fallbacks, bold text in the window would leak the same way.
+        // falls back to: through the editor's fallbacks, bold text in the panel would leak the same way.
         // Elsewhere it keeps the editor's font.
         private const string TextFontName = "VR Vlog App Transfer Text";
         private static readonly string[] TextFallbackFamilies = { "Malgun Gothic", "Microsoft JhengHei" };
@@ -459,370 +154,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             font = FontAsset.CreateFontAsset(family, style, 90);
             if (font != null) { font.name = name; font.hideFlags = HideFlags.DontSave; }
             return font;
-        }
-
-        // The UXML holds the structure only; every text is set in Refresh through T.
-        private void CreateGUI()
-        {
-            var tree = Load<VisualTreeAsset>(LayoutGuid, ".uxml");
-            var sheet = Load<StyleSheet>(StyleGuid, ".uss");
-            var root = rootVisualElement;
-            if (tree == null || sheet == null)
-            {
-                // A package imported without these files would otherwise open an empty window.
-                root.Clear();
-                root.Add(new HelpBox(T(AppTransferText.LayoutMissing), HelpBoxMessageType.Error) { style = { marginTop = 8f, marginBottom = 8f, marginLeft = 8f, marginRight = 8f } });
-                Debug.LogError("VR Vlog: AppTransferWindow.uxml or AppTransferWindow.uss was not found next to AppTransferWindow.cs. Reimport the package.");
-                return;
-            }
-            root.Clear();
-            tree.CloneTree(root);
-            root.styleSheets.Add(sheet);
-            root.AddToClassList("app-transfer");
-            root.AddToClassList(EditorGUIUtility.isProSkin ? "app-transfer--dark" : "app-transfer--light");
-            var font = TextFont();
-            if (font != null) root.style.unityFontDefinition = FontDefinition.FromSDFFont(font);
-
-            disabledBox = root.Q<HelpBox>("disabled");
-            content = root.Q("content");
-            heading = root.Q<Label>("heading");
-            subtitle = root.Q<Label>("subtitle");
-            form = root.Q("form");
-            problemBox = root.Q<HelpBox>("exporter-problem");
-            diagnosticsButton = root.Q<Button>("diagnostics");
-            playingBox = root.Q<HelpBox>("playing");
-            missingShadersBox = root.Q<HelpBox>("missing-shaders");
-            formFields = root.Q("form-fields");
-            consentFields = root.Q("consent");
-            avatarLabel = root.Q<Label>("avatar-label");
-            avatarField = root.Q<ObjectField>("avatar-field");
-            summaryText = root.Q<Label>("summary-text");
-            summaryButton = root.Q<Button>("summary-button");
-            nameLabel = root.Q<Label>("name-label");
-            nameField = root.Q<TextField>("name-field");
-            nameHint = root.Q<Label>("name-hint");
-            termsLabel = root.Q<Label>("terms-label");
-            readTerms = root.Q<Label>("read-terms");
-            consentToggle = root.Q<Toggle>("consent-toggle");
-            consentText = root.Q<Label>("consent-text");
-            privacyRow = root.Q("privacy");
-            privacyLink = root.Q<Label>("privacy-link");
-            privacyToggle = root.Q<Toggle>("privacy-toggle");
-            privacyText = root.Q<Label>("privacy-text");
-            reasonLabel = root.Q<Label>("reason");
-            createButton = root.Q<Button>("create");
-            createHint = root.Q<Label>("create-hint");
-            transfer = root.Q("transfer");
-            slotRow = root.Q("slot-row");
-            slot = root.Q("slot");
-            qrImage = root.Q<Image>("qr");
-            slotMessage = root.Q("message");
-            messageTitle = root.Q<Label>("message-title");
-            messageBody = root.Q<Label>("message-body");
-            messageButton = root.Q<Button>("message-button");
-            slotUpload = root.Q("upload");
-            uploadTitle = root.Q<Label>("upload-title");
-            uploadBar = root.Q<IMGUIContainer>("upload-bar");
-            scanLabel = root.Q<Label>("scan");
-            warningRow = root.Q("warning");
-            warningText = root.Q<Label>("warning-text");
-            statusLabel = root.Q<Label>("status");
-            remainingLabel = root.Q<Label>("remaining");
-            barFill = root.Q("bar-fill");
-            lifetimeLabel = root.Q<Label>("lifetime");
-            soundToggle = root.Q<Toggle>("sound");
-            regenerateButton = root.Q<Button>("regenerate");
-            closeButton = root.Q<Button>("close");
-
-            var headerIcon = root.Q<Image>("header-icon");
-            headerIcon.image = ExporterWindowIcon.Texture;
-            headerIcon.scaleMode = ScaleMode.ScaleToFit;
-            var warningIcon = root.Q<Image>("warning-icon");
-            warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
-            warningIcon.scaleMode = ScaleMode.ScaleToFit;
-            qrImage.scaleMode = ScaleMode.StretchToFill;
-            var probe = root.Q<IMGUIContainer>("scale-probe");
-            probe.onGUIHandler = ProbeScale;
-            // Only measures the display scale: no Tab stop, no clicks.
-            probe.focusable = false;
-            probe.pickingMode = PickingMode.Ignore;
-
-            avatarField.objectType = typeof(GameObject);
-            avatarField.allowSceneObjects = true;
-            avatarField.RegisterValueChangedCallback(changed =>
-            {
-                var selected = changed.newValue as GameObject;
-                if (selected != avatar && (!Transferring || ConfirmEndingTransfer())) Select(selected, false);
-                // Kept from the IMGUI version: the form is hidden while transferring, but a declined change must not stay in the field.
-                avatarField.SetValueWithoutNotify(avatar);
-                Refresh();
-            });
-            nameField.RegisterValueChangedCallback(changed =>
-            {
-                avatarName = changed.newValue ?? "";
-                nameFits = null;
-                Refresh();
-            });
-            consentToggle.RegisterValueChangedCallback(changed => { consented = changed.newValue; Refresh(); });
-            consentText.RegisterCallback<ClickEvent>(_ => consentToggle.value = !consentToggle.value);
-            privacyToggle.RegisterValueChangedCallback(changed =>
-            {
-                // The same saved choice as "スマホに送る".
-                if (changed.newValue != CloudVrmTransferWindow.PrivacyConsentAccepted) CloudVrmTransferWindow.PrivacyConsentAccepted = changed.newValue;
-                Refresh();
-            });
-            privacyText.RegisterCallback<ClickEvent>(_ => privacyToggle.value = !privacyToggle.value);
-            readTerms.RegisterCallback<ClickEvent>(_ => Application.OpenURL(AppTransferFlow.TermsUrl));
-            privacyLink.RegisterCallback<ClickEvent>(_ => Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl));
-            // The VRM terms are the IMGUI section shared with the export window.
-            root.Q<IMGUIContainer>("terms").onGUIHandler = DrawTerms;
-            diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
-            summaryButton.clicked += EditDetails;
-            createButton.clicked += Begin;
-            messageButton.clicked += Retry;
-            regenerateButton.clicked += Retry;
-            closeButton.clicked += Close;
-            soundToggle.RegisterValueChangedCallback(changed => QrReadySound = changed.newValue);
-            uploadBar.onGUIHandler = DrawUploadBar;
-            // The export starts once the panel has drawn the Exporting state.
-            slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
-            slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
-            root.Q<ScrollView>("transfer-scroll").verticalScroller.valueChanged += _ => PlaceSlot();
-            built = true;
-            Refresh();
-        }
-
-        private void ProbeScale()
-        {
-            var scale = EditorGUIUtility.pixelsPerPoint;
-            if (Mathf.Approximately(scale, pixelsPerPoint)) return;
-            pixelsPerPoint = scale;
-            rootVisualElement.schedule.Execute(Refresh);
-        }
-
-        private void DrawTerms()
-        {
-            var entry = exporter;
-            if (entry == null) return;
-            EditorGUI.BeginChangeCheck();
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms();
-            // The author decides the reason line below.
-            if (EditorGUI.EndChangeCheck()) rootVisualElement.schedule.Execute(Refresh);
-        }
-
-        private void DrawUploadBar()
-        {
-            if (flow == null || flow.UploadSize <= 0) return;
-            EditorGUI.ProgressBar(GUILayoutUtility.GetRect(0f, 20f, GUILayout.ExpandWidth(true)), (float)flow.Transferred / flow.UploadSize,
-                string.Format(T("{0:N0} / {1:N0} バイト（暗号化済み）"), flow.Transferred, flow.UploadSize));
-        }
-
-        private static void Show(VisualElement element, bool visible) => element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
-
-        // Hidden but still taking its height, so the rows below never move.
-        private static void Reserve(VisualElement element, bool visible) => element.style.visibility = visible ? Visibility.Visible : Visibility.Hidden;
-
-        private void Refresh()
-        {
-            if (!built || this == null) return;
-            var enabled = CloudTransferAvailability.Enabled;
-            disabledBox.text = enabled ? "" : T(CloudTransferAvailability.DisabledMessage);
-            Show(disabledBox, !enabled);
-            Show(content, enabled);
-            if (!enabled)
-            {
-                StopAndClean();
-                return;
-            }
-            var title = avatar != null ? string.Format(T(AppTransferText.TitleWithAvatar), avatar.name) : T(AppTransferText.Title);
-            if (titleContent.text != title || titleContent.image != null) titleContent = new GUIContent(title);
-            var view = shownView = Flow.View;
-            var sending = view != AppTransferView.Form;
-            heading.text = T(detailed ? AppTransferText.HeadingDetailed : AppTransferText.HeadingQuick);
-            subtitle.text = sending ? string.Format(T(AppTransferText.Sending), avatarName.Trim()) : "";
-            Show(subtitle, sending);
-            Show(form, !sending);
-            Show(transfer, sending);
-            if (sending) RefreshTransfer(view);
-            else RefreshForm();
-        }
-
-        private void RefreshForm()
-        {
-            var playing = EditorApplication.isPlayingOrWillChangePlaymode;
-            var entry = Exporter;
-            problemBox.text = entry == null ? T(exporterProblem) : "";
-            Show(problemBox, entry == null);
-            diagnosticsButton.text = T("VR Vlog 動作環境");
-            Show(diagnosticsButton, entry == null);
-            playingBox.text = T("Playモードを終了すると編集できます。");
-            Show(playingBox, playing);
-            formFields.SetEnabled(!playing && entry != null);
-            // The terms and the consent sit above the button, outside the fields, and lock with them.
-            consentFields.SetEnabled(!playing && entry != null);
-
-            avatarLabel.text = T("アバター");
-            if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
-            // What the export takes from elsewhere, and where to change it.
-            summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
-            summaryButton.text = T(!detailed ? AppTransferText.EditDetails : BoardReady ? AppTransferText.BackToBoard : AppTransferText.OpenBoard);
-            summaryButton.SetEnabled(avatar != null && !Transferring);
-            nameLabel.text = T(AppTransferText.Name);
-            if (nameField.value != avatarName) nameField.SetValueWithoutNotify(avatarName);
-            nameHint.text = T(AppTransferText.NameHint);
-            termsLabel.text = T(AppTransferText.Terms);
-            readTerms.text = T(AppTransferText.ReadTerms);
-            consentText.text = AppTransferFlow.ConsentText;
-            consentToggle.SetValueWithoutNotify(consented);
-            // The same saved choice, link and wording as "スマホに送る".
-            if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
-            Show(privacyRow, showPrivacy);
-            privacyLink.text = T("プライバシーポリシーを開く");
-            privacyText.text = T("プライバシーポリシーに同意する");
-            privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
-
-            // One fixed line says why the button is disabled, so nothing below it moves.
-            var reason = entry == null ? null : Reason();
-            reasonLabel.text = reason == null ? "" : T(reason);
-            createButton.text = T(AppTransferText.Create);
-            createButton.SetEnabled(!playing && entry != null && reason == null);
-            createHint.text = T(AppTransferText.CreateHint);
-        }
-
-        private void RefreshTransfer(AppTransferView view)
-        {
-            // The saved export does not look like the avatar. Shown once per export, from its upload on,
-            // so it does not appear above a QR that is already on screen.
-            var warnShaders = missingShaders > 0 && view != AppTransferView.Exporting;
-            missingShadersBox.text = warnShaders ? string.Format(T(MissingShadersText), missingShaders) : "";
-            Show(missingShadersBox, warnShaders);
-            // The area keeps the size of the QR through every state, so the rows below never move.
-            slotRow.style.height = SlotSide;
-            var showQr = view == AppTransferView.Waiting && qrTexture != null;
-            slot.EnableInClassList("slot--qr", showQr);
-            qrImage.image = showQr ? qrTexture : null;
-            Show(qrImage, showQr);
-
-            // A failure or an ended transfer says why in place, with the one thing to do next.
-            string title = null, body = null, button = null;
-            switch (view)
-            {
-                case AppTransferView.Exporting:
-                    title = T(AppTransferText.Exporting);
-                    break;
-                case AppTransferView.Expired:
-                    // The grey area keeps the QR's size; nothing readable is drawn after the deadline.
-                    title = T(AppTransferText.Expired); button = T(AppTransferText.Regenerate);
-                    break;
-                case AppTransferView.Canceled:
-                    title = T("転送を中止しました"); button = T(AppTransferText.Regenerate);
-                    break;
-                case AppTransferView.Completed:
-                    title = T(AppTransferText.Completed);
-                    break;
-                case AppTransferView.Failed:
-                    title = T(flow.ExportDidFail ? AppTransferText.ExportFailed : "転送できませんでした");
-                    body = flow.FailureText(T); button = T(AppTransferText.Retry);
-                    break;
-            }
-            Show(slotMessage, title != null);
-            messageTitle.text = title ?? "";
-            messageBody.text = body ?? "";
-            Show(messageBody, !string.IsNullOrEmpty(body));
-            messageButton.text = button ?? "";
-            Show(messageButton, button != null);
-            var uploading = view == AppTransferView.Uploading;
-            Show(slotUpload, uploading);
-            if (uploading)
-            {
-                uploadTitle.text = T(flow.Encrypting ? "転送を準備しています" : "アップロード中");
-                Reserve(uploadBar, flow.UploadSize > 0);
-                uploadBar.MarkDirtyRepaint();
-            }
-            if (view == AppTransferView.Exporting) slot.MarkDirtyRepaint();
-            PlaceSlot();
-
-            var waiting = view == AppTransferView.Waiting;
-            scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
-            warningText.text = T(AppTransferText.DoNotShare);
-            Reserve(warningRow, waiting);
-            var counting = waiting || view == AppTransferView.Expired;
-            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
-            var seconds = waiting ? flow.Remaining : 0;
-            remainingLabel.text = counting ? string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60) : "";
-            remainingLabel.EnableInClassList("expired", view == AppTransferView.Expired);
-            barFill.style.width = Length.Percent(waiting ? flow.RemainingFraction * 100f : 0f);
-            lifetimeLabel.text = counting ? string.Format(T(AppTransferText.Lifetime), CloudTransferProtocol.LifetimeMinutes) : "";
-            regenerateButton.text = T(AppTransferText.Regenerate);
-            Show(regenerateButton, waiting);
-            closeButton.text = T("閉じる");
-            soundToggle.text = soundToggle.tooltip = T(AppTransferText.QrReadySound);
-            soundToggle.SetValueWithoutNotify(QrReadySound);
-        }
-
-        // UI Toolkit can centre on half a device pixel; the QR's modules need whole ones.
-        private void PlaceSlot()
-        {
-            if (!built || shownView == AppTransferView.Form) return;
-            var side = SlotSide;
-            var row = slotRow.worldBound;
-            if (float.IsNaN(row.width) || row.width <= 0f) return;
-            slot.style.left = Snap(row.x + (row.width - side) / 2f) - row.x;
-            slot.style.top = Snap(row.y) - row.y;
-            slot.style.width = side;
-            slot.style.height = side;
-            if (qrTexture == null) return;
-            var qr = Mathf.Min(TransferQrCode.DisplaySide(qrTexture.width, ScaleFactor), side);
-            var offset = Snap((side - qr) / 2f);
-            qrImage.style.left = offset;
-            qrImage.style.top = offset;
-            qrImage.style.width = qr;
-            qrImage.style.height = qr;
-        }
-
-        private sealed class ExportEntry
-        {
-            internal Action<GameObject> SelectAvatar;
-            internal Func<bool> HasAuthor;
-            internal Action DrawTerms;
-            internal Func<GameObject, string, string, Action, string> Export;
-            internal Func<GameObject, string> RememberedName;
-            internal Func<GameObject, bool, string> SettingsSummary;
-            internal Func<GameObject, string> DetailedProblem;
-            internal Func<GameObject, bool> DetailedNeedsFix;
-            internal Func<GameObject, bool> EditDetails;
-            internal Func<GameObject, string, string, Action, string> ExportDetailed;
-            internal Func<int> LastMissingShaderCount;
-
-            internal static ExportEntry Resolve()
-            {
-                try
-                {
-                    var type = Type.GetType("VRVlog.LilToonExporter.AppTransferExport, VRVlog.LilToonExporter.Editor", false);
-                    if (type == null) return null;
-                    var target = Activator.CreateInstance(type, true);
-                    return new ExportEntry
-                    {
-                        SelectAvatar = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), target, "SelectAvatar"),
-                        HasAuthor = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "HasAuthor"),
-                        DrawTerms = (Action)Delegate.CreateDelegate(typeof(Action), target, "DrawTerms"),
-                        Export = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "Export"),
-                        RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
-                        SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),
-                        DetailedProblem = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "DetailedProblem"),
-                        DetailedNeedsFix = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "DetailedNeedsFix"),
-                        EditDetails = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "EditDetails"),
-                        ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
-                        LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
-                    };
-                }
-                catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException
-                    || exception is BadImageFormatException || exception is ArgumentException || exception is MissingMemberException
-                    || exception is System.Reflection.TargetInvocationException)
-                {
-                    return null;
-                }
-            }
         }
     }
 }

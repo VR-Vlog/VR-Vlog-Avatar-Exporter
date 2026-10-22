@@ -20,9 +20,8 @@ namespace VRVlog.LilToonExporter.Tests
     // descriptor/menu types when installed and explicitly skip otherwise.
     public sealed class MenuImportSdkRecoveryTests
     {
-        [TestCase(false)]
-        [TestCase(true)]
-        public async Task OversizedMenuCanRetrySaveAndReloadWithoutChangingSharedInputs(bool omitAll)
+        [Test]
+        public async Task OversizedMenuExportsInFullWithoutChangingSharedInputs()
         {
             using var f = new AttachmentConnectionTests.Fixture();
             using var menus = new SdkFixture(f.Source);
@@ -48,7 +47,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var beforeMenus = menus.MenuJson();
                 var transforms = f.Source.GetComponentsInChildren<Transform>(true);
                 var originalTransforms = transforms.Select(t => EditorJsonUtility.ToJson(t)).ToArray();
-                var poseOptions = new PoseExportOptions(); poseOptions.Manual.Add(new ManualPose { Clip = manual, Name = "Manual survives menu omission" });
+                var poseOptions = new PoseExportOptions(); poseOptions.Manual.Add(new ManualPose { Clip = manual, Name = "Manual survives the full menu" });
                 Directory.CreateDirectory(directory); var existing = new byte[] { 61, 62, 63 }; File.WriteAllBytes(destination, existing);
                 var session = new ExportRecoverySession(f.Source, destination, (options, report, warnings) =>
                     UniVrmOneClickExporter.Export(f.Source, "Menu recovery integration", "Tests", warnings,
@@ -57,45 +56,26 @@ namespace VRVlog.LilToonExporter.Tests
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, poseOptions: poseOptions,
                         recoveryOptions: options, recoveryReport: report));
 
-                Assert.That(session.Attempt(null), Is.False);
-                Assert.That(session.Failure, Is.TypeOf<VrChatMenuImportLimitException>());
-                Assert.That(((VrChatMenuImportLimitException)session.Failure).Summary.CandidateCount, Is.EqualTo(257));
-                var options = new ExportRecoveryOptions();
-                var chosen = session.AvailableDiagnostics.Single(d => omitAll
-                    ? d.Action.Kind == ExportRecoveryActionKind.SkipVrChatMenus
-                    : d.Action.Kind == ExportRecoveryActionKind.ExcludeMenuBranch && d.Action.MenuPath == "/1");
-                Assert.That(chosen.Reason, Is.Not.Empty); Assert.That(chosen.LostEffect, Is.Not.Empty);
-                options.Actions.Add(chosen.Action);
-                Assert.That(session.Attempt(options), Is.True, session.Failure?.ToString());
+                Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(257));
+                Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
                 Assert.That(session.CanSave, Is.True);
-                Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing), "A successful retry is still a draft until confirmation.");
+                Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing), "A successful attempt is still a draft until confirmation.");
                 var draft = session.LastSuccess;
-                Assert.That(draft.Options.Actions.Single().Kind, Is.EqualTo(chosen.Action.Kind));
+                Assert.That(draft.Options.Actions, Is.Empty);
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(draft.Bytes));
                 loaded = await Vrm10.LoadBytesAsync(draft.Bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(loaded, Is.Not.Null);
-                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Menu face")), Is.EqualTo(!omitAll),
+                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Menu face")), Is.True,
                     "Loaded expressions: " + string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
                 Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Gesture face")), Is.True,
-                    "The menu policy must not disable FX gesture clip discovery. Loaded expressions: " +
+                    "A large menu must not disable FX gesture clip discovery. Loaded expressions: " +
                     string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
                 Assert.That(loaded.Vrm.Expression.Happy, Is.Not.Null, "Existing VRM expression settings remain part of the export.");
                 Assert.That(loaded.GetComponentsInChildren<SkinnedMeshRenderer>().Select(s => s.name), Is.EquivalentTo(new[] { "Front", "Back" }));
                 Assert.That(loaded.GetComponentsInChildren<SkinnedMeshRenderer>().All(s => s.sharedMesh.vertexCount == 3 && s.bones.All(b => b != null)), Is.True);
                 var extensions = (Dictionary<string, object>)GlbDocument.Read(draft.Bytes).Json["extensions"];
-                Assert.That(HumanoidPoseData.Read(extensions[HumanoidPoseData.Extension]).Any(p => p.Name == "Manual survives menu omission"), Is.True,
-                    "The same omission policy reaches prepared pose-menu re-reading while retaining manual poses.");
-
-                // Removing consent reruns the full original menu and fails. It
-                // may not replace either a draft or the existing destination.
-                options.Actions.Clear();
-                Assert.That(draft.Options.Actions.Count, Is.EqualTo(1), "The successful result captures consent independently of a later UI selection edit.");
-                Assert.That(session.Attempt(options), Is.False);
-                Assert.That(session.Failure, Is.TypeOf<VrChatMenuImportLimitException>());
-                Assert.That(session.LastSuccess, Is.SameAs(draft));
-                Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
-                options.Actions.Add(chosen.Action);
-                Assert.That(session.Attempt(options), Is.True, session.Failure?.ToString());
+                Assert.That(HumanoidPoseData.Read(extensions[HumanoidPoseData.Extension]).Any(p => p.Name == "Manual survives the full menu"), Is.True,
+                    "Prepared pose-menu re-reading of the whole menu retains manual poses.");
                 session.SavePending();
                 Assert.That(File.ReadAllBytes(destination), Is.EqualTo(session.LastSuccess.Bytes));
                 Assert.That(Directory.GetFiles(directory), Is.EqualTo(new[] { destination }));
@@ -117,40 +97,34 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ForeignOwnerAndReplacedRootCannotReuseARecoveredBranchRecipe()
+        public void AMenuPastTheCandidateLimitIsLeftOutAndGesturesAreKept()
         {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            var error = Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
-            var report = ExportRecoveryReport.FromException(f.Source, error);
-            var branch = report.Diagnostics.Single(d => d.Action?.Kind == ExportRecoveryActionKind.ExcludeMenuBranch && d.Action.MenuPath == "/1").Action;
-            var options = new ExportRecoveryOptions(); options.Actions.Add(branch);
-            Assert.That(ExportRecoveryReport.MenuImportPolicy(f.Source, options).ExcludedBranches, Does.Contain("/1"));
-            var foreign = new GameObject("Foreign avatar");
-            try
-            {
-                Assert.Throws<InvalidOperationException>(() => ExportRecoveryReport.MenuImportPolicy(foreign, options));
-                var original = branch.MenuOwner; branch.MenuOwner = foreign;
-                Assert.Throws<InvalidOperationException>(() => ExportRecoveryReport.MenuImportPolicy(f.Source, options));
-                branch.MenuOwner = original;
-                SdkFixture.Set(menus.Descriptor, "expressionsMenu", menus.NewMenu());
-                Assert.Throws<InvalidOperationException>(() => ExportRecoveryReport.MenuImportPolicy(f.Source, options));
-            }
-            finally { Object.DestroyImmediate(foreign); }
+            using var f = new AttachmentConnectionTests.Fixture();
+            using var menus = new SdkFixture(f.Source, true, wardrobe: 600);
+            Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(601));
+
+            var source = VrChatExpressionSampler.Analyze(f.Source);
+
+            Assert.That(source.MenuOmittedForCandidateLimit, Is.True);
+            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Menu), Is.False);
+            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Gesture), Is.True,
+                string.Join(", ", source.Entries.Select(e => e.Source + ":" + e.ExportName)));
+            Assert.That(source.Messages, Has.Some.EqualTo(ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit)));
+
+            var skipped = VrChatExpressionSampler.Analyze(f.Source, menuPolicy: new VrChatMenuImportPolicy { SkipAll = true });
+            Assert.That(skipped.MenuOmittedForCandidateLimit, Is.False, "Leaving the menu out by choice is not reported as the limit.");
         }
 
         [Test]
-        public void MenuAssetEditsInvalidateSelectionAndPendingSaveUntilFullReinspection()
+        public void MenuAssetEditsInvalidatePendingSaveUntilReinspection()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
             var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
             {
-                var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, options);
-                VrChatExpressionMenu.Read(f.Source, policy);
+                VrChatExpressionMenu.Read(f.Source);
                 return new byte[] { 1 };
             });
-            Assert.That(session.Attempt(null), Is.False);
-            var options = new ExportRecoveryOptions(); options.Actions.Add(session.AvailableDiagnostics.Single(d => d.Action.Kind == ExportRecoveryActionKind.SkipVrChatMenus).Action);
-            Assert.That(session.Attempt(options), Is.True);
+            Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
             var last = session.LastSuccess;
             SdkFixture.Set(((IList)VrChatExpressionMenu.Member(menus.Root, "controls"))[0], "name", "Changed original label");
             EditorUtility.SetDirty(menus.Root);
@@ -158,33 +132,24 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(session.SelectedOptions.Actions, Is.Empty);
             Assert.That(session.AvailableDiagnostics, Is.Empty);
             Assert.That(session.CanSave, Is.False);
-            Assert.That(session.Attempt(options), Is.False);
+            Assert.That(session.Attempt(null), Is.False);
             Assert.That(session.LastSuccess, Is.SameAs(last));
-            Assert.That(session.Reinspect(), Is.False, "Reinspection requires new explicit consent to omit the changed menu.");
-            Assert.That(session.SelectedOptions.Actions, Is.Empty);
-            Assert.That(session.Failure, Is.TypeOf<VrChatMenuImportLimitException>());
+            Assert.That(session.Reinspect(), Is.True, session.Failure?.ToString());
+            Assert.That(session.LastSuccess, Is.Not.SameAs(last));
         }
 
         [Test]
-        public void PreparedPoseMenuRereadUsesScopeAndRejectsReplacedBranchIdentity()
+        public void PreparedPoseMenuRereadReadsTheWholeMenu()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            var error = Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
-            var options = new ExportRecoveryOptions();
-            options.Actions.Add(ExportRecoveryReport.FromException(f.Source, error).Diagnostics.Single(d =>
-                d.Action?.Kind == ExportRecoveryActionKind.ExcludeMenuBranch && d.Action.MenuPath == "/1").Action);
-            var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, options);
             var clone = Object.Instantiate(f.Source);
             try
             {
-                Assert.Throws<VrChatMenuImportLimitException>(() => PoseMenuResolver.Read(clone), "The unscoped prepared read still exposes the original failure.");
-                Assert.That(PoseMenuResolver.Read(clone, policy).Count, Is.EqualTo(1));
+                Assert.That(PoseMenuResolver.Read(clone).Count, Is.EqualTo(257));
+                Assert.That(PoseMenuResolver.Read(clone, new VrChatMenuImportPolicy { SkipAll = true }), Is.Empty);
                 var descriptor = clone.GetComponents<Component>().Single(c => c.GetType() == menus.Descriptor.GetType());
                 SdkFixture.Set(descriptor, "expressionsMenu", menus.NewMenu());
-                Assert.Throws<VrChatMenuImportPolicyException>(() => PoseMenuResolver.Read(clone, policy),
-                    "Preparation cannot map a scope onto a new menu solely because its index path looks the same.");
-                policy.SkipAll = true;
-                Assert.That(PoseMenuResolver.Read(clone, policy), Is.Empty);
+                Assert.That(PoseMenuResolver.Read(clone), Is.Empty, "A replaced menu is read as it is now.");
             }
             finally { Object.DestroyImmediate(clone); }
         }
@@ -193,7 +158,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void WholeMenuOmissionKeepsFaceEmoRegisteredClipParsingIndependent()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            var policy = new VrChatMenuImportPolicy { ExpectedRoot = menus.Root, SkipAll = true };
+            var policy = new VrChatMenuImportPolicy { SkipAll = true };
             var source = VrChatExpressionMenu.Read(f.Source, policy);
             Assert.That(source.Entries, Is.Empty);
             var folderName = "__MenuRecoveryFaceEmo_" + Guid.NewGuid().ToString("N");
@@ -231,7 +196,7 @@ namespace VRVlog.LilToonExporter.Tests
                 SdkFixture.Set(pose, "name", "APL survives"); SdkFixture.Set(pose, "animationClip", clip);
                 var before = EditorJsonUtility.ToJson(apl);
                 var options = new PoseExportOptions(); options.Manual.Add(new ManualPose { Name = "Manual survives", Clip = clip });
-                var policy = new VrChatMenuImportPolicy { SkipAll = true, ExpectedRoot = menus.Root };
+                var policy = new VrChatMenuImportPolicy { SkipAll = true };
                 using (var snapshot = new PoseExportSession(f.Source, options, menuPolicy: policy))
                 {
                     clone = Object.Instantiate(f.Source); PoseExportSession.RemoveAplFromCopy(f.Source, clone);
@@ -241,75 +206,16 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(snapshot.Entries.Single(e => e.Error == null).Data, Is.Not.Null);
                 }
                 Assert.That(EditorJsonUtility.ToJson(apl), Is.EqualTo(before));
-                Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
+                Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(257));
             }
             finally { Object.DestroyImmediate(clone); Object.DestroyImmediate(clip); }
         }
 
-        [Test]
-        public void SharedMenuLimitDiagnosticOmitsPrivateNamesAndLocalRoutes()
-        {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            f.Source.name = "PRIVATE_AVATAR_731"; menus.Root.name = "PRIVATE_MENU_846";
-            SdkFixture.Set(((IList)VrChatExpressionMenu.Member(menus.Root, "controls"))[1], "name", "PRIVATE_BRANCH_923");
-            var error = Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
-            var report = ExportRecoveryReport.FromException(f.Source, error, "表情メニュー読込");
-            Assert.That(report.Diagnostics.Any(d => d.Target.Contains("PRIVATE_BRANCH_923")), Is.True,
-                "Private labels remain visible locally to identify the selected branch.");
-            var shared = report.BuildSupportText();
-            Assert.That(shared, Does.Contain("Stage: expression-menu"));
-            Assert.That(shared, Does.Contain("menu-import-limit"));
-            Assert.That(shared, Does.Not.Contain("PRIVATE_"));
-            Assert.That(shared, Does.Not.Contain("/1"));
-            Assert.That(shared, Does.Not.Contain(f.Source.GetInstanceID().ToString()));
-        }
-
-        [Test]
-        public void ChangedPreparedMenuDropsOnlyBranchCandidatesAndRetainsTheSuccessfulScopeLabel()
-        {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            var material = f.Source.GetComponentInChildren<Renderer>().sharedMaterial;
-            material.shader = Shader.Find("lilToon"); material.SetFloat("_UseAudioLink", 1);
-            var initialError = Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
-            var audioError = ExportRecoveryFailure.At(new NotSupportedException("AudioLink unsupported"), "audio-link", material);
-            var phase = 0;
-            var session = new ExportRecoverySession(f.Source, "unused.vrm", (options, report, warnings) =>
-            {
-                if (phase == 0)
-                {
-                    report.Fail(f.Source, initialError);
-                    report.Diagnostics.AddRange(ExportRecoveryReport.FromException(f.Source, audioError).Diagnostics);
-                    throw initialError;
-                }
-                if (phase == 2) throw new VrChatMenuImportPolicyException();
-                VrChatExpressionMenu.Read(f.Source, ExportRecoveryReport.MenuImportPolicy(f.Source, options));
-                return new byte[] { 81, 82, 83 };
-            });
-            Assert.That(session.Attempt(null), Is.False);
-            var scope = session.AvailableDiagnostics.Single(d => d.Action.Kind == ExportRecoveryActionKind.ExcludeMenuBranch && d.Action.MenuPath == "/1");
-            var audio = session.AvailableDiagnostics.Single(d => d.Action.Kind == ExportRecoveryActionKind.DisableAudioLink);
-            var options = new ExportRecoveryOptions(); options.Actions.Add(scope.Action); options.Actions.Add(audio.Action);
-            phase = 1; Assert.That(session.Attempt(options), Is.True);
-            var successful = session.LastSuccess; var label = scope.Target; var effect = scope.LostEffect;
-            phase = 2; Assert.That(session.Attempt(options), Is.False);
-            Assert.That(session.AvailableDiagnostics.Any(d => d.Action.Kind == ExportRecoveryActionKind.ExcludeMenuBranch), Is.False);
-            Assert.That(session.AvailableDiagnostics.Any(d => d.Action.Kind == ExportRecoveryActionKind.DisableAudioLink), Is.True);
-            Assert.That(session.AvailableDiagnostics.Any(d => d.Action.Kind == ExportRecoveryActionKind.SkipVrChatMenus), Is.True);
-            Assert.That(session.LastSuccess, Is.SameAs(successful));
-            Assert.That(session.LastSuccess.Bytes, Is.EqualTo(new byte[] { 81, 82, 83 }));
-            scope.Target = "Later diagnostic label"; scope.LostEffect = "Later diagnostic effect";
-            var captured = successful.Diagnostics.Single(d => d.Action.Kind == ExportRecoveryActionKind.ExcludeMenuBranch);
-            Assert.That(captured.Target, Is.EqualTo(label)); Assert.That(captured.LostEffect, Is.EqualTo(effect));
-            Assert.That(captured.Action.MenuPath, Is.EqualTo("/1"));
-        }
-
         [TestCase(false)]
         [TestCase(true)]
-        public void ExporterOwnedIsolationTranslatesTheRootAndChildScopeWithoutChangingTheSource(bool persistentRoot)
+        public void ExporterOwnedIsolationReadsTheWholeIsolatedMenuWithoutChangingTheSource(bool persistentRoot)
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source, persistMenus: false, persistentRootOnly: persistentRoot);
-            var options = ScopeOptions(f.Source, menus.Root, "/1");
-            var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, options);
             var originalChild = (Object)VrChatExpressionMenu.Member(((IList)VrChatExpressionMenu.Member(menus.Root, "controls"))[1], "subMenu");
             var before = menus.MenuJson();
             var clone = Object.Instantiate(f.Source);
@@ -322,142 +228,26 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(lease.IsolatedCopyOf(menus.Root), Is.SameAs(root));
                 Assert.That(lease.IsolatedCopyOf(originalChild), Is.SameAs(ownedChild));
                 Assert.That(lease.IsolatedCopyOf(menus.Descriptor), Is.SameAs(menus.Descriptor), "Only assets actually isolated by this lease have provenance.");
-                var prepared = policy.WithOwnedCopies(value => lease.IsolatedCopyOf(value as Object));
-                Assert.That(prepared.ExpectedRoot, Is.SameAs(root)); Assert.That(policy.ExpectedRoot, Is.SameAs(menus.Root));
-                Assert.That(VrChatExpressionMenu.Read(clone, prepared).Entries.Single().Name, Does.Contain("Menu face"));
-                Assert.That(PoseMenuResolver.Read(clone, prepared).Count, Is.EqualTo(1));
-                using (var poses = new PoseExportSession(f.Source, null, menuPolicy: policy))
-                {
-                    Assert.DoesNotThrow(() => poses.CollectPrepared(clone, preparedMenuPolicy: prepared));
-                    Assert.That(poses.Entries.Count, Is.EqualTo(1), "Prepared pose collection receives the translated policy rather than reading the whole 257-candidate menu again.");
-                }
+                var entries = VrChatExpressionMenu.Read(clone).Entries;
+                Assert.That(entries.Count, Is.EqualTo(257));
+                Assert.That(entries.Count(e => e.Name.Contains("Menu face")), Is.EqualTo(1));
                 Assert.That(VrChatExpressionMenu.Root(f.Source), Is.SameAs(menus.Root));
-                Assert.That(menus.MenuJson(), Is.EqualTo(before));
-                Assert.Throws<VrChatMenuImportLimitException>(() => VrChatExpressionMenu.Read(f.Source));
-            }
-            finally { Object.DestroyImmediate(clone); }
-        }
-
-        [TestCase("root")]
-        [TestCase("child")]
-        [TestCase("order")]
-        [TestCase("name")]
-        [TestCase("parameter")]
-        [TestCase("value")]
-        [TestCase("shared-gate")]
-        [TestCase("ancestor-gate")]
-        public void OwnedCopyProvenanceCannotAuthorizeAnUnrelatedRootOrChangedSelectedRoute(string change)
-        {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source, persistMenus: false);
-            var sourceControls = (IList)VrChatExpressionMenu.Member(menus.Root, "controls");
-            var route = change == "ancestor-gate" ? "/1/0" : "/1";
-            if (change == "shared-gate")
-            {
-                var sharedChild = VrChatExpressionMenu.Member(sourceControls[1], "subMenu");
-                SdkFixture.Set(sourceControls[0], "subMenu", sharedChild);
-                SdkFixture.Set(sourceControls[0], "name", "Same label"); SdkFixture.Set(sourceControls[1], "name", "Same label");
-                SetControlParameter(sourceControls[0], "Gate", 1); SetControlParameter(sourceControls[1], "Gate", 2);
-            }
-            if (change == "ancestor-gate") SetControlParameter(sourceControls[1], "AncestorGate", 3);
-            var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, ScopeOptions(f.Source, menus.Root, route));
-            var before = menus.MenuJson(); var clone = Object.Instantiate(f.Source); Object unrelated = null;
-            try
-            {
-                using var lease = IsolateWithProductionCode(f.Source, clone);
-                var prepared = policy.WithOwnedCopies(value => lease.IsolatedCopyOf(value as Object));
-                Assert.DoesNotThrow(() => VrChatExpressionMenu.Read(clone, prepared));
-                var descriptor = clone.GetComponents<Component>().Single(c => c.GetType() == menus.Descriptor.GetType());
-                var root = VrChatExpressionMenu.Root(clone) as Object;
-                var controls = (IList)VrChatExpressionMenu.Member(root, "controls"); var selected = controls[1];
-                if (change == "root") { unrelated = Object.Instantiate(root); SdkFixture.Set(descriptor, "expressionsMenu", unrelated); }
-                else if (change == "child")
-                { unrelated = Object.Instantiate((Object)VrChatExpressionMenu.Member(selected, "subMenu")); SdkFixture.Set(selected, "subMenu", unrelated); }
-                else if (change == "order") { var first = controls[0]; controls[0] = controls[1]; controls[1] = first; }
-                else if (change == "name") SdkFixture.Set(selected, "name", "Different affected branch");
-                else if (change == "parameter") SetControlParameter(selected, "ChangedGate", 0);
-                else if (change == "value") SdkFixture.Set(selected, "value", 1f);
-                else if (change == "shared-gate") SdkFixture.Set(selected, "value", 1f);
-                else if (change == "ancestor-gate") SdkFixture.Set(selected, "value", 4f);
-                Assert.Throws<VrChatMenuImportPolicyException>(() => VrChatExpressionMenu.Read(clone, prepared));
-                Assert.Throws<VrChatMenuImportPolicyException>(() => PoseMenuResolver.Read(clone, prepared));
-                Assert.That(policy.ExpectedRoot, Is.SameAs(menus.Root)); Assert.That(menus.MenuJson(), Is.EqualTo(before));
-                prepared.SkipAll = true;
-                Assert.That(VrChatExpressionMenu.Read(clone, prepared).Entries, Is.Empty, "Explicit whole-menu consent is still safe after a preparation pass changes a scoped branch.");
-            }
-            finally { Object.DestroyImmediate(clone); Object.DestroyImmediate(unrelated); }
-        }
-
-        [TestCase("descriptor-removed")]
-        [TestCase("custom-expressions-disabled")]
-        [TestCase("root-destroyed")]
-        [TestCase("ancestor-menu-destroyed")]
-        [TestCase("selected-menu-destroyed")]
-        public void PreparedMenuDisappearanceCannotSilentlyBypassSelectedBranchConsent(string change)
-        {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source, persistMenus: false);
-            var route = change == "ancestor-menu-destroyed" ? "/1/0" : "/1";
-            var expectedCount = change == "ancestor-menu-destroyed" ? 193 : 1;
-            var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, ScopeOptions(f.Source, menus.Root, route));
-            var before = menus.MenuJson(); var clone = Object.Instantiate(f.Source);
-            try
-            {
-                using var lease = IsolateWithProductionCode(f.Source, clone);
-                var prepared = policy.WithOwnedCopies(value => lease.IsolatedCopyOf(value as Object));
-                var descriptor = clone.GetComponents<Component>().Single(c => c.GetType() == menus.Descriptor.GetType());
-                var root = VrChatExpressionMenu.Root(clone) as Object;
-                Assert.That(VrChatExpressionMenu.Read(clone, prepared).Entries.Count, Is.EqualTo(expectedCount));
-                if (change == "descriptor-removed") Object.DestroyImmediate(descriptor);
-                else if (change == "custom-expressions-disabled") SdkFixture.Set(descriptor, "customExpressions", false);
-                else if (change == "ancestor-menu-destroyed" || change == "selected-menu-destroyed")
-                {
-                    var ancestor = ((IList)VrChatExpressionMenu.Member(root, "controls"))[1];
-                    var child = (Object)VrChatExpressionMenu.Member(ancestor, "subMenu");
-                    Object.DestroyImmediate(child);
-                    Assert.That(child == null, Is.True);
-                    Assert.That(ReferenceEquals(VrChatExpressionMenu.Member(ancestor, "subMenu"), child), Is.True,
-                        "A destroyed selected or intermediate menu can still have the same managed reference as the consent snapshot.");
-                }
-                else
-                {
-                    Object.DestroyImmediate(root);
-                    Assert.That(root == null, Is.True, "Destroyed Unity objects retain their CLR wrapper but are unavailable to the reader.");
-                    Assert.That(ReferenceEquals(prepared.ExpectedRoot, root), Is.True);
-                }
-                Assert.Throws<VrChatMenuImportPolicyException>(() => VrChatExpressionMenu.Read(clone, prepared));
-                Assert.Throws<VrChatMenuImportPolicyException>(() => PoseMenuResolver.Read(clone, prepared));
-                prepared.SkipAll = true;
-                Assert.That(VrChatExpressionMenu.Read(clone, prepared).Entries, Is.Empty);
-                Assert.That(PoseMenuResolver.Read(clone, prepared), Is.Empty);
-                Assert.That(VrChatExpressionMenu.Read(f.Source, policy).Entries.Count, Is.EqualTo(expectedCount));
                 Assert.That(menus.MenuJson(), Is.EqualTo(before));
             }
             finally { Object.DestroyImmediate(clone); }
         }
 
         [Test]
-        public void DirectMenuReadRejectsADestroyedUnityRootWithTheSameClrIdentity()
+        public void DirectMenuReadSkipsADestroyedUnityRootWithTheSameClrIdentity()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source, persistMenus: false);
-            var policy = ExportRecoveryReport.MenuImportPolicy(f.Source, ScopeOptions(f.Source, menus.Root, "/1"));
             var root = menus.Root;
             Object.DestroyImmediate(root);
             Assert.That(root == null, Is.True);
-            Assert.That(ReferenceEquals(policy.ExpectedRoot, root), Is.True);
-            Assert.Throws<VrChatMenuImportPolicyException>(() => VrChatExpressionMenu.ReadMenu(root, policy));
-            policy.SkipAll = true;
-            Assert.That(VrChatExpressionMenu.ReadMenu(root, policy).Entries, Is.Empty);
+            Assert.That(VrChatExpressionMenu.ReadMenu(root).Entries, Is.Empty);
+            Assert.That(VrChatExpressionMenu.ReadMenu(root, new VrChatMenuImportPolicy { SkipAll = true }).Entries, Is.Empty);
         }
 
-        static ExportRecoveryOptions ScopeOptions(GameObject source, Object root, string route)
-        {
-            var options = new ExportRecoveryOptions(); options.Actions.Add(new ExportRecoveryAction { Id = "scope:" + route,
-                Kind = ExportRecoveryActionKind.ExcludeMenuBranch, MenuOwner = source, MenuRoot = root, MenuPath = route }); return options;
-        }
-        static void SetControlParameter(object control, string name, float value)
-        {
-            var parameter = Activator.CreateInstance(control.GetType().GetField("parameter").FieldType);
-            SdkFixture.Set(parameter, "name", name); SdkFixture.Set(control, "parameter", parameter); SdkFixture.Set(control, "value", value);
-        }
         static NdmfExportPreparation IsolateWithProductionCode(GameObject source, GameObject clone)
         {
             // Run the actual native serialized-asset isolation independently of
@@ -487,7 +277,7 @@ namespace VRVlog.LilToonExporter.Tests
             readonly bool persistMenus;
             int menuSerial, clipSerial;
             internal SdkFixture(GameObject avatar) : this(avatar, true) { }
-            internal SdkFixture(GameObject avatar, bool persistMenus, bool persistentRootOnly = false)
+            internal SdkFixture(GameObject avatar, bool persistMenus, bool persistentRootOnly = false, int wardrobe = 256)
             {
                 this.persistMenus = persistMenus;
                 var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
@@ -500,7 +290,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Descriptor = avatar.AddComponent(descriptorType); Set(Descriptor, "customExpressions", true); Set(Descriptor, "customizeAnimationLayers", true);
                 Root = NewMenu(forcePersistent: persistentRootOnly); var face = NewMenu(); AddControl(face, "Menu face", "Toggle", "Face", 1);
                 AddControl(Root, "Faces", "SubMenu", subMenu: face);
-                AddControl(Root, "Clothes", "SubMenu", subMenu: EightControlTree(256));
+                AddControl(Root, "Clothes", "SubMenu", subMenu: EightControlTree(wardrobe));
                 Set(Descriptor, "expressionsMenu", Root);
                 var parameters = ScriptableObject.CreateInstance(parameterType); owned.Add(parameters);
                 AssetDatabase.CreateAsset(parameters, directory + "/Parameters.asset");

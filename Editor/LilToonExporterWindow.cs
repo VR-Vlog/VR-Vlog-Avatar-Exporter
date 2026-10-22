@@ -556,7 +556,13 @@ namespace VRVlog.LilToonExporter
             var warnings = new List<string>();
             var report = new ExportRecoveryReport();
             byte[] bytes;
-            try { bytes = create(new ExportRecoveryOptions(), report, warnings); }
+            // Poses over the app's limits are asked once here; a later retry
+            // from the recovery window reuses the choice saved for the avatar.
+            try
+            {
+                using (new PoseLimitChooser.Scope(source, interactive && !ExportFallbackConfirmation.IsBatchMode()))
+                    bytes = create(new ExportRecoveryOptions(), report, warnings);
+            }
             catch (OperationCanceledException) { return null; }
             catch (Exception exception)
             {
@@ -614,7 +620,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.3";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.4";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional
@@ -626,6 +632,14 @@ namespace VRVlog.LilToonExporter
         // assembly and namespace as the entry above.
         internal static System.Reflection.MethodInfo DetailedTransferMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferWindow", false), "OpenDetailed", typeof(GameObject));
+
+        // The same step as the expression board's third page: returns the panel as a VisualElement.
+        internal static System.Reflection.MethodInfo EmbeddedTransferMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "CreateEmbedded", typeof(GameObject));
+
+        // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
+        internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
 
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, Type parameter)
         {
@@ -656,22 +670,25 @@ namespace VRVlog.LilToonExporter
         private static string InstalledLilToonStatus()
         {
             var package = FindLilToonPackage();
-            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加してください）");
-            return Compatibility.DependencyPolicy.AcceptsLilToon(package.version) ? package.version : string.Format(
-                ExporterLocalization.T("{0}（対応範囲 {1}〜{2} の外）"), package.version,
-                Compatibility.DependencyPolicy.LilToonMinimum, Compatibility.DependencyPolicy.LilToonMaximum);
+            if (package == null) return ExporterLocalization.T("未インストール（VCC／ALCOMで追加）");
+            return Compatibility.DependencyPolicy.ClassifyLilToon(package.version) == Compatibility.DependencyPolicy.LilToonSupport.Catalogue
+                ? package.version
+                : string.Format(ExporterLocalization.T("{0}（アプリでは{1}として描画）"), package.version, Compatibility.DependencyPolicy.LilToonVersion);
         }
 
-        // Stops before export when the installed lilToon is outside the
-        // supported range or its shaders used by the avatar differ from the
-        // catalogue. Returns the installed version for asset.extras;
+        // Stops only without lilToon, or when lilToon's baker that the avatar
+        // needs is missing or changed. Any other installed version exports:
+        // warnings lists how it differs from the catalogue and what the export
+        // leaves out. Returns the installed version for asset.extras;
         // sourceLilToonVersion is always the catalogue version.
-        internal static string RequireSupportedLilToon(GameObject avatar)
+        internal static string RequireLilToon(GameObject avatar, ICollection<string> warnings)
         {
             var version = FindLilToonPackage()?.version;
             var error = Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T);
             if (error != null) throw new InvalidOperationException(error);
-            LilToonStructureCheck.Require(avatar, version);
+            var warning = Compatibility.DependencyPolicy.LilToonWarning(version, ExporterLocalization.T);
+            if (warning != null) warnings?.Add(warning);
+            LilToonStructureCheck.Inspect(avatar, version, warnings);
             return version;
         }
 
