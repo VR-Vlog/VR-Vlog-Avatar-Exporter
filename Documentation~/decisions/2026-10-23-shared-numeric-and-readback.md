@@ -38,7 +38,6 @@ GPUで描いて画素を読み戻す処理も、同じ手順が複数の場所�
 - `LilToonExtensionValidator.IsFinite`: `Tools/validate.py` がこのファイルに `float.IsNaN(value)` の文字列があることを確かめている。`Tools/validate.py` も別の変更と重なるため、今回は触らない。
 - `NeutralShapeSnapshot.Finite(...)` の名前で呼んでいるファイル（`AdditionalParameterConstants`・`AuthoredExpressionEndpoints`・`FacialProjectionScope`・`HeldAutomaticExpressionLayers`・`NeutralAdditionalDataPreflight`・`NeutralShapePlan` など）: 呼び方を変えても中身は同じなので、差分を増やさないよう残した。
 - GPUの読み戻しのうち手順が違うもの: `LilToonFullTexture.ReadPixels`（形式とsRGBが引数で変わり、バイト列で読んで検査する）、`ExportVrmLilToonPreview.EncodeNormal`（ミップごとに読む）、`OutlineMaskTexture`（ミップマップ有り・リニアのRenderTextureで、読み戻す前に所有の一覧に入れる）、`MobileTextureEncoder`（`ReadPixels` を使わない）。無理にまとめると引数が増えて元より読みにくくなるので、それぞれのままにした。
-- `CHANGELOG.md`: 同じ時期の別の変更が触っているため、この変更の項目は足していない。利用者から見える変化も無い。
 
 ## 確認したこと
 
