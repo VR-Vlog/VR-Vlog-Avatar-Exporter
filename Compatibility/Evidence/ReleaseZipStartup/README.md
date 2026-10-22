@@ -44,7 +44,7 @@ the SHA-256 below, not by the version label.
   includes the full import.
 
 `ZipProbe.cs.txt` first runs `ExporterStartupProbe.Run` (no exporter test
-assemblies, no `testables`, exactly one `VR Vlog/` menu entry, the menu opens the
+assemblies, no `testables`, exactly one `VR Vlog/VRMを書き出す...` entry and nothing but the two app transfers besides it, the menu opens the
 exporter window, refresh and reload keep the backend, the report says
 `Status: Ready`). It then builds a Humanoid skeleton in code with one skinned box
 using `new Material(Shader.Find("lilToon"))`, and calls the same internal methods
