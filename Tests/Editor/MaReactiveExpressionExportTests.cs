@@ -140,6 +140,10 @@ namespace VRVlog.LilToonExporter.Tests
             RequirePackages();
             var mergeType = Installed(Ma + "ModularAvatarMergeBlendTree");
             if (mergeType == null) Assert.Ignore("Install the real MA Merge Motion component.");
+            // Before MA 1.12 the component is Merge Blend Tree and only takes a
+            // BlendTree, so the plain clip cases start at 1.12.
+            var motionProperty = mergeType.GetProperty("Motion");
+            if (motionProperty == null && !nestedTree) Assert.Ignore("Merging a plain clip needs Modular Avatar 1.12.0 or later.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var descriptor = fixture.Source.AddComponent(Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"));
             ConfigureGeometry(fixture.Mesh);
@@ -196,7 +200,8 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                 }
                 var merge = tool.AddComponent(mergeType);
-                mergeType.GetProperty("Motion").SetValue(merge, motion);
+                if (motionProperty != null) motionProperty.SetValue(merge, motion);
+                else mergeType.GetField("BlendTree").SetValue(merge, motion);
                 var mode = mergeType.GetField("PathMode"); mode.SetValue(merge, Enum.Parse(mode.FieldType, pathMode == 0 ? "Absolute" : "Relative"));
                 if (pathMode == 2)
                 {
@@ -404,10 +409,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var node = new GameObject("Smile control"); node.transform.SetParent(root.transform, false);
             var type = Installed(Ma + "ModularAvatarMenuItem"); var component = node.AddComponent(type);
-            var control = type.GetProperty("PortableControl").GetValue(component);
-            var kind = control.GetType().GetProperty("Type"); kind.SetValue(control, Enum.Parse(kind.PropertyType, "Toggle"));
-            control.GetType().GetProperty("Parameter").SetValue(control, "Menu");
-            control.GetType().GetProperty("Value").SetValue(control, 1f);
+            AppearancePreparationTests.SetToggle(component, "Menu", 1f);
             type.GetField("automaticValue").SetValue(component, false); type.GetField("isDefault").SetValue(component, selected);
             return component;
         }
