@@ -54,10 +54,10 @@ namespace VRVlog.LilToonExporter.Tests
             Compare(authoring,runtime);
         }
 
-        [TestCase("_UseMain2ndTex")][TestCase("_UseShadow")]
-        [TestCase("_UseRimShade")][TestCase("_UseEmission")]
+        [TestCase("_UseMain2ndTex")][TestCase("_UseMain3rdTex")][TestCase("_UseShadow")]
+        [TestCase("_UseRimShade")][TestCase("_UseEmission")][TestCase("_UseEmission2nd")]
         [TestCase("_UseBumpMap")][TestCase("_UseBump2ndMap")][TestCase("_UseAnisotropy")]
-        [TestCase("_UseReflection")][TestCase("_UseMatCap")]
+        [TestCase("_UseReflection")][TestCase("_UseMatCap")][TestCase("_UseMatCap2nd")]
         [TestCase("_UseRim")][TestCase("_UseGlitter")][TestCase("_UseBacklight")]
         [TestCase("_UseParallax")][TestCase("_UsePOM")]
         public void EnabledFeatureMatchesReferencePixels(string feature)

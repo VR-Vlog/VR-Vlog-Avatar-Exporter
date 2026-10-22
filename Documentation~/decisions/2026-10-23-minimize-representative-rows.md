@@ -51,7 +51,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
   - 主経路で代わりに守れるか: 件数の境界と他の操作の種類が同じ判定を通る。
 - `SkinnedMeshFallbackWeightTests`・`ExcludedLayerTests`・`NdmfLostMorphFollowTests`: 2 つの真偽の組を対角の 2 行にした。
   - 主経路で代わりに守れるか: 各因子の両方の値が残る。
-- `LilToonFullRenderTests`: 第 3 メイン、第 2 発光、第 2 MatCap、ファーの（2, 0.5）を外した。
+- `LilToonFullRenderTests`: ファーの（2, 0.5）を外した。第 2・第 3 のレイヤー（第 3 メイン、第 2 発光、第 2 MatCap）はレイヤーごとに別のプロパティを読むので残した。
   - 主経路で代わりに守れるか: 第 2 メイン・第 1 発光・第 1 MatCap とファーの他の行が同じ描画の比較を通る。
 
 ## 消さなかったもの
@@ -90,6 +90,6 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 | SkinnedMeshFallbackWeightTests | 7 → 7 | 12 → 10 |
 | ExcludedLayerTests | 6 → 6 | 11 → 9 |
 | NdmfLostMorphFollowTests | 5 → 5 | 10 → 8 |
-| LilToonFullRenderTests | 6 → 6 | 24 → 20 |
+| LilToonFullRenderTests | 6 → 6 | 24 → 23 |
 | 触らなかった 5 ファイル | 33 → 33 | 62 → 62 |
-| 合計 | 401 → 401 | 925 → 752 |
+| 合計 | 401 → 401 | 925 → 755 |
