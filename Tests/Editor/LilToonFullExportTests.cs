@@ -16,6 +16,31 @@ namespace VRVlog.LilToonExporter.Tests
     {
         static IEnumerable<string> OfficialShaders=>VRVlog.LilToon.LilToon234Catalogue.Shaders.Keys;
 
+        [Test]
+        public void PayloadsCompressedTogetherKeepTheirOwnBytes()
+        {
+            var random = new System.Random(7);
+            var sources = Enumerable.Range(0, 40).Select(i =>
+            {
+                var bytes = new byte[1 + i * 9973];
+                for (var j = 0; j < bytes.Length; j++) bytes[j] = (byte)(j % 7 == 0 ? random.Next(256) : i);
+                return bytes;
+            }).ToList();
+            var payloads = sources.Select(bytes => new DeflatePayload(bytes)).ToList();
+            for (var i = 0; i < sources.Count; i++)
+            {
+                using var expected = new MemoryStream();
+                using (var encoder = new System.IO.Compression.DeflateStream(expected, System.IO.Compression.CompressionLevel.Optimal, true))
+                    encoder.Write(sources[i], 0, sources[i].Length);
+                Assert.That(payloads[i].DecodedBytes, Is.EqualTo(sources[i].Length));
+                Assert.That(payloads[i].Encoded, Is.EqualTo(expected.ToArray()), "payload " + i);
+                using var encoded = new MemoryStream(payloads[i].Encoded, false);
+                using var decoder = new System.IO.Compression.DeflateStream(encoded, System.IO.Compression.CompressionMode.Decompress);
+                using var decoded = new MemoryStream(); decoder.CopyTo(decoded);
+                Assert.That(decoded.ToArray(), Is.EqualTo(sources[i]), "payload " + i);
+            }
+        }
+
         [TestCase(false)][TestCase(true)]
         public void StoredTextureEncodingAndAllMipPixelsSurviveCapture(bool srgb)
         {
