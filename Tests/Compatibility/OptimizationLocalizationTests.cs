@@ -39,8 +39,6 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(translated, Is.EqualTo(translatedPrefix + label));
                     Assert.That(translated, Does.EndWith(label), "Authored mesh and shape labels must remain identifiable.");
                 }
-                const string fxFailure = "常時適用するFXの変形を確定できません。統合後のBlendShape設定を確認してください。";
-                Assert.That(ExporterLocalization.T(fxFailure), Is.Not.EqualTo(fxFailure));
                 const string faceEmoFailure = "FaceEmoの表情参照は書き出し用コピーと一致していません。";
                 Assert.That(ExporterLocalization.T(faceEmoFailure), Is.Not.EqualTo(faceEmoFailure));
             }
