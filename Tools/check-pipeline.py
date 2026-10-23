@@ -164,6 +164,13 @@ def check_automatic_beta(workflow, jobs):
                                         GH_TOKEN="${{ github.token }}"))
     require(re.findall(r"--target\s+(\S+)", publish.get("run", "")) == ['"${EXPECTED_COMMIT}"'],
             "Release tags must target the authenticated source commit rather than a moving workflow SHA")
+    require("python3 Tools/build-installer.py --version \"$VERSION\"" in package.get("run", "")
+            and 'assets+=("artifacts/com.vrvlog.liltoon-vrm-exporter-installer-${VERSION}.unitypackage")'
+            in publish.get("run", ""), "Attach the installer built for the released version")
+    # The external creator runs before the ZIP is built, so the candidate hash check covers its effects.
+    package_run = package.get("run", "")
+    require(package_run.find("Tools/build-installer.py") < package_run.find("Tools/build-package.py"),
+            "Build the installer before the exporter ZIP that is checked against the candidate")
     require(steps.index(version_step) < steps.index(receipt) < steps.index(package) < steps.index(publish),
             "Keep version policy, candidate receipt, reproducible build and publication ordered")
     # UniVRM is bundled inside the exporter: no input, output, build or asset may bring back its packages.
@@ -313,7 +320,7 @@ def check(name, workflow):
                     days = step.get("with", {}).get("retention-days")
                     require(type(days) is int and 1 <= days <= 7, prefix + ": artifact retention must be bounded")
                     path = step.get("with", {}).get("path", "")
-                    require(path in {"work/candidate", "${{ env.listPublishDirectory }}"}, prefix + ": artifact upload scope is not approved")
+                    require(path in {"work/candidate", "work/installer", "${{ env.listPublishDirectory }}"}, prefix + ": artifact upload scope is not approved")
             require("${{" not in step.get("run", ""), prefix + ": expressions must enter scripts through env")
             check_publication_step(name, job_name, step)
             check_step_secrets(name, job_name, step)

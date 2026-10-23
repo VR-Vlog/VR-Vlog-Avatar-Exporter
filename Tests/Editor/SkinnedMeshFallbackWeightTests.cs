@@ -247,6 +247,33 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(external); }
         }
 
+        [TestCase("mixed")]
+        [TestCase("external")]
+        [TestCase("singular")]
+        [TestCase("cloth")]
+        public void LenientExportKeepsAnUnrepairableMeshAndWarns(string reason)
+        {
+            using var fixture = new Fixture(reason == "mixed", true);
+            var external = new GameObject("External anchor");
+            try
+            {
+                var original = fixture.CloneSkin.sharedMesh;
+                var oldBones = fixture.CloneSkin.bones;
+                if (reason == "external") fixture.CloneSkin.rootBone = external.transform;
+                if (reason == "singular") fixture.CloneSkin.transform.localScale = new Vector3(1, 0, 1);
+                if (reason == "cloth") fixture.CloneSkin.gameObject.AddComponent<Cloth>();
+                var warnings = new List<string>();
+                SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
+                SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
+                Assert.That(warnings, Has.Count.EqualTo(1));
+                Assert.That(warnings[0], Does.Contain("ウェイトを直さずに"));
+                Assert.That(fixture.CloneSkin.sharedMesh, Is.SameAs(original));
+                Assert.That(fixture.CloneSkin.bones, Is.EqualTo(oldBones));
+                Assert.That(fixture.Owned, Is.Empty);
+            }
+            finally { Object.DestroyImmediate(external); }
+        }
+
         private static void AssertMorphsUnchanged(Mesh a, Mesh b)
         {
             Assert.That(b.blendShapeCount, Is.EqualTo(a.blendShapeCount));

@@ -188,7 +188,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Stage guard", "Tests", new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report,
-                    authorCopyExpressions: clone =>
+                    authorCopyExpressions: (clone, _) =>
                     {
                         var settings = ScriptableObject.CreateInstance<VRM10Object>(); authored.Add(settings);
                         settings.LookAt = null; settings.FirstPerson = null;

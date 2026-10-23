@@ -109,6 +109,8 @@ jobs:
           VERSION: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.version || inputs.version }}
           EXPECTED_PACKAGE_SHA256: ${{ github.event_name == 'workflow_run' && needs.resolve-candidate.outputs.package_sha256 || inputs.expected_package_sha256 }}
         run: |
+          python3 Tools/build-installer.py --version "$VERSION" \
+            --output "artifacts/com.vrvlog.liltoon-vrm-exporter-installer-${VERSION}.unitypackage"
           python3 Tools/build-package.py --output "artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip"
           python3 - <<'PY'
           import hashlib, os, re
@@ -142,6 +144,7 @@ jobs:
           PY
           mapfile -t release_flags < release-flags.txt
           assets=("artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip")
+          assets+=("artifacts/com.vrvlog.liltoon-vrm-exporter-installer-${VERSION}.unitypackage")
           gh release create "v${VERSION}" \
             "${assets[@]}" \
             --title "VR Vlog lilToon VRM Exporter ${VERSION}" \

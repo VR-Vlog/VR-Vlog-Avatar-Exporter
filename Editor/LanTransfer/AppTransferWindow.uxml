@@ -7,6 +7,7 @@
                 <ui:Label name="heading" class="t heading" />
                 <ui:Label name="subtitle" class="t mini grey subtitle" />
             </ui:VisualElement>
+            <ui:Label name="version" class="t mini grey version" />
         </ui:VisualElement>
         <!-- Outside the header, which the expression board hides when it shows this view. -->
         <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
