@@ -1890,7 +1890,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(errors.Count, Is.EqualTo(2)); Assert.That(errors[face], Is.Null); Assert.That(errors[wrong], Is.Not.Null);
                 Assert.That(session.Channels.Select(channel => channel.Renderer.GetBlendShapeWeight(0)).ToArray(), Is.EqualTo(weights));
                 var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
-                Assert.Throws<InvalidOperationException>(() => session.ClipErrors(new[] { face, wrong }));
+                Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.ClipErrors(new[] { face, wrong }));
             }
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
@@ -2112,7 +2112,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Record(session, "face", 70); json = session.SaveSettings();
                 var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
-                Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", Listed()));
+                Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
                 Assert.That(session.Expressions.Count, Is.EqualTo(1));
                 Assert.That(session.SaveSettings(), Is.EqualTo(json), "Source edits must not prevent saving recovery settings.");
             }
@@ -3083,8 +3083,8 @@ namespace VRVlog.LilToonExporter.Tests
                 front.name = "Front edited";
                 Assert.DoesNotThrow(session.RestoreBaseline, "The inner batch ending leaves the outer one checked.");
             }
-            Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
-            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
+            Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
             front.name = "Front";
             using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.RestoreBaseline);
         }
@@ -3105,7 +3105,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             using (session)
             {
-                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
                 front.name = "Front";
                 using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.RestoreBaseline);
             }
