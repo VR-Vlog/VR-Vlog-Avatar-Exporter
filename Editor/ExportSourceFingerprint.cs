@@ -95,9 +95,10 @@ namespace VRVlog.LilToonExporter
                 if (value is Shader || value is MonoScript) return;
                 // The getter settles Unity's lazy skinned bounds before their
                 // serialized cache is hashed, just as the first render does.
-                // Explicitly authored bounds and every serialized field remain
-                // part of the source stamp.
-                if (value is SkinnedMeshRenderer skin) hash.Bounds(skin.localBounds);
+                // Its result is not hashed: Unity can recalculate it with float
+                // noise (about 5e-8) while m_AABB and every input stay the
+                // same. The serialized m_AABB still carries authored bounds.
+                if (value is SkinnedMeshRenderer skin) _ = skin.localBounds;
                 // Reading a generated/imported clip can lazily create its editor
                 // curve view. Settle that view before the first stamp, while
                 // still hashing the runtime curves and all authored metadata.
