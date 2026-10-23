@@ -324,6 +324,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        internal const string HiddenFaceFormat = "元のアバターで「{0}」が非表示になっています。表示に戻すか、「変更」からアバターを指定し直してください。";
         internal const string FollowedSourceFormat = "元のアバターがプレビューのコピーと違っていたため、表情ボードの選択を残したままコピーを作り直しました。違っていた値: {0}";
 
         // The copy no longer matches the avatar: a change in the scene, an
@@ -337,6 +338,9 @@ namespace VRVlog.LilToonExporter
             // Faces recorded on the copy itself would not survive it; the board records none.
             if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
+            // A face hidden for a moment would take its files off the board for good.
+            if (session.HiddenFace() is string hidden)
+                throw new InvalidOperationException(string.Format(ExporterLocalization.T(HiddenFaceFormat), hidden));
             Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), detail ?? ""));
             followedSinceAction = true;
             // As when the window opens: objects that leave no preview wait in

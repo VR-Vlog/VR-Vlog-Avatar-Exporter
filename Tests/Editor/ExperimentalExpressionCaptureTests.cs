@@ -3261,6 +3261,44 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
+        // A face mesh hidden on the avatar for a moment is not followed: a copy
+        // without it would drop the files added for it, and the user could not
+        // get them back by showing it again. The transfer stops naming the mesh
+        // and the board keeps its files and slots for when it is shown again.
+        [Test]
+        public void ATransferStopsWithoutDroppingFilesWhenAShownFaceIsHidden()
+        {
+            using var board = new FollowBoard();
+            var clip = new AnimationClip { name = "Smile file" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-hidden-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Smile"), AnimationCurve.Constant(0, 1, 100));
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                var inputs = board.Get<System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>>("clipInputs");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+                var before = board.Session;
+                var front = board.Fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+
+                front.enabled = false;
+                var saved = false;
+                var failure = Assert.Throws<InvalidOperationException>(() => board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(failure.Message, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.HiddenFaceFormat), "Front")));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+                Assert.That(board.Session, Is.SameAs(before), "The copy is not rebuilt without the face.");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+                Assert.That(board.Session.Presets.TryGetValue(ExpressionPreset.happy, out var happy) && happy.Path == "Front", Is.True);
+
+                front.enabled = true;
+                Assert.That(board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+            }
+            finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
+        }
+
         // Inside a batch the records and the standard faces use the batch's
         // check, but Export hashes the source again and sees an edit, with what differed.
         [Test]

@@ -70,6 +70,8 @@ namespace VRVlog.LilToonExporter
         // Meshes left out of recording because another mesh shares their path.
         // A face's curves on them are dropped; the rest of the face is kept.
         readonly HashSet<string> skippedPaths = new HashSet<string>(StringComparer.Ordinal);
+        // Faces shown on the source when the board opened, by path.
+        readonly List<string> shownFaces = new List<string>();
         internal Pose Baseline { get; private set; }
         readonly List<Mesh> ownedMeshes = new List<Mesh>();
         NdmfExportPreparation preparation;
@@ -241,8 +243,31 @@ namespace VRVlog.LilToonExporter
                 // The stamps were just taken from the source as it is: the rest
                 // of this batch need not hash the whole avatar again.
                 if (batchDepth > 0) validatedBatch = batchId;
+                foreach (var channel in Channels)
+                    if (SourceFace(channel.Path) is SkinnedMeshRenderer face && Shown(face)) shownFaces.Add(channel.Path);
             }
             catch { Dispose(); throw; }
+        }
+
+        SkinnedMeshRenderer SourceFace(string path)
+        {
+            var target = Source == null ? null : Source.transform.Find(path);
+            return target == null ? null : target.GetComponent<SkinnedMeshRenderer>();
+        }
+
+        bool Shown(SkinnedMeshRenderer face) => face.enabled && ExportRendererSelection.ActiveUnder(face.gameObject, Source.transform);
+
+        // A face shown when the board opened and hidden on the source now,
+        // null when there is none. A copy made from the avatar as it is would
+        // leave that face out and drop the files added for it, though the
+        // user may only be hiding it for a moment. A face no longer at its
+        // path does not count: the build may name the meshes differently.
+        internal string HiddenFace()
+        {
+            if (disposed || Source == null) return null;
+            foreach (var path in shownFaces)
+                if (SourceFace(path) is SkinnedMeshRenderer face && !Shown(face)) return path;
+            return null;
         }
 
         internal bool HasCurrentSource => !disposed && Source != null && sourceStamp.Matches(Source);
