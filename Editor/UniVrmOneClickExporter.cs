@@ -1363,7 +1363,9 @@ namespace VRVlog.LilToonExporter
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
                     ? MobileMaterialMath.MatcapColor(Color(source, "_RimColor", UnityEngine.Color.black), 1f)
-                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f ? Color(source, "_BacklightColor", UnityEngine.Color.black) : UnityEngine.Color.black;
+                    // lilToon 2.x scales backlight by its color alpha, like the rim above.
+                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f
+                        ? MobileMaterialMath.MatcapColor(Color(source, "_BacklightColor", UnityEngine.Color.black), 1f) : UnityEngine.Color.black;
                 case MaterialColorType.outlineColor: return Color(source, "_OutlineColor", UnityEngine.Color.black);
                 default: throw new ArgumentOutOfRangeException(nameof(type));
             }
