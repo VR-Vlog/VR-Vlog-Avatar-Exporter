@@ -14,6 +14,7 @@ namespace VRVlog.LilToonExporter
         internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
         internal const string EmptyMeshRenderersOmitted = "メッシュが空のRendererを書き出しから外しました: ";
         internal const string OutsideBonesDropped = "アバターの外にあるボーンへの参照を外して書き出しました。これらのメッシュは一部が正しく動かない場合があります: ";
+        internal const string EmptySubmeshesOmitted = "描画する三角形のないサブメッシュを省きました: ";
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
         internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
         internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
@@ -652,6 +653,7 @@ namespace VRVlog.LilToonExporter
                 // references. Disable external audio on the final owned copy too.
                 if (disableAudioLink) DisableAudioLinkOnCopy(clone, temporaryMaterials, (copy, original) => recoveryReport.Track(copy, original));
                 if(exporterVersion!=null) PreserveExtraMaterialSlots(clone,temporaryMeshes);
+                DropEmptySubmeshes(clone, temporaryMeshes, warnings);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // Excluded objects are gone from the copy by now; the approximation
@@ -938,6 +940,47 @@ namespace VRVlog.LilToonExporter
                 for(var slot=count;slot<slots;slot++)mesh.SetIndices(indices,topology,slot,false);
                 if(renderer is SkinnedMeshRenderer skinned)skinned.sharedMesh=mesh;
                 else renderer.GetComponent<MeshFilter>().sharedMesh=mesh;
+            }
+        }
+
+        // UniVRM 0.131 writes one primitive per submesh and stops with "Index
+        // was out of range" on a submesh without indices. Unity draws nothing
+        // for it, so the export copy drops it with its material slot. Runs
+        // after PreserveExtraMaterialSlots, so slots and submeshes line up.
+        // A mesh whose submeshes are all empty is left to DisableEmptyMeshRenderers.
+        internal static void DropEmptySubmeshes(GameObject clone, ICollection<Mesh> owned, ICollection<string> warnings)
+        {
+            foreach (var renderer in ExportRendererSelection.Enumerate(clone))
+            {
+                var skin = renderer as SkinnedMeshRenderer;
+                var filter = skin == null && renderer is MeshRenderer ? renderer.GetComponent<MeshFilter>() : null;
+                var original = skin != null ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
+                if (original == null) continue;
+                var count = original.subMeshCount;
+                var kept = Enumerable.Range(0, count).Where(sub => original.GetIndexCount(sub) > 0).ToArray();
+                if (kept.Length == 0 || kept.Length == count) continue;
+                var slots = renderer.sharedMaterials;
+                // Slots past the submeshes draw the last submesh again, which
+                // draws nothing when that one is empty.
+                var extra = original.GetIndexCount(count - 1) > 0 ? slots.Skip(count) : Enumerable.Empty<Material>();
+                var materials = kept.Where(sub => sub < slots.Length).Select(sub => slots[sub]).Concat(extra).ToArray();
+                var mesh = UnityEngine.Object.Instantiate(original);
+                mesh.name = original.name;
+                owned.Add(mesh);
+                mesh.subMeshCount = kept.Length;
+                for (var sub = 0; sub < kept.Length; sub++)
+                    mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
+                if (skin == null) filter.sharedMesh = mesh;
+                else
+                {
+                    var weights = new float[original.blendShapeCount];
+                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
+                    skin.sharedMesh = mesh;
+                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
+                }
+                renderer.sharedMaterials = materials;
+                warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
+                    (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
             }
         }
 
