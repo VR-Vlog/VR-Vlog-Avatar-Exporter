@@ -3191,7 +3191,7 @@ namespace VRVlog.LilToonExporter.Tests
             public void Dispose() { Object.DestroyImmediate(Window); Fixture.Dispose(); }
         }
 
-        // The H case: the avatar reads differently when the transfer saves. The
+        // The reported case: the avatar reads differently when the transfer saves. The
         // board rebuilds its copy with the same slots and the VRM is written.
         [Test]
         public void ATransferAfterAnEditOfTheSourceFollowsItWithTheSameChoices()
@@ -3211,6 +3211,54 @@ namespace VRVlog.LilToonExporter.Tests
                 board.AssertKept();
             }
             finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // An edit that leaves an added file unusable (its BlendShape is gone)
+        // takes the file off the board, and the transfer stops with its reason
+        // instead of writing a VRM without that face.
+        [Test]
+        public void ATransferStopsWhenTheRebuiltCopyDropsAnAddedFile()
+        {
+            using var board = new FollowBoard();
+            var clip = new AnimationClip { name = "Wink file" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-dropped-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var mesh = board.Fixture.Mesh;
+                mesh.AddBlendShapeFrame("Wink", 100, Enumerable.Repeat(new Vector3(.03f, 0, 0), mesh.vertexCount).ToArray(), new Vector3[mesh.vertexCount], new Vector3[mesh.vertexCount]);
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Wink"), AnimationCurve.Constant(0, 1, 100));
+                // The board follows the avatar with the new BlendShape first.
+                FollowBoard.ExpectFollowed();
+                board.Delegate<Action>("RefreshCandidateValidation")();
+                Assert.That(board.Session.SourceDifference(), Is.Null);
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                var inputs = board.Get<System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>>("clipInputs");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+
+                var shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).Where(name => name != "Wink").Select(name =>
+                {
+                    var index = mesh.GetBlendShapeIndex(name);
+                    var frames = Enumerable.Range(0, mesh.GetBlendShapeFrameCount(index)).Select(frame =>
+                    {
+                        var deltas = new Vector3[mesh.vertexCount]; var normals = new Vector3[mesh.vertexCount]; var tangents = new Vector3[mesh.vertexCount];
+                        mesh.GetBlendShapeFrameVertices(index, frame, deltas, normals, tangents);
+                        return (Weight: mesh.GetBlendShapeFrameWeight(index, frame), deltas, normals, tangents);
+                    }).ToArray();
+                    return (name, frames);
+                }).ToArray();
+                mesh.ClearBlendShapes();
+                foreach (var (name, frames) in shapes)
+                    foreach (var frame in frames) mesh.AddBlendShapeFrame(name, frame.Weight, frame.deltas, frame.normals, frame.tangents);
+
+                FollowBoard.ExpectFollowed();
+                var saved = false;
+                var failure = Assert.Throws<InvalidOperationException>(() => board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(failure.Message, Does.Contain(clip.name));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+                Assert.That(inputs, Is.Empty, "The file is off the board with its reason, as when the board checks the files.");
+            }
+            finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
         // Inside a batch the records and the standard faces use the batch's

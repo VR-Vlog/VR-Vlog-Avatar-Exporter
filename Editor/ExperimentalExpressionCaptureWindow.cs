@@ -404,11 +404,6 @@ namespace VRVlog.LilToonExporter
         // every update.
         void RenderThumbnails()
         {
-            // An out-of-date copy would draw old faces, and each would fail with
-            // the changed-avatar message: they wait, keeping their requests, for
-            // the copy to be built again. The rest of the batch uses this check.
-            try { session.RequireSourceForBatch(); }
-            catch (ExperimentalExpressionCaptureSession.SourceChangedException) { candidateValidationPending = true; Repaint(); return; }
             ExperimentalExpressionCaptureSession.Pose original;
             try { original = session.CurrentFace(); }
             catch (Exception exception) when (!(exception is OperationCanceledException))
@@ -562,6 +557,8 @@ namespace VRVlog.LilToonExporter
         string RebuildKeepingAssignments(GameObject[] objects, GameObject[] previous = null)
         {
             var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
+            // Names are saved per avatar asset; one in an unsaved scene keeps them only here.
+            var names = board?.Names.ToArray() ?? Array.Empty<System.Collections.Generic.KeyValuePair<AnimationClip, string>>();
             var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var automatic = automaticBlink; var previousSaved = saved;
             var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
             var edits = excludedObjectEdits; var editError = excludedObjectError;
@@ -575,6 +572,7 @@ namespace VRVlog.LilToonExporter
             excludedObjectEdits = edits; excludedObjectError = editError;
             clipInputs.AddRange(inputs);
             board.Excluded.Clear(); board.Excluded.UnionWith(excluded);
+            foreach (var pair in names) board.Names[pair.Key] = pair.Value;
             session.Presets.Clear();
             foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
             // The poses kept replace the saved ones the preparation read again.
@@ -2497,7 +2495,12 @@ namespace VRVlog.LilToonExporter
             try { session.RequireCurrentSource(); }
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed)
             {
+                // An added file the avatar as it is can no longer use is taken
+                // off the board with its reason; the save stops on that reason
+                // instead of writing a VRM without it.
+                var added = clipInputs.Count;
                 FollowSource(changed.Detail);
+                if (clipInputs.Count < added) throw new InvalidOperationException(status);
                 if (BoardBlockReason() is string blocked) throw new InvalidOperationException(blocked);
             }
             var sourceChecked = true;
