@@ -118,6 +118,8 @@ jobs:
           if not re.fullmatch(r"[0-9a-f]{64}", expected) or actual != expected:
               raise SystemExit("Built ZIP differs from the validated release candidate: " + actual)
           PY
+          python3 Tools/build-installer.py --version "$VERSION" \
+            --output "artifacts/com.vrvlog.liltoon-vrm-exporter-installer-${VERSION}.unitypackage"
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -142,6 +144,7 @@ jobs:
           PY
           mapfile -t release_flags < release-flags.txt
           assets=("artifacts/com.vrvlog.liltoon-vrm-exporter-${VERSION}.zip")
+          assets+=("artifacts/com.vrvlog.liltoon-vrm-exporter-installer-${VERSION}.unitypackage")
           gh release create "v${VERSION}" \
             "${assets[@]}" \
             --title "VR Vlog lilToon VRM Exporter ${VERSION}" \
