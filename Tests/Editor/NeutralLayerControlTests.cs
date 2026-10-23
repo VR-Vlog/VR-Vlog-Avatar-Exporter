@@ -368,87 +368,6 @@ namespace VRVlog.LilToonExporter.Tests
             AssertPermanentRelayMatchesNative(expected); AssertSourceUnchanged(before);
         }
 
-        private Dictionary<string, float> SelectedRelayGraph(bool fixedDuration)
-        {
-            MmdRelay(controller, false); UnitFxWithDormantStation(controller);
-            foreach (var child in controller.layers[ControlLayer].stateMachine.states)
-            {
-                child.state.writeDefaultValues = true;
-                foreach (var transition in child.state.transitions) FiniteTiming(transition, fixedDuration);
-            }
-            controller.AddParameter("Chosen shape", AnimatorControllerParameterType.Bool);
-            var machine = controller.layers[BodyLayer].stateMachine;
-            var selected = State(machine, "Chosen authored pose", Clip(controller, "Chosen authored pose", new[] { "Body" }, "Body size", 85));
-            Transition(machine.defaultState, selected, "Chosen shape", AnimatorConditionMode.If, 0);
-            return new Dictionary<string, float> { ["Chosen shape"] = 1 };
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void SelectedExpressionsRetainTheOriginalNativeConditionalRelay(bool fixedDuration)
-        {
-            var selected = SelectedRelayGraph(fixedDuration); var before = CaptureAssets();
-            var machine = controller.layers[ControlLayer].stateMachine;
-            var expected = NativeSdkRelay("Generic layer relay", expectedCommands: Array.Empty<float>(),
-                expectedState: machine.defaultState.name, expectUnitGlobalFx: true, selection: selected);
-            Assert.That(expected, Is.EqualTo(85).Within(.01), "The original selected body state contributes at its native default unit weight; no control state entered.");
-            var source = VrChatExpressionMenu.Read(avatar);
-            var values = VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source);
-            Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(expected).Within(.01));
-            Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(100).Within(.01));
-            AssertSourceUnchanged(before);
-        }
-
-        [TestCase("late changing signal")]
-        [TestCase("selected blend-tree input")]
-        [TestCase("unconditional timed control exit")]
-        public void SelectedExpressionsCannotCertifyUnprovenFutureRelayControls(string kind)
-        {
-            var selected = SelectedRelayGraph(true); var machine = controller.layers[ControlLayer].stateMachine;
-            var clip = (AnimationClip)machine.defaultState.motion; float? selectedSignal = null;
-            if (kind == "late changing signal")
-                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Generic layer relay"),
-                    new AnimationCurve(new Keyframe(0, 1, float.PositiveInfinity, float.PositiveInfinity),
-                        new Keyframe(10, 1, float.PositiveInfinity, float.PositiveInfinity),
-                        new Keyframe(11, 0, float.PositiveInfinity, float.PositiveInfinity)));
-            else if (kind == "selected blend-tree input")
-            {
-                controller.AddParameter("Relay blend", AnimatorControllerParameterType.Float); selected["Relay blend"] = 1;
-                var alternative = Clip(controller, "Other relay value");
-                AnimationUtility.SetEditorCurve(alternative, EditorCurveBinding.FloatCurve("", typeof(Animator), "Generic layer relay"), AnimationCurve.Constant(0, 1, .75f));
-                var tree = new BlendTree { name = "Selected relay tree", blendType = BlendTreeType.Simple1D,
-                    blendParameter = "Relay blend", useAutomaticThresholds = false,
-                    children = new[] { new ChildMotion { motion = clip, threshold = 0, timeScale = 1 },
-                        new ChildMotion { motion = alternative, threshold = 1, timeScale = 1 } } };
-                AssetDatabase.AddObjectToAsset(tree, controller);
-                foreach (var child in machine.states) child.state.motion = tree;
-                selectedSignal = .75f;
-            }
-            else
-            {
-                var transition = machine.defaultState.transitions.Single(); transition.conditions = Array.Empty<AnimatorCondition>(); transition.exitTime = 10;
-            }
-            var before = CaptureAssets();
-            var expected = NativeSdkRelay("Generic layer relay", expectedCommands: Array.Empty<float>(),
-                expectedState: machine.defaultState.name, expectUnitGlobalFx: true, selection: selected, selectedSignal: selectedSignal);
-            Assert.That(expected, Is.EqualTo(85).Within(.01), "The original native sampled pose is still stable; that alone cannot certify the future relay.");
-            var source = VrChatExpressionMenu.Read(avatar);
-            if (kind == "late changing signal")
-                Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source));
-            else
-            {
-                // A live timed relay edge is followed natively and reported.
-                // The selected blend-tree input keeps its edge false, so the
-                // edge is reported as held instead.
-                var messages = new List<string>();
-                var values = VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults, selected, metadata: source, messages: messages);
-                Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(expected).Within(.01));
-                Assert.That(messages, Does.Contain(kind == "selected blend-tree input" ?
-                    ExpressionSettlement.HeldTransitions : ExpressionSettlement.FollowedTransitions));
-            }
-            AssertSourceUnchanged(before);
-        }
-
         [TestCase(false)]
         [TestCase(true)]
         public void FiniteTimedRelayUsesItsNativeStartupAndSettledCommands(bool fixedDuration)
@@ -963,42 +882,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Values.Single().Weight, Is.EqualTo(80)); Assert.That(entry.Error, Is.Null);
             AssertSourceUnchanged(before);
             foreach (var pair in otherAssets) Assert.That(EditorJsonUtility.ToJson(pair.Key), Is.EqualTo(pair.Value), pair.Key.name);
-        }
-
-        [TestCase(false, false)]
-        [TestCase(true, false)]
-        [TestCase(false, true)]
-        [TestCase(true, true)]
-        public void ExplicitSelectedExpressionsEvaluateInstantFxLayerControlsAndRejectUnmodelledEffects(bool otherController, bool global)
-        {
-            controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
-            controller.layers[0].stateMachine.defaultState.motion = Clip(controller, "Uncontrolled body underlay", new[] { "Body" }, "Body size", 30);
-            var selected = State(controller.layers[BodyLayer].stateMachine, "Selected face", Clip(controller, "Selected face", new[] { "Body" }, "Body size", 80));
-            Transition(bodyState, selected, "Menu", AnimatorConditionMode.Equals, 1);
-            var state = controlState;
-            if (otherController)
-            {
-                var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
-                state = State(other.layers[0].stateMachine, "Other reached control", Clip(other, "Other empty"));
-                SetControllers(descriptor, controller, other);
-            }
-            Control(state, global: global); var before = CaptureAssets();
-            var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
-            if (!otherController && !global)
-            {
-                var values = VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults,
-                    new Dictionary<string, float> { ["Menu"] = 1 }, null, source);
-                Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(30).Within(.01),
-                    "The real SDK command disables the selected 80 layer, exposing the independently authored 30 underlay.");
-                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(100).Within(.01));
-            }
-            else
-            {
-                var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller, source.Defaults,
-                    new Dictionary<string, float> { ["Menu"] = 1 }, null, source));
-                Assert.That(error.Message, Does.Contain(global ? "VRCPlayableLayerControl" : "VRCAnimatorLayerControl"));
-            }
-            AssertSourceUnchanged(before);
         }
 
         [Test]

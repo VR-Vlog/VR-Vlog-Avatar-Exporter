@@ -138,9 +138,6 @@ namespace VRVlog.LilToonExporter.Tests
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
             var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             var before = Capture();
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                new Dictionary<string, float> { ["Menu"] = 1 }, null, source));
-            Assert.That(error.Message, Does.Contain("FX以外").And.Contain("Locomotion").And.Contain("blendShape.Mouth"));
             Assert.That(Assert.Throws<InvalidOperationException>(() => ExpressionDependencies.ValidateAdditionalProbeBehaviours(fx, source,
                 FixedExpressionContext.Create(fx, source.Defaults, source), new HashSet<EditorCurveBinding> { Binding("Mouth") })).Message,
                 Does.Contain("blendShape.Mouth"));

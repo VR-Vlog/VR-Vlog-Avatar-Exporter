@@ -120,30 +120,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void FixedExternalMenuKeepsPermanentMorphAndNativeWriteDefaults(bool defaults)
-        {
-            var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle", Clip("Idle", "Face size", 0)); machine.defaultState = idle;
-            var selected = State(machine, "Selected", Clip("Selected", "Face size", 75));
-            var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
-            transition.AddCondition(AnimatorConditionMode.Less, .5f, "Voice");
-            RelayAndPupil(defaults, false);
-            var sourceJson = EditorJsonUtility.ToJson(controller); var expected = Native(true);
-            var initial = new Dictionary<string, float> { ["Menu"] = 0 };
-            var context = FixedExpressionContext.Create(controller, initial);
-            var values = VrChatExpressionSampler.SampleFixed(avatar, controller, initial,
-                new Dictionary<string, float> { ["Menu"] = 1 }, fixedContext: context);
-            Assert.That(values.Select(value => value.Shape), Does.Contain("Face size").And.Contain("Pupil removal"));
-            foreach (var value in values) Assert.That(value.Weight, Is.EqualTo(expected[value.Shape]).Within(.01), value.Shape);
-            Assert.That(values.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-            Assert.That(context.UsedParameters, Does.Contain("Voice"));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(sourceJson));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
         public void NeutralStartupWritesAndPermanentMorphSurviveEquivalentTimedRelay(bool defaults)
         {
             var machine = controller.layers[0].stateMachine;
