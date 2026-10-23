@@ -37,11 +37,12 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedUnlocked = "Lockがオフのため、VRChatでも対象を動かしません。今の姿勢のまま書き出しました";
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
+        internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
         internal static readonly string[] Reasons =
         {
             KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
             OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedUnlocked, OmittedOff, OmittedReparent
+            OmittedUnlocked, OmittedOff, OmittedReparent, OmittedBound
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -87,6 +88,7 @@ namespace VRVlog.LilToonExporter
             var added = new List<Component>();
             var moved = new List<Moved>();
             var humanoid = plans.Any(p => p.Kind == Kind.Parent) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var bound = BoundPaths(copy);
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
             // Paths point at the user's avatar, so take them before any target moves.
             var paths = plans.Select(plan => ExportFallbackReport.RelativePath(copy.transform, plan.Target)).ToArray();
@@ -103,7 +105,7 @@ namespace VRVlog.LilToonExporter
                     // re-measures At Rest and Offset, so a VRM constraint would differ.
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
                         : !plan.Locked ? (ExportOutcome.Omitted, OmittedUnlocked)
-                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, taken, edges, moved)
+                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
                         : Apply(plan, sources, copy.transform, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
@@ -182,7 +184,7 @@ namespace VRVlog.LilToonExporter
         // stays at the same offset (VRM has no parent constraint). The current
         // pose is the solved one: VRChat and Unity constraints run in the editor.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
-            HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved)
+            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
@@ -197,6 +199,10 @@ namespace VRVlog.LilToonExporter
                 humanoid.Any(bone => bone.IsChildOf(target)) || edges.ContainsKey(target) || edges.Values.Any(ends => ends.Contains(target)))
                 return (ExportOutcome.Omitted, OmittedReparent);
             if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
+            // UniVRM finds expression and first-person renderers by these paths
+            // when it writes the file; a moved target would leave them dangling.
+            var path = ExportFallbackReport.RelativePath(root, target);
+            if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
             var before = new Moved(target);
             try { ExportAttachmentSession.ReparentPreservingPose(target, source); }
             catch (InvalidOperationException) { return (ExportOutcome.Omitted, OmittedReparent); }
@@ -205,6 +211,20 @@ namespace VRVlog.LilToonExporter
         }
 
         const float FullWeight = .999f;
+
+        static HashSet<string> BoundPaths(GameObject copy)
+        {
+            var paths = new HashSet<string>(StringComparer.Ordinal);
+            var settings = copy.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null;
+            if (settings == null) return paths;
+            if (settings.Expression != null)
+                foreach (var entry in settings.Expression.Clips)
+                    if (entry.Clip != null)
+                        foreach (var binding in entry.Clip.MorphTargetBindings) if (binding.RelativePath != null) paths.Add(binding.RelativePath);
+            if (settings.FirstPerson != null)
+                foreach (var flag in settings.FirstPerson.Renderers) if (flag.Renderer != null) paths.Add(flag.Renderer);
+            return paths;
+        }
 
         sealed class Moved
         {

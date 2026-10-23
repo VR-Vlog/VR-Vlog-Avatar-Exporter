@@ -192,18 +192,46 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Source.GetComponentsInChildren<Component>().Length, Is.EqualTo(1), "The source avatar is not touched.");
         }
 
-        [Test]
-        public void ChainedParentConstraintsMoveInAnyOrder()
+        [TestCase(true)][TestCase(false)]
+        public void ChainedParentConstraintsMoveInAnyOrder(bool secondFirst)
         {
             using var f = new Fixture();
             var second = Fixture.Child(f.Copy.transform, "Second", Vector3.left);
-            second.SetSiblingIndex(0); // Read before the constraint it hangs from.
+            // First: read before the constraint it hangs from.
+            if (secondFirst) second.SetSiblingIndex(0);
             f.Constraint<ParentConstraint>(second, 1, f.Other);
             f.Constraint<ParentConstraint>(f.Other, 1, f.A);
             f.Convert();
             Assert.That((second.parent, f.Other.parent), Is.EqualTo((f.Other, f.A)));
             Assert.That(f.Report.Results.Select(r => r.Reason), Is.EqualTo(new[] { ConstraintExport.KeptParent, ConstraintExport.KeptParent }));
-            Assert.That(f.Report.Results.Select(r => r.Path), Is.EqualTo(new[] { "Second", "Other parent/Other" }), "Paths are taken before anything moves.");
+            Assert.That(f.Report.Results.Select(r => r.Path), Is.EquivalentTo(new[] { "Second", "Other parent/Other" }), "Paths are taken before anything moves.");
+        }
+
+        [TestCase(false)][TestCase(true)]
+        public void APropUsedByVrmSettingsKeepsThePose(bool firstPerson)
+        {
+            // UniVRM finds these renderers by path when it writes the file.
+            using var f = new Fixture();
+            Fixture.Child(f.Other, "Mesh", Vector3.zero);
+            var settings = ScriptableObject.CreateInstance<VRM10Object>();
+            var expression = ScriptableObject.CreateInstance<VRM10Expression>();
+            try
+            {
+                if (firstPerson)
+                    settings.FirstPerson.Renderers.Add(new RendererFirstPersonFlags { Renderer = "Other parent/Other/Mesh",
+                        FirstPersonFlag = VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm.FirstPersonType.thirdPersonOnly });
+                else
+                {
+                    expression.MorphTargetBindings = new[] { new MorphTargetBinding { RelativePath = "Other parent/Other/Mesh", Index = 0, Weight = 1 } };
+                    settings.Expression.Happy = expression;
+                }
+                f.Copy.AddComponent<Vrm10Instance>().Vrm = settings;
+                f.Constraint<ParentConstraint>(f.Other, 1, f.A);
+                f.Convert();
+                Assert.That(f.Other.parent.name, Is.EqualTo("Other parent"));
+                Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedBound));
+            }
+            finally { Object.DestroyImmediate(settings); Object.DestroyImmediate(expression); }
         }
 
         [TestCase("translation axis")][TestCase("rotation axis")][TestCase("weight")][TestCase("source weight")][TestCase("rotation source")]
