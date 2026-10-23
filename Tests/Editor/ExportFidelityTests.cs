@@ -507,26 +507,42 @@ namespace VRVlog.LilToonExporter.Tests
             var mesh = new Mesh { vertices = new[] { Vector3.zero } };
             mesh.AddBlendShapeFrame("Smile", 100, new[] { Vector3.up }, new Vector3[1], new Vector3[1]);
             body.AddComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
-            var clip = new AnimationClip { name = "笑顔" };
-            clip.SetCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Smile", AnimationCurve.Constant(0, 1, 75));
-            var assetPath = "Assets/__VRVlogFaceEmoTest_" + Guid.NewGuid().ToString("N") + ".anim";
+            var assetPaths = new List<string>();
+            AnimationData Asset(string name, float weight)
+            {
+                var created = new AnimationClip { name = name };
+                created.SetCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Smile", AnimationCurve.Constant(0, 1, weight));
+                var path = "Assets/__VRVlogFaceEmoTest_" + Guid.NewGuid().ToString("N") + ".anim";
+                AssetDatabase.CreateAsset(created, path); assetPaths.Add(path);
+                return new AnimationData { GUID = AssetDatabase.AssetPathToGUID(path) };
+            }
+            AnimationClip Loaded(AnimationData data) => AssetDatabase.LoadAssetAtPath<AnimationClip>(AssetDatabase.GUIDToAssetPath(data.GUID));
             try
             {
-                AssetDatabase.CreateAsset(clip, assetPath);
-                var valid = new AnimationData { GUID = AssetDatabase.AssetPathToGUID(assetPath) };
+                var valid = Asset("笑顔", 75);
+                var branch = Asset("分岐", 50);
+                var tail = Asset("末尾", 25);
                 var mode = new ModeData { Animation = valid };
                 mode.Branches.Add(new BranchData { BaseAnimation = new AnimationData { GUID = "missing" } });
+                mode.Branches.Add(new BranchData { BaseAnimation = branch });
                 var group = new ListData();
                 group.Modes.Add(mode);
                 var registered = new ListData();
                 registered.Groups.Add(group);
-                Assert.That(FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips, Is.EqualTo(new[] { clip }));
+                // The nested default face and its branch are captured in order;
+                // the missing branch clip is skipped.
+                Assert.That(FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips,
+                    Is.EqualTo(new[] { Loaded(valid), Loaded(branch) }));
                 Assert.That(body.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.Zero);
                 // FaceEmo stores groups and modes in separate arrays and their
-                // interleaved authored order in Types.
+                // interleaved authored order in Types. Without Types, modes
+                // come before groups.
+                registered.Modes.Add(new ModeData { DisplayName = "末尾の表情", Animation = tail });
+                Assert.That(FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips,
+                    Is.EqualTo(new[] { Loaded(tail), Loaded(valid), Loaded(branch) }));
                 registered.Types = new List<string> { "Group", "Mode" };
-                registered.Modes.Add(new ModeData { DisplayName = "末尾の表情", Animation = valid });
-                Assert.DoesNotThrow(() => FaceEmoExpressions.CaptureRegistered(avatar, registered));
+                Assert.That(FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips,
+                    Is.EqualTo(new[] { Loaded(valid), Loaded(branch), Loaded(tail) }));
                 registered.Types.RemoveAt(1);
                 Assert.Throws<InvalidOperationException>(() => FaceEmoExpressions.CaptureRegistered(avatar, registered));
                 registered.Types = null;
@@ -535,7 +551,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                AssetDatabase.DeleteAsset(assetPath);
+                foreach (var path in assetPaths) AssetDatabase.DeleteAsset(path);
                 Object.DestroyImmediate(avatar);
                 Object.DestroyImmediate(mesh);
             }
