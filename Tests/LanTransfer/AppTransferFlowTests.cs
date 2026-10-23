@@ -42,6 +42,41 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, bool boardReady, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
             Assert.That(AppTransferFlow.BlockReason(hasAvatar, boardReady, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
 
+        // Nothing is red until "QRコードを作る" is pressed; pressed, each missing input is, and filling one in turns it back.
+        [Test]
+        public void MissingInputsTurnRedOnlyAfterPressingCreate()
+        {
+            Assert.That(AppTransferFlow.MarkedInputs(false, false, "", true, false, false, false), Is.EqualTo(RequiredInput.None));
+            Assert.That(AppTransferFlow.MarkedInputs(true, false, "", true, false, false, false),
+                Is.EqualTo(RequiredInput.Avatar | RequiredInput.Name | RequiredInput.Author | RequiredInput.Consent | RequiredInput.PrivacyConsent));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, false, true, true), Is.EqualTo(RequiredInput.Author));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", false, true, true, true), Is.EqualTo(RequiredInput.Name));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, true, false, true), Is.EqualTo(RequiredInput.Consent));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, true, true, true), Is.EqualTo(RequiredInput.None));
+        }
+
+        // One missing input keeps its own sentence; two or more are all named on the one line, and the board's reasons stay as they are.
+        [Test]
+        public void ReasonLineNamesEveryMissingInput()
+        {
+            Func<string, string> same = text => text;
+            string Line(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
+                AppTransferFlow.ReasonText(AppTransferFlow.BlockReason(hasAvatar, true, name, nameFits, hasAuthor, consented, privacyAccepted),
+                    hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted, same);
+            Assert.That(Line(true, "SampleAvatar", true, true, true, true), Is.EqualTo(""));
+            Assert.That(Line(true, "SampleAvatar", true, false, true, true), Is.EqualTo(AppTransferText.NeedsAuthor));
+            Assert.That(Line(true, "SampleAvatar", true, true, false, true), Is.EqualTo(AppTransferText.NeedsConsent));
+            Assert.That(Line(true, "SampleAvatar", true, false, false, true), Is.EqualTo("作者名・利用規約の同意がそろうと作れます"));
+            Assert.That(Line(true, "SampleAvatar", false, false, true, true), Is.EqualTo("短い名前・作者名がそろうと作れます"));
+            Assert.That(Line(false, "", true, false, false, false), Is.EqualTo("アバター・名前・作者名・利用規約の同意・プライバシーポリシーの同意がそろうと作れます"));
+            Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoard, true, "", true, false, false, true, same), Is.EqualTo(AppTransferText.NeedsBoard));
+            // The board's own reasons keep the button disabled even when a field is also missing.
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoard), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoardFix), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsAuthor), Is.False);
+            Assert.That(AppTransferFlow.BoardBlocks(null), Is.False);
+        }
+
         // Cases an attribute cannot carry: a lone surrogate, and a name whose visible
         // character falls past the length bound so only spaces stay in the transfer name.
         [Test]
