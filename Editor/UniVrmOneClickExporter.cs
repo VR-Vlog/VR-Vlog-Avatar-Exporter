@@ -594,7 +594,7 @@ namespace VRVlog.LilToonExporter
                     // This beta retains the prepared copy's rest values. Selected
                     // expressions still use their original FX evaluation above;
                     // all endpoints below share this retained neutral snapshot.
-                    warnings?.Add(ExporterLocalization.T("このベータ版ではFXの初期状態の復元を省略し、書き出し用コピーの設定を基本の顔・体形として保存しました。VRChatでの通常時の見た目と異なる場合があります。"));
+                    warnings?.Add(ExporterLocalization.T(ExportNoteText.FxRestSkipped));
                     NeutralShapeSnapshot neutral;
                     using (ExpressionBoardTimings.Step("export.defaultFace"))
                     {

@@ -60,7 +60,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Notes = "書き出し時の注意";
         internal const string NoNotes = "書き出し時の注意はありません";
         internal const string NoteCount = "書き出し時の注意 {0}件";
-        internal const string OtherNotes = "そのほか";
+        internal const string OtherNotes = "変換の内容";
         internal const string ItemCount = "{0}件";
         internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";

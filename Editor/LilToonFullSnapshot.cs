@@ -219,7 +219,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add($"lilToon画像「{source.name}」を{source.width}×{source.height}から{width}×{height}に縮小しました（読み込み時のメモリ使用量を軽減）。");
+                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},
