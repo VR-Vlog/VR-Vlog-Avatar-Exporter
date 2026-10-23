@@ -257,7 +257,7 @@ namespace VRVlog.LilToonExporter
             readonly RuntimeAnimatorController fx;
             readonly AnimatorControllerLayer[] layers;
             readonly Dictionary<AnimationClip, HashSet<(string Path, string Property)>> shapeBindings;
-            readonly List<(SkinnedMeshRenderer Renderer, int Index, float Rest)> shapes = new List<(SkinnedMeshRenderer, int, float)>();
+            readonly List<(SkinnedMeshRenderer Renderer, int Index, float Weight)> shapes = new List<(SkinnedMeshRenderer, int, float)>();
             readonly Dictionary<(string Path, string Property), int> shapeIndex = new Dictionary<(string, string), int>();
             readonly Dictionary<(int Layer, int Hash), (StateMachineBehaviour[] Behaviours, string Location)> states = new Dictionary<(int, int), (StateMachineBehaviour[], string)>();
             readonly Dictionary<string, float> defaults = new Dictionary<string, float>(StringComparer.Ordinal);
@@ -348,7 +348,7 @@ namespace VRVlog.LilToonExporter
             internal Run Play(int left, int right, float leftWeight, float rightWeight)
             {
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
-                foreach (var shape in shapes) shape.Renderer.SetBlendShapeWeight(shape.Index, shape.Rest);
+                foreach (var shape in shapes) shape.Renderer.SetBlendShapeWeight(shape.Index, shape.Weight);
                 var graph = PlayableGraph.Create("VR Vlog hand gesture sampling");
                 try
                 {
