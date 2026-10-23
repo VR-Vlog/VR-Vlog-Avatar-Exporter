@@ -540,7 +540,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Mixed appearance face", "Tests", warnings,
                     exporterVersion: fullLilToon ? "mixed-appearance-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                    listFaces: new[] { ("Mixed selected", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 if (fullLilToon)
                 {
