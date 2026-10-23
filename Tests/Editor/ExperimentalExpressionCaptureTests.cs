@@ -683,6 +683,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, 0);
             var clip = new AnimationClip { name = "Smile" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
             try
             {
