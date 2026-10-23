@@ -90,7 +90,8 @@ namespace VRVlog.LilToonExporter
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
-            bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null)
+            bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null,
+            IReadOnlyList<AnimationClip> listFaceSources = null)
         {
             var report = recoveryReport ?? new ExportRecoveryReport();
             report.Begin();
@@ -119,7 +120,7 @@ namespace VRVlog.LilToonExporter
                 attemptWarnings = warnings == null ? null : guard.ContinueOnFailure ? new List<string>() : new List<string>(warnings);
                 return ExportCore(source, avatarName, author, attemptWarnings, suppressSharedTextureEmission, exporterVersion, lilToonVersion,
                     suppressHdrTextureEmission, excludedObjects, bakeOptions, gimmickOptions, blinkOptions, poseOptions, recoveryOptions, report, licenseOptions?.Copy(), disableAudioLink,
-                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, bakeMatcaps);
+                    authorCopyExpressions, guard, inferEmotionPresets, descriptorVisemes, inferNeutralAndGazePresets, keepEmptyPresets, listFaces, listFaceSources, bakeMatcaps);
             }, failure => report.Fallbacks.Clear());
             try
             {
@@ -376,7 +377,8 @@ namespace VRVlog.LilToonExporter
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
             Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
-            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces, bool bakeMatcaps)
+            bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
+            IReadOnlyList<AnimationClip> listFaceSources, bool bakeMatcaps)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             if (string.IsNullOrWhiteSpace(avatarName)) throw new InvalidOperationException("アバター名を取得できませんでした。");
@@ -471,6 +473,7 @@ namespace VRVlog.LilToonExporter
                 var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
                     expressionBindings.ExcludesPreparedPath, deferPermanentOverrides: true), () => null);
                 List<VrmMenuExpressions.Expression> expressions = null;
+                ExpressionGestureCapture gestures = null;
                 recoveryReport.Stage = "ビルド処理";
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 // Caller-selected faces join the copy as authored VRM clips, so
@@ -564,6 +567,13 @@ namespace VRVlog.LilToonExporter
                     // would be blamed on the build passes and retried without them.
                     // Stopping from the limit window cancels; the guard rethrows it.
                     guard.Watch(ExportStage.PoseCapture, () => PoseLimitChooser.Apply(poses, warnings, recoveryReport));
+                    // The faces each pair of hand gestures shows, read from the
+                    // prepared copy before the bake below changes it. The board's
+                    // own clip of each face is kept, since the build may play a copy.
+                    using (ExpressionBoardTimings.Step("export.gestures"))
+                        gestures = guard.Run(ExportStage.ExpressionGestures, () => ExpressionGestureCapture.Capture(clone,
+                            faces.Select((face, index) => (face.Item2, (UnityEngine.Object)(listFaceSources != null && index < listFaceSources.Count ? listFaceSources[index] : null))).ToList(),
+                            transformed.IsolatedCopyOf, transformed.ObjectRegistry), () => null);
                     recoveryReport.Stage = "基準形評価";
                     recoveryReport.Phase = ExportPhase.Expressions;
                     // This beta retains the prepared copy's rest values. Selected
@@ -855,6 +865,7 @@ namespace VRVlog.LilToonExporter
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
+                exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error) when (!(error is MatcapApproximation.OverLimit))
