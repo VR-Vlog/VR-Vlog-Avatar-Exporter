@@ -2832,13 +2832,13 @@ namespace VRVlog.LilToonExporter.Tests
 
                 var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToList();
                 type.GetField("excludedObjectEdits", flags).SetValue(window, meshes);
-                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビュー未反映　ページを移るときに反映します")));
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("除外の変更はページを移るときにVRMへ反映します")));
                 window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
                 Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.ObjectsPage));
                 Assert.That(type.GetField("excludedObjectEdits", flags).GetValue(window), Is.EqualTo(meshes));
                 Assert.That(type.GetField("excludedObjectError", flags).GetValue(window), Is.Not.Null.And.Not.Empty);
                 Assert.That(type.GetField("applyingOnLeave", flags).GetValue(window), Is.False);
-                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("プレビューに反映できませんでした・理由は一覧の下にあります")));
+                Assert.That(window.Summary().Text, Is.EqualTo(ExporterLocalization.T("VRMに反映できませんでした・理由は一覧の下にあります")));
                 Assert.That(ExportSettingsStore.Load(fixture.Source).Exclusions(), Is.Empty);
 
                 var kept = meshes.Skip(1).ToList();
