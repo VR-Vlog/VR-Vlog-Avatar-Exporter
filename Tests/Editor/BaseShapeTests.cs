@@ -42,5 +42,44 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(mesh);
             }
         }
+
+        // A shape whose frames the rest cannot be evaluated from is written as
+        // authored at weight 0; the other shapes are still stored in the base.
+        [Test] public void PreserveLeavesOutTheValueOfAShapeWithUnsupportedFramesAndWarns()
+        {
+            var source = new GameObject("Avatar");
+            GameObject clone = null;
+            var mesh = BaseShapeFixture.Create();
+            var temporary = new List<Mesh>();
+            var warnings = new List<string>();
+            try
+            {
+                var empty = new Vector3[3];
+                mesh.AddBlendShapeFrame("Unusual frames", -50, new[] { new Vector3(-1, 0, 0), Vector3.zero, Vector3.zero }, empty, empty);
+                mesh.AddBlendShapeFrame("Unusual frames", 0, new[] { new Vector3(1, 0, 0), Vector3.zero, Vector3.zero }, empty, empty);
+                mesh.AddBlendShapeFrame("Unusual frames", 100, new[] { new Vector3(2, 0, 0), Vector3.zero, Vector3.zero }, empty, empty);
+                var face = new GameObject("Face");
+                face.transform.SetParent(source.transform, false);
+                var skin = face.AddComponent<SkinnedMeshRenderer>();
+                skin.sharedMesh = mesh;
+                skin.SetBlendShapeWeight(0, 25); skin.SetBlendShapeWeight(2, 30);
+                clone = Object.Instantiate(source);
+                Assert.DoesNotThrow(() => AvatarBaseShape.Preserve(clone, clone, temporary, warnings));
+                var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>();
+                Assert.AreNotSame(mesh, copy.sharedMesh);
+                Assert.AreEqual(2f, copy.sharedMesh.vertices[0].x, 0.00001f);
+                Assert.AreEqual(0f, copy.GetBlendShapeWeight(0));
+                Assert.AreEqual(0f, copy.GetBlendShapeWeight(2));
+                Assert.AreEqual(3, copy.sharedMesh.GetBlendShapeFrameCount(2));
+                Assert.That(warnings.Exists(warning => warning.Contains("Unusual frames")), warnings.Count.ToString());
+                Assert.AreEqual(1f, mesh.vertices[0].x);
+            }
+            finally
+            {
+                Object.DestroyImmediate(clone); Object.DestroyImmediate(source);
+                foreach (var item in temporary) Object.DestroyImmediate(item);
+                Object.DestroyImmediate(mesh);
+            }
+        }
     }
 }

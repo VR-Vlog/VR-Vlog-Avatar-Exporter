@@ -28,6 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
             NegativeIntermediateFrameChecks(check);
             NativeNegativeBracketChecks(check);
             EndpointBeyondHundredChecks(check);
+            UnsupportedFrameChecks(check);
             var source = Create();
             var target = Create();
             try
@@ -220,6 +221,25 @@ namespace VRVlog.LilToonExporter.Tests
                         "Rebase preserves rest"+rest+" and exports the actual frame200 endpoint without a hardcoded100 limit.");
                 }
                 check(source.GetBlendShapeFrameCount(0)==1 && source.GetBlendShapeFrameWeight(0,0)==200f && source.vertices[0].x==1f,"Extended endpoint qualification and rebase preserve the source mesh and final frame weight.");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(target); }
+        }
+
+        private static void UnsupportedFrameChecks(Action<bool, string> check)
+        {
+            var source=Create();var target=Create();
+            try
+            {
+                // A moving frame at weight 0 after a negative one has no rest this class can evaluate.
+                source.AddBlendShapeFrame("Unusual frames",-50,Delta(-1,0,0),null,null);
+                source.AddBlendShapeFrame("Unusual frames",0,Delta(1,0,0),null,null);
+                source.AddBlendShapeFrame("Unusual frames",100,Delta(2,0,0),null,null);
+                var kept=AvatarBaseShape.Rebase(source,target,new[]{25f,0f,30f});
+                var vertices=new Vector3[3];target.GetBlendShapeFrameVertices(2,1,vertices,new Vector3[3],new Vector3[3]);
+                check(kept.Count==1 && kept[0]==2 && Near(target.vertices[0].x,2f),"A shape with unsupported frames stays out of the rest while the other shapes are stored.");
+                check(target.blendShapeCount==3 && target.GetBlendShapeName(2)=="Unusual frames" && target.GetBlendShapeFrameCount(2)==3 &&
+                    target.GetBlendShapeFrameWeight(2,0)==-50f && target.GetBlendShapeFrameWeight(2,1)==0f && Near(vertices[0].x,1f),
+                    "A shape with unsupported frames keeps its authored frames and its index.");
             }
             finally { UnityEngine.Object.DestroyImmediate(source);UnityEngine.Object.DestroyImmediate(target); }
         }
