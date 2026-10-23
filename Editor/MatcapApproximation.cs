@@ -38,6 +38,10 @@ namespace VRVlog.LilToonExporter
         internal static int Mode(Material material) =>
             Mathf.RoundToInt(material.HasProperty("_MatCapBlendMode") ? material.GetFloat("_MatCapBlendMode") : Add);
 
+        // The MatCap has a blend mask, so MToon's MatCap over the whole mesh
+        // would light parts lilToon leaves alone.
+        internal static bool Masked(Material material) => Mask(material) != null;
+
         // Weight for MToon's added MatCap. Returns null when MToon already adds
         // it everywhere at full weight, as lilToon does.
         internal static Texture2D Weight(Material material, List<Texture2D> owned, Bakes bakes = null)
