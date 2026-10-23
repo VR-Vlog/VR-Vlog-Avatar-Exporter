@@ -494,14 +494,16 @@ namespace VRVlog.LilToonExporter
                             if (afterTransforming != null)
                             {
                                 afterTransforming(lease);
-                                // AAO reads the root controller unless it knows a platform
-                                // component; it does not know the bundled Vrm10Instance and
-                                // throws on a null controller, so lend it an empty one, as
-                                // AAO skips the controller for the com.vrmc.vrm Vrm10Instance.
+                                // Every Optimizing pass sees the root as a normal NDMF build
+                                // does. The one exception stands in for the com.vrmc.vrm
+                                // Vrm10Instance, for which AAO skips the root controller: it
+                                // does not know the bundled one, and without a platform
+                                // component it parses the root controller and throws on null.
                                 var animator = clone.GetComponent<Animator>();
                                 UnityEditor.Animations.AnimatorStateMachine placeholderLayer = null;
                                 var placeholder = animator != null && animator.runtimeAnimatorController == null
                                     && clone.GetComponent<VRVlog.LilToonExporter.Vendor.UniVRM10.Vrm10Instance>() != null
+                                    && AvatarOptimizerParsesRootController(clone)
                                     ? PlaceholderController(out placeholderLayer) : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
@@ -557,6 +559,29 @@ namespace VRVlog.LilToonExporter
                 lease.Dispose();
                 throw;
             }
+        }
+
+        // The platform components for which AAO reads the platform's animators
+        // instead of the root controller (AnimatorParser, avatar root animator).
+        private static readonly string[] AvatarOptimizerPlatformTypes =
+        {
+            "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRM.VRMBlendShapeProxy", "UniVRM10.Vrm10Instance",
+        };
+
+        // AAO's own conditions for parsing the root controller: it parses the
+        // animators only when the avatar has an AAO component, and the root
+        // controller only without a platform component. On a VRChat avatar a lent
+        // controller would serve no one and only be exposed to other plugins.
+        private static bool AvatarOptimizerParsesRootController(GameObject clone) =>
+            !clone.GetComponents<Component>().Any(c => c != null && AvatarOptimizerPlatformTypes.Contains(c.GetType().FullName)) &&
+            clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerComponent);
+
+        private static bool IsAvatarOptimizerComponent(Component component)
+        {
+            if (component == null) return false;
+            for (var type = component.GetType(); type != null; type = type.BaseType)
+                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
+            return false;
         }
 
         // The lent controller keeps one empty layer: Animator::Sample, which

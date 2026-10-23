@@ -72,6 +72,10 @@
                     <ui:VisualElement name="slot-row" class="slot-row">
                         <ui:VisualElement name="slot" class="slot">
                             <ui:Image name="qr" class="qr" />
+                            <ui:Image name="qr-cover" class="qr-cover" />
+                            <ui:VisualElement name="reveal" class="slot-inner">
+                                <ui:Button name="show-qr" class="primary slot-button reveal-button" />
+                            </ui:VisualElement>
                             <ui:VisualElement name="message" class="slot-inner">
                                 <ui:Label name="message-title" class="t slot-title" />
                                 <ui:Label name="message-body" class="t slot-body" />
@@ -83,7 +87,10 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Label name="scan" class="t scan" />
+                    <ui:VisualElement class="scan-row">
+                        <ui:Label name="scan" class="t scan" />
+                        <ui:Button name="hide-qr" class="mini hide-qr" />
+                    </ui:VisualElement>
                     <ui:VisualElement name="warning" class="warning">
                         <ui:Image name="warning-icon" class="warning-icon" />
                         <ui:Label name="warning-text" class="t warning-text" />
