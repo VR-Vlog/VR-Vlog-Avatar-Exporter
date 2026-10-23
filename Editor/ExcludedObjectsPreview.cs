@@ -34,6 +34,8 @@ namespace VRVlog.LilToonExporter
         internal GameObject Copy => copy;
         internal GameObject Source => source;
         internal bool Usable => copy != null && utility != null;
+        // What the camera was fitted to. For tests.
+        internal Bounds Framing => bounds;
 
         void Build()
         {
@@ -72,8 +74,8 @@ namespace VRVlog.LilToonExporter
             // An object added to the avatar after the copy was made: copy it again.
             if (objectList.Any(item => !copies.ContainsKey(item.transform)) || rendererList.Any(item => !copies.ContainsKey(item.transform))) Build();
             // Framed once, on the avatar as it is in the scene before anything is
-            // hidden, so a choice never moves the camera and whatever 含める can
-            // bring back is in view.
+            // hidden, so a choice never moves the camera and what 含める brings
+            // back on the body is in view.
             if (!framed) Frame();
             var nextObjects = new HashSet<GameObject>(objectList.Select(item => copies.TryGetValue(item.transform, out var to) ? to.gameObject : null).Where(item => item != null));
             var nextRenderers = new HashSet<Renderer>(rendererList.Select(CopyOf).Where(item => item != null));
@@ -117,13 +119,90 @@ namespace VRVlog.LilToonExporter
 
         void Frame()
         {
-            // Particles, trails and lines can reach far from the body; leave them out of the fit.
-            var renderers = ExportRendererSelection.Enumerate(copy)
-                .Where(item => !(item is ParticleSystemRenderer) && !(item is TrailRenderer) && !(item is LineRenderer)).ToArray();
-            if (renderers.Length == 0) return;
-            bounds = renderers[0].bounds;
-            foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
+            var body = BodyBounds(copy);
+            if (body == null) return;
+            bounds = body.Value;
             framed = true;
+        }
+
+        // The body to fit: the meshes' own vertices, not Renderer.bounds, which
+        // a skinned mesh often widens on purpose. On a humanoid only the points
+        // within reach of its skeleton count, so a camera or tool kept far from
+        // the body does not shrink the avatar. Null when nothing is shown.
+        internal static Bounds? BodyBounds(GameObject avatar)
+        {
+            // Particles, trails and lines can reach far from the body; leave them out of the fit.
+            var renderers = ExportRendererSelection.Enumerate(avatar)
+                .Where(item => !(item is ParticleSystemRenderer) && !(item is TrailRenderer) && !(item is LineRenderer)).ToArray();
+            if (renderers.Length == 0) return null;
+            var reach = SkeletonReach(avatar);
+            Bounds? fit = null;
+            void Add(Vector3 point)
+            {
+                if (reach.HasValue && !reach.Value.Contains(point)) return;
+                if (fit.HasValue) { var grown = fit.Value; grown.Encapsulate(point); fit = grown; }
+                else fit = new Bounds(point, Vector3.zero);
+            }
+            var baked = new Mesh();
+            try
+            {
+                foreach (var renderer in renderers)
+                {
+                    Vector3[] vertices = null;
+                    var toWorld = renderer.transform.localToWorldMatrix;
+                    if (renderer is SkinnedMeshRenderer skinned && skinned.sharedMesh != null)
+                    {
+                        // Baked with the scale, so only the position and rotation remain.
+                        skinned.BakeMesh(baked, true);
+                        vertices = baked.vertices;
+                        toWorld = Matrix4x4.TRS(renderer.transform.position, renderer.transform.rotation, Vector3.one);
+                    }
+                    else if (renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null)
+                        vertices = filter.sharedMesh.vertices;
+                    if (vertices != null && vertices.Length > 0)
+                        foreach (var vertex in vertices) Add(toWorld.MultiplyPoint3x4(vertex));
+                    else
+                    {
+                        var box = renderer.bounds;
+                        for (var corner = 0; corner < 8; corner++)
+                            Add(new Vector3((corner & 1) == 0 ? box.min.x : box.max.x, (corner & 2) == 0 ? box.min.y : box.max.y, (corner & 4) == 0 ? box.min.z : box.max.z));
+                    }
+                }
+            }
+            finally { Object.DestroyImmediate(baked); }
+            // Everything lies outside the skeleton's reach: fall back to what is drawn.
+            if (!fit.HasValue)
+            {
+                var all = renderers[0].bounds;
+                foreach (var renderer in renderers.Skip(1)) all.Encapsulate(renderer.bounds);
+                fit = all;
+            }
+            return fit;
+        }
+
+        // Around a humanoid skeleton: from just below the feet to a head's
+        // height again above the head bone, which leaves room for large heads,
+        // hair and ears, and a quarter of that height out to the sides.
+        static Bounds? SkeletonReach(GameObject avatar)
+        {
+            var animator = avatar.GetComponent<Animator>();
+            if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return null;
+            var head = HumanoidBones.Resolve(animator, HumanBodyBones.Head);
+            if (head == null) return null;
+            var bones = new Bounds(head.position, Vector3.zero);
+            for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+            {
+                var found = HumanoidBones.Resolve(animator, bone);
+                if (found != null) bones.Encapsulate(found.position);
+            }
+            var height = head.position.y - bones.min.y;
+            if (height <= .01f) return null;
+            var side = height * .25f;
+            var reach = new Bounds();
+            reach.SetMinMax(
+                new Vector3(bones.min.x - side, bones.min.y - height * .1f, bones.min.z - side),
+                new Vector3(bones.max.x + side, head.position.y + height, bones.max.z + side));
+            return reach;
         }
 
         // The full body fits the rectangle: the camera backs off for the height,
