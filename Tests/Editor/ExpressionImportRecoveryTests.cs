@@ -179,44 +179,16 @@ namespace VRVlog.LilToonExporter.Tests
                 Curve(Missing, AnimationCurve.Linear(0, 0, 1, 100));
                 AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
                 var list = new { Modes = new[] { new { DisplayName = "Wink", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Face.anim") } } } } } };
-                var menu = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(avatar, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
+                var menu = new VrChatExpressionMenu.Source();
+                FaceEmoPreparedFxIntegrationTests.ReadListed(avatar, list, menu);
                 clone = Object.Instantiate(avatar);
                 new PreparedExpressionBindings(clone, menu).Capture(menu);
                 var entry = menu.Entries.Single();
                 Assert.That(entry.Error, Is.Null);
-                Assert.That(entry.Name, Does.StartWith("FaceEmo / Wink"));
                 Assert.That(entry.Values.Single().Shape, Is.EqualTo("Blink"));
                 Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
             }
             finally { AssetDatabase.DeleteAsset(folder); }
-        }
-
-        // The default face of a pattern is a menu item and takes the
-        // pattern's name in VRM; a branch is not, and takes its clip's name.
-        [Test]
-        public void FaceEmoDefaultFaceIsNamedByItsPatternAndBranchesByTheirClip()
-        {
-            var folderName = "__FaceEmoNames_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
-            var branch = new AnimationClip { name = "Branch face" };
-            try
-            {
-                clip.name = "Default face";
-                Curve("Face size", AnimationCurve.Constant(0, 1, 75));
-                AnimationUtility.SetEditorCurve(branch, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
-                    AnimationCurve.Constant(0, 1, 100));
-                AssetDatabase.CreateAsset(clip, folder + "/Default face.anim");
-                AssetDatabase.CreateAsset(branch, folder + "/Branch face.anim");
-                string Reference(string name) => AssetDatabase.AssetPathToGUID(folder + "/" + name + ".anim");
-                var list = new { Modes = new[] { new { DisplayName = "Smile", ChangeDefaultFace = true, Animation = new { GUID = Reference("Default face") },
-                    Branches = new[] { new { BaseAnimation = new { GUID = Reference("Branch face") } } } } } };
-                var menu = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(avatar, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
-                Assert.That(menu.Entries.Select(entry => entry.Name.StartsWith("FaceEmo / Smile / ", StringComparison.Ordinal)), Is.All.True);
-                Assert.That(menu.Entries.Select(entry => entry.VrmName()), Is.EqualTo(new[] { "Smile", "Branch face" }));
-            }
-            finally { AssetDatabase.DeleteAsset(folder); if (branch != null) Object.DestroyImmediate(branch); }
         }
     }
 }

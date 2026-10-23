@@ -198,14 +198,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Catch<InvalidOperationException>(() => Hold());
         }
 
-        [Test]
-        public void GeneralFixedSamplingStillRejectsTheRelevantAutomaticRandomOperation()
-        {
-            var error = Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller,
-                new Dictionary<string, float>(), new Dictionary<string, float> { ["Enable"] = 1 }, null, source));
-            Assert.That(error.Message, Does.Contain("Random"));
-        }
-
         void UnownedRandomFixture(float preparedRecovery = 0)
         {
             // Neither output has an authored binding in the selected face.

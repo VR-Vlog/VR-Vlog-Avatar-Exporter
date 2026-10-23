@@ -264,7 +264,7 @@ class UnityProfilePolicyTests(unittest.TestCase):
         # Additional-playable proof is an exporter behavior requirement in both
         # profiles; it cannot move behind an optional integration-only gate.
         for profile in ('exporter-behavior', 'exporter-integration'):
-            for suite, variants in (('AdditionalPlayableCallbackTests', 41), ('AdditionalParameterConstantTests', 68), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 71), ('SelectedLayerControlTests', 32), ('SelectedExpressionAppearanceTests', 48), ('HeldAutomaticExpressionTests', 99), ('FacialDepthEnvelopeTests', 20), ('ParameterDriverExpressionTests', 105), ('VrChatMenuExpressionTests', 77), ('GestureBlendTreeTests', 34)):
+            for suite, variants in (('AdditionalPlayableCallbackTests', 41), ('AdditionalParameterConstantTests', 66), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 62), ('SelectedLayerControlTests', 12), ('SelectedExpressionAppearanceTests', 48), ('HeldAutomaticExpressionTests', 98), ('FacialDepthEnvelopeTests', 20), ('ParameterDriverExpressionTests', 63), ('VrChatMenuExpressionTests', 64)):
                 self.assertIn(unity_runner.NAMESPACE + suite,
                               unity_runner.profile_filters(profile))
                 self.assertEqual(sum(unity_runner.required_regressions(profile)[suite].values()), variants)

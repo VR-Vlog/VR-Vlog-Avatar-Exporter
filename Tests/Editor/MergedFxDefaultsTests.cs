@@ -952,8 +952,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var menu = VrChatExpressionSampler.Sample(clone, controller, Parameters(0), Parameters(1));
                 var gesture = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(clone, clip, gesture);
                 VrChatExpressionSampler.ApplyPermanentOverrides(clone, controller, gesture, 0, writeDefaults);
-                var faceEmo = new VrChatExpressionMenu.Source { Controller = controller }; var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", faceEmo, ref serial, new HashSet<object>(), 0, bindings: bindings);
+                var faceEmo = new VrChatExpressionMenu.Source { Controller = controller };
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, faceEmo, bindings: bindings);
                 Assert.That(faceEmo.Entries.Single().Error, Is.Null);
                 foreach (var route in new[] { (Name: "Menu", Values: menu, Expected: expected),
                     (Name: "Gesture", Values: gesture.Values, Expected: expected),
@@ -1521,8 +1521,8 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(fixedClip, binding, null); binding.path = "Prepared rig/Face";
                 AnimationUtility.SetEditorCurve(fixedClip, binding, AnimationCurve.Constant(0, 1, 100));
                 controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Merged permanent", fixedClip, writeDefaults);
-                var source = new VrChatExpressionMenu.Source { Controller = controller }; var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, Excluded, snapshot);
+                var source = new VrChatExpressionMenu.Source { Controller = controller };
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, Excluded, snapshot);
                 var entry = source.Entries.Single();
                 Assert.That(entry.Error, Is.Null);
                 Assert.That(entry.Values.All(value => value.Path == "Prepared rig/Face"), Is.True);
@@ -1556,8 +1556,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Object.DestroyImmediate(clone.GetComponentInChildren<SkinnedMeshRenderer>().gameObject);
                 var replacement = new GameObject("Face", typeof(SkinnedMeshRenderer)); replacement.transform.SetParent(clone.transform, false);
                 replacement.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
-                var source = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, bindings: snapshot);
+                var source = new VrChatExpressionMenu.Source();
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, bindings: snapshot);
                 Assert.That(source.Entries.Single().Error, Does.Contain("FaceEmoの表情対象が残っていません"));
                 Assert.That(replacement.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.Zero);
             }
@@ -1581,8 +1581,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var target = clone.GetComponentInChildren<SkinnedMeshRenderer>();
                 var parent = new GameObject("Prepared rig"); parent.transform.SetParent(clone.transform, false);
                 target.transform.SetParent(parent.transform, false);
-                var source = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, Excluded, snapshot);
+                var source = new VrChatExpressionMenu.Source();
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, Excluded, snapshot);
                 Assert.That(source.Entries.Single().Values, Is.Empty);
                 Assert.That(source.Entries.Single().Error, Does.Contain("顔のBlendShapeを含まない"));
                 Assert.That(target.GetBlendShapeWeight(1), Is.Zero);
@@ -1605,8 +1605,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var snapshot = FaceEmoExpressions.CaptureRegistered(clone, registered);
                 var generated = new GameObject("Generated Face", typeof(SkinnedMeshRenderer)); generated.transform.SetParent(clone.transform, false);
                 generated.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
-                var source = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, bindings: snapshot);
+                var source = new VrChatExpressionMenu.Source();
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, bindings: snapshot);
                 Assert.That(source.Entries.Single().Error, Does.Contain("Rendererのパスを一意に解決できません"));
                 Assert.That(source.Entries.Single().Values, Is.Empty);
                 Assert.That(generated.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(1), Is.Zero);
@@ -1650,8 +1650,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var neutral = VrChatExpressionSampler.SampleDefaults(clone, controller, Parameters(0), PreparedExcluded);
                 Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Path, Is.EqualTo("Head/Face"));
                 Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-                var source = new VrChatExpressionMenu.Source { Controller = controller }; var serial = 0;
-                FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, exclusions.ContainsPath, snapshot);
+                var source = new VrChatExpressionMenu.Source { Controller = controller };
+                FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, exclusions.ContainsPath, snapshot);
                 var entry = source.Entries.Single();
                 Assert.That(entry.Error, Is.Null);
                 Assert.That(entry.Values.All(value => value.Path == "Head/Face"), Is.True);
@@ -1729,8 +1729,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var menu = VrChatExpressionMenu.Read(clone);
                     Assert.That(menu.Controller, Is.Not.Null);
                     Assert.That(menu.Controller, Is.Not.SameAs(controller));
-                    var serial = 0;
-                    FaceEmoExpressions.ReadRegistered(clone, registered, "FaceEmo", menu, ref serial, new HashSet<object>(), 0, bindings: snapshot);
+                    FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, menu, bindings: snapshot);
                     var entry = menu.Entries.Single();
                     Assert.That(entry.Error, Is.Null);
                     Assert.That(entry.Values.All(value => value.Path == preparedPath), Is.True);

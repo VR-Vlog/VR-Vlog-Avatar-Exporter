@@ -94,19 +94,6 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // The user-facing export captures one explicit environment. Runtime
-        // VRChat inputs are not required to replay the resulting VRM morphs.
-        internal static List<MorphValue> SampleFixed(GameObject avatar, RuntimeAnimatorController runtime,
-            IDictionary<string, float> defaults, IDictionary<string, float> selected, Func<string, bool> excludedPath = null,
-            VrChatExpressionMenu.Source metadata = null, IList<MorphValue> unevaluated = null, FixedExpressionContext fixedContext = null,
-            int? expectedLayer = null, string expectedStatePath = null, ICollection<string> messages = null,
-            ICollection<string> settledTreeLayers = null)
-            => Evaluate(avatar, runtime, defaults, selected, excludedPath, metadata, unevaluated,
-                StationaryBindings(avatar, runtime, excludedPath),
-                fixedContext: fixedContext ?? FixedExpressionContext.Create(runtime, defaults, metadata),
-                expectedLayer: expectedLayer, expectedStatePath: expectedStatePath, messages: messages, followTransitions: true,
-                settledTreeLayers: settledTreeLayers);
-
         // Stable, discrete, morph-based FX expressions, including deterministic
         // parameter drivers. Each menu is evaluated from its own fresh defaults.
         internal static List<MorphValue> Sample(GameObject avatar, RuntimeAnimatorController runtime,
@@ -140,7 +127,6 @@ namespace VRVlog.LilToonExporter
             VrChatExpressionMenu.Source metadata = null, AnimatorState sourceState = null, IDictionary<string, float> nativeInputs = null)
         {
             if (runtime == null || entry.Error != null || entry.Values.Count == 0) return;
-            metadata?.Progress?.Invoke(entry.Name);
             // Inspect the authored graph before any early exit: a layer control
             // can enable a stationary layer whose serialized default weight is
             // zero, as well as disable one that the probe would otherwise keep.

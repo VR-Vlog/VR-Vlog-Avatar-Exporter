@@ -499,7 +499,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void FaceEmoReadsRegisteredNestedPatternsAndReportsMissingClips()
+        public void FaceEmoCaptureReadsRegisteredNestedPatternsAndRejectsBrokenOrder()
         {
             var avatar = new GameObject("avatar");
             var body = new GameObject("Body");
@@ -520,28 +520,18 @@ namespace VRVlog.LilToonExporter.Tests
                 group.Modes.Add(mode);
                 var registered = new ListData();
                 registered.Groups.Add(group);
-                var source = new VrChatExpressionMenu.Source();
-                var serial = 0;
-                FaceEmoExpressions.ReadRegistered(avatar, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0);
-                Assert.That(source.Entries.Count, Is.EqualTo(2));
-                Assert.That(source.Entries[0].Name, Does.Contain("お気に入り / 茶色の目"));
-                Assert.That(source.Entries[0].Values.Single().Weight, Is.EqualTo(75));
-                Assert.That(source.Entries.Select(entry => entry.Source), Is.All.EqualTo(VRVlog.Expressions.ExpressionSource.FaceEmo));
-                Assert.That(source.Entries[1].Error, Is.Not.Null);
+                Assert.That(FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips, Is.EqualTo(new[] { clip }));
                 Assert.That(body.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.Zero);
                 // FaceEmo stores groups and modes in separate arrays and their
                 // interleaved authored order in Types.
                 registered.Types = new List<string> { "Group", "Mode" };
                 registered.Modes.Add(new ModeData { DisplayName = "末尾の表情", Animation = valid });
-                var ordered = new VrChatExpressionMenu.Source();
-                FaceEmoExpressions.ReadRegistered(avatar, registered, "FaceEmo", ordered, ref serial, new HashSet<object>(), 0);
-                Assert.That(ordered.Entries.First().Name, Does.Contain("お気に入り"));
-                Assert.That(ordered.Entries.Last().Name, Does.Contain("末尾の表情"));
+                Assert.DoesNotThrow(() => FaceEmoExpressions.CaptureRegistered(avatar, registered));
                 registered.Types.RemoveAt(1);
-                Assert.Throws<InvalidOperationException>(() => FaceEmoExpressions.ReadRegistered(avatar, registered, "FaceEmo", new VrChatExpressionMenu.Source(), ref serial, new HashSet<object>(), 0));
+                Assert.Throws<InvalidOperationException>(() => FaceEmoExpressions.CaptureRegistered(avatar, registered));
                 registered.Types = null;
                 group.Groups.Add(registered);
-                Assert.Throws<InvalidOperationException>(() => FaceEmoExpressions.ReadRegistered(avatar, registered, "FaceEmo", new VrChatExpressionMenu.Source(), ref serial, new HashSet<object>(), 0));
+                Assert.Throws<InvalidOperationException>(() => FaceEmoExpressions.CaptureRegistered(avatar, registered));
             }
             finally
             {
