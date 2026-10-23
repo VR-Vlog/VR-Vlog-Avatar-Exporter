@@ -27,7 +27,7 @@ namespace VRVlog.LilToonExporter
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
             Action<byte[], IEnumerable<string>> completed = null,
             IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null,
-            bool interactive = false, Action openBlinkSettings = null)
+            bool interactive = false, Action openBlinkSettings = null, string diagnosticsKind = null)
         {
             if (create == null) throw new ArgumentNullException(nameof(create));
             var warnings = new List<string>();
@@ -46,6 +46,8 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
+            // The result list can copy the diagnostics before anything is saved.
+            ExportDiagnostics.Record(source, bytes, report.Fallbacks, warnings, diagnosticsKind);
             // The export already worked around what it could not set up. Show the
             // result list once, before anything is written, and save from there.
             ExportFallbackConfirmation.Confirm(report.Fallbacks, warnings, destination, source, interactive, () =>

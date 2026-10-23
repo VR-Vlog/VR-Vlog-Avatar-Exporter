@@ -26,6 +26,14 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
+    'ExportDiagnosticsTests': {
+        'TheTextHasNoNameOrPath': 1,
+        'TheTextHasTheVersionsAndTheExportType': 1,
+        'TheTextNumbersEachMeshAndMaterial': 1,
+        'TheTextListsWhatTheConversionChanged': 1,
+        'TheSameBytesAreRecordedOnce': 1,
+        'ShaderNamesOutsideThePublicListAreHidden': 1,
+    },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
         'DegenerateGeometryReceivesFiniteUnitNormalsWithoutLosingMorphs': 1,

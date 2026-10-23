@@ -21,6 +21,8 @@ namespace VRVlog.LilToonExporter
         internal int LastOmittedStageCount { get; private set; }
         // The notes of the last save or transfer, each once. The transfer screen groups them after the transfer.
         internal string[] LastNotes { get; private set; } = Array.Empty<string>();
+        // The name-free diagnostics of the last save or transfer, for the transfer screen.
+        internal ExportDiagnostics LastDiagnostics { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -2538,6 +2540,8 @@ namespace VRVlog.LilToonExporter
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             var savedFaces = listFaces.Count;
+            var diagnosticsKind = written != null ? interactive ? ExportDiagnostics.DetailedTransfer : ExportDiagnostics.QuickTransfer
+                : savedTo != null ? ExportDiagnostics.TransferSave : ExportDiagnostics.BoardSave;
             void Completed(byte[] bytes, System.Collections.Generic.IEnumerable<string> warnings)
             {
                 var missingShaders = ExportResultList.MissingShaders(savedReport);
@@ -2545,6 +2549,8 @@ namespace VRVlog.LilToonExporter
                 LastMissingShaderCount = missingShaders;
                 LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
                 LastNotes = (warnings ?? Enumerable.Empty<string>()).Distinct(StringComparer.Ordinal).ToArray();
+                // Already recorded before the result list for these bytes, except after a retry from the recovery window.
+                LastDiagnostics = ExportDiagnostics.Record(target.Source, bytes, savedReport, warnings, diagnosticsKind);
                 if (written != null)
                 {
                     // For a transfer, the details of this export go to the Console.
@@ -2593,7 +2599,8 @@ namespace VRVlog.LilToonExporter
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
-                openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); });
+                openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); },
+                diagnosticsKind: diagnosticsKind);
             if (recovery != null)
             {
                 recovery.RetainInput(target.RetainForRecovery());

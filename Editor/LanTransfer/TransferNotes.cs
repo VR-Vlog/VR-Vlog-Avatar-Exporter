@@ -42,6 +42,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Kinds with the most targets first.
         internal readonly List<TransferNoteGroup> Notes = new List<TransferNoteGroup>();
+        // The name-free diagnostics text of the same export, made when copied. Null without one.
+        internal Func<string> Diagnostics;
         // The record kinds, then the lines without a kind.
         internal readonly List<TransferNoteGroup> Records = new List<TransferNoteGroup>();
         internal int NoteCount => Notes.Sum(group => group.Count);

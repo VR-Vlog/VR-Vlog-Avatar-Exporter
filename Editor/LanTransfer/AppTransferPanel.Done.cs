@@ -114,6 +114,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
             doneView.Add(Hairline());
         }
 
+        // The notes of the export just saved, with its diagnostics.
+        private TransferNotes ExportedNotes()
+        {
+            var notes = TransferNotes.Build(Exporter?.LastNotes());
+            notes.Diagnostics = Exporter?.LastDiagnostics?.Invoke();
+            return notes;
+        }
+
         // The result: an icon and one line, with the note count or the reason of a failure under it.
         private VisualElement ResultHead(bool failed)
         {
@@ -134,6 +142,24 @@ namespace VRVlog.LilToonExporter.LanTransfer
             title.style.overflow = Overflow.Hidden;
             title.style.textOverflow = TextOverflow.Ellipsis;
             line.Add(title);
+            // What the app got, without names, for a report when something looks wrong there.
+            var diagnostics = failed ? null : exportNotes.Diagnostics;
+            if (diagnostics != null)
+            {
+                var gap = new VisualElement();
+                gap.style.flexGrow = 1;
+                gap.style.minWidth = 8;
+                line.Add(gap);
+                var copy = new Button { name = "copy-diagnostics", text = T(AppTransferText.CopyDiagnostics), tooltip = T(AppTransferText.DiagnosticsHint) };
+                copy.clicked += () =>
+                {
+                    EditorGUIUtility.systemCopyBuffer = diagnostics();
+                    copy.text = T(AppTransferText.DiagnosticsCopied);
+                };
+                copy.AddToClassList("action");
+                copy.style.width = 136;
+                line.Add(copy);
+            }
             head.Add(line);
             var sub = new Label(failed ? AppTransferFlow.SentencePerLine(flow.FailureText(T))
                 : exportNotes.NoteCount > 0 ? string.Format(T(AppTransferText.NoteCount), exportNotes.NoteCount) : T(AppTransferText.NoNotes));

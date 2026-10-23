@@ -29,6 +29,9 @@ namespace VRVlog.LilToonExporter
         internal const string SelectButton = "選択";
         internal const string MissingTarget = "アバターに見つかりません";
         internal const string BlinkButton = "瞬きを設定";
+        internal const string CopyDiagnosticsButton = "診断情報をコピー";
+        internal const string DiagnosticsCopied = "コピーしました";
+        internal const string DiagnosticsHint = "名前やパスは含みません";
 
         const float HeaderHeight = 32f, ToolbarHeight = 22f, ColumnHeight = 18f, FooterHeight = 40f;
         const float GroupHeight = 22f, RowHeight = 20f, LineHeight = 18f;
@@ -36,6 +39,9 @@ namespace VRVlog.LilToonExporter
         const string CollapsedKey = "VRVlog.LilToonExporter.ExportResultWindow.Collapsed";
 
         ExportResultList result;
+        // The export this list is about; gone after a script reload, and the button with it.
+        ExportDiagnostics diagnostics;
+        bool diagnosticsCopied;
         GameObject avatar;
         Action save, changeSettings, openBlinkSettings;
         [SerializeField] bool pending, saved;
@@ -69,8 +75,11 @@ namespace VRVlog.LilToonExporter
         static ExportResultWindow Open(ExportResultList result, GameObject avatar, Action openBlinkSettings)
         {
             var window = GetWindow<ExportResultWindow>(true, ExporterLocalization.T(WindowTitle), true);
-            window.minSize = new Vector2(560f, 420f);
+            // Wide enough for three buttons on the left and the feedback beside them.
+            window.minSize = new Vector2(640f, 420f);
             window.result = result ?? new ExportResultList();
+            window.diagnostics = ExportDiagnostics.Last;
+            window.diagnosticsCopied = false;
             window.avatar = avatar;
             window.destination = window.result.Destination;
             window.openBlinkSettings = openBlinkSettings;
@@ -381,6 +390,13 @@ namespace VRVlog.LilToonExporter
                 if (Left("全文をコピー", 104f)) Copy();
                 if (Left("テキスト保存", 104f)) SaveText();
             }
+            if (result != null && diagnostics != null)
+            {
+                var rect = new Rect(x, y, 128f, 24f);
+                x += 128f + 6f;
+                var label = ExporterLocalization.T(diagnosticsCopied ? DiagnosticsCopied : CopyDiagnosticsButton);
+                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(DiagnosticsHint)))) CopyDiagnostics();
+            }
             var primary = IsPending && result != null;
             var buttonWidth = primary ? 112f : 88f;
             var feedbackRect = new Rect(x + 4f, y + 3f, Mathf.Max(0f, area.xMax - 10f - buttonWidth - 8f - x - 4f), 18f);
@@ -406,6 +422,12 @@ namespace VRVlog.LilToonExporter
             ExportDetailsText.Copy(result?.Text(LilToonExporterWindow.PackageVersion()));
             feedback = ExporterLocalization.T("全文をコピーしました");
             feedbackFailed = false;
+        }
+
+        void CopyDiagnostics()
+        {
+            EditorGUIUtility.systemCopyBuffer = diagnostics.Text();
+            diagnosticsCopied = true;
         }
 
         void SaveText()
