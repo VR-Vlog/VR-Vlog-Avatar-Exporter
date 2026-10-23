@@ -9,8 +9,8 @@ namespace VRVlog.LilToonExporter
 {
     internal static class VrChatExpressionBaker
     {
-        internal const string BakedFormat = "VRChatから{0}個の表情を登録しました。選択中は顔の形を保つため瞬き・口・視線の自動変形を止めます。";
-        internal const string NoneBakedWarning = "VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。";
+        internal const string BakedFormat = ExportNoteText.ExpressionsAdded;
+        internal const string NoneBakedWarning = ExportNoteText.ExpressionsNone;
 
         private sealed class Channel
         {

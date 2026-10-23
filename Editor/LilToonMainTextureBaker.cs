@@ -240,7 +240,7 @@ namespace VRVlog.LilToonExporter
                     var scale = LilToonMobileProfile.DefaultMaximumTextureSize / (float)Mathf.Max(width, height);
                     width = Mathf.Max(1, Mathf.RoundToInt(width * scale));
                     height = Mathf.Max(1, Mathf.RoundToInt(height * scale));
-                    warnings?.Add(material.name + ": メインカラーの焼き込み画像をモバイル向けに " + width + "×" + height + " へ縮小しました。");
+                    warnings?.Add(string.Format(ExportNoteText.MainTextureResized, material.name, width, height));
                 }
                 var bakedName = DeterministicNames.Unique(material.name + "__VRVlog_Main_" + DeterministicNames.Hash("Main", origin, material.name),
                     candidate => textures.Exists(texture => texture != null && texture.name == candidate));

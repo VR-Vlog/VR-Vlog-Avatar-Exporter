@@ -13,6 +13,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/TextureResizePolicy.cs'),
     (Join-Path $taskRepo 'Editor/PngWriter.cs'),
     (Join-Path $taskRepo 'Editor/MobileTextureEncoder.cs'),
+    (Join-Path $taskRepo 'Editor/Compatibility/ExportNoteText.cs'),
     (Join-Path $taskRepo 'Editor/BlinkShapeNames.cs'),
     (Join-Path $taskRepo 'Editor/ExpressionNameInference.cs'),
     (Join-Path $taskRepo 'Editor/ExpressionShapeNames.cs'),
