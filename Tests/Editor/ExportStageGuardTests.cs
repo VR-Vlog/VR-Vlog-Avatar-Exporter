@@ -4,6 +4,7 @@ using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.Poses;
 using Object = UnityEngine.Object;
 
@@ -125,6 +126,93 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { Object.DestroyImmediate(material); }
         }
+
+        // Without the build passes the optimizer never runs, so its components
+        // left on the copy must not make the retry wait for its mapping.
+        [Test]
+        public void LeavingOutTheBuildPassesWritesAnOptimizedAvatar()
+        {
+            var optimizer = InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize");
+            if (optimizer == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+                Assert.Ignore("Install supported Avatar Optimizer and NDMF to run the optimizer integration fixture.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")) { name = "Optimized" };
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                fixture.Source.AddComponent(optimizer);
+                var fired = 0;
+                ExportStageGuard.FaultInjection = current =>
+                {
+                    if (current != ExportStage.BuildProcess || fired > 0) return;
+                    fired++;
+                    throw new InvalidOperationException("injected " + current);
+                };
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = Export(fixture.Source, report, new List<string>());
+
+                Assert.That(fired, Is.EqualTo(1));
+                Assert.That(bytes, Is.Not.Null.And.Not.Empty);
+                Assert.That(report.Succeeded, Is.True);
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.BuildProcess }));
+            }
+            finally { Object.DestroyImmediate(material); }
+        }
+
+        // An expression the optimizer lost feeds the menu, blink, Lip Sync and
+        // tracking output, so a lenient export writes the file again without
+        // the build passes instead of stopping.
+        [Test]
+        public void AnExpressionLostByTheBuildPassesLeavesThemOut()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(Shader.Find("lilToon")) { name = "Lost" };
+            var authored = new List<Object>();
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
+                var fired = 0;
+                // The routes exist once the build callback captured them; the
+                // check after the build then finds the expression gone.
+                ExportStageGuard.FaultInjection = current =>
+                {
+                    if (current != ExportStage.BuildProcess || fired > 0) return;
+                    var route = Resources.FindObjectsOfTypeAll<ExportOptimizationMarker>()
+                        .SelectMany(marker => marker.Morphs).FirstOrDefault(value => !value.NoOp);
+                    if (route == null) return;
+                    fired++;
+                    route.Removed = true;
+                };
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Stage guard", "Tests", new List<string>(),
+                    exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report,
+                    authorCopyExpressions: clone =>
+                    {
+                        var settings = ScriptableObject.CreateInstance<VRM10Object>(); authored.Add(settings);
+                        settings.LookAt = null; settings.FirstPerson = null;
+                        var expression = ScriptableObject.CreateInstance<VRM10Expression>(); authored.Add(expression);
+                        expression.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, 1f) };
+                        settings.Expression.Happy = expression;
+                        clone.AddComponent<Vrm10Instance>().Vrm = settings;
+                    });
+
+                Assert.That(fired, Is.EqualTo(1), "The authored expression must be captured as a route.");
+                Assert.That(bytes, Is.Not.Null.And.Not.Empty);
+                Assert.That(report.Succeeded, Is.True);
+                var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
+                Assert.That(entry.Stage, Is.EqualTo(ExportStage.BuildProcess));
+                Assert.That(entry.Reason, Does.StartWith("最適化で書き出し用の表情が失われました"));
+            }
+            finally
+            {
+                Object.DestroyImmediate(material);
+                foreach (var asset in authored) Object.DestroyImmediate(asset);
+            }
+        }
+
+        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
         [Test]
         public void EveryStageBelongsToAPhase()
