@@ -1,7 +1,7 @@
 # QRを隠しているあいだのぼかした模様の右下に SAMPLE を出す
 
 - 日付: 2026-10-23
-- 対象: `Editor/LanTransfer/AppTransferWindow.uxml`・`Editor/LanTransfer/AppTransferWindow.uss`・`Editor/LanTransfer/AppTransferPanel.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`Documentation~/Verification/qr-cover-sample-label.png`・`CHANGELOG.md`
+- 対象: `Editor/LanTransfer/AppTransferWindow.uxml`・`Editor/LanTransfer/AppTransferWindow.uss`・`Editor/LanTransfer/AppTransferPanel.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`Documentation~/Verification/qr-cover-sample-label.png`・`Documentation~/CloudTransfer.md`・`CHANGELOG.md`
 
 ## 背景
 
@@ -17,7 +17,7 @@
 ## 確認
 
 - Unity 2022.3.22f1で、表情ボードの3ページ目と **アプリに転送（かんたん）** の窓でQRを隠した状態を、ダーク・ライト、エディタの拡大率100%・300%、日本語・英語・中国語で撮った（`Documentation~/Verification/qr-cover-sample-label.png` は表情ボード・ダーク・300%の変更前と変更後）。100%でも読めること、ボタンと重ならないこと、本物のQRを出したら消えることを見た。かんたんの窓を300%で開いた大きさでは、四隅の印と同じくラベルも下にスクロールした所に来る。
-- `AppTransferFlowTests.cs` の `TheQrIsDrawnOnlyAfterShowQrAndANewQrHidesIt`（窓と表情ボードの2ケース）に、隠しているあいだはラベルが出て文字が「SAMPLE」でクリックを受けないこと、表示したら消え、隠し直したらまた出ることを足した。Unity 2022.3.22f1で `CloudTransferTests` の202ケースがすべて通った（EditModeテストはCIでは回らない）。
+- `AppTransferFlowTests.cs` の `TheQrIsDrawnOnlyAfterShowQrAndANewQrHidesIt`（窓と表情ボードの2ケース）に、隠しているあいだはラベルが出て文字が「SAMPLE」でクリックを受けないこと、表示したら消え、隠し直したらまた出ることを足した。Unity 2022.3.22f1で、このテストを含む `CloudTransferTests`（`AppTransferFlowTests.cs` はこのクラスの partial）の202ケースがすべて通った（EditModeテストはCIでは回らない）。
 
 ## 検討して採らなかった案
 

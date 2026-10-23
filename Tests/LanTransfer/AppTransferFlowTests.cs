@@ -803,7 +803,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Shown("revealArea"), Is.True);
                     // The cover says it is a sample, in every language, and never takes the click.
                     Assert.That(Shown("qrSample"), Is.True);
-                    Assert.That(((UnityEngine.UIElements.Label)Element<UnityEngine.UIElements.VisualElement>("qrSample")).text, Is.EqualTo("SAMPLE"));
+                    Assert.That(Element<UnityEngine.UIElements.Label>("qrSample").text, Is.EqualTo("SAMPLE"));
                     Assert.That(Element<UnityEngine.UIElements.VisualElement>("qrSample").pickingMode, Is.EqualTo(UnityEngine.UIElements.PickingMode.Ignore));
                     Assert.That(Shown("hideQrButton"), Is.False);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
