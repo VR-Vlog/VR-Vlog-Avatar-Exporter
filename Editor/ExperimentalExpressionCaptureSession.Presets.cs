@@ -211,11 +211,45 @@ namespace VRVlog.LilToonExporter
             return Channels.Any(channel => channel.Renderer == renderer && Array.IndexOf(channel.Shapes, shape) >= 0);
         }
 
+        // The suggestions try every face on every slot each time the board
+        // changes. A face reads the same until the editor reports an edit, the
+        // clip is changed, or the settings load another baseline.
+        readonly Dictionary<(ExpressionPreset, string, string, AnimationClip, int), (Pose Pose, string Error)> presetPoses =
+            new Dictionary<(ExpressionPreset, string, string, AnimationClip, int), (Pose, string)>();
+        (int Edits, bool Clamp, int Gestures) presetPosesFor;
+
         internal Pose BuildPresetPose(ExpressionPreset preset, PresetAssignment assignment)
         {
             RequireValid();
             var label = PresetFullLabel(preset);
             if (assignment == null || assignment.IsNone) throw new InvalidOperationException(label + ExporterLocalization.T(": 表情を選んでください。"));
+            var inputs = (EditorEdits.Count, PlayerSettings.legacyClampBlendShapeWeights, gestureClips.Count);
+            if (presetPosesFor != inputs) { presetPoses.Clear(); presetPosesFor = inputs; }
+            var clip = assignment.IsShape ? null : assignment.ResolveClip();
+            var key = (preset, assignment.IsShape ? assignment.Path ?? "" : null, assignment.IsShape ? assignment.Shape : null, clip,
+                clip == null ? 0 : EditorUtility.GetDirtyCount(clip));
+            var known = assignment.IsShape || clip != null;
+            if (known && presetPoses.TryGetValue(key, out var built))
+            {
+                if (built.Error != null) throw new InvalidOperationException(built.Error);
+                return ClonePose(built.Pose);
+            }
+            try
+            {
+                var pose = BuildPresetPoseUncached(preset, assignment);
+                if (known) presetPoses[key] = (ClonePose(pose), null);
+                return pose;
+            }
+            catch (InvalidOperationException error) when (!(error is SourceChangedException))
+            {
+                if (known) presetPoses[key] = (null, error.Message);
+                throw;
+            }
+        }
+
+        Pose BuildPresetPoseUncached(ExpressionPreset preset, PresetAssignment assignment)
+        {
+            var label = PresetFullLabel(preset);
             try
             {
                 var morphs = PresetMorphs(assignment);
@@ -696,12 +730,29 @@ namespace VRVlog.LilToonExporter
         {
             var result = new Dictionary<ExpressionPreset, PresetAssignment>();
             if ((blinkOptions?.Mode ?? BlinkExportMode.Auto) != BlinkExportMode.Auto) return result;
+            // Resolving reads the whole source avatar; like a drop's check of
+            // the source, it is read again after an edit the editor reports.
+            var inputs = (EditorEdits.Count, JsonUtility.ToJson(blinkOptions ?? new BlinkExportOptions()));
+            if (blinkShapes == null || blinkShapesFor != inputs) { blinkShapes = BlinkShapes(blinkOptions); blinkShapesFor = inputs; }
+            foreach (var (preset, path, shape) in blinkShapes)
+            {
+                var candidate = PresetAssignment.ForShape(preset, path, shape); candidate.Automatic = true;
+                if (PresetError(preset, candidate) == null) result.Add(preset, candidate);
+            }
+            return result;
+        }
+        (ExpressionPreset Preset, string Path, string Shape)[] blinkShapes;
+        (int Edits, string Options) blinkShapesFor;
+
+        (ExpressionPreset Preset, string Path, string Shape)[] BlinkShapes(BlinkExportOptions blinkOptions)
+        {
+            var result = new List<(ExpressionPreset, string, string)>();
             BlinkExportSession resolved;
             try { resolved = BlinkExportSession.Resolve(Source, blinkOptions, exclusions != null ? exclusions.Contains : (Func<Transform, bool>)null); }
-            catch (InvalidOperationException) { return result; }
+            catch (InvalidOperationException) { return result.ToArray(); }
             using (resolved)
             {
-                if (resolved.PreserveAuthored || resolved.Disabled) return result;
+                if (resolved.PreserveAuthored || resolved.Disabled) return result.ToArray();
                 var options = new HashSet<(string Path, string Shape)>(PresetShapeOptions());
                 for (var slot = 0; slot < BlinkPresets.Length; slot++)
                 {
@@ -709,12 +760,10 @@ namespace VRVlog.LilToonExporter
                     var binding = resolved.Slots[slot][0];
                     if (binding.Renderer == null || !binding.Renderer.transform.IsChildOf(Source.transform)) continue;
                     var path = AnimationUtility.CalculateTransformPath(binding.Renderer.transform, Source.transform);
-                    if (!options.Contains((path, binding.Shape))) continue;
-                    var candidate = PresetAssignment.ForShape(BlinkPresets[slot], path, binding.Shape); candidate.Automatic = true;
-                    if (PresetError(BlinkPresets[slot], candidate) == null) result.Add(BlinkPresets[slot], candidate);
+                    if (options.Contains((path, binding.Shape))) result.Add((BlinkPresets[slot], path, binding.Shape));
                 }
             }
-            return result;
+            return result.ToArray();
         }
 
         // What the blink export uses while no blink preset is assigned.

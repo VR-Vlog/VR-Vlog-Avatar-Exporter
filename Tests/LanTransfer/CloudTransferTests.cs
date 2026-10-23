@@ -42,9 +42,18 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("0.11.15-beta.2", true)]
         [TestCase("0.11.15+beta.2", false)]
         [TestCase("0.11.16", false)]
+        [TestCase("0.12.0", false)]
+        [TestCase("1.0.0", true)]
+        [TestCase("1.0.1", true)]
+        [TestCase("1.1.0", true)]
+        [TestCase("2.0.0", true)]
+        [TestCase("10.0.0", true)]
+        [TestCase("1.0.1+build.1", false)]
+        [TestCase("1.0", false)]
+        [TestCase("１.0.0", false)]
         [TestCase("not-a-beta", false)]
         [TestCase(null, false)]
-        public void CloudTransferSupportsTheAdoptedStableVersion(string version, bool enabled) =>
+        public void CloudTransferIsOnForStableFromOneZero(string version, bool enabled) =>
             Assert.That(CloudTransferAvailability.IsSupportedVersion(version), Is.EqualTo(enabled));
 
         [TestCase(false)][TestCase(true)]

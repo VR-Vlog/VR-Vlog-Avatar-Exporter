@@ -243,6 +243,7 @@ namespace VRVlog.LilToonExporter
                 // The stamps were just taken from the source as it is: the rest
                 // of this batch need not hash the whole avatar again.
                 if (batchDepth > 0) validatedBatch = batchId;
+                hashedEdits = EditorEdits.Count;
                 foreach (var channel in Channels)
                     if (SourceFace(channel.Path) is SkinnedMeshRenderer face && Shown(face)) shownFaces.Add(channel.Path);
             }
@@ -278,7 +279,7 @@ namespace VRVlog.LilToonExporter
         {
             if (disposed || Copy == null) return null;
             var difference = Source == null ? "source (deleted)" : sourceStamp.Difference(Source) ?? ChannelDifference(hashed: false);
-            if (difference == null && batchDepth > 0) validatedBatch = batchId;
+            if (difference == null) { if (batchDepth > 0) validatedBatch = batchId; hashedEdits = EditorEdits.Count; }
             return difference;
         }
 
@@ -318,6 +319,7 @@ namespace VRVlog.LilToonExporter
             if (Source == null) throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
             if (!hashed && sourceStamp.Difference(Source) is string difference)
                 throw new SourceChangedException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"), difference);
+            if (!hashed) hashedEdits = EditorEdits.Count;
             if (ChannelDifference(hashed) is string mesh)
                 throw new SourceChangedException(ExporterLocalization.T("書き出し用メッシュが変更されました。「変更」からアバターを指定し直してください。"), mesh);
             if (batchDepth > 0) validatedBatch = batchId;
@@ -347,6 +349,34 @@ namespace VRVlog.LilToonExporter
         // again from an avatar that still reads differently. Exports and
         // RequireCurrentSource hash it all the same.
         internal void TrustCopyForBatch() { if (!disposed && batchDepth > 0) validatedBatch = batchId; }
+
+        // For a drop on the board: the source is hashed only when the editor
+        // reported an edit since the last full check, so moving a face does
+        // not wait for the whole avatar. The renderers and meshes are still
+        // compared. A script that writes without Undo is not reported; the
+        // next action that checks, and every export, still hash the source.
+        internal void RequireSourceUnlessUnedited()
+        {
+            if (!disposed && batchDepth > 0 && hashedEdits == EditorEdits.Count) validatedBatch = batchId;
+            RequireValid();
+        }
+        int hashedEdits = -1;
+
+        // Edits the editor reported since it loaded: Undo-recorded changes,
+        // undo and redo, asset imports, deletions and moves, and play mode.
+        internal static class EditorEdits
+        {
+            internal static int Count { get; private set; }
+            internal static void Note() => Count++;
+            [InitializeOnLoadMethod]
+            static void Watch()
+            {
+                ObjectChangeEvents.changesPublished += (ref ObjectChangeEventStream stream) => Note();
+                Undo.undoRedoPerformed += Note;
+                EditorApplication.projectChanged += Note;
+                EditorApplication.playModeStateChanged += change => Note();
+            }
+        }
 
         internal void RestoreBaseline()
         {
@@ -459,6 +489,7 @@ namespace VRVlog.LilToonExporter
             var presets = LoadPresets(settings.Presets);
             // Publish only after validating every row and expression.
             Baseline = ClonePose(settings.Baseline);
+            presetPoses.Clear();
             Expressions.Clear(); Expressions.AddRange(settings.Expressions.Select(ClonePose));
             PoseOptions.Manual.Clear(); PoseOptions.Manual.AddRange(manualPoses);
             PoseOptions.Excluded.Clear(); PoseOptions.Names.Clear();

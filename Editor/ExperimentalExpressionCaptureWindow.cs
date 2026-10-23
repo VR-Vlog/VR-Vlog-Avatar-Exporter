@@ -1965,9 +1965,10 @@ namespace VRVlog.LilToonExporter
         void MoveTo(AnimationClip clip, Place target)
         {
             RebuildBoard();
-            session.RequireSourceForBatch();
+            session.RequireSourceUnlessUnedited();
             if (!board.Move(clip, target)) return;
-            ApplyAutomaticPresets();
+            // The blink line reads the source, not the slots: a move leaves it.
+            ApplySuggestions();
             SaveChoices();
             if (target.Kind != PlaceKind.Slot) return;
             var preset = target.Preset;
@@ -2317,10 +2318,15 @@ namespace VRVlog.LilToonExporter
         void ApplyAutomaticPresets()
         {
             if (session == null) return;
+            ApplySuggestions();
+            blinkFallbackStale = true;
+        }
+
+        void ApplySuggestions()
+        {
             RebuildBoard();
             board.ApplyAutomatic();
             RefreshPresetErrors();
-            blinkFallbackStale = true;
         }
 
         void RefreshPresetErrors()
@@ -2787,6 +2793,7 @@ namespace VRVlog.LilToonExporter
     {
         static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] previousPaths)
         {
+            ExperimentalExpressionCaptureSession.EditorEdits.Note();
             if (imported.Concat(deleted).Concat(moved).Concat(previousPaths).Any(path =>
                 path.EndsWith(".anim", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".controller", StringComparison.OrdinalIgnoreCase) ||
                 path.EndsWith(".overrideController", StringComparison.OrdinalIgnoreCase)))
