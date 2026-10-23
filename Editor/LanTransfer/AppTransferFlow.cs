@@ -39,12 +39,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Under the consent: "VRMを保存" next to "QRコードを作る" does not need it.
         internal const string ConsentHint = "VRMの保存に同意は要りません";
         internal const string NeedsPrivacyConsent = "プライバシーポリシーに同意すると作れます";
+        // When two or more inputs are missing, the line above the button names them all.
+        internal const string NeedsInputs = "{0}がそろうと作れます";
+        internal const string InputSeparator = "・";
+        internal const string Avatar = "アバター";
+        internal const string ShorterName = "短い名前";
+        internal const string Author = "作者名";
+        internal const string Consent = "利用規約の同意";
+        internal const string PrivacyConsent = "プライバシーポリシーの同意";
         internal const string Exporting = "VRMを書き出しています";
         internal const string ExportFailed = "書き出せませんでした";
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
         internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしないでください";
+        internal const string ShowQr = "QRを表示";
+        internal const string HideQr = "QRを隠す";
+        internal const string QrHidden = "QRを表示していません";
         internal const string Waiting = "読み取り待ち";
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
@@ -97,6 +108,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
     internal enum AppTransferView { Form, Exporting, Uploading, Waiting, Completed, Expired, Canceled, Failed }
 
+    // The inputs "QRコードを作る" needs, whose labels turn red when it is pressed without them.
+    [Flags]
+    internal enum RequiredInput { None = 0, Avatar = 1, Name = 2, Author = 4, Consent = 8, PrivacyConsent = 16 }
+
     // The "アプリに転送" window without UnityEditor, so the host checks cover what
     // it shows and when. The window draws View and forwards the buttons.
     internal sealed class AppTransferFlow : IDisposable
@@ -118,6 +133,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private double nextPoll;
         private long shownRemaining;
         private bool exporting;
+        // The user showed this QR; whether its sound has played.
+        private bool revealed, announced;
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
@@ -139,10 +156,45 @@ namespace VRVlog.LilToonExporter.LanTransfer
             : !consented ? AppTransferText.NeedsConsent
             : privacyAccepted ? null : AppTransferText.NeedsPrivacyConsent;
 
-        // The OS notification sound plays only when a QR has just appeared on screen; a QR
-        // that could not be drawn, a failed or canceled transfer and an ended wait stay silent.
-        internal static bool ShouldBeepForQr(AppTransferView view, bool qrShown, bool soundOn) =>
-            soundOn && qrShown && view == AppTransferView.Waiting;
+        // The inputs to show in red: none until "QRコードを作る" has been pressed without them, then each
+        // one still missing, so a field turns back as soon as it is filled in.
+        internal static RequiredInput MarkedInputs(bool pressed, bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted)
+        {
+            if (!pressed) return RequiredInput.None;
+            var missing = RequiredInput.None;
+            if (!hasAvatar) missing |= RequiredInput.Avatar;
+            if (!HasListedName(name) || !nameFits) missing |= RequiredInput.Name;
+            if (!hasAuthor) missing |= RequiredInput.Author;
+            if (!consented) missing |= RequiredInput.Consent;
+            if (!privacyAccepted) missing |= RequiredInput.PrivacyConsent;
+            return missing;
+        }
+
+        // Filling the fields does not fix the board, so these reasons keep "QRコードを作る" disabled.
+        internal static bool BoardBlocks(string reason) =>
+            reason == AppTransferText.NeedsBoard || reason == AppTransferText.NeedsBoardFix;
+
+        // The line above "QRコードを作る": the reason as it is when one input is missing or the board is the
+        // problem, otherwise every missing input in the order of the window, so one look tells what is left.
+        internal static string ReasonText(string reason, bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, Func<string, string> translate)
+        {
+            if (reason == null) return "";
+            if (BoardBlocks(reason)) return translate(reason);
+            var items = new List<string>();
+            if (!hasAvatar) items.Add(AppTransferText.Avatar);
+            if (!HasListedName(name)) items.Add(AppTransferText.Name);
+            else if (!nameFits) items.Add(AppTransferText.ShorterName);
+            if (!hasAuthor) items.Add(AppTransferText.Author);
+            if (!consented) items.Add(AppTransferText.Consent);
+            if (!privacyAccepted) items.Add(AppTransferText.PrivacyConsent);
+            if (items.Count < 2) return translate(reason);
+            return string.Format(translate(AppTransferText.NeedsInputs), string.Join(translate(AppTransferText.InputSeparator), items.ConvertAll(item => translate(item))));
+        }
+
+        // The OS notification sound plays once when a QR is ready, before it is shown: the QR
+        // waits behind "QRを表示". A failed or canceled transfer and an ended wait stay silent.
+        internal static bool ShouldBeepForQr(AppTransferView view, bool qrReady, bool soundOn) =>
+            soundOn && qrReady && view == AppTransferView.Waiting;
 
         // "QRを他の人に見せたり…" is read before the QR appears: from the export, through the upload,
         // and under the QR. Once there is no QR coming (done, failed, canceled, expired) it goes.
@@ -262,6 +314,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         internal string Link => View == AppTransferView.Waiting ? session.ImportLink : null;
+        // The QR is drawn only after the user asks for it; every new QR starts hidden.
+        internal bool QrRevealed => revealed && View == AppTransferView.Waiting;
+        internal void RevealQr() { if (View == AppTransferView.Waiting) revealed = true; }
+        internal void HideQr() => revealed = false;
+
+        // True once for each QR that becomes ready, shown or not, so its sound plays once.
+        internal bool TakeQrReady()
+        {
+            if (announced || View != AppTransferView.Waiting) return false;
+            announced = true;
+            return true;
+        }
         internal bool Encrypting => session?.State == CloudTransferState.Preparing;
         internal long Transferred => session?.Transferred ?? 0;
         internal long UploadSize => session?.UploadSize ?? 0;
@@ -322,6 +386,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             session?.Dispose();
             Abandon(ref uploading); Abandon(ref polling);
             failure = null; StatusUnknown = false; shownRemaining = 0;
+            revealed = announced = false;
             session = createSession(source);
             // File I/O and the multipart upload run away from the Editor thread.
             var current = session;
@@ -362,6 +427,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Abandon(ref uploading); Abandon(ref polling);
             source?.Dispose(); source = null;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
+            revealed = announced = false;
         }
 
         // Observe abandoned task failures without logging transport details.

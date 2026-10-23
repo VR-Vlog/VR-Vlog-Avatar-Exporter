@@ -100,17 +100,20 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private WrittenVrm savedWritten, sentWritten;
 
         [NonSerialized] private bool built;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
+        // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
+        [NonSerialized] private bool pressedWhileBlocked, authorMarked;
+        [NonSerialized] private IMGUIContainer termsView;
+        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
-        [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, regenerateButton, closeButton, saveButton;
+        [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
         [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, consentHint, privacyLink, privacyText,
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
         [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
-        [NonSerialized] private Image qrImage, warningIcon;
-        [NonSerialized] private ScrollView transferScroll;
+        [NonSerialized] private Image qrImage, qrCover, warningIcon;
+        [NonSerialized] private ScrollView formScroll, transferScroll;
         [NonSerialized] private VisualElement transferBody;
         [NonSerialized] private IMGUIContainer uploadBar;
 
@@ -199,6 +202,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (untouched) avatarName = target == null ? "" : opened ? RememberedName(target) ?? target.name : target.name;
             consented = false;
             nameFits = null;
+            pressedWhileBlocked = false;
             Exporter?.SelectAvatar(target);
             SetMinimumSize(FormMinimumSize);
             Refresh();
@@ -290,14 +294,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 return;
             }
             flow.Tick(time);
+            SyncQr();
             var view = flow.View;
-            if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
-            else ClearQr();
-            view = flow.View;
             if (view == polledView && time < nextRepaint) return;
             polledView = view;
             nextRepaint = time + 0.2;
             Refresh();
+        }
+
+        // The OS notification sound, once per QR that is ready behind "QRを表示".
+        // The real QR exists only while it is shown.
+        private void SyncQr()
+        {
+            if (AppTransferFlow.ShouldBeepForQr(flow.View, flow.TakeQrReady(), AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+            if (flow.QrRevealed) { if (qrTexture == null) ShowQr(); }
+            else ClearQr();
         }
 
         private void ShowQr()
@@ -308,8 +319,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ClearQr();
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
-            // The OS notification sound, once per QR that is now on screen.
-            if (AppTransferFlow.ShouldBeepForQr(flow.View, qrTexture != null, AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+        }
+
+        // "QRを表示": the QR is drawn now, not when it became ready.
+        private void RevealQr()
+        {
+            flow.RevealQr();
+            if (flow.QrRevealed && qrTexture == null) ShowQr();
+            Refresh();
+        }
+
+        // "QRを隠す": back to the cover. The QR stays valid until its deadline.
+        private void HideQr()
+        {
+            flow.HideQr();
+            ClearQr();
+            Refresh();
         }
 
         private string Reason()
@@ -320,9 +345,37 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 CloudVrmTransferWindow.PrivacyConsentAccepted);
         }
 
+        // The inputs to show in red, by the same checks as Reason.
+        private RequiredInput MarkedInputs(bool pressed)
+        {
+            if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
+            return AppTransferFlow.MarkedInputs(pressed, avatar != null, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
+                CloudVrmTransferWindow.PrivacyConsentAccepted);
+        }
+
+        // The first red field above the footer, scrolled into view when it is outside the form's scroll.
+        private void RevealFirstMarked()
+        {
+            var marked = MarkedInputs(true);
+            var target = (marked & RequiredInput.Avatar) != 0 ? (VisualElement)avatarLabel
+                : (marked & RequiredInput.Name) != 0 ? (VisualElement)nameLabel
+                : (marked & RequiredInput.Author) != 0 ? termsView : null;
+            if (target != null && formScroll != null) formScroll.ScrollTo(target);
+        }
+
         private void Begin()
         {
-            if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode || Reason() != null) return;
+            if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            var reason = Reason();
+            if (AppTransferFlow.BoardBlocks(reason)) return;
+            if (reason != null)
+            {
+                pressedWhileBlocked = true;
+                Refresh();
+                RevealFirstMarked();
+                return;
+            }
+            pressedWhileBlocked = false;
             if (!MayStart()) return;
             transferName = AppTransferFlow.TransferName(avatarName);
             placeholderSide = TransferQrCode.Encode(AppTransferFlow.PlaceholderLink(transferName)).Width;
@@ -749,6 +802,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             slotRow = root.Q("slot-row");
             slot = root.Q("slot");
             qrImage = root.Q<Image>("qr");
+            qrCover = root.Q<Image>("qr-cover");
+            revealArea = root.Q("reveal");
+            showQrButton = root.Q<Button>("show-qr");
+            hideQrButton = root.Q<Button>("hide-qr");
             slotMessage = root.Q("message");
             messageTitle = root.Q<Label>("message-title");
             messageBody = root.Q<Label>("message-body");
@@ -795,6 +852,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
+            qrCover.image = QrCover.Texture;
+            qrCover.scaleMode = ScaleMode.StretchToFill;
+            // Only "QRを表示" takes the click, not the area around it.
+            qrCover.pickingMode = PickingMode.Ignore;
+            revealArea.pickingMode = PickingMode.Ignore;
             var probe = root.Q<IMGUIContainer>("scale-probe");
             probe.onGUIHandler = ProbeScale;
             // Only measures the display scale: no Tab stop, no clicks.
@@ -829,13 +891,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             readTerms.RegisterCallback<ClickEvent>(_ => Application.OpenURL(AppTransferFlow.TermsUrl));
             privacyLink.RegisterCallback<ClickEvent>(_ => Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl));
             // The VRM terms are the IMGUI section shared with the export window.
-            root.Q<IMGUIContainer>("terms").onGUIHandler = DrawTerms;
+            termsView = root.Q<IMGUIContainer>("terms");
+            termsView.onGUIHandler = DrawTerms;
             diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
             summaryButton.clicked += EditDetails;
             backButton.clicked += () => back?.Invoke();
             createButton.clicked += Begin;
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
+            showQrButton.clicked += RevealQr;
+            hideQrButton.clicked += HideQr;
             closeButton.clicked += () => { if (Window != null) Window.Close(); };
             saveButton.clicked += SaveCopy;
             saveOpen.RegisterCallback<ClickEvent>(_ => { if (savedCopy != null && File.Exists(savedCopy)) EditorUtility.RevealInFinder(savedCopy); });
@@ -844,6 +909,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The export starts once the panel has drawn the Exporting state.
             slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
             slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
+            formScroll = root.Q<ScrollView>("form-scroll");
             transferScroll = root.Q<ScrollView>("transfer-scroll");
             transferBody = transferScroll.Q(className: "body");
             transferScroll.verticalScroller.valueChanged += _ => PlaceSlot();
@@ -870,7 +936,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var entry = exporter;
             if (entry == null) return;
             EditorGUI.BeginChangeCheck();
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms();
+            var markAuthor = (MarkedInputs(pressedWhileBlocked) & RequiredInput.Author) != 0;
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms(markAuthor);
+            authorMarked = markAuthor;
             // The author decides the reason line below.
             if (EditorGUI.EndChangeCheck()) root.schedule.Execute(Refresh);
         }
@@ -948,7 +1016,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The terms and the consent sit above the button, outside the fields, and lock with them.
             consentFields.SetEnabled(!playing && entry != null);
 
-            avatarLabel.text = T("アバター");
+            avatarLabel.text = T(AppTransferText.Avatar);
             if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
             // What the export takes from elsewhere, and where to change it.
             summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
@@ -969,11 +1037,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             privacyText.text = T("プライバシーポリシーに同意する");
             privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
 
-            // One fixed line says why the button is disabled, so nothing below it moves.
+            // One fixed line says what is missing, so nothing below it moves; a list too long for it is in the tooltip.
             var reason = entry == null ? null : Reason();
-            reasonLabel.text = reason == null ? "" : T(reason);
+            reasonLabel.text = AppTransferFlow.ReasonText(reason, avatar != null, avatarName, nameFits ?? true, Exporter?.HasAuthor() ?? false, consented,
+                CloudVrmTransferWindow.PrivacyConsentAccepted, T);
+            reasonLabel.tooltip = reasonLabel.text;
+            var marked = entry == null ? RequiredInput.None : MarkedInputs(pressedWhileBlocked);
+            avatarLabel.EnableInClassList("missing", (marked & RequiredInput.Avatar) != 0);
+            nameLabel.EnableInClassList("missing", (marked & RequiredInput.Name) != 0);
+            nameHint.EnableInClassList("missing", (marked & RequiredInput.Name) != 0);
+            consentText.EnableInClassList("missing", (marked & RequiredInput.Consent) != 0);
+            privacyText.EnableInClassList("missing", (marked & RequiredInput.PrivacyConsent) != 0);
+            // The author is the IMGUI section, which draws its red itself once asked to draw again.
+            if (authorMarked != ((marked & RequiredInput.Author) != 0)) { authorMarked = !authorMarked; termsView.MarkDirtyRepaint(); }
             createButton.text = T(AppTransferText.Create);
-            createButton.SetEnabled(!playing && entry != null && reason == null);
+            // Pressed while an input is missing, it marks that input; only the board's own problems keep it disabled.
+            createButton.SetEnabled(!playing && entry != null && !AppTransferFlow.BoardBlocks(reason) && (reason == null || MarkedInputs(true) != RequiredInput.None));
             createHint.text = T(AppTransferText.CreateHint);
         }
 
@@ -989,10 +1068,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Reserve(leaveNote, view == AppTransferView.Uploading || view == AppTransferView.Waiting);
             // The area keeps the size of the QR through every state, so the rows below never move.
             slotRow.style.height = SlotSide;
-            var showQr = view == AppTransferView.Waiting && qrTexture != null;
-            slot.EnableInClassList("slot--qr", showQr);
+            var waiting = view == AppTransferView.Waiting;
+            var showQr = waiting && qrTexture != null;
+            // A ready QR waits behind a blurred picture that is not made from it, with "QRを表示" on top.
+            var covered = waiting && !showQr;
+            slot.EnableInClassList("slot--qr", showQr || covered);
             qrImage.image = showQr ? qrTexture : null;
             Show(qrImage, showQr);
+            Show(qrCover, covered);
+            Show(revealArea, covered);
+            showQrButton.text = T(AppTransferText.ShowQr);
 
             // A failure or an ended transfer says why in place, with the one thing to do next.
             string title = null, body = null, button = null;
@@ -1033,14 +1118,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (view == AppTransferView.Exporting) slot.MarkDirtyRepaint();
             PlaceSlot();
 
-            var waiting = view == AppTransferView.Waiting;
-            scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
+            scanLabel.text = showQr ? T(AppTransferText.ScanWithCamera) : "";
+            hideQrButton.text = T(AppTransferText.HideQr);
+            Show(hideQrButton, showQr);
             warningText.text = T(AppTransferText.DoNotShare);
             FitWarning();
             // Its place is kept in every state, so it does not move when the QR appears.
             Reserve(warningRow, AppTransferFlow.ShowsDoNotShare(view));
             var counting = waiting || view == AppTransferView.Expired;
-            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
+            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : showQr ? AppTransferText.Waiting : AppTransferText.QrHidden) : "";
             var seconds = waiting ? flow.Remaining : 0;
             remainingLabel.text = counting ? string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60) : "";
             remainingLabel.EnableInClassList("expired", view == AppTransferView.Expired);
@@ -1078,7 +1164,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             internal Action<GameObject> SelectAvatar;
             internal Func<bool> HasAuthor;
-            internal Action DrawTerms;
+            internal Action<bool> DrawTerms;
             internal Func<GameObject, string, string, Action, string> Export;
             internal Func<GameObject, string> RememberedName;
             internal Func<GameObject, bool, string> SettingsSummary;
@@ -1107,7 +1193,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     {
                         SelectAvatar = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), target, "SelectAvatar"),
                         HasAuthor = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "HasAuthor"),
-                        DrawTerms = (Action)Delegate.CreateDelegate(typeof(Action), target, "DrawTerms"),
+                        DrawTerms = (Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>), target, "DrawTerms"),
                         Export = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "Export"),
                         RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
                         SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),

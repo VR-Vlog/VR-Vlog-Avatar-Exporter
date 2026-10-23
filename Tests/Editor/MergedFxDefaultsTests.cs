@@ -1395,8 +1395,12 @@ namespace VRVlog.LilToonExporter.Tests
             if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var menus = new MenuImportSdkRecoveryTests.SdkFixture(fixture.Source);
-            var controls = (IList)VrChatExpressionMenu.Member(menus.Root, "controls"); controls.RemoveAt(1);
-            var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source).Controller;
+            var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source, new VrChatMenuImportPolicy { SkipAll = true }).Controller;
+            // The fixture's menu and gesture clips are passed as the board's
+            // list; the exported neutral must not take the weighted FX layer.
+            var states = fx.layers.SelectMany(value => value.stateMachine.states).Select(child => child.state).ToArray();
+            var faces = new[] { ("Menu face", (AnimationClip)states.Single(state => state.name == "Smile").motion, 0f),
+                ("Gesture face", (AnimationClip)states.Single(state => state.name == "Gesture face").motion, 0f) };
             var delta = new Vector3[fixture.Mesh.vertexCount]; delta[0] = Vector3.up * .1f;
             fixture.Mesh.AddBlendShapeFrame("Pupil removal", 100, delta, new Vector3[delta.Length], new Vector3[delta.Length]);
             var fixedClip = new AnimationClip { name = "Weighted permanent pupil" };
@@ -1416,15 +1420,13 @@ namespace VRVlog.LilToonExporter.Tests
             var expectedNeutral = (Weights: Enumerable.Range(0, sourceFront.sharedMesh.blendShapeCount)
                 .ToDictionary(index => sourceFront.sharedMesh.GetBlendShapeName(index), sourceFront.GetBlendShapeWeight),
                 Vertices: WorldVertices(sourceFront));
-            var expectedMenu = NativePose(fixture.Source, fx, "Front", new Dictionary<string, int> { ["Face"] = 1, ["GestureRight"] = 0 });
-            var expectedGesture = NativePose(fixture.Source, fx, "Front", new Dictionary<string, int> { ["Face"] = 0, ["GestureRight"] = 2 });
             var sampledNeutral = NeutralShapeSampler.Sample(fixture.Source);
             Vrm10Instance imported = null;
             try
             {
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Weighted permanent FX", "Tests", warnings,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: faces);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
                 imported.Runtime.Process();
@@ -1440,23 +1442,6 @@ namespace VRVlog.LilToonExporter.Tests
                         "; imported=" + string.Join(", ", Enumerable.Range(0, importedFront.sharedMesh.blendShapeCount)
                             .Select(shape => importedFront.sharedMesh.GetBlendShapeName(shape) + "=" + importedFront.GetBlendShapeWeight(shape).ToString("G9"))) +
                         "; warnings=" + string.Join(" | ", warnings));
-                foreach (var candidate in new[] { (Name: "Menu face", Pose: expectedMenu), (Name: "Gesture face", Pose: expectedGesture) })
-                {
-                    foreach (var expression in imported.Vrm.Expression.CustomClips)
-                        imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), 0);
-                    var selected = imported.Vrm.Expression.CustomClips.Single(expression => expression.name.Contains(candidate.Name));
-                    imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(selected.name), 1);
-                    imported.Runtime.Process();
-                    var actualVertices = WorldVertices(importedFront);
-                    Assert.That(actualVertices.Length, Is.EqualTo(candidate.Pose.Vertices.Length), candidate.Name);
-                    for (var vertex = 0; vertex < actualVertices.Length; vertex++)
-                        Assert.That(Vector3.Distance(candidate.Pose.Vertices[vertex], actualVertices[vertex]), Is.LessThan(.0005f),
-                            candidate.Name + " / vertex " + vertex + ": expected=" + candidate.Pose.Vertices[vertex].ToString("G9") +
-                            ", actual=" + actualVertices[vertex].ToString("G9") + "; native=" +
-                            string.Join(", ", candidate.Pose.Weights.Select(value => value.Key + "=" + value.Value.ToString("G9"))) +
-                            "; imported=" + string.Join(", ", Enumerable.Range(0, importedFront.sharedMesh.blendShapeCount)
-                                .Select(shape => importedFront.sharedMesh.GetBlendShapeName(shape) + "=" + importedFront.GetBlendShapeWeight(shape).ToString("G9"))));
-                }
                 Assert.That(sourceFront.GetBlendShapeWeight(1), Is.Zero);
                 Assert.That(EditorJsonUtility.ToJson(fixture.Mesh), Is.EqualTo(beforeMesh));
                 Assert.That(EditorJsonUtility.ToJson(fx), Is.EqualTo(beforeController));

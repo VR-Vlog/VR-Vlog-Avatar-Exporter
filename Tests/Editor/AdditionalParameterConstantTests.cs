@@ -736,9 +736,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void SerializedUnsavedSdkInputsAreReadBeforeMenuEvaluationAndSurviveOmission(bool omit)
+        [Test]
+        public void SerializedUnsavedSdkInputsAreReadBeforeTheListIsRead()
         {
             SoleDormantReset();
             var parametersType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
@@ -764,20 +763,14 @@ namespace VRVlog.LilToonExporter.Tests
             EditorUtility.SetDirty(parameters); EditorUtility.SetDirty(menu); EditorUtility.SetDirty(descriptor);
             var before = new Object[] { descriptor, parameters, menu, fx, additional }.Select(value => EditorJsonUtility.ToJson(value)).ToArray();
             var raw = VrChatExpressionMenu.Read(avatar); Assert.That(raw.NeutralInputInventoryComplete, Is.False,
-                "Menu reading creates fresh metadata, so Analyze must populate the input proof before its first menu sample.");
-            var result = VrChatExpressionSampler.Analyze(avatar, menuPolicy: omit ? new VrChatMenuImportPolicy { SkipAll = true } : null);
+                "Menu reading creates fresh metadata, so Analyze must populate the input proof before it reads the list.");
+            var result = VrChatExpressionSampler.Analyze(avatar, null, null);
             Assert.That(result.NeutralInputInventoryComplete, Is.True);
             Assert.That(result.ParameterPersistence[Axis], Is.EqualTo((false, true)));
             Assert.That(result.ParameterPersistence["ResetGate"], Is.EqualTo((false, true)));
             Assert.That(result.ExpressionParameterTypes[Axis], Is.EqualTo("Float"));
             Assert.That(AdditionalParameterConstants.Prove(fx, result, FixedExpressionContext.Create(fx, result.Defaults, result))[Axis], Is.Zero);
-            var selected = result.Entries.Where(entry => entry.Parameters.TryGetValue("Menu", out var value) && value == 1).ToArray();
-            if (omit) Assert.That(selected, Is.Empty);
-            else
-            {
-                Assert.That(selected, Has.Length.EqualTo(1)); Assert.That(selected[0].Error, Is.Null);
-                Assert.That(selected[0].Values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(true)).Within(.01));
-            }
+            Assert.That(result.Entries, Is.Empty, "The menu is read for its inputs; its faces are not played.");
             Assert.That(new Object[] { descriptor, parameters, menu, fx, additional }.Select(value => EditorJsonUtility.ToJson(value)), Is.EqualTo(before));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
