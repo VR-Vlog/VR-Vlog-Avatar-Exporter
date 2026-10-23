@@ -55,6 +55,51 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void EmptySubmeshesAreLeftOutWithTheirMaterialSlots()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var shader = Shader.Find("lilToon");
+            Assert.That(shader, Is.Not.Null, "The real lilToon package is required for the exporter entry point.");
+            var materials = new[] { "First", "Empty", "Third" }.Select(name => new Material(shader) { name = name }).ToArray();
+            var mesh = UnityEngine.Object.Instantiate(fixture.Mesh);
+            mesh.name = "Split hair";
+            try
+            {
+                mesh.subMeshCount = 3;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                mesh.SetTriangles(Array.Empty<int>(), 1);
+                mesh.SetTriangles(new[] { 0, 2, 1 }, 2);
+                var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+                foreach (var skin in skins) skin.sharedMaterial = materials[0];
+                var split = skins.Single(skin => skin.name == "Front");
+                split.sharedMesh = mesh;
+                split.sharedMaterials = materials;
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty submesh regression", "Tests", warnings,
+                    exporterVersion: "0.11.9", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+
+                // The empty submesh stopped UniVRM with "Index was out of range".
+                var json = GlbDocument.Read(bytes).Json;
+                var node = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().Single(item => item.TryGetValue("name", out var name) && (string)name == "Front");
+                var primitives = (List<object>)((Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])])["primitives"];
+                var written = (List<object>)json["materials"];
+                Assert.That(primitives.Cast<Dictionary<string, object>>().Select(primitive =>
+                    (string)((Dictionary<string, object>)written[Convert.ToInt32(primitive["material"])])["name"]), Is.EqualTo(new[] { "First", "Third" }));
+                var prefix = ExporterLocalization.T(UniVrmOneClickExporter.EmptySubmeshesOmitted);
+                Assert.That(warnings.Where(warning => warning.StartsWith(prefix, StringComparison.Ordinal)), Is.EqualTo(new[] { prefix + "Front" }));
+                // Only the export copy is changed.
+                Assert.That(split.sharedMesh, Is.SameAs(mesh));
+                Assert.That(mesh.subMeshCount, Is.EqualTo(3));
+                Assert.That(split.sharedMaterials, Is.EqualTo(materials));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+                foreach (var material in materials) UnityEngine.Object.DestroyImmediate(material);
+            }
+        }
+
+        [Test]
         public void CopyWithoutAnyMeshIsLeftForTheExistingFailure()
         {
             var copy = new GameObject("avatar");

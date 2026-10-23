@@ -2420,7 +2420,10 @@ namespace VRVlog.LilToonExporter
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RebuildBoard();
             // Recording used to check the source first; the list-only save checks it here.
+            // The first attempt below runs right after, so its Export need not
+            // hash the source again; a retry from the recovery window does.
             session.RequireCurrentSource();
+            var sourceChecked = true;
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
@@ -2482,15 +2485,17 @@ namespace VRVlog.LilToonExporter
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
-                // one attempt the standard faces use the hash Export has taken.
+                // one attempt the standard faces use the check made for it (the
+                // one above on the first attempt, Export's own on a retry).
                 using var batch = ExperimentalExpressionCaptureSession.Batch();
                 // Both transfers let a failing stage follow the project-wide choice,
                 // as the export window does, so "かんたん" and "通常" write the same
                 // bytes. Saving the board's own VRM (no written) stays strict.
                 if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
+                var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = target.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                    poses, presets.Select(value => value.Copy()).ToArray());
+                    poses, presets.Select(value => value.Copy()).ToArray(), checkedNow);
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,

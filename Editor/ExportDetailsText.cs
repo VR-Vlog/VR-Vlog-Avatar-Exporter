@@ -18,9 +18,11 @@ namespace VRVlog.LilToonExporter
             (phase.HasValue ? ExporterLocalization.T(ExportStageGuard.PhaseLabel(phase.Value)) + ": " : "") + ExporterLocalization.T(stage);
 
         internal static string Failure(string message, string technicalDetails,
-            IEnumerable<ExportRecoveryDiagnostic> diagnostics)
+            IEnumerable<ExportRecoveryDiagnostic> diagnostics, string version = null)
         {
             var text = new StringBuilder();
+            // First, so a pasted report says which exporter version failed.
+            if (!string.IsNullOrEmpty(version)) text.AppendLine("VR Vlog Exporter " + version);
             if (!string.IsNullOrEmpty(message)) text.AppendLine(message).AppendLine();
             foreach (var issue in diagnostics ?? Array.Empty<ExportRecoveryDiagnostic>())
             {

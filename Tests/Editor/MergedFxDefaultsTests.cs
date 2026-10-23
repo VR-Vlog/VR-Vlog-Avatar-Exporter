@@ -1038,6 +1038,69 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(neutral.Single().Weight, Is.EqualTo(expected.Weights["Face size"]).Within(.01));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport(bool additive)
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            using var menus = new MenuImportSdkRecoveryTests.SdkFixture(fixture.Source);
+            var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source, new VrChatMenuImportPolicy { SkipAll = true }).Controller;
+            // The fixture's menu and gesture clips are passed as the board's
+            // list; the exported neutral must not take the weighted FX layer.
+            var states = fx.layers.SelectMany(value => value.stateMachine.states).Select(child => child.state).ToArray();
+            var faces = new[] { ("Menu face", (AnimationClip)states.Single(state => state.name == "Smile").motion, 0f),
+                ("Gesture face", (AnimationClip)states.Single(state => state.name == "Gesture face").motion, 0f) };
+            var delta = new Vector3[fixture.Mesh.vertexCount]; delta[0] = Vector3.up * .1f;
+            fixture.Mesh.AddBlendShapeFrame("Pupil removal", 100, delta, new Vector3[delta.Length], new Vector3[delta.Length]);
+            var fixedClip = new AnimationClip { name = "Weighted permanent pupil" };
+            AnimationUtility.SetEditorCurve(fixedClip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"),
+                AnimationCurve.Constant(0, 1, 100));
+            AssetDatabase.AddObjectToAsset(fixedClip, fx);
+            fx.AddLayer("Weighted permanent pupil");
+            var layers = fx.layers; var layer = layers[layers.Length - 1]; layer.defaultWeight = .5f;
+            layer.blendingMode = additive ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override;
+            layer.stateMachine.defaultState = State(layer.stateMachine, "Always", fixedClip); fx.layers = layers;
+            var material = new Material(shader);
+            foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
+            var sourceFront = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var beforeMesh = EditorJsonUtility.ToJson(fixture.Mesh);
+            var beforeController = EditorJsonUtility.ToJson(fx);
+            var beforeDescriptor = EditorJsonUtility.ToJson(menus.Descriptor);
+            var expectedNeutral = (Weights: Enumerable.Range(0, sourceFront.sharedMesh.blendShapeCount)
+                .ToDictionary(index => sourceFront.sharedMesh.GetBlendShapeName(index), sourceFront.GetBlendShapeWeight),
+                Vertices: WorldVertices(sourceFront));
+            var sampledNeutral = NeutralShapeSampler.Sample(fixture.Source);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Weighted permanent FX", "Tests", warnings,
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: faces);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                imported.Runtime.Process();
+                var importedFront = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Front");
+                var actualNeutralVertices = WorldVertices(importedFront);
+                Assert.That(actualNeutralVertices.Length, Is.EqualTo(expectedNeutral.Vertices.Length), "Neutral");
+                for (var vertex = 0; vertex < actualNeutralVertices.Length; vertex++)
+                    Assert.That(Vector3.Distance(expectedNeutral.Vertices[vertex], actualNeutralVertices[vertex]), Is.LessThan(.0005f),
+                        "Neutral / vertex " + vertex + ": expected=" + expectedNeutral.Vertices[vertex].ToString("G9") +
+                        ", actual=" + actualNeutralVertices[vertex].ToString("G9") + "; native=" +
+                        string.Join(", ", expectedNeutral.Weights.Select(value => value.Key + "=" + value.Value.ToString("G9"))) +
+                        "; sampled=" + string.Join(", ", sampledNeutral.Select(value => value.Path + "/" + value.Shape + "=" + value.Weight.ToString("G9"))) +
+                        "; imported=" + string.Join(", ", Enumerable.Range(0, importedFront.sharedMesh.blendShapeCount)
+                            .Select(shape => importedFront.sharedMesh.GetBlendShapeName(shape) + "=" + importedFront.GetBlendShapeWeight(shape).ToString("G9"))) +
+                        "; warnings=" + string.Join(" | ", warnings));
+                Assert.That(sourceFront.GetBlendShapeWeight(1), Is.Zero);
+                Assert.That(EditorJsonUtility.ToJson(fixture.Mesh), Is.EqualTo(beforeMesh));
+                Assert.That(EditorJsonUtility.ToJson(fx), Is.EqualTo(beforeController));
+                Assert.That(EditorJsonUtility.ToJson(menus.Descriptor), Is.EqualTo(beforeDescriptor));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(material); }
+        }
+
         [Test]
         public void UnrelatedGestureLayerDoesNotBecomeANeutralSamplingRoot()
         {

@@ -45,7 +45,8 @@
 | `MergedFxDefaultsTests` の `TimeVaryingDefaultLayerIsNotDeclaredPermanent`・`OrdinaryMenuDoesNotNeedAStationaryLayer`・`ExcludedPermanentTargetDoesNotBecomeANeutralSamplingRoot` | 直す | 常時適用のレイヤーを見つけない判定を `SampleDefaults` の結果で確かめていた。同じ判定をする `ExpressionDependencies.StationaryMorphBindings` が空を返すことを確かめる形にした |
 | `ExcludedLayerTests` の 5 件（`TimedPetLayerDoesNotRejectRetainedFaceWhenEntireLayerIsExcluded` など） | 直す | `Sample` の値の確認を外し、`FindExcludedLayers` の確認を残した。レイヤーを除外する判定はほかに確かめるテストが無い |
 | `ExportGimmickTests.RemovedAuxiliaryRendererDoesNotExcludeRetainedOrMovedFaceMorphs` | 直す | `SampleDefaults` の確認と、そのためだけに作っていたコントローラーを外した。書き出しで外す補助の表示が顔のモーフを外さない確認は残した |
+| `TemporaryGraphSceneTests.SamplingAnExpressionKeepsTheSavedSceneUnmodified` | 外す | `Sample` で一時の Animator のグラフを作っても保存したシーンが変更扱いにならないことを確かめていた。表情ボードが使う `ExperimentalInstalledExpressionPlayer.Sample` で同じことを確かめる `PlayingAnInstalledExpressionKeepsTheSavedSceneUnmodified` が残る |
 
-外したのは 68 件（115 ケース）と、`AFadeInBesideARestartingLayerReachesItsFinalKey` の 1 ケース。`Tools/run-unity-compatibility.py` の `BEHAVIOR_CASES` から外したテストを消し、ケース数を直した。`Tools/test-compatibility-tooling.py` の合計（`ParameterDriverExpressionTests` 63 → 19、`VrChatMenuExpressionTests` 64 → 35）と、重複ケースの検査に使うテストを、残る `MergedFxDefaultsTests.DirectClipUsesLayerPriorityWithWriteDefaults` に直した。
+外したのは 69 件（116 ケース）と、`AFadeInBesideARestartingLayerReachesItsFinalKey` の 1 ケース。`Tools/run-unity-compatibility.py` の `BEHAVIOR_CASES` から外したテストを消し、ケース数を直した。`Tools/test-compatibility-tooling.py` の合計（`ParameterDriverExpressionTests` 63 → 19、`VrChatMenuExpressionTests` 64 → 35）を直した。
 
 `ExpressionSettlementTests` で表情ボードの再生に直したテストは、`Settle` の前に 90 フレームの既定値の再生と、`Settle` の後の静止の確認が入る。期待値は変えていない。

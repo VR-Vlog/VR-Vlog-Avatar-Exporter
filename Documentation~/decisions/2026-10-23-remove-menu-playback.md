@@ -29,7 +29,8 @@
 | テスト | 扱い | 理由 |
 |---|---|---|
 | `GestureBlendTreeTests`（ファイルごと・21 件、34） | 外す | Gesture の BlendTree を再生した表情を確かめていた |
-| `DirectFxExpressionDiscoveryTests`（ファイルごと・72 件、111） | 外す | FX の表情を探して再生した結果を確かめていた |
+| `DirectFxExpressionDiscoveryTests` の 72 件（111） | 外す | FX の表情を探して再生した結果を確かめていた |
+| `DirectFxExpressionDiscoveryTests.DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone` | 残す | ルートの Animator が空のとき記述子の FX を Controller にすることの唯一の確認。#419 で一覧を渡す形に直したもので、再生に頼らない |
 | `FxDiscoveryPruningTests`（ファイルごと・3 件、11） | 外す | FX の表情の探索の絞り込みを確かめていた |
 | `InferredStatePathTests`（ファイルごと・3 件、6） | 外す | FX の表情を探すときのステートの経路を確かめていた |
 | `NativeTreeTrajectoryTests`（ファイルごと・9 件、16） | 外す | BlendTree の時間変化の追跡を確かめていた |
