@@ -39,6 +39,8 @@ PUBLICATION_MARKERS = ("VPM_MIRROR_TOKEN", "VPM_ORG_MIRROR_TOKEN", "sync-vpm-mir
 DEPLOYMENT = {"id": "deployment", "uses": "actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e"}
 PR_EVENTS = {"types": ["opened", "synchronize", "reopened", "edited"]}
 CANDIDATE_COMMIT = "${{ github.event_name == 'push' && github.sha || inputs.expected_commit }}"
+WEBSITE_ONLY_PATHS = ["Website/**", ".github/workflows/release-candidate.yml",
+                      "Tools/check-gitflow.py", "Tools/check-pipeline.py", "Tools/test-pipeline.py"]
 RESOLVE_GATE = ("github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' "
                 "&& github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' "
                 "&& github.event.workflow_run.head_repository.full_name == github.repository")
@@ -341,8 +343,8 @@ def check(name, workflow):
         require(set(events) == {"workflow_dispatch"}, name + ": manual trigger required")
     if name == "release-candidate.yml":
         require(set(events) == {"push", "workflow_dispatch"}
-                and events["push"] == {"branches": ["main"]},
-                "Staging candidates must run on main push or explicit manual dispatch only")
+                and events["push"] == {"branches": ["main"], "paths-ignore": WEBSITE_ONLY_PATHS},
+                "Staging candidates must run on package main pushes or explicit manual dispatch only")
         steps = jobs["candidate"].get("steps", [])
         source = [step for step in steps if step.get("name") == "Require exact main source"]
         build = [step for step in steps if step.get("name") == "Build and inspect the candidate"]

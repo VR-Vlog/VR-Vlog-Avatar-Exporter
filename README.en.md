@@ -76,7 +76,7 @@ Previous stable **0.11.14** fixes exports stopping during neutral expression sam
 
 The export details and failure windows offer **Copy full text** and **Save text**. Both include every diagnostic and the complete retained exception, including inner exceptions and stack traces. Text files use UTF-8. Full text includes avatar names and paths; the separate **Copy shareable diagnostics** action keeps its redacted report.
 
-Stable 1.0.0 includes QR transfer through **アプリに転送**, as did stable 0.11.15. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
+Stable 1.0.0 and later include QR transfer through **アプリに転送**, as did stable 0.11.15. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
 
 ## Quick start
 
@@ -135,6 +135,6 @@ When the exporter cannot run, the **アプリに転送** window shows **VR Vlog 
 
 ## License
 
-Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 and 1.0.0 include the pinned transfer dependencies.
+Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 and 1.0.0 or later include the pinned transfer dependencies.
 
 Avatar assets and published images retain their owners' terms. See the [image sources and credits](Website/assets/README.md).
