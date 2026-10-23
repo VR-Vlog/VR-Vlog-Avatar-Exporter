@@ -114,7 +114,8 @@ namespace VRVlog.LilToonExporter
             {
                 var label = new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。"));
                 var rect = EditorGUILayout.GetControlRect();
-                var field = EditorGUI.PrefixLabel(rect, GUIUtility.GetControlID(FocusType.Passive), label, markAuthor ? missingLabelStyle : EditorStyles.label);
+                // Without an id the label takes the text field's, so clicking it focuses the field as a labelled field does.
+                var field = EditorGUI.PrefixLabel(rect, label, markAuthor ? missingLabelStyle : EditorStyles.label);
                 author = EditorGUI.TextField(field, author);
             }
             finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
