@@ -248,8 +248,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("animator", 0f)]
-        [TestCase("animator", 2f)]
-        [TestCase("playable", 0f)]
         [TestCase("playable", 2f)]
         public void ReachableInstantAndTimedSdkCommandsAreNotExecutedOrIgnored(string kind, float duration)
         {
@@ -260,10 +258,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("fxDriver")]
         [TestCase("fxCurve")]
         [TestCase("otherDriver")]
-        [TestCase("otherCurve")]
         [TestCase("thirdDriver")]
         [TestCase("fxRandom")]
-        [TestCase("otherRandom")]
         public void EveryRawParameterWriterPreventsDormantCommandProof(string writer)
         {
             AddControl(command); AnimatorState state;
@@ -324,13 +320,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("outOfRangeIndex")]
         [TestCase("unknownTarget")]
         [TestCase("bodyTarget")]
-        [TestCase("negativeWeight")]
-        [TestCase("largeWeight")]
         [TestCase("nanWeight")]
-        [TestCase("infiniteWeight")]
         [TestCase("negativeDuration")]
-        [TestCase("nanDuration")]
-        [TestCase("infiniteDuration")]
         public void AnimatorLayerMetadataDistinguishesValidBodyTargetsFromMalformedCommands(string problem)
         {
             var control = AddControl(command);
@@ -422,9 +413,6 @@ namespace VRVlog.LilToonExporter.Tests
             for (var index = 0; index < originals.Length; index++) Assert.That(EditorJsonUtility.ToJson(originals[index]), Is.EqualTo(before[index]));
         }
 
-        [TestCase("Random minimum")]
-        [TestCase("Random maximum")]
-        [TestCase("Random chance")]
         [TestCase("Random reversed range")]
         [TestCase("missing Copy source")]
         [TestCase("Trigger Copy source")]

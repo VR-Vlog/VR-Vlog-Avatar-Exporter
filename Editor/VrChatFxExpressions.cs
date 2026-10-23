@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 using VRVlog.FaceTracking;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -930,7 +931,6 @@ namespace VRVlog.LilToonExporter
         // parameters, including the constant $$MA/RC/AlwaysOne weight.
         static bool GeneratedParameter(string name) => name.StartsWith("__MA/", StringComparison.Ordinal) ||
             name.StartsWith("__ActiveSelf", StringComparison.Ordinal) || name.StartsWith("$$MA/", StringComparison.Ordinal);
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         static string ConstraintKey(Constraint value) => value.Condition.parameter + "\u001f" + (int)value.Condition.mode + "/" +
             value.Condition.threshold.ToString("R", CultureInfo.InvariantCulture) + "/" + value.Negated;
         // Order-insensitive identity of a conjunction.

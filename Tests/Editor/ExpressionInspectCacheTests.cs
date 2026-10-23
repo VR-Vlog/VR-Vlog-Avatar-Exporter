@@ -113,6 +113,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var expected = Enumerable.Range(0, Cases.Length).Select(index => Run(fx, index, out _, out _)).ToArray();
             Assert.That(expected.Distinct().Count(), Is.EqualTo(Cases.Length), "Each case must observe a different result.");
+            // The fixture reaches the copied control objects and the replayed messages.
+            Run(fx, 0, out var layers, out _);
+            Assert.That(layers[1].WeightControls.Count + layers[1].FxCommands.Count, Is.GreaterThan(0));
+            Assert.That(expected[0], Does.Contain(nameof(UnknownStateCallbackProbe)));
             using var cache = ExpressionInspectCache.Begin();
             for (var round = 0; round < 2; round++)
                 for (var index = 0; index < Cases.Length; index++)
@@ -135,16 +139,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Run(fx, 0, out _, out _), Is.EqualTo(original));
             Assert.That(cache.Misses, Is.EqualTo(2));
             Assert.That(cache.Hits, Is.EqualTo(2));
-        }
-
-        [Test]
-        public void FixtureReachesTheCopiedControlObjects()
-        {
-            Run(fx, 0, out var layers, out _);
-            var unknown = new List<string>();
-            ExpressionDependencies.Inspect(fx, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
-            Assert.That(layers[1].WeightControls.Count + layers[1].FxCommands.Count, Is.GreaterThan(0));
-            Assert.That(unknown, Has.Some.Contains(nameof(UnknownStateCallbackProbe)));
         }
 
         [Test]
@@ -185,23 +179,6 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using (ExpressionInspectCache.Begin()) Assert.That(ExpressionInspectCache.Current, Is.Not.Null);
             Assert.That(ExpressionInspectCache.Current, Is.Null);
-        }
-
-        // The cache copies these types member by member. A new member must be
-        // added to ExpressionInspectCache.Copy before this list is updated.
-        [Test]
-        public void CopiedTypesHaveNoUnlistedMembers()
-        {
-            string Fields(Type type) => string.Join(",", type.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                .Select(field => field.Name).OrderBy(name => name, StringComparer.Ordinal));
-            Assert.That(Fields(typeof(ExpressionDependencies.Layer)), Is.EqualTo("Clips,ControlReads,CopyInputs,CurveWrites,DriverPrograms," +
-                "DriverWrites,DynamicMorph,EmptyMotion,FxCommands,FxControl,HasBindings,Morphs,NonMorphBindings,Reads,Timed,WeightControls," +
-                "WriteDefaults,Writes"));
-            Assert.That(Fields(typeof(VrChatParameterDriver.Program)), Is.EqualTo("Error,FxControl,FxWeight,LayerWeight,LocalOnly,Location,Operations"));
-            Assert.That(Fields(typeof(VrChatParameterDriver.Operation)), Is.EqualTo("ConvertRange,Destination,DestinationMax,DestinationMin," +
-                "Error,Kind,Source,SourceMax,SourceMin,UnresolvedRandom,Value"));
-            Assert.That(Fields(typeof(SdkLayerWeightControl)), Is.EqualTo("AnimatorLayer,BlendDuration,FixedBaseLayer,GoalWeight,LayerIndex," +
-                "Location,Playable,SourceState"));
         }
 
         private static string Snapshot(ExpressionDependencies.Layer[] layers,

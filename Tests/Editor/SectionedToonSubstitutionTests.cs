@@ -24,7 +24,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source, out bool colorSkipped, out IReadOnlyList<string> dropped)
         {
-            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped, out var toon, out dropped);
+            var textures = new List<Texture2D>();
+            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped, out var toon, out dropped, textures);
+            owned.AddRange(textures);
             Assert.That(output, Is.Not.Null);
             Assert.That(toon, Is.True, "The sections are mapped one by one.");
             return Own(output);
@@ -195,6 +197,14 @@ namespace VRVlog.LilToonExporter.Tests
             return mask;
         }
 
+        static void AssertGreyMask(Texture texture, Func<int, float> expected)
+        {
+            Assert.That(texture, Is.InstanceOf<Texture2D>());
+            var pixels = ((Texture2D)texture).GetPixels();
+            for (var i = 0; i < pixels.Length; i++)
+                Assert.That(Vector4.Distance(pixels[i], new Color(expected(i), expected(i), expected(i), 1)), Is.LessThan(1.5f / 255), "Pixel " + i);
+        }
+
         [Test] public void AGreyRedChannelMaskIsCopied()
         {
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the mask needs a graphics device.");
@@ -206,14 +216,50 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Is.Empty);
         }
 
-        [Test] public void AColoredRedChannelMaskIsReportedInsteadOfTintingTheRim()
+        [Test] public void AColoredRedChannelMaskBecomesAGreyMaskInsteadOfTintingTheRim()
         {
             if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the mask needs a graphics device.");
-            var source = Probe(); source.SetFloat("_EnableRimLighting", 1); source.SetTexture("_RimMask", Mask(new Color(1, 0, .5f, 1)));
+            var mask = Mask(new Color(1, 0, .5f, 1));
+            var source = Probe(); source.SetFloat("_EnableRimLighting", 1); source.SetTexture("_RimMask", mask);
 
             var output = Substitute(source, out _, out var dropped);
-            Assert.That(output.GetTexture("_RimColorTex"), Is.Null, "lilToon multiplies the rim by the whole RGBA.");
-            Assert.That(dropped, Is.EqualTo(new[] { "Rim Mask" }));
+            Assert.That(output.GetTexture("_RimColorTex"), Is.Not.SameAs(mask), "lilToon multiplies the rim by the whole RGBA.");
+            AssertGreyMask(output.GetTexture("_RimColorTex"), _ => 1);
+            Assert.That(output.GetFloat("_UseRim"), Is.EqualTo(1f));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        [Test] public void AnInvertedGreenChannelMaskKeepsAReplacingMatcapToItsArea()
+        {
+            if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null) Assert.Ignore("Reading the mask needs a graphics device.");
+            // Linear like a mask imported as data, so the stored values are the sampled ones.
+            var mask = Own(new Texture2D(4, 4, TextureFormat.RGBA32, false, true) { name = "mask" });
+            mask.SetPixels(Enumerable.Range(0, 16).Select(i => new Color(.9f, i / 15f, .1f, .3f)).ToArray());
+            mask.Apply(false);
+            var source = Probe();
+            source.SetFloat("_MatcapEnable", 1); source.SetFloat("_MatcapReplace", 1);
+            source.SetTexture("_MatcapMask", mask); source.SetFloat("_MatcapMaskChannel", 1); source.SetFloat("_MatcapMaskInvert", 1);
+            source.SetTextureScale("_MatcapMask", new Vector2(2, 3)); source.SetTextureOffset("_MatcapMask", new Vector2(.25f, .5f));
+
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_MatCapBlendMask"), Is.Not.SameAs(mask));
+            AssertGreyMask(output.GetTexture("_MatCapBlendMask"), i => 1 - mask.GetPixel(i % 4, i / 4).g);
+            Assert.That(output.GetTextureScale("_MatCapBlendMask"), Is.EqualTo(new Vector2(2, 3)));
+            Assert.That(output.GetTextureOffset("_MatCapBlendMask"), Is.EqualTo(new Vector2(.25f, .5f)));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        [Test] public void AMaskThatCannotBeBakedTurnsTheMatcapOff()
+        {
+            var source = Probe();
+            source.SetFloat("_MatcapEnable", 1); source.SetFloat("_MatcapReplace", 1);
+            source.SetTexture("_MatcapMask", Mask(Color.white)); source.SetFloat("_MatcapMaskChannel", 1);
+
+            // Without a list to own the baked image, as when a graphics device is missing.
+            var output = Own(UnsupportedShaderSubstitution.Create(source, out _, out _, out var dropped));
+            Assert.That(output.GetFloat("_UseMatCap"), Is.EqualTo(0f), "Unmasked, the matcap would cover the whole material.");
+            Assert.That(dropped, Is.EqualTo(new[] { "Matcap Mask" }));
         }
 
         [Test] public void TheStrongestMatcapBlendPicksLilToonsMode()
@@ -273,28 +319,6 @@ namespace VRVlog.LilToonExporter.Tests
             var index = material.shader.FindPropertyIndex(name);
             Assert.That(index, Is.GreaterThanOrEqualTo(0), name);
             return material.shader.GetPropertyType(index) == UnityEngine.Rendering.ShaderPropertyType.Int ? material.GetInteger(name) : material.GetFloat(name);
-        }
-
-        [Test] public void ApplyNamesTheMappedMaterialsAndTheSectionsLeftOut()
-        {
-            var toon = Probe(); toon.SetFloat("_EnableDissolve", 1); toon.SetFloat("_GlitterEnable", 1);
-            var plain = Own(new Material(Shader.Find("Standard")) { name = "Plain" });
-            var avatar = Own(new GameObject("avatar"));
-            foreach (var (material, index) in new[] { toon, plain }.Select((material, index) => (material, index)))
-            {
-                var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.name = "part" + index;
-                part.transform.SetParent(avatar.transform, false);
-                part.GetComponent<Renderer>().sharedMaterial = material;
-            }
-            var created = new List<Material>(); var warnings = new List<string>();
-            UnsupportedShaderSubstitution.Apply(avatar, created, warnings, new ExportFallbackReport(), null);
-            owned.AddRange(created);
-            Assert.That(warnings, Is.EqualTo(new[]
-            {
-                ExporterLocalization.T(UnsupportedShaderSubstitution.Warning) + "Plain",
-                ExporterLocalization.T(UnsupportedShaderSubstitution.ToonMapped) + "Toon",
-                ExporterLocalization.T(UnsupportedShaderSubstitution.DroppedEffects) + "Toon (Dissolve, Glitter)",
-            }));
         }
     }
 }

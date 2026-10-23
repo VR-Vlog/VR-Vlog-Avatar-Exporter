@@ -75,11 +75,7 @@ assert "Only GLB 2.0 is supported" in glb
 assert "GLB contains multiple JSON chunks" in glb
 assert "VRMC_materials_mtoon" in injector
 assert "extensionsRequired" in injector
-assert "Custom extension must not be required" in injector
-assert "already contains the lilToon extension" in injector
 assert "must be an array" in injector and "must be an object" in injector
-assert "Validate(output, extension.materials.Count)" in injector
-assert "ExportRendererSelection.Enumerate(avatar)" in injector
 assert "ExportRendererSelection.Enumerate(clone)" in one_click
 assert "ExportRendererSelection.RequireActiveRoot(source)" not in one_click
 assert one_click.index("ExportRendererSelection.HiddenInScene(source)") < one_click.index("NdmfExportPreparation.InstantiateOwnedCopy(source)")
@@ -108,31 +104,11 @@ for backlight_property in ("_BacklightColor", "_BacklightMainStrength", "_Backli
 assert '("_BacklightColorTex", "backlight")' in reader
 assert 'case "backlight": return Enabled(material, "_UseBacklight")' in reader
 assert 'item.Name == "_BacklightColorTex"' in reader and 'texture == Texture2D.whiteTexture' in reader
-assert "ResolveTexture(glb, texture" in injector
 assert 'LilToonMaterialReader.Read(source, 0, (_, __) => 0, warnings, suppressSharedTextureEmission);' in one_click
 assert 'var warningText' not in window
-assert 'VrmMenuExpressions.CountRegistered(bytes)' in window
-assert "glb.AppendBinary(png)" in injector
 texture_encoder = (root / "Editor/MobileTextureEncoder.cs").read_text(encoding="utf-8")
 assert "PngWriter.Encode(destination)" in texture_encoder
 assert "UnityEngine.Object.DestroyImmediate(destination)" in texture_encoder
-assert "addedTextures.TryGetValue" in injector
-assert "fallbackTextureCount" in injector
-assert 'addedTextures.TryGetValue((texture' in injector
-assert injector.index('if(!isBacklight)') < injector.index('addedTextures.TryGetValue((texture')
-assert 'FindTexture(texture.name,imageNames,textureSources,fallbackTextureCount,out var ambiguous)' in injector
-assert 'string.Equals(semantic,"normalMap",StringComparison.Ordinal)' in injector
-assert 'MaterialTexture(glb.Json,materialIndex,"normalTexture")' in injector
-assert injector.index('MaterialTexture(glb.Json,materialIndex,"normalTexture")') < injector.index('MobileTextureEncoder.EncodeSource(')
-assert 'if(!ambiguous)return existing;' in injector
-assert "同名候補が複数あるため、元画像を直接埋め込みました" in injector
-assert "sampled.mipmapCount > 1" in injector
-for gltf_filter in ("9984L", "9985L", "9987L"):
-    assert gltf_filter in injector
-assert 'Array(glb.Json,"bufferViews",true)' in injector
-assert 'Array(glb.Json,"images",true)' in injector
-assert 'Array(glb.Json,"samplers",true)' in injector
-assert 'Array(glb.Json,"textures",true)' in injector
 assert 'EmbeddedBuffer()["byteLength"] = (long)bytes.Length' in glb
 for unsupported_toggle in ("_UseEmission2nd", "_UseBump2ndMap", "_UseMatCap2nd"):
     assert f'"{unsupported_toggle}"' in reader
@@ -147,7 +123,6 @@ assert "JPEG SOS segment is invalid" in injector
 assert "MIME type does not match" in injector
 assert "PNG chunk CRC is invalid" in injector
 assert "PNG IDAT/IEND structure is invalid" in injector
-assert "ambiguous=true;return -1" in injector
 assert "FromDom(root)" in injector
 assert "LilToonExtensionValidator.TryValidate(extension" in injector
 assert "Extension is missing from extensionsUsed" in injector
@@ -185,7 +160,7 @@ assert 'Guid.NewGuid().ToString("N")' in recovery_session
 assert "File.Replace(temporary, destination, null)" in recovery_session
 assert "finally { if (File.Exists(temporary)) File.Delete(temporary); }" in recovery_session
 assert recovery_session.index("LilToonGlbExtension.Validate(bytes)") < recovery_session.index("Directory.CreateDirectory(directory)")
-assert "UniVrmOneClickExporter.Export" not in window and "settings.Creator(targetAvatar, AvatarName(), targetAuthor)" in window
+assert "UniVrmOneClickExporter.Export" not in window
 assert 'Compatibility.DependencyPolicy.LilToonError(version, ExporterLocalization.T)' in window
 assert 'var version = InstalledLilToonVersion();' in window and 'return version;' in window
 # lilToon is the registered package or, imported from its unitypackage, found under Assets.
@@ -200,13 +175,6 @@ assert "RequireLilToon(GameObject avatar, ICollection<string> warnings)" in wind
 # only a missing lilToon (or its baker) stops, other differences are warnings.
 assert window.index("if (error != null) throw new InvalidOperationException(error);") < window.index("LilToonStructureCheck.Inspect(avatar, Compatibility.DependencyPolicy.DisplayLilToon(version, ExporterLocalization.T), warnings);")
 assert "LilToonExporterWindow.RequireLilToon(Source, warnings);" in (root / "Editor/ExperimentalExpressionCaptureSession.cs").read_text(encoding="utf-8")
-# The export window and batch callers export through ExportSettings, which runs
-# the same check ("アプリに転送" through the board's session, checked above).
-export_settings = (root / "Editor/ExportSettings.cs").read_text(encoding="utf-8")
-assert "lilToonVersion: LilToonExporterWindow.RequireLilToon(avatar, warnings)," in export_settings
-assert "excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses," in export_settings
-assert "licenseOptions: License, disableAudioLink: true" in export_settings
-assert "recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;" in export_settings
 # Both "アプリに転送" exports go through the expression board's save; the quick
 # one prepares a board out of sight, so it writes what an untouched "通常" writes.
 assert "ExperimentalExpressionCaptureWindow.PrepareHidden(avatar)" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
@@ -227,7 +195,7 @@ assert one_click.index("optimizerBindings.ValidateAndApply(") < one_click.index(
 assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("VrChatExpressionBaker.Bake(null, clone,")
 assert one_click.index("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("AvatarBaseShape.Preserve(clone, clone,")
 assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.rindex("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
-assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints)") == 2
+assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure)") == 2
 assert "new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints)" in one_click
 assert one_click.index("Vrm10AppearanceExporter.Export(") < one_click.index("ExportSkinRoots.Repair(exported,")
 assert "new MobileTextureSerializer(warnings)" in one_click
@@ -235,7 +203,7 @@ assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
 assert "MToon10Meta.UnityShaderName" in one_click
-assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale)" in one_click
+assert "CreateMToonFallback(source, created, warnings, suppressSharedTextureEmission, textures, outlineMasks, outlineScale, matcapBakes)" in one_click
 assert "created.Add(material)" in one_click
 assert 'Float(source, "_Cull", 2f) == 2f' in one_click
 assert "context.Validate()" in one_click
@@ -306,7 +274,8 @@ assert "Never copy contact information" in one_click
 assert "NormalTextureScale = normalEnabled ?" in one_click
 assert "EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionColor," in one_click
 assert "MatcapColorFactorSrgb = FallbackColor(source, MaterialColorType.matcapColor," in one_click
-assert "ParametricRimColorFactorSrgb = FallbackColor(source, MaterialColorType.rimColor," in one_click
+assert "var parametricRim = FallbackColor(source, MaterialColorType.rimColor," in one_click
+assert "ParametricRimColorFactorSrgb = parametricRim," in one_click
 assert 'source.GetFloat("_UseBacklight") > .5f ? Color(source, "_BacklightColor"' in one_click
 assert 'backlightEnabled ? Float(source, "_BacklightDirectivity"' in one_click
 assert "ShadeColorFactorSrgb = FallbackColor(source, MaterialColorType.shadeColor," in one_click
@@ -317,14 +286,9 @@ assert 'Float(source, "_OutlineWidth", 0f)) * 0.01f' in one_click
 assert 'OutlineMaskTexture.Create(Texture(source, "_OutlineWidthMask"), textures, outlineMasks)' in one_click
 assert "HasPortableOutline(source)" in one_click
 assert 'OutlineWidthMultiplyTexture = outlineEnabled ? Texture(source, "_OutlineTex")' not in one_click
-assert 'private string author = "";' in window
 assert 'private string avatarName = "";' not in window
-assert 'var targetOutput = outputPath;' in window
-assert 'var targetExclusions = settings.Exclusions();' in window
-assert 'ExportFailureWindow.Show(session, Completed)' in window
-assert 'session = ExportAndSaveNormally(targetAvatar, targetOutput,' in window
 normal_export = window.split('internal static ExportRecoverySession ExportAndSaveNormally(', 1)[1].split(
-    'internal static bool ShouldShowFailureAfterFailedAttempt(', 1
+    'internal static string PackageVersion()', 1
 )[0]
 assert 'bytes = create(new ExportRecoveryOptions(), report, warnings);' in normal_export
 assert 'ExportOutputWriter.Write(destination, bytes);' in normal_export
@@ -338,7 +302,6 @@ assert '.Attempt(' not in normal_export and '.SavePending(' not in normal_export
 assert 'ExportRecoverySourceStamp' not in normal_export
 assert (root / 'Tests/Editor/ExportFlowTests.cs').is_file()
 assert 'ExportAndSaveNormally(' in (root / 'Tests/Editor/ExportFlowTests.cs').read_text(encoding='utf-8')
-assert 'recoveryOptions: recoveryOptions, recoveryReport: recoveryReport' in export_settings
 assert 'ExcludeHiddenRenderer' in recovery and 'ExportGimmickDetection.Inspect(action.Renderer, source.transform)?.Unit' in recovery
 assert 'code == "audio-link"' in recovery and 'Official(audio)' in recovery
 # Recovery compares partial solver output with the original capture separately
@@ -369,7 +332,7 @@ assert 'session.CreatePreview(' not in recovery_comparison
 assert 'GUILayout.Toolbar(' not in recovery_comparison
 assert 'controlRigGenerationOption: ControlRigGenerationOption.None' in recovery_comparison
 assert '!HasVrmPreview || !session.CanSave' in recovery_comparison
-assert 'BuildSupportText()' in failure_window
+assert 'BuildSupportText(LilToonExporterWindow.PackageVersion())' in failure_window
 assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
@@ -391,12 +354,6 @@ assert 'SkipVrChatMenus' not in recovery and 'ExcludeMenuBranch' not in recovery
 assert one_click.index('AvatarBaseShape.Preserve(clone, clone,') < one_click.index('VrChatExpressionBaker.Bake(') < one_click.index('Vrm10AppearanceExporter.Export(')
 assert 'VrmMenuExpressions.Add(exported, expressions, optimizerBindings, warnings)' in one_click
 assert 'emotionCandidates: VrmMenuExpressions.EmotionCandidates(expressions)' in one_click
-assert 'return avatar != null && !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar";' in window
-assert 'var name = AvatarName();' in window
-assert 'EditorUtility.SaveFilePanel(ExporterLocalization.T("VRMの保存先"), "", DefaultFileName(), "vrm")' in window
-assert 'DrawRequiredLabel(ExporterLocalization.T("アバター")' in window
-assert 'DrawRequiredLabel(ExporterLocalization.T("作者名")' in window
-assert 'GUILayout.Button(ExporterLocalization.T("保存先を選んでVRMを書き出す")' in window
 assert "ValidateAllEncodedTextures(glb, textureSources);" in injector
 assert "materialCount > LilToonMobileProfile.MaximumMaterials" in injector
 assert (root / "Tests/Editor/GlbDocumentTests.cs").is_file()

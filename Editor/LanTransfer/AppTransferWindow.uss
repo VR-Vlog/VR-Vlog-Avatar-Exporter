@@ -88,6 +88,16 @@
     text-overflow: ellipsis;
 }
 
+/* The same place and width as ExporterWindowHeader.VersionWidth / VersionGap in the IMGUI windows. */
+.version {
+    width: 110px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    -unity-text-align: middle-right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
 .scale-probe {
     position: absolute;
     left: 0;
@@ -227,6 +237,35 @@
     margin-bottom: 8px;
 }
 
+/* The terms, the consent and the two notes under it are centred as one block. A row keeps its
+   pieces together in the middle, and a wrapped sentence centres each of its lines. */
+.consent .row--terms,
+.consent .check-row {
+    justify-content: center;
+}
+
+.consent .label-col {
+    width: auto;
+}
+
+.consent .check-text {
+    flex-grow: 0;
+    -unity-text-align: upper-center;
+}
+
+.consent .consent-hint {
+    -unity-text-align: middle-center;
+}
+
+/* The QR note and the line that says why "QRコードを作る" is off sit right under the block, so they follow it. */
+.form-footer .create-hint {
+    -unity-text-align: upper-center;
+}
+
+.form-footer .reason {
+    -unity-text-align: middle-center;
+}
+
 .reason {
     height: 18px;
     flex-shrink: 0;
@@ -328,6 +367,26 @@
     position: absolute;
 }
 
+.qr-cover {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+/* 1.75 times the other blue buttons (160 x 30, 12px), so it is the one thing to press on the
+   pattern. It stays inside the QR area on a narrow page: max-width from .slot-button. */
+.slot-button.reveal-button {
+    width: 280px;
+    height: 52px;
+    margin-top: 0;
+    font-size: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .slot-inner {
     position: absolute;
     left: 20px;
@@ -370,13 +429,36 @@
     margin-top: 10px;
 }
 
-.scan {
+.scan-row {
     height: 18px;
     flex-shrink: 0;
     margin-top: 8px;
+}
+
+/* The label spans the row so it stays centred under the QR; the button sits over its right end. */
+.scan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
     -unity-text-align: middle-center;
     white-space: nowrap;
     overflow: hidden;
+}
+
+/* "QRを隠す": a fixed width, so the text of a language clips instead of reaching the label. */
+.hide-qr {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 80px;
+    height: 18px;
+    margin: 0;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* The notice is twice the default size and wraps, so a narrow window never cuts it short.
@@ -542,6 +624,15 @@
 
 .app-transfer--light .remaining.expired,
 .app-transfer--light .warning-text {
+    color: rgb(184, 36, 31);
+}
+
+/* A required input left empty when "QRコードを作る" was pressed. After .grey, which the name's hint also has. */
+.app-transfer--dark .missing {
+    color: rgb(245, 107, 102);
+}
+
+.app-transfer--light .missing {
     color: rgb(184, 36, 31);
 }
 

@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using VRVlog.LilToon;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -479,6 +480,5 @@ namespace VRVlog.LilToonExporter
 
         static List<object> List(Dictionary<string, object> root, string key)
         { if (!root.TryGetValue(key, out var raw)) root[key] = raw = new List<object>(); return (List<object>)raw; }
-        static bool Finite(Vector4 v) => !float.IsNaN(v.x) && !float.IsInfinity(v.x) && !float.IsNaN(v.y) && !float.IsInfinity(v.y) && !float.IsNaN(v.z) && !float.IsInfinity(v.z) && !float.IsNaN(v.w) && !float.IsInfinity(v.w);
     }
 }

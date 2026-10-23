@@ -169,19 +169,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void EachDifferentProblemIsShownOnce()
-        {
-            var first = "first problem " + Guid.NewGuid().ToString("N");
-            var second = "second problem " + Guid.NewGuid().ToString("N");
-            LogAssert.Expect(LogType.Warning, first);
-            LogAssert.Expect(LogType.Warning, second);
-            Assert.That(ExportSettingsStore.WarnOnce(first), Is.True);
-            Assert.That(ExportSettingsStore.WarnOnce(second), Is.True, "A second, different problem is shown too.");
-            Assert.That(ExportSettingsStore.WarnOnce(first), Is.False);
-            Assert.That(ExportSettingsStore.WarnOnce(second), Is.False);
-        }
-
-        [Test]
         public void BlinkBindingsToAMissingRendererAreDropped()
         {
             using var fixture = new SavedAvatar();
@@ -198,34 +185,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(loaded.Blink.Left, Is.Empty, "A binding without its renderer would make the export leave out all blinking.");
             Assert.That(loaded.Blink.Right.Single().Renderer, Is.SameAs(fixture.Face));
             Assert.That(loaded.Blink.Both.Single().Renderer, Is.SameAs(fixture.Face));
-        }
-
-        [Test]
-        public void TheWindowKeepsTheStoredSettingsAfterAScriptReload()
-        {
-            using var fixture = new SavedAvatar();
-            var adjusted = Adjusted(fixture);
-            ExportSettingsStore.Save(fixture.Avatar, adjusted);
-            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(LilToonExporterWindow);
-            void Call(LilToonExporterWindow target, string name) => type.GetMethod(name, flags).Invoke(target, null);
-            var window = ScriptableObject.CreateInstance<LilToonExporterWindow>();
-            try
-            {
-                // After a reload the avatar is restored but the settings are the
-                // defaults and nothing has been loaded yet.
-                type.GetField("avatar", flags).SetValue(window, fixture.Avatar);
-                Call(window, "OnInspectorUpdate");
-                Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()),
-                    "The defaults never replace the stored entry before the settings are loaded.");
-                Call(window, "OnEnable");
-                var settings = (ExportSettings)type.GetField("settings", flags).GetValue(window);
-                Assert.That(settings.Signature(), Is.EqualTo(adjusted.Signature()));
-                Call(window, "OnInspectorUpdate");
-                Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()));
-            }
-            finally { Object.DestroyImmediate(window); }
-            Assert.That(ExportSettingsStore.Load(fixture.Avatar).Signature(), Is.EqualTo(adjusted.Signature()), "Closing the window keeps them too.");
         }
 
         [Test]

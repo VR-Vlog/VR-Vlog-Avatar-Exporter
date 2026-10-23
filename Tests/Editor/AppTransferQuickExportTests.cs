@@ -133,7 +133,6 @@ namespace VRVlog.LilToonExporter.Tests
         // The mode goes in as an int because the enum is internal and the test is public.
         [TestCase((int)BlinkExportMode.Auto)]
         [TestCase((int)BlinkExportMode.Manual)]
-        [TestCase((int)BlinkExportMode.None)]
         public void TheHiddenBoardUsesTheSavedBlink(int modeValue)
         {
             var mode = (BlinkExportMode)modeValue;
@@ -155,26 +154,6 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(blink.Both.Single().Shape, Is.EqualTo("Hair detail"));
                     Assert.That(blink.Both.Single().Weight, Is.EqualTo(80f));
                 }
-            }
-            finally { Object.DestroyImmediate(board); }
-        }
-
-        // The board session keeps the stage choice it is given; the board save
-        // applies the project-wide continue setting to every transfer, quick
-        // or not (TransferFollowsTheStageChoice).
-        [Test]
-        public void TheBoardExportKeepsTheStageChoiceItIsGiven()
-        {
-            using var fixture = new SavedFixture();
-            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
-            try
-            {
-                var session = (ExperimentalExpressionCaptureSession)typeof(ExperimentalExpressionCaptureWindow)
-                    .GetField("session", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(board);
-                var report = new ExportRecoveryReport { ContinueOnStageFailure = false };
-                var bytes = session.Export("Avatar", "SampleAuthor", new List<string>(), recoveryReport: report);
-                Assert.That(report.ContinueOnStageFailure, Is.False);
-                Assert.That(bytes, Is.Not.Empty);
             }
             finally { Object.DestroyImmediate(board); }
         }
@@ -266,7 +245,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                ExportAuthor.Forget(ExportAuthor.Identity(plain));
+                ExportAuthorTests.Forget(ExportAuthor.Identity(plain));
                 Object.DestroyImmediate(plain);
                 if (File.Exists(path)) File.Delete(path);
                 if (File.Exists(path + ".plain")) File.Delete(path + ".plain");

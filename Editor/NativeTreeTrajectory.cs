@@ -9,6 +9,7 @@ using UnityEngine.Animations;
 using UnityEngine.Playables;
 using UnityEngine.SceneManagement;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -569,8 +570,6 @@ namespace VRVlog.LilToonExporter
             }
             finally { foreach (var clip in owned) Object.DestroyImmediate(clip); }
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         static float Parameter(AnimatorControllerPlayable playable, IDictionary<string, AnimatorControllerParameterType> types, string name)
         {

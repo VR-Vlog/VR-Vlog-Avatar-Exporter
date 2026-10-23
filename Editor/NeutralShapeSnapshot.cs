@@ -83,6 +83,7 @@ namespace VRVlog.LilToonExporter
                 assignment.Renderer.SetBlendShapeWeight(assignment.Shape, assignment.Weight);
         }
 
-        internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        // Kept for the many callers that name it through this class.
+        internal static bool Finite(float value) => NumericChecks.Finite(value);
     }
 }

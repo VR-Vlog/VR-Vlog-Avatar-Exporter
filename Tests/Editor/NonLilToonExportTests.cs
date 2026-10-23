@@ -68,16 +68,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(created, Is.Empty);
         }
 
-        [Test] public void AnAssignedNonLilToonMaterialKeepsTheLilToonMessage()
-        {
-            var avatar = new GameObject("avatar"); owned.Add(avatar);
-            var part = GameObject.CreatePrimitive(PrimitiveType.Cube); part.transform.SetParent(avatar.transform, false);
-            part.GetComponent<Renderer>().sharedMaterials = new[] { null, Standard(Color.white, null) };
-            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ReplaceLilToonMaterials(
-                avatar, new List<Material>(), new List<Texture2D>(), new List<string>(), false));
-            Assert.That(error.Message, Is.EqualTo("選択したアバターに対応するlilToonマテリアルがありません。"));
-        }
-
         [Test] public void AMissingBehaviourIsNeverTreatedAsAnExportComponent()
         {
             Assert.That(NdmfExportPreparation.PreservesExportBehaviour(null), Is.False);

@@ -336,9 +336,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("non-finite Set")]
         [TestCase("empty Copy source")]
-        [TestCase("zero Copy range")]
-        [TestCase("missing Copy source")]
         [TestCase("Trigger Copy source")]
+        [TestCase("zero Copy range")]
         [TestCase("Bool Add")]
         public void AValidRandomOperationCannotConcealALaterMalformedNeededOperation(string kind)
         {

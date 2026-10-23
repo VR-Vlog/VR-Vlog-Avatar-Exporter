@@ -11,14 +11,9 @@ namespace VRVlog.LilToonExporter
     internal sealed class VrChatMenuImportPolicy
     {
         internal bool SkipAll;
-        // The export writes the board's list instead: no menu, gesture, FX,
-        // authored or FaceEmo face is played, and nothing is said about it.
+        // The export writes the board's list instead: no menu face is read,
+        // and nothing is said about it.
         internal bool SkipPlayback { get; set; }
-        // With SkipPlayback, the board's list: each clip is read as one face,
-        // in avatar-relative paths. Time is the board's frame, used when the
-        // clip cannot be read as a gesture clip. Object keeps the behavior
-        // tests free of the Unity clip type.
-        internal IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> ListFaces { get; set; }
         // Why the menu was left out, when it was not the user's choice.
         internal string Reason { get; set; }
     }
@@ -82,9 +77,6 @@ namespace VRVlog.LilToonExporter
 
         internal sealed class Source
         {
-#if !EXPORTER_BEHAVIOR_TESTS
-            // The host runner checks menu traversal/serialization without
-            // Unity geometry evaluation. This session belongs to native Unity.
             internal FacialProjectionScope.Session FacialProjectionSession;
             // FX states the hand-gesture import already read without error.
             // Authored faces skip them instead of reading the same face twice.
@@ -93,9 +85,6 @@ namespace VRVlog.LilToonExporter
             // Shows the expression being read after the menu loop. Null when
             // the import runs without a progress bar.
             internal Action<string> Progress;
-#endif
-            // The menu's faces were left out because the candidates went past the limit.
-            internal bool MenuOmittedForCandidateLimit { get; set; }
             internal RuntimeAnimatorController Controller;
             internal readonly Dictionary<string, float> Defaults = new Dictionary<string, float>(StringComparer.Ordinal);
             internal readonly HashSet<string> ExpressionParameters = new HashSet<string>(StringComparer.Ordinal);
@@ -242,15 +231,7 @@ namespace VRVlog.LilToonExporter
             return type.GetField(name, flags)?.GetValue(value) ?? type.GetProperty(name, flags)?.GetValue(value);
         }
 
-        static string Localize(string message)
-        {
-#if EXPORTER_BEHAVIOR_TESTS
-            // Host traversal tests intentionally compile without Editor APIs.
-            return message;
-#else
-            return ExporterLocalization.T(message);
-#endif
-        }
+        static string Localize(string message) => ExporterLocalization.T(message);
 
         private static IEnumerable<object> Items(object value) => value is IEnumerable list ? list.Cast<object>() : Enumerable.Empty<object>();
         private static float Number(object value)

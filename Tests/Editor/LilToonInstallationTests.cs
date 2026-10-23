@@ -115,8 +115,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var installed = LilToonInstallation.Find().Version;
                 Assert.That(LilToonExporterWindow.RequireLilToon(fixture.Source, warnings), Is.EqualTo(installed));
-                // The window's export path: lilToon extension written, installed version recorded.
-                var bytes = new ExportSettings().Export(fixture.Source, "Installed lilToon", "Tests", new List<string>(), null, null);
+                // The board's export: lilToon extension written, installed version recorded.
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
+                var bytes = session.Export("Installed lilToon", "Tests", System.Array.Empty<(string, AnimationClip, float)>(), new List<string>());
                 var glb = GlbDocument.Read(bytes);
                 Assert.That(VRVlog.LilToon.LilToonFullContract.Text(VRVlog.LilToon.LilToonFullContract.Root(glb.Json), "sourceLilToonVersion"), Is.EqualTo("2.3.4"));
                 var extras = VRVlog.LilToon.LilToonFullContract.Object(VRVlog.LilToon.LilToonFullContract.Object(glb.Json["asset"])["extras"]);
@@ -134,15 +135,32 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo("#include \"Assets/lilToon/Shader/Includes/lil_common.hlsl\""));
         }
 
-        // Where lilToon is under Assets this compiles the rewritten source;
+        // Wherever lilToon is, the source compiles in memory and is reused;
         // a baker that fails to compile draws the error shader instead of the layers.
         [Test]
         public void LayerAlphaBakerCompilesWhereLilToonIs()
         {
             var shader = LilToonMainTextureBaker.LayerAlphaShader();
             Assert.That(shader, Is.Not.Null);
+            Assert.That(shader.name, Is.EqualTo("Hidden/VRVlog/LayerAlphaBaker"));
             Assert.That(UnityEditor.ShaderUtil.ShaderHasError(shader), Is.False);
             Assert.That(shader.isSupported, Is.True);
+            Assert.That(LilToonMainTextureBaker.LayerAlphaShader(), Is.SameAs(shader));
+        }
+
+        // A .shader asset that includes lilToon by its package path fails to
+        // compile on import, and logs the missing include in the console,
+        // where lilToon is under Assets or not installed.
+        [Test]
+        public void NoShaderAssetIncludesLilToonByItsPackagePath()
+        {
+            var exporter = PackageInfo.FindForAssembly(typeof(LilToonMainTextureBaker).Assembly);
+            Assume.That(exporter, Is.Not.Null, "The exporter is not installed as a package.");
+            var shaders = System.IO.Directory.GetFiles(exporter.resolvedPath, "*.shader", System.IO.SearchOption.AllDirectories);
+            Assert.That(shaders, Is.Not.Empty);
+            foreach (var path in shaders)
+                Assert.That(System.IO.File.ReadAllText(path), Does.Not.Contain("Packages/" + LilToonInstallation.PackageName + "/"), path);
+            Assert.That(LayerAlphaBakerSource.Text, Does.Contain("#include \"Packages/" + LilToonInstallation.PackageName + "/Shader/Includes/lil_common.hlsl\""));
         }
     }
 }

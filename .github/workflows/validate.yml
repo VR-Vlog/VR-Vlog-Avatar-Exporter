@@ -35,3 +35,12 @@ jobs:
         run: python3 Tools/run-actionlint.py
       - name: Run complete host validation
         run: python3 Tools/run-validation.py --report work/validation.json
+      - name: Build installer preview
+        run: python3 Tools/build-installer.py --output work/installer/com.vrvlog.liltoon-vrm-exporter-installer.unitypackage
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vpm-installer
+          path: work/installer
+          retention-days: 7
+          if-no-files-found: error
+          include-hidden-files: false

@@ -29,7 +29,7 @@ With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, wh
 - Objects that a Modular Avatar Platform Filter leaves out of the generic (VRM) platform. Objects whose filters both include and exclude platforms are only listed for review.
 - Empty objects with no mesh and no bones, such as holders of VRChat menus or settings. The number left out is logged to the Console.
 
-Removed and reviewed objects appear in the export result list. To keep one, choose **含める** (include) in the **VRChat用のギミック** (VRChat gimmicks) section on page 2 of the expression board, **除外するオブジェクト** (objects to leave out), or turn on **VRMに入れる** (include in VRM) in the gimmick list of the **VRMを書き出す** window; or turn auto-exclude off to keep everything. Keeping a gimmick in the VRM does not reproduce how it works in VRChat. The choice is saved in the avatar's export settings and both windows show it. The expression board applies the choice to the preview when you leave the page.
+Removed and reviewed objects appear in the export result list. To keep one, choose **含める** (include) in the **VRChat用のギミック** (VRChat gimmicks) section on page 2 of the expression board, **除外するオブジェクト** (objects to leave out). Keeping a gimmick in the VRM does not reproduce how it works in VRChat. The choice is saved in the avatar's export settings. The expression board applies the choice to the preview when you leave the page.
 
 ## Requirements
 
@@ -62,6 +62,8 @@ https://vrvlog.fun/exporter/index.json
 ```
 
 Existing personal and organization repository registrations remain supported. Keep the current registration; no migration, second registration or reinstall is required. All listing endpoints are synchronized after approved publication.
+
+To install from Unity without opening VCC / ALCOM, download `com.vrvlog.liltoon-vrm-exporter-installer-<version>.unitypackage` from [Releases](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases) and import it into the open project. After you confirm, it adds `https://vrvlog.fun/exporter/index.json` to the project and to the VCC / ALCOM repositories, installs the exporter into `Packages`, and removes its own files. It installs the newest version in the listing within the same series (0.12.x for a 0.12.0 installer); beta installers also accept betas. A version that was just released may not be in the listing yet; wait a moment and retry. To install a specific version, use the ZIP.
 
 For manual installation, use **ZIPで導入** on the installation page. Download the exporter ZIP and extract it into a folder under the project's `Packages` directory, with its `package.json` directly inside that folder.
 
@@ -97,7 +99,7 @@ Not yet released: in versions with cloud transfer enabled (pre-releases and stab
 
 Required input is the name, the author, consent to the terms (every time) and the privacy policy (first time only). The license is optional: open **VRMの利用条件** to change it, otherwise the last settings or the defaults are used.
 
-The transfer window goes from export to upload and a QR code in one window. Scan that QR with the phone's own camera; it needs a version of VR Vlog that imports from the OS camera. The quick transfer exports what the normal flow exports from an untouched expression board (see above). Batch export fills empty happy, angry, sad, relaxed and surprised presets from VRChat menu expression names (Japanese names included) or whole-face BlendShape names in English. Batch export and the expression board, and so the quick transfer, fill empty neutral the same way, fill empty gaze presets only from names that move both eyes (such as `lookUp` or the Perfect Sync pair `eyeLookUpLeft` + `eyeLookUpRight`), and list each preset filled from a name, mouth shapes included, as a warning. The VRM look-at still uses the eye bones, so most apps do not drive the gaze presets on their own. The **VRMを書き出す** window keeps its own automatic suggestions and does not fill presets set to none there. See the [cloud transfer guide](Documentation~/CloudTransfer.md#アプリに転送).
+The transfer window goes from export to upload and a QR code in one window. Scan that QR with the phone's own camera; it needs a version of VR Vlog that imports from the OS camera. The quick transfer exports what the normal flow exports from an untouched expression board (see above). The expression board, and so the quick transfer, fill empty neutral from VRChat menu expression names (Japanese names included) or whole-face BlendShape names in English, fill empty gaze presets only from names that move both eyes (such as `lookUp` or the Perfect Sync pair `eyeLookUpLeft` + `eyeLookUpRight`), and list each preset filled from a name, mouth shapes included, as a warning. The VRM look-at still uses the eye bones, so most apps do not drive the gaze presets on their own. See the [cloud transfer guide](Documentation~/CloudTransfer.md#アプリに転送).
 
 Textures retain their aspect ratio and are reduced to fit within 1024 × 1024. Smaller textures are not enlarged. The original avatar and textures remain unchanged.
 
@@ -130,6 +132,6 @@ Use **VR Vlog → VRMを書き出す** to inspect installed package versions. Ex
 
 ## License
 
-Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [Bouncy Castle / ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 includes the pinned transfer dependencies.
+Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 includes the pinned transfer dependencies.
 
 Avatar assets and published images retain their owners' terms. See the [image sources and credits](Website/assets/README.md).

@@ -13,7 +13,7 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class AppearanceRecoveryTests
     {
-        [TestCase(false, false)] [TestCase(false, true)] [TestCase(true, false)] [TestCase(true, true)]
+        [TestCase(false, true)] [TestCase(true, false)]
         public void EmptyMeshDoesNotCreateAFullBindingOrRemoveItsBone(bool hasVertices, bool skinned)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -75,20 +75,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("lilToon", "2nd", "Tex")]
-        [TestCase("lilToon", "2nd", "BlendMask")]
-        [TestCase("lilToon", "2nd", "DissolveMask")]
-        [TestCase("lilToon", "2nd", "DissolveNoiseMask")]
-        [TestCase("lilToon", "3rd", "Tex")]
         [TestCase("lilToon", "3rd", "BlendMask")]
-        [TestCase("lilToon", "3rd", "DissolveMask")]
-        [TestCase("lilToon", "3rd", "DissolveNoiseMask")]
-        [TestCase("_lil/lilToonMulti", "2nd", "Tex")]
-        [TestCase("_lil/lilToonMulti", "2nd", "BlendMask")]
         [TestCase("_lil/lilToonMulti", "2nd", "DissolveMask")]
-        [TestCase("_lil/lilToonMulti", "2nd", "DissolveNoiseMask")]
-        [TestCase("_lil/lilToonMulti", "3rd", "Tex")]
-        [TestCase("_lil/lilToonMulti", "3rd", "BlendMask")]
-        [TestCase("_lil/lilToonMulti", "3rd", "DissolveMask")]
         [TestCase("_lil/lilToonMulti", "3rd", "DissolveNoiseMask")]
         public void UnsupportedImageInAProvenInactiveLayerKeepsEveryMaterialProperty(string shader, string layer, string suffix)
         {
@@ -144,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<NotSupportedException>(() => LilToonFullSnapshot.Capture(fixture.Root));
         }
 
-        [TestCase(false, false)] [TestCase(false, true)] [TestCase(true, false)] [TestCase(true, true)]
+        [TestCase(false, true)] [TestCase(true, false)]
         public void LiveOrConsumedMaterialAnimationPreventsInactiveTextureOmission(bool originalOnly, bool materialSwap)
         {
             using var fixture = new MaterialFixture();

@@ -219,12 +219,18 @@ namespace VRVlog.LilToonExporter.Tests
         sealed class CountingLimitDialog : IPoseLimitDialog
         {
             internal int Asked;
-            public bool Ask(PoseLimitPlan plan, GameObject avatar) { Asked++; return true; }
+            internal readonly List<string> OverFrameLimit = new List<string>();
+            public bool Ask(PoseLimitPlan plan, GameObject avatar)
+            {
+                Asked++; OverFrameLimit.AddRange(plan.Rows.Where(row => row.OverFrameLimit).Select(row => row.Name));
+                return true;
+            }
         }
 
         // Moving poses that together exceed the app's 16MB of pose data.
         // "通常" asks once and the window starts from the default; "かんたん"
-        // asks nothing. Both leave out the last pose and list it.
+        // asks nothing. Both leave out the last pose and list it. A moving
+        // pose over 8,192 frames is shown in the window and left out.
         [Test]
         public void PosesOverTheAppLimitMatch()
         {
@@ -236,12 +242,13 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var arm = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.LeftUpperArm);
                 var settings = new ExportSettings();
-                for (var i = 0; i < 3; i++)
+                for (var i = 0; i < 4; i++)
                 {
                     // 40 seconds is 2,401 frames; three of them pass 16MB, two do not.
+                    // 140 seconds is 8,401 frames, over one moving pose's 8,192.
                     var clip = new AnimationClip();
                     AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(arm, fixture.Source.transform),
-                        typeof(Transform), "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, 40, 60 + i * 10));
+                        typeof(Transform), "localEulerAnglesRaw.z"), AnimationCurve.Linear(0, 0, i < 3 ? 40 : 140, 60 + i * 10));
                     var asset = "Assets/AppTransferPose-" + Guid.NewGuid().ToString("N") + ".anim";
                     AssetDatabase.CreateAsset(clip, asset); assets.Add(asset);
                     settings.Poses.Manual.Add(new ManualPose { Clip = clip, Name = "ポーズ " + (i + 1) });
@@ -253,6 +260,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(limits.Asked, Is.Zero, "The quick transfer asks nothing.");
                 var normal = ExportNormal(fixture.Source, OpenNormal(fixture.Source));
                 Assert.That(limits.Asked, Is.EqualTo(1), "The normal transfer asks once.");
+                Assert.That(limits.OverFrameLimit, Is.EqualTo(new[] { "ポーズ 4" }), "The pose over 8,192 frames is shown, not an error.");
                 AssertSame(quick, normal);
                 Assert.That(Animations(Read(quick.Path).Json), Is.EqualTo(new[] { "ポーズ 1", "ポーズ 2" }));
                 Assert.That(quick.ResultList, Does.Contain("ポーズ 3"), "The left-out pose is listed.");

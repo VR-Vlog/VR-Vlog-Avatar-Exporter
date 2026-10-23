@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -20,7 +21,7 @@ namespace VRVlog.LilToonExporter
         static bool IsSectionedToon(Material source, SourceValues values) =>
             values.TryFloat("_LightingMode", out _) && (values.TryFloat("_ShadingEnabled", out _) || values.TryFloat("_LightingRampType", out _));
 
-        static Material FromSectionedToon(Material source, SourceValues values, out bool colorSkipped, out IReadOnlyList<string> dropped)
+        static Material FromSectionedToon(Material source, SourceValues values, List<Texture2D> textures, out bool colorSkipped, out IReadOnlyList<string> dropped)
         {
             dropped = Array.Empty<string>();
             var material = FromGeneric(source, values, values.Float("_EnableOutlines", 0) > .5f, out colorSkipped);
@@ -37,11 +38,11 @@ namespace VRVlog.LilToonExporter
             Set(material, "_LightMaxLimit", values.Float("_LightingCapEnabled", 1) > .5f ? Mathf.Max(0, values.Float("_LightingCap", 1)) : 10);
             Set(material, "_LightMinLimit", Mathf.Clamp01(values.Float("_LightingMinLightBrightness", 0)));
             Set(material, "_MonochromeLighting", Mathf.Clamp01(values.Float("_LightingMonochromatic", 0)));
-            ToonMatcap(values, material, "", "", effects);
-            ToonMatcap(values, material, "2", "2nd", effects);
-            ToonRim(values, material, effects);
+            ToonMatcap(values, material, "", "", textures, effects);
+            ToonMatcap(values, material, "2", "2nd", textures, effects);
+            ToonRim(values, material, textures, effects);
             ToonOutline(values, material, main, color, effects);
-            ToonEmission(values, material, effects);
+            ToonEmission(values, material, textures, effects);
             ToonStencil(values, material, effects);
             foreach (var (name, label) in ToonDroppedSections)
                 if (values.Float(name, 0) > .5f) Drop(effects, label);
@@ -375,76 +376,84 @@ namespace VRVlog.LilToonExporter
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
             const int Width = 64;
-            var target = RenderTexture.GetTemporary(Width, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            var active = RenderTexture.active;
-            Texture2D row = null;
             try
             {
-                Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f));
-                RenderTexture.active = target;
-                row = new Texture2D(Width, 1, TextureFormat.RGBAFloat, false, true);
-                row.ReadPixels(new Rect(0, 0, Width, 1), 0, 0, false);
-                row.Apply(false);
-                return row.GetPixels();
+                return GpuReadback.LinearPixels(Width, 1, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target, new Vector2(1, 0), new Vector2(0, .5f)));
             }
             catch (Exception) { return null; }
-            finally
-            {
-                RenderTexture.active = active;
-                RenderTexture.ReleaseTemporary(target);
-                if (row != null) UnityEngine.Object.DestroyImmediate(row);
-            }
         }
 
-        // The source reads one channel of a mask; lilToon multiplies the matcap
-        // by its mask's RGB and the rim and emission by RGBA. The red channel is
-        // the same only for a grey, opaque image. False when the image has color
-        // or transparency, null when it cannot be read (no graphics device).
-        static bool? GreyMask(Texture texture)
+        // The pixels as a shader samples them, at the given size. Null when they
+        // cannot be read (no graphics device).
+        static Color[] Sampled(Texture texture, int width, int height)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
-            const int Size = 32;
-            var target = RenderTexture.GetTemporary(Size, Size, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
-            var active = RenderTexture.active;
-            Texture2D read = null;
             try
             {
-                Graphics.Blit(texture, target);
-                RenderTexture.active = target;
-                read = new Texture2D(Size, Size, TextureFormat.RGBAFloat, false, true);
-                read.ReadPixels(new Rect(0, 0, Size, Size), 0, 0, false);
-                read.Apply(false);
-                foreach (var c in read.GetPixels())
-                    if (Mathf.Abs(c.r - c.g) > .02f || Mathf.Abs(c.r - c.b) > .02f || c.a < .98f) return false;
-                return true;
+                return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
+                    target => Graphics.Blit(texture, target));
             }
             catch (Exception) { return null; }
-            finally
-            {
-                RenderTexture.active = active;
-                RenderTexture.ReleaseTemporary(target);
-                if (read != null) UnityEngine.Object.DestroyImmediate(read);
-            }
         }
 
-        // A red-channel mask is copied when it is grey (or cannot be checked);
-        // otherwise it is reported and the effect is left unmasked.
-        static bool CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
-            List<string> effects, string label)
+        // The source reads one channel of a mask (R, G, B, A), maybe inverted;
+        // lilToon multiplies the matcap by its mask's RGB and the rim and
+        // emission by RGBA. A grey, opaque red-channel mask is copied (also when
+        // it cannot be checked); any other is baked into a grey, opaque image of
+        // the value the source reads, owned by textures. When that cannot be
+        // done the effect is turned off and reported: unmasked, it would cover
+        // the whole material.
+        static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
+            string toggle, List<Texture2D> textures, List<string> effects, string label)
         {
-            if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return false;
-            if (values.Float(channel, 0) == 0 && values.Float(invert, 0) < .5f && GreyMask(mask) != false)
+            if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return;
+            var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, 0)), 0, 3);
+            var inverted = values.Float(invert, 0) >= .5f;
+            Texture copy = null;
+            if (index == 0 && !inverted)
             {
-                SetTexture(material, target, mask, scale, offset);
-                return true;
+                copy = mask;
+                foreach (var c in Sampled(mask, 32, 32) ?? Array.Empty<Color>())
+                    if (Mathf.Abs(c.r - c.g) > .02f || Mathf.Abs(c.r - c.b) > .02f || c.a < .98f) { copy = null; break; }
             }
+            if (copy == null) copy = BakeMask(mask, index, inverted, textures);
+            if (copy != null) { SetTexture(material, target, copy, scale, offset); return; }
+            Set(material, toggle, 0);
             Drop(effects, label);
-            return false;
+        }
+
+        static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
+        {
+            if (textures == null) return null;
+            var fit = Mathf.Min(1, 2048f / Mathf.Max(mask.width, mask.height));
+            var width = Mathf.Max(1, Mathf.RoundToInt(mask.width * fit));
+            var height = Mathf.Max(1, Mathf.RoundToInt(mask.height * fit));
+            var pixels = Sampled(mask, width, height);
+            if (pixels == null) return null;
+            // The pixels are the values the source shader sampled, so the image
+            // is kept linear for lilToon to sample the same ones.
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var v = Mathf.Clamp01(pixels[i][channel]);
+                if (inverted) v = 1 - v;
+                pixels[i] = new Color(v, v, v, 1);
+            }
+            var baked = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
+            {
+                name = DeterministicNames.Unique(mask.name + "__VRVlog_Mask" + "RGBA"[channel] + (inverted ? "_Inverted" : ""),
+                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
+                wrapModeU = mask.wrapModeU, wrapModeV = mask.wrapModeV, filterMode = mask.filterMode,
+            };
+            baked.SetPixels(pixels);
+            baked.Apply(false, false);
+            textures.Add(baked);
+            return baked;
         }
 
         // prefix "" is the first matcap and "2" the second; lilToon's second
         // matcap carries "2nd".
-        static void ToonMatcap(SourceValues values, Material material, string prefix, string suffix, List<string> effects)
+        static void ToonMatcap(SourceValues values, Material material, string prefix, string suffix, List<Texture2D> textures, List<string> effects)
         {
             string P(string name) => "_Matcap" + prefix + name;
             string L(string name) => "_MatCap" + suffix + name;
@@ -481,7 +490,7 @@ namespace VRVlog.LilToonExporter
             Set(material, L("NormalStrength"), Mathf.Clamp01(values.Float(P("Normal"), 1)));
             var size = texture == null ? 0 : Mathf.Max(texture.width, texture.height);
             Set(material, L("Lod"), size > 1 ? (1 - Mathf.Clamp01(values.Float(P("Smoothness"), 1))) * Mathf.Floor(Mathf.Log(size, 2)) : 0);
-            CopyMask(values, material, P("Mask"), P("MaskChannel"), P("MaskInvert"), L("BlendMask"), effects, label + " Mask");
+            CopyMask(values, material, P("Mask"), P("MaskChannel"), P("MaskInvert"), L("BlendMask"), "_UseMatCap" + suffix, textures, effects, label + " Mask");
             var uv = values.Float(P("UVMode"), 1);
             if (uv == 3 || uv == 4) Drop(effects, label + " UV Mode");
             if (values.Float(P("HueShiftEnabled"), 0) > .5f) Drop(effects, label + " Hue Shift");
@@ -494,7 +503,7 @@ namespace VRVlog.LilToonExporter
             "_RimIndirBorder", "_RimIndirBlur", "_RimNormalStrength", "_RimBackfaceMask", "_RimVRParallaxStrength",
         };
 
-        static void ToonRim(SourceValues values, Material material, List<string> effects)
+        static void ToonRim(SourceValues values, Material material, List<Texture2D> textures, List<string> effects)
         {
             if (values.Float("_EnableRimLighting", 0) < .5f) return;
             var style = values.Float("_RimStyle", 0);
@@ -535,7 +544,7 @@ namespace VRVlog.LilToonExporter
                 SetTexture(material, "_RimColorTex", texture, scale, offset);
                 if (values.Texture("_RimMask", out var unused, out _, out _) && Flat(unused)) Drop(effects, "Rim Mask");
             }
-            else CopyMask(values, material, "_RimMask", "_RimMaskChannel", "_RimMaskInvert", "_RimColorTex", effects, "Rim Mask");
+            else CopyMask(values, material, "_RimMask", "_RimMaskChannel", "_RimMaskInvert", "_RimColorTex", "_UseRim", textures, effects, "Rim Mask");
             if (values.Float("_RimLightingInvert", 0) > .5f) Drop(effects, "Rim Lighting Invert");
             if (values.Float("_RimLinear", 0) > .5f) Drop(effects, "Rim Linear");
         }
@@ -569,12 +578,13 @@ namespace VRVlog.LilToonExporter
             if (values.Float("_OutlineEmission", 0) > 0) Drop(effects, "Outline Emission");
         }
 
-        static void ToonEmission(SourceValues values, Material material, List<string> effects)
+        static void ToonEmission(SourceValues values, Material material, List<Texture2D> textures, List<string> effects)
         {
             if (Get(material, "_UseEmission") < .5f) return;
             if (values.TryVector("_EmissionMapPan", out var pan) && Finite(pan) && (pan.x != 0 || pan.y != 0))
                 material.SetVector("_EmissionMap_ScrollRotate", new Vector4(pan.x, pan.y, 0, 0));
-            CopyMask(values, material, "_EmissionMask", "_EmissionMaskChannel", "_EmissionMaskInvert", "_EmissionBlendMask", effects, "Emission Mask");
+            CopyMask(values, material, "_EmissionMask", "_EmissionMaskChannel", "_EmissionMaskInvert", "_EmissionBlendMask", "_UseEmission", textures,
+                effects, "Emission Mask");
             // Both blink with sin(time × velocity + phase); the source between min
             // and max, lilToon between 1 - x and 1 of its color.
             var max = values.Float("_EmissiveBlink_Max", 1);

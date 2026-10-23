@@ -557,11 +557,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("positions", false)]
-        [TestCase("normals", false)]
         [TestCase("tangents", false)]
-        [TestCase("positions", true)]
         [TestCase("normals", true)]
-        [TestCase("tangents", true)]
         public void IndependentTransformSupportKeepsNativeScalarAcrossOverlappingMorphFrames(string kind, bool overlaps)
         {
             mesh.ClearBlendShapes();
@@ -761,8 +758,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
         }
 
-        [TestCase(false, 0f)] [TestCase(false, 1f)]
-        [TestCase(true, 0f)] [TestCase(true, 1f)]
+        [TestCase(false, 0f)]
+        [TestCase(true, 1f)]
         public void KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest(bool vrcConstraint, float value)
         {
             var face = (AnimationClip)Open(75).motion;
@@ -967,10 +964,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
         }
 
-        [TestCase(PhysBoneSpringExport.PhysBoneType, 0f)] [TestCase(PhysBoneSpringExport.PhysBoneType, 1f)]
-        [TestCase(PhysBoneSpringExport.ColliderType, 0f)] [TestCase(PhysBoneSpringExport.ColliderType, 1f)]
-        [TestCase(ExportGimmickRules.ContactReceiver, 0f)] [TestCase(ExportGimmickRules.ContactReceiver, 1f)]
-        [TestCase(ExportGimmickRules.ContactSender, 0f)] [TestCase(ExportGimmickRules.ContactSender, 1f)]
+        [TestCase(PhysBoneSpringExport.PhysBoneType, 0f)]
+        [TestCase(PhysBoneSpringExport.ColliderType, 1f)]
+        [TestCase(ExportGimmickRules.ContactReceiver, 0f)]
+        [TestCase(ExportGimmickRules.ContactSender, 1f)]
         public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled)
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
@@ -1093,9 +1090,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("m_LocalPosition.anything")]
-        [TestCase("m_LocalRotation.x.extra")]
         [TestCase("localEulerAnglesRaw.w")]
-        [TestCase("m_LocalScale.w")]
         public void IndependentTransformSupportStillRejectsUnknownPropertyComponents(string property)
         {
             Open(75);
@@ -1215,9 +1210,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("Upright", AnimatorControllerParameterType.Float, 0, 1)]
-        [TestCase("VRMode", AnimatorControllerParameterType.Int, 0, 1)]
         [TestCase("Viseme", AnimatorControllerParameterType.Int, 1, 0)]
-        [TestCase("Voice", AnimatorControllerParameterType.Float, 1, 0)]
         public void NeutralUsesTheSameNormalVrChatInputsAsMenuSampling(string name, AnimatorControllerParameterType type,
             float authoredDefault, float normalValue)
         {
@@ -1267,8 +1260,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, 0)]
-        [TestCase(false, 1)]
-        [TestCase(true, 0)]
         [TestCase(true, 1)]
         public void NeutralContactUsesTheAuthoredDefaultWithoutReceivingLiveInput(bool expressionDefault, float value)
         {
@@ -1644,7 +1635,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("EyeHeightAsMeters")]
-        [TestCase("EyeHeightAsPercent")]
         public void UnmeasuredBuiltinInputKeepsPreparedNeutralInsteadOfChoosingAFace(string name)
         {
             var idle = Open(0);

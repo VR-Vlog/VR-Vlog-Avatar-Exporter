@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -134,7 +135,5 @@ namespace VRVlog.LilToonExporter
                         operation.Error == null && internalFloats.Contains(operation.Destination) && Finite(operation.Value))) &&
                 MotionHasUniformBindings(state.motion));
         }
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

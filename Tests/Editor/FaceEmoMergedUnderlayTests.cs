@@ -82,8 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new Fixture();
             var expected = f.RegisteredBranch(false).Entries.Single().Values.Select(value => (value.Path, value.Shape, value.Weight)).ToArray();
             var snapshot = FaceEmoExpressions.CaptureRegistered(f.Avatar.Copy, f.Registered);
-            var menu = VrChatExpressionSampler.Analyze(f.Avatar.Copy, menuPolicy: new VrChatMenuImportPolicy { SkipPlayback = true,
-                ListFaces = new[] { ("Listed", (Object)f.BranchClip, 0f) } }, faceEmoBindings: snapshot);
+            var menu = VrChatExpressionSampler.Analyze(f.Avatar.Copy, null, new[] { ("Listed", (Object)f.BranchClip, 0f) }, snapshot);
             var entry = menu.Entries.Single();
             Assert.That(entry.Error, Is.Null);
             Assert.That(entry.Id, Does.StartWith("faceemo/")); Assert.That(entry.Source, Is.EqualTo(ExpressionSource.FaceEmo));
@@ -96,132 +95,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(entry.Values.Where(value => value.Shape == "Open").Select(value => value.Weight), Is.All.EqualTo(100));
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void DuplicateCommonSamplesCoalesceOrRejectBeforePublication(bool conflicting)
-        {
-            using var f = new Fixture(); var menu = Branch(); f.Prepare(menu);
-            var entry = menu.Entries.Single(); var originals = entry.Values.ToArray();
-            var input = new[] { Value("Prepared/Merged", "Open", 100), Value("Prepared/Merged", "Open", conflicting ? 60 : 100) };
-            // This guards normalization inputs; a Unity clip cannot itself store
-            // two different curves with the exact same binding.
-            if (conflicting)
-            {
-                var error = Assert.Throws<InvalidOperationException>(() =>
-                    FaceEmoExpressions.ComposeCommonValues(f.Avatar.Copy, menu, input, f.Bindings));
-                Assert.That(error.Message, Does.Contain("Prepared/Merged / Open"));
-                Assert.That(entry.Values, Is.EqualTo(originals)); Assert.That(f.Owned, Is.Empty);
-            }
-            else
-            {
-                FaceEmoExpressions.ComposeCommonValues(f.Avatar.Copy, menu, input, f.Bindings);
-                Assert.That(entry.Values.Count(value => value.Shape == "Open"), Is.EqualTo(2));
-                Assert.That(entry.Values.Where(value => value.Shape == "Open").Select(value => value.Path), Is.EquivalentTo(new[] { "Front", "Back" }));
-                f.Bindings.Capture(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-                Assert.That(f.Bake(menu).Single().Targets, Has.Count.EqualTo(1));
-            }
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void ConflictingSelectedAliasesStopBeforeAnyUnderlayIsPublished(bool temporal)
-        {
-            using var f = new Fixture(); var menu = Branch();
-            var invalid = new VrChatExpressionMenu.Entry { Id = "faceemo/1", Name = "Conflicting branch", Duration = 1 };
-            invalid.Values.Add(Value("Front", "Open", 25)); invalid.Values.Add(Value("Back", "Open", temporal ? 25 : 50));
-            if (temporal) invalid.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "Open", Curve = Curve() });
-            menu.Entries.Add(invalid); f.Prepare(menu);
-            var values = menu.Entries.Select(entry => entry.Values.ToArray()).ToArray();
-            var animations = invalid.Animation.ToArray(); var mesh = f.Merged.sharedMesh;
-            f.ApplyCommon(menu);
-            foreach (var entry in menu.Entries) Assert.That(entry.Error, Does.Contain("Prepared/Merged / Open"));
-            for (var index = 0; index < menu.Entries.Count; index++) Assert.That(menu.Entries[index].Values, Is.EqualTo(values[index]));
-            Assert.That(invalid.Animation, Is.EqualTo(animations)); Assert.That(f.Owned, Is.Empty);
-            Assert.That(f.Merged.sharedMesh, Is.SameAs(mesh));
-            if (temporal) Assert.That(invalid.Animation.Single().Curve.Evaluate(.5), Is.EqualTo(50).Within(.00001));
-        }
-
-        [Test]
-        public void AnimatedExplicitAliasSuppressesEveryCommonAliasAndKeepsItsProgram()
-        {
-            using var f = new Fixture(); var menu = Branch(); var entry = menu.Entries.Single(); entry.Duration = 1;
-            entry.Values.Add(Value("Front", "Open", 25));
-            var curve = Curve(); var animated = new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "Open", Curve = curve };
-            entry.Animation.Add(animated); f.Prepare(menu); f.ApplyCommon(menu);
-            Assert.That(entry.Error, Is.Null);
-            Assert.That(entry.Values.Count(value => value.Shape == "Open"), Is.EqualTo(1));
-            Assert.That(entry.Values.Single(value => value.Shape == "Open").Path, Is.EqualTo("Front"));
-            Assert.That(entry.Animation.Single(), Is.SameAs(animated)); Assert.That(animated.Curve, Is.SameAs(curve));
-            f.Bindings.Capture(menu); AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-            var expression = f.Bake(menu).Single();
-            Assert.That(expression.Targets, Has.Count.EqualTo(1)); Assert.That(expression.Animation.Channels, Has.Count.EqualTo(1));
-            Assert.That(expression.Animation.Channels.Single().Curve, Is.SameAs(curve));
-            Assert.That(curve.Evaluate(.5), Is.EqualTo(50).Within(.00001));
-        }
-
-        [Test]
-        public void AmbiguousPreparedRendererDoesNotPublishCommonDefaults()
-        {
-            using var f = new Fixture(); var menu = Branch(); f.Prepare(menu);
-            var values = menu.Entries.Single().Values.ToArray();
-            var duplicate = new GameObject(f.Merged.name);
-            duplicate.transform.SetParent(f.Merged.transform.parent, false);
-            duplicate.AddComponent<SkinnedMeshRenderer>().sharedMesh = f.Avatar.Mesh;
-            Assert.That(f.Bindings.AuthoringPaths("Prepared/Merged"), Is.Empty);
-            f.ApplyCommon(menu);
-            Assert.That(menu.Entries.Single().Error, Is.Not.Null);
-            Assert.That(menu.Entries.Single().Values, Is.EqualTo(values)); Assert.That(f.Owned, Is.Empty);
-        }
-
-        [Test]
-        public void CommonRendererAbsentFromBranchKeepsEveryOriginAndIndependentEndpoint()
-        {
-            using var f = new Fixture();
-            var accessory = f.Accessory(); var menu = Branch("Accessory"); f.Prepare(menu); f.ApplyCommon(menu);
-            var entry = menu.Entries.Single(); Assert.That(entry.Error, Is.Null);
-            Assert.That(entry.Values.Where(value => value.Shape == "Open").Select(value => value.Path), Is.EquivalentTo(new[] { "Front", "Back" }));
-            Assert.That(entry.Values.Where(value => value.Shape == "Mouth" && value.Path != "Accessory").Select(value => value.Path),
-                Is.EquivalentTo(new[] { "Front", "Back" }));
-            f.Bindings.Capture(menu);
-            f.Pose(100, 40); var selected = Vertices(f.Merged); f.Pose(50, 80);
-            accessory.SetBlendShapeWeight(1, 20); var independent = Vertices(accessory); accessory.SetBlendShapeWeight(1, 10);
-            AvatarBaseShape.Preserve(f.Avatar.Copy, f.Avatar.Copy, f.Owned, null);
-            // Only Mouth lowered below rest on the merged face needs a target.
-            // Open 100 from rest 50 and the accessory Mouth 20 from rest 10
-            // reference their rebased shapes directly.
-            var expression = f.Bake(menu).Single(); Assert.That(expression.Targets, Has.Count.EqualTo(1));
-            Assert.That(f.Merged.sharedMesh.GetBlendShapeIndex(expression.Targets.Single()), Is.GreaterThanOrEqualTo(0));
-            Assert.That(expression.Direct, Has.Count.EqualTo(2));
-            Assert.That(expression.Direct.Single(direct => direct.Renderer == f.Merged), Is.EqualTo((f.Merged, "Open", 1f)));
-            var accessoryDirect = expression.Direct.Single(direct => direct.Renderer == accessory);
-            Assert.That(accessoryDirect.Shape, Is.EqualTo("Mouth")); Assert.That(accessoryDirect.Weight, Is.EqualTo(10f / 90f).Within(.000001f));
-            foreach (var skin in new[] { f.Merged, accessory })
-            {
-                foreach (var target in expression.Targets.Where(name => skin.sharedMesh.GetBlendShapeIndex(name) >= 0))
-                    skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex(target), 100);
-                foreach (var direct in expression.Direct.Where(value => value.Renderer == skin))
-                {
-                    var index = skin.sharedMesh.GetBlendShapeIndex(direct.Shape);
-                    Assert.That(skin.sharedMesh.GetBlendShapeFrameWeight(index, 0), Is.EqualTo(100));
-                    skin.SetBlendShapeWeight(index, 100 * direct.Weight);
-                }
-            }
-            AssertVertices(selected, Vertices(f.Merged)); AssertVertices(independent, Vertices(accessory));
-        }
-
-        private static VrChatExpressionMenu.MorphValue Value(string path, string shape, float weight)
-            => new VrChatExpressionMenu.MorphValue { Path = path, Shape = shape, Weight = weight };
-        private static VrChatExpressionMenu.Source Branch(string path = "Front")
-        {
-            var source = new VrChatExpressionMenu.Source(); var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/0", Name = "Partial branch" };
-            entry.Values.Add(Value(path, "Mouth", 20)); source.Entries.Add(entry); return source;
-        }
-        private static ExpressionAnimationData.Curve Curve()
-        {
-            var curve = new ExpressionAnimationData.Curve();
-            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 25, InTangent = 50, OutTangent = 50 });
-            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = 75, InTangent = 50, OutTangent = 50 }); return curve;
-        }
         private static Vector3[] Vertices(SkinnedMeshRenderer skin)
         { var baked = new Mesh(); try { skin.BakeMesh(baked); return baked.vertices; } finally { Object.DestroyImmediate(baked); } }
         private static void AssertVertices(Vector3[] expected, Vector3[] actual)
@@ -282,12 +155,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var menu = new VrChatExpressionMenu.Source(); var serial = 0;
                 FaceEmoExpressions.ReadRegistered(Avatar.Copy, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
                 Assert.That(menu.Entries, Has.Count.EqualTo(1)); Assert.That(menu.Entries.Single().Error, Is.Null); return menu;
-            }
-            internal SkinnedMeshRenderer Accessory()
-            {
-                var child = new GameObject("Accessory"); child.transform.SetParent(Avatar.Copy.transform, false);
-                var skin = child.AddComponent<SkinnedMeshRenderer>(); CopyRenderer(Avatar.Skins[0], skin);
-                skin.SetBlendShapeWeight(0, 25); skin.SetBlendShapeWeight(1, 10); skin.SetBlendShapeWeight(2, 40); return skin;
             }
             internal void Prepare(VrChatExpressionMenu.Source menu)
             {

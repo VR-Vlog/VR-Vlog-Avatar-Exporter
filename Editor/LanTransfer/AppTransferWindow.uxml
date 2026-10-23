@@ -7,6 +7,7 @@
                 <ui:Label name="heading" class="t heading" />
                 <ui:Label name="subtitle" class="t mini grey subtitle" />
             </ui:VisualElement>
+            <ui:Label name="version" class="t mini grey version" />
         </ui:VisualElement>
         <!-- Outside the header, which the expression board hides when it shows this view. -->
         <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
@@ -51,7 +52,6 @@
                 <ui:Label name="consent-hint" class="t mini grey consent-hint" />
                 <ui:VisualElement name="privacy" class="privacy">
                     <ui:VisualElement class="row row--terms">
-                        <ui:VisualElement class="label-col" />
                         <ui:Label name="privacy-link" class="t link" />
                     </ui:VisualElement>
                     <ui:VisualElement class="check-row">
@@ -72,6 +72,10 @@
                     <ui:VisualElement name="slot-row" class="slot-row">
                         <ui:VisualElement name="slot" class="slot">
                             <ui:Image name="qr" class="qr" />
+                            <ui:Image name="qr-cover" class="qr-cover" />
+                            <ui:VisualElement name="reveal" class="slot-inner">
+                                <ui:Button name="show-qr" class="primary slot-button reveal-button" />
+                            </ui:VisualElement>
                             <ui:VisualElement name="message" class="slot-inner">
                                 <ui:Label name="message-title" class="t slot-title" />
                                 <ui:Label name="message-body" class="t slot-body" />
@@ -83,7 +87,10 @@
                             </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>
-                    <ui:Label name="scan" class="t scan" />
+                    <ui:VisualElement class="scan-row">
+                        <ui:Label name="scan" class="t scan" />
+                        <ui:Button name="hide-qr" class="mini hide-qr" />
+                    </ui:VisualElement>
                     <ui:VisualElement name="warning" class="warning">
                         <ui:Image name="warning-icon" class="warning-icon" />
                         <ui:Label name="warning-text" class="t warning-text" />

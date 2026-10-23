@@ -8,61 +8,6 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class RendererSelectionTests
     {
-        [TestCase("inactive-object")]
-        [TestCase("inactive-parent")]
-        [TestCase("disabled-renderer")]
-        public void HiddenOutfitDoesNotRequireAFallbackMaterial(string mode)
-        {
-            var avatar = new GameObject("avatar");
-            var body = new Material(Shader.Find("Hidden/VRVlogTests/lilToon")) { name = "body" };
-            var outfit = new Material(body) { name = "outfit" };
-            try
-            {
-                foreach (var material in new[] { body, outfit })
-                {
-                    material.SetFloat("_UseEmission", 0f);
-                    material.SetFloat("_UseShadow", 0f);
-                    material.SetFloat("_UseOutline", 0f);
-                    material.SetTexture("_MainTex", null);
-                }
-                var wardrobe = new GameObject("wardrobe");
-                wardrobe.transform.SetParent(avatar.transform);
-                var clothing = new GameObject("clothing");
-                clothing.transform.SetParent(wardrobe.transform);
-                var hidden = clothing.AddComponent<SkinnedMeshRenderer>();
-                hidden.sharedMaterial = outfit;
-                if (mode == "inactive-object") clothing.SetActive(false);
-                if (mode == "inactive-parent") wardrobe.SetActive(false);
-                if (mode == "disabled-renderer") hidden.enabled = false;
-                var visible = avatar.AddComponent<SkinnedMeshRenderer>();
-                visible.sharedMaterial = body;
-                var source = MaterialBindingFixture.Build("body");
-                var result = LilToonGlbExtension.Inject(source, avatar, "0.4.1", "2.3.4");
-                Assert.AreEqual(1, MaterialBindingFixture.InjectedMaterials(result).Count);
-                Assert.AreSame(outfit, hidden.sharedMaterial);
-                Assert.AreEqual(mode != "inactive-object", clothing.activeSelf);
-                Assert.AreEqual(mode != "inactive-parent", wardrobe.activeSelf);
-                Assert.AreEqual(mode != "disabled-renderer", hidden.enabled);
-
-                // Re-enabling the outfit makes it required again, never silently
-                // discard a visible material just because name lookup fails.
-                clothing.SetActive(true);
-                wardrobe.SetActive(true);
-                hidden.enabled = true;
-                var error = Assert.Throws<InvalidOperationException>(() =>
-                    LilToonGlbExtension.Inject(source, avatar, "0.4.1", "2.3.4"));
-                StringAssert.Contains("outfit", error.Message);
-                result = LilToonGlbExtension.Inject(MaterialBindingFixture.Build("body", "outfit"), avatar, "0.4.1", "2.3.4");
-                Assert.AreEqual(2, MaterialBindingFixture.InjectedMaterials(result).Count);
-            }
-            finally
-            {
-                UnityEngine.Object.DestroyImmediate(avatar);
-                UnityEngine.Object.DestroyImmediate(body);
-                UnityEngine.Object.DestroyImmediate(outfit);
-            }
-        }
-
         [TestCase(false)][TestCase(true)]
         public void EmptyMeshRenderersAreLeftOutOfTheExportCopyOnly(bool fullLilToon)
         {
@@ -107,6 +52,51 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Where(skin => skin != emptySkin).All(skin => skin.enabled && skin.sharedMesh == fixture.Mesh), Is.True);
             }
             finally { UnityEngine.Object.DestroyImmediate(material); }
+        }
+
+        [Test]
+        public void EmptySubmeshesAreLeftOutWithTheirMaterialSlots()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var shader = Shader.Find("lilToon");
+            Assert.That(shader, Is.Not.Null, "The real lilToon package is required for the exporter entry point.");
+            var materials = new[] { "First", "Empty", "Third" }.Select(name => new Material(shader) { name = name }).ToArray();
+            var mesh = UnityEngine.Object.Instantiate(fixture.Mesh);
+            mesh.name = "Split hair";
+            try
+            {
+                mesh.subMeshCount = 3;
+                mesh.SetTriangles(new[] { 0, 1, 2 }, 0);
+                mesh.SetTriangles(Array.Empty<int>(), 1);
+                mesh.SetTriangles(new[] { 0, 2, 1 }, 2);
+                var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+                foreach (var skin in skins) skin.sharedMaterial = materials[0];
+                var split = skins.Single(skin => skin.name == "Front");
+                split.sharedMesh = mesh;
+                split.sharedMaterials = materials;
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Empty submesh regression", "Tests", warnings,
+                    exporterVersion: "0.11.9", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+
+                // The empty submesh stopped UniVRM with "Index was out of range".
+                var json = GlbDocument.Read(bytes).Json;
+                var node = ((List<object>)json["nodes"]).Cast<Dictionary<string, object>>().Single(item => item.TryGetValue("name", out var name) && (string)name == "Front");
+                var primitives = (List<object>)((Dictionary<string, object>)((List<object>)json["meshes"])[Convert.ToInt32(node["mesh"])])["primitives"];
+                var written = (List<object>)json["materials"];
+                Assert.That(primitives.Cast<Dictionary<string, object>>().Select(primitive =>
+                    (string)((Dictionary<string, object>)written[Convert.ToInt32(primitive["material"])])["name"]), Is.EqualTo(new[] { "First", "Third" }));
+                var prefix = ExporterLocalization.T(UniVrmOneClickExporter.EmptySubmeshesOmitted);
+                Assert.That(warnings.Where(warning => warning.StartsWith(prefix, StringComparison.Ordinal)), Is.EqualTo(new[] { prefix + "Front" }));
+                // Only the export copy is changed.
+                Assert.That(split.sharedMesh, Is.SameAs(mesh));
+                Assert.That(mesh.subMeshCount, Is.EqualTo(3));
+                Assert.That(split.sharedMaterials, Is.EqualTo(materials));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(mesh);
+                foreach (var material in materials) UnityEngine.Object.DestroyImmediate(material);
+            }
         }
 
         [Test]

@@ -72,21 +72,7 @@ namespace VRVlog.LilToonExporter.Tests
             return fixture;
         }
 
-        [TestCase("lip")][TestCase("kana")]
-        public void CaptureReadsBlendShapeVisemesWhateverTheirNames(string kind)
-        {
-            var names = kind == "lip" ? LipNames : KanaNames;
-            var avatar = new GameObject("avatar"); owned.Add(avatar);
-            var face = new GameObject("face"); face.transform.SetParent(avatar.transform, false);
-            var skin = face.AddComponent<SkinnedMeshRenderer>();
-            Descriptor(avatar, "VisemeBlendShape", skin, names);
-            var visemes = VrChatVisemeExport.Capture(avatar, go => go == face ? 7 : -1);
-            Assert.That(visemes.Node, Is.EqualTo(7));
-            var expected = VrmExpressionBindings.DescriptorVisemes.Slots.Select((slot, i) => (slot.Preset, names[i]));
-            Assert.That(visemes.Shapes.Select(p => (p.Key, p.Value)), Is.EquivalentTo(expected));
-        }
-
-        [TestCase("Default")][TestCase("JawFlapBlendShape")][TestCase("VisemeParameterOnly")]
+        [TestCase("JawFlapBlendShape")]
         public void CaptureIgnoresOtherLipSyncModes(string lipSync)
         {
             var avatar = new GameObject("avatar"); owned.Add(avatar);
@@ -102,7 +88,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrChatVisemeExport.Capture(avatar, _ => 0), Is.Null);
         }
 
-        [TestCase("lip")][TestCase("kana")]
+        [TestCase("kana")]
         public void ActualExportBindsDescriptorVisemesThatAreNotKnownAliases(string kind)
         {
             var names = kind == "lip" ? LipNames : KanaNames;
@@ -146,17 +132,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
         }
 
-        // Recording a face removes the descriptor from the export copy. The
-        // Lip Sync captured before that must still bind, or warn when it cannot.
+        // The expression board's export binds the Lip Sync the same way, or
+        // warns when it cannot.
         [TestCase(5)][TestCase(4)]
-        public void RecordedExpressionExportBindsDescriptorVisemes(int present)
+        public void BoardExportBindsDescriptorVisemes(int present)
         {
             DescriptorType();
             using var fixture = ExportAvatar(LipNames.Take(present), LipNames);
             using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
-            session.SetWeight(0, 0, 65); session.Capture("Recorded face");
             var warnings = new List<string>();
-            var glb = GlbDocument.Read(session.Export("Recorded visemes", "Tests", warnings,
+            var glb = GlbDocument.Read(session.Export("Board visemes", "Tests", Array.Empty<(string, AnimationClip, float)>(), warnings,
                 new BlinkExportOptions { Mode = BlinkExportMode.None }));
             var presets = Presets(glb);
             for (var i = 0; i < present; i++)

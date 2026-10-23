@@ -26,7 +26,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             if (CloudTransferAvailability.Enabled) CloudTransferAvailability.RequireEnabled();
             else Assert.Throws<NotSupportedException>(() => CloudTransferAvailability.RequireEnabled());
-            Assert.That(LanTransferAvailability.Enabled, Is.False);
         }
 
         [TestCase("0.11.12", false)]
@@ -80,7 +79,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(File.ReadAllBytes(original), Is.EqualTo(bytes));
                 using (var hash = SHA256.Create()) Assert.That(LanTransferProtocol.Hex(hash.ComputeHash(File.ReadAllBytes(original))), Is.EqualTo(before));
             }
-            finally { if (snapshotPath != null) LanVrmTransferServer.TryDelete(snapshotPath); File.Delete(original); }
+            finally { if (snapshotPath != null) TransferTempDirectory.TryDelete(snapshotPath); File.Delete(original); }
         }
 
         [TestCase("short")][TestCase("long")][TestCase("io")]
@@ -199,6 +198,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             var display = CloudTransferProtocol.DisplayName(name);
             Assert.That(display.Length, Is.EqualTo(256));
             Assert.That(display, Is.EqualTo(name.Substring(0, 256)));
+            Assert.That(CloudTransferProtocol.DisplayName("a\ud800b\udc00c"), Is.EqualTo("abc"), "Lone surrogates are dropped.");
+            var quoted = CloudTransferProtocol.Qr(LinkId, LinkToken, "a\"\\b", 1, LinkHash, 1791910000, LinkKey);
+            Assert.That(CloudTransferProtocol.Fields.Read(quoted.Substring(LanTransferProtocol.QrPrefix.Length)).Text("name"), Is.EqualTo("a\"\\b"));
             var qr = CloudTransferProtocol.Qr(new string('0', 32), new string('A', 43), display, CloudTransferProtocol.MaximumSize, new string('0', 64), 2147483647, new string('A', 86));
             Assert.That(Encoding.UTF8.GetByteCount(qr), Is.LessThanOrEqualTo(4096));
         }

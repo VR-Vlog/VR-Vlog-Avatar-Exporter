@@ -77,12 +77,21 @@ namespace VRVlog.LilToonExporter
         System.Collections.Generic.HashSet<ExportGimmickFinding> gimmicksRemoved = new System.Collections.Generic.HashSet<ExportGimmickFinding>();
         // What each row holds (the dim column), worked out with the analysis.
         System.Collections.Generic.Dictionary<ExportGimmickFinding, string> gimmickContents = new System.Collections.Generic.Dictionary<ExportGimmickFinding, string>();
+        System.Collections.Generic.Dictionary<ExportGimmickFinding, string> contentsWidthOf;
+        int contentsWidthFont = -1;
+        float contentsWidth;
         ExperimentalExpressionCaptureSession gimmickSession;
         bool gimmicksStale = true;
         double nextGimmickScan;
         ExportSettings savedSettings;
         GameObject savedSettingsSource;
         int savedSettingsRevision = -1;
+        // The whole avatar beside the objects page, made when the page opens and
+        // dropped when it is left; it hides what the page leaves out at once.
+        ExcludedObjectsPreview objectsPreview;
+        string objectsPreviewError;
+        // The width of the objects page's list column, from the last layout.
+        float objectsColumnWidth;
 
         // Board drag state. Cards carry the clip under a private key, so a
         // drag from the Project window is never mistaken for a card.
@@ -650,7 +659,12 @@ namespace VRVlog.LilToonExporter
                         }
                         else
                         {
-                            pageScroll = EditorGUILayout.BeginScrollView(pageScroll);
+                            // The objects page puts the whole avatar beside its list, outside the
+                            // scroll view, so the preview stays in view while the list scrolls.
+                            var objectsPage = page == ObjectsPage;
+                            var (listWidth, previewWidth) = ObjectsColumns(position.width - 32);
+                            if (objectsPage) { objectsColumnWidth = listWidth; EditorGUILayout.BeginHorizontal(); }
+                            pageScroll = objectsPage ? EditorGUILayout.BeginScrollView(pageScroll, GUILayout.Width(listWidth)) : EditorGUILayout.BeginScrollView(pageScroll);
                             var pageHidden = pageView.height > 0 ? HideOutside(new Rect(pageScroll, pageView.size)) : null;
                             if (page == ExpressionsPage)
                             {
@@ -681,6 +695,12 @@ namespace VRVlog.LilToonExporter
                                 var view = GUILayoutUtility.GetLastRect();
                                 if (view.height != pageView.height) Repaint();
                                 pageView = view;
+                            }
+                            if (objectsPage)
+                            {
+                                GUILayout.Space(ObjectsGap);
+                                DrawObjectsPreview(GUILayoutUtility.GetRect(previewWidth, 100, GUILayout.Width(previewWidth), GUILayout.ExpandHeight(true)));
+                                EditorGUILayout.EndHorizontal();
                             }
                             DrawBottomBar();
                         }
@@ -1054,6 +1074,7 @@ namespace VRVlog.LilToonExporter
             // The status line reports what was just done on the page being left.
             // Staying (a failed apply) keeps the scroll, so the reason stays in view.
             if (target != page) { status = null; pageScroll = Vector2.zero; }
+            if (target != ObjectsPage) ReleaseObjectsPreview();
             page = target;
             GUIUtility.keyboardControl = 0;
             Repaint();
@@ -1087,8 +1108,99 @@ namespace VRVlog.LilToonExporter
             }
             if (removed >= 0) Edits().RemoveAt(removed);
             var add = ExporterLocalization.T("除外するオブジェクトを追加");
-            if (GUILayout.Button(new GUIContent(Fit(add, GUI.skin.button, Mathf.Max(0, position.width - 48)), add))) Edits().Add(null);
+            if (GUILayout.Button(new GUIContent(Fit(add, GUI.skin.button, Mathf.Max(0, objectsColumnWidth - 16 - ScrollbarWidth)), add))) Edits().Add(null);
             if (!string.IsNullOrEmpty(excludedObjectError)) EditorGUILayout.HelpBox(excludedObjectError, MessageType.Error);
+        }
+
+        // ---- Whole-avatar preview of the objects page ----
+
+        const float ObjectsGap = 12;
+
+        // The list and the preview side by side: the preview takes 2/5 of a narrow
+        // window and up to half of a wide one. Only the width decides it, so the
+        // font size and the names never move the columns.
+        internal static (float List, float Preview) ObjectsColumns(float width)
+        {
+            var ratio = Mathf.Lerp(.4f, .5f, Mathf.InverseLerp(700, 1400, width));
+            var preview = Mathf.Floor(Mathf.Max(0, width - ObjectsGap) * ratio);
+            return (Mathf.Max(0, width - ObjectsGap - preview), preview);
+        }
+
+        // What the preview hides: the objects left out by hand as edited on the
+        // page, and the gimmicks the page shows as 除外 (whole objects, or only
+        // their renderers).
+        internal static (System.Collections.Generic.List<GameObject> Objects, System.Collections.Generic.List<Renderer> Renderers) PreviewHidden(
+            System.Collections.Generic.IEnumerable<GameObject> manual, System.Collections.Generic.IEnumerable<ExportGimmickFinding> removed)
+        {
+            var objects = (manual ?? Array.Empty<GameObject>()).Where(item => item != null).ToList();
+            var renderers = new System.Collections.Generic.List<Renderer>();
+            foreach (var finding in removed ?? Array.Empty<ExportGimmickFinding>())
+            {
+                if (finding?.Target == null) continue;
+                if (finding.Unit == GimmickExclusionUnit.Hierarchy) objects.Add(finding.Target);
+                else if (finding.Unit == GimmickExclusionUnit.Renderer)
+                {
+                    var renderer = finding.Renderer != null ? finding.Renderer : finding.Target.GetComponent<Renderer>();
+                    if (renderer != null) renderers.Add(renderer);
+                }
+                else if (finding.Unit == GimmickExclusionUnit.Component) renderers.AddRange(finding.Components.OfType<Renderer>());
+            }
+            return (objects, renderers);
+        }
+
+        // Brings the preview in line with the page. Cheap: it only hides and shows
+        // objects of the copy, made once for the page.
+        internal void RefreshObjectsPreview()
+        {
+            if (session == null || source == null) { ReleaseObjectsPreview(); return; }
+            if (objectsPreview != null && (objectsPreview.Source != source || !objectsPreview.Usable)) ReleaseObjectsPreview();
+            if (objectsPreview == null && objectsPreviewError == null)
+            {
+                try { objectsPreview = new ExcludedObjectsPreview(source); }
+                catch (Exception exception) when (!(exception is OperationCanceledException))
+                {
+                    objectsPreviewError = exception.Message;
+                    Debug.LogException(exception);
+                    return;
+                }
+            }
+            if (objectsPreview == null) return;
+            var (objects, renderers) = PreviewHidden((System.Collections.Generic.IReadOnlyList<GameObject>)excludedObjectEdits ?? session.ExcludedObjects, gimmicksRemoved);
+            // Show rebuilds the copy when an object added after the page opened is excluded, and that can throw too.
+            try { objectsPreview.Show(objects, renderers); }
+            catch (Exception exception) when (!(exception is OperationCanceledException))
+            {
+                ReleaseObjectsPreview();
+                objectsPreviewError = exception.Message;
+                Debug.LogException(exception);
+            }
+        }
+
+        internal ExcludedObjectsPreview ObjectsPreview => objectsPreview;
+
+        void ReleaseObjectsPreview()
+        {
+            objectsPreview?.Dispose(); objectsPreview = null; objectsPreviewError = null;
+        }
+
+        void DrawObjectsPreview(Rect area)
+        {
+            if (Event.current.type == EventType.Layout) RefreshObjectsPreview();
+            var caption = new Rect(area.x, area.y, area.width, 22);
+            GUI.Label(new Rect(caption.x, caption.y + 2, caption.width, 18), Fit(ExporterLocalization.T("プレビュー"), dimMini, caption.width), dimMini);
+            var rect = new Rect(area.x, caption.yMax, area.width, Mathf.Max(0, area.height - caption.height));
+            if (Event.current.type == EventType.Repaint) EditorGUI.DrawRect(rect, PanelColor);
+            if (objectsPreview != null && objectsPreview.Usable)
+            {
+                if (objectsPreview.Draw(rect)) Repaint();
+                GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
+            }
+            else if (objectsPreviewError != null)
+            {
+                var text = ExporterLocalization.T("プレビューを表示できませんでした");
+                var line = new Rect(rect.x + 8, rect.y + 8, Mathf.Max(0, rect.width - 16), 18);
+                GUI.Label(line, new GUIContent(Fit(text, errorMini, line.width), objectsPreviewError), errorMini);
+            }
         }
 
         void ApplyPreview()
@@ -1171,6 +1283,11 @@ namespace VRVlog.LilToonExporter
             var settings = SavedSettings();
             var autoExclude = settings.AutoExcludeGimmicks;
             var choices = new[] { ExporterLocalization.T("除外"), ExporterLocalization.T("含める") };
+            if (contentsWidthOf != gimmickContents || contentsWidthFont != dimText.fontSize)
+            {
+                contentsWidth = gimmickContents.Values.Select(text => dimText.CalcSize(new GUIContent(text ?? "")).x).DefaultIfEmpty(0).Max() + 4;
+                contentsWidthOf = gimmickContents; contentsWidthFont = dimText.fontSize;
+            }
             foreach (var (group, findings) in gimmickGroups)
             {
                 EditorGUILayout.Space(4);
@@ -1186,7 +1303,7 @@ namespace VRVlog.LilToonExporter
                     // A row kept by a kept parent sits under it and names it.
                     var parent = ExportGimmickChoices.InheritedFrom(finding, settings);
                     if (parent != null) row.xMin += indent;
-                    var (nameRect, fieldRect, reasonRect, choiceRect) = GimmickRow(row, choiceWidth, gap);
+                    var (nameRect, fieldRect, reasonRect, choiceRect) = GimmickRow(row, choiceWidth, gap, contentsWidth);
                     var rowName = ExportGimmickChoices.RowName(finding);
                     var reason = ExporterLocalization.T(finding.Reason ?? "");
                     var path = ExportGimmickChoices.PathOf(finding, source);
@@ -1220,15 +1337,18 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // name | object field | contents | choice on one line. A narrow window
-        // keeps the field readable and shortens the name and the contents first.
-        internal static (Rect Name, Rect Field, Rect Contents, Rect Toggle) GimmickRow(Rect row, float toggleWidth, float gap)
+        // name | object field | contents | choice on one line. The contents keep
+        // their widest text (up to 2/5 of the room), so the list column beside
+        // the preview never cuts them; the name and the field share the rest.
+        internal static (Rect Name, Rect Field, Rect Contents, Rect Toggle) GimmickRow(Rect row, float toggleWidth, float gap, float contentsWidth)
         {
             var rest = Mathf.Max(0, row.width - toggleWidth - gap * 3);
-            var field = Mathf.Max(rest * .35f, Mathf.Min(120, rest * .5f));
-            var name = new Rect(row.x, row.y, (rest - field) * .55f, row.height);
+            var contentsSize = Mathf.Min(Mathf.Max(0, contentsWidth), rest * .4f);
+            var shared = rest - contentsSize;
+            var field = Mathf.Max(shared * .35f, Mathf.Min(120, shared * .5f));
+            var name = new Rect(row.x, row.y, shared - field, row.height);
             var fieldRect = new Rect(name.xMax + gap, row.y, field, row.height);
-            var contents = new Rect(fieldRect.xMax + gap, row.y, rest - field - name.width, row.height);
+            var contents = new Rect(fieldRect.xMax + gap, row.y, contentsSize, row.height);
             return (name, fieldRect, contents, new Rect(row.xMax - toggleWidth, row.y, toggleWidth, row.height));
         }
 
@@ -1942,10 +2062,10 @@ namespace VRVlog.LilToonExporter
                 board.SlotCount(MainPresets), MainPresets.Length, board.OtherCount, board.ExcludedCount);
             if (page == ObjectsPage)
             {
-                if (applyingOnLeave) return (ExporterLocalization.T("除外の変更をプレビューに反映しています…"), dimText);
-                if (!string.IsNullOrEmpty(excludedObjectError)) return (ExporterLocalization.T("プレビューに反映できませんでした・理由は一覧の下にあります"), errorText);
+                if (applyingOnLeave) return (ExporterLocalization.T("除外の変更をVRMに反映しています…"), dimText);
+                if (!string.IsNullOrEmpty(excludedObjectError)) return (ExporterLocalization.T("VRMに反映できませんでした・理由は一覧の下にあります"), errorText);
                 if (transferMode && BoardBlockReason(includePending: false) is string stop) return (stop, errorText);
-                if (PreviewPending) return (ExporterLocalization.T("プレビュー未反映　ページを移るときに反映します"), dimText);
+                if (PreviewPending) return (ExporterLocalization.T("除外の変更はページを移るときにVRMへ反映します"), dimText);
                 return (counts, dimText);
             }
             var reason = BoardBlockReason(includePending: false);
@@ -2420,7 +2540,10 @@ namespace VRVlog.LilToonExporter
             if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
             RebuildBoard();
             // Recording used to check the source first; the list-only save checks it here.
+            // The first attempt below runs right after, so its Export need not
+            // hash the source again; a retry from the recovery window does.
             session.RequireCurrentSource();
+            var sourceChecked = true;
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
@@ -2482,15 +2605,17 @@ namespace VRVlog.LilToonExporter
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
-                // one attempt the standard faces use the hash Export has taken.
+                // one attempt the standard faces use the check made for it (the
+                // one above on the first attempt, Export's own on a retry).
                 using var batch = ExperimentalExpressionCaptureSession.Batch();
                 // Both transfers let a failing stage follow the project-wide choice,
                 // as the export window does, so "かんたん" and "通常" write the same
                 // bytes. Saving the board's own VRM (no written) stays strict.
                 if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
-                var exported = target.Export(name, targetAuthor, warnings, blink?.Copy(), license.Copy(), options, report,
-                    Array.Empty<ExperimentalExpressionCaptureSession.Pose>(), poses, presets.Select(value => value.Copy()).ToArray(), listFaces: listFaces);
+                var checkedNow = sourceChecked; sourceChecked = false;
+                var exported = target.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
+                    poses, presets.Select(value => value.Copy()).ToArray(), checkedNow);
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2661,6 +2786,7 @@ namespace VRVlog.LilToonExporter
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;
+            ReleaseObjectsPreview();
             dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;
             ClearThumbnails(); slotRects.Clear(); closableTiles.Clear(); hoverTile = -1;
             blinkFallback = null; blinkFallbackStale = true;

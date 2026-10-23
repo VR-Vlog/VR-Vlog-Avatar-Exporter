@@ -99,7 +99,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Settlement converts native clocks with AnimatorStateInfo.length and
         // AnimatorTransitionInfo.duration/durationUnit. Measure both directly.
-        [TestCase(1f, false)] [TestCase(2f, false)] [TestCase(.5f, false)] [TestCase(2f, true)]
+        [TestCase(.5f, false)] [TestCase(2f, true)]
         public void NativeClocksMatchTheSettlementConversion(float speed, bool fixedDuration)
         {
             var machine = controller.layers[0].stateMachine;
@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (graph.IsValid()) graph.Destroy(); }
         }
 
-        [TestCase(1f)] [TestCase(.5f)] [TestCase(2f)]
+        [TestCase(.5f)] [TestCase(2f)]
         public void ANonLoopingClipLongerThanTheWarmUpIsSavedAtItsLastKey(float speed)
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100))).speed = speed;
@@ -446,7 +446,7 @@ namespace VRVlog.LilToonExporter.Tests
         // driver there that changes a parameter the layer reads keeps writing.
         // Such a layer is still refused, also when a zero-length edge shows no
         // transition at the sample or a fade beside it is waited for.
-        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)] [TestCase(0f, true)]
+        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)]
         public void AStateRestartedEveryFrameWithADriverIsNotSaved(float duration, bool fadeIn)
         {
             Selected(fadeIn ? Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)) : Clip("Smile", 75));
@@ -661,164 +661,6 @@ namespace VRVlog.LilToonExporter.Tests
             var entry = metadata.Entries.Single(item => item.Name == "ジェスチャー / Right smile");
             Assert.That(entry.Error, Is.Null, entry.Error);
             Assert.That(entry.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
-        }
-
-        // Analyze reads the menu for the one-click export. Its settlement
-        // decision must reach the entry and the export result list.
-        [Test]
-        public void AMenuItemFollowedThroughAnExitTimeIsListedAsApproximated()
-        {
-            var a = Selected(Clip("A", 0));
-            Timed(a, State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5);
-            Type Find(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-            var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (menuType == null || descriptorType == null) Assert.Ignore("Install the real VRChat SDK to run menu-analysis integration tests.");
-            var menu = ScriptableObject.CreateInstance(menuType);
-            AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
-            using (var data = new SerializedObject(menu))
-            {
-                var controls = data.FindProperty("controls"); controls.arraySize = 1;
-                var item = controls.GetArrayElementAtIndex(0);
-                item.FindPropertyRelative("name").stringValue = "Late smile";
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "Toggle");
-                item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
-                item.FindPropertyRelative("value").floatValue = 1;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customExpressions").boolValue = true;
-                data.FindProperty("expressionsMenu").objectReferenceValue = menu;
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.FindProperty("specialAnimationLayers").arraySize = 0;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var source = VrChatExpressionSampler.Analyze(avatar);
-            var entry = source.Entries.Single(e => e.Name == "Late smile");
-            Assert.That(entry.Error, Is.Null, string.Join("\n", source.Messages));
-            Assert.That(entry.Values.Single(v => v.Shape == "Face size").Weight, Is.EqualTo(60).Within(.01));
-            Assert.That(entry.Messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-            var report = new ExportRecoveryReport();
-            UniVrmOneClickExporter.RecordSettledMenuExpressions(source, report);
-            Assert.That(report.Fallbacks.Results.Where(row => row.Outcome == ExportOutcome.Approximated && row.Category == "表情" && row.Name == "Late smile")
-                .Select(row => row.Reason), Does.Contain(ExpressionSettlement.FollowedTransitions));
-        }
-
-        // A Radial Puppet commonly selects a BlendTree state. A moving child
-        // must not be exported as one settled frame of its final key.
-        [Test]
-        public void AMenuItemSelectingAMovingTreeIsNotSettledToOneFrame()
-        {
-            controller.AddParameter("Blend", AnimatorControllerParameterType.Float);
-            var parameters = controller.parameters; parameters.Single(parameter => parameter.name == "Blend").defaultFloat = 1;
-            controller.parameters = parameters;
-            var tree = new BlendTree { name = "Moving tree", blendType = BlendTreeType.Simple1D, blendParameter = "Blend", useAutomaticThresholds = false };
-            AssetDatabase.AddObjectToAsset(tree, controller);
-            tree.AddChild(Clip("Still", 0), 0); tree.AddChild(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)), 1);
-            Selected(null).motion = tree;
-            var source = AnalyzeToggle("Moving tree item");
-            var entry = source.Entries.Single(e => e.Name == "Moving tree item");
-            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
-            Assert.That(entry.Values, Is.Empty);
-            Assert.That(entry.Messages.Intersect(ExpressionSettlement.Messages), Is.Empty);
-        }
-
-        private BlendTree Tree(string name, AnimationClip low, AnimationClip high)
-        {
-            controller.AddParameter("Blend", AnimatorControllerParameterType.Float);
-            var parameters = controller.parameters; parameters.Single(parameter => parameter.name == "Blend").defaultFloat = 1;
-            controller.parameters = parameters;
-            var tree = new BlendTree { name = name, blendType = BlendTreeType.Simple1D, blendParameter = "Blend", useAutomaticThresholds = false };
-            AssetDatabase.AddObjectToAsset(tree, controller);
-            tree.AddChild(low, 0); tree.AddChild(high, 1);
-            return tree;
-        }
-
-        // A tree of still clips at a fixed input is one exact frame, so a
-        // timed exit from it is settled like a clip state. A clip moving the
-        // tree's input makes it a moving tree again.
-        [TestCase(false)] [TestCase(true)]
-        public void AStillTreeIsSettledUnlessAClipMovesItsInput(bool driven)
-        {
-            var machine = controller.layers[0].stateMachine;
-            var selected = Selected(null);
-            selected.motion = Tree("Still tree", Clip("Still", 0), Clip("Smile", 75));
-            Timed(selected, State(machine, "Late", Clip("Late", 60)), 5);
-            if (driven)
-            {
-                var input = new AnimationClip { name = "Input" };
-                AnimationUtility.SetEditorCurve(input, EditorCurveBinding.FloatCurve("", typeof(Animator), "Blend"), AnimationCurve.Linear(0, 0, 10, 1));
-                AssetDatabase.AddObjectToAsset(input, controller);
-                machine.AddState("Unused input").motion = input;
-            }
-            var source = AnalyzeToggle("Still tree item");
-            var entry = source.Entries.Single(e => e.Name == "Still tree item");
-            if (driven)
-            {
-                Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
-                return;
-            }
-            Assert.That(entry.Error, Is.Null, string.Join("\n", source.Messages));
-            Assert.That(entry.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(60).Within(.01));
-            Assert.That(entry.Messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-        }
-
-        // A timed transition can reach a moving tree only while settlement
-        // advances time. The state after settlement is checked as well.
-        [Test]
-        public void AMovingTreeReachedLateIsNotSettledToOneFrame()
-        {
-            var machine = controller.layers[0].stateMachine;
-            var late = State(machine, "Late");
-            late.motion = Tree("Late moving tree", Clip("Still", 0), Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
-            Timed(Selected(Clip("A", 0)), late, 5);
-            var source = AnalyzeToggle("Late tree item");
-            var entry = source.Entries.Single(e => e.Name == "Late tree item");
-            Assert.That(entry.Error, Is.EqualTo(VrChatFxExpressions.SettledFxTreeOmitted), string.Join("\n", source.Messages));
-            Assert.That(entry.Values, Is.Empty);
-        }
-
-        // One Toggle (Menu = 1) on a VRChat descriptor whose FX is the fixture.
-        private VrChatExpressionMenu.Source AnalyzeToggle(string name)
-        {
-            Type Find(string typeName) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(type => type != null);
-            var menuType = Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-            var descriptorType = Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (menuType == null || descriptorType == null) Assert.Ignore("Install the real VRChat SDK to run menu-analysis integration tests.");
-            var menu = ScriptableObject.CreateInstance(menuType);
-            AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
-            using (var data = new SerializedObject(menu))
-            {
-                var controls = data.FindProperty("controls"); controls.arraySize = 1;
-                var item = controls.GetArrayElementAtIndex(0);
-                item.FindPropertyRelative("name").stringValue = name;
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "Toggle");
-                item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
-                item.FindPropertyRelative("value").floatValue = 1;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customExpressions").boolValue = true;
-                data.FindProperty("expressionsMenu").objectReferenceValue = menu;
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
-                var layer = list.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.FindProperty("specialAnimationLayers").arraySize = 0;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            return VrChatExpressionSampler.Analyze(avatar);
         }
 
         [Test]

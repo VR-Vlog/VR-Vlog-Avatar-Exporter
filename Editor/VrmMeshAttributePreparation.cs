@@ -4,6 +4,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
 using UnityEngine.Rendering;
 using Object = UnityEngine.Object;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -13,6 +14,8 @@ namespace VRVlog.LilToonExporter
     // their attributes, then restore every source reference even on failure.
     internal sealed class VrmMeshAttributePreparation : IDisposable
     {
+        internal const string AdditionalStreamsIgnored = "頂点数が元のメッシュと合わない追加頂点ストリームを使わずに書き出しました: ";
+
         sealed class Entry
         {
             internal Renderer Renderer;
@@ -38,6 +41,13 @@ namespace VRVlog.LilToonExporter
                     var source = skin != null ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
                     if (!ExportRendererSelection.HasGeometry(source)) continue;
                     var stream = meshRenderer != null ? meshRenderer.additionalVertexStreams : null;
+                    // A stream whose vertex count differs cannot be matched to the base
+                    // mesh vertex by vertex; export the base mesh alone.
+                    if (stream != null && stream.vertexCount != source.vertexCount)
+                    {
+                        warnings?.Add(ExporterLocalization.T(AdditionalStreamsIgnored) + renderer.name);
+                        stream = null;
+                    }
                     if (stream == null && source.HasVertexAttribute(VertexAttribute.Normal)) continue;
 
                     var entry = new Entry { Renderer = renderer, Filter = filter, Source = source };
@@ -122,8 +132,6 @@ namespace VRVlog.LilToonExporter
                 }
             }
         }
-
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         internal void RestoreSourceMeshKeys(ModelExporter converter)
         {

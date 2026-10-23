@@ -37,37 +37,6 @@ namespace VRVlog.LilToonExporter
             finally { UnityEngine.Object.DestroyImmediate(destination); }
         }
 
-        internal static byte[] EncodeSource(Texture source, bool srgb, ICollection<string> warnings = null)
-        {
-            if (source == null) throw new ArgumentNullException(nameof(source));
-            var previous = RenderTexture.active;
-            var previousSrgb = GL.sRGBWrite;
-            Texture2D converted = null;
-            try
-            {
-                GL.sRGBWrite = srgb && QualitySettings.activeColorSpace == UnityEngine.ColorSpace.Linear;
-                converted = TextureConverter.CopyTexture(source, srgb ? ExportColorSpace.sRGB : ExportColorSpace.Linear, true, null);
-                return EncodeConverted(converted, srgb, warnings);
-            }
-            finally
-            {
-                RenderTexture.active = previous;
-                GL.sRGBWrite = previousSrgb;
-                if (converted != null) UnityEngine.Object.DestroyImmediate(converted);
-            }
-        }
-
-        internal static byte[] ResizeEncoded(byte[] encoded, bool srgb)
-        {
-            var decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false, !srgb);
-            try
-            {
-                if (!ImageConversion.LoadImage(decoded, encoded, false)) throw new InvalidOperationException("VRM内の画像を読み込めませんでした。");
-                return EncodeConverted(decoded, srgb);
-            }
-            finally { UnityEngine.Object.DestroyImmediate(decoded); }
-        }
-
         internal static void Warn(ICollection<string> warnings, string name, int width, int height, int resizedWidth, int resizedHeight)
         {
             var message = name + ": 出力用画像を " + width + "×" + height + " から " + resizedWidth + "×" + resizedHeight + " へ縮小しました。元の画像は変更していません。";

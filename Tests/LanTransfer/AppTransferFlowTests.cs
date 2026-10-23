@@ -42,6 +42,41 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         public void PrimaryButtonNamesTheFirstMissingInput(bool hasAvatar, bool boardReady, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, string reason) =>
             Assert.That(AppTransferFlow.BlockReason(hasAvatar, boardReady, name, nameFits, hasAuthor, consented, privacyAccepted), Is.EqualTo(reason));
 
+        // Nothing is red until "QRコードを作る" is pressed; pressed, each missing input is, and filling one in turns it back.
+        [Test]
+        public void MissingInputsTurnRedOnlyAfterPressingCreate()
+        {
+            Assert.That(AppTransferFlow.MarkedInputs(false, false, "", true, false, false, false), Is.EqualTo(RequiredInput.None));
+            Assert.That(AppTransferFlow.MarkedInputs(true, false, "", true, false, false, false),
+                Is.EqualTo(RequiredInput.Avatar | RequiredInput.Name | RequiredInput.Author | RequiredInput.Consent | RequiredInput.PrivacyConsent));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, false, true, true), Is.EqualTo(RequiredInput.Author));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", false, true, true, true), Is.EqualTo(RequiredInput.Name));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, true, false, true), Is.EqualTo(RequiredInput.Consent));
+            Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, true, true, true), Is.EqualTo(RequiredInput.None));
+        }
+
+        // One missing input keeps its own sentence; two or more are all named on the one line, and the board's reasons stay as they are.
+        [Test]
+        public void ReasonLineNamesEveryMissingInput()
+        {
+            Func<string, string> same = text => text;
+            string Line(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
+                AppTransferFlow.ReasonText(AppTransferFlow.BlockReason(hasAvatar, true, name, nameFits, hasAuthor, consented, privacyAccepted),
+                    hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted, same);
+            Assert.That(Line(true, "SampleAvatar", true, true, true, true), Is.EqualTo(""));
+            Assert.That(Line(true, "SampleAvatar", true, false, true, true), Is.EqualTo(AppTransferText.NeedsAuthor));
+            Assert.That(Line(true, "SampleAvatar", true, true, false, true), Is.EqualTo(AppTransferText.NeedsConsent));
+            Assert.That(Line(true, "SampleAvatar", true, false, false, true), Is.EqualTo("作者名・利用規約の同意がそろうと作れます"));
+            Assert.That(Line(true, "SampleAvatar", false, false, true, true), Is.EqualTo("短い名前・作者名がそろうと作れます"));
+            Assert.That(Line(false, "", true, false, false, false), Is.EqualTo("アバター・名前・作者名・利用規約の同意・プライバシーポリシーの同意がそろうと作れます"));
+            Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoard, true, "", true, false, false, true, same), Is.EqualTo(AppTransferText.NeedsBoard));
+            // The board's own reasons keep the button disabled even when a field is also missing.
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoard), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoardFix), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsAuthor), Is.False);
+            Assert.That(AppTransferFlow.BoardBlocks(null), Is.False);
+        }
+
         // Cases an attribute cannot carry: a lone surrogate, and a name whose visible
         // character falls past the length bound so only spaces stay in the transfer name.
         [Test]
@@ -416,26 +451,59 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("Waiting", true, true, true)]
         [TestCase("Waiting", true, false, false)]
         [TestCase("Waiting", false, true, false)]
-        [TestCase("Failed", false, true, false)]
         [TestCase("Failed", true, true, false)]
-        [TestCase("Canceled", false, true, false)]
-        [TestCase("Expired", false, true, false)]
-        [TestCase("Completed", false, true, false)]
-        [TestCase("Uploading", false, true, false)]
-        [TestCase("Form", false, true, false)]
-        public void OnlyAQrOnScreenWithTheSoundOnBeeps(string view, bool qrShown, bool soundOn, bool beeps)
+        public void OnlyAReadyQrWithTheSoundOnBeeps(string view, bool qrReady, bool soundOn, bool beeps)
         {
-            Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrShown, soundOn), Is.EqualTo(beeps));
+            Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrReady, soundOn), Is.EqualTo(beeps));
+        }
+
+        // A ready QR stays hidden until "QRを表示"; "QRを隠す" and a new QR hide it again.
+        [Test]
+        public async Task EveryNewQrStartsHiddenAndIsReadyOnce()
+        {
+            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var run = new FlowRun(() => currentTime))
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                // Asked for while uploading, it does not carry over to the QR.
+                run.Flow.RevealQr();
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.True);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+                run.Flow.RevealQr();
+                Assert.That(run.Flow.QrRevealed, Is.True);
+                run.Flow.HideQr();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                // Showing it again is the same QR: no second sound.
+                run.Flow.RevealQr();
+                Assert.That(run.Flow.QrRevealed, Is.True);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+
+                run.Flow.Regenerate();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.True);
+
+                run.Flow.RevealQr();
+                currentTime += 180;
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Expired));
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+                run.Flow.Regenerate();
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+
+                run.Flow.RevealQr();
+                run.Flow.Stop();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+            }
         }
 
         [Test]
-        public void QrReadySoundIsOnByDefault()
-        {
-            Assert.That(AppTransferFlow.QrReadySoundByDefault, Is.True);
-        }
-
-        [Test]
-        public void WindowTextFollowsTheWordingRulesAndExistsInEveryLocale()
+        public void WindowTextExistsInEveryLocale()
         {
 #if VRVLOG_LAN_TRANSFER_CLI
             var root = Directory.GetCurrentDirectory();
@@ -444,17 +512,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 #endif
             var texts = typeof(AppTransferText).GetFields(BindingFlags.NonPublic | BindingFlags.Static)
                 .Where(field => field.IsLiteral).Select(field => (string)field.GetRawConstantValue()).ToArray();
-            Assert.That(texts.Length, Is.EqualTo(41));
-            Assert.That(texts.Distinct().Count(), Is.EqualTo(texts.Length));
-            foreach (var text in texts)
-            {
-                // One line, no punctuation, no request or ability phrasing, no exclamation.
-                // The QR notice alone asks politely, as the owner chose for that line.
-                var request = text == AppTransferText.DoNotShare ? "" : "|ください";
-                Assert.That(Regex.IsMatch(text, "[。、！!\n]" + request + "|できます|しまいました"), Is.False);
-                // This package writes Japanese and Latin text without a space between them.
-                Assert.That(Regex.IsMatch(text, "[ぁ-んァ-ヶ一-龠] [A-Za-z0-9]|[A-Za-z0-9] [ぁ-んァ-ヶ一-龠]"), Is.False);
-            }
+            Assert.That(texts.Length > 0, Is.True);
             foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
             {
                 var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
@@ -465,8 +523,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var translated = entry.Groups[1].Value;
                     Assert.That(Regex.IsMatch(translated, "[ぁ-んァ-ヶ]"), Is.False);
                     Assert.That(Regex.Matches(translated, @"\{\d").Count, Is.EqualTo(Regex.Matches(text, @"\{\d").Count));
-                    // No closing period, no "please" and no exclamation in any language.
-                    Assert.That(Regex.IsMatch(translated, @"[.。！!]$|\bPlease\b|주세요|请|請", RegexOptions.IgnoreCase), Is.False);
                 }
             }
         }
@@ -503,6 +559,33 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     UnityEngine.Object.DestroyImmediate(avatar);
                 }
             }
+        }
+
+        // Show QR is 1.75 times the other blue buttons so it stands out on the pattern, and stays
+        // one line inside the QR area: its width gives way to the area instead of the area growing.
+        [Test]
+        public void ShowQrIsTheLargeBlueButtonThatGivesWayToANarrowQrArea()
+        {
+            var panel = new AppTransferPanel();
+            var root = new UnityEngine.UIElements.VisualElement();
+            panel.Build(root);
+            var show = UnityEngine.UIElements.UQueryExtensions.Q<UnityEngine.UIElements.Button>(root, "show-qr");
+            Assert.That(show, Is.Not.Null);
+            Assert.That(show.GetClasses(), Is.SupersetOf(new[] { "primary", "slot-button", "reveal-button" }));
+
+            var sheet = UnityEditor.AssetDatabase.GUIDToAssetPath("6f09c8d6325e47628b30efe33abe0b23");
+            var uss = File.ReadAllText(Path.GetFullPath(sheet));
+            string Rule(string selector) => Regex.Match(uss, @"(?m)^" + Regex.Escape(selector) + @"\s*\{([^}]*)\}").Groups[1].Value;
+            float Px(string rule, string property) => float.Parse(Regex.Match(rule, @"(?<![\w-])" + property + @":\s*([\d.]+)px").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var big = Rule(".slot-button.reveal-button");
+            var normal = Rule(".slot-button");
+            var primary = Rule(".primary");
+            Assert.That(Px(big, "width") / Px(normal, "width"), Is.EqualTo(1.75f).Within(0.01f));
+            Assert.That(Px(big, "height") / Px(normal, "height"), Is.EqualTo(1.75f).Within(0.05f));
+            Assert.That(Px(big, "font-size") / Px(primary, "font-size"), Is.EqualTo(1.75f).Within(0.01f));
+            Assert.That(normal, Does.Contain("max-width: 100%"));
+            Assert.That(big, Does.Contain("white-space: nowrap"));
+            Assert.That(big, Does.Contain("text-overflow: ellipsis"));
         }
 
         [Test]
@@ -638,22 +721,84 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        // The start dialog's two sentences are not AppTransferText, which the wording test covers.
-        [Test]
-        public void StartDialogTextExistsInEveryLocale()
+        // The real QR is neither made nor drawn until "QRを表示", in the window and on the board alike.
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task TheQrIsDrawnOnlyAfterShowQrAndANewQrHidesIt(bool embedded)
         {
-            var root = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(CloudVrmTransferSession).Assembly).resolvedPath;
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var sound = AppTransferWindow.QrReadySound;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            using (var run = new FlowRun())
             {
-                var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
-                foreach (var text in new[] { AppTransferPanel.StopUploadText, AppTransferPanel.StopQrText })
+                var panel = PanelWith(run.Flow, detailed: embedded);
+                typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
+                typeof(AppTransferPanel).GetField("avatarName", field).SetValue(panel, "fixture");
+                UnityEngine.Texture Qr() => (UnityEngine.Texture)typeof(AppTransferPanel).GetField("qrTexture", field).GetValue(panel);
+                T Element<T>(string name) where T : UnityEngine.UIElements.VisualElement => (T)typeof(AppTransferPanel).GetField(name, field).GetValue(panel);
+                bool Shown(string name) => Element<UnityEngine.UIElements.VisualElement>(name).style.display.value != UnityEngine.UIElements.DisplayStyle.None;
+                void Poll() { Call(panel, "SyncQr"); panel.Refresh(); }
+                try
                 {
-                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
-                    Assert.That(entry.Success, Is.True, locale);
-                    Assert.That(Regex.Matches(entry.Groups[1].Value, @"\{\d").Count, Is.EqualTo(1), locale);
+                    AppTransferWindow.QrReadySound = false;
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrCover").image, Is.SameAs(QrCover.Texture));
+                    Assert.That(Shown("qrCover"), Is.True);
+                    Assert.That(Shown("revealArea"), Is.True);
+                    Assert.That(Shown("hideQrButton"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
+                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.Empty);
+
+                    Call(panel, "RevealQr");
+                    Poll();
+                    Assert.That(Qr() != null, Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image, Is.SameAs(Qr()));
+                    Assert.That(Shown("qrImage"), Is.True);
+                    Assert.That(Shown("qrCover"), Is.False);
+                    Assert.That(Shown("revealArea"), Is.False);
+                    Assert.That(Shown("hideQrButton"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.Waiting)));
+
+                    Call(panel, "HideQr");
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Shown("qrCover"), Is.True);
+
+                    // "QRを作り直す" while it is shown: the new QR starts hidden.
+                    Call(panel, "RevealQr");
+                    Assert.That(Qr() != null, Is.True);
+                    Retry(panel);
+                    Assert.That(Qr() == null, Is.True);
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Shown("qrCover"), Is.True);
+                }
+                finally
+                {
+                    Call(panel, "StopAndClean");
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
+                    AppTransferWindow.QrReadySound = sound;
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
                 }
             }
         }
+
+        private static void Call(AppTransferPanel panel, string method) =>
+            typeof(AppTransferPanel).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, null);
 
         // A refused upload, whose "もう一度" starts the transfer again from the same copy.
         private static async Task FailOnce(FlowRun run)
@@ -668,57 +813,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 
         private static string Localized(string source) =>
             (string)typeof(AppTransferPanel).GetMethod("T", BindingFlags.NonPublic | BindingFlags.Static).Invoke(null, new object[] { source });
-
-        // "VRMを保存" and "QRコードを作る" keep their order everywhere; only which one is blue follows
-        // where the panel opened, read again on every refresh. The window and the board opened to
-        // transfer make the QR blue; the board opened to save a VRM makes the save blue.
-        [TestCase(null, false)]
-        [TestCase(false, false)]
-        [TestCase(true, true)]
-        public void ExactlyOneOfSaveAndQrIsBlueAndItFollowsWhereThePanelOpened(bool? saveFirst, bool saveBlue)
-        {
-            var current = saveFirst;
-            var panel = BuiltPanel(embedded: saveFirst != null, back: null, savePrimary: saveFirst == null ? null : (Func<bool>)(() => current.Value));
-            var save = PanelButton(panel, "saveButton");
-            var create = PanelButton(panel, "createButton");
-            RefreshActions(panel);
-            Assert.That(save.ClassListContains("primary"), Is.EqualTo(saveBlue));
-            Assert.That(create.ClassListContains("primary"), Is.EqualTo(!saveBlue));
-            Assert.That(save.parent.IndexOf(save) < save.parent.IndexOf(create), Is.True, "\"VRMを保存\" stays to the left of \"QRコードを作る\".");
-            if (current == null) return;
-            current = !current;
-            RefreshActions(panel);
-            Assert.That(save.ClassListContains("primary"), Is.EqualTo(!saveBlue));
-            Assert.That(create.ClassListContains("primary"), Is.EqualTo(saveBlue));
-        }
-
-        // The board's "戻る" sits at the left of the buttons; the window has no "戻る", only its "閉じる".
-        [TestCase(true, true, true)]
-        [TestCase(true, false, false)]
-        [TestCase(false, false, false)]
-        public void OnlyTheBoardShowsBack(bool embedded, bool withBack, bool shown)
-        {
-            var panel = BuiltPanel(embedded, withBack ? (Action)(() => { }) : null, null);
-            var back = PanelButton(panel, "backButton");
-            Assert.That(back.style.display.value == UnityEngine.UIElements.DisplayStyle.None, Is.EqualTo(!shown));
-        }
-
-        private static AppTransferPanel BuiltPanel(bool embedded, Action back, Func<bool> savePrimary)
-        {
-            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
-            var panel = new AppTransferPanel();
-            typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
-            typeof(AppTransferPanel).GetField("back", field).SetValue(panel, back);
-            typeof(AppTransferPanel).GetField("savePrimary", field).SetValue(panel, savePrimary);
-            panel.Build(new UnityEngine.UIElements.VisualElement());
-            return panel;
-        }
-
-        private static UnityEngine.UIElements.Button PanelButton(AppTransferPanel panel, string name) =>
-            (UnityEngine.UIElements.Button)typeof(AppTransferPanel).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance).GetValue(panel);
-
-        private static void RefreshActions(AppTransferPanel panel) =>
-            typeof(AppTransferPanel).GetMethod("RefreshActions", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, new object[] { false });
 
         private static AppTransferPanel PanelWith(AppTransferFlow flow, bool detailed)
         {

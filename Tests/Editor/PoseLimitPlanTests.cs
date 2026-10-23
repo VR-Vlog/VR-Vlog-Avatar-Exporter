@@ -44,69 +44,6 @@ namespace VRVlog.LilToonExporter.Tests
         static string[] Dropped(PoseLimitPlan plan) => plan.Rows.Where(row => !row.Keep).Select(row => row.Id).ToArray();
 
         [Test]
-        public void WithinTheLimitsNothingIsDroppedWhateverWasSaved()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("a"), Still("b"), Moving("c", 10) });
-            Assert.That(plan.NeedsChoice, Is.False);
-            plan.Choose(new[] { "a", "c" });
-            Assert.That(Dropped(plan), Is.Empty);
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheCountTheDefaultDropsTheLastRows()
-        {
-            var candidates = Enumerable.Range(0, 130).Select(i => Still("pose" + i)).ToArray();
-            var plan = new PoseLimitPlan(candidates);
-            Assert.That(plan.NeedsChoice && plan.CountOver, Is.True);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "pose128", "pose129" }));
-            Assert.That(plan.Within && plan.IsDefault, Is.True);
-            // The same poses give the same choice every time.
-            var again = new PoseLimitPlan(candidates); again.Default();
-            Assert.That(Dropped(again), Is.EqualTo(Dropped(plan)));
-        }
-
-        [Test]
-        public void OverTheFramesTheDefaultDropsMovingPosesOnly()
-        {
-            // No bones keeps the data small, so only the frame total is over.
-            var plan = new PoseLimitPlan(new[] { Moving("m0", 8000, 0), Moving("m1", 8000, 0), Still("s0"), Moving("m2", 8000, 0),
-                Moving("m3", 8000, 0), Moving("m4", 1000, 0), Still("s1") });
-            Assert.That(plan.FramesOver, Is.True);
-            Assert.That(plan.AnimationBytesOver, Is.False);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "m4" }));
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheMovingPoseDataTheDefaultDropsFromTheEnd()
-        {
-            var plan = new PoseLimitPlan(new[] { Moving("m0", 3000, 20), Moving("m1", 3000, 20), Moving("m2", 3000, 20), Still("s0") });
-            Assert.That(plan.AnimationBytesOver, Is.True);
-            Assert.That(plan.FramesOver, Is.False);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "m1", "m2" }), "The still pose stays.");
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheStillPoseDataTheDefaultDropsStillPosesOnly()
-        {
-            var candidates = new List<PoseCandidate> { Moving("m0", 10) };
-            candidates.AddRange(Enumerable.Range(0, 80).Select(i => Still("s" + i, HumanoidPoseData.BoneNames.Length, new string('x', 200))));
-            var plan = new PoseLimitPlan(candidates);
-            Assert.That(plan.PoseBytesOver, Is.True);
-            Assert.That(plan.CountOver, Is.False);
-            plan.Default();
-            var dropped = Dropped(plan);
-            Assert.That(dropped, Is.Not.Empty);
-            Assert.That(dropped, Is.EqualTo(Enumerable.Range(80 - dropped.Length, dropped.Length).Select(i => "s" + i)));
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
         public void ASavedChoiceIsToppedUpFromTheEnd()
         {
             var plan = new PoseLimitPlan(Enumerable.Range(0, 131).Select(i => Still("pose" + i)));
@@ -120,23 +57,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AMovingPoseOverTheDataLimitAloneIsLeftOutAndAsked()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("s0"), Moving("big", 8000, 20), Moving("m0", 10) });
-            var big = plan.Rows.Single(row => row.Id == "big");
-            Assert.That(big.TooLarge && !big.Selectable && !big.Keep, Is.True);
-            Assert.That(plan.Within, Is.True);
-            Assert.That(plan.NeedsChoice, Is.True, "Losing a pose is asked about even when the rest fits.");
-            Assert.That(plan.Exceeds, Is.False);
-            // The rest fits, so a choice saved for more poses drops nothing.
-            plan.Choose(new[] { "m0" });
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "big" }));
-            Assert.That(plan.Dropped, Is.Empty, "Only choices are remembered.");
-            Assert.That(plan.LeftOut.Select(row => row.Id), Is.EqualTo(new[] { "big" }));
-            Assert.That(plan.IsDefault, Is.True);
-        }
-
-        [Test]
         public void ASavedChoiceStillAppliesWhenTheRestIsOverWithATooLargePose()
         {
             var candidates = new List<PoseCandidate> { Moving("big", 8000, 20) };
@@ -146,54 +66,6 @@ namespace VRVlog.LilToonExporter.Tests
             plan.Choose(new[] { "pose0", "pose1" });
             Assert.That(Dropped(plan), Is.EqualTo(new[] { "big", "pose0", "pose1" }));
             Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void TheWindowShowsTheNoticeOnlyWhenOverAndComparesWithItsDefaults()
-        {
-            var plan = new PoseLimitPlan(Enumerable.Range(0, 130).Select(i => Still("pose" + i)));
-            plan.Choose(new[] { "pose0" });
-            var window = ScriptableObject.CreateInstance<PoseLimitWindow>();
-            try
-            {
-                window.Open(plan, "avatar");
-                Assert.That(Dropped(plan), Is.EqualTo(new[] { "pose0", "pose129" }), "Opening keeps the saved choice.");
-                Assert.That(window.Choosable, Is.True);
-                Assert.That(window.AtDefault, Is.False);
-                Assert.That(window.Notice, Is.Empty, "Within the limits the heading says nothing is over.");
-                plan.Rows.Single(row => row.Id == "pose0").Keep = true;
-                Assert.That(window.Notice, Is.EqualTo(ExporterLocalization.T(PoseLimitWindow.OverLimit)));
-                plan.Default();
-                Assert.That(window.AtDefault, Is.True);
-            }
-            finally { UnityEngine.Object.DestroyImmediate(window); }
-        }
-
-        [Test]
-        public void TheWindowForATooLargePoseAloneHasNothingToChoose()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("s0"), Moving("big", 8000, 20) });
-            plan.Choose(new[] { "s0" });
-            var window = ScriptableObject.CreateInstance<PoseLimitWindow>();
-            try
-            {
-                window.Open(plan, "avatar");
-                Assert.That(window.Choosable, Is.False);
-                Assert.That(window.AtDefault, Is.True);
-                Assert.That(window.Notice, Is.Empty);
-                Assert.That(Dropped(plan), Is.EqualTo(new[] { "big" }));
-            }
-            finally { UnityEngine.Object.DestroyImmediate(window); }
-        }
-
-        [Test]
-        public void AMovingPoseOverTheFrameLimitIsShownButNotAsked()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("s0"), new PoseCandidate { Id = "long", Name = "long", IsAnimation = true, OverFrameLimit = true } });
-            var row = plan.Rows.Single(item => item.Id == "long");
-            Assert.That(row.Animated && !row.Selectable && !row.Keep, Is.True);
-            Assert.That(plan.NeedsChoice, Is.False);
-            Assert.That(plan.LeftOut, Is.Empty, "The board already reports it.");
         }
 
         // The size the contract's Measure gives the written extension.
@@ -227,23 +99,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => HumanoidAnimationData.Write(rows.Select(row => row.Animation).ToList()));
             var plan = new PoseLimitPlan(rows); plan.Default();
             Assert.DoesNotThrow(() => HumanoidAnimationData.Write(rows.Where(row => !plan.Dropped.Contains(row.Id)).Select(row => row.Animation).ToList()));
-        }
-
-        [Test]
-        public void EveryShippedLocaleTranslatesTheWindow()
-        {
-            var sources = typeof(PoseLimitWindow).GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
-                .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue())
-                .Concat(new[] { PoseLimitChooser.Category, PoseLimitChooser.DroppedReason, PoseLimitChooser.TooLargeReason }).Distinct().ToArray();
-            Assert.That(sources.Length, Is.GreaterThan(20));
-            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var directory = Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var text = File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
-                foreach (var source in sources)
-                    Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
-            }
         }
     }
 
@@ -323,6 +178,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var session = Session(fixture, 130);
+            Assert.Throws<InvalidOperationException>(() => session.SelectedAnimations());
             var report = new ExportRecoveryReport(); var warnings = new List<string>();
             using (new PoseLimitChooser.Scope(fixture.Source, true))
             {

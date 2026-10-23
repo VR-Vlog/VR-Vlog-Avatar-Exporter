@@ -10,7 +10,7 @@ namespace VRVlog.LilToonExporter
     internal static class ExportAuthor
     {
         internal const string Required = "VRMには作者名が必要です";
-        private const string PreferencePrefix = "VRVlog.Exporter.Author.";
+        internal const string PreferencePrefix = "VRVlog.Exporter.Author.";
 
         internal static bool IsValid(string author) => !string.IsNullOrWhiteSpace(author);
 
@@ -32,11 +32,6 @@ namespace VRVlog.LilToonExporter
         {
             if (string.IsNullOrEmpty(identity) || !IsValid(author)) return;
             EditorPrefs.SetString(PreferencePrefix + identity, author.Trim());
-        }
-
-        internal static void Forget(string identity)
-        {
-            if (!string.IsNullOrEmpty(identity)) EditorPrefs.DeleteKey(PreferencePrefix + identity);
         }
 
         internal static string Remembered(GameObject avatar) => Remembered(Identity(avatar));

@@ -1,4 +1,5 @@
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -60,7 +61,8 @@ namespace VRVlog.LilToonExporter
                 !material.HasProperty("_EmissionGradTex")) return Color.white;
             var texture = material.GetTexture("_EmissionGradTex");
             if (texture == null) return Color.white; // lilToon's default image is white
-            var row = TextureColors.ReadLinear(texture, Mathf.Clamp(texture.width, 1, 256), 1);
+            // One sample per texel: a narrower row would skip texels when it shrinks the image.
+            var row = TextureColors.ReadLinear(texture, Mathf.Max(texture.width, 1), 1);
             var speed = material.HasProperty("_EmissionGradSpeed") ? material.GetFloat("_EmissionGradSpeed") : 1f;
             var sum = Vector4.zero;
             var count = 0;
@@ -75,7 +77,5 @@ namespace VRVlog.LilToonExporter
             return Finite(sum.x) && Finite(sum.y) && Finite(sum.z) ? new Color(sum.x, sum.y, sum.z, 1) : Color.white;
         }
 #endif
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

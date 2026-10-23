@@ -9,9 +9,9 @@ namespace VRVlog.LilToonExporter
 {
     // The choices of one avatar's export: manual exclusions, the gimmick
     // auto-exclusion and its exceptions, blink, poses and the VRM license.
-    // The export window, the app transfer and batch callers all export through
-    // this class, so a VRM saved from any of them is built the same way.
-    // ExportSettingsStore remembers it per avatar outside the avatar itself.
+    // The expression board and the app transfer read them; the export itself
+    // runs through the board. ExportSettingsStore remembers them per avatar
+    // outside the avatar itself.
     internal sealed class ExportSettings
     {
         internal readonly List<GameObject> ExcludedObjects = new List<GameObject>();
@@ -98,46 +98,6 @@ namespace VRVlog.LilToonExporter
             text.Append('|').Append(string.Join("\u001f", poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => item.Key + "\u001e" + item.Value)));
             text.Append('|').Append(JsonUtility.ToJson(License ?? new AvatarLicenseOptions()));
             return text.ToString();
-        }
-
-        // Builds the VRM of avatar with these settings. The stage guard follows
-        // the project-wide choice (ExportStageGuard.ContinueByDefault), and
-        // AudioLink is always off on the export copy because the app cannot drive it.
-        internal byte[] Export(GameObject avatar, string name, string author, ICollection<string> warnings,
-            ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport)
-        {
-            if (avatar == null) throw new InvalidOperationException(ExporterLocalization.T("この書き出しで選んだアバターが見つかりません。アバターを指定し直してください。"));
-            UniVrmOneClickExporter.ValidateSourceHumanoid(avatar);
-            UniVrmOneClickExporter.ValidateSourceHasMesh(avatar);
-            if (recoveryReport != null) recoveryReport.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
-            var vrm = UniVrmOneClickExporter.Export(avatar, name, author, warnings,
-                exporterVersion: LilToonExporterWindow.PackageVersion(), lilToonVersion: LilToonExporterWindow.RequireLilToon(avatar, warnings),
-                excludedObjects: Exclusions(), gimmickOptions: Gimmicks(), blinkOptions: Blink, poseOptions: Poses,
-                recoveryOptions: recoveryOptions, recoveryReport: recoveryReport, licenseOptions: License, disableAudioLink: true);
-            UniVrmOneClickExporter.ValidateOutputHasMesh(vrm);
-            return vrm;
-        }
-
-        // The create step of LilToonExporterWindow.ExportAndSaveNormally. It
-        // keeps a copy taken now, so a retry from the failure window uses the
-        // choices of this attempt even if the window has changed since.
-        internal Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> Creator(GameObject avatar, string name, string author)
-        {
-            var snapshot = Copy();
-            return (options, report, warnings) => snapshot.Export(avatar, name, author, warnings, options, report);
-        }
-
-        // Batch entry: exports avatar with its remembered settings to
-        // destination without dialogs, like the export window would. Returns
-        // the recovery session of a failed export (nothing saved), else null.
-        internal static ExportRecoverySession SaveVrm(GameObject avatar, string destination, string author, string name = null,
-            Action<byte[], IEnumerable<string>> completed = null)
-        {
-            if (avatar == null) throw new ArgumentNullException(nameof(avatar));
-            var settings = ExportSettingsStore.Load(avatar);
-            var avatarName = !string.IsNullOrWhiteSpace(name) ? name.Trim() : !string.IsNullOrWhiteSpace(avatar.name) ? avatar.name.Trim() : "avatar";
-            return LilToonExporterWindow.ExportAndSaveNormally(avatar, destination, settings.Creator(avatar, avatarName, author), completed,
-                settings.Exclusions(), settings.Gimmicks(), interactive: false);
         }
     }
 }

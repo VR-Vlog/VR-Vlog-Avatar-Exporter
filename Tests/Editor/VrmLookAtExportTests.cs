@@ -41,46 +41,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public async Task MeasuredEyeLookPosesBecomeOneToOneRangeMaps()
-        {
-            using var fixture = LilToonFixture(eyes: true);
-            var animator = fixture.Source.GetComponent<Animator>();
-            var left = animator.GetBoneTransform(HumanBodyBones.LeftEye);
-            var right = animator.GetBoneTransform(HumanBodyBones.RightEye);
-            // Positive X rotation turns +Z downward; positive Y turns it toward +X.
-            EnableEyeLook(fixture.Source, left, right, new Dictionary<string, (Quaternion Left, Quaternion Right)>
-            {
-                ["eyesLookingStraight"] = (Quaternion.identity, Quaternion.identity),
-                ["eyesLookingUp"] = (Quaternion.Euler(-12, 0, 0), Quaternion.Euler(-14, 0, 0)),
-                ["eyesLookingDown"] = (Quaternion.Euler(16, 0, 0), Quaternion.Euler(15, 0, 0)),
-                ["eyesLookingLeft"] = (Quaternion.Euler(0, -30, 0), Quaternion.Euler(0, -20, 0)),
-                ["eyesLookingRight"] = (Quaternion.Euler(0, 20, 0), Quaternion.Euler(0, 30, 0)),
-            });
-            var warnings = new List<string>();
-            var bytes = Export(fixture, warnings);
-            var lookAt = LookAt(bytes);
-            Assert.That(lookAt["type"], Is.EqualTo("bone"));
-            AssertVector(lookAt["offsetFromHeadBone"], new Vector3(0, .05f, .05f));
-            // Each eye turns 30 degrees outward and 20 inward; both eyes must
-            // stay within their own limits, so up and down use the smaller one.
-            AssertRange(lookAt["rangeMapHorizontalOuter"], 30, 30);
-            AssertRange(lookAt["rangeMapHorizontalInner"], 20, 20);
-            AssertRange(lookAt["rangeMapVerticalUp"], 12, 12);
-            AssertRange(lookAt["rangeMapVerticalDown"], 15, 15);
-            Assert.That(warnings, Has.None.Contains(ExporterLocalization.T(VrmLookAtExport.UnmeasuredWarning)));
-            var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-            try
-            {
-                Assert.That(imported.Vrm.LookAt.HorizontalOuter.CurveXRangeDegree, Is.EqualTo(30).Within(Tolerance));
-                Assert.That(imported.Vrm.LookAt.HorizontalOuter.CurveYRangeDegree, Is.EqualTo(30).Within(Tolerance));
-            }
-            finally { Object.DestroyImmediate(imported.gameObject); }
-            // Measuring never edits the source eyes.
-            Assert.That(left.localRotation, Is.EqualTo(Quaternion.identity));
-            Assert.That(right.localRotation, Is.EqualTo(Quaternion.identity));
-        }
-
-        [Test]
         public void UnmeasurableEyeLookKeepsTheDefaultRangeAndWarns()
         {
             using var fixture = LilToonFixture(eyes: true);
@@ -188,6 +148,9 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Vector3.Distance(origin, midpoint), Is.LessThan(1e-4f));
             }
             finally { Object.DestroyImmediate(imported.gameObject); }
+            // Measuring never edits the source eyes.
+            Assert.That(left.localRotation, Is.EqualTo(Quaternion.identity));
+            Assert.That(right.localRotation, Is.EqualTo(Quaternion.identity));
         }
 
         [Test]

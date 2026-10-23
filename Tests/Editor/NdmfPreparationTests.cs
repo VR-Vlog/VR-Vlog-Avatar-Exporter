@@ -748,6 +748,7 @@ namespace VRVlog.LilToonExporter.Tests
             var mergeType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarMergeArmature");
             var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
             if (mergeType == null || rootType == null) Assert.Ignore("Install Modular Avatar and NDMF to run their real processing pipeline.");
+            IgnoreNonVRChatAvatarBeforeMa113();
             source.AddComponent(rootType);
             var mainRig = Child(source.transform, "MainRig", Vector3.zero);
             var mainArm = Child(mainRig, "UpperArm.L", new Vector3(.25f, .7f, 0f));
@@ -842,6 +843,16 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         private static BoneWeight ArmWeight() => new BoneWeight { boneIndex0 = 0, weight0 = 1f };
+
+        // MA before 1.13.0 skips avatars without a VRChat Avatar Descriptor, so
+        // fixtures that mark a non-VRChat avatar with NDMFAvatarRoot cannot run there.
+        internal static void IgnoreNonVRChatAvatarBeforeMa113()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
+                value.name == "nadena.dev.modular-avatar");
+            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 13))
+                Assert.Ignore("Non-VRChat avatars need Modular Avatar 1.13.0 or later (installed " + package.version + ").");
+        }
 
         private static Type InstalledType(string name)
         {

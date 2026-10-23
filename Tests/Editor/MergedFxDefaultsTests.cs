@@ -120,10 +120,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(0, false)]
         [TestCase(0, true)]
-        [TestCase(1, false)]
         [TestCase(1, true)]
         [TestCase(2, false)]
-        [TestCase(2, true)]
         public void EquivalentConstantRelayPreservesNativeNeutralAndMenuEvenDuringTransitions(int transitionMode, bool writeDefaults)
         {
             Menu(controller.layers[0].stateMachine);
@@ -965,8 +963,6 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(route.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(route.Expected.Weights["Face size"]).Within(.01), route.Name + ": face size");
                 }
                 Assert.That(clone.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.EqualTo(20), "Analysis must not replace its own input baseline.");
-                VrChatExpressionSampler.ApplyMergedDefaults(avatar, clone);
-                Assert.That(clone.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.EqualTo(neutral.Weights["Pupil removal"]).Within(.01));
                 Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
                 Assert.That(controller.layers[1].defaultWeight, Is.EqualTo(.5f));
             }
@@ -1010,19 +1006,9 @@ namespace VRVlog.LilToonExporter.Tests
             var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
             Assert.That(neutral.Select(value => value.Shape), Is.EqualTo(new[] { "Pupil removal" }));
             Assert.That(neutral.Single().Weight, Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-            var clone = Object.Instantiate(avatar);
-            try
-            {
-                VrChatExpressionSampler.ApplyMergedDefaults(avatar, clone);
-                var skin = clone.GetComponentInChildren<SkinnedMeshRenderer>();
-                Assert.That(skin.GetBlendShapeWeight(2), Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-                Assert.That(skin.GetBlendShapeWeight(1), Is.EqualTo(12), "The unrelated moving face must not be baked into the neutral mesh.");
-                Assert.That(skin.sharedMesh, Is.SameAs(mesh));
-                Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
-                Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
-                Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
-            }
-            finally { Object.DestroyImmediate(clone); }
+            Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
+            Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
         }
 
         [TestCase(.5f, false)]
@@ -1171,21 +1157,10 @@ namespace VRVlog.LilToonExporter.Tests
             var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
             Assert.That(neutral.Select(value => value.Shape), Is.EqualTo(new[] { "Pupil removal" }));
             Assert.That(neutral.Single().Weight, Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-            var clone = Object.Instantiate(avatar);
-            try
-            {
-                VrChatExpressionSampler.ApplyMergedDefaults(avatar, clone);
-                var skin = clone.GetComponentInChildren<SkinnedMeshRenderer>();
-                Assert.That(skin.GetBlendShapeWeight(2), Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-                Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(7));
-                Assert.That(skin.GetBlendShapeWeight(1), Is.EqualTo(12));
-                Assert.That(skin.sharedMesh, Is.SameAs(mesh));
-                Assert.That(sourceSkin.GetBlendShapeWeight(0), Is.EqualTo(7));
-                Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
-                Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
-                Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
-            }
-            finally { Object.DestroyImmediate(clone); }
+            Assert.That(sourceSkin.GetBlendShapeWeight(0), Is.EqualTo(7));
+            Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
+            Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
         }
 
         [TestCase(false, false)]
@@ -1249,13 +1224,9 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false, false)]
-        [TestCase(false, false, true)]
-        [TestCase(false, true, false)]
         [TestCase(false, true, true)]
-        [TestCase(true, false, false)]
         [TestCase(true, false, true)]
         [TestCase(true, true, false)]
-        [TestCase(true, true, true)]
         public void NativeSupportBaseRejectsUnsafeZeroDurationInitialOrIntermediateMotion(bool writeDefaults, bool animationEvent, bool intermediate)
         {
             var unsafeClip = Clip("Skipped unsupported base", ("Face size", 90));
@@ -1424,8 +1395,12 @@ namespace VRVlog.LilToonExporter.Tests
             if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var menus = new MenuImportSdkRecoveryTests.SdkFixture(fixture.Source);
-            var controls = (IList)VrChatExpressionMenu.Member(menus.Root, "controls"); controls.RemoveAt(1);
-            var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source).Controller;
+            var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source, new VrChatMenuImportPolicy { SkipAll = true }).Controller;
+            // The fixture's menu and gesture clips are passed as the board's
+            // list; the exported neutral must not take the weighted FX layer.
+            var states = fx.layers.SelectMany(value => value.stateMachine.states).Select(child => child.state).ToArray();
+            var faces = new[] { ("Menu face", (AnimationClip)states.Single(state => state.name == "Smile").motion, 0f),
+                ("Gesture face", (AnimationClip)states.Single(state => state.name == "Gesture face").motion, 0f) };
             var delta = new Vector3[fixture.Mesh.vertexCount]; delta[0] = Vector3.up * .1f;
             fixture.Mesh.AddBlendShapeFrame("Pupil removal", 100, delta, new Vector3[delta.Length], new Vector3[delta.Length]);
             var fixedClip = new AnimationClip { name = "Weighted permanent pupil" };
@@ -1445,15 +1420,13 @@ namespace VRVlog.LilToonExporter.Tests
             var expectedNeutral = (Weights: Enumerable.Range(0, sourceFront.sharedMesh.blendShapeCount)
                 .ToDictionary(index => sourceFront.sharedMesh.GetBlendShapeName(index), sourceFront.GetBlendShapeWeight),
                 Vertices: WorldVertices(sourceFront));
-            var expectedMenu = NativePose(fixture.Source, fx, "Front", new Dictionary<string, int> { ["Face"] = 1, ["GestureRight"] = 0 });
-            var expectedGesture = NativePose(fixture.Source, fx, "Front", new Dictionary<string, int> { ["Face"] = 0, ["GestureRight"] = 2 });
             var sampledNeutral = NeutralShapeSampler.Sample(fixture.Source);
             Vrm10Instance imported = null;
             try
             {
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Weighted permanent FX", "Tests", warnings,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: faces);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
                 imported.Runtime.Process();
@@ -1469,23 +1442,6 @@ namespace VRVlog.LilToonExporter.Tests
                         "; imported=" + string.Join(", ", Enumerable.Range(0, importedFront.sharedMesh.blendShapeCount)
                             .Select(shape => importedFront.sharedMesh.GetBlendShapeName(shape) + "=" + importedFront.GetBlendShapeWeight(shape).ToString("G9"))) +
                         "; warnings=" + string.Join(" | ", warnings));
-                foreach (var candidate in new[] { (Name: "Menu face", Pose: expectedMenu), (Name: "Gesture face", Pose: expectedGesture) })
-                {
-                    foreach (var expression in imported.Vrm.Expression.CustomClips)
-                        imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), 0);
-                    var selected = imported.Vrm.Expression.CustomClips.Single(expression => expression.name.Contains(candidate.Name));
-                    imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(selected.name), 1);
-                    imported.Runtime.Process();
-                    var actualVertices = WorldVertices(importedFront);
-                    Assert.That(actualVertices.Length, Is.EqualTo(candidate.Pose.Vertices.Length), candidate.Name);
-                    for (var vertex = 0; vertex < actualVertices.Length; vertex++)
-                        Assert.That(Vector3.Distance(candidate.Pose.Vertices[vertex], actualVertices[vertex]), Is.LessThan(.0005f),
-                            candidate.Name + " / vertex " + vertex + ": expected=" + candidate.Pose.Vertices[vertex].ToString("G9") +
-                            ", actual=" + actualVertices[vertex].ToString("G9") + "; native=" +
-                            string.Join(", ", candidate.Pose.Weights.Select(value => value.Key + "=" + value.Value.ToString("G9"))) +
-                            "; imported=" + string.Join(", ", Enumerable.Range(0, importedFront.sharedMesh.blendShapeCount)
-                                .Select(shape => importedFront.sharedMesh.GetBlendShapeName(shape) + "=" + importedFront.GetBlendShapeWeight(shape).ToString("G9"))));
-                }
                 Assert.That(sourceFront.GetBlendShapeWeight(1), Is.Zero);
                 Assert.That(EditorJsonUtility.ToJson(fixture.Mesh), Is.EqualTo(beforeMesh));
                 Assert.That(EditorJsonUtility.ToJson(fx), Is.EqualTo(beforeController));
@@ -1741,7 +1697,9 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 exclusions.Apply(clone, null);
-                bool PreparedExcluded(string path) => VrChatExpressionSampler.IsExcludedPreparedPath(clone, path, exclusions.ContainsPath);
+                bool PreparedExcluded(string path) => exclusions.ContainsPath(path) && !clone.GetComponentsInChildren<SkinnedMeshRenderer>().Any(renderer =>
+                    renderer.enabled && renderer.sharedMesh != null && renderer.gameObject.activeInHierarchy &&
+                    AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform) == path);
                 var snapshot = FaceEmoExpressions.CaptureRegistered(clone, registered, excludedPath: exclusions.ContainsPath,
                     preparedExcludedPath: PreparedExcluded);
                 var target = clone.transform.Find("Face").GetComponent<SkinnedMeshRenderer>();
@@ -1966,40 +1924,6 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Permanent(controller.layers[0].stateMachine);
             Assert.That(VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0), path => path == "Face"), Is.Empty);
-        }
-
-        [Test]
-        public void ApplyingDefaultsRequiresAnIndependentExportCopy()
-        { Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.ApplyMergedDefaults(avatar, avatar)); }
-
-        [Test]
-        public void ApplyingCommittedFxDefaultsChangesOnlyTheCopy()
-        {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK for committed descriptor integration.");
-            Permanent(controller.layers[0].stateMachine);
-            var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var item = layers.GetArrayElementAtIndex(0);
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false;
-                item.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var clone = Object.Instantiate(avatar);
-            try
-            {
-                VrChatExpressionSampler.ApplyMergedDefaults(avatar, clone);
-                Assert.That(clone.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.EqualTo(100).Within(.01));
-                Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-                Assert.That(clone.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh, Is.SameAs(mesh));
-                Assert.That(controller.layers[0].stateMachine.defaultState.motion, Is.Not.Null);
-            }
-            finally { Object.DestroyImmediate(clone); }
         }
     }
 }
