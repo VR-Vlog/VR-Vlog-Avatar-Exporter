@@ -78,7 +78,7 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-step-panel{min-width:0;text-align:center}
 #exporter-page .vrx-step-panel>p{font-size:12px;line-height:1.85;color:var(--muted);margin-top:16px}
 #exporter-page .vrx-menu-scene{position:relative;aspect-ratio:380/200;overflow:hidden;border-radius:5px}
-#exporter-page .vrx-menu-scene img{position:absolute;max-width:none;width:505.263158%;left:0;top:-37.5%}
+#exporter-page .vrx-menu-scene img{position:absolute;max-width:none;width:100%;left:0;top:0}
 #exporter-page .vrx-submenu{width:min(100%,265px);margin:14px auto 0;border-radius:5px}
 #exporter-page .vrx-transfer-top{width:min(100%,280px);aspect-ratio:422/300;position:relative;overflow:hidden;border-radius:7px 7px 0 0;margin:auto}
 #exporter-page .vrx-transfer-top img{width:100%;clip-path:inset(2px round 8px)}
