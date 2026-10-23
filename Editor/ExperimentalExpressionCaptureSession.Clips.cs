@@ -110,11 +110,13 @@ namespace VRVlog.LilToonExporter
                     var root = (string)null;
                     if (component.GetType().FullName == "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator")
                     {
-                        var mode = component.GetType().GetField("pathMode").GetValue(component).ToString();
+                        // Another Modular Avatar version may lack these fields: without a
+                        // mode the root stays unknown, without a root object it is the component's.
+                        var mode = component.GetType().GetField("pathMode")?.GetValue(component)?.ToString();
                         if (mode == "Absolute") root = "";
-                        else
+                        else if (mode != null)
                         {
-                            var reference = component.GetType().GetField("relativePathRoot").GetValue(component);
+                            var reference = component.GetType().GetField("relativePathRoot")?.GetValue(component);
                             var owner = reference?.GetType().GetMethod("Get", new[] { typeof(Component) })?.Invoke(reference, new object[] { Source.transform }) as GameObject;
                             root = AnimationUtility.CalculateTransformPath((owner != null ? owner : component.gameObject).transform, Source.transform);
                         }

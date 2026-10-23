@@ -66,10 +66,22 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                Rebase(mesh, baked, weights);
+                List<int> kept;
+                // A mesh Unity will not rebuild (for example repeated shape names)
+                // is exported as authored, with its weights, instead of stopping.
+                try { kept = Rebase(mesh, baked, weights); }
+                catch (Exception error) when (error is InvalidOperationException || error is ArgumentException)
+                {
+                    warnings?.Add($"{skin.name}: BlendShapeの構成に対応できないため、調整済みBlendShapeを基本の形に保存せずそのまま書き出しました。");
+                    continue;
+                }
                 copy.sharedMesh = baked;
-                for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
+                for (var i = 0; i < weights.Length; i++)
+                    if (!kept.Contains(i)) copy.SetBlendShapeWeight(i, 0f);
                 warnings?.Add($"{skin.name}: 調整済みBlendShapeを基本の顔・体形として保存しました。表情はこの形から変化します。");
+                if (kept.Count > 0)
+                    warnings?.Add($"{skin.name}: フレームの構成に対応できないBlendShapeは基本の形に保存せず、そのまま書き出しました: " +
+                        string.Join(", ", kept.ConvertAll(mesh.GetBlendShapeName)));
             }
         }
 
@@ -154,17 +166,33 @@ namespace VRVlog.LilToonExporter
         private static bool Finite(Vector3 value) => Finite(value.x) && Finite(value.y) && Finite(value.z);
         private static bool Nonzero(Vector3 value) => value.x != 0f || value.y != 0f || value.z != 0f;
 
-        internal static void Rebase(Mesh source, Mesh target, float[] weights)
+        // Returns the shapes whose frames cannot be evaluated. They are copied as
+        // authored and keep their weight: only their rest stays out of the base.
+        internal static List<int> Rebase(Mesh source, Mesh target, float[] weights)
         {
             if (ReferenceEquals(source, target)) throw new ArgumentException("The source mesh must remain unchanged.");
             if (weights.Length != source.blendShapeCount) throw new ArgumentException("BlendShape weight count mismatch.");
             var vertices = source.vertices;
             var normals = source.normals;
             var tangents = source.tangents;
+            var kept = new List<int>();
             target.ClearBlendShapes();
             for (var shape = 0; shape < weights.Length; shape++)
             {
-                var rest = Evaluate(source, shape, weights[shape]);
+                Deltas rest;
+                try { rest = Evaluate(source, shape, weights[shape]); }
+                catch (InvalidOperationException)
+                {
+                    kept.Add(shape);
+                    for (var i = 0; i < source.GetBlendShapeFrameCount(shape); i++)
+                    {
+                        var authored = new Deltas(vertices.Length);
+                        source.GetBlendShapeFrameVertices(shape, i, authored.Vertices, authored.Normals, authored.Tangents);
+                        target.AddBlendShapeFrame(source.GetBlendShapeName(shape), source.GetBlendShapeFrameWeight(shape, i),
+                            authored.Vertices, authored.Normals, authored.Tangents);
+                    }
+                    continue;
+                }
                 // UniVRM emits one morph target per shape. Keep its existing final
                 // frame endpoint, subtracting just this shape's authored offset.
                 // A half-closed default eye can then close fully without doubling.
@@ -196,6 +224,7 @@ namespace VRVlog.LilToonExporter
             if (normals.Length > 0) target.normals = normals;
             if (tangents.Length > 0) target.tangents = tangents;
             target.RecalculateBounds();
+            return kept;
         }
 
         // One composed expression is one residual morph per renderer. Computing
@@ -276,7 +305,10 @@ namespace VRVlog.LilToonExporter
         private static bool HasZeroRestOffset(Mesh mesh, int shape)
         {
             if (!SpansZero(mesh, shape)) return false;
-            var rest = Evaluate(mesh, shape, 0);
+            Deltas rest;
+            // Rebase copies a shape it cannot evaluate as authored.
+            try { rest = Evaluate(mesh, shape, 0); }
+            catch (InvalidOperationException) { return false; }
             for (var vertex = 0; vertex < mesh.vertexCount; vertex++)
                 if (Nonzero(rest.Vertices[vertex]) || Nonzero(rest.Normals[vertex]) || Nonzero(rest.Tangents[vertex])) return true;
             return false;

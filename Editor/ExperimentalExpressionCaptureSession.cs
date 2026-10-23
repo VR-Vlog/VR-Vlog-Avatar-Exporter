@@ -184,8 +184,23 @@ namespace VRVlog.LilToonExporter
                             Warnings.Add(string.Format(ExporterLocalization.T("同じ階層に同じ名前のメッシュがあるため表情の記録対象から外しました: {0}"), path));
                         continue;
                     }
-                    if (VrChatExpressionSampler.FindRenderer(Copy, path) != renderer)
-                        throw new InvalidOperationException(ExporterLocalization.T("表情のメッシュを一意に特定できません。"));
+                    // The same for a mesh its path cannot name (a "/" in an object name
+                    // above it, or another object at that path) or with a broken weight.
+                    SkinnedMeshRenderer resolved;
+                    try { resolved = VrChatExpressionSampler.FindRenderer(Copy, path); }
+                    catch (InvalidOperationException) { resolved = null; }
+                    if (resolved != renderer)
+                    {
+                        if (skippedPaths.Add(path))
+                            Warnings.Add(string.Format(ExporterLocalization.T("階層の名前からメッシュを特定できないため表情の記録対象から外しました: {0}"), path));
+                        continue;
+                    }
+                    if (Enumerable.Range(0, mesh.blendShapeCount).Any(shape => !Finite(renderer.GetBlendShapeWeight(shape))))
+                    {
+                        if (skippedPaths.Add(path))
+                            Warnings.Add(string.Format(ExporterLocalization.T("BlendShapeに不正な変形量があるため表情の記録対象から外しました: {0}"), path));
+                        continue;
+                    }
                     renderer.forceMatrixRecalculationPerRender = true;
                     Channels.Add(new Channel { Renderer = renderer, Mesh = mesh, Path = path,
                         Shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray(),
@@ -203,7 +218,9 @@ namespace VRVlog.LilToonExporter
                             if (!skippedPaths.Contains(value.Path)) Set(neutral, value.Path, value.Shape, value.Weight);
                         ValidatePose(neutral); ApplyUnchecked(neutral);
                     }
-                    catch (InvalidOperationException error) { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
+                    // Any failure reading the FX leaves the face as it is.
+                    catch (Exception error) when (!ExportStageGuard.IsCancellation(error))
+                    { Warnings.Add(ExporterLocalization.T("FXの基準表情を収録できませんでした: ") + error.Message); }
                 }
                 steps.Next("snapshot");
                 Baseline = Snapshot("基準の顔");
