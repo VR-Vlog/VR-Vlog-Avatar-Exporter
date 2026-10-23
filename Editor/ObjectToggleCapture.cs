@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Animations;
@@ -72,6 +74,10 @@ namespace VRVlog.LilToonExporter
             var candidates = Enumerable.Range(1, transforms.Length - 1).Where(i => withMesh.Contains(transforms[i])).ToArray();
             if (candidates.Length == 0) return null;
             var result = new ObjectToggleCapture();
+            // A parameter no object-switching layer reads leaves every object
+            // as its default does, so it is not played; an FX without such a
+            // layer is never played at all.
+            var switching = ParametersThatSwitchObjects(menu.Controller);
             using var sampler = new Sampler(clone, menu.Controller);
             var samples = new Dictionary<(string, int), bool[]>();
             bool[] atDefaults = null;
@@ -118,7 +124,7 @@ namespace VRVlog.LilToonExporter
                     if (!groupItems.Any(other => other.Value == item.Value && other.Name == item.Name && other.Path.SequenceEqual(item.Path)))
                         groupItems.Add(item);
                 }
-                if (groupItems.Count == 0) continue;
+                if (groupItems.Count == 0 || switching != null && !switching.Contains(parameter)) continue;
                 var values = new[] { 0, defaultValue }.Concat(groupItems.Select(item => item.Value)).Distinct().OrderBy(value => value).ToList();
                 var states = values.ToDictionary(value => value, value => Sample(parameter, value, defaultValue));
                 // A node is a target when the values disagree on it; one that
@@ -220,6 +226,97 @@ namespace VRVlog.LilToonExporter
             return document.Write();
         }
 
+        // The parameters whose value can change an object's activeSelf: those
+        // read by a layer whose clips set m_IsActive, drive animator parameters
+        // another layer may read, or whose behaviours run, and while any layer
+        // sets m_IsActive, those read by a layer that mixes write defaults (a
+        // write-defaults state there resets what the layers below set; the
+        // others leave it). Any other layer adds the same to every object in
+        // every state. Null stands for every parameter, for controllers this
+        // does not read (override controllers and synced layers).
+        internal static HashSet<string> ParametersThatSwitchObjects(RuntimeAnimatorController runtime)
+        {
+            var clips = new Dictionary<AnimationClip, (bool SetsActive, bool DrivesParameters)>();
+            if (!(runtime is AnimatorController controller) || controller.layers.Any(layer => layer.syncedLayerIndex >= 0))
+                return runtime.animationClips.Any(clip => clip != null && AnimationUtility.GetCurveBindings(clip).Any(IsActiveBinding)) ? null : new HashSet<string>(StringComparer.Ordinal);
+            var parameterNames = new HashSet<string>(controller.parameters.Select(parameter => parameter.name), StringComparer.Ordinal);
+            (bool SetsActive, bool DrivesParameters) Read(AnimationClip clip)
+            {
+                if (clips.TryGetValue(clip, out var known)) return known;
+                var bindings = AnimationUtility.GetCurveBindings(clip);
+                return clips[clip] = (bindings.Any(IsActiveBinding),
+                    bindings.Any(binding => binding.type == typeof(Animator) && parameterNames.Contains(binding.propertyName)));
+            }
+            var layers = controller.layers.Select(layer =>
+            {
+                var reads = new HashSet<string>(StringComparer.Ordinal);
+                var writeDefaults = new HashSet<bool>();
+                bool setsActive = false, drives = false;
+                var seen = new HashSet<UnityEngine.Object>();
+                void Conditions(IEnumerable<AnimatorTransitionBase> transitions)
+                {
+                    foreach (var transition in transitions)
+                        if (transition != null)
+                            foreach (var condition in transition.conditions) reads.Add(condition.parameter);
+                }
+                void Motion(Motion motion)
+                {
+                    if (motion == null || !seen.Add(motion)) return;
+                    if (motion is AnimationClip clip)
+                    {
+                        var (active, driving) = Read(clip);
+                        setsActive |= active;
+                        drives |= driving;
+                    }
+                    else if (motion is BlendTree tree)
+                    {
+                        reads.Add(tree.blendParameter);
+                        reads.Add(tree.blendParameterY);
+                        foreach (var child in tree.children)
+                        {
+                            reads.Add(child.directBlendParameter);
+                            Motion(child.motion);
+                        }
+                    }
+                }
+                void Machine(AnimatorStateMachine machine)
+                {
+                    if (machine == null || !seen.Add(machine)) return;
+                    drives |= ExpressionDependencies.HasEffectfulBehaviours(machine.behaviours);
+                    Conditions(machine.anyStateTransitions);
+                    Conditions(machine.entryTransitions);
+                    foreach (var child in machine.states)
+                    {
+                        var state = child.state;
+                        if (state == null) continue;
+                        writeDefaults.Add(state.writeDefaultValues);
+                        drives |= ExpressionDependencies.HasEffectfulBehaviours(state.behaviours);
+                        Conditions(state.transitions);
+                        if (state.speedParameterActive) reads.Add(state.speedParameter);
+                        if (state.cycleOffsetParameterActive) reads.Add(state.cycleOffsetParameter);
+                        if (state.mirrorParameterActive) reads.Add(state.mirrorParameter);
+                        if (state.timeParameterActive) reads.Add(state.timeParameter);
+                        Motion(state.motion);
+                    }
+                    foreach (var child in machine.stateMachines)
+                    {
+                        Conditions(machine.GetStateMachineTransitions(child.stateMachine));
+                        Machine(child.stateMachine);
+                    }
+                }
+                Machine(layer.stateMachine);
+                return (Reads: reads, SetsActive: setsActive, Drives: drives, MixedWriteDefaults: writeDefaults.Count > 1);
+            }).ToList();
+            var anySetsActive = layers.Any(layer => layer.SetsActive);
+            var result = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var layer in layers)
+                if (layer.SetsActive || layer.Drives || anySetsActive && layer.MixedWriteDefaults)
+                    result.UnionWith(layer.Reads);
+            return result;
+        }
+
+        static bool IsActiveBinding(EditorCurveBinding binding) => binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive";
+
         static bool Integral(float raw, out int value)
         {
             value = 0;
@@ -252,22 +349,30 @@ namespace VRVlog.LilToonExporter
         static string PathOf(GameObject root, Transform transform) =>
             UnityEditor.AnimationUtility.CalculateTransformPath(transform, root.transform);
 
-        // Plays the FX on one preview copy of the avatar. Every sample starts
-        // from the copy's own activeSelf with a new graph, so write-defaults-off
-        // states of an earlier sample do not leak into the next.
+        // Plays the FX on one preview copy of the avatar, made on first use.
+        // Every sample starts from the copy's own activeSelf with a new graph,
+        // so write-defaults-off states of an earlier sample do not leak into
+        // the next.
         sealed class Sampler : IDisposable
         {
-            readonly Scene scene;
-            readonly GameObject copy;
-            readonly Transform[] transforms;
-            readonly bool[] rest;
-            readonly Animator animator;
+            readonly GameObject avatar;
             readonly RuntimeAnimatorController controller;
             readonly Dictionary<string, AnimatorControllerParameter> parameters = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
+            Scene scene;
+            GameObject copy;
+            Transform[] transforms;
+            bool[] rest;
+            Animator animator;
 
             internal Sampler(GameObject avatar, RuntimeAnimatorController controller)
             {
+                this.avatar = avatar;
                 this.controller = controller;
+            }
+
+            void Open()
+            {
+                if (scene.IsValid()) return;
                 scene = EditorSceneManager.NewPreviewScene();
                 try
                 {
@@ -310,6 +415,7 @@ namespace VRVlog.LilToonExporter
             // The controller's own default for a parameter the avatar does not list.
             internal float Default(string name)
             {
+                Open();
                 if (!parameters.TryGetValue(name, out var parameter)) return 0f;
                 switch (parameter.type)
                 {
@@ -323,6 +429,7 @@ namespace VRVlog.LilToonExporter
             // activeSelf of every object of the avatar, in hierarchy order.
             internal bool[] Sample(Dictionary<string, float> values)
             {
+                Open();
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
                 var graph = PlayableGraph.Create("VR Vlog object toggle sampling");
                 try

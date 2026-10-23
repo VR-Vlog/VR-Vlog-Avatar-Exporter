@@ -188,6 +188,132 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clone); }
         }
 
+        // Only the parameters a layer that can switch objects reads are
+        // played; any other leaves every object as its default does.
+        [Test]
+        public void OnlyParametersOfLayersThatSwitchObjectsArePlayed()
+        {
+            var folder = "__VRVlogObjectToggleLayers_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folder);
+            var directory = "Assets/" + folder;
+            try
+            {
+                var fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
+                var serial = 0;
+                AnimationClip Clip(params EditorCurveBinding[] bindings)
+                {
+                    var clip = new AnimationClip();
+                    foreach (var binding in bindings) AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1f / 60, 1));
+                    AssetDatabase.CreateAsset(clip, directory + "/Clip" + serial++ + ".anim");
+                    return clip;
+                }
+                var hat = EditorCurveBinding.FloatCurve("Hat", typeof(GameObject), "m_IsActive");
+                var smile = EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Smile");
+                // Two states of one bool parameter.
+                AnimatorStateMachine Layer(string parameter, Motion off, Motion on, bool offWritesDefaults = false, bool onWritesDefaults = false)
+                {
+                    fx.AddParameter(parameter, AnimatorControllerParameterType.Bool);
+                    fx.AddLayer(parameter);
+                    var machine = fx.layers.Last().stateMachine;
+                    foreach (var (value, motion, writeDefaults) in new[] { (false, off, offWritesDefaults), (true, on, onWritesDefaults) })
+                    {
+                        var state = machine.AddState(parameter + value);
+                        state.motion = motion;
+                        state.writeDefaultValues = writeDefaults;
+                        var transition = machine.AddAnyStateTransition(state);
+                        transition.AddCondition(value ? AnimatorConditionMode.If : AnimatorConditionMode.IfNot, 0, parameter);
+                    }
+                    return machine;
+                }
+                string[] Switching() => ObjectToggleCapture.ParametersThatSwitchObjects(fx).OrderBy(name => name, StringComparer.Ordinal).ToArray();
+
+                Layer("Shape", Clip(smile), Clip());
+                // Mixed write defaults matter only once some layer sets m_IsActive.
+                Layer("Mixed", Clip(smile), Clip(), onWritesDefaults: true);
+                Assert.That(Switching(), Is.Empty, "An FX that sets no m_IsActive is never played.");
+
+                Layer("Hat", Clip(hat), Clip());
+                // A clip that drives a parameter another layer may read.
+                fx.AddParameter("Driven", AnimatorControllerParameterType.Float);
+                Layer("Driver", Clip(EditorCurveBinding.FloatCurve("", typeof(Animator), "Driven")), Clip());
+                // A blend tree under a sub-state machine, with its own parameter.
+                fx.AddParameter("Mix", AnimatorControllerParameterType.Float);
+                var machine = Layer("Nested", Clip(smile), Clip());
+                var tree = new BlendTree { name = "Tree", blendParameter = "Mix", hideFlags = HideFlags.HideInHierarchy };
+                AssetDatabase.AddObjectToAsset(tree, fx);
+                tree.AddChild(Clip(smile), 0);
+                tree.AddChild(Clip(hat), 1);
+                machine.AddStateMachine("Inner").AddState("Tree").motion = tree;
+                // "Blend" is the name an unused second blend parameter keeps;
+                // reading it as well only plays a parameter of that name.
+                Assert.That(Switching().Where(name => name != "Blend"), Is.EqualTo(new[] { "Driver", "Hat", "Mix", "Mixed", "Nested" }));
+
+                // A controller this does not read plays every parameter.
+                var overrides = new AnimatorOverrideController(fx);
+                try { Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(overrides), Is.Null); }
+                finally { Object.DestroyImmediate(overrides); }
+            }
+            finally { AssetDatabase.DeleteAsset(directory); }
+        }
+
+        [Test]
+        public void SyncedLayersAndOverridesPlayEveryParameterWhenAnyOfTheirClipsSwitchesObjects()
+        {
+            var folder = "__VRVlogObjectToggleSynced_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folder);
+            var directory = "Assets/" + folder;
+            try
+            {
+                var serial = 0;
+                AnimationClip Clip(string property, Type type)
+                {
+                    var clip = new AnimationClip();
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(type == typeof(GameObject) ? "Hat" : "Body", type, property), AnimationCurve.Constant(0, 1f / 60, 1));
+                    AssetDatabase.CreateAsset(clip, directory + "/Clip" + serial++ + ".anim");
+                    return clip;
+                }
+                AnimationClip Smile() => Clip("blendShape.Smile", typeof(SkinnedMeshRenderer));
+                AnimationClip Hat() => Clip("m_IsActive", typeof(GameObject));
+                AnimatorController Controller(string name, out AnimatorState state)
+                {
+                    var controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/" + name + ".controller");
+                    controller.AddParameter("Shape", AnimatorControllerParameterType.Bool);
+                    state = controller.layers[0].stateMachine.AddState("Smile");
+                    state.motion = Smile();
+                    controller.layers[0].stateMachine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.If, 0, "Shape");
+                    return controller;
+                }
+                void AddSynced(AnimatorController controller, AnimatorState state, Motion motion)
+                {
+                    var synced = new AnimatorControllerLayer { name = "Synced", defaultWeight = 1, syncedLayerIndex = 0, stateMachine = new AnimatorStateMachine { name = "Synced", hideFlags = HideFlags.HideInHierarchy } };
+                    AssetDatabase.AddObjectToAsset(synced.stateMachine, controller);
+                    synced.SetOverrideMotion(state, motion);
+                    controller.AddLayer(synced);
+                }
+
+                var quiet = Controller("Quiet", out var quietState);
+                AddSynced(quiet, quietState, Smile());
+                Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(quiet), Is.Empty, "A synced layer whose clips set no m_IsActive is not played.");
+
+                // The only m_IsActive is the synced layer's own motion for the state.
+                var synced = Controller("Synced", out var syncedState);
+                AddSynced(synced, syncedState, Hat());
+                Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(synced), Is.Null);
+
+                // The only m_IsActive is a clip the override puts in place of the smile.
+                var source = Controller("Source", out var sourceState);
+                var overrides = new AnimatorOverrideController(source);
+                try
+                {
+                    Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(overrides), Is.Empty);
+                    overrides[(AnimationClip)sourceState.motion] = Hat();
+                    Assert.That(ObjectToggleCapture.ParametersThatSwitchObjects(overrides), Is.Null);
+                }
+                finally { Object.DestroyImmediate(overrides); }
+            }
+            finally { AssetDatabase.DeleteAsset(directory); }
+        }
+
         [Test]
         public void ExportWritesTheTogglesAndTheMeshesThatAreOffByDefault()
         {
