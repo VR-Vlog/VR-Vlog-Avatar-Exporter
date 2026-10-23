@@ -53,7 +53,19 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QrReadySound = "QRができたら音を鳴らす";
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
-        internal const string Completed = "取り込みが終わりました";
+        internal const string Completed = "アプリに取り込みました";
+        internal const string TransferFailed = "転送できませんでした";
+        internal const string TransferAgain = "もう一度転送";
+        internal const string ChooseAnotherAvatar = "別のアバターを選ぶ";
+        internal const string Notes = "書き出し時の注意";
+        internal const string NoNotes = "書き出し時の注意はありません";
+        internal const string NoteCount = "書き出し時の注意 {0}件";
+        internal const string OtherNotes = "変換の内容";
+        internal const string CopyDiagnostics = "診断情報をコピー";
+        internal const string DiagnosticsCopied = "コピーしました";
+        internal const string DiagnosticsHint = "名前やパスは含みません";
+        internal const string ItemCount = "{0}件";
+        internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
         internal const string StartTransfer = "転送を始める";
         internal const string StopAndStart = "中止して始める";
@@ -65,9 +77,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
     {
         internal const int QuietZone = 4;
         internal const int MinimumSymbolSide = 300;
+        // The app icon in the middle of the "アプリに転送" QR, as a share of the drawn side (quiet zone included).
+        // A marked QR uses error correction H, which reads past the icon; the symbol is a few versions larger
+        // than at M for the same link. A link too long for H is drawn at M without the icon, so every name
+        // that fit before still fits.
+        internal const float MarkShare = 0.2f;
 
-        internal static BitMatrix Encode(string payload) => new QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 0, 0,
-            new Dictionary<EncodeHintType, object> { [EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M, [EncodeHintType.MARGIN] = QuietZone, [EncodeHintType.CHARACTER_SET] = "UTF-8" });
+        internal static BitMatrix Encode(string payload, bool marked = false) => new QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 0, 0,
+            new Dictionary<EncodeHintType, object> { [EncodeHintType.ERROR_CORRECTION] = marked ? ErrorCorrectionLevel.H : ErrorCorrectionLevel.M, [EncodeHintType.MARGIN] = QuietZone, [EncodeHintType.CHARACTER_SET] = "UTF-8" });
+
+        // Whether the QR for this link can carry the icon. Asked of the placeholder link, which is never
+        // shorter than the real one, so the real QR fits the slot sized from it.
+        internal static bool CanMark(string payload)
+        {
+            try { Encode(payload, true); return true; }
+            catch (InvalidOperationException) { return false; }
+            catch (WriterException) { return false; }
+        }
 
         // Side in GUI points for a matrix that includes its quiet zone. Every
         // module covers a whole number of screen pixels and the symbol inside
@@ -327,6 +353,33 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         internal string FailureText(Func<string, string> translate) =>
             failure != null ? failure.Length == 0 ? "" : translate(failure) : session != null ? session.DisplayMessage(translate) : "";
+
+        // One sentence per line and no 「。」 at a line's end, as the rest of
+        // this screen: a label that wraps just before a 「。」 leaves it alone
+        // on the last line. A 「。」 inside quotes stays.
+        internal static string SentencePerLine(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            var lines = new List<string>();
+            foreach (var line in text.Split('\n'))
+            {
+                var start = 0;
+                for (var i = 0; i < line.Length; i++)
+                {
+                    if (line[i] != '。' || i + 1 < line.Length && "」』）)".IndexOf(line[i + 1]) >= 0) continue;
+                    Add(line.Substring(start, i - start));
+                    start = i + 1;
+                }
+                Add(line.Substring(start));
+            }
+            return string.Join("\n", lines);
+
+            void Add(string piece)
+            {
+                piece = piece.Trim();
+                if (piece.Length > 0) lines.Add(piece);
+            }
+        }
 
         internal void BeginExport() { Stop(); exporting = true; }
         internal void ExportCanceled() => exporting = false;

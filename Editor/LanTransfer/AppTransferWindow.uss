@@ -316,6 +316,11 @@
     margin-left: 8px;
 }
 
+/* At the left end on the QR screen, after "戻る" on the board. */
+.save--left {
+    margin-left: 0;
+}
+
 /* "QRを作り直す" takes the place of "QRコードを作る" on the QR screen, at the same width. */
 .create,
 .regenerate {
@@ -341,8 +346,11 @@
     overflow: hidden;
 }
 
+/* 8 above and below for the corner marks around the QR (.qr-frame). */
 .slot-row {
     flex-shrink: 0;
+    margin-top: 8px;
+    margin-bottom: 8px;
 }
 
 .slot {
@@ -353,12 +361,83 @@
     position: absolute;
 }
 
+/* The app icon in the middle of the QR, on a white square so the modules around it stay clear.
+   AppTransferPanel.PlaceSlot sizes it to TransferQrCode.MarkShare of the QR. */
+.qr-mark {
+    position: absolute;
+    background-color: rgb(255, 255, 255);
+    border-radius: 6px;
+}
+
+.qr-mark-icon {
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    right: 4px;
+    bottom: 4px;
+}
+
+/* Corner marks 8 outside the white square, as in a camera's viewfinder, in the accent colour. */
+.qr-frame {
+    position: absolute;
+    left: -8px;
+    top: -8px;
+    right: -8px;
+    bottom: -8px;
+}
+
+.qr-corner {
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-color: rgb(61, 125, 217);
+}
+
+.qr-corner--top {
+    top: 0;
+    border-top-width: 3px;
+}
+
+.qr-corner--bottom {
+    bottom: 0;
+    border-bottom-width: 3px;
+}
+
+.qr-corner--left {
+    left: 0;
+    border-left-width: 3px;
+}
+
+.qr-corner--right {
+    right: 0;
+    border-right-width: 3px;
+}
+
 .qr-cover {
     position: absolute;
     left: 0;
     top: 0;
     right: 0;
     bottom: 0;
+}
+
+/* Says the cover is not a QR to scan. Small in the corner so "QRを表示" stays the thing to press;
+   13px on an opaque dark grey so it still reads at 100%. Not translated, and a fixed size. */
+.qr-sample {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    height: 22px;
+    padding: 0 8px;
+    margin: 0;
+    background-color: rgb(51, 51, 51);
+    border-radius: 2px;
+    color: rgb(255, 255, 255);
+    font-size: 13px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
 }
 
 /* 1.75 times the other blue buttons (160 x 30, 12px), so it is the one thing to press on the
@@ -421,16 +500,32 @@
     margin-top: 8px;
 }
 
-/* The label spans the row so it stays centred under the QR; the button sits over its right end. */
+/* A phone mark and the caption, centred under the QR. The same space as "QRを隠す" is kept on
+   both sides, so the caption stays centred and clips before it reaches the button. */
 .scan {
     position: absolute;
-    left: 0;
-    right: 0;
+    left: 88px;
+    right: 88px;
     top: 0;
     bottom: 0;
-    -unity-text-align: middle-center;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.scan-phone {
+    width: 10px;
+    height: 15px;
+    flex-shrink: 0;
+    margin-right: 6px;
+}
+
+.scan-text {
+    flex-shrink: 1;
+    -unity-text-align: middle-left;
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* "QRを隠す": a fixed width, so the text of a language clips instead of reaching the label. */

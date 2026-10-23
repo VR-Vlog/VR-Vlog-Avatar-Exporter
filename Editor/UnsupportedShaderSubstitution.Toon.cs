@@ -24,7 +24,7 @@ namespace VRVlog.LilToonExporter
         static Material FromSectionedToon(Material source, SourceValues values, List<Texture2D> textures, out bool colorSkipped, out IReadOnlyList<string> dropped)
         {
             dropped = Array.Empty<string>();
-            var material = FromGeneric(source, values, values.Float("_EnableOutlines", 0) > .5f, out colorSkipped);
+            var material = FromGeneric(source, values, values.Float("_EnableOutlines", 0) > .5f, textures, out colorSkipped);
             if (material == null) return null;
             var effects = new List<string>();
             var main = material.GetTexture("_MainTex");
@@ -423,6 +423,7 @@ namespace VRVlog.LilToonExporter
             Drop(effects, label);
         }
 
+        // channel 0-3 is R, G, B, A and 4 the BT.709 luminance of RGB.
         static Texture2D BakeMask(Texture mask, int channel, bool inverted, List<Texture2D> textures)
         {
             if (textures == null) return null;
@@ -435,13 +436,14 @@ namespace VRVlog.LilToonExporter
             // is kept linear for lilToon to sample the same ones.
             for (var i = 0; i < pixels.Length; i++)
             {
-                var v = Mathf.Clamp01(pixels[i][channel]);
+                var p = pixels[i];
+                var v = Mathf.Clamp01(channel == 4 ? p.r * .2126f + p.g * .7152f + p.b * .0722f : p[channel]);
                 if (inverted) v = 1 - v;
                 pixels[i] = new Color(v, v, v, 1);
             }
             var baked = new Texture2D(width, height, TextureFormat.RGBA32, false, true)
             {
-                name = DeterministicNames.Unique(mask.name + "__VRVlog_Mask" + "RGBA"[channel] + (inverted ? "_Inverted" : ""),
+                name = DeterministicNames.Unique(mask.name + "__VRVlog_Mask" + "RGBAY"[channel] + (inverted ? "_Inverted" : ""),
                     candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
                 wrapModeU = mask.wrapModeU, wrapModeV = mask.wrapModeV, filterMode = mask.filterMode,
             };

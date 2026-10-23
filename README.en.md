@@ -1,4 +1,4 @@
-> Stable **0.11.15** adopts the published 0.11.15-beta.2 features: expression and pose file selection, previews, QR transfer to a compatible iPhone version of VR Vlog, remembered privacy consent, and the fix for NDMF notifications causing `The scene is invalid.`. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.0.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -27,16 +27,19 @@ With **補助ギミックを自動除外** (auto-exclude helper gimmicks) on, wh
 
 - VRChat-only gimmicks: an object with a Modular Avatar menu or animator merge that contains a camera, sound, particles, a light, a contact or a constraint, and whose meshes are not drawn like the avatar (lilToon, MToon or a shader shared with the body). It is removed as a whole. Outfits bound to the body's bones and props drawn like the avatar stay. Gimmicks without VRChat-only parts are only listed for review.
 - Objects that a Modular Avatar Platform Filter leaves out of the generic (VRM) platform. Objects whose filters both include and exclude platforms are only listed for review.
+- Pose tools, found by what they do, not by name, because the app applies poses itself:
+  - objects with pose animations that move the trunk or legs (animations of only the hands, fingers, head or face do not count). Outfits bound to the body's bones and the VRChat Avatar Descriptor stay;
+  - objects that move the body's bones elsewhere in the build before export (a Modular Avatar World Fixed Object with a Bone Proxy on the hips). The VRM would lose the bones' parent-child order and the app could not pose it.
 - Empty objects with no mesh and no bones, such as holders of VRChat menus or settings. The number left out is logged to the Console.
 
-Removed and reviewed objects appear in the export result list. To keep one, choose **含める** (include) in the **VRChat用のギミック** (VRChat gimmicks) section on page 2 of the expression board, **除外するオブジェクト** (objects to leave out). Keeping a gimmick in the VRM does not reproduce how it works in VRChat. The choice is saved in the avatar's export settings. The expression board applies the choice to the preview when you leave the page.
+Removed and reviewed objects appear in the export result list. To keep one, choose **含める** (include) in the **VRChat用のギミック** (VRChat gimmicks) section on page 2 of the expression board, **除外するオブジェクト** (objects to leave out). Keeping a gimmick in the VRM does not reproduce how it works in VRChat. The choice is saved in the avatar's export settings. The expression board applies the choice to the preview when you leave the page. If you include a tool that moves the body's bones, the export stops and names the bones that left the humanoid order.
 
 ## Requirements
 
 | Component | Supported version |
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
-| lilToon | Any version from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4, stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
+| lilToon | Any version in 1.0.0 and from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (earlier, 0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4 and stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
 | UniVRM / UniGLTF | Not required; UniVRM 0.131.4 is bundled with renamed namespaces and shaders, so an installed UniVRM of any version does not conflict |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; checked with 3.5.0 or later and below 3.11.0, including pre-releases below 3.11.0. Expression files with VRC Animator Play Audio need 3.5.2 or later and below 3.11.0 |
@@ -53,7 +56,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 0.11.15** from the stable versions.
+3. Install **VR Vlog lilToon VRM Exporter 1.0.0** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -63,7 +66,7 @@ https://vrvlog.fun/exporter/index.json
 
 Existing personal and organization repository registrations remain supported. Keep the current registration; no migration, second registration or reinstall is required. All listing endpoints are synchronized after approved publication.
 
-To install from Unity without opening VCC / ALCOM, download `com.vrvlog.liltoon-vrm-exporter-installer-<version>.unitypackage` from [Releases](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases) and import it into the open project. After you confirm, it adds `https://vrvlog.fun/exporter/index.json` to the project and to the VCC / ALCOM repositories, installs the exporter into `Packages`, and removes its own files. It installs the newest version in the listing within the same series (0.12.x for a 0.12.0 installer); beta installers also accept betas. A version that was just released may not be in the listing yet; wait a moment and retry. To install a specific version, use the ZIP.
+To install from Unity without opening VCC / ALCOM, download `com.vrvlog.liltoon-vrm-exporter-installer-<version>.unitypackage` from [Releases](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases) and import it into the open project. After you confirm, it adds `https://vrvlog.fun/exporter/index.json` to the project and to the VCC / ALCOM repositories, installs the exporter into `Packages`, and removes its own files. It installs the newest version in the listing within the same series (1.x below 2.0.0 for a 1.0.0 installer, 0.12.x for a 0.12.0 installer); beta installers also accept betas. A version that was just released may not be in the listing yet; wait a moment and retry. To install a specific version, use the ZIP.
 
 For manual installation, use **ZIPで導入** on the installation page. Download the exporter ZIP and extract it into a folder under the project's `Packages` directory, with its `package.json` directly inside that folder.
 
@@ -73,26 +76,26 @@ Previous stable **0.11.14** fixes exports stopping during neutral expression sam
 
 The export details and failure windows offer **Copy full text** and **Save text**. Both include every diagnostic and the complete retained exception, including inner exceptions and stack traces. Text files use UTF-8. Full text includes avatar names and paths; the separate **Copy shareable diagnostics** action keeps its redacted report.
 
-Stable 0.11.15 includes QR transfer and its guide, as adopted from beta.2. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
+Stable 1.0.0 and later include QR transfer through **アプリに転送**, as did stable 0.11.15. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
 
 ## Quick start
 
-The steps below describe stable 0.11.15, adopting beta.2's UI. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.0.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
-2. Select **VR Vlog → VRMを書き出す**. Not yet released: this entry is gone. Open the expression board with **VR Vlog → アプリに転送（通常）...**; to only save a VRM file, press **VRMを保存** on its third page.
-3. Assign the avatar's root object from the Hierarchy and select **書き出しを準備**.
+2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.
+3. The expression board opens and runs **書き出しを準備** for the selected avatar. To switch avatars, press **変更** next to the **アバター** field on page 1.
 4. Every expression found on the avatar starts in **その他の表情**, which is exported as VRM custom expressions. Drag a face onto one of the five VRM expression slots (happy, angry, sad, relaxed, surprised), or right-click it to move it. Move faces you do not want into **書き出さない表情**. Click a face to preview it. Drop more .anim files from Project onto **その他の表情**. Expressions are optional; model-only export is supported.
 5. Slots filled from names are marked **自動**; confirm them all with **自動の候補○件を確定**. A slot's header menu also offers a BlendShape or **なし**, and × clears a slot. Unassigned slots stay empty.
-6. The board has three pages: **1 表情の設定** (expressions), **2 除外するオブジェクト** (objects to leave out) and **3 VRMの情報** (VRM info). Add optional body poses and check blinking on page 1, then press **次へ：除外するオブジェクト**. Review VRChat gimmicks and objects to leave out on page 2, then press **次へ：VRMの情報**; changed exclusions are applied to the preview before page 3 opens. On page 3, set the author and original license terms under **ライセンス設定**, then select **VRMを保存**. **戻る** goes back one page. In versions with cloud transfer enabled, page 3 is **3 VRMの保存と転送** (save and send the VRM) and the page 2 button reads **次へ：VRMの保存と転送**: page 3 shows the same name, author and **VRMの利用条件** fields as the normal transfer, with **VRMを保存** and **QRコードを作る** side by side. Saving does not need the terms consent.
+6. The board has three pages: **1 表情の設定** (expressions), **2 除外するオブジェクト** (objects to leave out) and **3 VRMの保存と転送** (save and send the VRM). Add optional body poses and check blinking on page 1, then press **次へ：除外するオブジェクト**. Review VRChat gimmicks and objects to leave out on page 2, then press **次へ：VRMの保存と転送**; changed exclusions are applied to the preview before page 3 opens. Page 3 has the name, author and **VRMの利用条件** (VRM terms of use) fields, with **VRMを保存** and **QRコードを作る** side by side. Set the author and the original license terms, then select **VRMを保存**. **戻る** goes back one page. Saving does not need the terms consent.
 
 When the body poses exceed the app's limits (128 poses, 32,768 frames of moving poses in total, 16MB of moving pose data, 2MB of still pose data), the **アプリの上限を超えた項目** (items over the app's limits) window opens once during the export. By default it leaves out poses from the end of the list; choose the poses to keep and press **この内容で書き出す** (export with this). The choice is saved in the avatar's export settings and used by later exports, including **アプリに転送（かんたん）**. Poses left out are listed as **同梱ポーズ** (bundled poses) in the export result list. Within the limits the window does not open.
 
 The author is a required VRM field. While it is empty or only spaces, **VRMを保存** stays disabled and the line under the field reads "VRMには作者名が必要です". The author used for a save is remembered per avatar in this PC's Unity Editor preferences and filled in the next time you choose the same avatar. For an avatar without a remembered author, the field keeps what you typed. Only the author name is stored, and nothing is written to the avatar, the project or the VRM. Avatars in an unsaved scene are not remembered.
 
-See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. In 0.11.15, select **QRコードでスマホに送る** in the result section, read the linked privacy policy, check consent, then press **アップロードしてQRを表示**. Scan the QR in a compatible iPhone version of VR Vlog using **モデルを変更 → PCから受け取る**. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
+See the [VRM export guide](Documentation~/ExperimentalExpressionCapture.md) for file support and capture ranges. To send the VRM to the phone, press **QRコードを作る** on page 3 (or use **アプリに転送（かんたん）**), then **QRを表示**, and scan the QR with the phone's camera. See the [cloud transfer guide](Documentation~/CloudTransfer.md) for requirements and transfer limits. Consent persists between sessions; opening the transfer window never uploads automatically. Android receiving remains disabled.
 
-Not yet released: in versions with cloud transfer enabled (pre-releases and stable versions that adopt the transfer), right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）...** and **アプリに転送（通常）...**. To only save a VRM file, press **VRMを保存** on the third page of **アプリに転送（通常）**. Other versions do not show the transfers.
+Right-click the avatar root in the Hierarchy and choose one of two entries under **VR Vlog**. The **VR Vlog** menu in the menu bar has the same entries and transfers the avatar selected in the Hierarchy. Both are greyed out unless exactly one avatar root is selected. Both menus list **アプリに転送（かんたん）...** and **アプリに転送（通常）...**. To only save a VRM file, press **VRMを保存** on the third page of **アプリに転送（通常）**.
 
 - **アプリに転送（かんたん）** (quick): confirm the name, author and terms consent, then press **QRコードを作る**. The name and author start from the last transfer of this avatar. It exports exactly what the normal flow exports when nothing on the expression board is changed (the expressions last assigned on the board for this avatar, automatic where none, and the objects excluded earlier); the only difference is that the export result list is not shown. Problems that stop an export still stop it with the reason. **表情とオブジェクトを選ぶ** switches to the normal flow.
 - **アプリに転送（通常）** (normal): the expression board opens and prepares the avatar. Assign expressions, press **次へ：除外するオブジェクト** and add objects to leave out, then press **次へ：VRMの保存と転送** (the exclusions are applied to the preview first). The transfer form appears on the board's third page, 「3 VRMの保存と転送」; press **QRコードを作る** there (it is the blue button; **VRMを保存** to its left saves the same VRM). **戻る** at the left of the buttons returns to the second page. While uploading or showing the QR, **戻る** first asks "このQRコードは使えなくなります" (this QR code will stop working): **中止して移動** cancels the transfer and leaves, **転送を続ける** stays. Closing the board cancels the transfer in progress without asking.
@@ -107,7 +110,7 @@ To import on iPhone, save the `.vrm` in Files, enable **lilToon専用表示** in
 
 ### App preview
 
-Not yet released: to see a saved VRM as the VR Vlog app loads it, select **アプリでの見え方を確認** after saving. The window has no menu entry; use its **VRM ファイルを開く** to open another `.vrm`. The window shows whether the materials render with lilToon or which ones fall back to MToon, and can switch to standard MToon only. It also applies each VRM expression, plays expression animations, blinks (a test signal for this window only) and sways the avatar to move its spring bones. lilToon is drawn with the official Built-in shaders, so small details can differ from the app's URP shaders. The preview works only when the VR Vlog app's reader package (`com.vrvlog.avatar-runtime`) is installed in the project. That package is not distributed publicly. Without it the button after saving is hidden and exporting works as before. Only `Editor/AppPreview/AvatarRuntimeBackend.cs` (the `VRVlog.LilToonExporter.AppPreview` assembly) references the package; the window uses only the `IAppPreviewBackend` interface in `Editor/AppPreviewEntry.cs` that this file registers. If the package moves or is renamed, that file and its assembly definition are the only ones to change.
+This window shows a saved VRM as the VR Vlog app loads it. 1.0.0 has no button or menu entry that opens it. In the window, **VRM ファイルを開く** opens another `.vrm`. The window shows whether the materials render with lilToon or which ones fall back to MToon, and can switch to standard MToon only. It also applies each VRM expression, plays expression animations, blinks (a test signal for this window only) and sways the avatar to move its spring bones. lilToon is drawn with the official Built-in shaders, so small details can differ from the app's URP shaders. The preview works only when the VR Vlog app's reader package (`com.vrvlog.avatar-runtime`) is installed in the project. That package is not distributed publicly. Without it exporting works as before. Only `Editor/AppPreview/AvatarRuntimeBackend.cs` (the `VRVlog.LilToonExporter.AppPreview` assembly) references the package; the window uses only the `IAppPreviewBackend` interface in `Editor/AppPreviewEntry.cs` that this file registers. If the package moves or is renamed, that file and its assembly definition are the only ones to change.
 
 ## Documentation
 
@@ -126,12 +129,12 @@ Most detailed user guides are currently in Japanese. The compatibility guide and
 
 Report vulnerabilities using the [private reporting instructions](SECURITY.md). Keep vulnerability reproduction details and exploit conditions out of public issues and pull requests.
 
-Use **VR Vlog → VRMを書き出す** to inspect installed package versions (not yet released: use **VR Vlog 動作環境** in the **アプリに転送** window). Export details explain unsupported items and possible next steps.
+When the exporter cannot run, the **アプリに転送** window shows **VR Vlog 動作環境**, which lists missing or unsupported package versions. Export details explain unsupported items and possible next steps.
 
 [Report a bug or propose an improvement](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues/new/choose) with the relevant versions, reproduction steps and a short sanitized error excerpt. Please keep private avatar assets, credentials and full logs out of public reports. Documentation fixes and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 includes the pinned transfer dependencies.
+Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 and 1.0.0 or later include the pinned transfer dependencies.
 
 Avatar assets and published images retain their owners' terms. See the [image sources and credits](Website/assets/README.md).

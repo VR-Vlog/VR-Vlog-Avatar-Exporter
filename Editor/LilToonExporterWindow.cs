@@ -27,7 +27,7 @@ namespace VRVlog.LilToonExporter
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
             Action<byte[], IEnumerable<string>> completed = null,
             IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null,
-            bool interactive = false, Action openBlinkSettings = null)
+            bool interactive = false, Action openBlinkSettings = null, string diagnosticsKind = null)
         {
             if (create == null) throw new ArgumentNullException(nameof(create));
             var warnings = new List<string>();
@@ -46,6 +46,8 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
+            // The result list can copy the diagnostics before anything is saved.
+            ExportDiagnostics.Record(source, bytes, report.Fallbacks, warnings, diagnosticsKind);
             // The export already worked around what it could not set up. Show the
             // result list once, before anything is written, and save from there.
             ExportFallbackConfirmation.Confirm(report.Fallbacks, warnings, destination, source, interactive, () =>
@@ -59,13 +61,8 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.9";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.0.0";
         }
-
-        // Stable packages omit this assembly. Resolve only its public optional
-        // entry so exporting also works in packages without the transfer module.
-        internal static System.Reflection.MethodInfo SavedVrmTransferMethod() =>
-            TransferMethod(type => type, "OpenSavedVrmForDevelopment", typeof(string));
 
         // The same step as the expression board's third page: returns the panel as a VisualElement, given
         // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while
@@ -77,6 +74,11 @@ namespace VRVlog.LilToonExporter
         // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
         internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
+
+        // Gives that panel the board's avatar change for "別のアバターを選ぶ" after a transfer.
+        internal static System.Reflection.MethodInfo EmbeddedChangeAvatarMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "SetEmbeddedChangeAvatar",
+                typeof(UnityEngine.UIElements.VisualElement), typeof(Action));
 
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, params Type[] parameters)
         {

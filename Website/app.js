@@ -1,31 +1,102 @@
 (() => {
-  const guide = document.getElementById("install-guide");
-  if (guide && typeof guide.showModal === "function") {
-    document.querySelectorAll("[data-install-guide]").forEach(link => {
-      link.addEventListener("click", event => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        guide.showModal();
-      });
-    });
+  'use strict';
+  const root = document.getElementById('exporter-page');
+  if (!root) return;
+  const managers = {
+    alcom: {
+      name: 'ALCOM',
+      add: '上の追加ボタンからALCOMを開き、「VPMリポジトリを追加」を押します。',
+      package: 'プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、「適用」を押します。',
+      caption: 'ALCOMのパッケージ一覧（画面内は変更前の名称）',
+      download: 'https://vrc-get.anatawa12.com/alcom/',
+      fallback: 'ALCOMの「パッケージ&テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。',
+    },
+    vcc: {
+      name: 'VCC',
+      add: '上の追加ボタンからVCCを開き、「I Understand, Add Repository」を押します。',
+      package: '「Manage Project」を開き、追加したエクスポーターの「Installed Version」欄から最新の正式版を選びます。',
+      caption: 'VCCのプロジェクト一覧（実画面）',
+      download: 'https://vcc.docs.vrchat.com/',
+      fallback: 'VCCの「Settings」→「Packages」→「Add Repository」を開き、次のURLを貼り付けます。「Add」を押し、内容を確認して「I Understand, Add Repository」を押します。',
+    },
+  };
+  let manager = 'alcom';
+  const managerButtons = [...root.querySelectorAll('[data-manager]')];
+  function selectManager(value) {
+    if (!Object.hasOwn(managers, value)) return;
+    manager = value;
+    const copy = managers[value];
+    managerButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.manager === value)));
+    root.querySelectorAll('[data-manager-copy]').forEach(node => { node.textContent = copy[node.dataset.managerCopy]; });
+    root.querySelectorAll('[data-manager-shot]').forEach(node => { node.hidden = node.dataset.managerShot !== value; });
+    root.querySelector('[data-manager-caption]').textContent = copy.caption;
+    root.querySelector('[data-manager-cta]').textContent = copy.name + 'に追加';
+    root.querySelector('[data-manager-fallback]').textContent = copy.fallback;
+    const download = root.querySelector('[data-manager-download]');
+    download.href = copy.download;
+    download.textContent = copy.name + 'をまだ入れていない方はこちら';
   }
-
-  const button = document.getElementById("copy-url");
-  const field = document.getElementById("listing-url");
-  const status = document.getElementById("copy-status");
-  if (!button || !field || !status) return;
-
-  button.hidden = false;
-  field.addEventListener("click", () => field.select());
-  button.addEventListener("click", async () => {
-    status.textContent = "";
-    try {
-      await navigator.clipboard.writeText(field.value);
-      status.textContent = "コピーしました。リポジトリの追加画面に貼り付けてください。";
-    } catch {
-      field.focus();
-      field.select();
-      status.textContent = "URLを選択しました。端末のコピー操作でコピーしてください。";
-    }
+  managerButtons.forEach(button => button.addEventListener('click', () => selectManager(button.dataset.manager)));
+  root.querySelectorAll('[data-scroll]').forEach(button => button.addEventListener('click', () => {
+    root.querySelector('[data-section="' + button.dataset.scroll + '"]').scrollIntoView({ block: 'start' });
+  }));
+  const stepButtons = [...root.querySelectorAll('[data-step]')];
+  stepButtons.forEach(button => button.addEventListener('click', event => {
+    const step = button.dataset.step;
+    stepButtons.forEach(item => item.setAttribute('aria-pressed', String(item.dataset.step === step)));
+    root.querySelectorAll('[data-step-panel]').forEach(panel => { panel.hidden = panel.dataset.stepPanel !== step; });
+    if (event.detail && window.matchMedia('(max-width:600px)').matches) root.querySelector('.vrx-step-stage').scrollIntoView({ block: 'start' });
+  }));
+  const dialog = root.querySelector('dialog');
+  const body = root.querySelector('[data-dialog-body]');
+  const docs = 'https://vcc.docs.vrchat.com/guides/community-repositories/';
+  const shots = {
+    menu: [{ file: 'unity-avatar-menu.png', alt: 'Unityでアバターを右クリックした操作画面', caption: 'UnityのHierarchyでアバターを右クリックします。' }, { file: 'unity-transfer-menu.png', alt: 'アプリに転送メニュー', caption: '「VR Vlog」→「アプリに転送（かんたん）」を選びます。' }],
+    transfer: [{ file: 'unity-qr-transfer.png', alt: 'アプリに転送（かんたん）の画面全体', caption: '名前・作者名と利用条件を確認し、同意が必要な項目にチェックを入れて「QRコードを作る」を押します。', className: 'vrx-dialog-transfer' }],
+    phone: [{ file: 'phone-receive.webp', alt: 'アバターの受け取り確認画面', caption: '受け取り確認画面。「受け取る」を押したら完了です。', className: 'vrx-dialog-receive' }],
+    alcom: [{ file: 'alcom-install.webp', alt: 'ALCOMの管理画面とインストールするパッケージの一覧', caption: 'プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、変更内容を確認して「適用」を押します。画面内のエクスポーター名は変更前のものです。' }],
+    vcc: [{ file: 'vcc-add-repository.webp', alt: 'VCCの配布元追加確認画面', caption: '内容を確認して「I Understand, Add Repository」を押します。', source: docs }, { file: 'vcc-projects.webp', alt: '実際のVCCのProjects画面', caption: '「Projects」でアバターを入れたプロジェクトを探し、「Manage Project」を開きます（実画面）。' }, { file: 'vcc-installed-version.webp', alt: 'VCCのInstalled Version選択欄', caption: '追加したエクスポーターの「Installed Version」欄から、最新の正式版を選びます。導入済みの場合も、更新がないか確認してください。', source: docs }],
+  };
+  function openImages(key, title) {
+    if (!Object.hasOwn(shots, key)) return;
+    body.replaceChildren();
+    const heading = document.createElement('h2');
+    heading.textContent = title;
+    body.append(heading);
+    shots[key].forEach(shot => {
+      const figure = document.createElement('figure');
+      const frame = document.createElement('div');
+      if (shot.className) frame.className = shot.className;
+      const image = document.createElement('img');
+      image.src = 'assets/guide/' + shot.file;
+      image.alt = shot.alt;
+      image.decoding = 'async';
+      frame.append(image);
+      const caption = document.createElement('figcaption');
+      caption.textContent = shot.caption;
+      if (shot.source) {
+        const source = document.createElement('a');
+        source.href = shot.source;
+        source.target = '_blank';
+        source.rel = 'noopener noreferrer';
+        source.textContent = 'VCC公式の参考画像';
+        caption.append(document.createTextNode(' '), source);
+      }
+      figure.append(frame, caption);
+      body.append(figure);
+    });
+    dialog.setAttribute('aria-label', title);
+    dialog.showModal();
+    dialog.scrollTop = 0;
+  }
+  root.querySelector('[data-install-guide]').addEventListener('click', () => openImages(manager, managers[manager].name + 'でインストールする'));
+  root.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => {
+    const key = button.dataset.zoom;
+    openImages(key, key === 'phone' ? '受け取り確認画面' : 'Unityの操作画面');
+  }));
+  root.querySelector('[data-close]').addEventListener('click', () => dialog.close());
+  dialog.addEventListener('click', event => {
+    const bounds = dialog.getBoundingClientRect();
+    if (event.target === dialog && (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom)) dialog.close();
   });
 })();

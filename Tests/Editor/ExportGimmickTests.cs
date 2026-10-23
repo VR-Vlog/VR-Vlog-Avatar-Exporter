@@ -720,5 +720,104 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(animator.GetBoneTransform(bone), Is.Not.Null, bone.ToString());
             Assert.Throws<ArgumentException>(() => ExportEmptyNodes.Prune(null));
         }
+
+        AnimationClip Pose(params string[] muscles)
+        {
+            var clip = Own(new AnimationClip());
+            foreach (var muscle in muscles)
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), muscle), AnimationCurve.Constant(0, 1, 0.5f));
+            return clip;
+        }
+        GameObject PoseTool(params AnimationClip[] clips)
+        {
+            var tool = Child("pose tool"); Child("menu", tool.transform).AddComponent<PoseMotionProbe>().Clips = clips; return tool;
+        }
+        List<ExportGimmickFinding> PoseFindings() => Matched().Where(f => f.RuleId == ExportGimmickRules.PoseMotion || f.RuleId == ExportGimmickRules.SkeletonTakeover).ToList();
+
+        [Test] public void ToolPlayingTrunkOrLegPosesLeavesAsAWhole()
+        {
+            Render("clothing", normal);
+            var tool = PoseTool(Pose("Left Arm Down-Up"), Pose("Spine Front-Back", "Left Upper Leg Front-Back"));
+            var finding = PoseFindings().Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.PoseMotion));
+            Assert.That(finding.Target, Is.SameAs(tool));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.PoseMotionReason));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, null), Is.EqualTo(new[] { tool }));
+            Assert.That(ExportGimmickDetection.AutomaticRoots(new[] { finding }, new ExportGimmickOptions { IncludedObjects = new[] { tool } }), Is.Empty);
+        }
+
+        [Test] public void PosesThroughAnAnimatorControllerAreFound()
+        {
+            var controller = Own(new AnimatorController());
+            controller.AddLayer("Base");
+            var tree = Own(new BlendTree());
+            tree.AddChild(Pose("Right Lower Leg Stretch"));
+            controller.layers[0].stateMachine.AddState("sit").motion = tree;
+            var tool = Child("pose tool"); var probe = Child("menu", tool.transform).AddComponent<PoseMotionProbe>(); probe.Controller = controller;
+            Assert.That(PoseFindings().Single().Target, Is.SameAs(tool));
+
+            var idle = Pose();
+            var plain = Own(new AnimatorController());
+            plain.AddLayer("Base");
+            plain.layers[0].stateMachine.AddState("idle").motion = idle;
+            probe.Controller = plain;
+            Assert.That(PoseFindings(), Is.Empty);
+            var overrides = Own(new AnimatorOverrideController(plain));
+            overrides[idle] = Pose("Spine Front-Back");
+            probe.Controller = overrides;
+            Assert.That(PoseFindings().Single().Target, Is.SameAs(tool));
+        }
+
+        [Test] public void GesturesHeadAndFacialMotionsAreNotPoses()
+        {
+            PoseTool(Pose("Left Arm Down-Up", "Head Nod Down-Up", "Jaw Close", "LeftHand.Index.1 Stretched"), Pose());
+            Assert.That(PoseFindings(), Is.Empty);
+        }
+
+        [Test] public void OutfitBoundToTheBodyWithPosesStays()
+        {
+            var tool = PoseTool(Pose("Spine Front-Back"));
+            var skin = Skin("dress", normal); skin.transform.SetParent(tool.transform, false);
+            skin.bones = new[] { Child("hips").transform };
+            Assert.That(PoseFindings(), Is.Empty);
+            skin.bones = Array.Empty<Transform>();
+            Assert.That(PoseFindings().Single().Target, Is.SameAs(tool));
+        }
+
+        [Test] public void ComponentOnABoneReferringToPosesLeavesTheSkeleton()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var spine = f.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Spine);
+            Child("bone menu", spine).AddComponent<PoseMotionProbe>().Clips = new[] { Pose("Spine Front-Back") };
+            List<ExportGimmickFinding> Poses() => ExportGimmickDetection.Analyze(f.Source, Array.Empty<ExportGimmickRule>(), null)
+                .Where(finding => finding.RuleId == ExportGimmickRules.PoseMotion).ToList();
+            Assert.That(Poses(), Is.Empty);
+            var tool = Child("pose tool", f.Source.transform);
+            Child("menu", tool.transform).AddComponent<PoseMotionProbe>().Clips = new[] { Pose("Spine Front-Back") };
+            Assert.That(Poses().Single().Target, Is.SameAs(tool));
+        }
+
+        [Test] public void ToolHangingTheHipsFromAWorldFixedObjectLeavesAsAWhole()
+        {
+            var tool = Child("pose tool"); tool.AddComponent(MaType(ExportGimmickRules.WorldFixedObject));
+            var driver = Child("driver", tool.transform).AddComponent(MaType(ExportGimmickRules.BoneProxy));
+            using (var serialized = new SerializedObject(driver))
+            {
+                serialized.FindProperty("boneReference").intValue = (int)HumanBodyBones.Head;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            Assert.That(PoseFindings(), Is.Empty);
+            using (var serialized = new SerializedObject(driver))
+            {
+                serialized.FindProperty("boneReference").intValue = (int)HumanBodyBones.Hips;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var finding = PoseFindings().Single();
+            Assert.That(finding.RuleId, Is.EqualTo(ExportGimmickRules.SkeletonTakeover));
+            Assert.That(finding.Target, Is.SameAs(tool));
+            Assert.That(finding.Unit, Is.EqualTo(GimmickExclusionUnit.Hierarchy));
+            Assert.That(finding.Reason, Is.EqualTo(ExportGimmickDetection.SkeletonTakeoverReason));
+        }
     }
 }

@@ -220,7 +220,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void PersistentPluginAssetsRemainUntilExportLeaseEndsAndNeverTouchSiblingAssets()
         {
             NdmfSharedAssetFixture temporary = null;
-            var siblingName = "VRVlogExportTemp-" + Guid.NewGuid().ToString("N");
+            // Shares the prefix but is not a name this exporter creates.
+            var siblingName = "VRVlogExportTemp-" + Guid.NewGuid().ToString("N").Substring(0, 8);
             var siblingGuid = UnityEditor.AssetDatabase.CreateFolder("Assets", siblingName);
             var siblingPath = UnityEditor.AssetDatabase.GUIDToAssetPath(siblingGuid);
             try
@@ -237,6 +238,50 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.AreEqual(siblingGuid, UnityEditor.AssetDatabase.AssetPathToGUID(siblingPath));
             }
             finally { UnityEditor.AssetDatabase.DeleteAsset(siblingPath); }
+        }
+
+        [Test]
+        public void FoldersOfEarlierExportsAreRemovedButFoldersOfLiveLeasesAreKept()
+        {
+            var staleName = NdmfExportPreparation.TemporaryAssetFolderPrefix + Guid.NewGuid().ToString("N");
+            var stalePath = UnityEditor.AssetDatabase.GUIDToAssetPath(UnityEditor.AssetDatabase.CreateFolder("Assets", staleName));
+            var secondClone = new GameObject("second copy");
+            secondClone.AddComponent<SkinnedMeshRenderer>().sharedMesh = original;
+            NdmfExportPreparation first = null;
+            try
+            {
+                Assert.IsTrue(UnityEditor.AssetDatabase.IsValidFolder(stalePath));
+                first = NdmfExportPreparation.ProcessClone(source, clone, Resolve());
+                var firstPath = FakeContext.Last.AssetPath;
+                // A new export removes what an earlier one left behind.
+                Assert.IsFalse(UnityEditor.AssetDatabase.IsValidFolder(stalePath));
+                Assert.IsTrue(UnityEditor.AssetDatabase.IsValidFolder(firstPath));
+                using (NdmfExportPreparation.ProcessClone(source, secondClone, Resolve()))
+                {
+                    Assert.IsFalse(firstPath == FakeContext.Last.AssetPath);
+                    Assert.IsTrue(UnityEditor.AssetDatabase.IsValidFolder(firstPath));
+                }
+                NdmfExportPreparation.DeleteStaleTemporaryAssetDirectories();
+                Assert.IsTrue(UnityEditor.AssetDatabase.IsValidFolder(firstPath));
+                first.Dispose(); first = null;
+                Assert.IsFalse(UnityEditor.AssetDatabase.IsValidFolder(firstPath));
+            }
+            finally
+            {
+                first?.Dispose();
+                Object.DestroyImmediate(secondClone);
+                if (UnityEditor.AssetDatabase.IsValidFolder(stalePath)) UnityEditor.AssetDatabase.DeleteAsset(stalePath);
+            }
+        }
+
+        [TestCase("VRVlogExportTemp-0123456789abcdef0123456789abcdef", true)]
+        [TestCase("VRVlogExportTemp-0123456789ABCDEF0123456789ABCDEF", false)]
+        [TestCase("VRVlogExportTemp-0123456789abcdef", false)]
+        [TestCase("VRVlogExportTemp-0123456789abcdef0123456789abcdef0", false)]
+        [TestCase("MyVRVlogExportTemp-0123456789abcdef0123456789abcdef", false)]
+        public void OnlyFolderNamesThisExporterCreatesAreCleanedUp(string name, bool cleaned)
+        {
+            Assert.AreEqual(cleaned, NdmfExportPreparation.IsTemporaryAssetFolderName(name));
         }
 
         [Test]

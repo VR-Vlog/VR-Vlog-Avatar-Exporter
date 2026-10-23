@@ -22,6 +22,8 @@ namespace VRVlog.AvatarFormats
             [("VRVLOG_humanoid_animations", 1)] = "1.0.4",
             // Provisional: see Documentation~/decisions/2026-10-23-object-toggles.md.
             [(ObjectToggles.ObjectToggleData.Extension, ObjectToggles.ObjectToggleData.SchemaVersion)] = "1.0.8",
+            // Provisional: see Documentation~/decisions/2026-10-23-expression-gestures.md.
+            [(Expressions.ExpressionGestureData.Extension, Expressions.ExpressionGestureData.SchemaVersion)] = "1.0.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>

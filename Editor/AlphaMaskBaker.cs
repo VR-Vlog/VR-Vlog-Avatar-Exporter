@@ -48,7 +48,7 @@ namespace VRVlog.LilToonExporter
             var mask = material.GetTexture("_AlphaMask") ?? Texture2D.whiteTexture;
             var size = TextureResizePolicy.Size(Math.Max(source.width, mask.width), Math.Max(source.height, mask.height));
             if (size.Item1 < source.width || size.Item2 < source.height || size.Item1 < mask.width || size.Item2 < mask.height)
-                warnings?.Add(material.name + ": アルファマスクを含む画像を " + size.Item1 + "×" + size.Item2 + " へ縮小しました。");
+                warnings?.Add(string.Format(ExportNoteText.AlphaMaskResized, material.name, size.Item1, size.Item2));
             var baker = new Material(shader);
             Texture2D result = null;
             try

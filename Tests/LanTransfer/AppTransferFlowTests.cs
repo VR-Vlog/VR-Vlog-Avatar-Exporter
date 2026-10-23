@@ -164,6 +164,40 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => TransferQrCode.DisplaySide(2 * TransferQrCode.QuietZone));
         }
 
+        // The app icon covers MarkShare of the drawn side; the QR must read with that square blank, for a
+        // short name and for the longest name that is still marked.
+        [Test]
+        public void MarkedQrReadsWithTheCentreCoveredAndLongNamesFallBackToUnmarked()
+        {
+            var longestMarked = "";
+            while (TransferQrCode.CanMark(AppTransferFlow.PlaceholderLink(AppTransferFlow.TransferName(longestMarked + "あ")))) longestMarked += "あ";
+            Assert.That(longestMarked.Length >= 64, Is.True);
+            foreach (var name in new[] { "SampleAvatar_v1.2", longestMarked, new string('a', 300) })
+            {
+                var link = Link(AppTransferFlow.TransferName(name));
+                Assert.That(TransferQrCode.CanMark(link), Is.True);
+                var matrix = TransferQrCode.Encode(link, true);
+                // The drawn mark is snapped to whole points; one module more on every side covers that.
+                var blank = (int)Math.Ceiling(matrix.Width * TransferQrCode.MarkShare) + 2;
+                var from = (matrix.Width - blank) / 2;
+                const int zoom = 4;
+                var pixels = new byte[matrix.Width * zoom * matrix.Height * zoom];
+                for (var y = 0; y < matrix.Height * zoom; y++)
+                    for (var x = 0; x < matrix.Width * zoom; x++)
+                    {
+                        int mx = x / zoom, my = y / zoom;
+                        var covered = mx >= from && mx < from + blank && my >= from && my < from + blank;
+                        pixels[y * matrix.Width * zoom + x] = matrix[mx, my] && !covered ? (byte)0 : (byte)255;
+                    }
+                var image = new ZXing.RGBLuminanceSource(pixels, matrix.Width * zoom, matrix.Height * zoom, ZXing.RGBLuminanceSource.BitmapFormat.Gray8);
+                Assert.That(new ZXing.QrCode.QRCodeReader().decode(new ZXing.BinaryBitmap(new ZXing.Common.HybridBinarizer(image))).Text, Is.EqualTo(link), name);
+            }
+            // Past that, the QR is drawn as before (error correction M, no icon); every name that fit still fits.
+            var unmarked = AppTransferFlow.PlaceholderLink(AppTransferFlow.TransferName(longestMarked + "あ"));
+            Assert.That(TransferQrCode.CanMark(unmarked), Is.False);
+            Assert.That(AppTransferFlow.NameFits(longestMarked + "あ"), Is.True);
+        }
+
         [Test]
         public void QrFittedToAHeightKeepsWholePixelModulesAndTwoHundredPointsOfSymbol()
         {
@@ -398,6 +432,20 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 Assert.That(run.Flow.ExportDidFail, Is.False);
                 Assert.That(run.Transport == null, Is.True);
             }
+        }
+
+        // A failure reads one sentence per line, so a wrap never leaves a 「。」 alone on the last line.
+        [TestCase("元のアバターが変更されました。「変更」からアバターを指定し直してください。", "元のアバターが変更されました\n「変更」からアバターを指定し直してください")]
+        [TestCase("書き出せませんでした。\n原因: 「a。」を確認してください。", "書き出せませんでした\n原因: 「a。」を確認してください")]
+        [TestCase("。", "")]
+        [TestCase("Could not export. Try again.", "Could not export. Try again.")]
+        [TestCase("", "")]
+        [TestCase(null, "")]
+        public void FailureReadsOneSentencePerLine(string text, string expected)
+        {
+            var shown = AppTransferFlow.SentencePerLine(text);
+            Assert.That(shown, Is.EqualTo(expected));
+            Assert.That(shown.Split('\n').Any(line => line.Trim() == "。"), Is.False);
         }
 
         [Test]
@@ -753,17 +801,27 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Element<UnityEngine.UIElements.Image>("qrCover").image, Is.SameAs(QrCover.Texture));
                     Assert.That(Shown("qrCover"), Is.True);
                     Assert.That(Shown("revealArea"), Is.True);
+                    // The cover says it is a sample, in every language, and never takes the click.
+                    Assert.That(Shown("qrSample"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("qrSample").text, Is.EqualTo("SAMPLE"));
+                    Assert.That(Element<UnityEngine.UIElements.VisualElement>("qrSample").pickingMode, Is.EqualTo(UnityEngine.UIElements.PickingMode.Ignore));
                     Assert.That(Shown("hideQrButton"), Is.False);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
-                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.Empty);
+                    // The caption and the corner marks stay while it is covered; the icon belongs to the QR.
+                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.EqualTo(Localized(AppTransferText.ScanWithCamera)));
+                    Assert.That(Shown("qrFrame"), Is.True);
+                    Assert.That(Shown("qrMark"), Is.False);
 
                     Call(panel, "RevealQr");
                     Poll();
                     Assert.That(Qr() != null, Is.True);
                     Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image, Is.SameAs(Qr()));
                     Assert.That(Shown("qrImage"), Is.True);
+                    Assert.That(Shown("qrMark"), Is.True);
+                    Assert.That(Shown("qrFrame"), Is.True);
                     Assert.That(Shown("qrCover"), Is.False);
                     Assert.That(Shown("revealArea"), Is.False);
+                    Assert.That(Shown("qrSample"), Is.False);
                     Assert.That(Shown("hideQrButton"), Is.True);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.Waiting)));
 
@@ -772,6 +830,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Qr() == null, Is.True);
                     Assert.That(Shown("qrImage"), Is.False);
                     Assert.That(Shown("qrCover"), Is.True);
+                    Assert.That(Shown("qrSample"), Is.True);
 
                     // "QRを作り直す" while it is shown: the new QR starts hidden.
                     Call(panel, "RevealQr");
@@ -789,6 +848,93 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Call(panel, "StopAndClean");
                     typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
                     AppTransferWindow.QrReadySound = sound;
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
+                }
+            }
+        }
+
+        // On the board the QR area gives way once the transfer ends: the result at the top, the notes
+        // folded by kind under it, and at the bottom the way back, another avatar and "もう一度転送" in blue.
+        // A failure has the same page with its reason and "もう一度". The next transfer brings the QR area back.
+        [TestCase("completed")]
+        [TestCase("failed")]
+        public async Task TheBoardShowsTheResultAndTheNextStepsInPlaceOfTheQrOnceTheTransferEnds(string remote)
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            var failed = remote == "failed";
+            using (var run = new FlowRun())
+            {
+                var panel = PanelWith(run.Flow, detailed: true);
+                typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, true);
+                typeof(AppTransferPanel).GetField("avatarName", field).SetValue(panel, "fixture");
+                var changes = 0;
+                typeof(AppTransferPanel).GetField("changeAvatar", field).SetValue(panel, (Action)(() => changes++));
+                T Element<T>(string name) where T : UnityEngine.UIElements.VisualElement => (T)typeof(AppTransferPanel).GetField(name, field).GetValue(panel);
+                bool Shown(UnityEngine.UIElements.VisualElement element) => element.style.display.value != UnityEngine.UIElements.DisplayStyle.None;
+                try
+                {
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    typeof(AppTransferPanel).GetField("exportNotes", field).SetValue(panel, TransferNotes.Build(
+                        Enumerable.Range(1, 10).Select(index => "表情を省略: メニュー " + index.ToString("00") + " — 動かない表情です").Append("除外: 小物 01")));
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    panel.Refresh();
+                    Assert.That(Element<UnityEngine.UIElements.VisualElement>("doneView") == null || !Shown(Element<UnityEngine.UIElements.VisualElement>("doneView")), Is.True);
+
+                    run.Transport.RemoteState = remote;
+                    await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                    panel.Refresh();
+                    var done = Element<UnityEngine.UIElements.VisualElement>("doneView");
+                    Assert.That(Shown(done), Is.True);
+                    Assert.That(Shown(Element<UnityEngine.UIElements.ScrollView>("transferScroll")), Is.False);
+                    var texts = UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.Label>(done).ToList().Select(label => label.text).ToArray();
+                    Assert.That(texts, Does.Contain(Localized(failed ? AppTransferText.TransferFailed : AppTransferText.Completed)));
+                    var folds = UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.Foldout>(done).ToList();
+                    var regenerate = Element<UnityEngine.UIElements.Button>("regenerateButton");
+                    if (failed)
+                    {
+                        Assert.That(texts, Does.Contain(AppTransferFlow.SentencePerLine(run.Flow.FailureText(Localized))));
+                        Assert.That(folds, Is.Empty);
+                        Assert.That(regenerate.text, Is.EqualTo(Localized(AppTransferText.Retry)));
+                    }
+                    else
+                    {
+                        Assert.That(texts, Does.Contain(string.Format(Localized(AppTransferText.NoteCount), 10)));
+                        // One kind of notes, then the record of what was left out.
+                        Assert.That(folds.Select(fold => fold.text), Is.EqualTo(new[] { Localized("表情を省略"), Localized("除外") }));
+                        // The shared reason once, the first targets and the rest on request.
+                        var faces = folds[0].contentContainer.Children().OfType<UnityEngine.UIElements.Label>().Select(label => label.text).ToArray();
+                        Assert.That(faces.Length, Is.EqualTo(1 + AppTransferPanel.FirstNoteItems + 1));
+                        Assert.That(faces[0], Is.EqualTo("動かない表情です"));
+                        Assert.That(faces[1], Is.EqualTo("メニュー 01"));
+                        Assert.That(faces.Last(), Is.EqualTo(string.Format(Localized(AppTransferText.ShowRest), 10 - AppTransferPanel.FirstNoteItems)));
+                        Assert.That(regenerate.text, Is.EqualTo(Localized(AppTransferText.TransferAgain)));
+                    }
+                    Assert.That(Shown(regenerate) && regenerate.ClassListContains("primary"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Button>("saveButton").ClassListContains("primary"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Button>("backButton").text, Is.EqualTo(Localized(AppTransferText.BackToBoard)));
+                    var another = Element<UnityEngine.UIElements.Button>("changeAvatarButton");
+                    Assert.That(Shown(another), Is.True);
+                    Assert.That(another.text, Is.EqualTo(Localized(AppTransferText.ChooseAnotherAvatar)));
+                    Assert.That(changes, Is.EqualTo(0));
+
+                    // "もう一度転送" or "もう一度": the QR area is back for the next transfer.
+                    Retry(panel);
+                    panel.Refresh();
+                    Assert.That(Shown(done), Is.False);
+                    Assert.That(Shown(Element<UnityEngine.UIElements.ScrollView>("transferScroll")), Is.True);
+                    Assert.That(Shown(another), Is.False);
+                    Assert.That(regenerate.ClassListContains("primary"), Is.False);
+                }
+                finally
+                {
+                    Call(panel, "StopAndClean");
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
                     if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
                     else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
                 }

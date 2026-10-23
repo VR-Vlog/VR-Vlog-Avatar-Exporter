@@ -368,21 +368,17 @@ namespace VRVlog.LilToonExporter
 
         static void ReportApproximations(Component source, ICollection<string> warnings)
         {
-            warnings?.Add(source.name + ": 揺れの力・減衰・重力はVRM向けの近似です。VRChatと同一の物理演算ではありません。");
-            if (EnumNumber(source, "integrationType", 0) != 0 || Number(source, "stiffness", 0) != 0)
-                warnings?.Add(source.name + ": Advanced積分／Stiffnessの独立効果は再現せず、PullとSpringから近似しました。");
+            void Note(string sentence) => warnings?.Add(ExportNoteText.Spring(source.name, sentence));
+            Note(ExportNoteText.SpringForces);
+            if (EnumNumber(source, "integrationType", 0) != 0 || Number(source, "stiffness", 0) != 0) Note(ExportNoteText.SpringAdvanced);
             if (Number(source, "immobile", 0) != 0)
-                warnings?.Add(source.name + (EnumNumber(source, "immobileType", 0) == 0
-                    ? ": Immobile（All Motion）は揺れの強さと減衰を上げて近似しました。"
-                    : ": Immobile（World）はアプリの安定化（揺れの基準をモデルのルートにする）に委ねました。"));
-            if (Number(source, "gravityFalloff", 0) != 0)
-                warnings?.Add(source.name + ": Gravity Falloffは重力の減衰として近似しました。");
+                Note(EnumNumber(source, "immobileType", 0) == 0 ? ExportNoteText.SpringImmobileAllMotion : ExportNoteText.SpringImmobileWorld);
+            if (Number(source, "gravityFalloff", 0) != 0) Note(ExportNoteText.SpringGravityFalloff);
             if (Number(source, "maxStretch", 0) != 0 || Number(source, "maxSquish", 0) != 0 || Number(source, "stretchMotion", 0) != 0)
-                warnings?.Add(source.name + ": 伸縮は保存せず、元のボーン長を保持しました。");
-            if (Read(source, "isAnimated", false)) warnings?.Add(source.name + ": Is Animatedは出力時の姿勢を基準とします。");
-            if (EnumNumber(source, "limitType", 0) != 0)
-                warnings?.Add(source.name + ": 角度制限はUniVRMの制限へ近似しました。PolarのZ角度は0〜90度に制限します。");
-            warnings?.Add(source.name + ": Grab・Pose・外部衝突・PhysBoneパラメーターの連動は変換対象外です。");
+                Note(ExportNoteText.SpringStretch);
+            if (Read(source, "isAnimated", false)) Note(ExportNoteText.SpringAnimated);
+            if (EnumNumber(source, "limitType", 0) != 0) Note(ExportNoteText.SpringLimit);
+            Note(ExportNoteText.SpringNotConverted);
         }
 
         static void PreserveRootColliders(GameObject copy, ICollection<string> warnings)

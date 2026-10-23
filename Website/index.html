@@ -4,135 +4,64 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#191b1f">
-  <title>VR Vlog lilToon Exporter — お気に入りのアバターをVR Vlogで使う</title>
-  <meta name="description" content="lilToonのアバターをVRMに書き出して、iPhoneのVR Vlogで読み込めます。VCC・ALCOMから導入できる無料のUnity用エクスポーター。">
+  <title>VR Vlog Avatar Exporter — 自分のアバターをVR Vlogで使う</title>
+  <meta name="description" content="VR Vlog Avatar Exporterの導入から、QRコードでスマホにアバターを送るまでを画像で案内します。VCC・ALCOMに対応。">
+  <meta property="og:image" content="https://vrvlog.fun/exporter/assets/capture-sunset.webp">
   <link rel="canonical" href="https://vrvlog.fun/exporter/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ja_JP">
   <meta property="og:site_name" content="VR Vlog">
-  <meta property="og:title" content="お気に入りのアバターをVR Vlogで使う">
-  <meta property="og:description" content="lilToonのアバターをVRMに書き出して、iPhoneのVR Vlogで読み込めます。無料のUnity用エクスポーター。">
+  <meta property="og:title" content="自分のアバターをVR Vlogで使う — VR Vlog Avatar Exporter">
+  <meta property="og:description" content="導入からQRコードでの受け取りまで、画像を見ながら進められます。VCC・ALCOMに対応。">
   <meta property="og:url" content="https://vrvlog.fun/exporter/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="assets/favicon-phone.ico" sizes="16x16 32x32 48x48">
   <link rel="icon" type="image/png" href="assets/favicon-phone-32.png" sizes="32x32">
   <link rel="icon" type="image/png" href="assets/favicon-phone-16.png" sizes="16x16">
-  <link rel="stylesheet" href="styles.css?v=aquarium-20260913">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700&amp;display=swap">
+  <link rel="stylesheet" href="styles.css?v=photography-20261023">
+  <script src="app.js?v=photography-20261023" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">本文へスキップ</a>
-  <header class="header wrap">
-    <a class="brand" href="https://vrvlog.fun/" aria-label="VR Vlog 公式サイト">
-      <img class="wordmark" src="assets/vr-vlog-wordmark.png" width="1000" height="298" alt="VR Vlog">
-      <span class="brand-label">lilToon Exporter</span>
-    </a>
-    <nav class="nav" aria-label="メインナビゲーション">
-      <a href="#how-to">使い方</a><a href="#compatibility">対応範囲</a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter">GitHub <span aria-hidden="true">↗</span></a>
-    </nav>
-  </header>
-  <main id="main" class="wrap">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow">Unity用エクスポーター</p>
-        <h1 id="hero-title"><span class="headline-phrase">お気に入りの</span><wbr><span class="headline-phrase">アバターを</span><br><span class="brand-accent">VR Vlog</span>で使う</h1>
-        <p class="hero-description">lilToonのアバターをVRMに書き出して、<br class="desktop-break">iPhoneのVR Vlogで読み込めます。</p>
-        <a class="button primary" href="vcc://vpm/addRepo?url={{ listingInfo.Url }}">VCC / ALCOMに追加</a>
-        <p class="install-help">追加後、使うプロジェクトにインストールします。</p>
-        <a class="text-link zip-link" href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter#インストール" data-install-guide>ZIPで導入 <span aria-hidden="true">↗</span></a>
-        <p class="hero-note">無料 · Unity 2022.3 · lilToon 2.3.4推奨</p>
-      </div>
-      <figure class="camera-figure">
-        <div class="camera-device">
-          <img class="camera-image" src="assets/capture-sunset.webp" width="941" height="1672" fetchpriority="high" decoding="async" alt="夕暮れの海辺にアバターを配置したVR VlogのAR撮影画面">
-        </div>
-        <figcaption class="avatar-credit">©もち山金魚</figcaption>
-      </figure>
-    </section>
-    <section id="how-to" class="step export-step" aria-labelledby="export-title">
-      <figure class="export-figure">
-        <img class="export-image" src="assets/unity-exporter-vrvlog.png" width="864" height="1160" loading="lazy" alt="UnityのVR Vlog VRM書き出し画面。アバターと作者名を指定してVRMを書き出します。">
-        <figcaption>Unityの書き出し画面（作者名は敬称略）</figcaption>
-      </figure>
-      <div class="step-copy">
-        <p class="step-number" aria-hidden="true">01</p>
-        <h2 id="export-title">Unityで書き出す</h2>
-        <p class="step-description">使う衣装を表示して、<br>アバターと作者名を指定します。</p>
-        <p class="menu-path">VR Vlog <span aria-hidden="true">→</span> <span>lilToon VRM 1.0を書き出す</span></p>
-        <p class="small-note">元のアバターやマテリアルは変更しません。</p>
-      </div>
-    </section>
-    <section class="step import-step" aria-labelledby="import-title">
-      <div class="step-copy">
-        <p class="step-number" aria-hidden="true">02</p>
-        <h2 id="import-title">iPhoneで読み込む</h2>
-        <p class="step-description">VRMをiPhoneに保存し、<br>設定から「端末のVRMを選ぶ」を開きます。</p>
-        <a class="text-link import-guide" href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter#iphoneで読み込む">詳しい読み込み手順 <span aria-hidden="true">↗</span></a>
-      </div>
-      <figure class="settings-figure">
-        <div class="settings-preview" role="img" aria-label="VR Vlogの設定画面。モデルを変更の中にある「端末のVRMを選ぶ」を選択します。">
-          <div class="settings-header" aria-hidden="true"><span>設定</span><span class="settings-close">×</span></div>
-          <div class="settings-content" aria-hidden="true">
-            <p class="settings-label">モデルを変更</p>
-            <div class="settings-row">デフォルトアバター<span>›</span></div>
-            <div class="settings-row selected">端末のVRMを選ぶ<span>›</span></div>
-            <div class="settings-row">VRoid Hub<span>›</span></div>
+<div id="exporter-page">
+<div class="vrx-site vrx-story" id="vrx-story">
+      <header class="vrx-header"><a href="https://vrvlog.fun/" target="_blank" rel="noopener noreferrer" class="vrx-brand" aria-label="VR Vlog公式サイト"><img src="assets/guide/vr-vlog-official-logo.png" decoding="async" width="1990" height="456" alt="VR Vlog"><span>Avatar Exporter</span></a><nav aria-label="ページ内メニュー"><button type="button" class="vrx-nav-link" data-scroll="transfer">使い方</button><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter" target="_blank" rel="noopener noreferrer" class="vrx-nav-link">GitHub</a><button type="button" class="vrx-header-cta" data-scroll="install">導入する</button></nav></header>
+      <main id="main">
+        <section class="vrx-hero vrx-wrap">
+          <div class="vrx-hero-copy">
+            <h1><span>自分のアバターを、</span><span>VR Vlogへ。</span></h1>
+            <p class="vrx-lead">Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。<br class="vrx-wide-break">いつものアバターで撮影を始められます。</p>
+            <div class="vrx-hero-action"><a class="vrx-primary" href="#install"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 5l1-2h4l1 2M12 13v5m-2.5-2.5h5"/></svg>エクスポーターを導入する</a><p>無料のUnity用ツールです。VCC / ALCOMから導入できます。</p></div>
+            <button type="button" class="vrx-text-button" data-scroll="transfer">最新版をお使いの方は、転送手順へ <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v16m-6-6 6 6 6-6"/></svg></button>
           </div>
-        </div>
-        <figcaption>VR Vlogの設定</figcaption>
-      </figure>
-    </section>
-    <section id="compatibility" class="compatibility" aria-labelledby="compatibility-title">
-      <h2 id="compatibility-title">引き継げる設定</h2>
-      <div>
-        <ul class="feature-list">
-          <li>lilToonの色・影・輪郭線</li><li>対応するVRChat・FaceEmoの表情</li><li>Modular Avatarの髪・衣装</li>
-        </ul>
-        <a class="text-link compatibility-link" href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter#対応範囲と制限">対応範囲・制限を確認 <span aria-hidden="true">↗</span></a>
-      </div>
-    </section>
-    <section class="support" aria-labelledby="support-title">
-      <h2 id="support-title">導入で困ったら</h2>
-      <div class="support-links">
-        <a class="text-link" href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter#インストール" data-install-guide>手順を読む <span aria-hidden="true">↗</span></a>
-        <a class="text-link" href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/issues">不具合を報告 <span aria-hidden="true">↗</span></a>
-      </div>
-    </section>
-  </main>
-  <footer class="footer wrap">
-    <span>VR Vlog</span>
-    <div class="footer-links">
-      <a href="https://vrvlog.fun/">アプリのサイト <span aria-hidden="true">↗</span></a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter">GitHub <span aria-hidden="true">↗</span></a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/ThirdPartyNotices/lilToon.md">lilToonライセンス <span aria-hidden="true">↗</span></a>
+          <figure class="vrx-hero-figure"><div class="vrx-photo"><img src="assets/capture-sunset.webp" decoding="async" fetchpriority="high" alt="夕暮れの海辺に自分のアバターを配置したVR Vlogの撮影画面" width="941" height="1672"></div><figcaption><span>VR Vlogの撮影画面</span><span>©もち山金魚</span></figcaption></figure>
+        </section>
+        <section class="vrx-install vrx-wrap" id="install" data-section="install" aria-labelledby="vrx-story-install-title">
+          <div class="vrx-install-heading"><div><p class="vrx-small-label">はじめに</p><h2 id="vrx-story-install-title">エクスポーターを入れる</h2></div><div class="vrx-segment" role="group" aria-label="使っている管理アプリ"><button type="button" data-manager="alcom" aria-pressed="true" >ALCOM</button><button type="button" data-manager="vcc" aria-pressed="false" >VCC</button></div></div>
+          <div class="vrx-install-action"><a class="vrx-primary" data-add-repo href="vcc://vpm/addRepo?url={{ listingInfo.Url }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 5l1-2h4l1 2M12 13v5m-2.5-2.5h5"/></svg><span data-manager-cta>ALCOMに追加</span></a><p>まず配布元を追加し、下の手順でインストールします。</p></div>
+          <p class="vrx-manager-download"><a data-manager-download href="https://vrc-get.anatawa12.com/alcom/" target="_blank" rel="noopener noreferrer">ALCOMをまだ入れていない方はこちら</a></p>
+          <div class="vrx-install-layout" data-section="setup">
+            <ol class="vrx-install-list" aria-live="polite"><li><span>配布元を追加</span><p data-manager-copy="add">上の追加ボタンからALCOMを開き、「VPMリポジトリを追加」を押します。</p></li><li><span>プロジェクトにインストール</span><p data-manager-copy="package">プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、「適用」を押します。</p></li><li><span>Unityを開く</span><p>アバターを入れたプロジェクトを開いたら、準備完了です。</p></li></ol>
+            <figure class="vrx-install-preview"><div class="vrx-alcom-thumb" data-manager-shot="alcom"><img src="assets/guide/alcom-install.webp" decoding="async" loading="lazy" alt="ALCOMでエクスポーターを選ぶ画面" width="1042" height="720"></div><div class="vrx-vcc-thumb" data-manager-shot="vcc" hidden><img src="assets/guide/vcc-projects.webp" decoding="async" loading="lazy" alt="VCCでManage Projectを開く画面" width="961" height="593"></div><figcaption data-manager-caption>ALCOMのパッケージ一覧（画面内は変更前の名称）</figcaption><button type="button" data-install-guide class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像で詳しく見る</button></figure>
+          </div>
+          <div class="vrx-install-bottom"><p>アバターとlilToonを導入したUnity 2022.3のプロジェクトと、最新のVR Vlogを入れたスマホを用意します。プロジェクトをバックアップし、Unityを閉じてから始めてください。</p><details><summary >管理アプリが開かないとき</summary><p data-manager-fallback>ALCOMの「パッケージ&amp;テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。</p><label for="listing-url">配布元のURL</label><input id="listing-url" aria-label="配布元のURL" value="{{ listingInfo.Url }}" readonly></details></div>
+        </section>
+        <section class="vrx-transfer vrx-wrap" id="transfer" data-section="transfer" aria-labelledby="vrx-story-transfer-title">
+          <div class="vrx-transfer-copy"><p class="vrx-small-label">インストールできたら</p><h2 id="vrx-story-transfer-title">受け取りまで、<br>3ステップ。</h2><div class="vrx-step-selector" role="group" aria-label="転送の手順"><button type="button" data-step="0" aria-pressed="true" ><span class="vrx-step-number">01</span><span><strong>アバターを選ぶ</strong><small>Unityで「アプリに転送（かんたん）」を開く</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button type="button" data-step="1" aria-pressed="false" ><span class="vrx-step-number">02</span><span><strong>QRコードを作る</strong><small>名前・利用条件を確認して作成する</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button type="button" data-step="2" aria-pressed="false" ><span class="vrx-step-number">03</span><span><strong>スマホで受け取る</strong><small>VR VlogのカメラをQRコードに向ける</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div></div>
+          <div class="vrx-step-stage" aria-live="polite">
+            <div data-step-panel="0" class="vrx-step-panel"><div class="vrx-menu-scene"><img src="assets/guide/unity-avatar-menu.png" decoding="async" loading="lazy" alt="UnityのHierarchyでアバターを右クリックした画面" width="380" height="200"></div><img class="vrx-submenu" src="assets/guide/unity-transfer-menu.png" decoding="async" loading="lazy" alt="VR Vlogメニューの『アプリに転送（かんたん）』を選ぶ" width="228" height="82"><p>アバターを右クリックし、<br>「VR Vlog」→「アプリに転送（かんたん）」を選びます。</p><button type="button" data-zoom="menu" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像を拡大</button></div>
+            <div data-step-panel="1" class="vrx-step-panel" hidden><div class="vrx-transfer-top"><img src="assets/guide/unity-qr-transfer.png" decoding="async" loading="lazy" alt="アプリに転送の画面上部。名前・作者名・利用条件を確認する" width="422" height="663"></div><div class="vrx-transfer-bottom"><img src="assets/guide/unity-qr-transfer.png" decoding="async" loading="lazy" alt="画面下部の同意欄とQRコードを作るボタン" width="422" height="663"></div><p>名前・作者名と利用条件を確認し、<br>同意が必要な項目にチェックを入れて「QRコードを作る」を押します。</p><button type="button" data-zoom="transfer" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画面全体を拡大</button></div>
+            <div data-step-panel="2" class="vrx-step-panel" hidden><div class="vrx-receive"><img src="assets/guide/phone-receive.webp" decoding="async" loading="lazy" alt="アバターの受け取り確認画面" width="1620" height="1200"></div><p>スマホでVR Vlogアプリを開き、カメラをPCのQRコードに向けます。<br>確認画面で「受け取る」を押したら完了です。</p><button type="button" data-zoom="phone" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像を拡大</button></div>
+          </div>
+        </section>
+        <section class="vrx-help vrx-wrap"><div><h2>困ったときは</h2><p>作者の<a href="https://x.com/uribou_vrc" target="_blank" rel="noopener noreferrer" >X（@uribou_vrc）</a>へDMでお知らせください。</p></div><div class="vrx-faq"><details><summary >QRコードはどこで読み取れますか？</summary><p>スマホ標準のカメラ、またはVR Vlogアプリのカメラで読み取れます。</p></details><details><summary >表情を詳しく設定するには？</summary><p>Unityで「VR Vlog」→「アプリに転送（通常）」を選びます。</p></details><details><summary >「QRコードを作る」が押せないときは？</summary><p>転送画面の案内を確認し、名前・作者名の入力や、同意が必要な項目へのチェックを済ませてください。</p></details></div></section>
+      </main>
+      <footer class="vrx-footer vrx-wrap"><div class="vrx-footer-top"><span>VR Vlog Avatar Exporter</span><nav aria-label="公式・規約リンク"><a href="https://vrvlog.fun/" target="_blank" rel="noopener noreferrer" >アプリのサイト</a><a href="https://vrvlog.fun/terms/" target="_blank" rel="noopener noreferrer" >利用規約</a><a href="https://vrvlog.fun/privacy/" target="_blank" rel="noopener noreferrer" >プライバシーポリシー</a><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter" target="_blank" rel="noopener noreferrer" >GitHub</a></nav></div><div class="vrx-footer-bottom"><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/latest" target="_blank" rel="noopener noreferrer" >更新履歴</a><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" >MIT License</a><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/ThirdPartyNotices/lilToon.md" target="_blank" rel="noopener noreferrer" >lilToon</a><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/ThirdPartyNotices/UniVRM.md" target="_blank" rel="noopener noreferrer" >UniVRM</a><span>掲載アバター：<a href="https://booth.pm/ja/items/5813187" target="_blank" rel="noopener noreferrer" >配布ページ</a> ©もち山金魚</span></div></footer>
+      <dialog class="vrx-dialog" aria-label="操作画面の拡大"><button type="button" class="vrx-dialog-close" data-close aria-label="画像を閉じる"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button><div class="vrx-dialog-body" data-dialog-body></div></dialog>
     </div>
-  </footer>
-  <dialog id="install-guide" aria-labelledby="install-title">
-    <form method="dialog" class="dialog-heading">
-      <h2 id="install-title">エクスポーターを導入する</h2>
-      <button class="close-button" aria-label="閉じる" autofocus>×</button>
-    </form>
-    <p>アバターとlilToonを導入済みのUnity 2022.3プロジェクトで使います。lilToonはどのバージョンでも書き出せ、アプリではlilToon 2.3.4として描画します。VCCまたはALCOMにリポジトリを追加し、使うプロジェクトで<strong>VR Vlog lilToon VRM Exporter</strong>をインストールしてください。</p>
-    <p>必要なUniVRM 0.131.xは自動で導入されます。VRChatのプロジェクトでは、VCCが案内する対応Unityバージョンを使ってください。</p>
-    <label class="url-label" for="listing-url">VCC / ALCOMが開かない場合は、このURLをリポジトリ追加画面に貼り付けます。</label>
-    <div class="url-row"><input id="listing-url" readonly spellcheck="false" value="{{ listingInfo.Url }}" aria-describedby="copy-status"><button id="copy-url" class="button copy" type="button" hidden>コピー</button></div>
-    <p id="copy-status" class="copy-status" role="status" aria-live="polite"></p>
-    <h3>ZIPで手動導入する</h3>
-    <p>エクスポーターとUniVRMのパッケージをダウンロードし、プロジェクトのPackagesフォルダーへ展開します。すでに同じパッケージがある場合は重複して導入しないでください。</p>
-    <div class="package-downloads">
-      {{~ for package in packages ~}}
-      <div class="dependency"><div><span>{{ package.DisplayName }} · v{{ package.Version }}</span><code>{{ package.Name }}</code></div><a class="text-link" href="{{ package.ZipUrl }}">ZIPをダウンロード <span aria-hidden="true">↓</span></a></div>
-      {{~ end ~}}
-    </div>
-    <div class="dialog-links">
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter#readme">READMEで手順を読む</a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases/latest">更新履歴</a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/LICENSE">MIT License</a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/ThirdPartyNotices/lilToon.md">lilToonライセンス</a>
-      <a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/blob/main/ThirdPartyNotices/UniVRM.md">UniVRMライセンス</a>
-    </div>
-  </dialog>
-  <script src="app.js" defer></script>
-  <script src="localize.js" defer></script>
+</div>
 </body>
 </html>

@@ -33,8 +33,11 @@ $sources = @(
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferEncryption.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudVrmTransferSession.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/AppTransferFlow.cs'),
+    (Join-Path $repoRoot 'Editor/Compatibility/ExportNoteText.cs'),
+    (Join-Path $repoRoot 'Editor/LanTransfer/TransferNotes.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/CloudTransferTests.cs'),
     (Join-Path $repoRoot 'Tests/LanTransfer/AppTransferFlowTests.cs'),
+    (Join-Path $repoRoot 'Tests/LanTransfer/TransferNotesTests.cs'),
     (Join-Path $PSScriptRoot 'LanTransferTestHarness.cs')
 )
 $defines = 'VRVLOG_LAN_TRANSFER_CLI'

@@ -17,12 +17,25 @@ namespace VRVlog.LilToonExporter
     internal static class ExportSourceFingerprint
     {
         internal static Hash128 Compute(GameObject source)
-            => ComputeCore(source, false, out _);
+            => ComputeCore(source, false, out _, null);
 
         internal static Hash128 Capture(GameObject source, out PartialRotation[] partialRotations)
-            => ComputeCore(source, true, out partialRotations);
+            => ComputeCore(source, true, out partialRotations, null);
 
-        static Hash128 ComputeCore(GameObject source, bool capturePartial, out PartialRotation[] partialRotations)
+        // The digest after each part of the source, in hashing order: two
+        // lists of one avatar first differ where its inputs first differ. Only
+        // for saying what changed; the digest's chunks then end at each part,
+        // so its hash is compared with one taken the same way.
+        internal static Hash128 Capture(GameObject source, out PartialRotation[] partialRotations, List<Mark> marks)
+            => ComputeCore(source, true, out partialRotations, marks ?? throw new ArgumentNullException(nameof(marks)));
+
+        internal readonly struct Mark
+        {
+            internal readonly Object Value; internal readonly string Label; internal readonly Hash128 State;
+            internal Mark(Object value, string label, Hash128 state) { Value = value; Label = label; State = state; }
+        }
+
+        static Hash128 ComputeCore(GameObject source, bool capturePartial, out PartialRotation[] partialRotations, List<Mark> marks)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             using var hash = new Digest();
@@ -56,6 +69,7 @@ namespace VRVlog.LilToonExporter
                 var world = input.localToWorldMatrix; var relative = frame * world;
                 for (var i = 0; i < 16; i++) { hash.Float(world[i]); hash.Long((long)Math.Round(relative[i] * 1e5)); }
             }
+            marks?.Add(new Mark(source, "root", hash.Mark()));
             var visited = new HashSet<Object>(); var assets = new HashSet<string>(StringComparer.Ordinal);
             var queue = new Queue<Object>(source.GetComponentsInChildren<Component>(true).Cast<Object>());
             foreach (var transform in source.GetComponentsInChildren<Transform>(true)) queue.Enqueue(transform.gameObject);
@@ -64,21 +78,27 @@ namespace VRVlog.LilToonExporter
                 var value = queue.Dequeue();
                 if (value == null) { hash.Integer(0); continue; }
                 if (!visited.Add(value)) continue;
+                Visit(value);
+                marks?.Add(new Mark(value, value.GetType().FullName, hash.Mark()));
+            }
+            void Visit(Object value)
+            {
                 Identity(hash, value); hash.Text(value.GetType().FullName);
                 hash.Text(value.name); hash.Integer((int)value.hideFlags);
                 var path = AssetDatabase.GetAssetPath(value);
                 if (!string.IsNullOrEmpty(path)) assets.Add(path);
-                if (value is Mesh mesh) { MeshData(hash, mesh); continue; }
-                if (value is Texture texture) { TextureData(hash, texture, queue); continue; }
-                if (value is Material material && material.shader != null) { MaterialData(hash, material, queue); continue; }
+                if (value is Mesh mesh) { MeshData(hash, mesh); return; }
+                if (value is Texture texture) { TextureData(hash, texture, queue); return; }
+                if (value is Material material && material.shader != null) { MaterialData(hash, material, queue); return; }
                 // Shader/script bytes belong to their dependency hash. Their
                 // compiled payload is not an editable serialized avatar input.
-                if (value is Shader || value is MonoScript) continue;
+                if (value is Shader || value is MonoScript) return;
                 // The getter settles Unity's lazy skinned bounds before their
                 // serialized cache is hashed, just as the first render does.
-                // Explicitly authored bounds and every serialized field remain
-                // part of the source stamp.
-                if (value is SkinnedMeshRenderer skin) hash.Bounds(skin.localBounds);
+                // Its result is not hashed: Unity can recalculate it with float
+                // noise (about 5e-8) while m_AABB and every input stay the
+                // same. The serialized m_AABB still carries authored bounds.
+                if (value is SkinnedMeshRenderer skin) _ = skin.localBounds;
                 // Reading a generated/imported clip can lazily create its editor
                 // curve view. Settle that view before the first stamp, while
                 // still hashing the runtime curves and all authored metadata.
@@ -94,7 +114,10 @@ namespace VRVlog.LilToonExporter
             // package list and lilToon settings are not hashed for the same
             // reasons; the lilToon settings file is read when exporting.
             foreach (var path in assets.Where(path => !NotWrittenToFile(path)).OrderBy(path => path, StringComparer.Ordinal))
-            { hash.Text(path); hash.Text(AssetDatabase.GetAssetDependencyHash(path).ToString()); }
+            {
+                hash.Text(path); hash.Text(AssetDatabase.GetAssetDependencyHash(path).ToString());
+                marks?.Add(new Mark(null, path, hash.Mark()));
+            }
             return hash.Finish();
         }
 
@@ -212,6 +235,13 @@ namespace VRVlog.LilToonExporter
                     difference += (x - y) * (x - y); opposite += (x + y) * (x + y);
                 }
                 return Math.Min(difference, opposite) <= 1e-14; // quaternion chord <= 1e-7
+            }
+            // What differs, for the Console: the transform and the angle between the two rotations.
+            internal string Describe(PartialRotation other)
+            {
+                var name = target == null ? "(deleted)" : target.name;
+                if (other == null || target != other.target) return "partial rotation target " + name;
+                return "partial rotation " + name + " " + Quaternion.Angle(rotation, other.rotation).ToString("G4", System.Globalization.CultureInfo.InvariantCulture) + "°";
             }
         }
 
@@ -512,6 +542,10 @@ namespace VRVlog.LilToonExporter
                     if (count == bytes.Length) Flush(); var length = Math.Min(bytes.Length - count, data.Length - offset);
                     Marshal.Copy(IntPtr.Add(data.Data, offset), bytes, count, length); count += length; offset += length;
                 }
+            }
+            internal Hash128 Mark()
+            {
+                Flush(); return algorithm;
             }
             internal Hash128 Finish()
             {
