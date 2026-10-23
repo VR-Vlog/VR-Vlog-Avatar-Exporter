@@ -219,7 +219,9 @@ namespace VRVlog.LilToonExporter
                 var aspect = rect.width / rect.height;
                 var extent = framed ? bounds.extents : Vector3.one * .5f;
                 var fit = Mathf.Max(extent.y, Mathf.Max(extent.x, extent.z) / aspect) * 1.08f;
-                var distance = Mathf.Max(.3f, fit / half + Mathf.Max(extent.x, extent.z));
+                // Measured at the front of the body, which is its depth away from the
+                // center; the arm span would push the camera back for nothing.
+                var distance = Mathf.Max(.3f, fit / half + extent.z);
                 var center = framed ? bounds.center : copy.transform.position;
                 utility.BeginPreview(rect, GUIStyle.none);
                 camera.transform.position = center + Quaternion.AngleAxis(yaw, Vector3.up) * copy.transform.forward * distance * zoom;
