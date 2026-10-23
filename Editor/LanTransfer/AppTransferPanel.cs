@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
     // the expression board shows it as its third page for the detailed one (CreateEmbedded),
     // where the board's own header, avatar and steps replace the panel's.
     [Serializable]
-    public sealed class AppTransferPanel
+    public sealed partial class AppTransferPanel
     {
         private const float HeaderHeight = 60f, Padding = 16f;
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
@@ -130,6 +130,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var element = new VisualElement();
             panel.Build(element);
             panel.Select(avatar, true);
+            Embedded.Add(element, panel);
             element.RegisterCallback<AttachToPanelEvent>(_ => { panel.Enable(); panel.Refresh(); });
             element.RegisterCallback<DetachFromPanelEvent>(_ => panel.Disable());
             return element;
@@ -192,6 +193,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             flow?.Stop();
             ClearQr();
             missingShaders = 0;
+            exportNotes = savedCopyNotes = TransferNotes.Build(null);
             savedCopy = saveProblem = null;
             ForgetSavedForReuse();
             // A name left over from an avatar that no longer exists is not the user's choice for this one.
@@ -442,7 +444,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     // Also later, when the result list or recovery window saves; by then the panel may
                     // show another avatar, whose row must not claim this file.
                     if (avatar != source) return;
-                    SavedCopy(path, missing, Written(AppTransferFlow.FileHashOf(path), key, source));
+                    SavedCopy(path, missing, TransferNotes.Build(Exporter?.LastNotes()), Written(AppTransferFlow.FileHashOf(path), key, source));
                 });
             }
             catch (Exception exception) { failure = exception.Message ?? ""; }
@@ -471,14 +473,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // so a file the user chose to replace is still there.
             if (failure == null && copied == null) failure = T(SaveFailedText);
             if (failure != null) { savedCopy = null; saveProblem = failure; savedWritten = null; }
-            else SavedCopy(destination, missingShaders, sent);
+            else SavedCopy(destination, missingShaders, exportNotes, sent);
             Refresh();
         }
 
-        private void SavedCopy(string path, int missing, WrittenVrm written)
+        private void SavedCopy(string path, int missing, TransferNotes notes, WrittenVrm written)
         {
             savedCopy = path;
             savedCopyMissingShaders = missing;
+            savedCopyNotes = notes;
             saveProblem = null;
             savedWritten = written;
             Refresh();
@@ -584,8 +587,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             exportPainted = false;
             var attempt = ++exportAttempt;
-            // A new export replaces the one the warning was about.
+            // A new export replaces the one the warning and the notes were about.
             missingShaders = 0;
+            exportNotes = TransferNotes.Build(null);
             string path;
             // Every folder that could hold the transfer copy refused it: give up before exporting.
             try { path = AppTransferFlow.NewSnapshotPath(); }
@@ -605,6 +609,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 exportAttempt++;
                 missingShaders = savedCopyMissingShaders;
+                exportNotes = savedCopyNotes;
                 if (missingShaders > 0) FitTransferSize();
                 Exporter?.RememberTransferName(target, name);
                 sentWritten = savedWritten;
@@ -631,6 +636,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 }
                 saved = true;
                 missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
+                exportNotes = TransferNotes.Build(Exporter?.LastNotes());
                 // Saving it later copies this file. A file that left out a failing stage is not what
                 // "VRMを保存" writes: saving then exports again.
                 var complete = (Exporter?.LastOmittedStageCount() ?? 0) == 0;
@@ -981,6 +987,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             else RefreshForm();
             RefreshSaveRow();
             RefreshActions(sending);
+            RefreshDone(view, sending);
         }
 
         // One row of buttons under both screens: "戻る" at the left on the board, then at the right
@@ -1093,7 +1100,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     title = T(AppTransferText.Completed);
                     break;
                 case AppTransferView.Failed:
-                    title = T(flow.ExportDidFail ? AppTransferText.ExportFailed : "転送できませんでした");
+                    title = T(flow.ExportDidFail ? AppTransferText.ExportFailed : AppTransferText.TransferFailed);
                     body = flow.FailureText(T); button = T(AppTransferText.Retry);
                     break;
             }
@@ -1170,6 +1177,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, string, string, Action, string> ExportDetailed;
             internal Func<int> LastMissingShaderCount;
             internal Func<int> LastOmittedStageCount;
+            internal Func<string[]> LastNotes;
             internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
@@ -1199,6 +1207,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         ExportDetailed = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "ExportDetailed"),
                         LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
                         LastOmittedStageCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastOmittedStageCount"),
+                        LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
                         SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
                             typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),
