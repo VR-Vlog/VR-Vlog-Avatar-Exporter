@@ -349,6 +349,44 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void BacklightRimIsScaledByBacklightColorAlpha()
+        {
+            var shader = Shader.Find("lilToon");
+            Assume.That(shader, Is.Not.Null);
+            var source = new Material(shader);
+            try
+            {
+                source.SetFloat("_UseRim", 0f);
+                source.SetFloat("_UseBacklight", 1f);
+                // lilToon 2.x adds backlight * color.a * color.rgb, so a faint
+                // backlight on a dark material must not become a full rim.
+                var faint = new Color(.74f, .72f, .87f, .25f);
+                source.SetColor("_BacklightColor", faint);
+                var scaled = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.rimColor);
+                var expected = MobileMaterialMath.MatcapColor(faint, 1f);
+                Assert.AreEqual(expected.r, scaled.r, .00001f);
+                Assert.AreEqual(expected.g, scaled.g, .00001f);
+                Assert.AreEqual(expected.b, scaled.b, .00001f);
+                Assert.Less(scaled.maxColorComponent, faint.maxColorComponent);
+
+                var opaque = new Color(.74f, .72f, .87f, 1f);
+                source.SetColor("_BacklightColor", opaque);
+                var full = UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.rimColor);
+                Assert.AreEqual(opaque.r, full.r, .0001f);
+                Assert.AreEqual(opaque.g, full.g, .0001f);
+                Assert.AreEqual(opaque.b, full.b, .0001f);
+
+                source.SetColor("_BacklightColor", new Color(.74f, .72f, .87f, 0f));
+                Assert.AreEqual(0f, UniVrmOneClickExporter.FallbackColor(source, MaterialColorType.rimColor).maxColorComponent, .00001f,
+                    "An alpha 0 backlight adds nothing in lilToon.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(source);
+            }
+        }
+
+        [Test]
         public void MultiplyMatcapIsOmittedWhileAddedMatcapStays()
         {
             var shader = Shader.Find("lilToon");
