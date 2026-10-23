@@ -51,6 +51,27 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // A name before ": " without a target and a reason is not a kind: material and object
+        // notes are sentences of their own, and two of them on one material stay two lines.
+        [Test]
+        public void TransferNotesKeepNamedSentencesAsLinesOfTheirOwn()
+        {
+            var notes = TransferNotes.Build(new[]
+            {
+                "Body: メインカラーの焼き込み画像をモバイル向けに 512×512 へ縮小しました。",
+                "Body: 透明部分を切り抜きに変えました。",
+                "除外: 小物 01",
+            });
+            Assert.That(notes.Notes.Count, Is.EqualTo(0));
+            Assert.That(notes.NoteCount, Is.EqualTo(0));
+            Assert.That(notes.Records.Select(group => group.Kind), Is.EqualTo(new[] { "除外", null }));
+            Assert.That(notes.Records[1].Items.Select(item => item.Target), Is.EqualTo(new[]
+            {
+                "Body: メインカラーの焼き込み画像をモバイル向けに 512×512 へ縮小しました。",
+                "Body: 透明部分を切り抜きに変えました。",
+            }));
+        }
+
         // A single target keeps its reason on its own line.
         [Test]
         public void TransferNotesKeepTheReasonOfASingleTarget()

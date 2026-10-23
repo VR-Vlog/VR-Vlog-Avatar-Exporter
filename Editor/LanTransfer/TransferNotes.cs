@@ -39,15 +39,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             foreach (var line in (lines ?? Array.Empty<string>()).Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => line.Trim()).Distinct(StringComparer.Ordinal))
             {
                 var colon = line.IndexOf(": ", StringComparison.Ordinal);
-                // A short label before ": " is the kind; a sentence is a line of its own.
-                if (colon <= 0 || colon > 24 || line.Substring(0, colon).IndexOf('。') >= 0)
+                var kind = colon > 0 ? line.Substring(0, colon) : null;
+                var rest = colon > 0 ? line.Substring(colon + 2) : null;
+                var dash = rest?.IndexOf(" — ", StringComparison.Ordinal) ?? -1;
+                // The kind is a short label before ": " of a "<kind>: <target> — <reason>" line, or one of
+                // the record kinds. Other lines, such as "<material>: <sentence>", are lines of their own.
+                if (kind == null || (!RecordKinds.Contains(kind) && (dash < 0 || kind.Length > 24 || kind.IndexOf('。') >= 0)))
                 {
                     plain.Items.Add((line, null));
                     continue;
                 }
-                var kind = line.Substring(0, colon);
-                var rest = line.Substring(colon + 2);
-                var dash = rest.IndexOf(" — ", StringComparison.Ordinal);
                 var target = dash >= 0 ? rest.Substring(0, dash) : rest;
                 var reason = dash >= 0 ? rest.Substring(dash + 3) : null;
                 var group = groups.FirstOrDefault(existing => existing.Kind == kind);
