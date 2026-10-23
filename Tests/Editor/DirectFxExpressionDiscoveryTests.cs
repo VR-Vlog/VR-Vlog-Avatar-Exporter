@@ -101,38 +101,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone()
-        {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK to validate descriptor FX discovery.");
-            var descriptor = avatar.AddComponent(type);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                data.FindProperty("customExpressions").boolValue = false;
-                var layers = data.FindProperty("baseAnimationLayers");
-                layers.arraySize = 1;
-                var fx = layers.GetArrayElementAtIndex(0);
-                var typeProperty = fx.FindPropertyRelative("type");
-                var fxIndex = Array.IndexOf(typeProperty.enumNames, "FX");
-                Assert.That(fxIndex, Is.GreaterThanOrEqualTo(0), "The installed SDK must expose its FX layer kind.");
-                typeProperty.enumValueIndex = fxIndex;
-                fx.FindPropertyRelative("isDefault").boolValue = false;
-                fx.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            controller.AddParameter("FaceChoice", AnimatorControllerParameterType.Bool);
-            var selected = State(controller.layers[0].stateMachine, "Hand-authored expression", Clip("Smile", 85));
-            Transition(neutral, selected, "FaceChoice", 0, AnimatorConditionMode.If);
-            var metadata = VrChatExpressionSampler.Analyze(avatar);
-            Assert.That(metadata.Controller, Is.SameAs(controller));
-            Assert.That(metadata.Entries.Single().Error, Is.Null);
-            Assert.That(Weight(metadata.Entries.Single()), Is.EqualTo(85).Within(.01));
-            Assert.That(avatar.GetComponent<Animator>().runtimeAnimatorController, Is.Null);
-        }
-
-        [Test]
         public void NestedMachineEntryCombinesItsGateAndItsExpressionCondition()
         {
             controller.AddParameter("FaceMode", AnimatorControllerParameterType.Bool);

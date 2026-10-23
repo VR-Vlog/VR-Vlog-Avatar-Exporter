@@ -97,25 +97,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AMenuPastTheCandidateLimitIsLeftOutAndGesturesAreKept()
-        {
-            using var f = new AttachmentConnectionTests.Fixture();
-            using var menus = new SdkFixture(f.Source, true, wardrobe: 600);
-            Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(601));
-
-            var source = VrChatExpressionSampler.Analyze(f.Source);
-
-            Assert.That(source.MenuOmittedForCandidateLimit, Is.True);
-            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Menu), Is.False);
-            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Gesture), Is.True,
-                string.Join(", ", source.Entries.Select(e => e.Source + ":" + e.ExportName)));
-            Assert.That(source.Messages, Has.Some.EqualTo(ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit)));
-
-            var skipped = VrChatExpressionSampler.Analyze(f.Source, menuPolicy: new VrChatMenuImportPolicy { SkipAll = true });
-            Assert.That(skipped.MenuOmittedForCandidateLimit, Is.False, "Leaving the menu out by choice is not reported as the limit.");
-        }
-
-        [Test]
         public void MenuAssetEditsInvalidatePendingSaveUntilReinspection()
         {
             using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);

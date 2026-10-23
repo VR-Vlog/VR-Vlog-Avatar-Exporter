@@ -539,16 +539,14 @@ namespace VRVlog.LilToonExporter
                     }
                     // Analyze every endpoint and neutral from the same prepared
                     // authored weights; fractional/additive FX is applied once.
-                    // listFaces plays no face: its clips are read as the faces,
-                    // like gesture clips, and the default face below is unchanged.
+                    // The faces are the board's list: its clips are read as the
+                    // faces, like gesture clips, and no menu face is played. No
+                    // list means no faces; the default face below is unchanged.
+                    var faces = (listFaces ?? Array.Empty<(string Name, AnimationClip Clip, float Time)>())
+                        .Select(face => (face.Name, (UnityEngine.Object)face.Clip, face.Time)).ToList();
                     using (ExpressionBoardTimings.Step("export.playback"))
                         menu = guard.Step(ExportStage.Expressions, () => VrChatExpressionSampler.Analyze(clone, expressionBindings.ExcludesPreparedPath,
-                            listFaces != null ? new VrChatMenuImportPolicy { SkipPlayback = true, ListFaces = listFaces.Select(face => (face.Name, (UnityEngine.Object)face.Clip, face.Time)).ToList() } : menuPolicy, source, faceEmoBindings),
-                            () => new VrChatExpressionMenu.Source());
-                    // The warning comes from the menu's own messages.
-                    if (menu.MenuOmittedForCandidateLimit)
-                        recoveryReport.Fallbacks.Record(ExportOutcome.Omitted, "表情", "",
-                            ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit));
+                            faces, faceEmoBindings), () => new VrChatExpressionMenu.Source());
                     // Analyzed curves use the prepared hierarchy. Keep the
                     // earlier bindings only for authoring identity/exclusions.
                     using var preparedMenuBindings = new PreparedExpressionBindings(clone, menu,

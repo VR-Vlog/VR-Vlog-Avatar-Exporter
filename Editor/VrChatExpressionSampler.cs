@@ -21,74 +21,18 @@ namespace VRVlog.LilToonExporter
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
 
-        internal const string MenuOverCandidateLimit = "表情候補が512件を超えるため表情メニューの表情を省きました";
-
-        // The menu is read in full, so it can push the other faces past the
-        // candidate limit. Then the menu's faces are left out and the
-        // gestures, FX and FaceEmo faces are kept, as when the menu fails to read.
-        internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath = null, VrChatMenuImportPolicy menuPolicy = null,
-            GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
-        {
-            try { return AnalyzeOnce(avatar, excludedPath, menuPolicy, authoringSource, faceEmoBindings); }
-            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true && menuPolicy?.SkipPlayback != true)
-            {
-                var source = AnalyzeOnce(avatar, excludedPath, new VrChatMenuImportPolicy { SkipAll = true, Reason = MenuOverCandidateLimit },
-                    authoringSource, faceEmoBindings);
-                source.MenuOmittedForCandidateLimit = true;
-                return source;
-            }
-        }
-
-        static VrChatExpressionMenu.Source AnalyzeOnce(GameObject avatar, Func<string, bool> excludedPath, VrChatMenuImportPolicy menuPolicy,
-            GameObject authoringSource, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
+        // The export's faces are the board's list; no menu, gesture, FX,
+        // authored or FaceEmo face is played. The menu is still read for its
+        // parameters and controllers, which the neutral and the list use.
+        internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath,
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> listFaces, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
             using var inspectCache = ExpressionInspectCache.Begin();
-            var source = VrChatExpressionMenu.Read(avatar, menuPolicy);
+            var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipPlayback = true });
             NeutralInputProof.Read(avatar, source);
             source.FacialProjectionSession = new FacialProjectionScope.Session(avatar);
-            try
-            {
-                for (var index = 0; index < source.Entries.Count; index++)
-                {
-                    var entry = source.Entries[index];
-                    if (entry.Error != null) continue;
-                    ShowProgress(entry.Name, 0.5f * index / source.Entries.Count);
-                    try
-                    {
-                        var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
-                        // Settlement messages reach the export warnings and
-                        // the result list through entry.Messages.
-                        var settlement = new List<string>();
-                        var trees = new List<string>();
-                        var values = SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                            messages: settlement, settledTreeLayers: trees);
-                        // A Radial Puppet commonly selects a BlendTree state.
-                        // Like an FX tree knot, a moving child cannot become
-                        // one settled frame, and this path has no animated reading.
-                        if (settlement.Count > 0 && trees.Count > 0) throw new InvalidOperationException(VrChatFxExpressions.SettledFxTreeOmitted);
-                        entry.Values.AddRange(values);
-                        foreach (var message in settlement) if (!entry.Messages.Contains(message)) entry.Messages.Add(message);
-                        if (context.UsedParameters.Count > 0)
-                            entry.Messages.Add("外部入力は通常状態・設定済み初期値で固定表情として保存しました（自動切り替えは再現しません）: " +
-                                string.Join(", ", context.UsedParameters.OrderBy(name => name, StringComparer.Ordinal).Select(name => name + "=" +
-                                    (entry.Parameters.TryGetValue(name, out var selectedValue) ? selectedValue : context.Values[name]).ToString("G9", CultureInfo.InvariantCulture))));
-                    }
-                    catch (InvalidOperationException error) { entry.Error = error.Message; }
-                }
-                if (menuPolicy?.SkipPlayback == true) { AddListFaces(avatar, source, excludedPath, menuPolicy.ListFaces, faceEmoBindings); return source; }
-                // The menu loop fills the first half of the bar; each of the
-                // four imports below takes an eighth of the rest.
-                var step = 0;
-                source.Progress = name => ShowProgress(name, 0.5f + step * 0.125f);
-                VrChatGestureExpressions.Add(avatar, source, excludedPath);
-                step++;
-                VrChatFxExpressions.Add(avatar, source, excludedPath, menuPolicy);
-                step++;
-                VrChatAuthoredFaces.Add(avatar, source, excludedPath, menuPolicy);
-                step++;
-                FaceEmoExpressions.Add(avatar, source, excludedPath, authoringSource, faceEmoBindings);
-            }
-            finally { source.FacialProjectionSession = null; source.Progress = null; EditorUtility.ClearProgressBar(); }
+            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings); }
+            finally { source.FacialProjectionSession = null; EditorUtility.ClearProgressBar(); }
             return source;
         }
 
