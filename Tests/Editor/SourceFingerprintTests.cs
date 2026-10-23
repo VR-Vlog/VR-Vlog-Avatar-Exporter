@@ -84,6 +84,31 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (replacement != null) Object.DestroyImmediate(replacement); }
         }
 
+        // Unity on some avatars recalculates the getter's bounds with float
+        // noise (about 5e-8) while m_AABB stays the same; the stamp reads the
+        // getter only to settle the cache. A change of that size in m_AABB
+        // itself is still a change: nothing is rounded.
+        [Test]
+        public void SkinnedBoundsAreComparedThroughTheirSerializedCacheWithoutRounding()
+        {
+            using var fixture = new MeshFixture(3, 2);
+            fixture.Mesh.vertices = new[] { new Vector3(-1, 0, 0), new Vector3(1, 0, 0), new Vector3(0, 2, 0) };
+            fixture.Mesh.RecalculateBounds();
+            var stamp = ExportRecoverySourceStamp.Capture(fixture.Source);
+            var hash = ExportSourceFingerprint.Compute(fixture.Source);
+            for (var read = 0; read < 3; read++) _ = fixture.Skin.localBounds;
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(hash));
+            Assert.That(stamp.Matches(fixture.Source), Is.True);
+            using (var serialized = new SerializedObject(fixture.Skin))
+            {
+                var bounds = serialized.FindProperty("m_AABB").boundsValue;
+                bounds.center += Vector3.one * 5e-8f;
+                serialized.FindProperty("m_AABB").boundsValue = bounds;
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+            }
+            Assert.That(stamp.Matches(fixture.Source), Is.False, "A tiny change of the serialized bounds is still a change.");
+        }
+
         [Test]
         public void RendererBoundsResetKeepsUnchangedAuthoredSkinnedBoundsCurrent()
         {
