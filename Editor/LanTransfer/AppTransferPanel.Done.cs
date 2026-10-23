@@ -134,7 +134,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             title.style.textOverflow = TextOverflow.Ellipsis;
             line.Add(title);
             head.Add(line);
-            var sub = new Label(failed ? flow.FailureText(T)
+            var sub = new Label(failed ? AppTransferFlow.SentencePerLine(flow.FailureText(T))
                 : exportNotes.NoteCount > 0 ? string.Format(T(AppTransferText.NoteCount), exportNotes.NoteCount) : T(AppTransferText.NoNotes));
             sub.AddToClassList("t");
             sub.AddToClassList("grey");
