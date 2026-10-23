@@ -60,8 +60,9 @@ namespace VRVlog.LilToonExporter
                     {
                         entry.Prepared.RecalculateNormals();
                         var normals = entry.Prepared.normals;
-                        if (normals.Length != source.vertexCount)
-                            throw new InvalidOperationException(renderer.name + ": 未設定の頂点法線を生成できませんでした。");
+                        // Unity generates nothing when the bounds overflow
+                        // float; every vertex then gets the fallback below.
+                        if (normals.Length != source.vertexCount) normals = new Vector3[source.vertexCount];
                         var zeroNormals = 0;
                         for (var i = 0; i < normals.Length; i++)
                         {
