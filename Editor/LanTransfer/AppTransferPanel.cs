@@ -322,6 +322,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var link = flow.Link;
             if (link == null) return;
             ClearQr();
+            // A panel that did not start this transfer (Begin) decides from the link itself.
+            if (placeholderSide == 0) qrMarked = TransferQrCode.CanMark(link);
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link, qrMarked); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
         }
