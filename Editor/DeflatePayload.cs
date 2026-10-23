@@ -23,11 +23,19 @@ namespace VRVlog.LilToonExporter
         {
             DecodedBytes = bytes.Length;
             running.Wait();
-            encoding = Task.Run(() =>
+            try
             {
-                try { return Compress(bytes); }
-                finally { running.Release(); }
-            });
+                encoding = Task.Run(() =>
+                {
+                    try { return Compress(bytes); }
+                    finally { running.Release(); }
+                });
+            }
+            catch
+            {
+                running.Release();
+                throw;
+            }
         }
 
         static byte[] Compress(byte[] bytes)
