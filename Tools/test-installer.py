@@ -56,6 +56,22 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(data=data), self.assertRaises(ValueError):
                 installer.check_installer(data, config)
 
+    def test_download_retries_then_gives_up(self):
+        calls = []
+
+        def failing(url, timeout):
+            calls.append(url)
+            raise installer.urllib.error.URLError("offline")
+
+        original = installer.urllib.request.urlopen
+        installer.urllib.request.urlopen = failing
+        try:
+            with self.assertRaises(installer.urllib.error.URLError):
+                installer.download_creator(wait=0)
+        finally:
+            installer.urllib.request.urlopen = original
+        self.assertEqual([installer.CREATOR_URL] * installer.DOWNLOAD_ATTEMPTS, calls)
+
 
 if __name__ == "__main__":
     unittest.main()

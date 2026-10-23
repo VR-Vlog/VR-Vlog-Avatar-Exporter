@@ -15,6 +15,7 @@ lilToonの配布を確かめると、GitHub Releasesの添付はVPM用のZIPだ�
 - 設定は `package.json` から作る。リポジトリはREADMEで案内している `https://vrvlog.fun/exporter/index.json`、依存は `^<版>`、版にプレリリースの印（`-`）があればプレリリースも選ぶ、Unityの下限は `package.json` の `unity`。
 - 作ったunitypackageの中の `config.json` を読み、渡した設定と同じものが1つだけ入っていることを確かめてから出力する。
 - `release-vpm.yml` は既存の「Build exporter package」でインストーラーも作り、「Publish release」でZIPと一緒に添付する。新しいRelease・公開先・トリガーは足さない。VPMの一覧（`build-listing.yml`）はZIPだけを読むので変えない。
+- 「Build exporter package」では、インストーラーをZIPより先に作る。外部の作成ツールが作業ツリーを書き換えても、そのあと作るZIPが検証済みの候補とSHA-256で一致しなければ止まる。作成ツールのダウンロードは一時的な障害でリリースを止めないよう3回まで試す。
 - PRの `Validate` でも同じスクリプトでインストーラーを作り、artifact（`vpm-installer`、7日）に上げる。リリース前に実機で試せるようにするため。`Tools/check-pipeline.py` のartifactの許可に `work/installer` を足し、リリースでインストーラーを作って添付していることも検査する。
 
 ## 検討した代替案と不採用理由
@@ -26,4 +27,5 @@ lilToonの配布を確かめると、GitHub Releasesの添付はVPM用のZIPだ�
 ## 影響
 
 - エクスポーターのパッケージ（ZIP）の中身は変わらない。Releaseの添付が1つ増える。
-- PRごとに作成ツール（約280KB）をGitHubから1回ダウンロードする。
+- PRごとに作成ツール（約280KB）をGitHubから1回ダウンロードする。3回とも失敗するとPRの `Validate` とリリースが失敗する。
+- インストーラーは同じ系列の、VPMの一覧にある最新の版を入れる。Releaseに添付した直後は一覧への反映が済むまでその版は入らない。

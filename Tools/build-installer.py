@@ -10,6 +10,8 @@ import json
 import subprocess
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -21,6 +23,7 @@ CREATOR_SHA256 = "416709b3a70dd7b3023e84b04d077f6b38873b15fb7f1042c6900e72f00285
 REPOSITORY_URL = "https://vrvlog.fun/exporter/index.json"
 MAX_CREATOR_BYTES = 2 * 1024 * 1024
 MAX_INSTALLER_BYTES = 2 * 1024 * 1024
+DOWNLOAD_ATTEMPTS = 3
 
 
 def installer_config(package):
@@ -64,11 +67,22 @@ def check_installer(data, config):
         raise ValueError("Installer config differs from the requested one: " + json.dumps(configs))
 
 
+# A brief GitHub outage should not stop a release, so the download is retried.
+def download_creator(attempts=DOWNLOAD_ATTEMPTS, wait=10):
+    for attempt in range(1, attempts + 1):
+        try:
+            with urllib.request.urlopen(CREATOR_URL, timeout=60) as response:
+                return response.read(MAX_CREATOR_BYTES + 1)
+        except (urllib.error.URLError, OSError):
+            if attempt == attempts:
+                raise
+            time.sleep(wait * attempt)
+
+
 def build(package, output, creator=None):
     config = installer_config(package)
     if creator is None:
-        with urllib.request.urlopen(CREATOR_URL, timeout=60) as response:
-            creator = response.read(MAX_CREATOR_BYTES + 1)
+        creator = download_creator()
     with tempfile.TemporaryDirectory(prefix="exporter-installer-") as directory:
         script = Path(directory) / "creator.mjs"
         script.write_bytes(verified_creator(creator))
