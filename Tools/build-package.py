@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,17 @@ def prerelease(version):
 def tracked_files(root):
     data = subprocess.check_output(["git", "-C", str(root), "ls-files", "-z"])
     return sorted(set(data.decode("utf-8").split("\0")) - {""})
+
+
+# VCC and ALCOM give each extracted file its entry's time, and Unity rebuilds an assembly
+# only when a source time differs from its last build. With one fixed time for every
+# release, an update that changes a file's content but no assembly's file list kept the
+# old DLL (beta.8 to beta.9: CS0117 for ExporterWindowHeader.Version). The commit time
+# differs per release and is the same for every build of one commit, so the candidate
+# and the published ZIP stay byte-identical.
+def entry_time(root):
+    seconds = int(subprocess.check_output(["git", "-C", str(root), "log", "-1", "--format=%ct", "HEAD"]))
+    return datetime.fromtimestamp(seconds, timezone.utc).timetuple()[:6]
 
 
 def included(name, transfer=False):
@@ -151,12 +163,13 @@ def build(root, output):
     verify_transfer_dependencies(contents, transfer)
     if not any(name.startswith("Editor/") and name.endswith(".cs") for name in names):
         raise ValueError("Package has no Editor source")
+    date_time = entry_time(root)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Stored entries avoid platform/zlib-dependent DEFLATE bytes. Pin the
     # creator OS too: Python otherwise emits different Windows/Unix headers.
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
         for name, content in contents.items():
-            entry = zipfile.ZipInfo(name, date_time=(2020, 1, 1, 0, 0, 0))
+            entry = zipfile.ZipInfo(name, date_time=date_time)
             entry.create_system = 3
             entry.compress_type = zipfile.ZIP_STORED
             entry.external_attr = 0o100644 << 16
