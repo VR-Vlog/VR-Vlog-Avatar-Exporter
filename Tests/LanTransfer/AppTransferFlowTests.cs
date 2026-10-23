@@ -801,6 +801,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Element<UnityEngine.UIElements.Image>("qrCover").image, Is.SameAs(QrCover.Texture));
                     Assert.That(Shown("qrCover"), Is.True);
                     Assert.That(Shown("revealArea"), Is.True);
+                    // The cover says it is a sample, in every language, and never takes the click.
+                    Assert.That(Shown("qrSample"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("qrSample").text, Is.EqualTo("SAMPLE"));
+                    Assert.That(Element<UnityEngine.UIElements.VisualElement>("qrSample").pickingMode, Is.EqualTo(UnityEngine.UIElements.PickingMode.Ignore));
                     Assert.That(Shown("hideQrButton"), Is.False);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
                     // The caption and the corner marks stay while it is covered; the icon belongs to the QR.
@@ -817,6 +821,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Shown("qrFrame"), Is.True);
                     Assert.That(Shown("qrCover"), Is.False);
                     Assert.That(Shown("revealArea"), Is.False);
+                    Assert.That(Shown("qrSample"), Is.False);
                     Assert.That(Shown("hideQrButton"), Is.True);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.Waiting)));
 
@@ -825,6 +830,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Qr() == null, Is.True);
                     Assert.That(Shown("qrImage"), Is.False);
                     Assert.That(Shown("qrCover"), Is.True);
+                    Assert.That(Shown("qrSample"), Is.True);
 
                     // "QRを作り直す" while it is shown: the new QR starts hidden.
                     Call(panel, "RevealQr");

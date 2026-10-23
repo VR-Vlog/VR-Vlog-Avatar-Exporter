@@ -218,13 +218,21 @@ namespace VRVlog.LilToonExporter
                     found.Add((root, ExportGimmickRules.SkeletonTakeover, SkeletonTakeoverReason));
             }
             var motions = new Dictionary<UnityEngine.Object, bool>();
+            var bound = new Dictionary<Transform, bool>();
+            // Bound to the body: an outfit, whatever its animator does. Asked once
+            // per root and before the motions, so an outfit's components are not read.
+            bool Bound(Transform root)
+            {
+                if (!bound.TryGetValue(root, out var value))
+                    bound[root] = value = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Any(skin => !excluded(skin.transform) && skin.bones.Length > 0) ||
+                        root.GetComponentsInChildren<Component>(true).Any(c => IsType(c, BoundTypes));
+                return value;
+            }
             foreach (var component in components.OfType<MonoBehaviour>())
             {
                 var root = ToolRoot(source.transform, component.transform);
-                if (root == null || Known(root) || !PlaysBodyPose(component, motions)) continue;
-                // Bound to the body: an outfit, whatever its animator does.
-                if (root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Any(skin => !excluded(skin.transform) && skin.bones.Length > 0) ||
-                    root.GetComponentsInChildren<Component>(true).Any(c => IsType(c, BoundTypes))) continue;
+                // A component on a bone gives the skeleton as its root, which is never a tool.
+                if (root == null || Known(root) || hips != null && hips.IsChildOf(root) || Bound(root) || !PlaysBodyPose(component, motions)) continue;
                 found.Add((root, ExportGimmickRules.PoseMotion, PoseMotionReason));
             }
             return found;

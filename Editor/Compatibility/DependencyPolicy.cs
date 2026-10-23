@@ -123,7 +123,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         {
             var support = ClassifyLilToon(version);
             if (support == LilToonSupport.Catalogue || support == LilToonSupport.Missing) return null;
-            return string.Format(translate("アプリではlilToon {1}として描画します（導入済みのバージョンは{0}）"), DisplayLilToon(version, translate), LilToonVersion);
+            return string.Format(translate(ExportNoteText.LilToonRendered), DisplayLilToon(version, translate), LilToonVersion);
         }
 
         // Recorded for lilToon under Assets whose package.json gives no

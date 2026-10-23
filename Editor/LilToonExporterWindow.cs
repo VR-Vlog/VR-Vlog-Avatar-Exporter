@@ -27,7 +27,7 @@ namespace VRVlog.LilToonExporter
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
             Action<byte[], IEnumerable<string>> completed = null,
             IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null,
-            bool interactive = false, Action openBlinkSettings = null)
+            bool interactive = false, Action openBlinkSettings = null, string diagnosticsKind = null)
         {
             if (create == null) throw new ArgumentNullException(nameof(create));
             var warnings = new List<string>();
@@ -46,6 +46,8 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
+            // The result list can copy the diagnostics before anything is saved.
+            ExportDiagnostics.Record(source, bytes, report.Fallbacks, warnings, diagnosticsKind);
             // The export already worked around what it could not set up. Show the
             // result list once, before anything is written, and save from there.
             ExportFallbackConfirmation.Confirm(report.Fallbacks, warnings, destination, source, interactive, () =>
@@ -59,13 +61,8 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.0.0";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.1.0";
         }
-
-        // Stable packages omit this assembly. Resolve only its public optional
-        // entry so exporting also works in packages without the transfer module.
-        internal static System.Reflection.MethodInfo SavedVrmTransferMethod() =>
-            TransferMethod(type => type, "OpenSavedVrmForDevelopment", typeof(string));
 
         // The same step as the expression board's third page: returns the panel as a VisualElement, given
         // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while

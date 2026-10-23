@@ -199,7 +199,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
             Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
             Assert.That(output.GetColor("_Color"), Is.EqualTo(new Color(1, .5f, .5f, 1)));
-            Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.4f).Within(1e-6));
+            // UTS keeps a pixel where its clipping mask plus the level reaches 0.5.
+            Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.5f).Within(1e-6));
+            Assert.That(output.GetFloat("_AlphaMaskMode"), Is.EqualTo(1f));
+            Assert.That(output.GetFloat("_AlphaMaskValue"), Is.EqualTo(.4f).Within(1e-6));
             Assert.That(output.GetTexture("_BumpMap"), Is.SameAs(normal));
             Assert.That(output.GetFloat("_BumpScale"), Is.EqualTo(.7f).Within(1e-6));
             Assert.That(output.GetFloat("_UseEmission"), Is.EqualTo(1f), "A colored emission without a toggle is on.");

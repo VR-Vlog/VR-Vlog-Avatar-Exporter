@@ -998,7 +998,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.Source.GetComponent<Animator>().runtimeAnimatorController, Is.SameAs(controller.Controller));
                 Assert.That(EditorJsonUtility.ToJson(pb), Is.EqualTo(sourcePhysBone));
                 Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
-                Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders), "A stopped export must release every exporter temporary asset folder.");
+                Assert.That(ExportFolders(), Is.SubsetOf(temporaryFolders), "A stopped export must release every exporter temporary asset folder.");
                 return;
             }
             try

@@ -1,4 +1,4 @@
-> Stable **1.0.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.1.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -39,7 +39,7 @@ Removed and reviewed objects appear in the export result list. To keep one, choo
 | Component | Supported version |
 | --- | --- |
 | Unity | 2022.3; use the version recommended by VCC / ALCOM for your VRChat project |
-| lilToon | Any version in 1.0.0 and from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (earlier, 0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4 and stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
+| lilToon | Any version from 1.0.0 and from 0.12.0-beta.4; the app draws it as lilToon 2.3.4, so 2.3.4 is recommended (earlier, 0.12.0-beta.1–beta.3 accept 2.0.0–2.3.4 and stable 0.11.15 supports 2.3.4 only); install it with your avatar before exporting, through VCC / ALCOM or from the unitypackage under `Assets` |
 | UniVRM / UniGLTF | Not required; UniVRM 0.131.4 is bundled with renamed namespaces and shaders, so an installed UniVRM of any version does not conflict |
 | VR Vlog | 0.1.1 (build 345) or later for basic lilToon import; newer features require a compatible app version |
 | VRChat SDK | Optional; checked with 3.5.0 or later and below 3.11.0, including pre-releases below 3.11.0. Expression files with VRC Animator Play Audio need 3.5.2 or later and below 3.11.0 |
@@ -56,7 +56,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 1.0.0** from the stable versions. **Show pre-release packages** is not needed.
+3. Install **VR Vlog lilToon VRM Exporter 1.1.0** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -76,11 +76,11 @@ Previous stable **0.11.14** fixes exports stopping during neutral expression sam
 
 The export details and failure windows offer **Copy full text** and **Save text**. Both include every diagnostic and the complete retained exception, including inner exceptions and stack traces. Text files use UTF-8. Full text includes avatar names and paths; the separate **Copy shareable diagnostics** action keeps its redacted report.
 
-Stable 1.0.0 includes QR transfer through **アプリに転送**, as did stable 0.11.15. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
+Stable 1.0.0 and later include QR transfer through **アプリに転送**, as did stable 0.11.15. Previously published stable 0.11.14 remains export-only. QR transfer requires a compatible receiving app. Check the [Japanese release guidance](README.md#インストール) and [cloud transfer guide](Documentation~/CloudTransfer.md) for the supported app and platform before using it.
 
 ## Quick start
 
-The steps below describe stable 1.0.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.1.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
 2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.
@@ -110,7 +110,7 @@ To import on iPhone, save the `.vrm` in Files, enable **lilToon専用表示** in
 
 ### App preview
 
-This window shows a saved VRM as the VR Vlog app loads it. 1.0.0 has no button or menu entry that opens it. In the window, **VRM ファイルを開く** opens another `.vrm`. The window shows whether the materials render with lilToon or which ones fall back to MToon, and can switch to standard MToon only. It also applies each VRM expression, plays expression animations, blinks (a test signal for this window only) and sways the avatar to move its spring bones. lilToon is drawn with the official Built-in shaders, so small details can differ from the app's URP shaders. The preview works only when the VR Vlog app's reader package (`com.vrvlog.avatar-runtime`) is installed in the project. That package is not distributed publicly. Without it exporting works as before. Only `Editor/AppPreview/AvatarRuntimeBackend.cs` (the `VRVlog.LilToonExporter.AppPreview` assembly) references the package; the window uses only the `IAppPreviewBackend` interface in `Editor/AppPreviewEntry.cs` that this file registers. If the package moves or is renamed, that file and its assembly definition are the only ones to change.
+This window shows a saved VRM as the VR Vlog app loads it. 1.0.0 and later have no button or menu entry that opens it. In the window, **VRM ファイルを開く** opens another `.vrm`. The window shows whether the materials render with lilToon or which ones fall back to MToon, and can switch to standard MToon only. It also applies each VRM expression, plays expression animations, blinks (a test signal for this window only) and sways the avatar to move its spring bones. lilToon is drawn with the official Built-in shaders, so small details can differ from the app's URP shaders. The preview works only when the VR Vlog app's reader package (`com.vrvlog.avatar-runtime`) is installed in the project. That package is not distributed publicly. Without it exporting works as before. Only `Editor/AppPreview/AvatarRuntimeBackend.cs` (the `VRVlog.LilToonExporter.AppPreview` assembly) references the package; the window uses only the `IAppPreviewBackend` interface in `Editor/AppPreviewEntry.cs` that this file registers. If the package moves or is renamed, that file and its assembly definition are the only ones to change.
 
 ## Documentation
 
@@ -135,6 +135,6 @@ When the exporter cannot run, the **アプリに転送** window shows **VR Vlog 
 
 ## License
 
-Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 and 1.0.0 include the pinned transfer dependencies.
+Exporter code is available under the [MIT License](LICENSE). Third-party notices cover [lilToon-derived shader code](ThirdPartyNotices/lilToon.md), [UniVRM / UniGLTF](ThirdPartyNotices/UniVRM.md), [ZXing.Net for transfer](ThirdPartyNotices/LanTransfer.md), and the [explicit Avatar Optimizer correction patch](Documentation~/DependencyPatches/README.md) with its [license](Documentation~/DependencyPatches/AAO-LICENSE.txt). Stable 0.11.15 and 1.0.0 or later include the pinned transfer dependencies.
 
 Avatar assets and published images retain their owners' terms. See the [image sources and credits](Website/assets/README.md).

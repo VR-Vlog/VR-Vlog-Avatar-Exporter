@@ -20,6 +20,8 @@ namespace VRVlog.AvatarFormats
             [(Expressions.ExpressionAnimationData.Extension, 2)] = "1.0.5",
             [("VRVLOG_humanoid_poses", 1)] = "1.0.0",
             [("VRVLOG_humanoid_animations", 1)] = "1.0.4",
+            // Provisional: see Documentation~/decisions/2026-10-23-expression-gestures.md.
+            [(Expressions.ExpressionGestureData.Extension, Expressions.ExpressionGestureData.SchemaVersion)] = "1.0.8",
         };
 
         public static string RequiredAppVersion(string extension, int schemaVersion) =>

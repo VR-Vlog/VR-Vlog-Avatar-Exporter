@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
         [NonSerialized] private bool pressedWhileBlocked, authorMarked;
         [NonSerialized] private IMGUIContainer termsView;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill,
+        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
@@ -451,7 +451,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     // Also later, when the result list or recovery window saves; by then the panel may
                     // show another avatar, whose row must not claim this file.
                     if (avatar != source) return;
-                    SavedCopy(path, missing, TransferNotes.Build(Exporter?.LastNotes()), Written(AppTransferFlow.FileHashOf(path), key, source));
+                    SavedCopy(path, missing, ExportedNotes(), Written(AppTransferFlow.FileHashOf(path), key, source));
                 });
             }
             catch (Exception exception) { failure = exception.Message ?? ""; }
@@ -643,7 +643,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 }
                 saved = true;
                 missingShaders = Exporter?.LastMissingShaderCount() ?? 0;
-                exportNotes = TransferNotes.Build(Exporter?.LastNotes());
+                exportNotes = ExportedNotes();
                 // Saving it later copies this file. A file that left out a failing stage is not what
                 // "VRMを保存" writes: saving then exports again.
                 var complete = (Exporter?.LastOmittedStageCount() ?? 0) == 0;
@@ -818,6 +818,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             qrMarkIcon = root.Q<Image>("qr-mark-icon");
             qrFrame = root.Q("qr-frame");
             revealArea = root.Q("reveal");
+            qrSample = root.Q("qr-sample");
             showQrButton = root.Q<Button>("show-qr");
             hideQrButton = root.Q<Button>("hide-qr");
             slotMessage = root.Q("message");
@@ -880,6 +881,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // Only "QRを表示" takes the click, not the area around it.
             qrCover.pickingMode = PickingMode.Ignore;
             revealArea.pickingMode = PickingMode.Ignore;
+            qrSample.pickingMode = PickingMode.Ignore;
             var probe = root.Q<IMGUIContainer>("scale-probe");
             probe.onGUIHandler = ProbeScale;
             // Only measures the display scale: no Tab stop, no clicks.
@@ -1106,6 +1108,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(qrFrame, waiting);
             Show(qrCover, covered);
             Show(revealArea, covered);
+            Show(qrSample, covered);
             showQrButton.text = T(AppTransferText.ShowQr);
 
             // A failure or an ended transfer says why in place, with the one thing to do next.
@@ -1208,6 +1211,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<int> LastMissingShaderCount;
             internal Func<int> LastOmittedStageCount;
             internal Func<string[]> LastNotes;
+            internal Func<Func<string>> LastDiagnostics;
             internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
@@ -1238,6 +1242,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         LastMissingShaderCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastMissingShaderCount"),
                         LastOmittedStageCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastOmittedStageCount"),
                         LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
+                        LastDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastDiagnostics"),
                         SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
                             typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),

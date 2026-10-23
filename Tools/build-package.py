@@ -52,6 +52,16 @@ OPTIONAL_TRANSFER_TYPE_LITERAL = '"VRVlog.LilToonExporter.LanTransfer.CloudVrmTr
 VERSION = re.compile(r"\d+\.\d+\.\d+(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?")
 
 
+def transfer_adopted(version):
+    """Prereleases, stable 0.11.15 and every stable release from 1.0.0 ship QR
+    transfer. Other 0.x stable packages stay export-only; the manifest opt-out
+    applies to every channel."""
+    if prerelease(version):
+        return True
+    match = re.fullmatch(r"([0-9]+)\.[0-9]+\.[0-9]+", version)
+    return version == "0.11.15" or match is not None and int(match[1]) >= 1
+
+
 def prerelease(version):
     match = VERSION.fullmatch(version) if isinstance(version, str) else None
     if match is None:
@@ -136,9 +146,7 @@ def build(root, output):
     cloud_transfer = manifest.get("vrvlogCloudTransfer", True)
     if type(cloud_transfer) is not bool:
         raise ValueError("vrvlogCloudTransfer must be a boolean")
-    # Stable 0.11.15 and 1.0.0 adopt the beta transfer module. Preserve export-only
-    # historical stable packages and the explicit opt-out for any channel.
-    transfer = (prerelease(manifest["version"]) or manifest["version"] in ("0.11.15", "1.0.0")) and cloud_transfer
+    transfer = transfer_adopted(manifest["version"]) and cloud_transfer
     names = [name for name in tracked_files(root) if included(name, transfer)]
     required = ROOT_FILES | LOCALE_FILES | DEPENDENCY_PATCH_FILES | VENDOR_FILES
     if transfer:
