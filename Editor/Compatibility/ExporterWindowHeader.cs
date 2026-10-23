@@ -46,11 +46,9 @@ namespace VRVlog.LilToonExporter
         {
             if (Event.current.type != EventType.Repaint) return;
             headingStyle ??= new GUIStyle(EditorStyles.boldLabel) { fontSize = 14, alignment = TextAnchor.MiddleLeft, clipping = TextClipping.Clip, wordWrap = false };
-            versionStyle ??= new GUIStyle(EditorStyles.miniLabel)
-            {
-                fontSize = 10, alignment = TextAnchor.MiddleRight, clipping = TextClipping.Clip, wordWrap = false,
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color32(153, 153, 153, 255) : new Color32(110, 110, 110, 255) },
-            };
+            versionStyle ??= new GUIStyle(EditorStyles.miniLabel) { fontSize = 10, alignment = TextAnchor.MiddleRight, clipping = TextClipping.Clip, wordWrap = false };
+            // Set on every draw like the divider below, so switching the editor theme takes effect at once.
+            versionStyle.normal.textColor = EditorGUIUtility.isProSkin ? new Color32(153, 153, 153, 255) : new Color32(110, 110, 110, 255);
             var icon = new Rect(area.x + Padding, area.y + (RowHeight - IconSize) / 2f, IconSize, IconSize);
             GUI.DrawTexture(icon, ExporterWindowIcon.Texture, ScaleMode.ScaleToFit);
             var textX = icon.xMax + IconGap;

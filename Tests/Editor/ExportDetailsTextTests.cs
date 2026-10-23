@@ -126,12 +126,13 @@ namespace VRVlog.LilToonExporter.Tests
             var error = Failure();
             var text = ExportDetailsText.Failure(error.Message, error.ToString(), Array.Empty<ExportRecoveryDiagnostic>(), version);
             Assert.That(text, Does.StartWith("VR Vlog Exporter " + version + "\n").Or.StartWith("VR Vlog Exporter " + version + "\r\n"));
+            Assert.That(text.Split('\n')[1].TrimEnd('\r'), Is.EqualTo(error.Message));
             Assert.That(text, Does.EndWith(error.ToString()));
             Assert.That(ExportDetailsText.Failure(error.Message, error.ToString(), null), Does.Not.Contain("VR Vlog Exporter"));
 
             var support = ExportRecoveryReport.FromException(null, error).BuildSupportText(version);
-            Assert.That(support, Does.Contain("Exporter: " + version));
             Assert.That(support, Does.StartWith("VR Vlog exporter recovery report v1\n"));
+            Assert.That(support.Split('\n')[1].TrimEnd('\r'), Is.EqualTo("Exporter: " + version));
         }
     }
 }
