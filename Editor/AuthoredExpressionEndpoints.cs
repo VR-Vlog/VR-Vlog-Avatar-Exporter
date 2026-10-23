@@ -35,24 +35,27 @@ namespace VRVlog.LilToonExporter
         readonly List<List<Endpoint>> tracking = new List<List<Endpoint>>();
         readonly List<Object> owned = new List<Object>();
         readonly HashSet<string> usedNames;
+        readonly ICollection<string> warnings;
+        readonly HashSet<string> ambiguousPaths = new HashSet<string>(StringComparer.Ordinal);
         bool baked;
         long generatedBytes;
         internal VrmTrackingProfile TrackingProfile { get; private set; }
 
-        AuthoredExpressionEndpoints(GameObject avatar, NeutralShapeSnapshot neutral, VrmTrackingProfile profile)
+        AuthoredExpressionEndpoints(GameObject avatar, NeutralShapeSnapshot neutral, VrmTrackingProfile profile, ICollection<string> warnings)
         {
             this.avatar = avatar;
             this.neutral = neutral;
             sourceProfile = profile;
+            this.warnings = warnings;
             usedNames = DeterministicNames.BlendShapeNames(avatar);
         }
 
         internal static AuthoredExpressionEndpoints Capture(GameObject prepared, NeutralShapeSnapshot neutral,
-            VrmTrackingProfile profile = null)
+            VrmTrackingProfile profile = null, ICollection<string> warnings = null)
         {
             if (neutral == null || neutral.Root != prepared)
                 throw new ArgumentException("The neutral snapshot must belong to the prepared avatar.");
-            var session = new AuthoredExpressionEndpoints(prepared, neutral, profile);
+            var session = new AuthoredExpressionEndpoints(prepared, neutral, profile, warnings);
             var expression = prepared.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm?.Expression : null;
             if (expression != null)
             {
@@ -96,7 +99,7 @@ namespace VRVlog.LilToonExporter
             var declared = new Dictionary<(NeutralShapeSnapshot.RendererState, int), float>();
             var bindings = clip.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>();
             var protectedBindings = bindings.Select(binding => {
-                var state = neutral.Get(binding.RelativePath);
+                var state = StateAt(binding.RelativePath);
                 return binding.Index >= 0 && binding.Index != int.MaxValue &&
                     (state == null || binding.Index >= state.OriginalMesh.blendShapeCount)
                     ? new MorphTargetBinding(binding.RelativePath, int.MaxValue, binding.Weight) : binding;
@@ -110,7 +113,7 @@ namespace VRVlog.LilToonExporter
             var first = new HashSet<(NeutralShapeSnapshot.RendererState, int)>();
             foreach (var binding in bindings)
             {
-                var state = neutral.Get(binding.RelativePath);
+                var state = StateAt(binding.RelativePath);
                 // Leave omitted/malformed routes to the existing exporter and
                 // exclusion policy, preserving their scope and fallback rules.
                 if (state == null || binding.Index < 0 || binding.Index >= state.OriginalMesh.blendShapeCount)
@@ -129,6 +132,19 @@ namespace VRVlog.LilToonExporter
             }
             result.Endpoints.AddRange(endpoints.Values);
             if (result.Endpoints.Count > 0) clips.Add(result);
+        }
+
+        // A path several meshes share names none of them: the binding is left
+        // out like one whose mesh is gone, and the export goes on.
+        NeutralShapeSnapshot.RendererState StateAt(string path)
+        {
+            try { return neutral.Get(path); }
+            catch (InvalidOperationException)
+            {
+                if (ambiguousPaths.Add(path ?? ""))
+                    warnings?.Add(string.Format(ExporterLocalization.T("同じ階層に同じ名前のメッシュがあるためVRM表情の設定から外しました: {0}"), path));
+                return null;
+            }
         }
 
         void SetEndpoint(Dictionary<NeutralShapeSnapshot.RendererState, Endpoint> endpoints,
