@@ -280,6 +280,7 @@ namespace UnityEditor
         }
     }
     public static class AssetDatabase { public static string GetAssetPath(UnityEngine.Object asset) => ""; }
+    public static class EditorUtility { public static bool IsPersistent(UnityEngine.Object value) => false; }
     public static class AnimationUtility
     {
         public static string CalculateTransformPath(UnityEngine.Transform child, UnityEngine.Transform root)
