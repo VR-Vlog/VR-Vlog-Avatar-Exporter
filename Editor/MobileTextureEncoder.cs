@@ -39,7 +39,7 @@ namespace VRVlog.LilToonExporter
 
         internal static void Warn(ICollection<string> warnings, string name, int width, int height, int resizedWidth, int resizedHeight)
         {
-            var message = name + ": 出力用画像を " + width + "×" + height + " から " + resizedWidth + "×" + resizedHeight + " へ縮小しました。元の画像は変更していません。";
+            var message = string.Format(ExportNoteText.OutputTextureResized, name, width, height, resizedWidth, resizedHeight);
             if (warnings != null && !warnings.Contains(message)) warnings.Add(message);
         }
         private static byte[] RequirePng(byte[] bytes, string name) => bytes != null && bytes.Length > 0 ? bytes : throw new InvalidOperationException("画像 '" + name + "' をPNGへ変換できませんでした。");

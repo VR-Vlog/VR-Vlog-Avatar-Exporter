@@ -160,10 +160,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // With no notes the result line above already says so.
             if (exportNotes.Notes.Count > 0) host.Add(SectionLabel(AppTransferText.Notes));
             foreach (var group in exportNotes.Notes) host.Add(GroupFold(group));
-            if (exportNotes.Records.Count == 0) return;
+            if (exportNotes.Records.Count == 0 && !exportNotes.HasConversion) return;
             var label = SectionLabel(AppTransferText.OtherNotes);
             if (exportNotes.Notes.Count > 0) label.style.marginTop = 12;
             host.Add(label);
+            AddConversion(host);
             foreach (var group in exportNotes.Records)
             {
                 if (group.Kind == null) { foreach (var item in group.Items) host.Add(Line(item.Target)); continue; }
