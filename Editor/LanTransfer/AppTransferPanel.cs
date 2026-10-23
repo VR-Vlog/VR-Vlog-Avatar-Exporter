@@ -1101,7 +1101,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     break;
                 case AppTransferView.Failed:
                     title = T(flow.ExportDidFail ? AppTransferText.ExportFailed : AppTransferText.TransferFailed);
-                    body = flow.FailureText(T); button = T(AppTransferText.Retry);
+                    body = AppTransferFlow.SentencePerLine(flow.FailureText(T)); button = T(AppTransferText.Retry);
                     break;
             }
             Show(slotMessage, title != null);

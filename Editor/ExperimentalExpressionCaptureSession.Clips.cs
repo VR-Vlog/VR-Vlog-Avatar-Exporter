@@ -320,7 +320,7 @@ namespace VRVlog.LilToonExporter
         internal string ClipError(AnimationClip clip, float time)
         {
             try { return NoFaceError(clip, BuildClipPose(clip, time, "プレビュー")); }
-            catch (InvalidOperationException error) { return error.Message; }
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return error.Message; }
         }
 
         internal Dictionary<AnimationClip, string> ClipErrors(IEnumerable<AnimationClip> clips)
