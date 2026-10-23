@@ -32,21 +32,13 @@ namespace VRVlog.LilToonExporter
         private int lastOmittedStageCount;
 
         // The author is the avatar's remembered one, else what this window
-        // already holds, else the author of an open export window. The license
-        // comes from a board showing its own information page for this avatar, else the avatar's
-        // remembered settings; an avatar without any starts from the default.
+        // already holds. The license is the avatar's remembered settings; an
+        // avatar without any starts from the default. The expression board does
+        // not show either: they are asked here.
         public void SelectAvatar(GameObject avatar)
         {
             settings = ExportSettingsStore.Load(avatar);
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
-            foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
-            {
-                // A board whose third page is the transfer panel hides its author and license; they are asked here.
-                if (!window.ShowsOwnInfo) continue;
-                if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
-                var shown = window.LicenseFor(avatar);
-                if (shown != null) license = shown;
-            }
         }
 
         public bool HasAuthor() => ExportAuthor.IsValid(author);
@@ -91,7 +83,7 @@ namespace VRVlog.LilToonExporter
         // True while the open board has something to fix before it exports.
         public bool DetailedNeedsFix(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.BlocksExport ?? false;
 
-        // Opens the expression board for this avatar in the transfer mode. False
+        // Opens the expression board for this avatar. False
         // when the board kept another avatar.
         public bool EditDetails(GameObject avatar) => ExperimentalExpressionCaptureWindow.OpenForTransfer(avatar);
 

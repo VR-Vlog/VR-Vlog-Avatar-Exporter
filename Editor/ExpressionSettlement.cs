@@ -417,12 +417,5 @@ namespace VRVlog.LilToonExporter
             foreach (var key in ambiguous) index.Remove(key);
             return index;
         }
-
-        // The same (layer, state hash) lookup for callers outside Settle.
-        internal static Func<int, int, AnimatorState> StateResolver(AnimatorController controller)
-        {
-            var index = StateIndex(controller);
-            return (layer, hash) => index.TryGetValue((layer, hash), out var found) ? found.State : null;
-        }
     }
 }

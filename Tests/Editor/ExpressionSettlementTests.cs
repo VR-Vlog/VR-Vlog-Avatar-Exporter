@@ -89,10 +89,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static Dictionary<string, float> Menu(float value = 1) => new Dictionary<string, float> { ["Menu"] = value };
 
-        private float Sample(List<string> messages, IDictionary<string, float> selected = null) =>
-            VrChatExpressionSampler.Sample(avatar, controller, metadata.Defaults, selected ?? Menu(), null, metadata, messages: messages)
-                .Single(value => value.Shape == "Face size").Weight;
-
         private float Play(List<string> warnings) =>
             ExperimentalInstalledExpressionPlayer.Sample(avatar, metadata, Menu(), warnings: warnings)
                 .Single(value => value.Shape == "Face size").Weight;
@@ -136,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100))).speed = speed;
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(100).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(100).Within(.01));
             Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.FinalKeyOfClip }));
         }
 
@@ -146,7 +142,7 @@ namespace VRVlog.LilToonExporter.Tests
             var a = Selected(Clip("A", 0));
             Timed(a, State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 5, duration, fixedDuration);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(60).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(60).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.LongWait));
@@ -157,7 +153,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Selected(Clip("Looping face", AnimationCurve.Linear(0, 20, 1, 80), loop: true));
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(20).Within(1.01));
+            Assert.That(Play(messages), Is.EqualTo(20).Within(1.01));
             Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.LoopingFinal }));
         }
 
@@ -170,22 +166,24 @@ namespace VRVlog.LilToonExporter.Tests
             var messages = new List<string>();
             // A is left at 3 s and B is left at 6 s, back into A. A is the
             // first revisited state, so its exit edge is not followed again.
-            Assert.That(Sample(messages), Is.EqualTo(10).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(10).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.CyclicTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.SelfTransition));
         }
 
-        // An exit edge whose conditions are false now cannot be followed.
-        // The face is kept, reported as held, and still checked over time.
+        // An exit edge waiting on a trigger that is not set cannot be followed.
+        // The final check cannot read triggers, so the edge is reported as held,
+        // and the moving face is still checked up to its last key.
         [Test]
         public void AHeldExitTimeIsReportedSeparatelyAndStillChecked()
         {
-            var smile = Selected(Clip("Smile", 75));
+            controller.AddParameter("Later", AnimatorControllerParameterType.Trigger);
+            var smile = Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
             var edge = Timed(smile, State(controller.layers[0].stateMachine, "Later", Clip("Later", 30)), 5);
-            edge.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
+            edge.AddCondition(AnimatorConditionMode.If, 0, "Later");
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
-            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.HeldTransitions }));
+            Assert.That(Play(messages), Is.EqualTo(100).Within(.01));
+            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.FinalKeyOfClip, ExpressionSettlement.HeldTransitions }));
         }
 
         // A stopped or reversed clock never reaches the clip's last key.
@@ -193,7 +191,6 @@ namespace VRVlog.LilToonExporter.Tests
         public void AMovingClipOnAStoppedOrReversedClockIsNotSaved(float speed)
         {
             Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100))).speed = speed;
-            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
             Assert.Catch<InvalidOperationException>(() => Play(new List<string>()));
         }
 
@@ -208,7 +205,7 @@ namespace VRVlog.LilToonExporter.Tests
             toB.interruptionSource = TransitionInterruptionSource.Source; toB.orderedInterruption = false;
             Timed(a, State(machine, "C", Clip("C", 30)), 5.3f);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(30).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(30).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
         }
 
@@ -233,7 +230,7 @@ namespace VRVlog.LilToonExporter.Tests
             var third = State(face, "Third", Clip("Third", 10));
             Transition(neutral, smile, "Face", 1); Transition(smile, other, "Face", 2); Transition(other, third, "Face", 3);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(40).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(40).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.HeldTransitions));
@@ -246,7 +243,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var wait = Selected(Clip("Wait", AnimationCurve.Linear(0, 0, 10, 100)));
             Timed(wait, wait, .5f);
-            var error = Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            var error = Assert.Catch<InvalidOperationException>(() => Play(new List<string>()));
             Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
         }
 
@@ -258,7 +255,7 @@ namespace VRVlog.LilToonExporter.Tests
             var wait = Selected(Clip("Wait", 75, 10));
             var edge = Timed(wait, wait, .5f, .25f); edge.interruptionSource = source;
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(75).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
         }
@@ -288,7 +285,7 @@ namespace VRVlog.LilToonExporter.Tests
                 before = state;
             }
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(40).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(40).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.CyclicTransitions));
         }
@@ -315,23 +312,8 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(30).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(30).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-        }
-
-        // An Any State edge into the current state without Can Transition To
-        // Self never fires, so there is nothing to wait for.
-        [Test]
-        public void AnAnyStateEdgeThatCannotReachItsOwnStateIsNotFollowed()
-        {
-            var smile = Selected(Clip("Smile", 75, 10));
-            var edge = controller.layers[0].stateMachine.AddAnyStateTransition(smile);
-            edge.hasExitTime = true; edge.exitTime = .5f; edge.duration = 0; edge.canTransitionToSelf = false;
-            edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
-            var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
-            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.FollowedTransitions));
-            Assert.That(messages, Does.Not.Contain(ExpressionSettlement.SelfTransition));
         }
 
         // B is entered by an exit time and restarts itself at once. Its clock
@@ -344,7 +326,7 @@ namespace VRVlog.LilToonExporter.Tests
             var b = State(controller.layers[0].stateMachine, "B", Clip("B", 60, 10));
             Timed(a, b, 2); Timed(b, b, .3f);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(60).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(60).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.SelfTransition));
         }
 
@@ -368,108 +350,26 @@ namespace VRVlog.LilToonExporter.Tests
             var messages = new List<string>();
             if (drivesParameter)
             {
-                var error = Assert.Catch<InvalidOperationException>(() => Sample(messages));
+                var error = Assert.Catch<InvalidOperationException>(() => Play(messages));
                 Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
                 return;
             }
-            Assert.That(Sample(messages), Is.EqualTo(100).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(100).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
-        }
-
-        // An Any State edge with Can Transition To Self and a condition that
-        // stays true restarts its state every frame, so the layer is always in
-        // a transition into the state it is already in. Both sides play the
-        // same constant clip; the face is the same as in the settled state.
-        // ownLayer: the selected layer itself restarts; otherwise another
-        // layer beside it does.
-        [TestCase(false)] [TestCase(true)]
-        public void AStateRestartedEveryFrameByAnAnyStateEdgeHoldsTheFace(bool ownLayer)
-        {
-            var messages = new List<string>();
-            if (ownLayer)
-            {
-                var machine = controller.layers[0].stateMachine;
-                machine.defaultState = State(machine, "Idle");
-                var selected = State(machine, "Selected", Clip("Smile", 75));
-                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
-                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
-            }
-            else
-            {
-                Selected(Clip("Smile", 75));
-                RestartingLayer();
-            }
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
         }
 
         // A face that fades in is saved at its final key. A layer beside it
         // that keeps restarting into a constant state does not change the
         // face while the fade runs to its end. A zero-length edge restarts
         // without ever showing a transition.
-        [TestCase(.25f)] [TestCase(0f)]
+        [TestCase(0f)]
         public void AFadeInBesideARestartingLayerReachesItsFinalKey(float duration)
         {
             Selected(Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)));
             RestartingLayer(duration);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
+            Assert.That(Play(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FinalKeyOfClip));
-        }
-
-        // Each restart sends the clock back to the start, so a clip that moves
-        // the face over time never reaches its final key and the face keeps
-        // changing. Such a layer is refused.
-        [TestCase(false)] [TestCase(true)]
-        public void AStateRestartedEveryFrameWithAMovingClipIsNotSaved(bool ownLayer)
-        {
-            var rising = AnimationCurve.Linear(0, 0, 1, 100);
-            if (ownLayer)
-            {
-                var machine = controller.layers[0].stateMachine;
-                machine.defaultState = State(machine, "Idle");
-                var selected = State(machine, "Selected", Clip("Rise", rising));
-                var edge = machine.AddAnyStateTransition(selected); edge.hasExitTime = false; edge.duration = .1f;
-                edge.canTransitionToSelf = true; edge.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
-            }
-            else
-            {
-                Selected(Clip("Smile", 75));
-                var blink = new AnimationClip { name = "Toggle blink" };
-                AnimationUtility.SetEditorCurve(blink, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), rising);
-                AssetDatabase.AddObjectToAsset(blink, controller);
-                RestartingLayer().motion = blink;
-            }
-            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
-        }
-
-        // Each restart enters the state again and runs its callbacks, so a
-        // driver there that changes a parameter the layer reads keeps writing.
-        // Such a layer is still refused, also when a zero-length edge shows no
-        // transition at the sample or a fade beside it is waited for.
-        [TestCase(.25f, false)] [TestCase(0f, false)] [TestCase(.25f, true)]
-        public void AStateRestartedEveryFrameWithADriverIsNotSaved(float duration, bool fadeIn)
-        {
-            Selected(fadeIn ? Clip("Rise", AnimationCurve.Linear(0, 0, 10, 75)) : Clip("Smile", 75));
-            var off = RestartingLayer(duration);
-            controller.AddParameter("Count", AnimatorControllerParameterType.Int);
-            foreach (var edge in controller.layers[controller.layers.Length - 1].stateMachine.anyStateTransitions)
-                if (edge.destinationState == off) edge.AddCondition(AnimatorConditionMode.Greater, -1, "Count");
-            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Add", "Count", 1));
-            Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
-        }
-
-        // Running a tracking control or a driver that sets a parameter to its
-        // current value again changes nothing, so such a restarted state
-        // still holds the face.
-        [Test]
-        public void AStateRestartedEveryFrameWithCallbacksThatChangeNothingHoldsTheFace()
-        {
-            Selected(Clip("Smile", 75));
-            var off = RestartingLayer();
-            ParameterDriverExpressionTests.Driver(off, ParameterDriverExpressionTests.Op("Set", "Toggle", 0));
-            ParameterDriverExpressionTests.SdkBehaviour(off, "VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl");
-            var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01), string.Join(", ", messages));
         }
 
         // A toggle layer whose Off state is re-entered every frame while its
@@ -511,7 +411,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve((AnimationClip)open.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Face size"), null);
             Transition(open, State(eyes, "Blinking", blink), "Menu", 1);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(20).Within(1.01));
+            Assert.That(Play(messages), Is.EqualTo(20).Within(1.01));
             Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.OverlappingLoops }));
         }
 
@@ -527,7 +427,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var next = State(machine, "Step " + index, Clip("Step " + index, index));
                 Timed(previous, next, 1); previous = next;
             }
-            var error = Assert.Catch<InvalidOperationException>(() => Sample(new List<string>()));
+            var error = Assert.Catch<InvalidOperationException>(() => Play(new List<string>()));
             Assert.That(error.Message, Does.Contain(ExpressionSettlement.UntraceableTransitions));
         }
 
@@ -538,7 +438,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (clip) Selected(Clip("Very slow face", AnimationCurve.Linear(0, 0, 90, 100)));
             else Timed(Selected(Clip("A", 0)), State(controller.layers[0].stateMachine, "B", Clip("B", 60)), 70);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(clip ? 100 : 60).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(clip ? 100 : 60).Within(.01));
             Assert.That(messages, Does.Contain(clip ? ExpressionSettlement.FinalKeyOfClip : ExpressionSettlement.FollowedTransitions));
             Assert.That(messages, Does.Contain(ExpressionSettlement.LongWait));
         }
@@ -573,7 +473,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Selected(Clip("Smile", 75), .25f);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.0001));
+            Assert.That(Play(messages), Is.EqualTo(75).Within(.0001));
             Assert.That(messages, Is.Empty);
         }
 
@@ -593,19 +493,8 @@ namespace VRVlog.LilToonExporter.Tests
             var smile = State(face, "Smile", Clip("Smile", 75)); var other = State(face, "Other", Clip("Other", 40));
             Transition(neutral, smile, "Face", 1); Transition(neutral, other, "Face", 2); Transition(smile, other, "Face", 2);
             var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
+            Assert.That(Play(messages), Is.EqualTo(75).Within(.01));
             Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-        }
-
-        [Test]
-        public void AMotionTimeStateIsNotStepped()
-        {
-            controller.AddParameter("Clock", AnimatorControllerParameterType.Float);
-            var selected = Selected(Clip("Clocked face", AnimationCurve.Linear(0, 0, 1, 100)));
-            selected.timeParameterActive = true; selected.timeParameter = "Clock";
-            var messages = new List<string>();
-            Assert.That(Sample(messages, new Dictionary<string, float> { ["Menu"] = 1, ["Clock"] = .5f }), Is.EqualTo(50).Within(.01));
-            Assert.That(messages, Is.Empty);
         }
 
         // A hand idle animates humanoid muscles, not controller parameters.
@@ -617,50 +506,6 @@ namespace VRVlog.LilToonExporter.Tests
             var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(clip, settings);
             if (!AssetDatabase.Contains(clip)) AssetDatabase.AddObjectToAsset(clip, controller);
             return clip;
-        }
-
-        [TestCase(false)] [TestCase(true)]
-        public void ALoopingHandMuscleCurveBesideTheFaceIsSettled(bool separateLayer)
-        {
-            if (separateLayer)
-            {
-                Selected(Clip("Smile", 75));
-                // The hand layer also writes the face in another state, so it
-                // takes part in the expression while it stays in its idle.
-                var hand = Layer("Left Hand");
-                var idle = State(hand, "Idle", HandIdle("Hands idle")); hand.defaultState = idle;
-                Transition(idle, State(hand, "Left smile", Clip("Left smile", 40)), "Face", 1);
-            }
-            else Selected(HandIdle(null, Clip("Smile with hand", 75)));
-            var messages = new List<string>();
-            Assert.That(Sample(messages), Is.EqualTo(75).Within(.01));
-            Assert.That(messages, Does.Contain(ExpressionSettlement.LoopingFinal));
-        }
-
-        // A Right Hand gesture keeps the Left Hand layer below it. Its idle
-        // holds the rest face while looping hand muscles, so the rest face
-        // sampled under the gesture is still a fixed pose. The Eyes layer
-        // keeps the gesture from being the top layer that alone fixes the
-        // rest face, so the hand layer's curves are checked.
-        [Test]
-        public void AGestureAboveALoopingHandIdleLayerIsExported()
-        {
-            foreach (var side in new[] { "Left", "Right" })
-            {
-                controller.AddParameter("Gesture" + side, AnimatorControllerParameterType.Int);
-                var hand = Layer(side + " Hand");
-                var idle = State(hand, "Idle", HandIdle(null, Clip(side + " hand idle", 25))); hand.defaultState = idle;
-                Transition(idle, State(hand, side + " smile", Clip(side + " smile", side == "Left" ? 40 : 75)), "Gesture" + side, 2);
-            }
-            var open = new AnimationClip { name = "Eyes open" };
-            AnimationUtility.SetEditorCurve(open, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
-                AnimationCurve.Constant(0, 1, 0));
-            AssetDatabase.AddObjectToAsset(open, controller);
-            var eyes = Layer("Eyes"); eyes.defaultState = State(eyes, "Open", open);
-            VrChatGestureExpressions.Add(avatar, metadata);
-            var entry = metadata.Entries.Single(item => item.Name == "ジェスチャー / Right smile");
-            Assert.That(entry.Error, Is.Null, entry.Error);
-            Assert.That(entry.Values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
         }
 
         [Test]

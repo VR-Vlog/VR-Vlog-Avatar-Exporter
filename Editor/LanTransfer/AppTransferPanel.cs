@@ -67,8 +67,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // On the board: its "戻る" to the objects page, which asks first while this transfers.
         [NonSerialized] private Action back;
         // On the board: whether "VRMを保存" is the blue button instead of "QRコードを作る". The board
-        // opened to save a VRM says so; opened to transfer, and in the window, the QR is the blue one.
-        // Read on every refresh, as the board can change between the two.
+        // passes false, so the QR is the blue one there as in the window. Read on every refresh.
         [NonSerialized] private Func<bool> savePrimary;
         // Consent is for the avatar on screen, so it is asked again each time.
         [NonSerialized] private bool consented;
@@ -107,8 +106,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
-        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, consentHint, privacyLink, privacyText,
-            reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
+        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+            reasonLabel, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
@@ -386,7 +385,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Refresh();
         }
 
-        // The expression board in its transfer mode, for the avatar on screen. From the quick
+        // The expression board, for the avatar on screen. From the quick
         // transfer this switches to the detailed one, so the window closes.
         private void EditDetails()
         {
@@ -791,14 +790,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             readTerms = root.Q<Label>("read-terms");
             consentToggle = root.Q<Toggle>("consent-toggle");
             consentText = root.Q<Label>("consent-text");
-            consentHint = root.Q<Label>("consent-hint");
             privacyRow = root.Q("privacy");
             privacyLink = root.Q<Label>("privacy-link");
             privacyToggle = root.Q<Toggle>("privacy-toggle");
             privacyText = root.Q<Label>("privacy-text");
             reasonLabel = root.Q<Label>("reason");
             createButton = root.Q<Button>("create");
-            createHint = root.Q<Label>("create-hint");
             transfer = root.Q("transfer");
             slotRow = root.Q("slot-row");
             slot = root.Q("slot");
@@ -995,9 +992,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(createButton, !sending);
             Show(regenerateButton, sending);
             Show(closeButton, sending && !embedded);
-            // The order stays; only the blue moves, to one button by where this opened: "VRMを保存" on the
-            // board opened from "VRMを書き出す", "QRコードを作る" from "アプリに転送" and in the window.
-            // Re-read on every refresh.
+            // The order stays; only the blue moves, to one button by savePrimary. The board and the window
+            // both make "QRコードを作る" the blue one. Re-read on every refresh.
             var saveFirst = savePrimary != null && savePrimary();
             saveButton.EnableInClassList("primary", saveFirst);
             createButton.EnableInClassList("primary", !saveFirst);
@@ -1030,7 +1026,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             termsLabel.text = T(AppTransferText.Terms);
             readTerms.text = T(AppTransferText.ReadTerms);
             consentText.text = AppTransferFlow.ConsentText;
-            consentHint.text = T(AppTransferText.ConsentHint);
             consentToggle.SetValueWithoutNotify(consented);
             // The same saved choice, link and wording as "スマホに送る".
             if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
@@ -1039,11 +1034,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             privacyText.text = T("プライバシーポリシーに同意する");
             privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
 
-            // One fixed line says what is missing, so nothing below it moves; a list too long for it is in the tooltip.
+            // Only the board's reasons get a line; a missing input turns red instead, so the line is gone otherwise.
             var reason = entry == null ? null : Reason();
-            reasonLabel.text = AppTransferFlow.ReasonText(reason, avatar != null, avatarName, nameFits ?? true, Exporter?.HasAuthor() ?? false, consented,
-                CloudVrmTransferWindow.PrivacyConsentAccepted, T);
+            reasonLabel.text = AppTransferFlow.ReasonText(reason, T);
             reasonLabel.tooltip = reasonLabel.text;
+            Show(reasonLabel, reasonLabel.text.Length > 0);
             var marked = entry == null ? RequiredInput.None : MarkedInputs(pressedWhileBlocked);
             avatarLabel.EnableInClassList("missing", (marked & RequiredInput.Avatar) != 0);
             nameLabel.EnableInClassList("missing", (marked & RequiredInput.Name) != 0);
@@ -1055,7 +1050,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             createButton.text = T(AppTransferText.Create);
             // Pressed while an input is missing, it marks that input; only the board's own problems keep it disabled.
             createButton.SetEnabled(!playing && entry != null && !AppTransferFlow.BoardBlocks(reason) && (reason == null || MarkedInputs(true) != RequiredInput.None));
-            createHint.text = T(AppTransferText.CreateHint);
         }
 
         private void RefreshTransfer(AppTransferView view)

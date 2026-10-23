@@ -77,16 +77,6 @@ namespace VRVlog.LilToonExporter.Tests
             return scene;
         }
 
-        [Test]
-        public void SamplingAnExpressionKeepsTheSavedSceneUnmodified()
-        {
-            var scene = SavedScene(out var avatar, out var metadata);
-            var values = VrChatExpressionSampler.Sample(avatar, metadata.Controller, metadata.Defaults,
-                new Dictionary<string, float> { ["Face"] = 1 }, null, metadata);
-            Assert.That(values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
-            Assert.That(scene.isDirty, Is.False);
-        }
-
         // The expression board plays installed expressions through this player.
         [Test]
         public void PlayingAnInstalledExpressionKeepsTheSavedSceneUnmodified()
