@@ -1,0 +1,27 @@
+# ジェスチャーで入る顔は、ボーンの曲線が一緒に入っていても表情ボードの一覧に出す
+
+- 日付: 2026-10-23
+- 対象: `Editor/ExperimentalExpressionCaptureSession.Clips.cs`（`BuildClipPoseUnchecked`・`IgnoredBesideFace`）・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
+
+## 背景
+
+表情ボードの一覧は、アバターの Controller にある BlendShape を動かすクリップを、表情メニュー用のツールを使っているかどうかに関係なく拾っている。ただし `BuildClipPoseUnchecked` は BlendShape 以外の曲線が 1 本でもあると「顔の変形以外の変更を含みます」で未対応にし、未対応の項目は一覧に出さない。
+
+手のジェスチャーで切り替わる顔には、目のハイライトのボーンを回す曲線が一緒に入っているものがある。VRChat ではこれも顔として見えている。0.12.0-beta.8 までは表情メニューと FX から作る書き出しがこうした顔を VRM に入れていたが、書き出しが表情ボードの一覧だけになってから入らなくなった。手元のアバターでは、ジェスチャーで入る顔 9 個が一覧にも VRM にも出なかった。
+
+書き出し（`VrChatExpressionSampler.AddListFaces`）は、ジェスチャーの読み取りが断ったクリップでも、見えている BlendShape の値を表情にしている。断っていたのは表情ボードの一覧だけだった。
+
+## 決定
+
+- ジェスチャーで入るクリップ（`gestureClips`）は、Transform の曲線・Humanoid の筋肉の曲線・PhysBone や Contact の有効化の曲線を読まずに、BlendShape だけを表情として扱う。
+- ジェスチャーで入らないクリップは、これまでどおりこれらの曲線があれば未対応にする。衣装や小物の切り替えでボーンの拡大縮小を使うものが多く、一覧に顔以外が増えるため。
+- ジェスチャーで入るクリップでも、オブジェクトの表示切替・Renderer の有効化・材質・Animator のパラメーター・オブジェクト参照の曲線があれば未対応のままにする。見た目や他のレイヤーを変えるので、BlendShape だけでは同じ顔にならない。
+
+## 確認
+
+- `ExperimentalExpressionCaptureTests.GestureFacesIgnoreBoneCurvesBesideTheFace` で、ジェスチャーで入る顔にボーンの曲線があっても使えること、同じクリップをジェスチャーで入れないと未対応になること、ジェスチャーで入る顔に表示切替があると未対応になることを確かめる。
+- 検証用のプロジェクトのアバター 41 体を、修正前の develop と修正後で表情ボードを開いて何も触らずに書き出し、一覧に出る数と VRM の表情の数を比べた。
+
+## 欠点
+
+- 目のハイライトの回転などは VRM の表情に入らない。BlendShape だけの顔になる。
