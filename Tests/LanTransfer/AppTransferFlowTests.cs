@@ -171,7 +171,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             var longestMarked = "";
             while (TransferQrCode.CanMark(AppTransferFlow.PlaceholderLink(AppTransferFlow.TransferName(longestMarked + "あ")))) longestMarked += "あ";
-            Assert.That(longestMarked.Length, Is.GreaterThanOrEqualTo(64));
+            Assert.That(longestMarked.Length >= 64, Is.True);
             foreach (var name in new[] { "SampleAvatar_v1.2", longestMarked, new string('a', 300) })
             {
                 var link = Link(AppTransferFlow.TransferName(name));
