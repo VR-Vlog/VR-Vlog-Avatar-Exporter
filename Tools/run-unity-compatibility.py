@@ -576,6 +576,7 @@ BEHAVIOR_CASES = {
         'AuthoredZeroOnlyRemainsDisabledWhileExplicitFxZeroCanReopen': 1,
         'DuplicateAuthoredBindingsKeepFirstChannelSemantics': 2,
         'DuplicateRendererPathsCannotSilentlyApplySampleToTheFirstSibling': 1,
+        'AuthoredBindingOnASharedRendererPathIsLeftInertAndWarns': 1,
         'EndpointBakeKeepsBlinkSettingsCreatedAfterCapture': 1,
         'MalformedAuthoredClipKeepsItsDeclarationAndCannotActivateItsValidPortion': 3,
         'PartialEndpointAtNeutralRemainsInertAndExplicitZeroHasGeometry': 1,

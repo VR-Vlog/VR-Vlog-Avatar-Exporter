@@ -466,6 +466,52 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
         }
 
+        // A "/" in an object name above a mesh keeps its path from naming it:
+        // the board leaves that mesh out of recording and still opens.
+        [Test]
+        public void AMeshItsPathCannotNameIsLeftOutAndWarns()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var holder = new GameObject("Slash/Part"); holder.transform.SetParent(fixture.Source.transform, false);
+            var face = new GameObject("Face"); face.transform.SetParent(holder.transform, false);
+            var added = face.AddComponent<SkinnedMeshRenderer>();
+            added.sharedMesh = fixture.Mesh; added.sharedMaterials = front.sharedMaterials;
+            added.bones = front.bones; added.rootBone = front.rootBone;
+            ExperimentalExpressionCaptureSession session = null;
+            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+            using (session)
+            {
+                Assert.That(session.Channels.Select(channel => channel.Path), Does.Not.Contain("Slash/Part/Face"));
+                Assert.That(session.Channels.Select(channel => channel.Path), Does.Contain("Front"));
+                Assert.That(session.Warnings.Any(warning => warning.Contains("Slash/Part/Face")), Is.True);
+            }
+        }
+
+        // A mesh with a NaN weight cannot give a face to record: it is left out
+        // and the board still opens with the other meshes.
+        [Test]
+        public void AMeshWithAnInvalidWeightIsLeftOutAndWarns()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var broken = new GameObject("Broken"); broken.transform.SetParent(fixture.Source.transform, false);
+            var added = broken.AddComponent<SkinnedMeshRenderer>();
+            added.sharedMesh = fixture.Mesh; added.sharedMaterials = front.sharedMaterials;
+            added.bones = front.bones; added.rootBone = front.rootBone; added.SetBlendShapeWeight(0, float.NaN);
+            Assume.That(float.IsNaN(added.GetBlendShapeWeight(0)), "Unity keeps the weight as set.");
+            ExperimentalExpressionCaptureSession session = null;
+            Assert.DoesNotThrow(() => session = new ExperimentalExpressionCaptureSession(fixture.Source, false));
+            using (session)
+            {
+                Assert.That(session.Channels.Select(channel => channel.Path), Does.Not.Contain("Broken"));
+                Assert.That(session.Channels.Select(channel => channel.Path), Does.Contain("Front"));
+                Assert.That(session.Warnings.Any(warning => warning.Contains("Broken")), Is.True);
+            }
+        }
+
         [UnityTest]
         public IEnumerator CorrectedRecommendedAssetBecomesSelectableWithoutLosingExplicitFiles()
         {
