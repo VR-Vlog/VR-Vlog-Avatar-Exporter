@@ -74,6 +74,7 @@
                                 <ui:Image name="qr-mark-icon" class="qr-mark-icon" picking-mode="Ignore" />
                             </ui:VisualElement>
                             <ui:Image name="qr-cover" class="qr-cover" />
+                            <ui:Label name="qr-sample" class="qr-sample" text="SAMPLE" />
                             <ui:VisualElement name="reveal" class="slot-inner">
                                 <ui:Button name="show-qr" class="primary slot-button reveal-button" />
                             </ui:VisualElement>

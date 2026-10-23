@@ -421,6 +421,25 @@
     bottom: 0;
 }
 
+/* Says the cover is not a QR to scan. Small in the corner so "QRを表示" stays the thing to press;
+   13px on an opaque dark grey so it still reads at 100%. Not translated, and a fixed size. */
+.qr-sample {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    height: 22px;
+    padding: 0 8px;
+    margin: 0;
+    background-color: rgb(51, 51, 51);
+    border-radius: 2px;
+    color: rgb(255, 255, 255);
+    font-size: 13px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    -unity-text-align: middle-center;
+    white-space: nowrap;
+}
+
 /* 1.75 times the other blue buttons (160 x 30, 12px), so it is the one thing to press on the
    pattern. It stays inside the QR area on a narrow page: max-width from .slot-button. */
 .slot-button.reveal-button {
