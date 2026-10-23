@@ -30,23 +30,17 @@ namespace VRVlog.LilToonExporter
         private int lastMissingShaderCount;
         // Failing stages the last saved export left out, as LastOmittedStageCount of the board.
         private int lastOmittedStageCount;
+        // The notes of the last saved export, as LastNotes of the board.
+        private string[] lastNotes = Array.Empty<string>();
 
         // The author is the avatar's remembered one, else what this window
-        // already holds, else the author of an open export window. The license
-        // comes from a board showing its own information page for this avatar, else the avatar's
-        // remembered settings; an avatar without any starts from the default.
+        // already holds. The license is the avatar's remembered settings; an
+        // avatar without any starts from the default. The expression board does
+        // not show either: they are asked here.
         public void SelectAvatar(GameObject avatar)
         {
             settings = ExportSettingsStore.Load(avatar);
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
-            foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
-            {
-                // A board whose third page is the transfer panel hides its author and license; they are asked here.
-                if (!window.ShowsOwnInfo) continue;
-                if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
-                var shown = window.LicenseFor(avatar);
-                if (shown != null) license = shown;
-            }
         }
 
         public bool HasAuthor() => ExportAuthor.IsValid(author);
@@ -58,6 +52,9 @@ namespace VRVlog.LilToonExporter
         // The number of failing stages the export last saved by Export or ExportDetailed left out.
         // "VRMを保存" stops at them, so such a file is not saved as it is.
         public int LastOmittedStageCount() => lastOmittedStageCount;
+
+        // The notes of the export last saved by Export, ExportDetailed or SaveCopy, each once.
+        public string[] LastNotes() => lastNotes;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -91,7 +88,7 @@ namespace VRVlog.LilToonExporter
         // True while the open board has something to fix before it exports.
         public bool DetailedNeedsFix(GameObject avatar) => ExperimentalExpressionCaptureWindow.ForTransfer(avatar)?.BlocksExport ?? false;
 
-        // Opens the expression board for this avatar in the transfer mode. False
+        // Opens the expression board for this avatar. False
         // when the board kept another avatar.
         public bool EditDetails(GameObject avatar) => ExperimentalExpressionCaptureWindow.OpenForTransfer(avatar);
 
@@ -155,6 +152,7 @@ namespace VRVlog.LilToonExporter
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
             lastOmittedStageCount = 0;
+            lastNotes = Array.Empty<string>();
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             ExperimentalExpressionCaptureWindow board;
@@ -175,6 +173,7 @@ namespace VRVlog.LilToonExporter
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
             lastOmittedStageCount = 0;
+            lastNotes = Array.Empty<string>();
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
@@ -195,11 +194,17 @@ namespace VRVlog.LilToonExporter
             if (string.IsNullOrEmpty(destination)) return null;
             var targetAuthor = author;
             var license = RememberTerms(avatar, targetAuthor).License.Copy();
-            if (open != null) return open.SaveTransferCopy(name, targetAuthor, license, destination, saved);
+            // The notes go with the file: a transfer that sends it later shows them.
+            Action<string, int> SavedFrom(ExperimentalExpressionCaptureWindow from) => (path, missing) =>
+            {
+                lastNotes = from.LastNotes;
+                saved(path, missing);
+            };
+            if (open != null) return open.SaveTransferCopy(name, targetAuthor, license, destination, SavedFrom(open));
             ExperimentalExpressionCaptureWindow board;
             try { board = ExperimentalExpressionCaptureWindow.PrepareHidden(avatar); }
             catch (OperationCanceledException) { return null; }
-            try { return board.SaveTransferCopy(name, targetAuthor, license, destination, saved); }
+            try { return board.SaveTransferCopy(name, targetAuthor, license, destination, SavedFrom(board)); }
             finally { UnityEngine.Object.DestroyImmediate(board); }
         }
 
@@ -262,6 +267,7 @@ namespace VRVlog.LilToonExporter
                 // still read when the recovery window saves after the board closed.
                 lastMissingShaderCount = board.LastMissingShaderCount;
                 lastOmittedStageCount = board.LastOmittedStageCount;
+                lastNotes = board.LastNotes;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }, interactive);

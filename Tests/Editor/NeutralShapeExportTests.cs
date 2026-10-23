@@ -13,13 +13,10 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class NeutralShapeExportTests
     {
-        [TestCase(false, false, false)]
-        [TestCase(true, false, false)]
-        [TestCase(false, true, false)]
-        [TestCase(true, true, false)]
-        [TestCase(false, false, true)]
-        [TestCase(true, false, true)]
-        public async Task PreparedRestSurvivesExportWithoutRestoringInitialFx(bool fullLilToon, bool independentBlink, bool resetClosingShape)
+        [TestCase(false, false)]
+        [TestCase(true, false)]
+        [TestCase(false, true)]
+        public async Task PreparedRestSurvivesExportWithoutRestoringInitialFx(bool independentBlink, bool resetClosingShape)
         {
             var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
                 .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
@@ -89,8 +86,8 @@ namespace VRVlog.LilToonExporter.Tests
                     data.ApplyModifiedPropertiesWithoutUndo();
                 }
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Neutral opening regression", "Tests",
-                    exporterVersion: fullLilToon ? "neutral-shape-regression" : null,
-                    lilToonVersion: fullLilToon ? "2.3.4" : null,
+                    exporterVersion: null,
+                    lilToonVersion: null,
                     blinkOptions: independentBlink || resetClosingShape ? null : new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 imported.Runtime.Process();

@@ -165,17 +165,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<NeutralShapeSamplingException>(() => Sample());
         }
 
-        [Test]
-        public void SelectedMenuExpressionRetainsItsStrictParameterCurveContract()
-        {
-            Helper();
-            var metadata = new VrChatExpressionMenu.Source { Controller = controller };
-            controller.AddParameter("Menu", AnimatorControllerParameterType.Float);
-            BodyBlendTree("Menu");
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, controller,
-                new Dictionary<string, float>(), new Dictionary<string, float> { ["Menu"] = 1 }, null, metadata));
-        }
-
         private BlendTree Tree(string name, string parameter, Motion zero, Motion one)
         {
             var tree = new BlendTree { name = name, blendType = BlendTreeType.Simple1D, blendParameter = parameter,

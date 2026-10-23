@@ -59,7 +59,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.9";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "0.12.0-beta.10";
         }
 
         // Stable packages omit this assembly. Resolve only its public optional
@@ -77,6 +77,11 @@ namespace VRVlog.LilToonExporter
         // Whether that panel is uploading or showing its QR, asked before the board leaves its page.
         internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
+
+        // Gives that panel the board's avatar change for "別のアバターを選ぶ" after a transfer.
+        internal static System.Reflection.MethodInfo EmbeddedChangeAvatarMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "SetEmbeddedChangeAvatar",
+                typeof(UnityEngine.UIElements.VisualElement), typeof(Action));
 
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, params Type[] parameters)
         {

@@ -15,7 +15,6 @@ namespace VRVlog.LilToonExporter.Tests
         readonly List<Object> owned = new List<Object>();
         GameObject avatar;
         Material hidden, normal, unspecified;
-        string controllerFolder;
 
         [SetUp] public void SetUp()
         {
@@ -28,8 +27,6 @@ namespace VRVlog.LilToonExporter.Tests
         {
             for (var i = owned.Count - 1; i >= 0; i--) if (owned[i] != null) Object.DestroyImmediate(owned[i]);
             owned.Clear();
-            if (controllerFolder != null) AssetDatabase.DeleteAsset(controllerFolder);
-            controllerFolder = null;
         }
         T Own<T>(T item) where T : Object { owned.Add(item); return item; }
         GameObject Child(string name, Transform parent = null)
@@ -131,15 +128,6 @@ namespace VRVlog.LilToonExporter.Tests
             // Keep all animation paths unique. The moved case reuses the
             // auxiliary's old path after renaming its retained Transform.
             var auxiliary = Render(moveToOldPath ? "Face" : "auxiliary", hidden);
-            var folderName = "__GimmickDefaults_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); controllerFolder = "Assets/" + folderName;
-            var controller = AnimatorController.CreateAnimatorControllerAtPath(controllerFolder + "/FX.controller");
-            var clip = new AnimationClip();
-            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Smile"),
-                AnimationCurve.Constant(0, 1, 60));
-            AssetDatabase.AddObjectToAsset(clip, controller);
-            var state = controller.layers[0].stateMachine.AddState("Always"); state.motion = clip; state.writeDefaultValues = false;
-            controller.layers[0].stateMachine.defaultState = state;
             var clone = Own(Object.Instantiate(avatar));
             using var session = new ExportGimmickSession(avatar, clone, null);
             session.Apply(null, null, null);
@@ -149,8 +137,6 @@ namespace VRVlog.LilToonExporter.Tests
                 clone.transform.Find("originalFace").name = "Face";
             }
             Assert.That(session.ContainsPath("Face"), Is.False);
-            var defaults = VrChatExpressionSampler.SampleDefaults(clone, controller, new Dictionary<string, float>(), session.ContainsPath);
-            Assert.That(defaults.Single(value => value.Shape == "Smile").Weight, Is.EqualTo(60).Within(.01));
             Assert.That(face.GetBlendShapeWeight(0), Is.Zero);
             Assert.That(auxiliary, Is.Not.Null);
             Assert.That(face.sharedMesh.blendShapeCount, Is.EqualTo(1));

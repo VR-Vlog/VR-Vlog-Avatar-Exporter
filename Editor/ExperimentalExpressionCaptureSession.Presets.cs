@@ -247,7 +247,7 @@ namespace VRVlog.LilToonExporter
                 var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
                 return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null);
             }
-            catch (InvalidOperationException error) { return error.Message; }
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return error.Message; }
         }
 
         // Whether PresetError of an eye slot is the shared closing shape, so the
@@ -261,7 +261,7 @@ namespace VRVlog.LilToonExporter
                 var other = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
                 return BlinkSideOverlap(preset, assignment, Presets.TryGetValue(other, out var value) ? value : null) != null;
             }
-            catch (InvalidOperationException) { return false; }
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return false; }
         }
 
         internal void PreviewPreset(ExpressionPreset preset, PresetAssignment assignment) => ApplyUnchecked(BuildPresetPose(preset, assignment));
@@ -456,7 +456,7 @@ namespace VRVlog.LilToonExporter
             var otherPreset = preset == ExpressionPreset.blinkLeft ? ExpressionPreset.blinkRight : ExpressionPreset.blinkLeft;
             List<(string Path, string Shape, float Weight)> otherMorphs;
             try { otherMorphs = BlinkMorphs(other, BuildPresetPose(otherPreset, other)); }
-            catch (InvalidOperationException) { return null; } // The other slot shows its own error.
+            catch (InvalidOperationException error) when (!(error is SourceChangedException)) { return null; } // The other slot shows its own error.
             var shared = BlinkMorphs(assignment, BuildPresetPose(preset, assignment)).Where(morph => morph.Weight > 0)
                 .Select(morph => (morph.Path, morph.Shape))
                 .Intersect(otherMorphs.Where(morph => morph.Weight > 0).Select(morph => (morph.Path, morph.Shape)));
@@ -602,7 +602,7 @@ namespace VRVlog.LilToonExporter
                 if (!ExpressionNameInference.SaysNothing(clip.name) || PathsOf(clip).Any(path => !ExpressionNameInference.SaysNothing(path))) continue;
                 List<(string Path, string Shape, float Weight)> moved;
                 try { var probe = PresetAssignment.ForClip(ExpressionPreset.happy, clip); moved = BlinkMorphs(probe, BuildPresetPose(ExpressionPreset.happy, probe)); }
-                catch (InvalidOperationException) { continue; }
+                catch (InvalidOperationException error) when (!(error is SourceChangedException)) { continue; }
                 var guess = ExpressionShapeNames.Shipped.Classify(moved.Select(morph => (morph.Shape, morph.Weight)));
                 if (guess != null) byShape.Add((guess.Value.Preset, guess.Value.Support, index, clip));
             }

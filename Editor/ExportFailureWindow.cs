@@ -140,9 +140,7 @@ namespace VRVlog.LilToonExporter
             EditorGUILayout.LabelField(ExporterLocalization.T(stale ? "アバターの変更を反映して書き出す" : session?.WasCanceled == true ? "キャンセル" : session != null && session.Failure == null ? "対処を変更する" : "この設定では書き出せませんでした"), EditorStyles.boldLabel);
             if (hadSession && session == null)
             {
-                EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。書き出し画面から再度書き出してください。"), MessageType.Warning);
-                // The same entry point as the export menu item, so a retry exports what the board exports.
-                if (GUILayout.Button(ExporterLocalization.T("書き出し画面を開く"))) { Compatibility.DependencyDiagnostics.Open(); Close(); }
+                EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。VR Vlogメニューの「アプリに転送」からもう一度書き出してください。"), MessageType.Warning);
                 ExportDetailsText.DrawActions(fullDetails, ref detailsFeedback, ref detailsSaveFailed, ref detailsFeedbackScroll);
                 return;
             }

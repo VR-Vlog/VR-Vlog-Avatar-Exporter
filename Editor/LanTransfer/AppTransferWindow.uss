@@ -207,17 +207,6 @@
     padding-top: 2px;
 }
 
-/* One help line under the consent: "VRMを保存" does not need it. */
-.consent-hint {
-    height: 16px;
-    flex-shrink: 0;
-    margin-top: 4px;
-    -unity-text-align: middle-left;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .privacy {
     margin-top: 8px;
 }
@@ -237,11 +226,21 @@
     margin-bottom: 8px;
 }
 
-/* The terms, the consent and the two notes under it are centred as one block. A row keeps its
+/* The terms and the consent are centred as one block. A row keeps its
    pieces together in the middle, and a wrapped sentence centres each of its lines. */
 .consent .row--terms,
 .consent .check-row {
     justify-content: center;
+}
+
+/* The checkbox comes first and the terms link sits under it, so the gap
+   between them is on the link row and none is added above the block. */
+.consent .check-row {
+    margin-top: 0;
+}
+
+.consent .row--terms {
+    margin-top: 4px;
 }
 
 .consent .label-col {
@@ -253,15 +252,7 @@
     -unity-text-align: upper-center;
 }
 
-.consent .consent-hint {
-    -unity-text-align: middle-center;
-}
-
-/* The QR note and the line that says why "QRコードを作る" is off sit right under the block, so they follow it. */
-.form-footer .create-hint {
-    -unity-text-align: upper-center;
-}
-
+/* The line that says why "QRコードを作る" is off sits right under the block, so it follows it. */
 .form-footer .reason {
     -unity-text-align: middle-center;
 }
@@ -295,11 +286,6 @@
 
 .primary:disabled {
     opacity: 0.45;
-}
-
-.create-hint {
-    margin-bottom: 4px;
-    white-space: normal;
 }
 
 /* The buttons under both screens. Fixed widths, so the text of a language clips instead of moving them. */

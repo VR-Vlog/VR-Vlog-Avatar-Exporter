@@ -28,7 +28,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string Terms = "規約";
         internal const string ReadTerms = "利用規約を読む";
         internal const string Create = "QRコードを作る";
-        internal const string CreateHint = "スマホのカメラでQRを読み取るとVR Vlogが開いて取り込みが始まります";
         internal const string NeedsAvatar = "アバターを指定すると作れます";
         internal const string NeedsBoard = "表情の割り当て画面が開いていません";
         internal const string NeedsBoardFix = "表情の割り当てを直すと作れます";
@@ -36,17 +35,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string NeedsShorterName = "名前を短くすると作れます";
         internal const string NeedsAuthor = "作者名を入れると作れます";
         internal const string NeedsConsent = "利用規約に同意すると作れます";
-        // Under the consent: "VRMを保存" next to "QRコードを作る" does not need it.
-        internal const string ConsentHint = "VRMの保存に同意は要りません";
         internal const string NeedsPrivacyConsent = "プライバシーポリシーに同意すると作れます";
-        // When two or more inputs are missing, the line above the button names them all.
-        internal const string NeedsInputs = "{0}がそろうと作れます";
-        internal const string InputSeparator = "・";
         internal const string Avatar = "アバター";
-        internal const string ShorterName = "短い名前";
-        internal const string Author = "作者名";
-        internal const string Consent = "利用規約の同意";
-        internal const string PrivacyConsent = "プライバシーポリシーの同意";
         internal const string Exporting = "VRMを書き出しています";
         internal const string ExportFailed = "書き出せませんでした";
         internal const string SnapshotTooLarge = "書き出したVRMが256MiBを超えています";
@@ -63,7 +53,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QrReadySound = "QRができたら音を鳴らす";
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
-        internal const string Completed = "取り込みが終わりました";
+        internal const string Completed = "アプリに取り込みました";
+        internal const string TransferFailed = "転送できませんでした";
+        internal const string TransferAgain = "もう一度転送";
+        internal const string ChooseAnotherAvatar = "別のアバターを選ぶ";
+        internal const string Notes = "書き出し時の注意";
+        internal const string NoNotes = "書き出し時の注意はありません";
+        internal const string NoteCount = "書き出し時の注意 {0}件";
+        internal const string OtherNotes = "そのほか";
+        internal const string ItemCount = "{0}件";
+        internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
         internal const string StartTransfer = "転送を始める";
         internal const string StopAndStart = "中止して始める";
@@ -174,22 +173,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static bool BoardBlocks(string reason) =>
             reason == AppTransferText.NeedsBoard || reason == AppTransferText.NeedsBoardFix;
 
-        // The line above "QRコードを作る": the reason as it is when one input is missing or the board is the
-        // problem, otherwise every missing input in the order of the window, so one look tells what is left.
-        internal static string ReasonText(string reason, bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, Func<string, string> translate)
-        {
-            if (reason == null) return "";
-            if (BoardBlocks(reason)) return translate(reason);
-            var items = new List<string>();
-            if (!hasAvatar) items.Add(AppTransferText.Avatar);
-            if (!HasListedName(name)) items.Add(AppTransferText.Name);
-            else if (!nameFits) items.Add(AppTransferText.ShorterName);
-            if (!hasAuthor) items.Add(AppTransferText.Author);
-            if (!consented) items.Add(AppTransferText.Consent);
-            if (!privacyAccepted) items.Add(AppTransferText.PrivacyConsent);
-            if (items.Count < 2) return translate(reason);
-            return string.Format(translate(AppTransferText.NeedsInputs), string.Join(translate(AppTransferText.InputSeparator), items.ConvertAll(item => translate(item))));
-        }
+        // The line above "QRコードを作る" shows only the board's reasons, which keep the button disabled;
+        // a missing input is shown by turning its field red once the button is pressed.
+        internal static string ReasonText(string reason, Func<string, string> translate) =>
+            BoardBlocks(reason) ? translate(reason) : "";
 
         // The OS notification sound plays once when a QR is ready, before it is shown: the QR
         // waits behind "QRを表示". A failed or canceled transfer and an ended wait stay silent.
@@ -349,6 +336,33 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         internal string FailureText(Func<string, string> translate) =>
             failure != null ? failure.Length == 0 ? "" : translate(failure) : session != null ? session.DisplayMessage(translate) : "";
+
+        // One sentence per line and no 「。」 at a line's end, as the rest of
+        // this screen: a label that wraps just before a 「。」 leaves it alone
+        // on the last line. A 「。」 inside quotes stays.
+        internal static string SentencePerLine(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            var lines = new List<string>();
+            foreach (var line in text.Split('\n'))
+            {
+                var start = 0;
+                for (var i = 0; i < line.Length; i++)
+                {
+                    if (line[i] != '。' || i + 1 < line.Length && "」』）)".IndexOf(line[i + 1]) >= 0) continue;
+                    Add(line.Substring(start, i - start));
+                    start = i + 1;
+                }
+                Add(line.Substring(start));
+            }
+            return string.Join("\n", lines);
+
+            void Add(string piece)
+            {
+                piece = piece.Trim();
+                if (piece.Length > 0) lines.Add(piece);
+            }
+        }
 
         internal void BeginExport() { Stop(); exporting = true; }
         internal void ExportCanceled() => exporting = false;

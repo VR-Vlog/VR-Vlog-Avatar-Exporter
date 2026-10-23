@@ -25,9 +25,7 @@ namespace VRVlog.LilToonExporter.Tests
             fixture.ReplaceRenderer();
             snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
             var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller };
-            var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
+            FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
             var entry = source.Entries.Single();
             Assert.That(entry.Error, Is.Null);
             Assert.That(entry.Values.All(value => value.Path == "Prepared/Merged"), Is.True);
@@ -67,9 +65,8 @@ namespace VRVlog.LilToonExporter.Tests
             var snapshot = FaceEmoExpressions.CaptureRegistered(fixture.Avatar, fixture.Registered, deferPermanentOverrides: true);
             var old = fixture.Skin; fixture.ReplaceRenderer();
             snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer);
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
+            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller };
+            FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
             var entry = source.Entries.Single();
             if (kind == "callback-changed" || kind == "motion-changed")
             {
@@ -103,9 +100,8 @@ namespace VRVlog.LilToonExporter.Tests
             var beforeController = EditorJsonUtility.ToJson(fixture.Controller);
             var beforeClip = EditorJsonUtility.ToJson(fixture.RegisteredClip);
             var expected = fixture.NativeSelectedWeights(withDriver ? new Dictionary<string, float> { ["Pattern setting"] = 1 } : null);
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
+            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller };
+            FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
             var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
             Assert.That(entry.Values.Single(value => value.Shape == "Customization").Weight, Is.EqualTo(65),
                 "The NDMF-added channel must enter the expression rather than merely permit state matching.");
@@ -140,9 +136,8 @@ namespace VRVlog.LilToonExporter.Tests
                 duplicate.motion = fixture.PreparedBranch; duplicate.writeDefaultValues = false;
             }
             snapshot.RebindPrepared(renderer => ReferenceEquals(renderer, old) ? fixture.Skin : renderer, registry);
-            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller }; var serial = 0;
-            FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                ref serial, new HashSet<object>(), 0, bindings: snapshot);
+            var source = new VrChatExpressionMenu.Source { Controller = fixture.Controller };
+            FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
             Assert.That(source.Entries.Single().Error, Does.Contain("FX状態").And.Contain(kind == "ambiguous" ? "重複" : "ありません"));
             Assert.That(fixture.Skin.GetBlendShapeWeight(3), Is.EqualTo(30));
             Assert.That(AnimationUtility.GetCurveBindings(fixture.RegisteredClip).Length, Is.EqualTo(2));
@@ -161,9 +156,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var source = new VrChatExpressionMenu.Source { Controller = overrides == null ? (RuntimeAnimatorController)fixture.Controller : overrides };
-                var serial = 0;
-                FaceEmoExpressions.ReadRegistered(fixture.Avatar, fixture.Registered, "FaceEmo", source,
-                    ref serial, new HashSet<object>(), 0, bindings: snapshot);
+                FaceEmoPreparedFxIntegrationTests.ReadListed(fixture.Avatar, fixture.Registered, source, bindings: snapshot);
                 var entry = source.Entries.Single(); Assert.That(entry.Error, Is.Null);
                 if (overrides == null) AddPreparedChannel(fixture.PreparedBranch, 90);
                 else
@@ -182,6 +175,21 @@ namespace VRVlog.LilToonExporter.Tests
         private static void AddPreparedChannel(AnimationClip clip, float value) => AnimationUtility.SetEditorCurve(clip,
             EditorCurveBinding.FloatCurve("Prepared/Merged", typeof(SkinnedMeshRenderer), "blendShape.Customization"),
             AnimationCurve.Constant(0, 1, value));
+
+        // Reads each clip a FaceEmo registry lists as the list-only export
+        // reads a listed clip FaceEmo registers.
+        internal static void ReadListed(GameObject avatar, object registered, VrChatExpressionMenu.Source source,
+            Func<string, bool> excludedPath = null, FaceEmoExpressions.BindingSnapshot bindings = null)
+        {
+            foreach (var clip in FaceEmoExpressions.CaptureRegistered(avatar, registered).RegisteredClips.ToArray())
+            {
+                var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/list/" + source.Entries.Count, Name = clip.name,
+                    ExportName = clip.name, Source = VRVlog.Expressions.ExpressionSource.FaceEmo };
+                try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, bindings); }
+                catch (InvalidOperationException error) { entry.Error = error.Message; }
+                source.Entries.Add(entry);
+            }
+        }
 
         private static object Registry(GameObject avatar, Object original, Object prepared)
         {

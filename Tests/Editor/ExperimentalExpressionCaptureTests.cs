@@ -1890,16 +1890,16 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(errors.Count, Is.EqualTo(2)); Assert.That(errors[face], Is.Null); Assert.That(errors[wrong], Is.Not.Null);
                 Assert.That(session.Channels.Select(channel => channel.Renderer.GetBlendShapeWeight(0)).ToArray(), Is.EqualTo(weights));
                 var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
-                Assert.Throws<InvalidOperationException>(() => session.ClipErrors(new[] { face, wrong }));
+                Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.ClipErrors(new[] { face, wrong }));
             }
             finally { Object.DestroyImmediate(face); Object.DestroyImmediate(wrong); }
         }
 
-        [TestCase("ja", "VRM書き出し", "VRMを保存")]
-        [TestCase("en", "VRM Export", "Save VRM")]
-        [TestCase("ko", "VRM 내보내기", "VRM 저장")]
-        [TestCase("zh-Hans", "VRM 导出", "保存 VRM")]
-        [TestCase("zh-Hant", "VRM 匯出", "儲存 VRM")]
+        [TestCase("ja", "アプリに転送（通常）", "VRMを保存")]
+        [TestCase("en", "Send to app (standard)", "Save VRM")]
+        [TestCase("ko", "앱으로 전송 (일반)", "VRM 저장")]
+        [TestCase("zh-Hans", "传输到应用（标准）", "保存 VRM")]
+        [TestCase("zh-Hant", "傳送到 App（標準）", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
             var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
@@ -1910,7 +1910,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 localeField.SetValue(null, locale); messagesField.SetValue(null, null);
-                ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
+                ExperimentalExpressionCaptureWindow.OpenForTransfer(null); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 Assert.That(window.titleContent.text, Is.EqualTo(title));
                 Assert.That(window.titleContent.image, Is.Null);
                 Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
@@ -1933,7 +1933,7 @@ namespace VRVlog.LilToonExporter.Tests
             ExperimentalExpressionCaptureWindow window = null;
             try
             {
-                ExperimentalExpressionCaptureWindow.Open(); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
+                ExperimentalExpressionCaptureWindow.OpenForTransfer(null); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
                 window.Repaint();
                 Assert.That(window.titleContent.image, Is.Null);
             }
@@ -2112,7 +2112,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Record(session, "face", 70); json = session.SaveSettings();
                 var vertices = fixture.Mesh.vertices; vertices[0].x += .1f; fixture.Mesh.vertices = vertices;
-                Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", Listed()));
+                Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
                 Assert.That(session.Expressions.Count, Is.EqualTo(1));
                 Assert.That(session.SaveSettings(), Is.EqualTo(json), "Source edits must not prevent saving recovery settings.");
             }
@@ -2538,7 +2538,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A menu entry that takes the board off its third page asks only while that page
-        // uploads or shows its QR. "VRM書き出し" from the menu keeps the page, so it never asks.
+        // uploads or shows its QR.
         [Test]
         public void LeavingTheTransferPageFromTheMenuAsksOnlyWhileItTransfers()
         {
@@ -2554,25 +2554,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExperimentalExpressionCaptureWindow.ConfirmLeavingTransfer(true), Is.False);
                 Assert.That(asked, Is.EqualTo(new[] { (ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferTitle),
                     ExporterLocalization.T(ExperimentalExpressionCaptureWindow.CancelTransferBody)) }));
-
-                // "VRM書き出し" keeps the third page, which is the same panel in both modes, so a transfer on it
-                // goes on without asking; only the mode (the blue button) changes.
-                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                window.LeaveTransferMode();
-                Assert.That(window.TransferMode, Is.False);
-                Assert.That(window.titleContent.text, Is.EqualTo(ExporterLocalization.T("VRM書き出し")));
-                Assert.That(asked.Count, Is.EqualTo(1));
-                // "VRMを書き出す..." on a board not prepared for an avatar has no transfer to lose: it asks nothing.
-                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(window, true);
-                var other = new GameObject("Other");
-                try
-                {
-                    Assert.That(window.ChooseForExport(other, true), Is.True);
-                    Assert.That(window.TransferMode, Is.False);
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("source", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).GetValue(window), Is.SameAs(other));
-                    Assert.That(asked.Count, Is.EqualTo(1));
-                }
-                finally { Object.DestroyImmediate(other); }
             }
             finally
             {
@@ -2581,9 +2562,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // A board lends its license to the transfer only while its own information page is what the user edits.
-        // Where the third page is the transfer panel, the board's license is never shown, so the panel starts
-        // from the avatar's remembered terms instead of the board's untouched default.
+        // The board's third page is the transfer panel, so the board's license is never shown: the panel
+        // starts from the avatar's remembered terms instead of the board's untouched default.
         [Test]
         public void ABoardShowingThePanelDoesNotLendItsUntouchedLicense()
         {
@@ -2595,18 +2575,9 @@ namespace VRVlog.LilToonExporter.Tests
                 typeof(ExperimentalExpressionCaptureWindow).GetField("source", field).SetValue(window, avatar);
                 typeof(ExperimentalExpressionCaptureWindow).GetField("licenseOptions", field).SetValue(window,
                     new AvatarLicenseOptions { AllowRedistribution = true, CopyrightInformation = "Board" });
-                var panelUsable = LilToonExporterWindow.EmbeddedTransferMethod() != null;
-                Assert.That(window.ShowsOwnInfo, Is.EqualTo(!panelUsable));
                 var transfer = new AppTransferExport();
                 transfer.SelectAvatar(avatar);
                 var license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
-                Assert.That(license.CopyrightInformation == "Board", Is.EqualTo(!panelUsable));
-                // The transfer mode never lends it.
-                typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", field).SetValue(window, true);
-                Assert.That(window.ShowsOwnInfo, Is.False);
-                transfer = new AppTransferExport();
-                transfer.SelectAvatar(avatar);
-                license = (AvatarLicenseOptions)typeof(AppTransferExport).GetProperty("license", field).GetValue(transfer);
                 Assert.That(license.CopyrightInformation, Is.Not.EqualTo("Board"));
             }
             finally
@@ -2629,26 +2600,22 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 ExperimentalExpressionCaptureWindow.ConfirmCancelTransfer = (title, body) => { asked++; return answer; };
-                foreach (var transferMode in new[] { false, true })
-                {
-                    typeof(ExperimentalExpressionCaptureWindow).GetField("transferMode", field).SetValue(window, transferMode);
-                    typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).SetValue(window, ExperimentalExpressionCaptureWindow.InfoPage);
-                    typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
-                    asked = 0;
-                    answer = false;
-                    window.PanelBack(true);
-                    Assert.That(asked, Is.EqualTo(1));
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Null, "Kept, nothing is queued.");
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).GetValue(window), Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
-                    answer = true;
-                    window.PanelBack(true);
-                    Assert.That(asked, Is.EqualTo(2));
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null, "The move to the objects page is queued.");
-                    typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
-                    window.PanelBack(false);
-                    Assert.That(asked, Is.EqualTo(2));
-                    Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null);
-                }
+                typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).SetValue(window, ExperimentalExpressionCaptureWindow.InfoPage);
+                typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
+                asked = 0;
+                answer = false;
+                window.PanelBack(true);
+                Assert.That(asked, Is.EqualTo(1));
+                Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Null, "Kept, nothing is queued.");
+                Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("page", field).GetValue(window), Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
+                answer = true;
+                window.PanelBack(true);
+                Assert.That(asked, Is.EqualTo(2));
+                Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null, "The move to the objects page is queued.");
+                typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).SetValue(window, null);
+                window.PanelBack(false);
+                Assert.That(asked, Is.EqualTo(2));
+                Assert.That(typeof(ExperimentalExpressionCaptureWindow).GetField("pending", field).GetValue(window), Is.Not.Null);
             }
             finally
             {
@@ -2657,18 +2624,13 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The prepared board's third page is the transfer panel in the transfer mode, and in the normal
-        // mode while the module is there and turned on; otherwise the normal mode keeps its own page.
-        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, false, true, true)]
-        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, false, false, false)]
-        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true, true, true)]
-        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true, false, true)]
-        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, false, false, true, false)]
-        [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, false, true, false)]
-        [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, true, true, false)]
-        public void TheThirdPageIsThePanelInBothModesWhereItIsUsable(int page, bool prepared, bool transferMode, bool panelUsable, bool panel)
+        // The prepared board's third page is the transfer panel.
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, true, true)]
+        [TestCase(ExperimentalExpressionCaptureWindow.InfoPage, false, false)]
+        [TestCase(ExperimentalExpressionCaptureWindow.ObjectsPage, true, false)]
+        public void ThePreparedBoardsThirdPageIsThePanel(int page, bool prepared, bool panel)
         {
-            Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared, transferMode, panelUsable), Is.EqualTo(panel));
+            Assert.That(ExperimentalExpressionCaptureWindow.PanelPage(page, prepared), Is.EqualTo(panel));
         }
 
         // The question before leaving the transfer: one line without 句点, buttons that say what they do.
@@ -2679,7 +2641,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 ExperimentalExpressionCaptureWindow.CancelTransferTitle, ExperimentalExpressionCaptureWindow.CancelTransferBody,
                 ExperimentalExpressionCaptureWindow.LeaveTransferText, ExperimentalExpressionCaptureWindow.KeepTransferText,
-                ExperimentalExpressionCaptureWindow.NextLabel(true), StepIndicator.Names(true)[2],
+                ExperimentalExpressionCaptureWindow.NextLabel, StepIndicator.Names()[2],
             };
             foreach (var text in texts)
                 Assert.That(System.Text.RegularExpressions.Regex.IsMatch(text, "[。、！!\n]|ください|できます|はい|いいえ"), Is.False, text);
@@ -2912,8 +2874,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Drain();
                 type.GetField("excludedObjectEdits", flags).SetValue(window, null);
 
-                // The transfer's third page shows the transfer panel in place of the information page.
-                type.GetField("transferMode", flags).SetValue(window, true);
+                // The third page shows the transfer panel.
                 window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage); Drain();
                 Assert.That(window.Page, Is.EqualTo(ExperimentalExpressionCaptureWindow.InfoPage));
             }
@@ -3017,11 +2978,8 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetField("board", flags).SetValue(window, board);
                 type.GetField("author", flags).SetValue(window, "");
                 board.SetItems(null, clips.Take(3).Select(clip => new ExpressionBoard.Item { Clip = clip, Source = "Fixture" }));
-                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(ExportAuthor.Required)));
+                Assert.That(window.BlockReason(), Is.Null, "The transfer asks the author on its page, not on the board.");
                 Assert.That(window.BlocksExport, Is.False, "The author is asked at the save, not on the board.");
-                type.GetField("transferMode", flags).SetValue(window, true);
-                Assert.That(window.BlockReason(), Is.Null, "The transfer asks the author in the next window.");
-                type.GetField("transferMode", flags).SetValue(window, false);
                 type.GetField("author", flags).SetValue(window, "Author");
                 Assert.That(window.BlockReason(), Is.Null);
                 Assert.That(window.BlocksExport, Is.False);
@@ -3064,8 +3022,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(type.GetField("board", flags).GetValue(window), Is.Null);
                 Assert.That(window.BlocksExport, Is.True);
                 Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)));
-                type.GetField("transferMode", flags).SetValue(window, true);
-                Assert.That(window.BlockReason(), Is.EqualTo(ExporterLocalization.T(AppTransferExport.BoardClosed)), "The transfer is blocked for the same reason.");
             }
             finally { Object.DestroyImmediate(window); }
         }
@@ -3127,8 +3083,8 @@ namespace VRVlog.LilToonExporter.Tests
                 front.name = "Front edited";
                 Assert.DoesNotThrow(session.RestoreBaseline, "The inner batch ending leaves the outer one checked.");
             }
-            Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
-            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
+            Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
+            using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
             front.name = "Front";
             using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.RestoreBaseline);
         }
@@ -3149,7 +3105,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             using (session)
             {
-                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<InvalidOperationException>(session.RestoreBaseline);
+                using (ExperimentalExpressionCaptureSession.Batch()) Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(session.RestoreBaseline);
                 front.name = "Front";
                 using (ExperimentalExpressionCaptureSession.Batch()) Assert.DoesNotThrow(session.RestoreBaseline);
             }
@@ -3189,33 +3145,162 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
         }
 
-        // An edit after the board opened still stops the transfer, as before.
-        [Test]
-        public void ATransferAfterAnEditOfTheSourceStops()
+        // The board as the transfer screen opens it, with the happy slot set.
+        // Edit() changes the scene the way a user would, leaving the slot's object in place.
+        sealed class FollowBoard : IDisposable
         {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            static readonly System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            static readonly Type Type = typeof(ExperimentalExpressionCaptureWindow);
+            internal readonly AttachmentConnectionTests.Fixture Fixture = new AttachmentConnectionTests.Fixture();
+            internal readonly ExperimentalExpressionCaptureWindow Window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            int edits;
+
+            internal FollowBoard()
+            {
+                foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                Fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+                Set("source", Fixture.Source);
+                Set("automaticBlink", false);
+                Delegate<Action>("Prepare")();
+                Session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+            }
+
+            internal ExperimentalExpressionCaptureSession Session => Get<ExperimentalExpressionCaptureSession>("session");
+            internal string Error => Get<string>("error");
+            internal T Get<T>(string field) => (T)Type.GetField(field, Flags).GetValue(Window);
+            internal void Set(string field, object value) => Type.GetField(field, Flags).SetValue(Window, value);
+            internal T Delegate<T>(string method) where T : Delegate => (T)System.Delegate.CreateDelegate(typeof(T), Window, Type.GetMethod(method, Flags));
+
+            internal void Edit() => Fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 36 + edits++);
+            internal void Advance() => Delegate<Action>("Advance")();
+            internal void Run(Action action) { Delegate<Action<Action>>("Queue")(action); Advance(); }
+            internal void Choose(ExpressionPreset preset, string path) =>
+                Run(() => Delegate<Action<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>>("ChoosePreset")(preset,
+                    ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(preset, path, "Smile")));
+
+            internal static void ExpectFollowed() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
+                System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.FollowedSourceFormat).Split('{')[0])));
+
+            internal void AssertKept()
+            {
+                Assert.That(Error, Is.Null);
+                Assert.That(Session.Presets.TryGetValue(ExpressionPreset.happy, out var happy) && happy.IsShape && happy.Path == "Front", Is.True, "The slot set before the edit stays.");
+                Assert.That(Session.SourceDifference(), Is.Null, "The rebuilt copy is of the avatar as it is now.");
+            }
+
+            public void Dispose() { Object.DestroyImmediate(Window); Fixture.Dispose(); }
+        }
+
+        // The reported case: the avatar reads differently when the transfer saves. The
+        // board rebuilds its copy with the same slots and the VRM is written.
+        [Test]
+        public void ATransferAfterAnEditOfTheSourceFollowsItWithTheSameChoices()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-edited-" + Guid.NewGuid().ToString("N") + ".vrm");
             try
             {
-                type.GetField("source", flags).SetValue(window, fixture.Source);
-                type.GetField("automaticBlink", flags).SetValue(window, false);
-                type.GetMethod("Prepare", flags).Invoke(window, null);
-                fixture.Source.transform.Find("Front").name = "Front edited";
+                board.Edit();
+                FollowBoard.ExpectFollowed();
                 var saved = false;
-                var exception = Assert.Throws<InvalidOperationException>(() => window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
-                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+                Assert.That(board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(board.Session, Is.Not.SameAs(before));
+                board.AssertKept();
+            }
+            finally { if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // An edit that leaves an added file unusable (its BlendShape is gone)
+        // takes the file off the board, and the transfer stops with its reason
+        // instead of writing a VRM without that face.
+        [Test]
+        public void ATransferStopsWhenTheRebuiltCopyDropsAnAddedFile()
+        {
+            using var board = new FollowBoard();
+            var clip = new AnimationClip { name = "Wink file" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-dropped-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var mesh = board.Fixture.Mesh;
+                mesh.AddBlendShapeFrame("Wink", 100, Enumerable.Repeat(new Vector3(.03f, 0, 0), mesh.vertexCount).ToArray(), new Vector3[mesh.vertexCount], new Vector3[mesh.vertexCount]);
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Wink"), AnimationCurve.Constant(0, 1, 100));
+                // The board follows the avatar with the new BlendShape first.
+                FollowBoard.ExpectFollowed();
+                board.Delegate<Action>("RefreshCandidateValidation")();
+                Assert.That(board.Session.SourceDifference(), Is.Null);
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                var inputs = board.Get<System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>>("clipInputs");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+
+                var shapes = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).Where(name => name != "Wink").Select(name =>
+                {
+                    var index = mesh.GetBlendShapeIndex(name);
+                    var frames = Enumerable.Range(0, mesh.GetBlendShapeFrameCount(index)).Select(frame =>
+                    {
+                        var deltas = new Vector3[mesh.vertexCount]; var normals = new Vector3[mesh.vertexCount]; var tangents = new Vector3[mesh.vertexCount];
+                        mesh.GetBlendShapeFrameVertices(index, frame, deltas, normals, tangents);
+                        return (Weight: mesh.GetBlendShapeFrameWeight(index, frame), deltas, normals, tangents);
+                    }).ToArray();
+                    return (name, frames);
+                }).ToArray();
+                mesh.ClearBlendShapes();
+                foreach (var (name, frames) in shapes)
+                    foreach (var frame in frames) mesh.AddBlendShapeFrame(name, frame.Weight, frame.deltas, frame.normals, frame.tangents);
+
+                FollowBoard.ExpectFollowed();
+                var saved = false;
+                var failure = Assert.Throws<InvalidOperationException>(() => board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(failure.Message, Does.Contain(clip.name));
                 Assert.That(saved, Is.False);
                 Assert.That(File.Exists(path), Is.False);
+                Assert.That(inputs, Is.Empty, "The file is off the board with its reason, as when the board checks the files.");
             }
-            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+            finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
+        }
+
+        // A face mesh hidden on the avatar for a moment is not followed: a copy
+        // without it would drop the files added for it, and the user could not
+        // get them back by showing it again. The transfer stops naming the mesh
+        // and the board keeps its files and slots for when it is shown again.
+        [Test]
+        public void ATransferStopsWithoutDroppingFilesWhenAShownFaceIsHidden()
+        {
+            using var board = new FollowBoard();
+            var clip = new AnimationClip { name = "Smile file" };
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-hidden-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Smile"), AnimationCurve.Constant(0, 1, 100));
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                var inputs = board.Get<System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>>("clipInputs");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+                var before = board.Session;
+                var front = board.Fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+
+                front.enabled = false;
+                var saved = false;
+                var failure = Assert.Throws<InvalidOperationException>(() => board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
+                Assert.That(failure.Message, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.HiddenFaceFormat), "Front")));
+                Assert.That(saved, Is.False);
+                Assert.That(File.Exists(path), Is.False);
+                Assert.That(board.Session, Is.SameAs(before), "The copy is not rebuilt without the face.");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+                Assert.That(board.Session.Presets.TryGetValue(ExpressionPreset.happy, out var happy) && happy.Path == "Front", Is.True);
+
+                front.enabled = true;
+                Assert.That(board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
+            }
+            finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }
 
         // Inside a batch the records and the standard faces use the batch's
-        // check, but Export hashes the source again and sees an edit.
+        // check, but Export hashes the source again and sees an edit, with what differed.
         [Test]
         public void ExportInABatchStillSeesAnEditOfTheSource()
         {
@@ -3228,9 +3313,193 @@ namespace VRVlog.LilToonExporter.Tests
                 session.ReplaceClipRecords(Array.Empty<ExperimentalExpressionCaptureSession.ClipInput>(), null);
                 fixture.Source.transform.Find("Front").name = "Front edited";
                 Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, assignment), "The batch was checked already.");
-                var exception = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", Listed()));
+                var exception = Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
                 Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+                Assert.That(exception.Detail, Is.Not.Null.And.Not.Empty);
             }
+        }
+
+        // A slot chosen after an edit: the choice reads the copy, finds it out
+        // of date, and runs again on a rebuilt one instead of showing the message.
+        [Test]
+        public void AChoiceAfterAnEditOfTheSourceRunsOnARebuiltCopy()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+            Assert.That(board.Session.Presets[ExpressionPreset.sad].Path, Is.EqualTo("Front"), "The choice itself is made.");
+        }
+
+        // The files are checked again after an import or a change in the scene; an edit rebuilds the copy.
+        [Test]
+        public void CheckingTheFilesAfterAnEditRebuildsTheCopyWithoutAnError()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Set("candidateValidationPending", true);
+            board.Advance();
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+        }
+
+        // The blink line under unchosen blink slots is read while nothing is
+        // queued. An out-of-date copy waits for the rebuild; the line never
+        // becomes the changed-avatar message.
+        [Test]
+        public void TheBlinkLineNeverShowsTheChangedSourceMessage()
+        {
+            using var board = new FollowBoard();
+            var message = ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。");
+            board.Edit();
+            board.Set("blinkFallbackStale", true);
+            board.Advance();
+            Assert.That(board.Get<string>("blinkFallback") ?? "", Does.Not.Contain(message));
+            Assert.That(board.Get<bool>("candidateValidationPending"), Is.True);
+            FollowBoard.ExpectFollowed();
+            board.Advance();
+            board.Advance();
+            Assert.That(board.Get<bool>("blinkFallbackStale"), Is.False);
+            Assert.That(board.Get<string>("blinkFallback") ?? "", Does.Not.Contain(message));
+            board.AssertKept();
+        }
+
+        // The slot menu lists BlendShapes from the copy. An out-of-date one
+        // opens no menu and no error; the copy is rebuilt on the next update.
+        [Test]
+        public void ThePresetMenuWaitsForTheRebuiltCopy()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            board.Delegate<Action<ExpressionPreset, Rect>>("ShowPresetMenu")(ExpressionPreset.sad, new Rect(0, 0, 10, 10));
+            Assert.That(board.Error, Is.Null);
+            Assert.That(board.Get<bool>("candidateValidationPending"), Is.True);
+            FollowBoard.ExpectFollowed();
+            board.Advance();
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+        }
+
+        // A value that reads differently every time does not rebuild the copy
+        // over and over: the idle reads trust the copy built for it, and the next action checks again.
+        [Test]
+        public void AValueThatReadsDifferentlyEachTimeRebuildsOncePerAction()
+        {
+            using var board = new FollowBoard();
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Set("candidateValidationPending", true);
+            board.Advance();
+            var followed = board.Session;
+            for (var i = 0; i < 3; i++)
+            {
+                board.Edit();
+                board.Set("blinkFallbackStale", true);
+                board.Advance();
+                Assert.That(board.Session, Is.SameAs(followed), "Nothing was done on the board.");
+                Assert.That(board.Get<bool>("candidateValidationPending"), Is.False);
+            }
+            FollowBoard.ExpectFollowed();
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.Not.SameAs(followed));
+            board.AssertKept();
+        }
+
+        // A retry from the recovery window, perhaps with the board closed, after
+        // the avatar changed: the same export on a new copy of the avatar as it is.
+        [Test]
+        public void ARetryFromTheRecoveryWindowAfterAnEditExportsTheAvatarAsItIs()
+        {
+            using var board = new FollowBoard();
+            var target = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            var used = new System.Collections.Generic.List<ExperimentalExpressionCaptureSession>();
+            var warnings = new System.Collections.Generic.List<string>();
+            var bytes = ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
+            {
+                used.Add(from);
+                return from.Export("Test", "Tests", Listed(), warnings, sourceChecked: sourceChecked);
+            });
+            Assert.That(bytes, Is.Not.Null.And.Not.Empty);
+            Assert.That(used.Count, Is.EqualTo(2));
+            Assert.That(used[0], Is.SameAs(target));
+            Assert.That(used[1], Is.Not.SameAs(target));
+            Assert.That(target.Copy, Is.Not.Null, "The board's own copy is left to the board.");
+            // A first attempt the save has just checked runs as it is.
+            Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() =>
+                ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, true, warnings, (from, sourceChecked) =>
+                    { if (from != target) Assert.Fail("Only a retry rebuilds."); throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d"); }));
+        }
+
+        // Leaving objects out rebuilds the copy from the avatar. Nothing of the
+        // avatar changes, so the next action finds the copy current.
+        [Test]
+        public void ExcludingAnObjectDoesNotLookLikeAnEditOfTheSource()
+        {
+            using var board = new FollowBoard();
+            board.Set("excludedObjectEdits", new System.Collections.Generic.List<GameObject> { board.Fixture.Source.transform.Find("Back").gameObject });
+            board.Run(board.Delegate<Action>("ApplyExcludedObjects"));
+            Assert.That(board.Get<string>("excludedObjectError"), Is.Null);
+            Assert.That(board.Session.ExcludedObjects.Count, Is.EqualTo(1));
+            board.Advance();
+            var excluded = board.Session;
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.SameAs(excluded));
+            board.Set("excludedObjectEdits", new System.Collections.Generic.List<GameObject>());
+            board.Run(board.Delegate<Action>("ApplyExcludedObjects"));
+            board.Advance();
+            var included = board.Session;
+            board.Choose(ExpressionPreset.surprised, "Front");
+            Assert.That(board.Session, Is.SameAs(included));
+            board.AssertKept();
+        }
+
+        // The objects page shows its own copy of the avatar, made when the page
+        // opens and dropped when it is left; another session's copy comes and
+        // goes the same way. Neither reads as an edit of the avatar.
+        [Test]
+        public void PagesAndOtherCopiesLeaveTheSourceAsItWas()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Set("page", ExperimentalExpressionCaptureWindow.ObjectsPage);
+            board.Window.RefreshObjectsPreview();
+            Assert.That(board.Window.ObjectsPreview, Is.Not.Null);
+            board.Window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage);
+            board.Advance();
+            Assert.That(board.Window.ObjectsPreview, Is.Null);
+            board.Window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage);
+            board.Advance();
+            using (new ExperimentalExpressionCaptureSession(board.Fixture.Source, false)) { }
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.SameAs(before));
+            Assert.DoesNotThrow(board.Session.RequireCurrentSource);
+            board.AssertKept();
+        }
+
+        // What a domain reload does to the stamp: the same avatar hashed again
+        // matches, detailed or not, and a detailed stamp names the part that changed.
+        [Test]
+        public void ADetailedStampMatchesTheSameAvatarAndNamesWhatChanged()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var stamp = ExportRecoverySourceStamp.Capture(fixture.Source, detailed: true);
+            var plain = ExportRecoverySourceStamp.Capture(fixture.Source);
+            Assert.That(stamp.Difference(fixture.Source), Is.Null);
+            Assert.That(ExportRecoverySourceStamp.Capture(fixture.Source, detailed: true).Difference(fixture.Source), Is.Null);
+            Assert.That(plain.Matches(fixture.Source), Is.True);
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(ExportSourceFingerprint.Compute(fixture.Source)));
+            fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 50);
+            Assert.That(stamp.Difference(fixture.Source), Is.EqualTo(typeof(SkinnedMeshRenderer).FullName + " 'Back'"));
+            Assert.That(plain.Difference(fixture.Source), Is.EqualTo("source"));
+            Assert.That(stamp.Matches(fixture.Source), Is.False);
         }
     }
 

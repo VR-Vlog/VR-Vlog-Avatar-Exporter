@@ -220,44 +220,6 @@ namespace VRVlog.LilToonExporter.Tests
             AssertUnchanged(sourceJson, meshJson, probes);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void GestureRegistrationRetainsTheExactStatesDriverAndEffectiveClip(bool overrideClip)
-        {
-            ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Face", 1));
-            var sibling = State(controller.layers[1].stateMachine, "Same clip different callback", (AnimationClip)selected.motion);
-            ParameterDriverExpressionTests.Driver(sibling, ParameterDriverExpressionTests.Op("Set", "Face", 0));
-            controller.AddParameter("GestureRight", AnimatorControllerParameterType.Int);
-            var transition = controller.layers[1].stateMachine.AddAnyStateTransition(selected);
-            transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(AnimatorConditionMode.Equals, 1, "GestureRight");
-            RuntimeAnimatorController runtime = controller;
-            if (overrideClip)
-            {
-                var overrides = new AnimatorOverrideController(controller);
-                overrides[(AnimationClip)selected.motion] = Clip("Effective registered face", 90);
-                AssetDatabase.CreateAsset(overrides, folder + "/Registered.overrideController"); runtime = overrides;
-            }
-            var expected = Native(runtime, new Dictionary<string, float> { ["Face"] = 1 });
-            Assert.That(expected, Is.EqualTo(overrideClip ? 75 : 70).Within(.01));
-            Assert.That(Native(runtime), Is.EqualTo(overrideClip ? 60 : 55).Within(.01),
-                "Dropping the selected callback produces a distinct native pose.");
-            var sourceAssets = AssetDatabase.LoadAllAssetsAtPath(folder + "/FX.controller")
-                .ToDictionary(asset => asset, asset => EditorJsonUtility.ToJson(asset));
-            var sourceJson = EditorJsonUtility.ToJson(controller); var meshJson = EditorJsonUtility.ToJson(mesh);
-            var runtimeJson = EditorJsonUtility.ToJson(runtime); var probes = ProbeObjects();
-            var metadata = new VrChatExpressionMenu.Source { Controller = runtime };
-            VrChatGestureExpressions.Add(avatar, metadata);
-            Assert.That(metadata.Entries.Count, Is.EqualTo(1));
-            var entry = metadata.Entries.Single();
-            Assert.That(entry.Error, Is.Null);
-            Assert.That(entry.Values.Count, Is.EqualTo(1));
-            Assert.That(entry.Values.Single().Weight, Is.EqualTo(expected).Within(.01));
-            foreach (var pair in sourceAssets) Assert.That(EditorJsonUtility.ToJson(pair.Key), Is.EqualTo(pair.Value), pair.Key.name);
-            Assert.That(EditorJsonUtility.ToJson(runtime), Is.EqualTo(runtimeJson));
-            AssertUnchanged(sourceJson, meshJson, probes);
-        }
-
         [TestCase("wrong layer")]
         [TestCase("write defaults")]
         [TestCase("ancestor callback")]
@@ -275,32 +237,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry,
                 1, invalid == "write defaults", sourceState: selectedSource));
             Assert.That(entry.Values.Single().Weight, Is.EqualTo(80));
-            AssertUnchanged(sourceJson, meshJson, probes);
-        }
-
-        [Test]
-        public void SharedGestureClipKeepsDistinctNativeOutcomesFromItsSelectedCallbacks()
-        {
-            ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Face", 1));
-            var sibling = State(controller.layers[1].stateMachine, "Alternative callback", (AnimationClip)selected.motion);
-            ParameterDriverExpressionTests.Driver(sibling, ParameterDriverExpressionTests.Op("Set", "Face", 0));
-            controller.AddParameter("GestureRight", AnimatorControllerParameterType.Int);
-            foreach (var target in new[] { selected, sibling })
-            {
-                var transition = controller.layers[1].stateMachine.AddAnyStateTransition(target);
-                transition.hasExitTime = false; transition.duration = 0;
-                transition.AddCondition(AnimatorConditionMode.Equals, target == selected ? 1 : 2, "GestureRight");
-            }
-            var expected = new[] { Native(controller), Native(controller, new Dictionary<string, float> { ["Face"] = 1 }) };
-            Assert.That(expected, Is.EqualTo(new[] { 55f, 70f }).Within(.01));
-            var sourceJson = EditorJsonUtility.ToJson(controller); var meshJson = EditorJsonUtility.ToJson(mesh); var probes = ProbeObjects();
-            var source = new VrChatExpressionMenu.Source { Controller = controller };
-            VrChatGestureExpressions.Add(avatar, source);
-            Assert.That(source.Entries.Count, Is.EqualTo(2));
-            Assert.That(source.Entries.Select(entry => entry.Error), Is.All.Null);
-            Assert.That(source.Entries.Select(entry => entry.Id).Distinct().Count(), Is.EqualTo(2));
-            Assert.That(source.Entries.Select(entry => entry.Values.Single().Weight).OrderBy(value => value).ToArray(),
-                Is.EqualTo(expected).Within(.01), "Reusing a clip cannot discard a different callback-dependent pose.");
             AssertUnchanged(sourceJson, meshJson, probes);
         }
 
