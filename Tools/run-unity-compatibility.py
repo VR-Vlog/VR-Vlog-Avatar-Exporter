@@ -31,6 +31,7 @@ BEHAVIOR_CASES = {
         'DegenerateGeometryReceivesFiniteUnitNormalsWithoutLosingMorphs': 1,
         'DirectUniVrmExportRepairsOnlyAbsentAttributesAndKeepsAuthoredMorphs': 4,
         'FailureDuringExportRestoresMissingAttributeSourceMesh': 2,
+        'MismatchedAdditionalVertexStreamsAreLeftOutWithAWarning': 1,
         'MissingNormalsWithoutMorphsAlsoExportsThroughMeshWriter': 1,
         'MissingUv0NeverBorrowsASecondUvChannel': 1,
         'NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip': 4,

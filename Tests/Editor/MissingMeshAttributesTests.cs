@@ -143,6 +143,28 @@ namespace VRVlog.LilToonExporter.Tests
             finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
         }
 
+        [Test]
+        public async Task MismatchedAdditionalVertexStreamsAreLeftOutWithAWarning()
+        {
+            // A stream with another vertex count cannot be matched vertex by
+            // vertex; the base mesh is exported, with its normals generated.
+            using var fixture = new Fixture(false, true, false);
+            var streams = new Mesh { name = "Mismatched additional stream", vertices = fixture.Positions.Take(3).ToArray() };
+            streams.normals = Enumerable.Repeat(Vector3.up, 3).ToArray();
+            var renderer = fixture.Targets.Single().GetComponent<MeshRenderer>();
+            renderer.additionalVertexStreams = streams;
+            try
+            {
+                var before = fixture.Snapshot(); var warnings = new List<string>();
+                var bytes = fixture.ExportDirect(warnings);
+                Assert.That(warnings, Does.Contain(ExporterLocalization.T(VrmMeshAttributePreparation.AdditionalStreamsIgnored) + renderer.name));
+                await CheckOutput(fixture, bytes, false);
+                fixture.AssertUnchanged(before);
+                Assert.That(renderer.additionalVertexStreams, Is.SameAs(streams));
+            }
+            finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
+        }
+
         [TestCase(false)] [TestCase(true)]
         public void SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings(bool normalPipeline)
         {
