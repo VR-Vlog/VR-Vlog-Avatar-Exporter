@@ -17,7 +17,7 @@ PYTHON_CHECKS = (
     "test-package.py", "test-aao-vertex-buffer-patch.py",
     "generate-compatibility.py", "test-compatibility-tooling.py",
     "check-liltoon-structure.py", "test-liltoon-catalogue.py", "test-liltoon-version-parity.py",
-    "test-liltoon-version-parity-runner.py", "test-compare-exports.py",
+    "test-liltoon-version-parity-runner.py", "test-compare-exports.py", "test-installer.py",
 )
 HOST_CHECKS = (
     "run-compatibility-tests.ps1", "run-behavior-tests.ps1",

@@ -24,6 +24,7 @@ BEHAVIOR_CASES = {
         'ConfirmedExistingFileIsReplacedWithCompleteTextWithoutTemporaryFiles': 1,
         'WriteFailureIsReportedAndPreservesOtherFiles': 1,
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
+        'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
