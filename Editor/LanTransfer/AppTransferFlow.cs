@@ -74,9 +74,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
     {
         internal const int QuietZone = 4;
         internal const int MinimumSymbolSide = 300;
+        // The app icon in the middle of the "アプリに転送" QR, as a share of the drawn side (quiet zone included).
+        // A marked QR uses error correction H, which reads past the icon; the symbol is a few versions larger
+        // than at M for the same link. A link too long for H is drawn at M without the icon, so every name
+        // that fit before still fits.
+        internal const float MarkShare = 0.2f;
 
-        internal static BitMatrix Encode(string payload) => new QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 0, 0,
-            new Dictionary<EncodeHintType, object> { [EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M, [EncodeHintType.MARGIN] = QuietZone, [EncodeHintType.CHARACTER_SET] = "UTF-8" });
+        internal static BitMatrix Encode(string payload, bool marked = false) => new QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, 0, 0,
+            new Dictionary<EncodeHintType, object> { [EncodeHintType.ERROR_CORRECTION] = marked ? ErrorCorrectionLevel.H : ErrorCorrectionLevel.M, [EncodeHintType.MARGIN] = QuietZone, [EncodeHintType.CHARACTER_SET] = "UTF-8" });
+
+        // Whether the QR for this link can carry the icon. Asked of the placeholder link, which is never
+        // shorter than the real one, so the real QR fits the slot sized from it.
+        internal static bool CanMark(string payload)
+        {
+            try { Encode(payload, true); return true; }
+            catch (InvalidOperationException) { return false; }
+            catch (WriterException) { return false; }
+        }
 
         // Side in GUI points for a matrix that includes its quiet zone. Every
         // module covers a whole number of screen pixels and the symbol inside
