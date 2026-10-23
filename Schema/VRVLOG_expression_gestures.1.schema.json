@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_expression_gestures/1/schema.json",
+  "title": "VRVLOG_expression_gestures 1",
+  "description": "The custom expressions that the avatar's VRChat FX controller shows for each pair of hand gestures, read by the exporter after the avatar build by playing the FX with every other parameter at its default. cells[left * 8 + right] belongs to GestureLeft = left and GestureRight = right, with VRChat's gesture values: 0 neutral, 1 fist, 2 open hand, 3 point, 4 victory, 5 rock'n'roll, 6 hand gun, 7 thumbs up. A cell is null when it could not be determined, and an array of references otherwise; an empty array shows no gesture expression. References apply in array order: a later expression overwrites the BlendShapes an earlier one sets. A reference without drive has weight 1; drive names the hand whose trigger value (GestureLeftWeight or GestureRightWeight, 0 to 1) is its weight. expression is the name of a VRMC_vrm custom expression; a name the VRM does not define is ignored by the reader. Rules that span items are validated by the shared reader (ExpressionGestureData.Read): a cell does not name the same expression twice (ordinal), and at least one cell has a reference.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "cells"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "cells": {
+      "type": "array",
+      "minItems": 64,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/cell"
+      }
+    }
+  },
+  "$defs": {
+    "cell": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/reference"
+          }
+        }
+      ]
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expression"
+      ],
+      "properties": {
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "drive": {
+          "enum": [
+            "left",
+            "right"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -37,6 +37,7 @@ namespace VRVlog.LilToonExporter
         PhysBoneVerify,
         PoseOutput,
         UnusedMorphs,
+        ExpressionGestures,
     }
 
     // The steps a user sees. Each stage belongs to one phase; the stages stay
@@ -211,6 +212,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.PhysBoneVerify: return "揺れ物の出力の照合";
                 case ExportStage.PoseOutput: return "同梱ポーズの追加";
                 case ExportStage.UnusedMorphs: return "使われないBlendShapeの削除";
+                case ExportStage.ExpressionGestures: return "ハンドジェスチャーの表情";
                 default: return stage.ToString();
             }
         }
@@ -241,6 +243,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.UnusedMorphs:
                 case ExportStage.LookAt:
                 case ExportStage.PoseOutput:
+                case ExportStage.ExpressionGestures:
                     return ExportPhase.Expressions;
                 case ExportStage.LilToonSnapshot:
                 case ExportStage.TextureBake:
