@@ -37,8 +37,8 @@ class UnityResultTests(unittest.TestCase):
             'DependencyEnvironmentTests': ('ActualInstalledPackagesMatchRequestedTestEnvironment', 1),
             'DependencyStartupTests': ('MenuResolvesBackendWithoutInitializationRegistration', 1),
             'DependencyRoundTripTests': ('SupportedBackendPreservesMeshesMorphsAndMaterialBindingsOnReimport', 2),
-            'RendererSelectionTests': ('RendererCase', 3),
-            'SkinnedMeshFallbackWeightTests': ('SkinCase', 10),
+            'RendererSelectionTests': ('RendererCase', 4),
+            'SkinnedMeshFallbackWeightTests': ('SkinCase', 14),
             'LilToonStructureCheckTests': ('StructureCase', 11),
         }
         for suite, (method, count) in methods.items():
@@ -51,7 +51,7 @@ class UnityResultTests(unittest.TestCase):
         return unity_runner.validate_result(self.xml)
 
     def test_all_required_suites_pass(self):
-        self.assertEqual(len(self.check()), 28)
+        self.assertEqual(len(self.check()), 33)
 
     def test_no_suite_can_disappear_from_a_passing_result(self):
         for name in ['DependencyEnvironmentTests', 'DependencyStartupTests', 'DependencyRoundTripTests', 'RendererSelectionTests', 'SkinnedMeshFallbackWeightTests', 'LilToonStructureCheckTests']:
@@ -102,7 +102,7 @@ class ExporterProfileResultTests(unittest.TestCase):
         return removed
 
     def test_all_required_suites_pass(self):
-        expected = 28 + sum(sum(methods.values()) for methods in
+        expected = 33 + sum(sum(methods.values()) for methods in
                             [*unity_runner.BEHAVIOR_CASES.values(), *unity_runner.INTEGRATION_CASES.values()])
         self.assertEqual(len(self.check()), expected)
 
@@ -197,7 +197,7 @@ class ExporterProfileResultTests(unittest.TestCase):
 
     def test_additive_case_cannot_be_replaced_by_duplicate_override_case(self):
         suite = 'MergedFxDefaultsTests'
-        method = 'NeutralWeightedUpperLayerKeepsMovingBaseWithoutBakingUnrelatedMorphs'
+        method = 'FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport'
         cases = self.remove(suite, method)
         cases[1].set('fullname', cases[0].get('fullname'))
         self.root.extend(cases)

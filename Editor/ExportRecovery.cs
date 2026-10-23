@@ -195,9 +195,10 @@ namespace VRVlog.LilToonExporter
 
         // Deliberately omit local labels, free-form exception text, paths, names,
         // instance IDs and screenshots from the shareable report.
-        internal string BuildSupportText()
+        internal string BuildSupportText(string version = null)
         {
             var text = new StringBuilder("VR Vlog exporter recovery report v1\n");
+            if (!string.IsNullOrEmpty(version)) text.AppendLine("Exporter: " + version);
             text.AppendLine("Result: " + (Succeeded ? "success" : "failed"));
             text.AppendLine("Stage: " + SupportStage(Stage));
             text.AppendLine("Error: " + (errorType ?? "none"));

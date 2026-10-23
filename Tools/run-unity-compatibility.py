@@ -24,6 +24,7 @@ BEHAVIOR_CASES = {
         'ConfirmedExistingFileIsReplacedWithCompleteTextWithoutTemporaryFiles': 1,
         'WriteFailureIsReportedAndPreservesOtherFiles': 1,
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
+        'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
@@ -471,6 +472,7 @@ BEHAVIOR_CASES = {
         'ProvenMovingDirectClipStillHonorsAProvenPermanentUpperOverride': 2,
         'ProvenMovingDirectClipRetainsTheConfiguredSingleStateBlendTreeSupport': 1,
         'SourceFrameRangePolicyPreservesNativeClampedGeometryAndUnlimitedAuthoredMath': 2,
+        'FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport': 2,
         'NeutralAdditiveDisjointMorphGroupsMatchTheAuthoredNativeController': 4,
         'NeutralAdditiveAutomaticSupportKeepsNativeDefaultsWithoutBakingMovingBlink': 1,
         'InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation': 1,
@@ -694,6 +696,9 @@ BEHAVIOR_CASES = {
         'UnvalidatedVersionsFailBeforeProcessing': 5,
         'UsesGenericOnlyWhenSourceHasNoPrimaryPlatform': 1,
     },
+    'DirectFxExpressionDiscoveryTests': {
+        'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
+    },
     'MaReactiveExpressionExportTests': {
         'MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion': 1,
         'AuthoredActivationKeepsInactiveDependentShape': 2,
@@ -910,7 +915,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 3, 'SkinnedMeshFallbackWeightTests': 10, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
 
 
 def required_regressions(profile):

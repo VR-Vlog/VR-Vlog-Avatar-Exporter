@@ -166,7 +166,7 @@ namespace VRVlog.LilToonExporter
                 else
                 {
                     var empty = (AnimatorStateMachine)Own(new AnimatorStateMachine { name = layers[i].name });
-                    var idle = empty.AddState("Unrelated layer"); Own(idle); idle.writeDefaultValues = false;
+                    var idle = VrChatExpressionSampler.PrivateState(empty, "Unrelated layer"); Own(idle); idle.writeDefaultValues = false;
                     empty.defaultState = idle;
                     layers[i].stateMachine = empty;
                     layers[i].syncedLayerIndex = -1;

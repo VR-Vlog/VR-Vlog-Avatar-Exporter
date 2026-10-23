@@ -417,10 +417,12 @@ namespace VRVlog.LilToonExporter
                             {
                                 leaf.behaviours = sourceMachines[index].behaviours;
                                 if (index + 1 == sourceMachines.Length) break;
-                                var child = leaf.AddStateMachine(sourceMachines[index + 1].name); owned.Add(child);
-                                var enter = leaf.AddEntryTransition(child); owned.Add(enter); leaf = child;
+                                var child = new AnimatorStateMachine { name = sourceMachines[index + 1].name, hideFlags = HideFlags.HideAndDontSave }; owned.Add(child);
+                                var enter = new AnimatorTransition { destinationStateMachine = child, hideFlags = HideFlags.HideAndDontSave }; owned.Add(enter);
+                                leaf.stateMachines = new[] { new ChildAnimatorStateMachine { stateMachine = child } };
+                                leaf.entryTransitions = new[] { enter }; leaf = child;
                             }
-                        var state = leaf.AddState("Probe"); owned.Add(state); state.motion = motion; state.writeDefaultValues = defaults;
+                        var state = PrivateState(leaf, "Probe"); owned.Add(state); state.motion = motion; state.writeDefaultValues = defaults;
                         if (selected && sourceBehaviours != null) state.behaviours = sourceBehaviours;
                         leaf.defaultState = state;
                         return new AnimatorControllerLayer { name = layerName, stateMachine = machine,
@@ -1034,7 +1036,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var machine = new AnimatorStateMachine { name = layers[index].name, hideFlags = HideFlags.HideAndDontSave };
                         probe.owned.Add(machine);
-                        var idle = machine.AddState("Prepared independent rest"); probe.owned.Add(idle);
+                        var idle = PrivateState(machine, "Prepared independent rest"); probe.owned.Add(idle);
                         idle.writeDefaultValues = false; machine.defaultState = idle;
                         layers[index] = new AnimatorControllerLayer { name = layers[index].name, stateMachine = machine,
                             defaultWeight = 0, syncedLayerIndex = -1, blendingMode = AnimatorLayerBlendingMode.Override };
@@ -1605,6 +1607,16 @@ namespace VRVlog.LilToonExporter
                         if (capturedMorphs == null || capturedMorphs.Contains(binding)) history.Add(binding);
                     }
                 }
+        }
+
+        // AnimatorStateMachine.AddState, AddStateMachine and AddEntryTransition
+        // record Undo, which marks the open scene modified even when the graph
+        // is hidden and never saved. Temporary graphs assign the arrays instead.
+        internal static AnimatorState PrivateState(AnimatorStateMachine machine, string name)
+        {
+            var state = new AnimatorState { name = name, hideFlags = HideFlags.HideAndDontSave };
+            machine.states = machine.states.Append(new ChildAnimatorState { state = state }).ToArray();
+            return state;
         }
 
         // An Any State transition with Can Transition To Self keeps restarting
