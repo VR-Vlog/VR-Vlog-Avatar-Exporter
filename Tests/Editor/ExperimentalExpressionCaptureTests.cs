@@ -674,17 +674,19 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face a gesture enters may also turn a bone, such as an eye highlight. It is still a face on the
         // board, read from its BlendShapes alone. The same curve in a clip no gesture enters, or a shown
-        // object beside a gesture face, keeps the clip unsupported.
-        [TestCase("transform", true, true)]
-        [TestCase("transform", false, false)]
-        [TestCase("active", true, false)]
-        public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, bool usable)
+        // object beside a gesture face, keeps the clip unsupported. A hand pose that only holds the face
+        // shapes at rest is not a face.
+        [TestCase("transform", true, 80f, "usable")]
+        [TestCase("transform", false, 80f, "unsupported")]
+        [TestCase("active", true, 80f, "unsupported")]
+        [TestCase("transform", true, 0f, "noface")]
+        public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var clip = new AnimationClip { name = "Smile" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
             try
             {
-                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 80));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
                 AnimationUtility.SetEditorCurve(clip, extra == "transform"
                     ? EditorCurveBinding.FloatCurve("Front", typeof(Transform), "localEulerAnglesRaw.x")
                     : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? 10 : 0));
@@ -699,7 +701,8 @@ namespace VRVlog.LilToonExporter.Tests
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
                 var error = session.ClipErrors(new[] { clip })[clip];
-                if (usable) Assert.That(error, Is.Null);
+                if (expected == "usable") Assert.That(error, Is.Null);
+                else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
                 else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }

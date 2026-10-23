@@ -338,11 +338,13 @@ namespace VRVlog.LilToonExporter
         // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
         // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
         // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
-        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        // on the board, a FaceEmo face and a clip a gesture enters stay faces. A hand pose a gesture
+        // enters that only holds the face shapes at rest is a hand pose, not a face.
         string NoFaceError(AnimationClip clip, Pose pose)
         {
-            if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
-            if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
+            var gestureFace = gestureClips.Contains(clip) && AnimationUtility.GetCurveBindings(clip).All(PoseSampling.IsBlendShape);
+            if (!clipRoots.ContainsKey(clip) || gestureFace || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
+            if (AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
                 .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
             for (var i = 0; i < Baseline.Rows.Count; i++)
                 if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
