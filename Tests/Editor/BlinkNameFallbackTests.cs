@@ -153,21 +153,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(resolved.Inferences.Single(), Does.StartWith(BlinkExportSession.InferredNamesLog));
         }
 
-        [TestCase(new[] { "目閉じ", "閉眼" }, TestName = "TwoBilateralNamesAreAmbiguous")]
-        [TestCase(new[] { "目閉じ_L:L", "目閉じ_R:R", "閉眼_L:L", "閉眼_R:R" }, TestName = "TwoPairsWithoutABilateralNameAreAmbiguous")]
-        [TestCase(new[] { "目閉じ_L:L" }, TestName = "OneSideAloneIsNotAssigned")]
-        [TestCase(new[] { "目閉じ_L:L", "閉眼_R:R" }, TestName = "SidesWithDifferentRootsAreNotAPair")]
-        [TestCase(new[] { "目閉じ_L:B", "目閉じ_R:B" }, TestName = "SidesThatMoveTheSameVerticesAreNotAPair")]
-        [TestCase(new[] { "目閉じ:-" }, TestName = "AShapeThatDoesNotMoveIsNotAssigned")]
-        [TestCase(new[] { "目閉じ", "目とじ" }, TestName = "TwoJapaneseSpellingsAreAmbiguous")]
-        [TestCase(new[] { "eyes_blink", "Eyes_Blink" }, TestName = "ACaseDuplicateNameIsNotAssigned")]
-        [TestCase(new[] { "blink_smile", "smile_blink", "笑い目閉じ" }, TestName = "ASmilingClosureIsNotABlink")]
-        [TestCase(new[] { "wink_L:L", "wink_R:R" }, TestName = "AWinkIsNotABlink")]
-        [TestCase(new[] { "blink2", "blink_half", "preview_blink" }, TestName = "OtherWordsOrNumbersAreNotABlink")]
-        [TestCase(new[] { "eye_close", "close" }, TestName = "CloseAloneIsNotABlink")]
-        public void LowConfidenceNamesAssignNothing(params string[] shapes)
+        [TestCase("目閉じ,閉眼", TestName = "TwoBilateralNamesAreAmbiguous")]
+        [TestCase("目閉じ_L:L,目閉じ_R:R,閉眼_L:L,閉眼_R:R", TestName = "TwoPairsWithoutABilateralNameAreAmbiguous")]
+        [TestCase("目閉じ_L:L", TestName = "OneSideAloneIsNotAssigned")]
+        [TestCase("目閉じ_L:L,閉眼_R:R", TestName = "SidesWithDifferentRootsAreNotAPair")]
+        [TestCase("目閉じ_L:B,目閉じ_R:B", TestName = "SidesThatMoveTheSameVerticesAreNotAPair")]
+        [TestCase("目閉じ:-", TestName = "AShapeThatDoesNotMoveIsNotAssigned")]
+        [TestCase("目閉じ,目とじ", TestName = "TwoJapaneseSpellingsAreAmbiguous")]
+        [TestCase("eyes_blink,Eyes_Blink", TestName = "ACaseDuplicateNameIsNotAssigned")]
+        [TestCase("blink_smile,smile_blink,笑い目閉じ", TestName = "ASmilingClosureIsNotABlink")]
+        [TestCase("wink_L:L,wink_R:R", TestName = "AWinkIsNotABlink")]
+        [TestCase("blink2,blink_half,preview_blink", TestName = "OtherWordsOrNumbersAreNotABlink")]
+        [TestCase("eye_close,close", TestName = "CloseAloneIsNotABlink")]
+        public void LowConfidenceNamesAssignNothing(string shapes)
         {
-            Face(shapes);
+            Face(shapes.Split(','));
             AssertNothing(BlinkExportSession.Resolve(root));
         }
 
