@@ -88,6 +88,8 @@ namespace VRVlog.LilToonExporter
             var moved = new List<Moved>();
             var humanoid = plans.Any(p => p.Kind == Kind.Parent) ? HumanoidBones(copy) : new HashSet<Transform>();
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
+            // Paths point at the user's avatar, so take them before any target moves.
+            var paths = plans.Select(plan => ExportFallbackReport.RelativePath(copy.transform, plan.Target)).ToArray();
             try
             {
                 // Moving a target under its source changes its local frame, which
@@ -118,14 +120,14 @@ namespace VRVlog.LilToonExporter
                 for (var index = moved.Count - 1; index >= 0; index--) moved[index].Restore();
                 throw;
             }
-            foreach (var (_, plan, outcome, reason) in decisions.OrderBy(d => d.Order))
+            foreach (var (order, plan, outcome, reason) in decisions.OrderBy(d => d.Order))
             {
                 result.Sources++;
                 if (outcome == ExportOutcome.Omitted) result.Omitted++;
                 else if (outcome == ExportOutcome.Kept) result.Kept++;
                 else result.Approximated++;
                 var entry = fallbacks?.Record(outcome, Category, plan.Target.name + " (" + plan.Component.GetType().Name + ")", reason);
-                if (entry != null) entry.Path = ExportFallbackReport.RelativePath(copy.transform, plan.Target);
+                if (entry != null) entry.Path = paths[order];
             }
             if (added.Count > 0 && copy.GetComponent<Vrm10Instance>() == null) copy.AddComponent<Vrm10Instance>();
             if (result.Sources > 0)

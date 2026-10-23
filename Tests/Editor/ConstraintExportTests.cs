@@ -185,7 +185,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
             Assert.That(f.Entry.Outcome, Is.EqualTo(ExportOutcome.Kept));
             Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.KeptParent));
-            Assert.That(f.Entry.Path, Is.EqualTo("Parent/A/Other"));
+            Assert.That(f.Entry.Path, Is.EqualTo("Other parent/Other"), "The result points at the object in the user's avatar.");
             Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.Empty);
             Assert.That(f.Copy.GetComponent<Vrm10Instance>(), Is.Null, "Moving a transform needs no VRM constraint.");
             Assert.That(f.Warnings.Single(), Is.EqualTo("コンストレイント変換: 元1件 / 変換1件（うち近似0件） / 省略0件。"));
@@ -203,6 +203,7 @@ namespace VRVlog.LilToonExporter.Tests
             f.Convert();
             Assert.That((second.parent, f.Other.parent), Is.EqualTo((f.Other, f.A)));
             Assert.That(f.Report.Results.Select(r => r.Reason), Is.EqualTo(new[] { ConstraintExport.KeptParent, ConstraintExport.KeptParent }));
+            Assert.That(f.Report.Results.Select(r => r.Path), Is.EqualTo(new[] { "Second", "Other parent/Other" }), "Paths are taken before anything moves.");
         }
 
         [TestCase("translation axis")][TestCase("rotation axis")][TestCase("weight")][TestCase("source weight")][TestCase("rotation source")]
