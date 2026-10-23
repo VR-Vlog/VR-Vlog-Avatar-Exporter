@@ -154,6 +154,8 @@ BEHAVIOR_CASES = {
         'NestedOwnersKeepRestShapeForcesAndCollidersRegardlessOfComponentTraversal': 2,
         'PreexistingVrmImplicitJointsAndTerminalsWinWhileDisjointSegmentsSurvive': 1,
         'PreparedCopyWithoutRequiredHumanBonesOrRootAnimatorStopsAndNamesThem': 1,
+        'PreparedCopyWithBonesOutOfHumanoidOrderStopsAndNamesThem': 1,
+        'OutputWithBonesOutOfHumanoidOrderIsRejected': 1,
         'SameRootPrefersAttachedComponentThenStableComponentOrder': 2,
         'ZeroLengthPairsKeepBonesAndOriginalDepthForTheRemainingChain': 1,
     },
