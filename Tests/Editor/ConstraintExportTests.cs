@@ -157,17 +157,106 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ParentPositionAndScaleKeepThePose()
+        public void PositionAndScaleKeepThePose()
         {
             using var f = new Fixture();
-            f.Constraint<ParentConstraint>(f.B, 1, f.A);
             f.Constraint<PositionConstraint>(f.Other, 1, f.A);
             f.Constraint<ScaleConstraint>(f.Parent, 1, f.A);
             var result = f.Convert();
             Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.Empty);
-            Assert.That(result.Omitted, Is.EqualTo(3));
+            Assert.That(result.Omitted, Is.EqualTo(2));
             Assert.That(f.Report.Results.All(r => r.Outcome == ExportOutcome.Omitted && r.Reason == ConstraintExport.OmittedKind), Is.True);
-            Assert.That(f.Warnings.Single(), Does.Contain("省略3件"));
+            Assert.That(f.Warnings.Single(), Does.Contain("省略2件"));
+        }
+
+        [Test]
+        public void AParentConstrainedPropMovesUnderItsSource()
+        {
+            // A prop held in a hand: outside the hand, attached by the constraint.
+            using var f = new Fixture();
+            var prop = f.Other;
+            prop.SetPositionAndRotation(new Vector3(.3f, .2f, .1f), Quaternion.Euler(10, 40, 70));
+            var mesh = Fixture.Child(prop, "Mesh", new Vector3(0, .05f, 0));
+            var world = mesh.localToWorldMatrix;
+            f.Constraint<ParentConstraint>(prop, 1, f.A);
+            var result = f.Convert();
+            Assert.That(prop.parent, Is.EqualTo(f.A));
+            Assert.That(SameMatrix(mesh.localToWorldMatrix, world), Is.True, "The prop stays where it is.");
+            Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
+            Assert.That(f.Entry.Outcome, Is.EqualTo(ExportOutcome.Kept));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.KeptParent));
+            Assert.That(f.Entry.Path, Is.EqualTo("Parent/A/Other"));
+            Assert.That(f.Copy.GetComponentsInChildren<IVrm10Constraint>(), Is.Empty);
+            Assert.That(f.Copy.GetComponent<Vrm10Instance>(), Is.Null, "Moving a transform needs no VRM constraint.");
+            Assert.That(f.Warnings.Single(), Is.EqualTo("コンストレイント変換: 元1件 / 変換1件（うち近似0件） / 省略0件。"));
+            Assert.That(f.Source.GetComponentsInChildren<Component>().Length, Is.EqualTo(1), "The source avatar is not touched.");
+        }
+
+        [Test]
+        public void ChainedParentConstraintsMoveInAnyOrder()
+        {
+            using var f = new Fixture();
+            var second = Fixture.Child(f.Copy.transform, "Second", Vector3.left);
+            second.SetSiblingIndex(0); // Read before the constraint it hangs from.
+            f.Constraint<ParentConstraint>(second, 1, f.Other);
+            f.Constraint<ParentConstraint>(f.Other, 1, f.A);
+            f.Convert();
+            Assert.That((second.parent, f.Other.parent), Is.EqualTo((f.Other, f.A)));
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EqualTo(new[] { ConstraintExport.KeptParent, ConstraintExport.KeptParent }));
+        }
+
+        [TestCase("translation axis")][TestCase("rotation axis")][TestCase("weight")][TestCase("source weight")][TestCase("rotation source")]
+        public void AParentConstraintThatAChildWouldNotMatchKeepsThePose(string condition)
+        {
+            using var f = new Fixture();
+            var constraint = f.Constraint<ParentConstraint>(f.Other, 1, f.A);
+            switch (condition)
+            {
+                case "translation axis": constraint.translationAxis = Axis.X | Axis.Y; break;
+                case "rotation axis": constraint.rotationAxis = Axis.Y; break;
+                case "weight": constraint.weight = .5f; break;
+                case "source weight": constraint.SetSource(0, new ConstraintSource { sourceTransform = f.A, weight = .5f }); break;
+                // A VRM rotation constraint reads the local rotation of its source.
+                case "rotation source":
+                    f.Constraint<RotationConstraint>(Fixture.Child(f.Other.parent, "Twin", Vector3.zero), 1, f.Other);
+                    break;
+            }
+            f.Convert();
+            Assert.That(f.Other.parent.name, Is.EqualTo("Other parent"));
+            Assert.That(f.Report.Results.Single(r => r.Name.Contains(nameof(ParentConstraint))).Reason, Is.EqualTo(ConstraintExport.OmittedReparent));
+        }
+
+        [Test]
+        public void SeveralSourcesOrASourceInsideTheTargetKeepThePose()
+        {
+            using var f = new Fixture();
+            f.Constraint<ParentConstraint>(f.Other, 1, f.A, f.B);
+            f.Constraint<ParentConstraint>(f.Parent, 1, f.A);
+            f.Convert();
+            Assert.That((f.Other.parent.name, f.Parent.parent), Is.EqualTo(("Other parent", f.Copy.transform)));
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EqualTo(new[] { ConstraintExport.OmittedSetting, ConstraintExport.OmittedSetting }));
+        }
+
+        [Test]
+        public void AParentConstraintOnAHumanoidBoneKeepsTheSkeleton()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var animator = fixture.Copy.GetComponent<Animator>();
+            var hand = animator.GetBoneTransform(HumanBodyBones.LeftHand);
+            var forearm = hand.parent;
+            var prop = new GameObject("Prop").transform; prop.SetParent(fixture.Copy.transform, false);
+            var constraint = hand.gameObject.AddComponent<ParentConstraint>();
+            constraint.AddSource(new ConstraintSource { sourceTransform = prop, weight = 1 }); constraint.constraintActive = true;
+            var report = new ExportFallbackReport();
+            ConstraintExport.Convert(fixture.Source, fixture.Copy, null, report);
+            Assert.That(hand.parent, Is.EqualTo(forearm));
+            Assert.That(report.Results.Single().Reason, Is.EqualTo(ConstraintExport.OmittedReparent));
+        }
+
+        static bool SameMatrix(Matrix4x4 a, Matrix4x4 b)
+        {
+            for (var i = 0; i < 16; i++) if (Mathf.Abs(a[i] - b[i]) > 1e-4f) return false;
+            return true;
         }
 
         [TestCase("weightless")][TestCase("sourceless")]
@@ -393,6 +482,42 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That((string)nodes[Convert.ToInt32(rotation["source"])]["name"], Is.EqualTo("Constraint source"));
             Assert.That(report.Fallbacks.Results.Single(r => r.Category == ConstraintExport.Category).Outcome, Is.EqualTo(ExportOutcome.Kept));
             Assert.That(b.GetComponent<IVrm10Constraint>(), Is.Null, "Only the export copy gets the VRM constraint.");
+        }
+
+        [Test]
+        public void AFullExportWritesAParentConstrainedPropUnderItsSource()
+        {
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var material = new Material(shader);
+            foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
+            var hand = fixture.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.RightHand);
+            var prop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            prop.name = "Held prop";
+            Object.DestroyImmediate(prop.GetComponent<Collider>());
+            prop.GetComponent<MeshRenderer>().sharedMaterial = material;
+            prop.transform.SetParent(fixture.Source.transform, false);
+            prop.transform.SetPositionAndRotation(hand.position + new Vector3(.05f, 0, 0), Quaternion.Euler(0, 0, 30));
+            prop.transform.localScale = Vector3.one * .1f;
+            var constraint = prop.AddComponent<ParentConstraint>();
+            constraint.AddSource(new ConstraintSource { sourceTransform = hand, weight = 1 });
+            constraint.locked = true; constraint.constraintActive = true;
+            var report = new ExportRecoveryReport();
+            byte[] bytes;
+            try
+            {
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                    exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
+            }
+            finally { Object.DestroyImmediate(material); }
+            var nodes = ((List<object>)GlbDocument.Read(bytes).Json["nodes"]).Cast<Dictionary<string, object>>().ToList();
+            var held = nodes.FindIndex(node => (string)node["name"] == "Held prop");
+            var parent = nodes.Single(node => node.TryGetValue("children", out var children) && ((List<object>)children).Select(Convert.ToInt32).Contains(held));
+            Assert.That((string)parent["name"], Is.EqualTo("RightHand"));
+            Assert.That(report.Fallbacks.Results.Single(r => r.Category == ConstraintExport.Category).Reason, Is.EqualTo(ConstraintExport.KeptParent));
+            Assert.That(prop.transform.parent, Is.EqualTo(fixture.Source.transform), "Only the export copy is moved.");
         }
 
         [Test]
