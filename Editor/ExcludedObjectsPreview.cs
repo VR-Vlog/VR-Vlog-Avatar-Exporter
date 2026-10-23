@@ -136,13 +136,15 @@ namespace VRVlog.LilToonExporter
                 .Where(item => !(item is ParticleSystemRenderer) && !(item is TrailRenderer) && !(item is LineRenderer)).ToArray();
             if (renderers.Length == 0) return null;
             var reach = SkeletonReach(avatar);
-            Bounds? fit = null;
+            Bounds? fit = null, whole = null;
             var baked = new Mesh();
             try
             {
                 foreach (var renderer in renderers)
                 {
                     var box = MeshBounds(renderer, baked);
+                    if (whole.HasValue) { var all = whole.Value; all.Encapsulate(box); whole = all; }
+                    else whole = box;
                     if (reach.HasValue)
                     {
                         var min = Vector3.Max(box.min, reach.Value.min);
@@ -155,14 +157,8 @@ namespace VRVlog.LilToonExporter
                 }
             }
             finally { Object.DestroyImmediate(baked); }
-            // Everything lies outside the skeleton's reach: fall back to what is drawn.
-            if (!fit.HasValue)
-            {
-                var all = renderers[0].bounds;
-                foreach (var renderer in renderers.Skip(1)) all.Encapsulate(renderer.bounds);
-                fit = all;
-            }
-            return fit;
+            // Everything lies outside the skeleton's reach: fit all the meshes, still by their vertices.
+            return fit ?? whole;
         }
 
         static Bounds MeshBounds(Renderer renderer, Mesh baked)
