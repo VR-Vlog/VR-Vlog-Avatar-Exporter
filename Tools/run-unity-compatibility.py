@@ -364,6 +364,7 @@ BEHAVIOR_CASES = {
         'MenuTraversalKeepsLabelsAncestorGatesAndReportsPuppets': 1,
         'PortableCurveMatchesUnityWeightedAndSteppedAnimation': 1,
         'GestureClipIgnoresHumanoidPoseButRejectsParameterCurves': 1,
+        'GestureClipPoseReadsAChangingCurveAtItsFirstKey': 1,
         'HumanoidChannelsComeFromUnityVocabulary': 1,
         'RepeatedFxParameterDeclarationsKeepMenuExpressions': 1,
         'ConflictingFxParameterDeclarationsAreLeftForStrictChecks': 1,
@@ -371,6 +372,13 @@ BEHAVIOR_CASES = {
     'ParameterDriverExpressionTests': {
         'BodyControlDoesNotMakeAnExcludedOnlyLayerLookLikeAFace': 1,
         'BodyPlayableControlAndTrackedHandDoNotBlockFixedFacialSampler': 3,
+        'FixedContactInputUsesAuthoredDefault': 1,
+        'FixedExplicitEyeHeightIsNotTakenFromDefaults': 2,
+        'FixedEyeHeightDriverCopyRequiresExplicitInput': 2,
+        'FixedEyeHeightFaceTransitionDoesNotTrustAuthoredOrSuppliedDefaults': 4,
+        'FixedStationReachabilityFollowsNestedEntryExitAndStateMachineTransitions': 1,
+        'FixedStationReachabilityKeepsParentAnyStateTransitionsWhenNestedStateIsActive': 1,
+        'FixedUnusedEyeHeightDeclarationIsNotAFixedInput': 2,
         'FxOffSelectionIsRejectedAndLaterSamplesStartFromFreshDefaults': 1,
         'LocomotionControlDoesNotBlockFixedFacialSampling': 2,
         'MalformedBodyPlayableControlIsNotIgnored': 7,
@@ -505,6 +513,7 @@ BEHAVIOR_CASES = {
         'AuthoredZeroOnlyRemainsDisabledWhileExplicitFxZeroCanReopen': 1,
         'DuplicateAuthoredBindingsKeepFirstChannelSemantics': 2,
         'DuplicateRendererPathsCannotSilentlyApplySampleToTheFirstSibling': 1,
+        'AuthoredBindingOnASharedRendererPathIsLeftInertAndWarns': 1,
         'EndpointBakeKeepsBlinkSettingsCreatedAfterCapture': 1,
         'MalformedAuthoredClipKeepsItsDeclarationAndCannotActivateItsValidPortion': 3,
         'PartialEndpointAtNeutralRemainsInertAndExplicitZeroHasGeometry': 1,
@@ -636,6 +645,8 @@ BEHAVIOR_CASES = {
     },
     'DirectFxExpressionDiscoveryTests': {
         'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
+        'InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling': 4,
+        'InstalledMaMarkerCannotMakeAnUnknownCallbackSafe': 1,
     },
     'MaReactiveExpressionExportTests': {
         'MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion': 1,

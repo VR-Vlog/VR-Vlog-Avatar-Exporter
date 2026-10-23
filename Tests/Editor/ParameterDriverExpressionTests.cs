@@ -140,6 +140,14 @@ namespace VRVlog.LilToonExporter.Tests
             return neutral;
         }
 
+        private void FaceLayer(int selected = 1, bool missing = false)
+        {
+            var machine = Layer("Face layer");
+            var idle = State(machine, "Neutral", Clip("Neutral", 0, missing)); machine.defaultState = idle;
+            var smile = State(machine, "Smile", Clip("Smile", 75, missing));
+            Transition(idle, smile, "Face", selected);
+        }
+
         private List<VrChatExpressionMenu.MorphValue> Play(IDictionary<string, float> selection) =>
             ExperimentalInstalledExpressionPlayer.Sample(avatar, metadata, selection);
 
@@ -281,6 +289,146 @@ namespace VRVlog.LilToonExporter.Tests
             VrChatParameterDriver.Execute(program, types, new HashSet<string> { "Synced" }, new HashSet<string>(types.Keys), true, n => values[n], (n, v) => values[n] = v);
             Assert.That(values["Synced"], Is.EqualTo(1)); Assert.That(values["Local"], Is.EqualTo(-1.2).Within(.0001));
             Assert.That(values["Int"], Is.EqualTo(-2)); Assert.That(values["Bool"], Is.EqualTo(1));
+        }
+
+        // A height input depends on the avatar. Neither its authored nor its
+        // supplied default becomes a fixed input value.
+        [TestCase("EyeHeightAsMeters", 0f, false)]
+        [TestCase("EyeHeightAsMeters", 1f, true)]
+        [TestCase("EyeHeightAsPercent", 1f, false)]
+        [TestCase("EyeHeightAsPercent", 0f, true)]
+        public void FixedEyeHeightFaceTransitionDoesNotTrustAuthoredOrSuppliedDefaults(string parameter, float value, bool suppliedDefault)
+        {
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = parameter, type = AnimatorControllerParameterType.Float, defaultFloat = suppliedDefault ? 0 : value
+            });
+            if (suppliedDefault) metadata.Defaults[parameter] = value;
+            Gate().motion = Clip("Eye height face", 75);
+            var idle = controller.layers[0].stateMachine.defaultState;
+            idle.motion = Clip("Neutral face", 0);
+            idle.transitions[0].AddCondition(AnimatorConditionMode.Greater, .5f, parameter);
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(context.Values.ContainsKey(parameter), Is.False, "An authored default is not a measured eye height.");
+        }
+
+        [TestCase("EyeHeightAsMeters", 0f)]
+        [TestCase("EyeHeightAsPercent", 1f)]
+        public void FixedEyeHeightDriverCopyRequiresExplicitInput(string parameter, float authoredValue)
+        {
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = parameter, type = AnimatorControllerParameterType.Float, defaultFloat = authoredValue
+            });
+            metadata.Defaults[parameter] = authoredValue;
+            Driver(Gate(), Op("Copy", "Face", source: parameter)); FaceLayer();
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(context.Values.ContainsKey(parameter), Is.False);
+            Assert.That(metadata.Defaults[parameter], Is.EqualTo(authoredValue));
+        }
+
+        [TestCase("EyeHeightAsMeters", 0f)]
+        [TestCase("EyeHeightAsPercent", 1f)]
+        public void FixedUnusedEyeHeightDeclarationIsNotAFixedInput(string parameter, float authoredValue)
+        {
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = parameter, type = AnimatorControllerParameterType.Float, defaultFloat = authoredValue
+            });
+            metadata.Defaults[parameter] = authoredValue;
+            Gate().motion = Clip("Menu face", 75);
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(context.Values.ContainsKey(parameter), Is.False);
+            Assert.That(context.UsedParameters.Contains(parameter), Is.False);
+        }
+
+        [TestCase("EyeHeightAsMeters", 0f)]
+        [TestCase("EyeHeightAsPercent", 1f)]
+        public void FixedExplicitEyeHeightIsNotTakenFromDefaults(string parameter, float suppliedValue)
+        {
+            controller.AddParameter(new AnimatorControllerParameter
+            {
+                name = parameter, type = AnimatorControllerParameterType.Float, defaultFloat = 1 - suppliedValue
+            });
+            metadata.Defaults[parameter] = 1 - suppliedValue;
+            Gate().motion = Clip("Eye height face", 75);
+            var idle = controller.layers[0].stateMachine.defaultState;
+            idle.motion = Clip("Neutral face", 0);
+            idle.transitions[0].AddCondition(AnimatorConditionMode.Greater, .5f, parameter);
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(context.Values.ContainsKey(parameter), Is.False);
+            context.Values[parameter] = suppliedValue;
+            Assert.That(metadata.Defaults[parameter], Is.EqualTo(1 - suppliedValue));
+        }
+
+        [Test]
+        public void FixedStationReachabilityFollowsNestedEntryExitAndStateMachineTransitions()
+        {
+            Gate().motion = Clip("Menu face", 75);
+            controller.AddParameter("InStation", AnimatorControllerParameterType.Bool);
+            var root = Layer("Entry exit FX gate");
+            var neutral = State(root, "Neutral FX"); root.defaultState = neutral;
+            PlayableControl(neutral, "FX", 1, 0);
+            var nested = root.AddStateMachine("Nested gate");
+            var fallback = State(nested, "Unreached entry fallback"); nested.defaultState = fallback;
+            var fallbackCommand = PlayableControl(fallback, "FX", 0, 0);
+            var entry = State(nested, "Entry command");
+            var entryCommand = PlayableControl(entry, "FX", 1, 0);
+            nested.AddEntryTransition(entry);
+            var enter = neutral.AddTransition(nested); enter.hasExitTime = false; enter.duration = 0;
+            enter.AddCondition(AnimatorConditionMode.If, 0, "InStation");
+            var exit = entry.AddExitTransition(); exit.hasExitTime = false; exit.duration = 0;
+            exit.AddCondition(AnimatorConditionMode.If, 0, "InStation");
+            var disabled = State(root, "Exit disables FX");
+            var disabledCommand = PlayableControl(disabled, "FX", 0, 0);
+            root.AddStateMachineTransition(nested, disabled);
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(FixedExpressionContext.TryReachableFxCommands(root, context.Values, controller.parameters, out var normalCommands), Is.True);
+            Assert.That(normalCommands.Contains(entryCommand), Is.False);
+            Assert.That(normalCommands.Contains(disabledCommand), Is.False);
+            Assert.That(normalCommands.Contains(fallbackCommand), Is.False);
+            context.Values["InStation"] = 1;
+            Assert.That(FixedExpressionContext.TryReachableFxCommands(root, context.Values, controller.parameters, out var stationCommands), Is.True);
+            Assert.That(stationCommands.Contains(entryCommand), Is.True);
+            Assert.That(stationCommands.Contains(disabledCommand), Is.True);
+            Assert.That(stationCommands.Contains(fallbackCommand), Is.False);
+        }
+
+        [Test]
+        public void FixedStationReachabilityKeepsParentAnyStateTransitionsWhenNestedStateIsActive()
+        {
+            Gate().motion = Clip("Menu face", 75);
+            controller.AddParameter("InStation", AnimatorControllerParameterType.Bool);
+            var root = Layer("Parent AnyState FX gate");
+            var neutral = State(root, "Neutral FX"); root.defaultState = neutral;
+            PlayableControl(neutral, "FX", 1, 0);
+            var nested = root.AddStateMachine("Nested active state");
+            var active = State(nested, "Active nested FX"); nested.defaultState = active;
+            var activeCommand = PlayableControl(active, "FX", 1, 0);
+            var enter = neutral.AddTransition(nested); enter.hasExitTime = false; enter.duration = 0;
+            enter.AddCondition(AnimatorConditionMode.IfNot, 0, "InStation");
+            var disabled = State(root, "Parent AnyState disables FX");
+            var disabledCommand = PlayableControl(disabled, "FX", 0, 0);
+            var any = root.AddAnyStateTransition(disabled); any.hasExitTime = false; any.duration = 0; any.canTransitionToSelf = false;
+            any.AddCondition(AnimatorConditionMode.If, 0, "InStation");
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(FixedExpressionContext.TryReachableFxCommands(root, context.Values, controller.parameters, out var normalCommands), Is.True);
+            Assert.That(normalCommands.Contains(activeCommand), Is.True);
+            Assert.That(normalCommands.Contains(disabledCommand), Is.False);
+            context.Values["InStation"] = 1;
+            Assert.That(FixedExpressionContext.TryReachableFxCommands(root, context.Values, controller.parameters, out var stationCommands), Is.True);
+            Assert.That(stationCommands, Does.Contain(disabledCommand));
+        }
+
+        [Test]
+        public void FixedContactInputUsesAuthoredDefault()
+        {
+            controller.AddParameter("Contact", AnimatorControllerParameterType.Float);
+            metadata.ExternalParameters.Add("Contact"); metadata.Defaults["Contact"] = 1;
+            Driver(Gate(), Op("Copy", "Face", source: "Contact")); FaceLayer();
+            var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
+            Assert.That(context.Values["Contact"], Is.EqualTo(1));
+            Assert.That(metadata.Defaults["Contact"], Is.EqualTo(1));
         }
     }
 }

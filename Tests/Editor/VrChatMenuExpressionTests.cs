@@ -113,6 +113,15 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void GestureClipPoseReadsAChangingCurveAtItsFirstKey()
+        {
+            var clip = Clip("Smile", 75, 0);
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Linear(0, 0, 10, 100));
+            Assert.That(VrChatGestureExpressions.ReadPose(avatar, clip).Single(v => v.Shape == "Blink").Weight, Is.Zero);
+        }
+
+        [Test]
         public void HumanoidChannelsComeFromUnityVocabulary()
         {
             Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "RightHand.Thumb.Spread")), Is.True);

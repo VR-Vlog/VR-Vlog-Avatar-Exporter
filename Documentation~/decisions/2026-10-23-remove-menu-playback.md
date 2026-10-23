@@ -29,15 +29,19 @@
 | テスト | 扱い | 理由 |
 |---|---|---|
 | `GestureBlendTreeTests`（ファイルごと・21 件、34） | 外す | Gesture の BlendTree を再生した表情を確かめていた |
-| `DirectFxExpressionDiscoveryTests` の 72 件（111） | 外す | FX の表情を探して再生した結果を確かめていた |
+| `DirectFxExpressionDiscoveryTests` の 70 件（106） | 外す | FX の表情を探して再生した結果を確かめていた |
+| `DirectFxExpressionDiscoveryTests.InstalledMaDataOnlyMarkerPreservesNativeAndDirectExpressionSampling`（4）、`InstalledMaMarkerCannotMakeAnUnknownCallbackSafe` | 直す | MA のデータだけのマーカーを無害と見なす判定と、未知のコールバックを `ApplyPermanentOverrides` が拒むことを確かめるテストがほかに無い。再生の確認を外し、`ReadClip` と `ApplyPermanentOverrides` で読む形にした |
 | `DirectFxExpressionDiscoveryTests.DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone` | 残す | ルートの Animator が空のとき記述子の FX を Controller にすることの唯一の確認。#419 で一覧を渡す形に直したもので、再生に頼らない |
 | `FxDiscoveryPruningTests`（ファイルごと・3 件、11） | 外す | FX の表情の探索の絞り込みを確かめていた |
 | `InferredStatePathTests`（ファイルごと・3 件、6） | 外す | FX の表情を探すときのステートの経路を確かめていた |
 | `NativeTreeTrajectoryTests`（ファイルごと・9 件、16） | 外す | BlendTree の時間変化の追跡を確かめていた |
 | `FacialProjectionTests` の 16 件（33） | 外す | 作り込みの表情・ハードウェアの表情・保持された Gesture の表情を再生した結果を確かめていた |
-| `ParameterDriverExpressionTests` の `Fixed…` など 21 件（42） | 外す | `SampleFixed` で選んだ表情を固定の文脈で再生した値を確かめていた |
+| `ParameterDriverExpressionTests` の `Fixed…` など 14 件（29） | 外す | `SampleFixed` で選んだ表情を固定の文脈で再生した値を確かめていた |
+| `ParameterDriverExpressionTests.FixedStationReachabilityFollowsNestedEntryExitAndStateMachineTransitions`、`FixedStationReachabilityKeepsParentAnyStateTransitionsWhenNestedStateIsActive` | 直す | `TryReachableFxCommands` の到達の判定を確かめるテストがほかに無い。`SampleFixed` の確認だけを外した |
+| `ParameterDriverExpressionTests` の EyeHeight と Contact の 5 件（11） | 直す | `FixedExpressionContext.Create` が EyeHeight を既定値から取らず、Contact は作者の既定値を使うことを確かめるテストがほかに無い。選んだ表情の確認を外して `Values` と `UsedParameters` を確かめる形にし、名前が中身と合わなくなった 3 件は名前を変えた |
 | `SelectedLayerControlTests` の 10 件（20） | 外す | 選んだ表情での FX レイヤーの重みの再生を確かめていた |
 | `VrChatMenuExpressionTests` の `Gesture…` 8 件（13） | 外す | Gesture の表情の登録と再生を確かめていた |
+| `VrChatMenuExpressionTests.GestureClipPoseReadsAChangingCurveAtItsFirstKey`（新規） | 残す | 外したテストの中にだけあった、`ReadPose` が変化するカーブを最初のキーの値で読む確認を小さいテストに分けた |
 | `NeutralLayerControlTests` の `SelectedExpressions…`・`ExplicitSelectedExpressions…` 3 件（9） | 外す | 選んだ表情の再生を確かめていた |
 | `DirectExpressionNativeLayersTests` の `GestureRegistration…`・`SharedGestureClip…` 2 件（3） | 外す | Gesture の登録と再生を確かめていた |
 | `NeutralShapeSamplerTests.FixedMenuAcceptsOnlyProvenUnchangedOrUnboundActivation`（2）、`MergedFixedNeutralSamplingTests.FixedExternalMenuKeepsPermanentMorphAndNativeWriteDefaults`（2）、`NeutralParameterCurveTests.SelectedMenuExpressionRetainsItsStrictParameterCurveContract`、`HeldAutomaticExpressionTests.GeneralFixedSamplingStillRejectsTheRelevantAutomaticRandomOperation`、`ExpressionSettlementTests.AGestureAboveALoopingHandIdleLayerIsExported` | 外す | `SampleFixed` か Gesture の再生の結果だけを確かめていた |
@@ -45,8 +49,8 @@
 | `AdditionalParameterConstantTests` の 15 件 | 直す | 選んだ表情（`SampleFixed`）の確認を外し、中立の顔と依存の確認を残した。`OnlyAnIndependentUnchangedInputCanPruneAConflictingProducer` と `SoleDormantResetPreservesTheNativeNeutralAndSelectedExpression` は選んだ表情の有無で分けていた 2 件を 1 件にした |
 | `AdditionalPlayableCallbackTests.DormantSdkFxWeightCommandsPermitNeutralAndFixedSelectionWithoutSourceMutation`、`AdditionalPlayableMorphTests.AdditionalMorphCannotBeSilentlyDroppedFromFixedExpressionEndpoints`、`VrChatMenuExpressionTests.RepeatedFxParameterDeclarationsKeepMenuExpressions` | 直す | `SampleFixed` の確認を外し、中立の顔・`ValidateAdditionalProbeBehaviours`・`FixedNeutralValues` の確認を残した |
 | `FaceEmoPreparedFxIntegrationTests`・`MergedFxDefaultsTests`・`FaceEmoMergedUnderlayTests`・`ExpressionImportRecoveryTests` の FaceEmo のテスト | 直す | FaceEmo の登録を `ReadRegistered` ではなく、残す `CaptureRegistered` で集めたクリップを `ReadClip` で読む形にした |
-| `ExportFidelityTests.FaceEmoCaptureReadsRegisteredNestedPatternsAndRejectsBrokenOrder` | 直す | 入れ子の登録と並び順の検査を `CaptureRegistered` で確かめる形にした。表情の名前は `ReadRegistered` が付けていたので確認を外し、名前を変えた |
+| `ExportFidelityTests.FaceEmoCaptureReadsRegisteredNestedPatternsAndRejectsBrokenOrder` | 直す | 入れ子の登録で集まるクリップの数と並び順（種類の指定が無いときと、あるとき）、壊れた並び順の検査を `CaptureRegistered` の `RegisteredClips` で確かめる形にした。表情の名前と欠けた分岐のエラー文は `ReadRegistered` が出していたので確認を外し、名前を変えた |
 
-前の記録で「固定の文脈での評価は同じクラスの `SampleFixed` のテストが確かめている」とした `ParameterDriverExpressionTests` のテストも、この変更で外した。固定の文脈で中立の顔を求める処理は、`NeutralShapeSampler` と `ExpressionDependencies` に `fixedContext` を渡すテストが引き続き確かめる。
+前の記録で「固定の文脈での評価は同じクラスの `SampleFixed` のテストが確かめている」とした `ParameterDriverExpressionTests` のテストのうち、再生した値だけを確かめていたものはこの変更で外した。固定の文脈の入力の決め方と到達の判定を確かめていた 7 件は、再生の確認を外して残した。固定の文脈で中立の顔を求める処理は、`NeutralShapeSampler` と `ExpressionDependencies` に `fixedContext` を渡すテストが引き続き確かめる。
 
 選んだ表情の確認を外したテストのうち、名前に `Selected` や `Fixed` が残るもの（`SoleDormantResetPreservesTheNativeNeutralAndSelectedExpression` など）は、名前を変えずに残した。

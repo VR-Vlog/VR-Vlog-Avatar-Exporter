@@ -589,7 +589,7 @@ namespace VRVlog.LilToonExporter
                         neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
                     }
                     using var bakeTiming = ExpressionBoardTimings.Step("export.bake");
-                    authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile));
+                    authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile, warnings));
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
                     guard.Watch(ExportStage.Expressions, () =>
                     {
