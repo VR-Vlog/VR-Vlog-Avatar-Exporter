@@ -74,12 +74,19 @@ namespace VRVlog.LilToonExporter
             var result = new ObjectToggleCapture();
             using var sampler = new Sampler(clone, menu.Controller);
             var samples = new Dictionary<(string, int), bool[]>();
-            bool[] Sample(string parameter, int value)
+            bool[] atDefaults = null;
+            bool[] Sample(string parameter, int value, int defaultValue)
             {
+                // A parameter at its own default leaves every parameter at its
+                // default, so all of them share one sample. Each sample costs a
+                // new graph played for two seconds, the bulk of this stage.
+                if (value == defaultValue && atDefaults != null) return atDefaults;
                 if (samples.TryGetValue((parameter, value), out var active)) return active;
                 var values = new Dictionary<string, float>(menu.Defaults, StringComparer.Ordinal) { [parameter] = value };
                 var all = sampler.Sample(values);
-                return samples[(parameter, value)] = candidates.Select(i => all[i]).ToArray();
+                active = samples[(parameter, value)] = candidates.Select(i => all[i]).ToArray();
+                if (value == defaultValue) atDefaults = active;
+                return active;
             }
             var claimed = new HashSet<int>();
             var targetCount = 0;
@@ -113,7 +120,7 @@ namespace VRVlog.LilToonExporter
                 }
                 if (groupItems.Count == 0) continue;
                 var values = new[] { 0, defaultValue }.Concat(groupItems.Select(item => item.Value)).Distinct().OrderBy(value => value).ToList();
-                var states = values.ToDictionary(value => value, value => Sample(parameter, value));
+                var states = values.ToDictionary(value => value, value => Sample(parameter, value, defaultValue));
                 // A node is a target when the values disagree on it; one that
                 // an earlier group already switches stays with that group.
                 var columns = Enumerable.Range(0, candidates.Length).Where(column => states.Values.Any(state => state[column] != states[0][column])).ToList();
