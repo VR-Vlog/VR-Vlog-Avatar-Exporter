@@ -134,8 +134,13 @@ namespace VRVlog.LilToonExporter.Tests
         public void AvatarWithoutHandGesturesWritesNothing()
         {
             if (!BuildAvatar()) return;
-            // The face layers stay, so only the missing gesture parameters stop it.
-            fx.parameters = fx.parameters.Where(parameter => !parameter.name.StartsWith("Gesture", StringComparison.Ordinal)).ToArray();
+            // The face layers stay and switch on renamed parameters, so only the
+            // missing GestureLeft and GestureRight stop it.
+            static string Renamed(string name) => name == "GestureLeft" || name == "GestureRight" ? "Hand" + name.Substring("Gesture".Length) : name;
+            fx.parameters = fx.parameters.Select(parameter => { parameter.name = Renamed(parameter.name); return parameter; }).ToArray();
+            foreach (var layer in fx.layers)
+                foreach (var transition in layer.stateMachine.anyStateTransitions)
+                    transition.conditions = transition.conditions.Select(condition => { condition.parameter = Renamed(condition.parameter); return condition; }).ToArray();
             Assert.That(Capture(), Is.Null);
             Assert.That(ExpressionGestureCapture.Capture(avatar, Array.Empty<(Object, Object)>()), Is.Null);
         }
