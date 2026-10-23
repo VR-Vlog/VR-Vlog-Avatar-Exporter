@@ -375,8 +375,16 @@
     bottom: 0;
 }
 
-.reveal-button {
+/* 1.75 times the other blue buttons (160 x 30, 12px), so it is the one thing to press on the
+   pattern. It stays inside the QR area on a narrow page: max-width from .slot-button. */
+.slot-button.reveal-button {
+    width: 280px;
+    height: 52px;
     margin-top: 0;
+    font-size: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .slot-inner {

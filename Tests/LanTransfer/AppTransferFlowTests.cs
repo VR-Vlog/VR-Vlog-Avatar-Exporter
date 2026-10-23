@@ -561,6 +561,33 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // Show QR is 1.75 times the other blue buttons so it stands out on the pattern, and stays
+        // one line inside the QR area: its width gives way to the area instead of the area growing.
+        [Test]
+        public void ShowQrIsTheLargeBlueButtonThatGivesWayToANarrowQrArea()
+        {
+            var panel = new AppTransferPanel();
+            var root = new UnityEngine.UIElements.VisualElement();
+            panel.Build(root);
+            var show = UnityEngine.UIElements.UQueryExtensions.Q<UnityEngine.UIElements.Button>(root, "show-qr");
+            Assert.That(show, Is.Not.Null);
+            Assert.That(show.GetClasses(), Is.SupersetOf(new[] { "primary", "slot-button", "reveal-button" }));
+
+            var sheet = UnityEditor.AssetDatabase.GUIDToAssetPath("6f09c8d6325e47628b30efe33abe0b23");
+            var uss = File.ReadAllText(Path.GetFullPath(sheet));
+            string Rule(string selector) => Regex.Match(uss, @"(?m)^" + Regex.Escape(selector) + @"\s*\{([^}]*)\}").Groups[1].Value;
+            float Px(string rule, string property) => float.Parse(Regex.Match(rule, @"(?<![\w-])" + property + @":\s*([\d.]+)px").Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            var big = Rule(".slot-button.reveal-button");
+            var normal = Rule(".slot-button");
+            var primary = Rule(".primary");
+            Assert.That(Px(big, "width") / Px(normal, "width"), Is.EqualTo(1.75f).Within(0.01f));
+            Assert.That(Px(big, "height") / Px(normal, "height"), Is.EqualTo(1.75f).Within(0.05f));
+            Assert.That(Px(big, "font-size") / Px(primary, "font-size"), Is.EqualTo(1.75f).Within(0.01f));
+            Assert.That(normal, Does.Contain("max-width: 100%"));
+            Assert.That(big, Does.Contain("white-space: nowrap"));
+            Assert.That(big, Does.Contain("text-overflow: ellipsis"));
+        }
+
         [Test]
         public async Task DecliningTheStartDialogKeepsTheOtherUploadAndStartsNothing()
         {
