@@ -54,15 +54,28 @@ namespace VRVlog.LilToonExporter
         // matrix. Gimmicks hide parts with a zero or subnormal (1e-45) scale,
         // which has no usable inverse: Unity logs an Assertion failed
         // 'ValidTRS()' per descendant and they lose their local transforms.
-        // Convert with near-zero axes at 1, then restore only those axes. The
-        // other axes keep UniVRM's result, which decomposes into a positive
-        // scale and moves any mirroring into the rotation.
+        // Convert with near-zero axes at 1, then restore only those axes.
+        //
+        // UniVRM splits each reversed world matrix into a positive scale and
+        // Matrix4x4.rotation, which is not a rotation when the matrix mirrors
+        // (a negative scale on one or three axes). A mirrored prop then came
+        // back turned. Mirroring X is F * M * F with F = diag(-1, 1, 1), which
+        // keeps a local TRS exact: translation x and rotation y/z negate, scale
+        // stays. Use that for every mirrored node and the nodes below it, and
+        // keep UniVRM's result elsewhere so other exports stay byte-identical.
         internal static void ConvertCoordinateKeepingZeroScale(Model model)
         {
             var zeroed = new List<(Node node, Vector3 scale)>();
+            var mirrored = new List<(Node node, Vector3 translation, Quaternion rotation, Vector3 scale)>();
+            var mirroredNodes = new HashSet<Node>();
             foreach (var node in model.Root.Traverse().Skip(1))
             {
                 var scale = node.LocalScalingWithoutUpdate;
+                if (scale.x * scale.y * scale.z < 0 || node.Parent != null && mirroredNodes.Contains(node.Parent))
+                {
+                    mirroredNodes.Add(node);
+                    mirrored.Add((node, node.LocalTranslationWithoutUpdate, node.LocalRotationWithoutUpdate, scale));
+                }
                 if (!NearZero(scale.x) && !NearZero(scale.y) && !NearZero(scale.z)) continue;
                 zeroed.Add((node, scale));
                 node.LocalScalingWithoutUpdate = new Vector3(NearZero(scale.x) ? 1 : scale.x,
@@ -70,12 +83,18 @@ namespace VRVlog.LilToonExporter
             }
             if (zeroed.Count > 0) model.Root.CalcWorldMatrix();
             model.ConvertCoordinate(Coordinates.Vrm1);
-            if (zeroed.Count == 0) return;
+            if (zeroed.Count == 0 && mirrored.Count == 0) return;
             foreach (var (node, scale) in zeroed)
             {
                 var converted = node.LocalScalingWithoutUpdate;
                 node.LocalScalingWithoutUpdate = new Vector3(NearZero(scale.x) ? scale.x : converted.x,
                     NearZero(scale.y) ? scale.y : converted.y, NearZero(scale.z) ? scale.z : converted.z);
+            }
+            foreach (var (node, translation, rotation, scale) in mirrored)
+            {
+                node.LocalTranslationWithoutUpdate = new Vector3(-translation.x, translation.y, translation.z);
+                node.LocalRotationWithoutUpdate = new Quaternion(rotation.x, -rotation.y, -rotation.z, rotation.w);
+                node.LocalScalingWithoutUpdate = scale;
             }
             model.Root.CalcWorldMatrix();
         }
