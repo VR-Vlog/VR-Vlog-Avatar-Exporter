@@ -152,8 +152,8 @@ namespace VRVlog.LilToonExporter.Tests
                     new RegisteredBranch { BaseAnimation = new RegisteredAnimation { GUID = AssetDatabase.AssetPathToGUID(directory + "/Branch.anim") } }
                 } } } };
                 BranchClip = clip; Registered = list;
-                var menu = new VrChatExpressionMenu.Source(); var serial = 0;
-                FaceEmoExpressions.ReadRegistered(Avatar.Copy, list, "FaceEmo", menu, ref serial, new HashSet<object>(), 0);
+                var menu = new VrChatExpressionMenu.Source();
+                FaceEmoPreparedFxIntegrationTests.ReadListed(Avatar.Copy, list, menu);
                 Assert.That(menu.Entries, Has.Count.EqualTo(1)); Assert.That(menu.Entries.Single().Error, Is.Null); return menu;
             }
             internal void Prepare(VrChatExpressionMenu.Source menu)

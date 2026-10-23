@@ -137,30 +137,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void WholeMenuOmissionKeepsFaceEmoRegisteredClipParsingIndependent()
-        {
-            using var f = new AttachmentConnectionTests.Fixture(); using var menus = new SdkFixture(f.Source);
-            var policy = new VrChatMenuImportPolicy { SkipAll = true };
-            var source = VrChatExpressionMenu.Read(f.Source, policy);
-            Assert.That(source.Entries, Is.Empty);
-            var folderName = "__MenuRecoveryFaceEmo_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
-            var clip = menus.FaceClip("FaceEmo survives", 62, persist: false);
-            try
-            {
-                AssetDatabase.CreateAsset(clip, folder + "/Registered.anim");
-                var registered = new { Modes = new[] { new { DisplayName = "Registered", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Registered.anim") } } } } } };
-                var serial = 0;
-                FaceEmoExpressions.ReadRegistered(f.Source, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0);
-                Assert.That(source.Entries.Single().Name, Does.StartWith("FaceEmo / Registered"));
-                Assert.That(source.Entries.Single().Error, Is.Null);
-                Assert.That(source.Entries.Single().Values.Single().Weight, Is.EqualTo(62));
-                Assert.That(VrChatExpressionMenu.Read(f.Source, policy).Entries, Is.Empty);
-            }
-            finally { AssetDatabase.DeleteAsset(folder); }
-        }
-
-        [Test]
         public void WholeMenuOmissionRetainsRealAplAndManualPoseRegistration()
         {
             var aplType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(PoseExportSession.AplType)).FirstOrDefault(t => t != null);

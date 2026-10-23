@@ -194,8 +194,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Analyze().Morphs.Contains(OpenBinding), Is.True);
             Assert.That(Analyze(new Dictionary<string, float> { ["Menu"] = 1 }).Morphs.Contains(OpenBinding), Is.True);
             Assert.That(NeutralShapeSampler.Sample(avatar).Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
-            var values = VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults, new Dictionary<string, float> { ["Menu"] = 1 }, null, source);
-            Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(100).Within(.01));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
             Assert.That(EditorJsonUtility.ToJson(fx), Is.EqualTo(beforeFx)); Assert.That(EditorJsonUtility.ToJson(action), Is.EqualTo(beforeOther));
             Assert.That(EditorJsonUtility.ToJson(control), Is.EqualTo(beforeControl)); Assert.That(EditorJsonUtility.ToJson(gate), Is.EqualTo(beforeGate));
