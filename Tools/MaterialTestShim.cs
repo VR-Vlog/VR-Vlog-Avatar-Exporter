@@ -100,6 +100,11 @@ namespace UnityEngine
         public Vector2 GetTextureOffset(string name) => new Vector2();
     }
 }
+namespace UnityEditor
+{
+    // Host tests build objects in memory only, never as saved assets.
+    public static class EditorUtility { public static bool IsPersistent(object value) => false; }
+}
 namespace VRVlog.LilToonExporter.Vendor.UniGLTF
 {
     public enum ColorSpace { sRGB, Linear }

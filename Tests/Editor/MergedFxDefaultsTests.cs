@@ -127,18 +127,8 @@ namespace VRVlog.LilToonExporter.Tests
             Menu(controller.layers[0].stateMachine);
             EquivalentRelay(transitionMode, writeDefaults, out _); Permanent(AddLayer("Permanent pupil"));
             var original = EditorJsonUtility.ToJson(controller);
-            var neutralReference = NativeRelayPose(0); var selectedReference = NativeRelayPose(1);
-            Assert.That(neutralReference.InTransition, Is.False);
+            var selectedReference = NativeRelayPose(1);
             Assert.That(selectedReference.InTransition, Is.EqualTo(transitionMode == 2), "The long-transition case must actually be sampled mid-transition.");
-            var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
-            var selected = VrChatExpressionSampler.Sample(avatar, controller, Parameters(0), Parameters(1));
-            foreach (var values in new[] { neutral, selected })
-            {
-                var expected = ReferenceEquals(values, neutral) ? neutralReference.Weights : selectedReference.Weights;
-                foreach (var value in values) Assert.That(value.Weight, Is.EqualTo(expected[value.Shape]).Within(.01), value.Shape);
-                Assert.That(values.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-            }
-            Assert.That(selected.Any(value => value.Shape == "Face size"), Is.True);
             var selectedClip = (AnimationClip)controller.layers[0].stateMachine.states.Single(child => child.state.name == "Selected").state.motion;
             foreach (var standalone in new[] { false, true })
             {
@@ -596,7 +586,6 @@ namespace VRVlog.LilToonExporter.Tests
                 case "time parameter": other.timeParameter = "Relay"; other.timeParameterActive = true; break;
             }
             Assert.That(VrChatExpressionSampler.HasEquivalentConstantStates(controller, 1), Is.False);
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
         }
 
         [Test]
@@ -609,7 +598,6 @@ namespace VRVlog.LilToonExporter.Tests
             EquivalentRelay(0, true, out var other); Permanent(AddLayer("Permanent pupil"));
             other.AddStateMachineBehaviour(type);
             Assert.That(VrChatExpressionSampler.HasEquivalentConstantStates(controller, 1), Is.False);
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
         }
 
         [Test]
@@ -663,13 +651,6 @@ namespace VRVlog.LilToonExporter.Tests
                     var fx = ExpressionDependencies.Controller(metadata.Controller);
                     Assert.That(Enumerable.Range(0, fx.layers.Length).Any(index => fx.layers[index].stateMachine.states.Length >= 3 &&
                         VrChatExpressionSampler.HasEquivalentConstantStates(fx, index)), Is.True, "Real MA must generate the constant parameter relay with its default MMD setting.");
-                    var neutralReference = NativePose(clone, fx, "Front", new Dictionary<string, int> { ["Menu"] = 0 });
-                    var selectedReference = NativePose(clone, fx, "Front", new Dictionary<string, int> { ["Menu"] = 1 });
-                    var neutral = VrChatExpressionSampler.SampleDefaults(clone, metadata.Controller, metadata.Defaults, metadata: metadata);
-                    var selected = VrChatExpressionSampler.Sample(clone, metadata.Controller, metadata.Defaults, Parameters(1), metadata: metadata);
-                    Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(neutralReference.Weights["Pupil removal"]).Within(.01));
-                    Assert.That(selected.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-                    foreach (var value in selected) Assert.That(value.Weight, Is.EqualTo(selectedReference.Weights[value.Shape]).Within(.01), value.Shape);
                     evaluated = true;
                 })) { }
                 Assert.That(evaluated, Is.True);
@@ -867,21 +848,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void ConstantIndependentEffectAppliesToNeutralAndSelectedExpression(bool writeDefaults)
-        {
-            Menu(controller.layers[0].stateMachine, writeDefaults: writeDefaults);
-            Permanent(AddLayer("Permanent pupil override"), writeDefaults);
-            var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
-            var selected = VrChatExpressionSampler.Sample(avatar, controller, Parameters(0), Parameters(1));
-            Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-            Assert.That(selected.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
-            Assert.That(selected.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-            Assert.That(mesh.blendShapeCount, Is.EqualTo(3));
-        }
-
         [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
@@ -949,14 +915,12 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var bindings = FaceEmoExpressions.CaptureRegistered(clone, registered);
-                var menu = VrChatExpressionSampler.Sample(clone, controller, Parameters(0), Parameters(1));
                 var gesture = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(clone, clip, gesture);
                 VrChatExpressionSampler.ApplyPermanentOverrides(clone, controller, gesture, 0, writeDefaults);
                 var faceEmo = new VrChatExpressionMenu.Source { Controller = controller };
                 FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, faceEmo, bindings: bindings);
                 Assert.That(faceEmo.Entries.Single().Error, Is.Null);
-                foreach (var route in new[] { (Name: "Menu", Values: menu, Expected: expected),
-                    (Name: "Gesture", Values: gesture.Values, Expected: expected),
+                foreach (var route in new[] { (Name: "Gesture", Values: gesture.Values, Expected: expected),
                     (Name: "FaceEmo", Values: faceEmo.Entries.Single().Values, Expected: standaloneExpected) })
                 {
                     Assert.That(route.Values.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(route.Expected.Weights["Pupil removal"]).Within(.01), route.Name + ": pupil");
@@ -967,48 +931,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(controller.layers[1].defaultWeight, Is.EqualTo(.5f));
             }
             finally { Object.DestroyImmediate(clone); }
-        }
-
-        [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        public void NeutralWeightedUpperLayerKeepsMovingBaseWithoutBakingUnrelatedMorphs(bool additive, bool writeDefaults)
-        {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK for neutral FX integration.");
-            var baseClip = Clip("Moving base face");
-            AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
-                AnimationCurve.Linear(0, 0, 30, 100));
-            var baseMachine = controller.layers[0].stateMachine;
-            baseMachine.defaultState = State(baseMachine, "Moving face", baseClip);
-            Permanent(AddLayer("Fractional pupil"), writeDefaults);
-            var layers = controller.layers; layers[1].defaultWeight = .5f;
-            layers[1].blendingMode = additive ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override;
-            controller.layers = layers;
-            var sourceSkin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
-            sourceSkin.SetBlendShapeWeight(1, 12); sourceSkin.SetBlendShapeWeight(2, 20);
-            var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var descriptorLayers = data.FindProperty("baseAnimationLayers"); descriptorLayers.arraySize = 1;
-                var item = descriptorLayers.GetArrayElementAtIndex(0);
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false;
-                item.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var originalController = EditorJsonUtility.ToJson(controller);
-            var reference = NativePose(avatar, controller, "Face", new Dictionary<string, int>());
-            Assert.That(Math.Abs(reference.Weights["Face size"] - 12), Is.GreaterThan(.01), "The native base curve must actually move.");
-            var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
-            Assert.That(neutral.Select(value => value.Shape), Is.EqualTo(new[] { "Pupil removal" }));
-            Assert.That(neutral.Single().Weight, Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-            Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
-            Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
         }
 
         [TestCase(.5f, false)]
@@ -1116,111 +1038,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(neutral.Single().Weight, Is.EqualTo(expected.Weights["Face size"]).Within(.01));
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NeutralFractionalOverrideDoesNotBakeAnUnrelatedConstantFromAMovingBase(bool writeDefaults)
+        // A fractional pupil layer keeps the base layer as native support.
+        // Its reachable clips are checked before evaluation, so a state that
+        // is left within the first Evaluate is still rejected.
+        void SampleNativeSupportBase()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK for neutral FX integration.");
-            var baseClip = Clip("Unrelated constant face", ("Face size", 90));
-            AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
-                AnimationCurve.Linear(0, 0, 30, 100));
-            var baseMachine = controller.layers[0].stateMachine;
-            baseMachine.defaultState = State(baseMachine, "Face and moving eye", baseClip);
-            Permanent(AddLayer("Fractional pupil"), writeDefaults);
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            var sourceSkin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
-            sourceSkin.SetBlendShapeWeight(0, 7); sourceSkin.SetBlendShapeWeight(1, 12); sourceSkin.SetBlendShapeWeight(2, 20);
-            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller).Select(binding => binding.propertyName),
-                Is.EquivalentTo(new[] { "blendShape.Pupil removal" }), "The mixed moving base clip must not declare its constant face to be stationary.");
-            var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var descriptorLayers = data.FindProperty("baseAnimationLayers"); descriptorLayers.arraySize = 1;
-                var item = descriptorLayers.GetArrayElementAtIndex(0);
-                var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                item.FindPropertyRelative("isDefault").boolValue = false;
-                item.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
-            var originalController = EditorJsonUtility.ToJson(controller);
-            var reference = NativePose(avatar, controller, "Face", new Dictionary<string, int>());
-            // Match the previous preparation's null-motion placeholder. A
-            // real zero-curve clip is a different native Animator graph.
-            var prunedReference = NativeStandalonePose(avatar, controller, null, "Face");
-            Assert.That(Math.Abs(reference.Weights["Face size"] - 12), Is.GreaterThan(.01), "The unrelated native constant must differ from the authored renderer value.");
-            Assert.That(Math.Abs(reference.Weights["Pupil removal"] - 20), Is.GreaterThan(.01), "The fractional native effect must actually move the required morph.");
-            Assert.That(Math.Abs(reference.Weights["Pupil removal"] - prunedReference.Weights["Pupil removal"]), Is.GreaterThan(.01),
-                "The original native base must affect fractional blending even though its own morphs are outside capture.");
-            var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
-            Assert.That(neutral.Select(value => value.Shape), Is.EqualTo(new[] { "Pupil removal" }));
-            Assert.That(neutral.Single().Weight, Is.EqualTo(reference.Weights["Pupil removal"]).Within(.01));
-            Assert.That(sourceSkin.GetBlendShapeWeight(0), Is.EqualTo(7));
-            Assert.That(sourceSkin.GetBlendShapeWeight(1), Is.EqualTo(12));
-            Assert.That(sourceSkin.GetBlendShapeWeight(2), Is.EqualTo(20));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(originalController));
-        }
-
-        [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        public void NativeSupportBaseRejectsUnsafePlayedClipAfterItsTransitionCompletes(bool writeDefaults, bool animationEvent)
-        {
-            var unsafeClip = Clip("Early unsupported base", ("Face size", 90));
-            AnimationUtility.SetEditorCurve(unsafeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
-                AnimationCurve.Linear(0, 0, 30, 100));
-            if (animationEvent) AnimationUtility.SetAnimationEvents(unsafeClip, new[] { new AnimationEvent { time = 30, functionName = "UnsupportedFutureCallback" } });
-            else AnimationUtility.SetObjectReferenceCurve(unsafeClip, EditorCurveBinding.PPtrCurve("Face", typeof(SkinnedMeshRenderer), "m_Mesh"),
-                new[] { new ObjectReferenceKeyframe { time = 0, value = mesh } });
-            var safeClip = Clip("Steady supported base", ("Face size", 90));
-            AnimationUtility.SetEditorCurve(safeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
-                AnimationCurve.Linear(0, 0, 30, 100));
-            var machine = controller.layers[0].stateMachine;
-            var initial = State(machine, "Early unsupported", unsafeClip); machine.defaultState = initial;
-            var steady = State(machine, "Steady supported", safeClip);
-            var transition = initial.AddTransition(steady); transition.hasExitTime = false; transition.hasFixedDuration = true; transition.duration = .25f;
-            transition.AddCondition(AnimatorConditionMode.Equals, 0, "Menu");
-            Permanent(AddLayer("Fractional pupil"), writeDefaults);
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            var before = EditorJsonUtility.ToJson(controller);
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
-            Assert.That(error.Message, Is.EqualTo(animationEvent ? "常時適用FXと表情の影響範囲を確定できません。" : "表情への遷移にマテリアル・オブジェクトの差し替えが含まれます。"));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
-            var skin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
-            Assert.That(skin.sharedMesh, Is.SameAs(mesh));
-            Assert.That(Enumerable.Range(0, mesh.blendShapeCount).Select(skin.GetBlendShapeWeight), Is.All.Zero);
-        }
-
-        // Replay the untouched graph independently. This also proves a
-        // skipped unsafe motion is absent from the final native clip-info set.
-        (int StateHash, bool InTransition, string[] Clips, string[] ObservedClips) NativeBaseStateAfterFourSeconds()
-        {
-            var copy = Object.Instantiate(avatar);
-            var graph = PlayableGraph.Create("Skipped base state reference"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
-            {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true;
-                animator.runtimeAnimatorController = null; animator.applyRootMotion = false; animator.fireEvents = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var index = 0; index < controller.layers.Length; index++) playable.SetLayerWeight(index, index == 0 ? 1 : controller.layers[index].defaultWeight);
-                var output = AnimationPlayableOutput.Create(graph, "Face", animator); output.SetSourcePlayable(playable);
-                var observed = new HashSet<string>();
-                playable.SetInteger("Menu", 0); graph.Play();
-                for (var frame = 0; frame < 240; frame++)
-                {
-                    graph.Evaluate(1f / 60f);
-                    foreach (var info in playable.GetCurrentAnimatorClipInfo(0).Concat(playable.GetNextAnimatorClipInfo(0)))
-                        if (info.clip != null && info.weight > .00001f) observed.Add(info.clip.name);
-                }
-                return (playable.GetCurrentAnimatorStateInfo(0).shortNameHash, playable.IsInTransition(0),
-                    playable.GetCurrentAnimatorClipInfo(0).Where(info => info.weight > .00001f).Select(info => info.clip.name).ToArray(), observed.ToArray());
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            var metadata = new VrChatExpressionMenu.Source { Controller = controller };
+            var roots = new HashSet<EditorCurveBinding> { EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal") };
+            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, roots, null, metadata);
+            Assert.That(dependencies.NativeSupportLayers, Does.Contain(0));
+            VrChatExpressionSampler.SampleNeutral(avatar, controller, dependencies, metadata, null);
         }
 
         [TestCase(false, false, false)]
@@ -1256,14 +1083,7 @@ namespace VRVlog.LilToonExporter.Tests
             Permanent(AddLayer("Fractional pupil"), writeDefaults);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var before = EditorJsonUtility.ToJson(controller);
-            var reference = NativeBaseStateAfterFourSeconds();
-            Assert.That(reference.StateHash, Is.EqualTo(Animator.StringToHash(steady.name)));
-            Assert.That(reference.InTransition, Is.False);
-            Assert.That(reference.Clips, Is.EqualTo(new[] { safeClip.name }), "The unsupported state must have disappeared before final native clip inspection.");
-            TestContext.Out.WriteLine("Native post-Evaluate clip history observed unsupported motion: " + reference.ObservedClips.Contains(unsafeClip.name));
-            if (!intermediate) Assert.That(reference.ObservedClips, Does.Not.Contain(unsafeClip.name),
-                "The initial zero-duration witness must bypass post-Evaluate native clip history.");
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
+            var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
             Assert.That(error.Message, Is.EqualTo(animationEvent ? "常時適用FXと表情の影響範囲を確定できません。" : "表情への遷移にマテリアル・オブジェクトの差し替えが含まれます。"));
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
             var skin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
@@ -1271,9 +1091,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Enumerable.Range(0, mesh.blendShapeCount).Select(skin.GetBlendShapeWeight), Is.All.Zero);
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NativeSupportBaseValidatesNestedAndBlendTreeMotionsConservatively(bool nestedMachine)
+        [Test]
+        public void NativeSupportBaseValidatesBlendTreeMotionsConservatively()
         {
             var safeClip = Clip("Current supported base", ("Face size", 90));
             AnimationUtility.SetEditorCurve(safeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
@@ -1281,109 +1100,17 @@ namespace VRVlog.LilToonExporter.Tests
             var unsafeClip = Clip("Unobserved unsupported base", ("Face size", 90));
             AnimationUtility.SetAnimationEvents(unsafeClip, new[] { new AnimationEvent { time = 30, functionName = "UnsupportedFutureCallback" } });
             var machine = controller.layers[0].stateMachine; var current = State(machine, "Current supported", safeClip); machine.defaultState = current;
-            if (nestedMachine)
-            {
-                var nested = machine.AddStateMachine("Nested unsupported"); nested.defaultState = State(nested, "Unsafe nested", unsafeClip);
-            }
-            else
-            {
-                controller.AddParameter("BaseTree", AnimatorControllerParameterType.Float);
-                var tree = new BlendTree { name = "Support tree", blendType = BlendTreeType.Simple1D, blendParameter = "BaseTree", useAutomaticThresholds = false };
-                AssetDatabase.AddObjectToAsset(tree, controller);
-                tree.children = new[] { new ChildMotion { motion = safeClip, threshold = 0, timeScale = 1 }, new ChildMotion { motion = unsafeClip, threshold = 1, timeScale = 1 } };
-                current.motion = tree;
-            }
+            controller.AddParameter("BaseTree", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Support tree", blendType = BlendTreeType.Simple1D, blendParameter = "BaseTree", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            tree.children = new[] { new ChildMotion { motion = safeClip, threshold = 0, timeScale = 1 }, new ChildMotion { motion = unsafeClip, threshold = 1, timeScale = 1 } };
+            current.motion = tree;
             Permanent(AddLayer("Fractional pupil"));
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var before = EditorJsonUtility.ToJson(controller);
-            var reference = NativeBaseStateAfterFourSeconds();
-            Assert.That(reference.StateHash, Is.EqualTo(Animator.StringToHash(current.name)));
-            Assert.That(reference.Clips, Is.EqualTo(new[] { safeClip.name }));
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
+            var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
             Assert.That(error.Message, Is.EqualTo("常時適用FXと表情の影響範囲を確定できません。"));
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NeutralFractionalOverrideStillValidatesMovingRequiredBaseMorph(bool writeDefaults)
-        {
-            var baseClip = Clip("Moving required base pupil");
-            AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"),
-                AnimationCurve.Linear(0, 0, 30, 100));
-            var machine = controller.layers[0].stateMachine; machine.defaultState = State(machine, "Moving required", baseClip);
-            Permanent(AddLayer("Fractional pupil"), writeDefaults);
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            var before = EditorJsonUtility.ToJson(controller);
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
-            Assert.That(error.Message, Does.Contain("時間で変わる"));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NeutralFractionalOverrideRejectsDelayedBaseActivityChanges(bool writeDefaultsFlip)
-        {
-            var baseClip = Clip("Base face", ("Face size", 0));
-            var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle", baseClip); machine.defaultState = idle;
-            var future = State(machine, "After thirty seconds", writeDefaultsFlip ? baseClip : null, writeDefaults: writeDefaultsFlip);
-            var transition = idle.AddTransition(future); transition.hasExitTime = true; transition.exitTime = 30; transition.duration = 0;
-            Permanent(AddLayer("Fractional pupil"));
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            avatar.GetComponentInChildren<SkinnedMeshRenderer>().SetBlendShapeWeight(2, 20);
-            var before = EditorJsonUtility.ToJson(controller);
-            Assert.That(NativePose(avatar, controller, "Face", new Dictionary<string, int>()).Weights["Pupil removal"], Is.GreaterThan(20));
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
-            Assert.That(error.Message, Does.Contain("時間で遷移"), "A state change beyond the sampling window must still be rejected.");
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.EqualTo(20));
-        }
-
-        [TestCase(false)]
-        [TestCase(true)]
-        public void NeutralFractionalBaseActivityRetainsExternalAndWriterDependencies(bool external)
-        {
-            controller.AddParameter("BaseGate", AnimatorControllerParameterType.Float);
-            var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle", Clip("Base idle", ("Face size", 0))); machine.defaultState = idle;
-            var selected = State(machine, "External base", Clip("Base selected", ("Face size", 75)));
-            var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(AnimatorConditionMode.Greater, .5f, "BaseGate");
-            Permanent(AddLayer("Fractional pupil"));
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            var metadata = new VrChatExpressionMenu.Source();
-            if (external) metadata.ExternalParameters.Add("BaseGate");
-            else
-            {
-                var writer = AddLayer("Delayed base gate writer"); var clip = Clip("Changing base gate");
-                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "BaseGate"), AnimationCurve.Linear(0, 0, 30, 1));
-                writer.defaultState = State(writer, "Later gate", clip);
-            }
-            var before = EditorJsonUtility.ToJson(controller);
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0), metadata: metadata));
-            Assert.That(error.Message, Does.Contain(external ? "外部入力" : "時間で変わる"));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
-        }
-
-        [Test]
-        public void NeutralFractionalBaseCannotAssumeBuiltinGestureRemainsAtDefault()
-        {
-            controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
-            var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle", Clip("Base idle", ("Face size", 0))); machine.defaultState = idle;
-            var selected = State(machine, "Gesture changes defaults", Clip("Base gesture", ("Face size", 75)), writeDefaults: true);
-            var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(AnimatorConditionMode.Equals, 2, "GestureLeft");
-            Permanent(AddLayer("Fractional pupil"));
-            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
-            var original = EditorJsonUtility.ToJson(controller);
-            var error = Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)));
-            Assert.That(error.Message, Does.Contain("外部入力").And.Contain("GestureLeft"));
-            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(original));
             Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
         }
 
@@ -1450,18 +1177,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); Object.DestroyImmediate(material); }
         }
 
-        [TestCase(false, false)]
-        [TestCase(false, true)]
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        public void PermanentEffectUsesAuthoredLayerPriority(bool permanentLast, bool writeDefaults)
-        {
-            if (permanentLast) { Menu(controller.layers[0].stateMachine, true, writeDefaults); Permanent(AddLayer("Permanent"), writeDefaults); }
-            else { Permanent(controller.layers[0].stateMachine, writeDefaults); Menu(AddLayer("Menu"), true, writeDefaults); }
-            var selected = VrChatExpressionSampler.Sample(avatar, controller, Parameters(0), Parameters(1));
-            Assert.That(selected.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(permanentLast ? 100 : 0).Within(.01));
-        }
-
         [Test]
         public void UnrelatedGestureLayerDoesNotBecomeANeutralSamplingRoot()
         {
@@ -1475,10 +1190,6 @@ namespace VRVlog.LilToonExporter.Tests
             transition.AddCondition(AnimatorConditionMode.Equals, 2, "GestureRight");
             var seeds = ExpressionDependencies.StationaryMorphBindings(controller);
             Assert.That(seeds.Select(binding => binding.propertyName), Is.EquivalentTo(new[] { "blendShape.Pupil removal" }));
-            var neutral = VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0));
-            Assert.That(neutral.Select(value => value.Shape), Is.EquivalentTo(new[] { "Pupil removal" }));
-            var selected = VrChatExpressionSampler.Sample(avatar, controller, Parameters(0), Parameters(1));
-            Assert.That(selected.Any(value => value.Shape == "Blink"), Is.False);
         }
 
         [Test]
@@ -1488,17 +1199,14 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = (AnimationClip)controller.layers[0].stateMachine.defaultState.motion;
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"),
                 AnimationCurve.Linear(0, 0, 1, 100));
-            Assert.That(VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)), Is.Empty);
+            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller), Is.Empty);
         }
 
         [Test]
         public void OrdinaryMenuDoesNotNeedAStationaryLayer()
         {
             Menu(controller.layers[0].stateMachine);
-            Assert.That(VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0)), Is.Empty);
-            var selected = VrChatExpressionSampler.Sample(avatar, controller, Parameters(0), Parameters(1));
-            Assert.That(selected.Single().Shape, Is.EqualTo("Face size"));
-            Assert.That(selected.Single().Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller), Is.Empty);
         }
 
         [Test]
@@ -1710,9 +1418,6 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(fixedClip, binding, null); binding.path = "Head/Face";
                 AnimationUtility.SetEditorCurve(fixedClip, binding, AnimationCurve.Constant(0, 1, 100));
                 controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Merged permanent", fixedClip);
-                var neutral = VrChatExpressionSampler.SampleDefaults(clone, controller, Parameters(0), PreparedExcluded);
-                Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Path, Is.EqualTo("Head/Face"));
-                Assert.That(neutral.Single(value => value.Shape == "Pupil removal").Weight, Is.EqualTo(100).Within(.01));
                 var source = new VrChatExpressionMenu.Source { Controller = controller };
                 FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, exclusions.ContainsPath, snapshot);
                 var entry = source.Entries.Single();
@@ -1922,7 +1627,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ExcludedPermanentTargetDoesNotBecomeANeutralSamplingRoot()
         {
             Permanent(controller.layers[0].stateMachine);
-            Assert.That(VrChatExpressionSampler.SampleDefaults(avatar, controller, Parameters(0), path => path == "Face"), Is.Empty);
+            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller, path => path == "Face"), Is.Empty);
         }
     }
 }

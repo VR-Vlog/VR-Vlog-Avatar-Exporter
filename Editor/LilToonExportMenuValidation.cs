@@ -1,4 +1,5 @@
 using UnityEditor;
+using VRVlog.LilToonExporter.Compatibility;
 
 namespace VRVlog.LilToonExporter
 {
@@ -7,7 +8,7 @@ namespace VRVlog.LilToonExporter
         [MenuItem("Assets/VR Vlog/Validate lilToon VRM", true)]
         private static bool CanValidate() => Selection.activeObject != null && AssetDatabase.GetAssetPath(Selection.activeObject).EndsWith(".vrm", System.StringComparison.OrdinalIgnoreCase);
 
-        [MenuItem("Assets/VR Vlog/Validate lilToon VRM")]
+        [MenuItem("Assets/VR Vlog/Validate lilToon VRM", false, ExporterMenu.AssetsPriority + ExporterMenu.ValidateOrder)]
         private static void Validate()
         {
             var path = AssetDatabase.GetAssetPath(Selection.activeObject);
