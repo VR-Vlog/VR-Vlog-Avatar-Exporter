@@ -67,8 +67,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             changeAvatarButton.text = T(AppTransferText.ChooseAnotherAvatar);
             changeAvatarButton.tooltip = changeAvatarButton.text;
             backButton.text = T(AppTransferText.BackToBoard);
-            // The next transfer in blue, where "QRを作り直す" was, so "VRMを保存" does not move.
+            // The next transfer in blue at the right end.
             regenerateButton.text = T(failed ? AppTransferText.Retry : AppTransferText.TransferAgain);
+            Show(regenerateButton, true);
             Reserve(regenerateButton, true);
             saveButton.EnableInClassList("primary", false);
         }
