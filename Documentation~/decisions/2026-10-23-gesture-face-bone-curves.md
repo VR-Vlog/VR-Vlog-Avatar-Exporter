@@ -1,7 +1,7 @@
 # ジェスチャーで入る顔は、ボーンの曲線が一緒に入っていても表情ボードの一覧に出す
 
 - 日付: 2026-10-23
-- 対象: `Editor/ExperimentalExpressionCaptureSession.Clips.cs`（`BuildClipPoseUnchecked`・`IgnoredBesideFace`）・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/ExperimentalExpressionCaptureSession.Clips.cs`（`BuildClipPoseUnchecked`・`IgnoredBesideFace`・`NoFaceError`）・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
 
 ## 背景
 
@@ -16,11 +16,13 @@
 - ジェスチャーで入るクリップ（`gestureClips`）は、Transform の曲線・Humanoid の筋肉の曲線・PhysBone や Contact の有効化の曲線を読まずに、BlendShape だけを表情として扱う。
 - ジェスチャーで入らないクリップは、これまでどおりこれらの曲線があれば未対応にする。衣装や小物の切り替えでボーンの拡大縮小を使うものが多く、一覧に顔以外が増えるため。
 - ジェスチャーで入るクリップでも、オブジェクトの表示切替・Renderer の有効化・材質・Animator のパラメーター・オブジェクト参照の曲線があれば未対応のままにする。見た目や他のレイヤーを変えるので、BlendShape だけでは同じ顔にならない。
+- BlendShape 以外の曲線を持つジェスチャーのクリップが BlendShape を待機の値のまま持っているだけなら、手の形のクリップとみなし「顔の変化がありません」にする。BlendShape だけのジェスチャーのクリップは、これまでどおりこの判定をしない。
 
 ## 確認
 
 - `ExperimentalExpressionCaptureTests.GestureFacesIgnoreBoneCurvesBesideTheFace` で、ジェスチャーで入る顔にボーンの曲線があっても使えること、同じクリップをジェスチャーで入れないと未対応になること、ジェスチャーで入る顔に表示切替があると未対応になることを確かめる。
-- 検証用のプロジェクトのアバター 41 体を、修正前の develop と修正後で表情ボードを開いて何も触らずに書き出し、一覧に出る数と VRM の表情の数を比べた。
+- 検証用のプロジェクトのアバター 41 体を、修正前の develop と修正後で表情ボードを開いて何も触らずに書き出し、一覧に出る数と VRM の表情の数を比べた。表情が減ったアバターは 0 体、増えたのは 5 体（8→13・0→13・22→31・0→14・1→4）で、増えた分はジェスチャーで入る顔だった。表情メニュー用のツールを使っていないアバターで、修正前から顔が出ていたものは数が変わらなかった。
+- 同じテストの待機の値のままのケースで、ボーンの曲線だけ動く手の形が「顔の変化がありません」になることを確かめる。
 
 ## 欠点
 
