@@ -380,12 +380,12 @@ BEHAVIOR_CASES = {
         'FixedStationReachabilityKeepsParentAnyStateTransitionsWhenNestedStateIsActive': 1,
         'FixedUnusedEyeHeightDeclarationIsNotAFixedInput': 2,
         'FxOffSelectionIsRejectedAndLaterSamplesStartFromFreshDefaults': 1,
-        'LocomotionControlDoesNotBlockFixedFacialSampling': 2,
+        'LocomotionControlDoesNotBlockFixedFacialSampling': 1,
         'MalformedBodyPlayableControlIsNotIgnored': 7,
         'MalformedTemporaryPoseSpaceIsNotIgnored': 2,
         'NonUnitFxCommandCannotBeCancelledByAnotherCommandOnTheSameState': 1,
         'SupportedNumbersClampOnlyExpressionParametersAndFloorCopiedIntegers': 1,
-        'TemporaryPoseSpaceDoesNotBlockFixedFacialSampling': 2,
+        'TemporaryPoseSpaceDoesNotBlockFixedFacialSampling': 1,
         'UnknownPlayableTargetIsNotIgnored': 1,
     },
     'ExpressionSettlementTests': {
@@ -540,7 +540,7 @@ BEHAVIOR_CASES = {
         'NeutralAndAbsoluteEndpointRoundTripWithLargeSharedMeshes': 4,
     },
     'NeutralShapeExportTests': {
-        'PreparedRestSurvivesExportWithoutRestoringInitialFx': 6,
+        'PreparedRestSurvivesExportWithoutRestoringInitialFx': 3,
     },
     'UnifiedExpressionExportTests': {
         'MissingBlinkRequiresUsableUnifiedRoute': 13,

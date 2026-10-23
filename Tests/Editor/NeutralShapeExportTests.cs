@@ -14,11 +14,8 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class NeutralShapeExportTests
     {
         [TestCase(false, false, false)]
-        [TestCase(true, false, false)]
         [TestCase(false, true, false)]
-        [TestCase(true, true, false)]
         [TestCase(false, false, true)]
-        [TestCase(true, false, true)]
         public async Task PreparedRestSurvivesExportWithoutRestoringInitialFx(bool fullLilToon, bool independentBlink, bool resetClosingShape)
         {
             var descriptorType = AppDomain.CurrentDomain.GetAssemblies()

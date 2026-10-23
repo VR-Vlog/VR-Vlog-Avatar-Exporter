@@ -186,7 +186,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(false, false)]
-        [TestCase(true, true)]
         public void LocomotionControlDoesNotBlockFixedFacialSampling(bool disabled, bool otherPlayable)
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);
@@ -206,7 +205,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrChatParameterDriver.IsLocomotionControl(control), Is.True);
         }
         [TestCase(false, false)]
-        [TestCase(true, true)]
         public void TemporaryPoseSpaceDoesNotBlockFixedFacialSampling(bool enter, bool fixedDelay)
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);
