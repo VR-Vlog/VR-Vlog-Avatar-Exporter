@@ -699,6 +699,48 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
 
+        // A face a gesture enters may also turn a bone, such as an eye highlight. It is still a face on the
+        // board, read from its BlendShapes alone. The same curve in a clip no gesture enters, or a shown
+        // object beside a gesture face, keeps the clip unsupported. A hand pose that only holds the face
+        // shapes at rest is not a face.
+        [TestCase("transform", true, 80f, "usable")]
+        [TestCase("transform", false, 80f, "unsupported")]
+        [TestCase("active", true, 80f, "unsupported")]
+        [TestCase("transform", true, 0f, "noface")]
+        public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, 0);
+            var clip = new AnimationClip { name = "Smile" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
+                AnimationUtility.SetEditorCurve(clip, extra == "transform"
+                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
+                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
+                if (gesture)
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+                }
+                controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
+                var error = session.ClipErrors(new[] { clip })[clip];
+                if (expected == "usable")
+                {
+                    Assert.That(error, Is.Null);
+                    // A standard expression made from it takes the BlendShapes too, not the bone angle as a weight.
+                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
+                }
+                else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
+                else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void ChildAnimatorClipTargetsItsOwnMeshEvenWithAnIdenticalRootMesh(bool competingRoot)
