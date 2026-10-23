@@ -853,7 +853,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var regenerate = Element<UnityEngine.UIElements.Button>("regenerateButton");
                     if (failed)
                     {
-                        Assert.That(texts, Does.Contain(run.Flow.FailureText(Localized)));
+                        Assert.That(texts, Does.Contain(AppTransferFlow.SentencePerLine(run.Flow.FailureText(Localized))));
                         Assert.That(folds, Is.Empty);
                         Assert.That(regenerate.text, Is.EqualTo(Localized(AppTransferText.Retry)));
                     }

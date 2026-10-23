@@ -1,7 +1,7 @@
 # 表情ボードは元のアバターと食い違っても止めずに複製を作り直す
 
 - 日付: 2026-10-23
-- 対象: `Editor/ExperimentalExpressionCaptureSession.cs`（`SourceChangedException`・`SourceDifference`・`RequireSourceForBatch`・`TrustCopyForBatch`）・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`（`RunFollowingSource`・`FollowSource`・`ExportOnTheAvatarAsItIs`）・`Editor/ExportRecovery.cs`（`ExportRecoverySourceStamp.Capture`・`Difference`）・`Editor/ExportSourceFingerprint.cs`・`Editor/LanTransfer/AppTransferFlow.cs`（`SentencePerLine`）・`Editor/LanTransfer/AppTransferPanel.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`CHANGELOG.md`
+- 対象: `Editor/ExperimentalExpressionCaptureSession.cs`（`SourceChangedException`・`SourceDifference`・`RequireSourceForBatch`・`TrustCopyForBatch`）・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`（`RunFollowingSource`・`FollowSource`・`ExportOnTheAvatarAsItIs`）・`Editor/ExportRecovery.cs`（`ExportRecoverySourceStamp.Capture`・`Difference`）・`Editor/ExportSourceFingerprint.cs`・`Editor/LanTransfer/AppTransferFlow.cs`（`SentencePerLine`）・`Editor/LanTransfer/AppTransferPanel.cs`・`Editor/LanTransfer/AppTransferPanel.Done.cs`・`Editor/Locales/*.json`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`Tests/LanTransfer/AppTransferFlowTests.cs`・`CHANGELOG.md`
 
 ## 背景
 
@@ -20,7 +20,7 @@
 - ボードを開いたときに見えていた顔のメッシュが、元のアバターで非表示（コンポーネントの無効化やオブジェクトの非アクティブ化）になっているときは作り直さず、そのメッシュの名前を出して止める。作り直すと、そのメッシュに入れていたファイルとスロットが外れ、表示に戻しても元に戻らないため。表示に戻せばそのまま書き出せる。そのパスにメッシュが無くなったときは、NDMF が名前を変えることがあるので止めない。
 - 何度読んでも違う値になるものがあっても作り直しを繰り返さないよう、作り直したあと次の操作までは、まばたきの説明・サムネイル・スロットのメニューは複製をそのまま使う（`TrustCopyForBatch`）。書き出しと `RequireCurrentSource` は毎回ハッシュを比べる。
 - ボードを閉じたあとの **書き出しに失敗したとき** の画面からの再試行は、元のアバターをそのまま書き出す（`ExportOnTheAvatarAsItIs`）。
-- 失敗の文は、アプリに転送のほかの文と同じく1行に1文とし、行末の「。」を外す（`AppTransferFlow.SentencePerLine`）。かぎ括弧の中の「。」は残す。
+- 失敗の文は、アプリに転送のほかの文と同じく1行に1文とし、行末の「。」を外す（`AppTransferFlow.SentencePerLine`）。転送が終わったあとの結果のページに出す理由も同じにする。かぎ括弧の中の「。」は残す。
 
 ## 自分で食い違いを作りうる経路と、それを確かめるテスト
 
