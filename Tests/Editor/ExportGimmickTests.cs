@@ -785,6 +785,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(PoseFindings().Single().Target, Is.SameAs(tool));
         }
 
+        [Test] public void ComponentOnABoneReferringToPosesLeavesTheSkeleton()
+        {
+            using var f = new AttachmentConnectionTests.Fixture();
+            var spine = f.Source.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.Spine);
+            Child("bone menu", spine).AddComponent<PoseMotionProbe>().Clips = new[] { Pose("Spine Front-Back") };
+            List<ExportGimmickFinding> Poses() => ExportGimmickDetection.Analyze(f.Source, Array.Empty<ExportGimmickRule>(), null)
+                .Where(finding => finding.RuleId == ExportGimmickRules.PoseMotion).ToList();
+            Assert.That(Poses(), Is.Empty);
+            var tool = Child("pose tool", f.Source.transform);
+            Child("menu", tool.transform).AddComponent<PoseMotionProbe>().Clips = new[] { Pose("Spine Front-Back") };
+            Assert.That(Poses().Single().Target, Is.SameAs(tool));
+        }
+
         [Test] public void ToolHangingTheHipsFromAWorldFixedObjectLeavesAsAWhole()
         {
             var tool = Child("pose tool"); tool.AddComponent(MaType(ExportGimmickRules.WorldFixedObject));
