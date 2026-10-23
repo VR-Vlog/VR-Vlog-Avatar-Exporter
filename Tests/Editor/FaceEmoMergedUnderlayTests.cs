@@ -82,8 +82,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new Fixture();
             var expected = f.RegisteredBranch(false).Entries.Single().Values.Select(value => (value.Path, value.Shape, value.Weight)).ToArray();
             var snapshot = FaceEmoExpressions.CaptureRegistered(f.Avatar.Copy, f.Registered);
-            var menu = VrChatExpressionSampler.Analyze(f.Avatar.Copy, menuPolicy: new VrChatMenuImportPolicy { SkipPlayback = true,
-                ListFaces = new[] { ("Listed", (Object)f.BranchClip, 0f) } }, faceEmoBindings: snapshot);
+            var menu = VrChatExpressionSampler.Analyze(f.Avatar.Copy, null, new[] { ("Listed", (Object)f.BranchClip, 0f) }, snapshot);
             var entry = menu.Entries.Single();
             Assert.That(entry.Error, Is.Null);
             Assert.That(entry.Id, Does.StartWith("faceemo/")); Assert.That(entry.Source, Is.EqualTo(ExpressionSource.FaceEmo));

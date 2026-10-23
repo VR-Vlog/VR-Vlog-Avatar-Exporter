@@ -54,8 +54,9 @@ namespace VRVlog.LilToonExporter.Tests
                 controller.AddLayer("Expressions"); var layers = controller.layers; layers[1].defaultWeight = 1; controller.layers = layers;
                 var machine = layers[1].stateMachine;
                 var neutral = State(machine, "Neutral", Clip("Neutral", false, 35)); machine.defaultState = neutral;
-                var smile = State(machine, "Smile", Clip("Smile", false, 75)); Transition(neutral, smile, "Face", 1);
-                var animation = State(machine, "Animated gesture", Clip("Animated gesture", true, 0)); Transition(neutral, animation, "GestureRight", 2);
+                var smileClip = Clip("Smile", false, 75); var animatedClip = Clip("Animated gesture", true, 0);
+                var smile = State(machine, "Smile", smileClip); Transition(neutral, smile, "Face", 1);
+                var animation = State(machine, "Animated gesture", animatedClip); Transition(neutral, animation, "GestureRight", 2);
 
                 var menu = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
@@ -94,16 +95,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var before = fixture.Mesh.vertices;
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Expression regression", "Tests", warnings,
                     exporterVersion: fullLilToon ? "expression-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                    listFaces: new[] { ("Face / Smile", smileClip, 0f), ("Animated gesture", animatedClip, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2), string.Join("\n", warnings));
                 var glb = GlbDocument.Read(bytes);
                 var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)glb.Json["extensions"])[ExpressionAnimationData.Extension]);
                 var animations = document.Animations;
-                // The menu toggle and the FX gesture keep their sources.
-                Assert.That(document.Expressions.Single(value => value.Expression == "Face / Smile").Source, Is.EqualTo(ExpressionSource.Menu));
-                Assert.That(document.Expressions.Where(value => value.Expression != "Face / Smile").Select(value => value.Source),
-                    Is.EqualTo(new[] { ExpressionSource.Gesture }));
-                Assert.That(document.Expressions.Single(value => value.Source == ExpressionSource.Gesture).Expression, Is.EqualTo(animations.Single().Expression));
+                // Only the moving list face keeps an animation.
+                Assert.That(animations.Single().Expression, Is.EqualTo("Animated gesture"));
                 var asset = (Dictionary<string, object>)glb.Json["asset"];
                 var required = (Dictionary<string, object>)((Dictionary<string, object>)asset["extras"])[VRVlog.AvatarFormats.AvatarFormatVersions.RequiredAppVersionsKey];
                 Assert.That(required[ExpressionAnimationData.Extension], Is.EqualTo("1.0.5"));
