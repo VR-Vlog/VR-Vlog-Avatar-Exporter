@@ -192,7 +192,7 @@ namespace VRVlog.LilToonExporter
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("表情の元クリップが見つかりません。もう一度選んでください。"));
             BuildClipPoseUnchecked(clip, clip.length, "プレビュー"); // The same file checks as the added faces.
             var root = ClipRoot(clip);
-            return AnimationUtility.GetCurveBindings(clip).Select(binding => (
+            return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
                 AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))

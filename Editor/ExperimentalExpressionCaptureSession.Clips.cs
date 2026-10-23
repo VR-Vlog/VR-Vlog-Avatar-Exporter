@@ -338,11 +338,13 @@ namespace VRVlog.LilToonExporter
         // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
         // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
         // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
-        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        // on the board, a FaceEmo face and a clip a gesture enters stay faces. A hand pose a gesture
+        // enters that only holds the face shapes at rest is a hand pose, not a face.
         string NoFaceError(AnimationClip clip, Pose pose)
         {
-            if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
-            if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
+            var gestureFace = gestureClips.Contains(clip) && AnimationUtility.GetCurveBindings(clip).All(PoseSampling.IsBlendShape);
+            if (!clipRoots.ContainsKey(clip) || gestureFace || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
+            if (AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
                 .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
             for (var i = 0; i < Baseline.Rows.Count; i++)
                 if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
@@ -365,8 +367,13 @@ namespace VRVlog.LilToonExporter
             if (AnimationUtility.GetAnimationEvents(clip).Length != 0)
                 throw new InvalidOperationException(ExporterLocalization.T("Animation Eventを含みます。この実験版ではイベント付きの表情は収録できません。"));
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding))
+            // A clip a hand gesture enters is a face in VRChat even when it also turns a bone (an eye
+            // highlight) or the body. The export reads only its BlendShapes, so the board leaves those
+            // curves out too. Shown objects, materials and parameters still make it unsupported.
+            var gesture = gestureClips.Contains(clip);
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
+            bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
                 throw new InvalidOperationException(ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ") +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
@@ -404,6 +411,9 @@ namespace VRVlog.LilToonExporter
             ValidatePose(pose);
             return pose;
         }
+
+        static bool IgnoredBesideFace(EditorCurveBinding binding) => !binding.isPPtrCurve &&
+            (binding.type == typeof(Transform) || PoseSampling.IsHumanoidChannel(binding) || NeutralShapePlan.IsInertDynamicsBinding(binding));
 
         static string ClipId(AnimationClip clip, float time)
         {

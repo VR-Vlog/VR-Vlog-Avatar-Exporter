@@ -1096,7 +1096,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 3, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
 
 
 def required_regressions(profile):

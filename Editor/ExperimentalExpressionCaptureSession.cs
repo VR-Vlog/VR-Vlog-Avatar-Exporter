@@ -225,7 +225,8 @@ namespace VRVlog.LilToonExporter
         // real avatar, and preparing the board checks the session once per
         // file and per slot. Inside one Batch nothing else in the editor runs,
         // so the source cannot change: the hashes are checked once per batch.
-        // Export checks them again anyway, as it writes the file.
+        // Export checks them again as it writes the file, unless its caller
+        // has just checked them (sourceChecked).
         static int batchDepth, batchId;
         int validatedBatch;
         sealed class BatchScope : IDisposable
@@ -239,10 +240,10 @@ namespace VRVlog.LilToonExporter
             return new BatchScope();
         }
 
-        void RequireValid(bool always = false)
+        void RequireValid(bool always = false, bool sourceChecked = false)
         {
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
-            var hashed = !always && batchDepth > 0 && validatedBatch == batchId;
+            var hashed = sourceChecked || !always && batchDepth > 0 && validatedBatch == batchId;
             using var timing = hashed ? null : ExpressionBoardTimings.Step("validate");
             if (Source == null || !hashed && !sourceStamp.Matches(Source))
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
@@ -394,11 +395,12 @@ namespace VRVlog.LilToonExporter
         internal byte[] Export(string avatarName, string author, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null,
-            PoseExportOptions recordedPoses = null, IEnumerable<PresetAssignment> presets = null)
+            PoseExportOptions recordedPoses = null, IEnumerable<PresetAssignment> presets = null, bool sourceChecked = false)
         {
             if (listFaces == null) throw new ArgumentNullException(nameof(listFaces));
-            // The export always hashes the source again, even inside a batch.
-            RequireValid(always: true);
+            // The export hashes the source again, even inside a batch, unless
+            // the caller has just done so (sourceChecked) with nothing run since.
+            RequireValid(always: true, sourceChecked: sourceChecked);
             // Stop before any stage on a source VRM cannot carry. A failing
             // stage still stops here and offers the recovery window.
             UniVrmOneClickExporter.ValidateSourceHumanoid(Source);
