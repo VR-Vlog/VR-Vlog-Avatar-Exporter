@@ -3070,8 +3070,8 @@ namespace VRVlog.LilToonExporter.Tests
         static int SourceChecks() => ExpressionBoardTimings.Last.Count(step => step.Step == "validate" || step.Step.EndsWith("/validate", StringComparison.Ordinal));
 
         // The transfer window calls the board outside its own batch. One
-        // transfer hashes the source for the board's records and again in
-        // Export, not once more per standard face.
+        // transfer hashes the source once, as the save starts: not again in
+        // Export right after, nor once more per standard face.
         [Test]
         public void ATransferChecksTheSourceForTheRecordsAndTheExportOnly()
         {
@@ -3096,7 +3096,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
                 Assert.That(saved, Is.True);
                 Assert.That(File.Exists(path), Is.True);
-                Assert.That(SourceChecks(), Is.InRange(1, 2), string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
+                Assert.That(SourceChecks(), Is.EqualTo(1), string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
             }
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
         }
