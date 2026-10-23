@@ -53,7 +53,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QrReadySound = "QRができたら音を鳴らす";
         internal const string Retry = "もう一度";
         internal const string Expired = "期限が切れました";
-        internal const string Completed = "取り込みが終わりました";
+        internal const string Completed = "アプリに取り込みました";
+        internal const string TransferFailed = "転送できませんでした";
+        internal const string TransferAgain = "もう一度転送";
+        internal const string ChooseAnotherAvatar = "別のアバターを選ぶ";
+        internal const string Notes = "書き出し時の注意";
+        internal const string NoNotes = "書き出し時の注意はありません";
+        internal const string NoteCount = "書き出し時の注意 {0}件";
+        internal const string OtherNotes = "そのほか";
+        internal const string ItemCount = "{0}件";
+        internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
         internal const string StartTransfer = "転送を始める";
         internal const string StopAndStart = "中止して始める";

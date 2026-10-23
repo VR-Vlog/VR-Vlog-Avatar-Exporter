@@ -78,6 +78,11 @@ namespace VRVlog.LilToonExporter
         internal static System.Reflection.MethodInfo EmbeddedTransferringMethod() =>
             TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "EmbeddedTransferring", typeof(UnityEngine.UIElements.VisualElement));
 
+        // Gives that panel the board's avatar change for "別のアバターを選ぶ" after a transfer.
+        internal static System.Reflection.MethodInfo EmbeddedChangeAvatarMethod() =>
+            TransferMethod(type => type.Assembly.GetType(type.Namespace + ".AppTransferPanel", false), "SetEmbeddedChangeAvatar",
+                typeof(UnityEngine.UIElements.VisualElement), typeof(Action));
+
         private static System.Reflection.MethodInfo TransferMethod(Func<Type, Type> owner, string name, params Type[] parameters)
         {
             try
