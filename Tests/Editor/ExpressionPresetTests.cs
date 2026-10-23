@@ -236,7 +236,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var session = new Session(fixture.Source, replayInstalledDefaults: false);
             var missing = Session.PresetAssignment.ForShape(ExpressionPreset.angry, "Front", "Missing");
             var first = session.PresetError(ExpressionPreset.angry, missing);
-            Assert.That(first, Does.StartWith(Session.PresetFullLabel(ExpressionPreset.angry) + ": "));
+            var label = Session.PresetFullLabel(ExpressionPreset.angry) + ": ";
+            Assert.That(first, Does.StartWith(label).And.Not.StartWith(label + label));
             // The second answer comes from the faces already built, with the label once.
             Assert.That(session.PresetError(ExpressionPreset.angry, missing), Is.EqualTo(first));
             Assert.That(Assert.Throws<InvalidOperationException>(() => session.BuildPresetPose(ExpressionPreset.angry, missing)).Message, Is.EqualTo(first));
