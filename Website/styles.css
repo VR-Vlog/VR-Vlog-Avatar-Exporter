@@ -18,7 +18,7 @@
 #exporter-qr-simple .qrs-menu-closeup img{width:100%;border-radius:4px}
 #exporter-qr-simple .qrs-menu-mark{position:absolute;left:2%;top:3%;width:96%;height:31%;border:2px solid var(--qrs-accent);border-radius:3px;pointer-events:none}
 #exporter-qr-simple .qrs-transfer{position:relative;width:100%;max-width:422px;margin:auto}
-#exporter-qr-simple .qrs-transfer img{width:100%;border-radius:4px}
+#exporter-qr-simple .qrs-transfer img{width:100%;border-radius:0;clip-path:inset(2px round 8px)}
 #exporter-qr-simple .qrs-qr-mark{position:absolute;left:3.7%;top:85.3%;width:92.7%;height:4.8%;border:2px solid var(--qrs-accent);border-radius:3px;pointer-events:none}
 #exporter-qr-simple .qrs-phone-crop{position:relative;width:min(100%,290px);aspect-ratio:540/650;overflow:hidden;border-radius:4px;margin:auto}
 #exporter-qr-simple .qrs-phone-crop img{position:absolute;width:300%;max-width:none;left:0;top:-84.615385%}
