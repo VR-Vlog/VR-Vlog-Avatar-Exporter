@@ -62,11 +62,6 @@ namespace VRVlog.LilToonExporter
             return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.0.0";
         }
 
-        // Stable packages omit this assembly. Resolve only its public optional
-        // entry so exporting also works in packages without the transfer module.
-        internal static System.Reflection.MethodInfo SavedVrmTransferMethod() =>
-            TransferMethod(type => type, "OpenSavedVrmForDevelopment", typeof(string));
-
         // The same step as the expression board's third page: returns the panel as a VisualElement, given
         // the board's "戻る" and whether "VRMを保存" is the blue button. Null without the module, or while
         // it is turned off, and the board then shows its own page without the QR.

@@ -105,7 +105,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
         [NonSerialized] private bool pressedWhileBlocked, authorMarked;
         [NonSerialized] private IMGUIContainer termsView;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill,
+        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
@@ -818,6 +818,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             qrMarkIcon = root.Q<Image>("qr-mark-icon");
             qrFrame = root.Q("qr-frame");
             revealArea = root.Q("reveal");
+            qrSample = root.Q("qr-sample");
             showQrButton = root.Q<Button>("show-qr");
             hideQrButton = root.Q<Button>("hide-qr");
             slotMessage = root.Q("message");
@@ -880,6 +881,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // Only "QRを表示" takes the click, not the area around it.
             qrCover.pickingMode = PickingMode.Ignore;
             revealArea.pickingMode = PickingMode.Ignore;
+            qrSample.pickingMode = PickingMode.Ignore;
             var probe = root.Q<IMGUIContainer>("scale-probe");
             probe.onGUIHandler = ProbeScale;
             // Only measures the display scale: no Tab stop, no clicks.
@@ -1106,6 +1108,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(qrFrame, waiting);
             Show(qrCover, covered);
             Show(revealArea, covered);
+            Show(qrSample, covered);
             showQrButton.text = T(AppTransferText.ShowQr);
 
             // A failure or an ended transfer says why in place, with the one thing to do next.

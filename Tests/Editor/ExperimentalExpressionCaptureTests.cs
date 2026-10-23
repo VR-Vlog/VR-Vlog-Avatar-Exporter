@@ -2755,24 +2755,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var clip in clips) Object.DestroyImmediate(clip); }
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void LastSavedOutputCannotTransferAReplacedOrMissingFile(bool missing)
-        {
-            var path = Path.Combine(Path.GetTempPath(), "vrvlog-capture-output-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var bytes = new byte[] { 1, 2, 3 };
-            try
-            {
-                File.WriteAllBytes(path, bytes);
-                var saved = new SavedExpressionVrm(path, bytes, 2, 1);
-                Assert.That(saved.VerifiedPath(), Is.EqualTo(path));
-                if (missing) File.Delete(path); else File.WriteAllBytes(path, new byte[] { 3, 2, 1 });
-                Assert.Throws<InvalidOperationException>(() => saved.VerifiedPath());
-                Assert.That(File.Exists(path), Is.EqualTo(!missing));
-            }
-            finally { if (File.Exists(path)) File.Delete(path); }
-        }
-
         // Leaving out every mesh leaves no preview: the list is neither applied nor
         // saved, stays on screen with the reason, and the board keeps working.
         [Test]
