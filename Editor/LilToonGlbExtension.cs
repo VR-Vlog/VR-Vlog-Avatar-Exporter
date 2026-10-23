@@ -140,6 +140,17 @@ namespace VRVlog.LilToonExporter
             var nodes=Array(root,"nodes",false)??new List<object>();
             foreach(var pair in boneNodes){var parentName=HumanBoneParents[pair.Key];if(parentName!=null&&BonesRequiringDirectParent.Contains(pair.Key)&&!boneNodes.ContainsKey(parentName))throw new InvalidOperationException($"VRMC_vrm human bone '{pair.Key}' requires '{parentName}'.");while(parentName!=null&&!boneNodes.ContainsKey(parentName))parentName=HumanBoneParents[parentName];if(parentName!=null&&!IsNodeDescendant(nodes,(int)boneNodes[parentName],(int)pair.Value))throw new InvalidOperationException($"VRMC_vrm human bone '{pair.Key}' is not a descendant of '{parentName}'.");}
         }
+        // Human bones whose nearest mapped parent is not a node ancestor. The
+        // save check above skips files with the full lilToon contract.
+        internal static List<string> HumanBonesOutOfOrder(byte[] bytes)
+        {
+            var root=GlbDocument.Read(bytes).Json;var extensions=Object(root,"extensions",false);var result=new List<string>();
+            if(extensions==null||!extensions.TryGetValue("VRMC_vrm",out var raw)||!(raw is Dictionary<string,object> vrm)||!vrm.TryGetValue("humanoid",out var rawHumanoid)||!(rawHumanoid is Dictionary<string,object> humanoid)||!humanoid.TryGetValue("humanBones",out var rawBones)||!(rawBones is Dictionary<string,object> bones))return result;
+            var nodes=Array(root,"nodes",false)??new List<object>();var boneNodes=new Dictionary<string,long>(StringComparer.Ordinal);
+            foreach(var pair in bones)if(HumanBoneParents.ContainsKey(pair.Key)&&pair.Value is Dictionary<string,object> bone&&bone.TryGetValue("node",out var rawNode)&&rawNode is long node&&node>=0&&node<nodes.Count)boneNodes[pair.Key]=node;
+            foreach(var pair in boneNodes){var parentName=HumanBoneParents[pair.Key];while(parentName!=null&&!boneNodes.ContainsKey(parentName))parentName=HumanBoneParents[parentName];if(parentName!=null&&!IsNodeDescendant(nodes,(int)boneNodes[parentName],(int)pair.Value))result.Add(pair.Key);}
+            return result;
+        }
         private static bool IsNodeDescendant(List<object> nodes,int ancestor,int descendant)
         {
             var pending=new Stack<int>();var visited=new HashSet<int>();pending.Push(ancestor);

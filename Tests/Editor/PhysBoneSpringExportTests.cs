@@ -138,6 +138,22 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void PreparedCopyWithBonesOutOfHumanoidOrderStopsAndNamesThem()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var copyAnimator = fixture.Copy.GetComponent<Animator>();
+            var spine = copyAnimator.GetBoneTransform(HumanBodyBones.Spine);
+            var driver = new GameObject("driver").transform;
+            driver.SetParent(fixture.Copy.transform, false);
+            spine.SetParent(driver, true);
+            Assert.That(copyAnimator.GetBoneTransform(HumanBodyBones.Spine), Is.SameAs(spine));
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidatePreparedHumanoid(fixture.Source, fixture.Copy));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.MovedHumanBones + "Spine"));
+            Assert.That(error.Message, Does.Contain("元のアバターは変更していません"));
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidatePreparedHumanoid(fixture.Source, fixture.Source));
+        }
+
+        [Test]
         public void NonHumanoidSourceStopsBeforeExportAndNamesMissingBones()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -203,6 +219,29 @@ namespace VRVlog.LilToonExporter.Tests
             var withMesh = GlbDocument.Create(new Dictionary<string, object>
                 { ["asset"] = asset, ["meshes"] = new List<object> { new Dictionary<string, object>() } }, null).Write();
             Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateOutputHasMesh(withMesh));
+        }
+
+        [Test]
+        public void OutputWithBonesOutOfHumanoidOrderIsRejected()
+        {
+            // nodes: 0 root, 1 hips, 2 spine, 3 head, 4 a copy of the skeleton outside the hips.
+            byte[] Vrm(long spineParent)
+            {
+                var nodes = new List<object>();
+                for (var i = 0; i < 5; i++) nodes.Add(new Dictionary<string, object> { ["name"] = "n" + i });
+                void Child(long parent, long child) => ((Dictionary<string, object>)nodes[(int)parent])["children"] = new List<object> { child };
+                ((Dictionary<string, object>)nodes[0])["children"] = new List<object> { 1L, 4L };
+                Child(spineParent, 2);
+                Child(2, 3);
+                Dictionary<string, object> Bone(long node) => new Dictionary<string, object> { ["node"] = node };
+                var vrm = new Dictionary<string, object> { ["humanoid"] = new Dictionary<string, object> { ["humanBones"] =
+                    new Dictionary<string, object> { ["hips"] = Bone(1), ["spine"] = Bone(2), ["head"] = Bone(3) } } };
+                return GlbDocument.Create(new Dictionary<string, object> { ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" },
+                    ["nodes"] = nodes, ["extensions"] = new Dictionary<string, object> { ["VRMC_vrm"] = vrm } }, null).Write();
+            }
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.ValidateOutputHumanoid(Vrm(1)));
+            var error = Assert.Throws<InvalidOperationException>(() => UniVrmOneClickExporter.ValidateOutputHumanoid(Vrm(4)));
+            Assert.That(error.Message, Is.EqualTo(UniVrmOneClickExporter.MovedHumanBones + "Spine"));
         }
 
         // A generic AAO avatar uses its root Animator controller, unlike a

@@ -16,6 +16,7 @@ namespace VRVlog.LilToonExporter
         internal const string OutsideBonesDropped = "アバターの外にあるボーンへの参照を外して書き出しました。これらのメッシュは一部が正しく動かない場合があります: ";
         internal const string EmptySubmeshesOmitted = "描画する三角形のないサブメッシュを省きました: ";
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
+        internal const string MovedHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドの骨の親子関係が崩れたため、書き出しを止めました。元のアバターは変更していません。このまま書き出すとアプリでポーズが付きません。書き出しに含めたポーズ用のツールがあれば外してください。親子が崩れたボーン: ";
         internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
         internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
         internal const string SourceHasNoMesh = "書き出せるメッシュがありません\nSkinned Mesh RendererかMesh Filter付きのMesh Rendererを持つアバターを選択";
@@ -82,6 +83,30 @@ namespace VRVlog.LilToonExporter
             var animator = clone.GetComponent<Animator>();
             var missing = RequiredHumanBones.Where(bone => animator.GetBoneTransform(bone) == null).ToArray();
             if (missing.Length > 0) throw new InvalidOperationException(LostRequiredHumanBones + string.Join(", ", missing));
+            // A build tool that moves bones out of their humanoid order leaves
+            // a VRM the app cannot pose: it stays in the T-pose.
+            var moved = Enumerable.Range(0, (int)HumanBodyBones.LastBone).Select(i => (HumanBodyBones)i).Where(bone =>
+            {
+                var transform = animator.GetBoneTransform(bone);
+                if (transform == null) return false;
+                for (var parent = HumanTrait.GetParentBone((int)bone); parent >= 0; parent = HumanTrait.GetParentBone(parent))
+                {
+                    var parentTransform = animator.GetBoneTransform((HumanBodyBones)parent);
+                    if (parentTransform != null) return transform == parentTransform || !transform.IsChildOf(parentTransform);
+                }
+                return false;
+            }).ToArray();
+            if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
+        }
+
+        // UniVRM asks the Animator for the bones again when it writes. A build
+        // tool that leaves same-named copies of the skeleton can make it bind
+        // those instead, so the check above passes and the file is still out
+        // of order. Check the written file as well.
+        internal static void ValidateOutputHumanoid(byte[] glb)
+        {
+            var moved = LilToonGlbExtension.HumanBonesOutOfOrder(glb).Select(PoseSampling.HumanBone).OrderBy(bone => bone).ToArray();
+            if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
@@ -778,6 +803,7 @@ namespace VRVlog.LilToonExporter
                         int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
                         visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
                     }, warnings: warnings);
+                guard.Watch(ExportStage.BuildProcess, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
                 // or its save: over the app's image limit, export without them.
                 if (matcapBakes.Images.Count > 0 && LilToonGlbExtension.StandardCounts(exported).Textures > LilToonMobileProfile.MaximumTextures)
