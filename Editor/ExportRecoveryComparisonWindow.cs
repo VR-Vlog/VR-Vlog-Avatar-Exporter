@@ -118,7 +118,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private static void NormalizeForPreview(GameObject copy)
+        internal static void NormalizeForPreview(GameObject copy)
         {
             copy.hideFlags = HideFlags.HideAndDontSave;
             copy.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);

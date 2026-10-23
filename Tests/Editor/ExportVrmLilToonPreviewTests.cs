@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
@@ -105,6 +106,30 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(source.GetPixels32(), Is.EqualTo(editedPixels));
             Assert.That(f.First.GetTexture("_MainTex"), Is.SameAs(source));
             Assert.That(bytes, Is.EqualTo(originalBytes));
+        }
+
+        [Test]
+        public async Task TheBoardsExportedLookShowsTheFilesLilToonMaterialsAndDestroysAllOfIt()
+        {
+            using var f = new Fixture();
+            var bytes = f.Export();
+            GameObject root;
+            Material shown;
+            using (var look = await ExportedLookPreview.LoadAsync(bytes, CancellationToken.None))
+            {
+                root = look.Root;
+                Assert.That(look.MaterialNote, Is.Null);
+                Assert.That(look.Preview, Is.Not.Null);
+                Assert.That(root.hideFlags, Is.EqualTo(HideFlags.HideAndDontSave));
+                shown = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(r => r.name == "Front").sharedMaterial;
+                Assert.That(shown.shader, Is.SameAs(f.First.shader));
+                Assert.That(shown, Is.Not.SameAs(f.First));
+                Assert.That(shown.GetColor("_Color"), Is.EqualTo(f.First.GetColor("_Color")));
+                Assert.That(look.Distance, Is.GreaterThan(0));
+            }
+            Assert.That(root == null, "the read-back VRM outlives the look");
+            Assert.That(shown == null, "the restored lilToon material outlives the look");
+            Assert.That(f.Front.sharedMaterial, Is.SameAs(f.First));
         }
 
         [Test]

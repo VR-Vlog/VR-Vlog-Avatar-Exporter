@@ -29,6 +29,12 @@ namespace VRVlog.LilToonExporter
         ExperimentalExpressionCaptureSession session;
         ExpressionBoard board;
         PreviewRenderUtility preview;
+        // The VRM the board would write, read back from an unsaved export, and
+        // whether the preview shows it instead of the editable copy.
+        ExportedLookPreview exportedLook;
+        System.Threading.CancellationTokenSource exportedLookLoad;
+        bool showExportedLook;
+        string exportedLookInputs;
         Action pending;
         bool candidateValidationPending, opening;
         // The copy was built again from the avatar since the last action. The
@@ -847,14 +853,30 @@ namespace VRVlog.LilToonExporter
             // Same caption row as the VRM expression slots below.
             var header = GUILayoutUtility.GetRect(100, 22, GUILayout.ExpandWidth(true));
             GUI.Label(new Rect(header.x, header.y + 2, header.width, 18), ExporterLocalization.T("プレビュー"), dimMini);
+            // The editable avatar, or the VRM this board would write with every
+            // conversion done (Documentation~/decisions/2026-10-24-preview-converted.md).
+            var modes = new[] { new GUIContent(ExporterLocalization.T("アバター")),
+                new GUIContent(ExporterLocalization.T("書き出すVRM"), ExporterLocalization.T("シェーダーの変換とビルド処理を終えたVRMをUnityで表示")) };
+            var mode = GUI.Toolbar(new Rect(header.xMax - ExportedLookToggleWidth, header.y + 2, ExportedLookToggleWidth, 18),
+                showExportedLook ? 1 : 0, modes, EditorStyles.miniButton);
+            if (mode != (showExportedLook ? 1 : 0))
+            {
+                showExportedLook = mode == 1;
+                if (showExportedLook && exportedLook == null && exportedLookLoad == null) Queue(BuildExportedLook);
+            }
             var rect = GUILayoutUtility.GetRect(100, 165, GUILayout.ExpandWidth(true));
             if (Event.current.type == EventType.Repaint && rect.width > 0)
             {
-                preview.BeginPreview(rect, GUIStyle.none);
-                preview.camera.transform.position = center + Quaternion.AngleAxis(yaw, Vector3.up) * session.Copy.transform.forward * distance * zoom;
-                preview.camera.transform.LookAt(center, Vector3.up);
-                preview.Render();
-                GUI.DrawTexture(rect, preview.EndPreview(), ScaleMode.ScaleToFit, false);
+                if (showExportedLook && exportedLook != null)
+                    GUI.DrawTexture(rect, exportedLook.Render(rect, yaw, zoom), ScaleMode.ScaleToFit, false);
+                else
+                {
+                    preview.BeginPreview(rect, GUIStyle.none);
+                    preview.camera.transform.position = center + Quaternion.AngleAxis(yaw, Vector3.up) * session.Copy.transform.forward * distance * zoom;
+                    preview.camera.transform.LookAt(center, Vector3.up);
+                    preview.Render();
+                    GUI.DrawTexture(rect, preview.EndPreview(), ScaleMode.ScaleToFit, false);
+                }
             }
             if (rect.Contains(Event.current.mousePosition))
             {
@@ -864,7 +886,84 @@ namespace VRVlog.LilToonExporter
                 { zoom = Mathf.Clamp(zoom + Event.current.delta.y * .04f, .25f, 2); Event.current.Use(); Repaint(); }
             }
             GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
-            EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel);
+            if (!showExportedLook || exportedLook == null) { EditorGUILayout.LabelField(previewName, EditorStyles.boldLabel); return; }
+            // One row in both modes, so the board below does not move.
+            var caption = EditorGUILayout.GetControlRect(false, EditorGUIUtility.singleLineHeight);
+            var remake = new Rect(caption.xMax - 72, caption.y, 72, caption.height);
+            // The toggle above already says which one is shown. Changes saved since the build are named,
+            // because the build time alone does not tell whether they made it in.
+            var text = ExporterLocalization.T("基準の顔") +
+                (exportedLook.MaterialNote != null ? ExporterLocalization.T("・MToonで表示") : "") +
+                string.Format(ExporterLocalization.T(exportedLookInputs == ExportedLookInputs() ? "（{0}時点）" : "（{0}時点・変更は未反映）"),
+                    exportedLook.MadeAt.ToString("HH:mm"));
+            GUI.Label(new Rect(caption.x, caption.y, caption.width - remake.width - 4, caption.height),
+                new GUIContent(text, exportedLook.MaterialNote), EditorStyles.boldLabel);
+            if (GUI.Button(remake, ExporterLocalization.T("作り直す"), EditorStyles.miniButton)) Queue(BuildExportedLook);
+        }
+
+        const float ExportedLookToggleWidth = 180;
+
+        // An unsaved export with the choices "VRMを保存" would use (the same
+        // call as SaveListOnly makes through ExportAndSaveNormally), read back
+        // as a VRM. Lenient like the transfers, so a failing stage shows what
+        // the transfer would send. The avatar and its assets are not changed.
+        void BuildExportedLook()
+        {
+            ReleaseExportedLook();
+            byte[] bytes;
+            string inputs;
+            try
+            {
+                if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
+                if (GimmicksPending) throw new InvalidOperationException(ExporterLocalization.T(GimmicksPendingReason));
+                RebuildBoard();
+                inputs = ExportedLookInputs();
+                var target = session;
+                var warnings = new System.Collections.Generic.List<string>(target.Warnings);
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = ExportStageGuard.ContinueByDefault };
+                var listFaces = BoardListFaces();
+                var blink = ExportBlinkOptions();
+                var poses = target.PoseOptions.Copy();
+                var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
+                EditorUtility.DisplayProgressBar(ExporterLocalization.T("書き出すVRMを用意"), ExporterLocalization.T("書き出し"), .2f);
+                using (new PoseLimitChooser.Scope(target.Source, false))
+                using (ExperimentalExpressionCaptureSession.Batch())
+                    bytes = ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceIsChecked) =>
+                        from.Export(target.Source.name, ExportedLookAuthor, listFaces, warnings, blink?.Copy(), new AvatarLicenseOptions(),
+                            new ExportRecoveryOptions(), report, poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked));
+            }
+            catch { showExportedLook = false; EditorUtility.ClearProgressBar(); throw; }
+            exportedLookInputs = inputs;
+            EditorUtility.DisplayProgressBar(ExporterLocalization.T("書き出すVRMを用意"), ExporterLocalization.T("読み込み"), .8f);
+            LoadExportedLook(bytes);
+        }
+
+        // The choices the shown VRM was built from, compared like the transfer compares a saved file
+        // (AppTransferExport.WrittenSource): the stores count their own changes, InputsKey the rest.
+        string ExportedLookInputs() => ExportSettingsStore.Revision + "\n" + ExpressionPresetStore.Revision + "\n" + InputsKey();
+
+        // Only names the file inside this preview; the saved VRM takes the author from the transfer page.
+        const string ExportedLookAuthor = "VR Vlog preview";
+
+        async void LoadExportedLook(byte[] bytes)
+        {
+            var load = exportedLookLoad = new System.Threading.CancellationTokenSource();
+            ExportedLookPreview look = null;
+            try { look = await ExportedLookPreview.LoadAsync(bytes, load.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception exception) { if (exportedLookLoad == load) { error = exception.Message; showExportedLook = false; } Debug.LogException(exception); }
+            finally { EditorUtility.ClearProgressBar(); }
+            // A board closed, cleaned up or rebuilt meanwhile no longer wants this one.
+            if (this == null || exportedLookLoad != load || load.IsCancellationRequested) { look?.Dispose(); return; }
+            exportedLookLoad = null; load.Dispose();
+            exportedLook = look;
+            Repaint();
+        }
+
+        void ReleaseExportedLook()
+        {
+            exportedLookLoad?.Cancel(); exportedLookLoad = null;
+            exportedLook?.Dispose(); exportedLook = null;
         }
 
         // ---- Expression board ----
@@ -1370,6 +1469,7 @@ namespace VRVlog.LilToonExporter
             catch (InvalidOperationException exception) { excludedObjectError = ExporterLocalization.T(exception.Message); return; }
             var edits = excludedObjectEdits;
             excludedObjectEdits = null; excludedObjectError = null;
+            ReleaseExportedLook(); showExportedLook = false;
             var problem = RebuildKeepingAssignments(objects, session.ExcludedObjects.ToArray());
             // The rebuilt copy can change which faces work; check them on the next update.
             candidateValidationPending = true;
@@ -2202,7 +2302,8 @@ namespace VRVlog.LilToonExporter
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
 
-        void ShowFace(string name) { previewName = name; previewClip = null; Repaint(); }
+        // A face is shown on the editable avatar; the VRM view keeps the baseline face.
+        void ShowFace(string name) { previewName = name; previewClip = null; showExportedLook = false; Repaint(); }
 
         // Without exclusions or added files nothing is recorded and the
         // ordinary export keeps the avatar's own faces. Otherwise exactly the
@@ -2523,20 +2624,7 @@ namespace VRVlog.LilToonExporter
             var blink = ExportBlinkOptions();
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
-            // The list-only export: the faces of the list, read like gesture
-            // clips (a moving one keeps its animation), are the VRM's custom
-            // expressions. Nothing is recorded and no menu face is played; the
-            // default face is the ordinary one.
-            // A moving face in an emotion slot is a still preset; as in the
-            // ordinary export, it is also a custom face that keeps moving.
-            var listed = board.ExportedCustom();
-            var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
-            var movingSlotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
-                .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
-                .Where(clip => clip != null && !listed.Contains(clip) && VrChatGestureExpressions.HasChangingMorph(clip, null) &&
-                    !session.HeldAtOneFrame(clip) && !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
-                .ToList();
-            var listFaces = listed.Concat(movingSlotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
+            var listFaces = BoardListFaces();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             var savedFaces = listFaces.Count;
@@ -2608,6 +2696,24 @@ namespace VRVlog.LilToonExporter
                 catch { recovery.ReleaseInput(); throw; }
             }
             return recovery;
+        }
+
+        // The list-only export: the faces of the list, read like gesture
+        // clips (a moving one keeps its animation), are the VRM's custom
+        // expressions. Nothing is recorded and no menu face is played; the
+        // default face is the ordinary one.
+        // A moving face in an emotion slot is a still preset; as in the
+        // ordinary export, it is also a custom face that keeps moving.
+        System.Collections.Generic.List<(string, AnimationClip, float)> BoardListFaces()
+        {
+            var listed = board.ExportedCustom();
+            var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
+            var movingSlotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
+                .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
+                .Where(clip => clip != null && !listed.Contains(clip) && VrChatGestureExpressions.HasChangingMorph(clip, null) &&
+                    !session.HeldAtOneFrame(clip) && !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
+                .ToList();
+            return listed.Concat(movingSlotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
         }
 
         // A retry from the recovery window after the avatar changed, perhaps
@@ -2776,6 +2882,7 @@ namespace VRVlog.LilToonExporter
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;
+            ReleaseExportedLook(); showExportedLook = false;
             ReleaseObjectsPreview();
             dropHover = dropHoverNext = null; clipDropHover = clipDropHoverNext = null; dragMouse = null;
             ClearThumbnails(); slotRects.Clear(); closableTiles.Clear(); hoverTile = -1;
