@@ -195,7 +195,7 @@ assert one_click.index("optimizerBindings.ValidateAndApply(") < one_click.index(
 assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("VrChatExpressionBaker.Bake(null, clone,")
 assert one_click.index("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.index("AvatarBaseShape.Preserve(clone, clone,")
 assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_click.rindex("SkinnedMeshFallbackWeights.Preserve(clone,") < one_click.index("Vrm10AppearanceExporter.Export(")
-assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints)") == 2
+assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure)") == 2
 assert "new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints)" in one_click
 assert one_click.index("Vrm10AppearanceExporter.Export(") < one_click.index("ExportSkinRoots.Repair(exported,")
 assert "new MobileTextureSerializer(warnings)" in one_click

@@ -450,7 +450,7 @@ namespace VRVlog.LilToonExporter
                     lilToonVersion: lilToonVersion, blinkOptions: blinkOptions, poseOptions: poses,
                     licenseOptions: licenseOptions ?? new AvatarLicenseOptions(), disableAudioLink: true,
                     recoveryOptions: recoveryOptions, recoveryReport: recoveryReport,
-                    authorCopyExpressions: clone => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored),
+                    authorCopyExpressions: (clone, copyWarnings) => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored, copyWarnings),
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
                     listFaces: listFaces.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList());
