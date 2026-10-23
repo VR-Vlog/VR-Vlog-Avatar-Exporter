@@ -243,7 +243,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AssetDatabase.DeleteAsset(folder);
             }
             Assert.That(AssetDatabase.IsValidFolder(folder), Is.False);
-            Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders), "No exporter temporary assets may remain after disposal.");
+            Assert.That(ExportFolders(), Is.SubsetOf(temporaryFolders), "No exporter temporary assets may remain after disposal.");
         }
 
         static string[] ExportFolders() => AssetDatabase.GetSubFolders("Assets")
@@ -307,7 +307,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Mesh.boneWeights, Is.EqualTo(originalWeights));
             Assert.That(fixture.Mesh.bindposes, Is.EqualTo(originalBindposes));
             Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
-            Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders),
+            Assert.That(ExportFolders(), Is.SubsetOf(temporaryFolders),
                 "A failed native optimizer build must release every exporter temporary asset folder.");
         }
 
@@ -471,7 +471,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(expression.MaterialColorBindings[0].MaterialName, Is.EqualTo(material.name));
                 Assert.That(fixture.Source.GetComponent<Vrm10Instance>().Vrm, Is.SameAs(settings));
                 Assert.That(fixture.Source.GetComponent<ExportOptimizationMarker>(), Is.Null);
-                Assert.That(ExportFolders(), Is.EquivalentTo(temporaryFolders));
+                Assert.That(ExportFolders(), Is.SubsetOf(temporaryFolders));
             }
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }

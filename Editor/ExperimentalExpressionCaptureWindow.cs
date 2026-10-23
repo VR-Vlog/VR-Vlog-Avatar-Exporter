@@ -2570,7 +2570,7 @@ namespace VRVlog.LilToonExporter
                     ? VRVlog.Poses.HumanoidPoseData.Read(poses).Count : 0;
                 if (extensions.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var animations))
                     poseCount += VRVlog.Poses.HumanoidAnimationData.Read(animations).Count;
-                saved = new SavedExpressionVrm(path, bytes, savedFaces, poseCount, missingShaders);
+                saved = new SavedExpressionVrm(path, savedFaces, poseCount, missingShaders);
                 if (savedTo != null)
                 {
                     // The transfer screen has one line; the notes the status line would list go to the Console, as for a transfer.
@@ -2623,18 +2623,6 @@ namespace VRVlog.LilToonExporter
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
                 return export(current, true);
             }
-        }
-
-        internal void OpenSavedTransfer()
-        {
-            if (saved == null) throw new InvalidOperationException(ExporterLocalization.T("先にVRMを保存してください。"));
-            var entry = LilToonExporterWindow.SavedVrmTransferMethod();
-            if (entry == null) throw new InvalidOperationException(ExporterLocalization.T("QR対応のパッケージを導入してください。"));
-            try { entry.Invoke(null, new object[] { saved.VerifiedPath() }); }
-            catch (System.Reflection.TargetInvocationException exception) when (exception.InnerException?.Data["VRVlog.ShowMessageAsIs"] is bool asIs && asIs)
-            { throw new InvalidOperationException(ExporterLocalization.T(exception.InnerException.Message)); }
-            catch (System.Reflection.TargetInvocationException)
-            { throw new InvalidOperationException(ExporterLocalization.T("転送用のコピーを準備できませんでした。256 MiB以下の保存済みVRMを指定してください。")); }
         }
 
         // The third step of the detailed transfer: this board's third page, where the
