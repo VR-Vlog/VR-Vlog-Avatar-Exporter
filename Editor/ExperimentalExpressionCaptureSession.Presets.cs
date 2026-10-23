@@ -307,8 +307,10 @@ namespace VRVlog.LilToonExporter
         }
 
         // The ordinary export route: add the presets to its private copy as
-        // authored VRM clips before identity capture and neutral baking.
-        void AuthorPresets(GameObject clone, IEnumerable<(ExpressionPreset Preset, List<(string Path, string Shape, float Weight)> Morphs)> faces, List<Object> assets)
+        // authored VRM clips before identity capture and neutral baking. A
+        // shape the copy cannot resolve is left out of its preset with a warning.
+        internal static void AuthorPresets(GameObject clone, IEnumerable<(ExpressionPreset Preset, List<(string Path, string Shape, float Weight)> Morphs)> faces, List<Object> assets,
+            ICollection<string> warnings)
         {
             var instance = clone.GetComponent<Vrm10Instance>() ?? clone.AddComponent<Vrm10Instance>();
             var settings = instance.Vrm != null ? Object.Instantiate(instance.Vrm) : ScriptableObject.CreateInstance<VRM10Object>();
@@ -326,13 +328,20 @@ namespace VRVlog.LilToonExporter
                 var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
                 // A zero would reserve and disable the channel in the authored
                 // VRM contract; unlisted channels already keep the neutral face.
-                expression.MorphTargetBindings = face.Morphs.Where(morph => morph.Weight > 0).Select(morph => {
-                    var renderer = VrChatExpressionSampler.FindRenderer(clone, morph.Path);
-                    var index = renderer.sharedMesh.GetBlendShapeIndex(morph.Shape);
-                    if (index < 0) throw new InvalidOperationException(PresetFullLabel(face.Preset) +
-                        ExporterLocalization.T(": 元のメッシュにBlendShapeがありません: ") + morph.Path + " / " + morph.Shape);
-                    return new MorphTargetBinding(morph.Path, index, morph.Weight / 100f);
-                }).ToArray();
+                var bindings = new List<MorphTargetBinding>();
+                foreach (var morph in face.Morphs.Where(morph => morph.Weight > 0))
+                {
+                    string missing;
+                    try
+                    {
+                        var index = VrChatExpressionSampler.FindRenderer(clone, morph.Path).sharedMesh.GetBlendShapeIndex(morph.Shape);
+                        if (index >= 0) { bindings.Add(new MorphTargetBinding(morph.Path, index, morph.Weight / 100f)); continue; }
+                        missing = ExporterLocalization.T(": 元のメッシュにBlendShapeがありません: ") + morph.Path + " / " + morph.Shape;
+                    }
+                    catch (InvalidOperationException error) { missing = ": " + error.Message; }
+                    warnings?.Add(PresetFullLabel(face.Preset) + missing);
+                }
+                expression.MorphTargetBindings = bindings.ToArray();
                 settings.Expression.AddClip(face.Preset, expression);
             }
             instance.Vrm = settings;

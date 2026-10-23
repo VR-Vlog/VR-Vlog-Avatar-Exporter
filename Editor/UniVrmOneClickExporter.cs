@@ -86,7 +86,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null)
         {
@@ -154,6 +154,7 @@ namespace VRVlog.LilToonExporter
         internal const string LostBlinkFollowedWarning = "ビルド処理で閉眼用の変形が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
         internal const string LostBlinkWarning ="ビルド処理で閉眼用の変形を追えなくなったため、瞬きなしで書き出しました。";
         internal const string LostTrackingWarning = "ビルド処理で表情トラッキング用の変形を追えなくなったため、元の変形との照合を省略しました。";
+        internal const string OptimizedWeightConflictWarning = "最適化で表情「{0}」の変形「{1}」が別の変形とまとめられ適用量が食い違ったため、先に設定された適用量を使いました。";
 
         // The technical reason behind a lost-shape warning. Other languages show
         // it only when it has a translation, never as raw Japanese.
@@ -372,7 +373,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
+            Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces, bool bakeMatcaps)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -462,7 +463,7 @@ namespace VRVlog.LilToonExporter
                 if (exporterVersion == null) LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);
                 var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone);
                 if (requiresPreparation)
-                    SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
+                    SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 var unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
                     suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
                 var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
@@ -472,7 +473,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 // Caller-selected faces join the copy as authored VRM clips, so
                 // the same identity capture, relocation and neutral baking apply.
-                authorCopyExpressions?.Invoke(clone);
+                authorCopyExpressions?.Invoke(clone, warnings);
                 expressionBindings.CaptureAuthoredExpressions();
                 using var preparation = guard.Watch(ExportStage.BuildProcess, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
@@ -606,24 +607,37 @@ namespace VRVlog.LilToonExporter
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? guard.Watch(ExportStage.TrackingOutput, () => new UnifiedExpressionPreparation(clone,
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission)) : null;
+                    // Without the build passes AAO never runs, so its components
+                    // on the copy promise no mapping.
                     optimizerBindings = guard.Watch(ExportStage.OptimizerEvidence, () => ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone)));
+                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: !guard.IsOmitted(ExportStage.BuildProcess)));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
                 // A lenient export retries without the build passes; a source
                 // that already lacks them still stops.
                 guard.Watch(ExportStage.BuildProcess, () => ValidatePreparedHumanoid(source, clone));
-                optimizerBindings.ValidateAndApply((copy, original) =>
+                // The same holds for expressions or materials the optimizer
+                // lost: the routes feed the menu, blink, Lip Sync and tracking
+                // output, so the file is written again without the build passes.
+                var weightConflicts = guard.ContinueOnFailure ? new List<(string Clip, string Shape)>() : null;
+                guard.Watch(ExportStage.BuildProcess, () => optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;
                     recoveryReport.Track(copiedMaterial, originalMaterial);
                     recovery?.Track(copiedMaterial, originalMaterial);
-                });
+                }, weightConflicts));
+                if (weightConflicts != null)
+                    foreach (var conflict in weightConflicts)
+                    {
+                        var conflictReason = string.Format(ExporterLocalization.T(OptimizedWeightConflictWarning), conflict.Clip, conflict.Shape);
+                        warnings?.Add(conflictReason);
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情", conflict.Clip, conflictReason);
+                    }
                 guard.Watch(ExportStage.BlinkCapture, () => blink.Remap(optimizerBindings));
                 capturedVisemes?.Remap(optimizerBindings);
                 // Direct references stay as captured; MenuBinding resolves them later.
@@ -686,7 +700,7 @@ namespace VRVlog.LilToonExporter
                     LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
                 });
                 // Also cover meshes/joints newly created by authoring passes.
-                SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
+                SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 // MA has already applied its authored Merge Armature / Bone
                 // Proxy connections. Independent props are not evidence of a
                 // failed hair attachment and must not trigger a modal edit.
