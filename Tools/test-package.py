@@ -2,6 +2,7 @@
 import importlib.util
 import ast
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -67,9 +68,15 @@ class PackageTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes((repository / name).read_bytes())
         self.git("add", ".")
+        self.commit("2026-10-23T05:00:00Z")
 
     def git(self, *args):
         subprocess.run(["git", "-C", str(self.root), *args], check=True, capture_output=True)
+
+    def commit(self, date):
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+                        "commit", "--quiet", "--allow-empty", "-m", "fixture"],
+                       check=True, capture_output=True, env={**os.environ, "GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date})
 
     def write(self, name, text):
         path = self.root / name
@@ -183,6 +190,20 @@ class PackageTests(unittest.TestCase):
         package.build(self.root, second)
         self.assertEqual(archive.read_bytes(), second.read_bytes())
 
+    def test_each_commit_gives_its_entries_a_new_time(self):
+        # Unity keeps an assembly's old DLL when its sources keep their times, so an update
+        # that only changes content must not reuse the previous release's entry times.
+        first = self.root / "first.zip"
+        package.build(self.root, first)
+        self.write("Editor/Example.cs", "changed content")
+        self.git("add", ".")
+        self.commit("2026-10-24T09:30:12Z")
+        second = self.root / "second.zip"
+        package.build(self.root, second)
+        with zipfile.ZipFile(first) as before, zipfile.ZipFile(second) as after:
+            self.assertEqual({entry.date_time for entry in before.infolist()}, {(2026, 10, 23, 5, 0, 0)})
+            self.assertEqual({entry.date_time for entry in after.infolist()}, {(2026, 10, 24, 9, 30, 12)})
+
     def test_formats_sources_ship_without_their_nested_manifest(self):
         shipped = ["Formats.meta", "Formats/README.md", "Formats/README.md.meta", "Formats/Runtime.meta",
                    "Formats/Runtime/Format.cs", "Formats/Runtime/Format.cs.meta",
@@ -240,7 +261,7 @@ class PackageTests(unittest.TestCase):
                             self.assertEqual(entry.create_system, 3)
                             self.assertEqual(entry.compress_type, zipfile.ZIP_STORED)
                             self.assertEqual(entry.compress_size, entry.file_size)
-                            self.assertEqual(entry.date_time, (2020, 1, 1, 0, 0, 0))
+                            self.assertEqual(entry.date_time, (2026, 10, 23, 5, 0, 0))
                             self.assertEqual(entry.external_attr, 0o100644 << 16)
                             self.assertEqual(entry.extra, b"")
                             self.assertEqual(entry.comment, b"")
