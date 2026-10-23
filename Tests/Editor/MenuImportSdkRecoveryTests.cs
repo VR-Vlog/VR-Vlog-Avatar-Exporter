@@ -49,12 +49,13 @@ namespace VRVlog.LilToonExporter.Tests
                 var originalTransforms = transforms.Select(t => EditorJsonUtility.ToJson(t)).ToArray();
                 var poseOptions = new PoseExportOptions(); poseOptions.Manual.Add(new ManualPose { Clip = manual, Name = "Manual survives the full menu" });
                 Directory.CreateDirectory(directory); var existing = new byte[] { 61, 62, 63 }; File.WriteAllBytes(destination, existing);
+                var faces = new[] { ("Menu face", menus.FaceClip("Menu face", 75), 0f), ("Gesture face", menus.FaceClip("Gesture face", 85), 0f) };
                 var session = new ExportRecoverySession(f.Source, destination, (options, report, warnings) =>
                     UniVrmOneClickExporter.Export(f.Source, "Menu recovery integration", "Tests", warnings,
                         exporterVersion: "menu-recovery-test", lilToonVersion: "2.3.4",
                         gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, poseOptions: poseOptions,
-                        recoveryOptions: options, recoveryReport: report));
+                        recoveryOptions: options, recoveryReport: report, listFaces: faces));
 
                 Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(257));
                 Assert.That(session.Attempt(null), Is.True, session.Failure?.ToString());
@@ -68,7 +69,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Menu face")), Is.True,
                     "Loaded expressions: " + string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
                 Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Gesture face")), Is.True,
-                    "A large menu must not disable FX gesture clip discovery. Loaded expressions: " +
+                    "A large menu must not drop a listed face. Loaded expressions: " +
                     string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
                 Assert.That(loaded.Vrm.Expression.Happy, Is.Not.Null, "Existing VRM expression settings remain part of the export.");
                 Assert.That(loaded.GetComponentsInChildren<SkinnedMeshRenderer>().Select(s => s.name), Is.EquivalentTo(new[] { "Front", "Back" }));
@@ -94,25 +95,6 @@ namespace VRVlog.LilToonExporter.Tests
                 if (Directory.Exists(directory)) Directory.Delete(directory, true);
                 Object.DestroyImmediate(manual); Object.DestroyImmediate(happy); Object.DestroyImmediate(settings); Object.DestroyImmediate(material);
             }
-        }
-
-        [Test]
-        public void AMenuPastTheCandidateLimitIsLeftOutAndGesturesAreKept()
-        {
-            using var f = new AttachmentConnectionTests.Fixture();
-            using var menus = new SdkFixture(f.Source, true, wardrobe: 600);
-            Assert.That(VrChatExpressionMenu.Read(f.Source).Entries.Count, Is.EqualTo(601));
-
-            var source = VrChatExpressionSampler.Analyze(f.Source);
-
-            Assert.That(source.MenuOmittedForCandidateLimit, Is.True);
-            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Menu), Is.False);
-            Assert.That(source.Entries.Any(e => e.Source == VRVlog.Expressions.ExpressionSource.Gesture), Is.True,
-                string.Join(", ", source.Entries.Select(e => e.Source + ":" + e.ExportName)));
-            Assert.That(source.Messages, Has.Some.EqualTo(ExporterLocalization.T(VrChatExpressionSampler.MenuOverCandidateLimit)));
-
-            var skipped = VrChatExpressionSampler.Analyze(f.Source, menuPolicy: new VrChatMenuImportPolicy { SkipAll = true });
-            Assert.That(skipped.MenuOmittedForCandidateLimit, Is.False, "Leaving the menu out by choice is not reported as the limit.");
         }
 
         [Test]

@@ -91,12 +91,20 @@ namespace VRVlog.LilToonExporter.Tests
                 var before = sourceObjects.ToDictionary(value => value, value => EditorJsonUtility.ToJson(value));
 
                 // MA must actually append the tool. Native playback of this
-                // complete prepared controller supplies the expected geometry;
-                // neither the export sampler nor a reconstructed overlay is used.
+                // complete prepared controller proves the fixture hides the
+                // pupil; neither the export sampler nor a reconstructed overlay is used.
                 Dictionary<string, Vector3[]> nativeNeutral = null, nativeSelected = null, nativeBlink = null;
                 var preparedNeutral = sourceSkins.ToDictionary(skin => skin.name, WorldVertices);
                 var preparedBlink = sourceSkins.ToDictionary(skin => skin.name, skin => {
                     var index = skin.sharedMesh.GetBlendShapeIndex("Blink");
+                    skin.SetBlendShapeWeight(index, 100);
+                    try { return WorldVertices(skin); }
+                    finally { skin.SetBlendShapeWeight(index, 0); }
+                });
+                // The listed face is read from its own clip, which restores the
+                // pupil; no merged FX layer is played over it.
+                var preparedSelected = sourceSkins.ToDictionary(skin => skin.name, skin => {
+                    var index = skin.sharedMesh.GetBlendShapeIndex("Smile");
                     skin.SetBlendShapeWeight(index, 100);
                     try { return WorldVertices(skin); }
                     finally { skin.SetBlendShapeWeight(index, 0); }
@@ -128,14 +136,15 @@ namespace VRVlog.LilToonExporter.Tests
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Merged permanent appearance", "Tests", warnings,
                     exporterVersion: fullLilToon ? "ma-permanent-appearance-regression" : null,
-                    lilToonVersion: fullLilToon ? "2.3.4" : null, blinkOptions: options);
+                    lilToonVersion: fullLilToon ? "2.3.4" : null, blinkOptions: options,
+                    listFaces: new[] { ("Smile", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null); Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
                 const string name = "Smile";
                 Assert.That(imported.Vrm.Expression.CustomClips.Count(clip => clip.name == name), Is.EqualTo(1));
                 var menuExpression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name);
-                Assert.That(menuExpression.IsBinary, Is.True, "A VRChat toggle is exported as a binary expression.");
+                Assert.That(menuExpression.IsBinary, Is.True, "A listed face is exported as a binary expression.");
                 Assert.That(imported.Vrm.Expression.Blink.IsBinary, Is.False, "Manual blink retains its continuous weight contract.");
                 var menuKey = ExpressionKey.CreateCustom(name);
                 var blinkKey = ExpressionKey.CreateFromPreset(ExpressionPreset.blink);
@@ -150,7 +159,7 @@ namespace VRVlog.LilToonExporter.Tests
                     {
                         var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
                         var vertices = WorldVertices(output);
-                        var endpoint = route.Menu > 0 ? nativeSelected[path] : preparedBlink[path];
+                        var endpoint = route.Menu > 0 ? preparedSelected[path] : preparedBlink[path];
                         // UniVRM's binary expression merger selects the endpoint
                         // above .5; precisely .5 remains neutral. The manual
                         // blink route must still interpolate continuously.
@@ -161,8 +170,8 @@ namespace VRVlog.LilToonExporter.Tests
                         for (var vertex = 0; vertex < vertices.Length; vertex++)
                             Assert.That(Vector3.Distance(vertices[vertex], Vector3.LerpUnclamped(preparedNeutral[path][vertex], endpoint[vertex], coefficient)),
                                 Is.LessThan(.0005f), path + " / menu " + route.Menu + " / blink " + route.Blink + " / vertex " + vertex);
-                        Assert.That(TriangleArea(vertices, 0), coefficient == 1f && route.Menu > 0 ? Is.LessThan(1e-8f) : Is.GreaterThan(1e-5f),
-                            "Only the selected FX expression applies the permanent pupil hide; prepared rest retains the saved visible pupil.");
+                        Assert.That(TriangleArea(vertices, 0), Is.GreaterThan(1e-5f),
+                            "Neither the listed face nor prepared rest applies the merged pupil hide.");
                         Assert.That(TriangleArea(vertices, 3), Is.GreaterThan(1e-5f), "The retained face must remain visible.");
                     }
                 }

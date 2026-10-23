@@ -584,6 +584,15 @@
     color: rgb(184, 36, 31);
 }
 
+/* A required input left empty when "QRコードを作る" was pressed. After .grey, which the name's hint also has. */
+.app-transfer--dark .missing {
+    color: rgb(245, 107, 102);
+}
+
+.app-transfer--light .missing {
+    color: rgb(184, 36, 31);
+}
+
 /* The last "VRMを保存" under the buttons. It keeps its height while empty, so nothing above moves. */
 .save-row {
     flex-shrink: 0;
