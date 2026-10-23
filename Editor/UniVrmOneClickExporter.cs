@@ -13,6 +13,7 @@ namespace VRVlog.LilToonExporter
     {
         internal const string LostHumanoidAnimator = "NDMF / 最適化ツールの処理でヒューマノイドに必要なルートの Animator が失われたため、書き出しを止めました。元のアバターは変更していません。アバターのルートに VRChat の Avatar Descriptor を付けるか、Animator を削除しない最適化設定にしてください。";
         internal const string EmptyMeshRenderersOmitted = "メッシュが空のRendererを書き出しから外しました: ";
+        internal const string OutsideBonesDropped = "アバターの外にあるボーンへの参照を外して書き出しました。これらのメッシュは一部が正しく動かない場合があります: ";
         internal const string LostRequiredHumanBones = "NDMF / 最適化ツールの処理でヒューマノイドに必要なボーンが失われたため、書き出しを止めました。元のアバターは変更していません。失われたボーン: ";
         internal const string SourceNotHumanoid = "選んだアバターのルートにヒューマノイドの Animator がないため、VRM に書き出せません。元のアバターは変更していません。モデルの Rig を Humanoid にして、その Avatar をルートの Animator に設定してください。";
         internal const string SourceMissingHumanBones = "選んだアバターにヒューマノイドに必要なボーンがないため、VRM に書き出せません。元のアバターは変更していません。足りないボーン: ";
@@ -721,6 +722,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Phase = ExportPhase.Export;
                 var lookAt = guard.Run(ExportStage.LookAt, () => VrmLookAtExport.Capture(source, clone, warnings), () => null);
                 DisableEmptyMeshRenderers(clone, warnings);
+                DropOutsideBones(clone, warnings);
                 // The root scale RootScaleBake moves into the VRM model space.
                 var rootScale = clone.transform.localScale;
                 // Every capture above is taken; objects with nothing to write
@@ -971,6 +973,27 @@ namespace VRVlog.LilToonExporter
             foreach (var renderer in empty) renderer.enabled = false;
             warnings?.Add(ExporterLocalization.T(EmptyMeshRenderersOmitted) + string.Join(", ", empty.Select(renderer =>
                 renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform))));
+        }
+
+        // UniVRM 0.131 looks up every bone and root bone among the avatar's own
+        // objects and throws on one outside it. Instantiate keeps references to
+        // scene objects outside the avatar, so clear only those on the export
+        // copy; UniVRM writes a missing bone as node 0 and leaves out a missing root.
+        internal static void DropOutsideBones(GameObject clone, ICollection<string> warnings)
+        {
+            bool Outside(Transform bone) => bone != null && !bone.IsChildOf(clone.transform);
+            var changed = new List<SkinnedMeshRenderer>();
+            foreach (var skin in ExportRendererSelection.Enumerate(clone).OfType<SkinnedMeshRenderer>())
+            {
+                var bones = skin.bones ?? Array.Empty<Transform>();
+                if (!Outside(skin.rootBone) && !bones.Any(Outside)) continue;
+                if (Outside(skin.rootBone)) skin.rootBone = null;
+                skin.bones = bones.Select(bone => Outside(bone) ? null : bone).ToArray();
+                changed.Add(skin);
+            }
+            if (changed.Count == 0) return;
+            warnings?.Add(ExporterLocalization.T(OutsideBonesDropped) + string.Join(", ", changed.Select(skin =>
+                skin.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(skin.transform, clone.transform))));
         }
 
         internal static VRM10ObjectMeta CreateMeta(string avatarName, string author, AvatarLicenseOptions licenseOptions = null)

@@ -143,6 +143,28 @@ namespace VRVlog.LilToonExporter.Tests
             finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
         }
 
+        [Test]
+        public async Task MismatchedAdditionalVertexStreamsAreLeftOutWithAWarning()
+        {
+            // A stream with another vertex count cannot be matched vertex by
+            // vertex; the base mesh is exported, with its normals generated.
+            using var fixture = new Fixture(false, true, false);
+            var streams = new Mesh { name = "Mismatched additional stream", vertices = fixture.Positions.Take(3).ToArray() };
+            streams.normals = Enumerable.Repeat(Vector3.up, 3).ToArray();
+            var renderer = fixture.Targets.Single().GetComponent<MeshRenderer>();
+            renderer.additionalVertexStreams = streams;
+            try
+            {
+                var before = fixture.Snapshot(); var warnings = new List<string>();
+                var bytes = fixture.ExportDirect(warnings);
+                Assert.That(warnings, Does.Contain(ExporterLocalization.T(VrmMeshAttributePreparation.AdditionalStreamsIgnored) + renderer.name));
+                await CheckOutput(fixture, bytes, false);
+                fixture.AssertUnchanged(before);
+                Assert.That(renderer.additionalVertexStreams, Is.SameAs(streams));
+            }
+            finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
+        }
+
         [TestCase(false)] [TestCase(true)]
         public void SharedStaticMeshKeepsEachRenderersAdditionalStreamsInFullBindings(bool normalPipeline)
         {
@@ -320,6 +342,37 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(EditorJsonUtility.ToJson(mesh), Is.EqualTo(before));
             Assert.That(skinned ? target.GetComponent<SkinnedMeshRenderer>().sharedMesh : target.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(mesh));
             if (skinned) Assert.That(target.GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.EqualTo(25));
+        }
+
+        [Test]
+        public void FacesTooLargeForFloatNormalsReceiveFiniteUnitNormals()
+        {
+            // The cross product of these edges overflows float, so the
+            // generated normal cannot be normalized; export continues.
+            using var fixture = new Fixture(true, true, false);
+            var mesh = fixture.Mesh; var bindposes = mesh.bindposes;
+            mesh.Clear(false);
+            mesh.vertices = new[] { new Vector3(0, 1.8f, 0), new Vector3(1e20f, 1.8f, 0), new Vector3(0, 1e20f, 0) };
+            mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up };
+            mesh.triangles = new[] { 0, 1, 2 };
+            mesh.bindposes = bindposes;
+            mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 3).ToArray();
+            Assert.That(mesh.normals, Is.Empty);
+            var warnings = new List<string>();
+            var bytes = fixture.ExportDirect(warnings);
+            Assert.That(warnings, Is.Not.Empty);
+            using (var data = new GlbBinaryParser(bytes, "overflowing missing normals").Parse())
+            {
+                var primitive = data.GLTF.meshes.Single().primitives.Single();
+                var outputNormals = data.GetArrayFromAccessor<Vector3>(primitive.attributes.NORMAL);
+                Assert.That(outputNormals.Length, Is.EqualTo(3));
+                foreach (var normal in outputNormals)
+                {
+                    Assert.That(float.IsNaN(normal.x) || float.IsInfinity(normal.x) ||
+                        float.IsNaN(normal.y) || float.IsInfinity(normal.y) || float.IsNaN(normal.z) || float.IsInfinity(normal.z), Is.False);
+                    Assert.That(normal.magnitude, Is.EqualTo(1).Within(.00001f));
+                }
+            }
         }
 
         [TestCase(false)] [TestCase(true)]

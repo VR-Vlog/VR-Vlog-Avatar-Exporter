@@ -508,16 +508,10 @@ namespace VRVlog.LilToonExporter
         {
             RequireApplied();
             nodes.Clear();
-            foreach (var skin in unified.Select(item => item.Route.Renderer).Concat(profile.SelectMany(expression => expression.Morphs).Select(item => item.Route.Renderer)).Distinct())
-            {
-                var index = nodeIndex(skin);
-                if (index < 0)
-                    throw new InvalidOperationException("追跡表情の対象が最終VRMにありません: " + skin.name);
-                nodes.Add(skin, index);
-            }
-            // A missing menu node fails in the menu output stage instead,
-            // where generated menu targets are resolved as well.
-            foreach (var skin in menu.Select(route => route.Renderer).Distinct().Where(skin => !nodes.ContainsKey(skin)))
+            // A missing node fails in the tracking or menu output stage instead,
+            // which the lenient export leaves out; here no stage guards it.
+            foreach (var skin in unified.Select(item => item.Route.Renderer).Concat(profile.SelectMany(expression => expression.Morphs).Select(item => item.Route.Renderer))
+                .Concat(menu.Select(route => route.Renderer)).Distinct())
             {
                 var index = nodeIndex(skin);
                 if (index >= 0) nodes.Add(skin, index);
@@ -592,7 +586,7 @@ namespace VRVlog.LilToonExporter
 
         Dictionary<string, object> OutputBinding(Dictionary<string, object> json, OptimizationMorphRoute route, float weight)
         {
-            if (!nodes.TryGetValue(route.Renderer, out var node)) throw new InvalidOperationException("追跡表情の出力nodeが未確定です。");
+            if (!nodes.TryGetValue(route.Renderer, out var node)) throw new InvalidOperationException("追跡表情の対象が最終VRMにありません: " + route.Renderer.name);
             var nodeList = JsonArray(json, "nodes"); var meshList = JsonArray(json, "meshes");
             if (node < 0 || node >= nodeList.Count || !(nodeList[node] is Dictionary<string, object> outputNode) || !outputNode.TryGetValue("mesh", out var rawMesh))
                 throw new InvalidOperationException("追跡表情の出力nodeが不正です。");
