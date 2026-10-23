@@ -39,7 +39,7 @@
 | 除外の切り替え | `ExcludingAnObjectDoesNotLookLikeAnEditOfTheSource` |
 | ページの移動・除外のプレビュー用の複製・別の複製の作成と破棄 | `PagesAndOtherCopiesLeaveTheSourceAsItWas` |
 | 取り直したハッシュ（再読み込みのあとと同じ） | `ADetailedStampMatchesTheSameAvatarAndNamesWhatChanged` |
-| 失敗の文の「。」 | `AppTransferFlowTests.FailureReadsOneSentencePerLine` |
+| 失敗の文の「。」 | `CloudTransferTests.FailureReadsOneSentencePerLine` |
 
 ## 検討して採らなかった案
 
