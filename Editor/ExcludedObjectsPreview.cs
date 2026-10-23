@@ -71,6 +71,10 @@ namespace VRVlog.LilToonExporter
             var rendererList = (renderers ?? Array.Empty<Renderer>()).Where(item => item != null && Under(item.transform)).ToArray();
             // An object added to the avatar after the copy was made: copy it again.
             if (objectList.Any(item => !copies.ContainsKey(item.transform)) || rendererList.Any(item => !copies.ContainsKey(item.transform))) Build();
+            // Framed once, on the avatar as it is in the scene before anything is
+            // hidden, so a choice never moves the camera and whatever 含める can
+            // bring back is in view.
+            if (!framed) Frame();
             var nextObjects = new HashSet<GameObject>(objectList.Select(item => copies.TryGetValue(item.transform, out var to) ? to.gameObject : null).Where(item => item != null));
             var nextRenderers = new HashSet<Renderer>(rendererList.Select(CopyOf).Where(item => item != null));
             foreach (var pair in hiddenObjects.Where(pair => !nextObjects.Contains(pair.Key)).ToArray())
@@ -87,8 +91,6 @@ namespace VRVlog.LilToonExporter
                 if (!hiddenObjects.ContainsKey(item)) { hiddenObjects.Add(item, item.activeSelf); item.SetActive(false); }
             foreach (var item in nextRenderers)
                 if (!hiddenRenderers.ContainsKey(item)) { hiddenRenderers.Add(item, item.enabled); item.enabled = false; }
-            // Framed once, on what is first shown, so a choice never moves the camera.
-            if (!framed) Frame();
         }
 
         bool Under(Transform target) => target == source.transform || target.IsChildOf(source.transform);
@@ -115,7 +117,9 @@ namespace VRVlog.LilToonExporter
 
         void Frame()
         {
-            var renderers = ExportRendererSelection.Enumerate(copy).ToArray();
+            // Particles, trails and lines can reach far from the body; leave them out of the fit.
+            var renderers = ExportRendererSelection.Enumerate(copy)
+                .Where(item => !(item is ParticleSystemRenderer) && !(item is TrailRenderer) && !(item is LineRenderer)).ToArray();
             if (renderers.Length == 0) return;
             bounds = renderers[0].bounds;
             foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
