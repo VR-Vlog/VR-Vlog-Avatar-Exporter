@@ -514,15 +514,6 @@ namespace VRVlog.LilToonExporter
             return snapshot;
         }
 
-        internal static void Add(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath = null,
-            GameObject authoringSource = null, BindingSnapshot bindings = null)
-        {
-            var authored = authoringSource ?? avatar;
-            var serial = 0;
-            ReadRepositories(authored, source, registered =>
-                ReadRegistered(avatar, registered, "FaceEmo", source, ref serial, new HashSet<object>(), 0, excludedPath, bindings));
-        }
-
         private static void ReadRepositories(GameObject authored, VrChatExpressionMenu.Source source, Action<object> readRegistered)
         {
             var repositories = new HashSet<Component>();
@@ -568,18 +559,6 @@ namespace VRVlog.LilToonExporter
         {
             bool Matches(object target) => target is Component component && component != null && component.gameObject == avatar;
             return Matches(Member(settings, "TargetAvatar")) || Items(Member(settings, "SubTargetAvatars")).Any(Matches);
-        }
-
-        internal static void ReadRegistered(GameObject avatar, object list, string prefix, VrChatExpressionMenu.Source source,
-            ref int serial, HashSet<object> visited, int depth, Func<string, bool> excludedPath = null, BindingSnapshot bindings = null)
-        {
-            var nextSerial = serial;
-            try
-            {
-                VisitRegistered(list, prefix, visited, depth, (animation, path, exportName) =>
-                    AddClip(avatar, animation, path, exportName, source, ref nextSerial, excludedPath, bindings));
-            }
-            finally { serial = nextSerial; }
         }
 
         // addClip receives the animation, its path and its VRM name: the
@@ -661,23 +640,6 @@ namespace VRVlog.LilToonExporter
             }
             if (modes.Count != 0 || groups.Count != 0)
                 throw new InvalidOperationException("FaceEmoのメニュー順序と保存済み項目が一致しません。");
-        }
-
-        private static void AddClip(GameObject avatar, object animation, string path, string exportName, VrChatExpressionMenu.Source source, ref int serial, Func<string, bool> excludedPath,
-            BindingSnapshot bindings)
-        {
-            if (source.Entries.Count >= 512) throw new ExpressionCandidateLimitException("表情候補が512件を超えています。");
-            var entry = new VrChatExpressionMenu.Entry { Id = "faceemo/" + serial++, Name = path, Source = VRVlog.Expressions.ExpressionSource.FaceEmo };
-            try
-            {
-                var clip = Resolve(animation);
-                if (clip == null) throw new InvalidOperationException("FaceEmoに登録されたアニメーションGUIDを解決できません。");
-                entry.Name = path + " / " + clip.name;
-                entry.ExportName = exportName ?? clip.name;
-                ReadClip(avatar, clip, entry, source, excludedPath, bindings);
-            }
-            catch (InvalidOperationException error) { entry.Error = error.Message; }
-            source.Entries.Add(entry);
         }
 
         // The list-only export reads a listed clip FaceEmo registers through
