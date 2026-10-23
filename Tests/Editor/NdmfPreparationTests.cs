@@ -699,10 +699,9 @@ namespace VRVlog.LilToonExporter.Tests
             using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), warnings))
                 Assert.AreSame(clone.transform, copyTag.transform.parent);
             Assert.AreEqual(2, FakeProcessor.Calls, "Transforming still runs after the warning.");
-            // The host shim has no scene paths, so match the object by its type.
-            var body = string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
-                " (" + copyTag.GetType().Name + ")", boneProxy ? "Bone Proxy" : "Merge Armature");
-            Assert.AreEqual(1, warnings.Count(warning => warning.EndsWith(body)), string.Join("\n", warnings));
+            var expected = string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
+                clone.name + "/" + copyTag.gameObject.name, boneProxy ? "Bone Proxy" : "Merge Armature");
+            Assert.AreEqual(1, warnings.Count(warning => warning == expected), string.Join("\n", warnings));
             var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ValidateSource(source));
             StringAssert.Contains("追従先を取得できません", error.Message);
         }

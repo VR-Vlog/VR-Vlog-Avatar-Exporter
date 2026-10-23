@@ -369,11 +369,11 @@ namespace VRVlog.LilToonExporter
                 if (target == null)
                 {
                     if (deferUnresolvedTargets) continue; // Validate against the explicit root on the owned copy.
-                    var subject = ScenePath(component.transform) + " (" + component.GetType().Name + ")";
                     if (unresolvedTargets == null)
-                        throw new InvalidOperationException(subject +
+                        throw new InvalidOperationException(ScenePath(component.transform) + " (" + component.GetType().Name + ")" +
                             ": Modular Avatar の追従先を取得できません。Merge Armature / Bone Proxy の対象を設定してから書き出してください。");
-                    unresolvedTargets.Add(string.Format(ExporterLocalization.T(UnresolvedFollowingTargetWarning), subject,
+                    unresolvedTargets.Add(string.Format(ExporterLocalization.T(UnresolvedFollowingTargetWarning),
+                        PathFromRoot(component.transform, source.transform),
                         property == "mergeTargetObject" ? "Merge Armature" : "Bone Proxy"));
                     continue;
                 }
@@ -708,6 +708,16 @@ namespace VRVlog.LilToonExporter
         {
             var names = new Stack<string>();
             for (var node = target; node != null; node = node.parent) names.Push(node.name);
+            return string.Join("/", names);
+        }
+
+        // The owned copy keeps the avatar's name but sits under a staging host,
+        // so name the object from the avatar the user selected.
+        private static string PathFromRoot(Transform target, Transform root)
+        {
+            var names = new Stack<string>();
+            for (var node = target; node != null && node != root; node = node.parent) names.Push(node.gameObject.name);
+            names.Push(root.gameObject.name);
             return string.Join("/", names);
         }
 

@@ -233,7 +233,7 @@ namespace VRVlog.LilToonExporter.Tests
             using (NdmfExportPreparation.Prepare(source, clone, warnings))
                 Assert.That(clone.transform.Find("clothing-merge"), Is.Not.Null);
             CollectionAssert.Contains(warnings, string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
-                clone.name + "/clothing-merge (" + merge.GetType().Name + ")", "Merge Armature"));
+                clone.name + "/clothing-merge", "Merge Armature"));
             Assert.That(EditorJsonUtility.ToJson(merge), Is.EqualTo(sourceSettings));
         }
 
@@ -458,7 +458,7 @@ namespace VRVlog.LilToonExporter.Tests
             using (NdmfExportPreparation.Prepare(source, clone, warnings))
                 Assert.That(clone.transform.Find("clothing-merge"), Is.Not.Null);
             CollectionAssert.Contains(warnings, string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
-                clone.name + "/clothing-merge (" + merge.GetType().Name + ")", "Merge Armature"));
+                clone.name + "/clothing-merge", "Merge Armature"));
             Assert.That(EditorJsonUtility.ToJson(merge), Is.EqualTo(sourceSettings));
             Assert.That(source.transform.parent, Is.SameAs(enclosing.transform));
         }

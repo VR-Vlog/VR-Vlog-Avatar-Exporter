@@ -12,7 +12,7 @@ Modular Avatar 1.18 は同じ状態を NonFatal のエラーとして記録し�
 ## 決定
 
 - NDMF の Resolving と Modular Avatar の参照の解決をすべて通したあとの複製で、まだ取り付け先が無いものは、オブジェクトごとに 1 件の警告にして書き出しを続ける。オブジェクトは Modular Avatar が残した位置のまま書き出す。
-- 警告は「（パス）: 取り付け先のボーンが見つからないため体の動きについてきません」と「Modular Avatar の Bone Proxy（または Merge Armature）で取り付け先を設定して書き出し直す」の 2 行で、影響と直し方を分けて書く。
+- 警告は「（パス）: 取り付け先のボーンが見つからないため体の動きについてきません」と「Modular Avatar の Bone Proxy（または Merge Armature）で取り付け先を設定して書き出し直す」の 2 行で、影響と直し方を分けて書く。パスは選んだアバターの名前から始め、書き出し用の複製を置く一時の親の名前は出さない。種類（Bone Proxy・Merge Armature）は 2 行目に出るので、パスの後ろには付けない。
 - 次のものは今までどおり書き出しを止める。
   - 元のアバターに対する事前の検査（`ValidateSource` を警告の受け皿なしで呼ぶもの）
   - 取り付け先が選んだアバターの外にあるもの
@@ -26,5 +26,5 @@ Modular Avatar 1.18 は同じ状態を NonFatal のエラーとして記録し�
 ## 検証
 
 - EditMode: `NdmfPreparationTests.TargetStillMissingAfterResolutionWarnsAndExportsTheObjectWhereMaLeavesIt`（Bone Proxy と Merge Armature の 2 件）。取り付け先の無いものを複製に置いて Prepare を通し、例外にならないこと、オブジェクトが元の親の下に残ること、Transforming まで進むこと、警告が 1 件出ることを確かめる。元のアバターへの事前の検査は今までどおり例外になることも同じテストで見る。
-- `MaSceneReferencePreparationTests.MissingDirectTargetAndMissingPathWarnWithoutEditingTheSource` を、例外ではなく警告と、マージされずに残ることを確かめる形に改めた。
+- `MaSceneReferencePreparationTests.MissingDirectTargetAndMissingPathWarnWithoutEditingTheSource` と `EnclosingAvatarRelativePathIsNotReinterpretedAfterTheSelectedSubtreeIsDetached` を、例外ではなく警告と、マージされずに残ることを確かめる形に改めた。
 - Modular Avatar 1.18.7・NDMF 1.14.8 を入れたプロジェクトで `NdmfPreparationTests` と `MaSceneReferencePreparationTests` を回した。
