@@ -152,12 +152,13 @@ namespace VRVlog.LilToonExporter
         }
 
         // Maps the targets to output nodes. A target the build passes or the
-        // export removed is left out with a warning, and so is a group left
-        // without targets.
+        // export removed is left out with a warning; an item that no longer
+        // changes any kept target is left out, and so is a group left without
+        // targets or items.
         internal ObjectToggleData Resolve(Func<GameObject, int> node, ICollection<string> warnings)
         {
             var data = new ObjectToggleData();
-            var kept = new HashSet<string>(StringComparer.Ordinal);
+            var kept = new List<Item>();
             foreach (var group in groups)
             {
                 var output = new ObjectToggleData.Group { Parameter = group.Parameter, Name = group.Name, DefaultValue = group.DefaultValue };
@@ -170,16 +171,22 @@ namespace VRVlog.LilToonExporter
                     columns.Add(i);
                 }
                 if (output.Targets.Count == 0) continue;
+                bool[] ActiveAt(int value) => group.States.First(state => state.Value == value).Active;
+                // Turning an item on or off must still change a kept target.
+                var groupItems = items.Where(item => item.Parameter == group.Parameter &&
+                                                     columns.Any(column => ActiveAt(item.Value)[column] != ActiveAt(0)[column])).ToList();
+                if (groupItems.Count == 0) continue;
                 foreach (var (value, active) in group.States)
                 {
+                    if (value != 0 && value != group.DefaultValue && groupItems.All(item => item.Value != value)) continue;
                     var state = new ObjectToggleData.State { Value = value };
                     state.Active.AddRange(columns.Select(column => active[column]));
                     output.States.Add(state);
                 }
                 data.Groups.Add(output);
-                kept.Add(group.Parameter);
+                kept.AddRange(groupItems);
             }
-            foreach (var item in items.Where(item => kept.Contains(item.Parameter)))
+            foreach (var item in items.Where(kept.Contains))
             {
                 var output = new ObjectToggleData.Item { Id = "m" + item.Index, Name = item.Name, Parameter = item.Parameter, Value = item.Value };
                 output.Path.AddRange(item.Path);

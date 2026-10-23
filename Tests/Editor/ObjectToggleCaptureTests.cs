@@ -168,12 +168,22 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var path in new[] { "Hat", "Clothes/Suit", "Glasses", "Ribbon" })
                     Assert.That(avatar.Source.transform.Find(path).gameObject.activeSelf, Is.False, path);
 
-                // A target the export removed is left out of the file.
+                // A target the export removed is left out of the file, and so
+                // is an item that no longer switches anything: the app never
+                // gets a switch that does nothing.
                 warnings.Clear();
                 var withoutSuit = capture.Resolve(target => target.name == "Suit" ? -1 : nodes.IndexOf(target), warnings);
                 Assert.That(withoutSuit.GroupFor("Outfit").Targets.Select(Name), Is.EqualTo(new[] { "Dress" }));
-                Assert.That(States(withoutSuit.GroupFor("Outfit")), Is.EqualTo(new[] { "0:F", "1:T", "2:F" }));
+                Assert.That(States(withoutSuit.GroupFor("Outfit")), Is.EqualTo(new[] { "0:F", "1:T" }));
+                Assert.That(withoutSuit.Items.Select(item => item.Name), Is.EqualTo(new[] { "Hat", "Dress", "Glasses", "Accessory" }));
                 Assert.That(warnings.Single(), Does.EndWith("Clothes/Suit"));
+                Assert.DoesNotThrow(() => ObjectToggleData.Write(withoutSuit));
+                // A group whose every target is gone is left out with its items.
+                warnings.Clear();
+                var withoutHat = capture.Resolve(target => target.name == "Hat" ? -1 : nodes.IndexOf(target), warnings);
+                Assert.That(withoutHat.GroupFor("Hat"), Is.Null);
+                Assert.That(withoutHat.Items.Select(item => item.Name), Is.EqualTo(new[] { "Dress", "Suit", "Glasses", "Accessory" }));
+                Assert.That(warnings.Single(), Does.EndWith("Hat"));
             }
             finally { Object.DestroyImmediate(clone); }
         }
