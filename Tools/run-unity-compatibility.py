@@ -633,6 +633,8 @@ BEHAVIOR_CASES = {
         'OriginalAndNestedCopiesAreRejectedBeforeProcessing': 1,
         'PartialPlatformApiFailsBeforeProcessing': 1,
         'PersistentContainerOfUnsavedAssetIsCopiedWithoutEditingOriginalReferences': 2,
+        'FoldersOfEarlierExportsAreRemovedButFoldersOfLiveLeasesAreKept': 1,
+        'OnlyFolderNamesThisExporterCreatesAreCleanedUp': 5,
         'PersistentPluginAssetsRemainUntilExportLeaseEndsAndNeverTouchSiblingAssets': 1,
         'PhaseExceptionStillFinishesAndReleasesGeneratedAssets': 1,
         'PluginFailureIncludesToolPassAndOriginalExceptionAndCleansTemporaryFolder': 1,
