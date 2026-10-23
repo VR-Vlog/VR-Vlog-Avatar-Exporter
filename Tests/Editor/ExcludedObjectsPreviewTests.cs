@@ -201,8 +201,9 @@ namespace VRVlog.LilToonExporter.Tests
             finally { preview?.Dispose(); fixture.Dispose(); }
         }
 
-        // Without a humanoid skeleton every mesh counts, by its vertices; when
-        // everything lies out of the skeleton's reach the drawn bounds are used.
+        // Without a humanoid skeleton every mesh counts, by its vertices, in the
+        // avatar's own axes when it is turned in the scene; when everything lies
+        // out of the skeleton's reach every mesh counts again.
         [Test]
         public void WithoutASkeletonOrInReachTheFitStillHoldsTheMeshes()
         {
@@ -218,6 +219,11 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(body.HasValue, Is.True);
                 Assert.That(body.Value.min.x, Is.EqualTo(-.5f).Within(.001f));
                 Assert.That(body.Value.max.x, Is.EqualTo(3.5f).Within(.001f));
+                plain.transform.rotation = Quaternion.Euler(0, 90, 0);
+                var turned = ExcludedObjectsPreview.BodyBounds(plain).Value;
+                Assert.That(turned.min.x, Is.EqualTo(-.5f).Within(.001f));
+                Assert.That(turned.max.x, Is.EqualTo(3.5f).Within(.001f));
+                Assert.That(turned.size.z, Is.EqualTo(1).Within(.001f));
                 Object.DestroyImmediate(near); Object.DestroyImmediate(aside);
                 Assert.That(ExcludedObjectsPreview.BodyBounds(plain).HasValue, Is.False);
             }

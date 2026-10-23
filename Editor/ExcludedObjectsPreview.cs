@@ -34,7 +34,7 @@ namespace VRVlog.LilToonExporter
         internal GameObject Copy => copy;
         internal GameObject Source => source;
         internal bool Usable => copy != null && utility != null;
-        // What the camera was fitted to. For tests.
+        // What the camera was fitted to, in the avatar's own axes. For tests.
         internal Bounds Framing => bounds;
 
         void Build()
@@ -128,21 +128,25 @@ namespace VRVlog.LilToonExporter
         // The body to fit: each mesh by its own vertices, not Renderer.bounds,
         // which a skinned mesh often widens on purpose. On a humanoid each mesh
         // is cut to the reach of its skeleton, so a camera or tool kept far from
-        // the body does not shrink the avatar. Null when nothing is shown.
+        // the body does not shrink the avatar. The box is in the avatar's own
+        // axes (world positions turned back by the root's rotation), so x is the
+        // width seen from its front even when the root is turned in the scene.
+        // Null when nothing is shown.
         internal static Bounds? BodyBounds(GameObject avatar)
         {
             // Particles, trails and lines can reach far from the body; leave them out of the fit.
             var renderers = ExportRendererSelection.Enumerate(avatar)
                 .Where(item => !(item is ParticleSystemRenderer) && !(item is TrailRenderer) && !(item is LineRenderer)).ToArray();
             if (renderers.Length == 0) return null;
-            var reach = SkeletonReach(avatar);
+            var toBody = Matrix4x4.Rotate(Quaternion.Inverse(avatar.transform.rotation));
+            var reach = SkeletonReach(avatar, toBody);
             Bounds? fit = null, whole = null;
             var baked = new Mesh();
             try
             {
                 foreach (var renderer in renderers)
                 {
-                    var box = MeshBounds(renderer, baked);
+                    var box = MeshBounds(renderer, baked, toBody);
                     if (whole.HasValue) { var all = whole.Value; all.Encapsulate(box); whole = all; }
                     else whole = box;
                     if (reach.HasValue)
@@ -161,7 +165,7 @@ namespace VRVlog.LilToonExporter
             return fit ?? whole;
         }
 
-        static Bounds MeshBounds(Renderer renderer, Mesh baked)
+        static Bounds MeshBounds(Renderer renderer, Mesh baked, Matrix4x4 toBody)
         {
             Vector3[] vertices = null;
             var toWorld = renderer.transform.localToWorldMatrix;
@@ -174,9 +178,17 @@ namespace VRVlog.LilToonExporter
             }
             else if (renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null)
                 vertices = filter.sharedMesh.vertices;
-            if (vertices == null || vertices.Length == 0) return renderer.bounds;
-            var box = new Bounds(toWorld.MultiplyPoint3x4(vertices[0]), Vector3.zero);
-            foreach (var vertex in vertices) box.Encapsulate(toWorld.MultiplyPoint3x4(vertex));
+            if (vertices == null || vertices.Length == 0)
+            {
+                var drawn = renderer.bounds;
+                toWorld = Matrix4x4.identity;
+                vertices = new Vector3[8];
+                for (var corner = 0; corner < 8; corner++)
+                    vertices[corner] = drawn.center + Vector3.Scale(drawn.extents, new Vector3((corner & 1) == 0 ? -1 : 1, (corner & 2) == 0 ? -1 : 1, (corner & 4) == 0 ? -1 : 1));
+            }
+            var toFrame = toBody * toWorld;
+            var box = new Bounds(toFrame.MultiplyPoint3x4(vertices[0]), Vector3.zero);
+            foreach (var vertex in vertices) box.Encapsulate(toFrame.MultiplyPoint3x4(vertex));
             return box;
         }
 
@@ -184,25 +196,26 @@ namespace VRVlog.LilToonExporter
         // height again above the head bone, which leaves room for large heads,
         // hair and ears, and half that height out to the sides for wide
         // sleeves, skirts and wings.
-        static Bounds? SkeletonReach(GameObject avatar)
+        static Bounds? SkeletonReach(GameObject avatar, Matrix4x4 toBody)
         {
             var animator = avatar.GetComponent<Animator>();
             if (animator == null || animator.avatar == null || !animator.avatar.isHuman) return null;
             var head = HumanoidBones.Resolve(animator, HumanBodyBones.Head);
             if (head == null) return null;
-            var bones = new Bounds(head.position, Vector3.zero);
+            var top = toBody.MultiplyPoint3x4(head.position);
+            var bones = new Bounds(top, Vector3.zero);
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
             {
                 var found = HumanoidBones.Resolve(animator, bone);
-                if (found != null) bones.Encapsulate(found.position);
+                if (found != null) bones.Encapsulate(toBody.MultiplyPoint3x4(found.position));
             }
-            var height = head.position.y - bones.min.y;
+            var height = top.y - bones.min.y;
             if (height <= .01f) return null;
             var side = height * .5f;
             var reach = new Bounds();
             reach.SetMinMax(
                 new Vector3(bones.min.x - side, bones.min.y - height * .1f, bones.min.z - side),
-                new Vector3(bones.max.x + side, head.position.y + height, bones.max.z + side));
+                new Vector3(bones.max.x + side, top.y + height, bones.max.z + side));
             return reach;
         }
 
@@ -223,10 +236,11 @@ namespace VRVlog.LilToonExporter
                 // Seen from the front: the width is the body's, and the distance is
                 // measured at its front, which is its depth away from the center.
                 var distance = Mathf.Max(.3f, fit / half + extent.z);
-                var center = framed ? bounds.center : copy.transform.position;
+                var turn = copy.transform.rotation;
+                var center = framed ? turn * bounds.center : copy.transform.position;
                 utility.BeginPreview(rect, GUIStyle.none);
-                camera.transform.position = center + Quaternion.AngleAxis(yaw, Vector3.up) * copy.transform.forward * distance * zoom;
-                camera.transform.LookAt(center, Vector3.up);
+                camera.transform.position = center + turn * Quaternion.AngleAxis(yaw, Vector3.up) * Vector3.forward * distance * zoom;
+                camera.transform.LookAt(center, turn * Vector3.up);
                 // Our own fit: Render would widen the view of a narrow rectangle again.
                 utility.Render(false, false);
                 GUI.DrawTexture(rect, utility.EndPreview(), ScaleMode.StretchToFill, false);
