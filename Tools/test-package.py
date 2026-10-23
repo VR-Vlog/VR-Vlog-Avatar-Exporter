@@ -75,6 +75,7 @@ class PackageTests(unittest.TestCase):
 
     def commit(self, date):
         subprocess.run(["git", "-C", str(self.root), "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+                        "-c", "core.hooksPath=" + os.devnull,
                         "commit", "--quiet", "--allow-empty", "-m", "fixture"],
                        check=True, capture_output=True, env={**os.environ, "GIT_COMMITTER_DATE": date, "GIT_AUTHOR_DATE": date})
 
@@ -197,6 +198,7 @@ class PackageTests(unittest.TestCase):
         package.build(self.root, first)
         self.write("Editor/Example.cs", "changed content")
         self.git("add", ".")
+        # ZIP times have two-second resolution, so the fixture uses even seconds.
         self.commit("2026-10-24T09:30:12Z")
         second = self.root / "second.zip"
         package.build(self.root, second)
