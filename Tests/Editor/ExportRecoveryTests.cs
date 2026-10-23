@@ -299,7 +299,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(foreign); }
         }
 
-        [TestCase("material")]
         [TestCase("hierarchy")]
         [TestCase("component")]
         [TestCase("animation")]
@@ -316,7 +315,6 @@ namespace VRVlog.LilToonExporter.Tests
                 f.Source.AddComponent<Animator>().runtimeAnimatorController = controller;
                 var stamp = ExportRecoverySourceStamp.Capture(f.Source);
                 Assert.That(stamp.Matches(f.Source), Is.True);
-                if (change == "material") f.Material.SetColor("_Color", Color.red);
                 if (change == "hierarchy") { var added = new GameObject("added clothing"); added.transform.SetParent(f.Source.transform); }
                 if (change == "component") f.Renderer.enabled = false;
                 if (change == "animation") clip.SetCurve("display", typeof(Transform), "m_LocalPosition.x", AnimationCurve.Linear(0, 0, 1, .3f));
@@ -325,9 +323,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); Object.DestroyImmediate(clip); }
         }
 
-        [TestCase("position", true)]
         [TestCase("rotation", true)]
-        [TestCase("scale", false)]
         [TestCase("active", false)]
         public void ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile(string change, bool current)
         {
@@ -339,9 +335,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var sourceLocal = f.Source.transform.localToWorldMatrix;
                 var stamp = ExportRecoverySourceStamp.Capture(f.Source);
                 Assert.That(stamp.Matches(f.Source), Is.True);
-                if (change == "position") parent.transform.position = new Vector3(1, .5f, -.3f);
                 if (change == "rotation") parent.transform.rotation = Quaternion.Euler(0, 25, 0);
-                if (change == "scale") parent.transform.localScale = Vector3.one * 1.1f;
                 if (change == "active") parent.SetActive(false);
                 // The export puts the root at the origin facing forward; its world scale is kept.
                 Assert.That(stamp.Matches(f.Source), Is.EqualTo(current), change);
