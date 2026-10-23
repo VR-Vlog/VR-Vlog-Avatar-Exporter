@@ -19,7 +19,7 @@ namespace VRVlog.LilToonExporter.Tests
             // environment: the exporter compiles against its bundled copy.
             Assert.That(vrm, Is.EqualTo(expected == "missing" ? null : expected));
             Assert.That(gltf, Is.EqualTo(expected == "missing" ? null : expected));
-            Assert.That(DependencyDiagnostics.OpenExporter, Is.Not.Null, DependencyDiagnostics.CreateReport());
+            Assert.That(DependencyDiagnostics.BackendReady, Is.True, DependencyDiagnostics.CreateReport());
             Assert.That(DependencyPolicy.LilToonError(DependencyDiagnostics.Version(packages, "jp.lilxyzw.liltoon")), Is.Null);
             Assert.That(DependencyDiagnostics.Error(packages), Is.Null);
         }

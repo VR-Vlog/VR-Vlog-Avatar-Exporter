@@ -176,7 +176,7 @@ namespace VRVlog.LilToonExporter
             ExporterWindowHeader.Layout(ExporterLocalization.T("書き出すVRMを確認"));
             if (session == null)
             {
-                EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。書き出し画面から再度書き出してください。"), MessageType.Warning);
+                EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。VR Vlogメニューの「アプリに転送」からもう一度書き出してください。"), MessageType.Warning);
                 if (GUILayout.Button(ExporterLocalization.T("閉じる"))) Close();
                 return;
             }
