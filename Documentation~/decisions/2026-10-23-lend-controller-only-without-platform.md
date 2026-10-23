@@ -1,7 +1,7 @@
 # 最適化の間に root へ controller を貸すのは、AAO が root の controller を読むアバターだけにする
 
 - 日付: 2026-10-23
-- 対象: `Editor/NdmfExportPreparation.cs`（`AvatarOptimizerParsesRootController`）・`Tests/Editor/NdmfAnimationModeSamplingTests.cs`・`Tests/NdmfPlugin/AnimationModeSamplingTestPlugin.cs`・`Tools/run-unity-compatibility.py`
+- 対象: `Editor/NdmfExportPreparation.cs`（`AvatarOptimizerParsesRootController`）・`Tests/Editor/NdmfAnimationModeSamplingTests.cs`・`Tests/NdmfPlugin/AnimationModeSamplingTestPlugin.cs`・`Tools/run-unity-compatibility.py`・`Tools/NdmfPreparationTestShim.cs`
 
 ## 背景
 
@@ -29,7 +29,7 @@ controller を貸すのは、AAO 自身が root の controller を読む条件�
 
 - `NdmfAnimationModeSamplingTests.ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode`: VRChat のアバターで、テスト用の Optimizing のパスが見る root に controller が無いこと（`Layers == -1`）と、`AnimationMode.SampleAnimationClip` を呼んでも書き出せることを確かめる。修正前は貸した controller が見えて失敗する。
 - `NdmfAnimationModeSamplingTests.GenericAvatarLendsAaoAControllerThatAnimationModeCanSample`: VRChat の Avatar Descriptor が無く AAO の Trace and Optimize を付けたアバターで、貸した controller にレイヤーがあり、サンプルしても書き出せることを確かめる。テスト用のパスは NDMF 1.8 以降で `[RunsOnAllPlatforms]` を付け、このアバターでも動くようにした。
-- 修正前（レイヤーの無い controller を貸し、テスト用のパスの戻りを外した版）では、このテストで `Animator::Sample` の SIGSEGV が再現した。修正後は、戻りを外した版で 20 回続けて流して落ちなかった。
+- テスト用のパスの戻り（レイヤーが 0 ならサンプルしない）を外して、この 2 つのテストを繰り返した。レイヤーの無い controller を貸す修正前の版は 5 回中 5 回 `Animator::Sample` の SIGSEGV で落ち、修正後は 20 回中 0 回だった。
 
 ## 成り立たない場合
 
