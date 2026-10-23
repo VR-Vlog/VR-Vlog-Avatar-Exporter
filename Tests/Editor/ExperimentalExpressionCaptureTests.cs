@@ -716,8 +716,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
                 AnimationUtility.SetEditorCurve(clip, extra == "transform"
-                    ? EditorCurveBinding.FloatCurve("Front", typeof(Transform), "localEulerAnglesRaw.x")
-                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? 10 : 0));
+                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
+                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
                 if (gesture)
                 {
@@ -729,7 +729,12 @@ namespace VRVlog.LilToonExporter.Tests
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
                 Assert.That(session.RecommendClips().Any(item => item.Clip == clip), Is.True);
                 var error = session.ClipErrors(new[] { clip })[clip];
-                if (expected == "usable") Assert.That(error, Is.Null);
+                if (expected == "usable")
+                {
+                    Assert.That(error, Is.Null);
+                    // A standard expression made from it takes the BlendShapes too, not the bone angle as a weight.
+                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
+                }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
                 else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
             }
