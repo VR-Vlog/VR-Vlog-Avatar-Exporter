@@ -1,5 +1,6 @@
 """Adversarial regressions for workflow trust and publication receipts."""
 import copy
+import base64
 import hashlib
 import importlib.util
 import io
@@ -137,6 +138,18 @@ class WorkflowTrustTests(unittest.TestCase):
         data = self.workflow("release-candidate.yml")
         source = next(step for step in data["jobs"]["candidate"]["steps"] if step.get("name") == "Require exact main source")
         source["if"] = "github.event_name == 'workflow_dispatch'"
+        with self.assertRaises(ValueError):
+            policy.check("release-candidate.yml", data)
+
+    def test_candidate_site_filter_cannot_ignore_package_or_unrelated_tooling(self):
+        self.assertEqual(set(policy.WEBSITE_ONLY_PATHS) - {"Website/**"}, gitflow.WEBSITE_ONLY_CI_PATHS)
+        for path in ("Editor/**", "package.json", "Tools/**", ".github/**", "**"):
+            data = self.workflow("release-candidate.yml")
+            data["on"]["push"]["paths-ignore"].append(path)
+            with self.subTest(path=path), self.assertRaises(ValueError):
+                policy.check("release-candidate.yml", data)
+        data = self.workflow("release-candidate.yml")
+        data["on"]["push"].pop("paths-ignore")
         with self.assertRaises(ValueError):
             policy.check("release-candidate.yml", data)
 
@@ -426,6 +439,73 @@ class GitflowTests(unittest.TestCase):
                                             ("1.2.3-beta.01", "1.2.3-beta.1", "release/1.2.3", False)):
             with self.subTest(version=version, base=base, head=head, exists=exists), self.assertRaises(ValueError):
                 gitflow.validate_version(version, base, head, exists)
+
+    def test_only_the_website_and_exact_publication_guards_are_version_exempt(self):
+        site = ["Website/index.html", "Website/assets/transfer.png"]
+        self.assertTrue(gitflow.website_only_paths(site))
+        self.assertTrue(gitflow.website_only_paths(site + list(gitflow.WEBSITE_ONLY_CI_PATHS)))
+        for path in ("package.json", "Editor/Transfer.cs", "Runtime/Avatar.cs", "CHANGELOG.md",
+                     "Tools/build-package.py", ".github/workflows/release-vpm.yml", "website/index.html",
+                     "Website/../Editor/Transfer.cs", "Website//image.png", "Website/./image.png",
+                     "Website/..\\Editor/Transfer.cs", "/Website/index.html"):
+            # This also covers a rename from a package source into Website/: the
+            # no-renames diff includes both the deleted source and new site file.
+            with self.subTest(path=path):
+                self.assertFalse(gitflow.website_only_paths(site + [path]))
+                self.assertFalse(gitflow.website_only_paths(["Website/%04d.png" % i for i in range(350)] + [path]))
+        self.assertFalse(gitflow.website_only_paths([]))
+
+    def test_website_promotion_does_not_request_a_package_release(self):
+        event = self.event(head="hotfix/exporter-guide")
+        event["pull_request"]["base"]["sha"] = SHA
+        with mock.patch.object(gitflow, "promotion_changed_paths", return_value=["Website/index.html"]), \
+                mock.patch.object(gitflow.subprocess, "run") as run:
+            gitflow.check_promotion_version(event, ROOT)
+        run.assert_not_called()
+
+    def test_package_changes_keep_version_guard_even_when_mixed_with_website_changes(self):
+        version = "1.2.3-beta.2"
+        baseline = {"content": base64.b64encode(json.dumps({"version": version}).encode()).decode()}
+        for path in ("package.json", "Editor/Transfer.cs", "Tools/build-package.py"):
+            with self.subTest(path=path), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                (root / "package.json").write_text(json.dumps({"version": version}), encoding="utf-8")
+                event = self.event(head="hotfix/exporter-guide")
+                event["pull_request"]["base"]["sha"] = SHA
+                results = [subprocess.CompletedProcess([], 0, json.dumps(baseline), ""),
+                           subprocess.CompletedProcess([], 1, "", "(HTTP 404)")]
+                with mock.patch.object(gitflow, "promotion_changed_paths", return_value=["Website/index.html", path]), \
+                        mock.patch.object(gitflow.subprocess, "run", side_effect=results), \
+                        self.assertRaisesRegex(ValueError, "must advance"):
+                    gitflow.check_promotion_version(event, root)
+
+    def test_path_diff_uses_event_shas_and_preserves_deleted_rename_sources(self):
+        pull = self.event()["pull_request"]
+        pull["base"]["sha"], pull["head"]["sha"] = SHA, "b" * 40
+        results = [subprocess.CompletedProcess([], 0, "", ""),
+                   subprocess.CompletedProcess([], 0, "Editor/Old.cs\0Website/renamed.cs\0", "")]
+        with mock.patch.object(gitflow.subprocess, "run", side_effect=results) as run:
+            paths = gitflow.promotion_changed_paths(pull, ROOT)
+        self.assertFalse(gitflow.website_only_paths(paths))
+        self.assertEqual(run.call_args_list[0].args[0],
+                         ["git", "fetch", "--no-tags", "--depth=1", "origin", SHA, "b" * 40])
+        self.assertEqual(run.call_args_list[1].args[0],
+                         ["git", "diff", "--no-renames", "--name-only", "-z", SHA, "b" * 40, "--"])
+        for head in ("main", "", "b" * 39):
+            pull["head"]["sha"] = head
+            with self.subTest(head=head), mock.patch.object(gitflow.subprocess, "run") as run, self.assertRaises(ValueError):
+                gitflow.promotion_changed_paths(pull, ROOT)
+            run.assert_not_called()
+
+    def test_missing_diff_never_grants_the_website_exemption(self):
+        pull = self.event()["pull_request"]
+        pull["base"]["sha"], pull["head"]["sha"] = SHA, "b" * 40
+        with mock.patch.object(gitflow.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "git")), \
+                self.assertRaises(subprocess.CalledProcessError):
+            gitflow.promotion_changed_paths(pull, ROOT)
+        with mock.patch.object(gitflow.subprocess, "run", side_effect=[subprocess.CompletedProcess([], 0),
+                               subprocess.CompletedProcess([], 0, "Website/truncated", "")]), self.assertRaises(ValueError):
+            gitflow.promotion_changed_paths(pull, ROOT)
 
     def test_main_rejects_direct_development_and_invalid_release_or_hotfix_names(self):
         for head in ("develop", "feature/change", "release/1.2", "release/01.2.3", "release/1.02.3",

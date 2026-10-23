@@ -11,6 +11,35 @@ NUMBER = r"(?:0|[1-9][0-9]*)"
 RELEASE = re.compile(rf"release/{NUMBER}\.{NUMBER}\.{NUMBER}")
 HOTFIX = re.compile(r"hotfix/[A-Za-z0-9][A-Za-z0-9._-]*")
 VERSION = re.compile(rf"({NUMBER})\.({NUMBER})\.({NUMBER})(?:-beta\.({NUMBER}))?")
+WEBSITE_ONLY_CI_PATHS = frozenset({
+    ".github/workflows/release-candidate.yml",
+    "Tools/check-gitflow.py", "Tools/check-pipeline.py", "Tools/test-pipeline.py",
+})
+
+
+def website_only_paths(paths):
+    """Keep site publication independent from package version and release tags."""
+    return bool(paths) and all(
+        isinstance(path, str) and "\\" not in path
+        and all(part not in {"", ".", ".."} for part in path.split("/"))
+        and (path.startswith("Website/") or path in WEBSITE_ONLY_CI_PATHS)
+        for path in paths)
+
+
+def promotion_changed_paths(pull, root):
+    """Inspect the complete, immutable base/head diff, including renamed sources."""
+    shas = [pull[side].get("sha", "") for side in ("base", "head")]
+    if not all(re.fullmatch(r"[0-9a-f]{40}", sha) for sha in shas):
+        raise ValueError("Complete main base and pull request head SHAs are required")
+    # The PR checkout is shallow. Fetch only the two event-bound commits, without
+    # changing the checkout or trusting the API's capped changed-file listing.
+    subprocess.run(["git", "fetch", "--no-tags", "--depth=1", "origin", *shas],
+                   cwd=root, capture_output=True, text=True, timeout=60, check=True)
+    result = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z", *shas, "--"],
+                            cwd=root, capture_output=True, text=True, timeout=30, check=True)
+    if result.stdout and not result.stdout.endswith("\0"):
+        raise ValueError("Incomplete changed-path output")
+    return result.stdout.split("\0")[:-1]
 
 
 def version_key(version):
@@ -36,6 +65,9 @@ def check_promotion_version(event, root):
     base_sha = pull["base"].get("sha", "")
     if not re.fullmatch(r"[0-9a-f]{40}", base_sha):
         raise ValueError("A complete main base SHA is required")
+    if website_only_paths(promotion_changed_paths(pull, root)):
+        print("Website-only promotion: package version and release tag are unchanged")
+        return
     repository = pull["base"]["repo"]["full_name"]
     # GitHub supplies the repository identity and base SHA in the actual event.
     prefix = "repos/" + repository

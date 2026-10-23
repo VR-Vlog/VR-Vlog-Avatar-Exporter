@@ -3,6 +3,12 @@ name: Build release candidate
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'Website/**'
+      - '.github/workflows/release-candidate.yml'
+      - 'Tools/check-gitflow.py'
+      - 'Tools/check-pipeline.py'
+      - 'Tools/test-pipeline.py'
   workflow_dispatch:
     inputs:
       expected_commit:
