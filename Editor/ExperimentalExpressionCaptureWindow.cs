@@ -35,6 +35,7 @@ namespace VRVlog.LilToonExporter
         System.Threading.CancellationTokenSource exportedLookLoad;
         bool showExportedLook;
         string exportedLookInputs;
+        int exportedLookSkipped;
         Action pending;
         bool candidateValidationPending, opening;
         // The copy was built again from the avatar since the last action. The
@@ -894,8 +895,9 @@ namespace VRVlog.LilToonExporter
             // because the build time alone does not tell whether they made it in.
             var text = ExporterLocalization.T("基準の顔") +
                 (exportedLook.MaterialNote != null ? ExporterLocalization.T("・MToonで表示") : "") +
+                (exportedLookSkipped > 0 ? string.Format(ExporterLocalization.T("・失敗した処理{0}件を省略"), exportedLookSkipped) : "") +
                 string.Format(ExporterLocalization.T(exportedLookInputs == ExportedLookInputs() ? "（{0}時点）" : "（{0}時点・変更は未反映）"),
-                    exportedLook.MadeAt.ToString("HH:mm"));
+                    exportedLook.MadeAt.ToString("HH':'mm", System.Globalization.CultureInfo.InvariantCulture));
             GUI.Label(new Rect(caption.x, caption.y, caption.width - remake.width - 4, caption.height),
                 new GUIContent(text, exportedLook.MaterialNote), EditorStyles.boldLabel);
             if (GUI.Button(remake, ExporterLocalization.T("作り直す"), EditorStyles.miniButton)) Queue(BuildExportedLook);
@@ -906,12 +908,15 @@ namespace VRVlog.LilToonExporter
         // An unsaved export with the choices "VRMを保存" would use (the same
         // call as SaveListOnly makes through ExportAndSaveNormally), read back
         // as a VRM. Lenient like the transfers, so a failing stage shows what
-        // the transfer would send. The avatar and its assets are not changed.
+        // the transfer would send; the caption counts the stages it skipped.
+        // The avatar and its assets are not changed. The VRM shown before stays
+        // until the new one is ready, so a rebuild that fails keeps it.
         void BuildExportedLook()
         {
-            ReleaseExportedLook();
+            exportedLookLoad?.Cancel(); exportedLookLoad = null;
             byte[] bytes;
             string inputs;
+            int skipped;
             try
             {
                 if (excludedObjectEdits != null) throw new InvalidOperationException(ExporterLocalization.T("書き出さないオブジェクトがプレビューに反映されていません"));
@@ -931,11 +936,21 @@ namespace VRVlog.LilToonExporter
                     bytes = ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceIsChecked) =>
                         from.Export(target.Source.name, ExportedLookAuthor, listFaces, warnings, blink?.Copy(), new AvatarLicenseOptions(),
                             new ExportRecoveryOptions(), report, poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked));
+                // Counted as the transfer counts LastOmittedStageCount.
+                skipped = report.Fallbacks.Results.Count(entry => entry.Stage != null);
+                EditorUtility.DisplayProgressBar(ExporterLocalization.T("書き出すVRMを用意"), ExporterLocalization.T("読み込み"), .8f);
+                var load = exportedLookLoad = new System.Threading.CancellationTokenSource();
+                var loading = ExportedLookPreview.LoadAsync(bytes, load.Token);
+                // The immediate caller usually finishes here; a failure then reaches Advance and shows as the error.
+                if (loading.IsCompleted) { exportedLookLoad = null; load.Dispose(); ShowExportedLook(loading.GetAwaiter().GetResult(), inputs, skipped, true); }
+                else FinishExportedLook(loading, load, inputs, skipped);
             }
-            catch { showExportedLook = false; EditorUtility.ClearProgressBar(); throw; }
-            exportedLookInputs = inputs;
-            EditorUtility.DisplayProgressBar(ExporterLocalization.T("書き出すVRMを用意"), ExporterLocalization.T("読み込み"), .8f);
-            LoadExportedLook(bytes);
+            catch
+            {
+                exportedLookLoad?.Cancel(); exportedLookLoad = null;
+                if (exportedLook == null) showExportedLook = false;
+                EditorUtility.ClearProgressBar(); throw;
+            }
         }
 
         // The choices the shown VRM was built from, compared like the transfer compares a saved file
@@ -945,18 +960,27 @@ namespace VRVlog.LilToonExporter
         // Only names the file inside this preview; the saved VRM takes the author from the transfer page.
         const string ExportedLookAuthor = "VR Vlog preview";
 
-        async void LoadExportedLook(byte[] bytes)
+        async void FinishExportedLook(System.Threading.Tasks.Task<ExportedLookPreview> loading, System.Threading.CancellationTokenSource load, string inputs, int skipped)
         {
-            var load = exportedLookLoad = new System.Threading.CancellationTokenSource();
             ExportedLookPreview look = null;
-            try { look = await ExportedLookPreview.LoadAsync(bytes, load.Token); }
+            try { look = await loading; }
             catch (OperationCanceledException) { }
-            catch (Exception exception) { if (exportedLookLoad == load) { error = exception.Message; showExportedLook = false; } Debug.LogException(exception); }
+            catch (Exception exception) { if (exportedLookLoad == load) { error = exception.Message; if (exportedLook == null) showExportedLook = false; } Debug.LogException(exception); }
             finally { EditorUtility.ClearProgressBar(); }
             // A board closed, cleaned up or rebuilt meanwhile no longer wants this one.
             if (this == null || exportedLookLoad != load || load.IsCancellationRequested) { look?.Dispose(); return; }
             exportedLookLoad = null; load.Dispose();
-            exportedLook = look;
+            ShowExportedLook(look, inputs, skipped, false);
+        }
+
+        void ShowExportedLook(ExportedLookPreview look, string inputs, int skipped, bool show)
+        {
+            if (look == null) return;
+            exportedLook?.Dispose();
+            exportedLook = look; exportedLookInputs = inputs; exportedLookSkipped = skipped;
+            // Within the build: also after a retry on a fresh copy, whose first attempt switched back to the
+            // avatar. A load finishing later keeps the view the user picked meanwhile.
+            if (show) showExportedLook = true;
             Repaint();
         }
 
