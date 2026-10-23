@@ -27,10 +27,8 @@ namespace VRVlog.LilToonExporter
 
         internal static int Count => Shares.Length;
 
-        // The third page saves and sends the VRM where the transfer module is there and turned on;
-        // without it the page is the VRM's information and its save.
-        internal static string[] Names(bool panelUsable) =>
-            new[] { "1 表情の設定", "2 除外するオブジェクト", panelUsable ? "3 VRMの保存と転送" : "3 VRMの情報" };
+        // The third page saves and sends the VRM.
+        internal static string[] Names() => new[] { "1 表情の設定", "2 除外するオブジェクト", "3 VRMの保存と転送" };
 
         // "1 表情の設定" is ("1", "表情の設定"): the number goes in the circle.
         internal static (string Number, string Name) Split(string text)
