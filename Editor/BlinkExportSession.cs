@@ -33,6 +33,10 @@ namespace VRVlog.LilToonExporter
         internal const string DuplicateClosingNames = "閉眼用の名前が重複しています。「確認・調整」で設定してください。";
         internal const string UnmatchedClosingSide = "閉眼用の左右がそろっていません: ";
         internal const string UnusableClosingShapes = "閉眼用の変形を特定できません。「確認・調整」で選択するか「瞬きなし」を指定してください。";
+        // What a name fallback chose, for the export details.
+        internal readonly List<string> Inferences = new List<string>();
+        internal const string InferredSidesLog = "瞬きの左右を両目の変形の名前から決めました: ";
+        internal const string InferredNamesLog = "瞬きの変形を名前から決めました: ";
         bool allowMissingAutomaticBlink;
         bool deferredAutomatic;
         sealed class Candidate
@@ -109,6 +113,7 @@ namespace VRVlog.LilToonExporter
                     result.ConfiguredByDescriptor = true;
                     result.Slots[0].Add(descriptorBinding);
                     result.Description = "VRChatの閉眼設定";
+                    result.InferSides();
                 }
                 else
                 {
@@ -191,6 +196,11 @@ namespace VRVlog.LilToonExporter
                     else { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     if (!completePairs) { result.Slots[1].Clear(); result.Slots[2].Clear(); }
                     result.Description = "自動設定";
+                    if (result.UnresolvedReason == null)
+                    {
+                        if (!namedClosure && result.Slots.All(slot => slot.Count == 0)) result.FindByName(rendererNames);
+                        result.InferSides();
+                    }
                     // Closing names that never move cannot close the eyes either.
                     if (result.UnresolvedReason == null && namedClosure && !result.allowMissingAutomaticBlink &&
                         result.Slots[0].Count == 0 && result.Slots[1].Count == 0)
@@ -218,6 +228,95 @@ namespace VRVlog.LilToonExporter
             result.Validate(source, excluded);
             foreach (var binding in result.Slots.SelectMany(slot => slot)) result.CaptureCandidate(binding);
             return result;
+        }
+
+        static string[] ShapeNames(Mesh mesh) => Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
+
+        static bool Moves(SkinnedMeshRenderer renderer, int index) =>
+            AvatarBaseShape.HasUsableRawEndpoint(renderer.sharedMesh, index, renderer.GetBlendShapeWeight(index));
+
+        // Vertices the final frame moves by more than 5% of its largest move.
+        static HashSet<int> MovedVertices(Mesh mesh, int index)
+        {
+            var deltas = new Vector3[mesh.vertexCount];
+            mesh.GetBlendShapeFrameVertices(index, mesh.GetBlendShapeFrameCount(index) - 1, deltas, null, null);
+            var limit = deltas.Max(delta => delta.sqrMagnitude) * .05f * .05f;
+            var moved = new HashSet<int>();
+            for (var i = 0; i < deltas.Length; i++) if (deltas[i].sqrMagnitude > limit && deltas[i].sqrMagnitude > 0) moved.Add(i);
+            return moved;
+        }
+
+        // A name-only left/right pair must move and close different eyes:
+        // at most half of the smaller side's vertices may be shared.
+        static bool OneEyeEach(SkinnedMeshRenderer renderer, int left, int right)
+        {
+            if (left == right || !Moves(renderer, left) || !Moves(renderer, right)) return false;
+            var a = MovedVertices(renderer.sharedMesh, left); var b = MovedVertices(renderer.sharedMesh, right);
+            return a.Count > 0 && b.Count > 0 && a.Count(b.Contains) * 2 <= Math.Min(a.Count, b.Count);
+        }
+
+        static string Describe(BlinkShapeBinding binding) => binding.Renderer.name + "/" + binding.Shape;
+
+        // The bilateral closure is known but no rule named its sides: use
+        // the left and right forms of its own name on the same mesh. Every
+        // bilateral binding needs its pair, or none of them gets one.
+        void InferSides()
+        {
+            if (Slots[0].Count == 0 || Slots[1].Count > 0 || Slots[2].Count > 0) return;
+            var lefts = new List<BlinkShapeBinding>(); var rights = new List<BlinkShapeBinding>();
+            foreach (var both in Slots[0])
+            {
+                var names = ShapeNames(both.Renderer.sharedMesh);
+                var (left, right) = BlinkShapeNames.DerivedSides(names, both.Shape);
+                if (left < 0 || !OneEyeEach(both.Renderer, left, right)) return;
+                lefts.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[left], Weight = both.Weight });
+                rights.Add(new BlinkShapeBinding { Renderer = both.Renderer, Shape = names[right], Weight = both.Weight });
+            }
+            Slots[1].AddRange(lefts); Slots[2].AddRange(rights);
+            Inferences.Add(InferredSidesLog + string.Join(", ", Slots[0].Select((both, i) =>
+                Describe(both) + " → " + lefts[i].Shape + " / " + rights[i].Shape)));
+        }
+
+        // No rule found any closing name: read the meshes' own names. One
+        // bilateral name (on any number of meshes) and one left/right pair
+        // sharing a root are accepted; several readings mean none.
+        void FindByName(Dictionary<SkinnedMeshRenderer, string[]> rendererNames)
+        {
+            var both = new List<BlinkShapeBinding>();
+            var sides = new[] { new List<(BlinkShapeBinding Binding, string Root)>(), new List<(BlinkShapeBinding Binding, string Root)>() };
+            foreach (var (renderer, names) in rendererNames)
+                foreach (var name in names)
+                {
+                    var kind = BlinkShapeNames.NamedClosure(name, out var root);
+                    if (kind == BlinkShapeNames.NotClosing) continue;
+                    if (BlinkShapeNames.Unique(names, name) == -2) return;
+                    var binding = new BlinkShapeBinding { Renderer = renderer, Shape = name };
+                    if (kind == BlinkShapeNames.ClosingBoth) both.Add(binding);
+                    else sides[kind - BlinkShapeNames.ClosingLeft].Add((binding, root));
+                }
+            int DistinctNames(IEnumerable<string> shapes) => shapes.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            int Index(BlinkShapeBinding binding) => binding.Renderer.sharedMesh.GetBlendShapeIndex(binding.Shape);
+            if (DistinctNames(both.Select(binding => binding.Shape)) > 1 || both.Any(binding => !Moves(binding.Renderer, Index(binding)))) return;
+            var paired = sides[0].Count > 0 && sides[1].Count > 0 && DistinctNames(sides[0].Select(side => side.Binding.Shape)) == 1 &&
+                DistinctNames(sides[1].Select(side => side.Binding.Shape)) == 1 &&
+                string.Equals(sides[0][0].Root, sides[1][0].Root, StringComparison.OrdinalIgnoreCase) &&
+                new HashSet<SkinnedMeshRenderer>(sides[0].Select(side => side.Binding.Renderer)).SetEquals(sides[1].Select(side => side.Binding.Renderer)) &&
+                sides[0].All(left => OneEyeEach(left.Binding.Renderer, Index(left.Binding),
+                    Index(sides[1].First(right => right.Binding.Renderer == left.Binding.Renderer).Binding)));
+            // Sides that do not form one pair are not guessed; without a
+            // bilateral name nothing is.
+            if (!paired && both.Count == 0) return;
+            Slots[0].AddRange(both);
+            if (paired)
+            {
+                Slots[1].AddRange(sides[0].Select(side => side.Binding));
+                Slots[2].AddRange(sides[1].Select(side => side.Binding));
+                var bilateral = new HashSet<SkinnedMeshRenderer>(both.Select(binding => binding.Renderer));
+                foreach (var binding in Slots[1].Concat(Slots[2]))
+                    if (!bilateral.Contains(binding.Renderer)) Slots[0].Add(binding.Copy());
+            }
+            Inferences.Add(InferredNamesLog + string.Join(", ", Slots[0].Concat(Slots[1]).Concat(Slots[2])
+                .Select(Describe).Distinct()));
         }
 
         void CaptureCandidate(BlinkShapeBinding binding)
@@ -352,6 +451,12 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in Slots.SelectMany(slot => slot)) Need(binding.Renderer, binding.Shape);
             foreach (var candidate in candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
             foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
+            // Sides read from the bilateral name are a guess: if the build
+            // passes lose them, follow the bilateral closure alone as before.
+            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal));
+            var bilateral = Slots[0].ToArray();
+            var keptCandidates = candidates.ToArray();
+            var keptEndpoints = inferredEndpoints.ToArray();
             try
             {
                 var map = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
@@ -372,6 +477,18 @@ namespace VRVlog.LilToonExporter
             // without blink; only a cancellation still stops the export.
             catch (Exception e) when (!ExportStageGuard.IsCancellation(e))
             {
+                if (inferredSides >= 0)
+                {
+                    foreach (var slot in Slots) slot.Clear();
+                    Slots[0].AddRange(bilateral);
+                    candidates.Clear();
+                    candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
+                        binding.Renderer == candidate.Binding.Renderer && binding.Shape == candidate.Binding.Shape)));
+                    inferredEndpoints.Clear();
+                    foreach (var pair in keptEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
+                    Inferences.RemoveAt(inferredSides);
+                    return FollowPrepared(prepared, follow, out moved, out reason);
+                }
                 reason = e.Message;
                 moved = false;
                 DisableLost();
@@ -384,6 +501,7 @@ namespace VRVlog.LilToonExporter
             foreach (var slot in Slots) slot.Clear();
             candidates.Clear();
             inferredEndpoints.Clear();
+            Inferences.Clear();
             Array.Clear(authored, 0, authored.Length);
             PreserveAuthored = false;
             ConfiguredByDescriptor = false;
@@ -412,6 +530,7 @@ namespace VRVlog.LilToonExporter
             PreserveAuthored = resolved.PreserveAuthored;
             Array.Copy(resolved.authored, authored, authored.Length);
             allowMissingAutomaticBlink = resolved.allowMissingAutomaticBlink;
+            Inferences.Clear(); Inferences.AddRange(resolved.Inferences);
             inferredEndpoints.Clear();
             foreach (var pair in resolved.inferredEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
             deferredAutomatic = false;
@@ -478,6 +597,7 @@ namespace VRVlog.LilToonExporter
                 UnresolvedAutomatic = UnresolvedAutomatic, UnresolvedReason = UnresolvedReason,
                 allowMissingAutomaticBlink = allowMissingAutomaticBlink, deferredAutomatic = deferredAutomatic };
             Array.Copy(authored, copy.authored, authored.Length);
+            copy.Inferences.AddRange(Inferences);
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)
             {
                 var route = new Stack<int>();

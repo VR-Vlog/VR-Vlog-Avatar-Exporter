@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace VRVlog.LilToonExporter
 {
@@ -20,6 +22,69 @@ namespace VRVlog.LilToonExporter
         static readonly (string Left, string Right)[] LatePairs = {
             ("eyelid_Blink.L", "eyelid_Blink.R"), ("vrc.blink_left", "vrc.blink_right")
         };
+
+        // Name fallbacks below are consulted only after every rule above left
+        // the eye slots empty. Each accepts one unambiguous reading or none.
+        static readonly (string Left, string Right, bool Joined)[] SideMarkers = {
+            ("L", "R", false), ("Left", "Right", true), ("左", "右", true)
+        };
+        static readonly string[] SideSeparators = { "_", ".", " ", "-", "" };
+
+        // The left and right forms of a bilateral closing name, such as
+        // X_L / X_R, Left_X / Right_X or X左 / X右, when exactly one exists.
+        internal static (int Left, int Right) DerivedSides(IReadOnlyList<string> names, string both)
+        {
+            var found = (Left: -1, Right: -1);
+            if (string.IsNullOrEmpty(both)) return found;
+            foreach (var marker in SideMarkers)
+                foreach (var separator in SideSeparators)
+                {
+                    // A bare L or R would read as part of a word.
+                    if (separator.Length == 0 && !marker.Joined) continue;
+                    foreach (var form in new[] { (both + separator + marker.Left, both + separator + marker.Right),
+                        (marker.Left + separator + both, marker.Right + separator + both) })
+                    {
+                        var left = Unique(names, form.Item1); var right = Unique(names, form.Item2);
+                        if (left == -2 || right == -2) return (-1, -1);
+                        if (left < 0 || right < 0) continue;
+                        if (found.Left >= 0 && (found.Left != left || found.Right != right)) return (-1, -1);
+                        found = (left, right);
+                    }
+                }
+            return found;
+        }
+
+        internal const int NotClosing = 0, ClosingBoth = 1, ClosingLeft = 2, ClosingRight = 3;
+        static readonly Regex SideSuffix = new Regex(@"^(?<root>.+?)(?:[ ._-]?(?<side>left|right|左|右)目?|[ ._-](?<side>l|r))$", RegexOptions.IgnoreCase);
+        static readonly Regex SidePrefix = new Regex(@"^(?:(?<side>left|right|左|右)(?<eye>目)?[ ._-]?|(?<side>l|r)[ ._-])(?<root>.+)$", RegexOptions.IgnoreCase);
+        static readonly Regex Words = new Regex(@"[ ._-]+|(?<=[a-z])(?=[A-Z])");
+        static readonly HashSet<string> EyeWords = new HashSet<string> { "eye", "eyes", "eyelid", "eyelids", "both", "face", "fcl", "vrc" };
+        static readonly HashSet<string> JapaneseClosings = new HashSet<string> { "まばたき", "瞬き", "目閉じ", "目とじ", "閉じ目", "閉眼", "両目閉じ" };
+
+        // A name made only of a blink word, eye words and at most one side
+        // marker. Anything else (smile, wink, half, preview, a number) is not
+        // read as a blink. Root is the name without its side marker.
+        internal static int NamedClosure(string name, out string root)
+        {
+            root = name ?? "";
+            var side = NotClosing;
+            var match = SideSuffix.Match(root);
+            if (!match.Success) match = SidePrefix.Match(root);
+            if (match.Success)
+            {
+                var marker = match.Groups["side"].Value.ToLowerInvariant();
+                side = marker == "l" || marker == "left" || marker == "左" ? ClosingLeft : ClosingRight;
+                // 左目閉じ reads as 左 + 目閉じ.
+                root = match.Groups["eye"].Value + match.Groups["root"].Value;
+            }
+            if (JapaneseClosings.Contains(Regex.Replace(root, @"[ ._-]", "")))
+                return side == NotClosing ? ClosingBoth : side;
+            var words = Words.Split(root).Where(word => word.Length > 0).Select(word => word.ToLowerInvariant()).ToArray();
+            if (words.Any(word => !Regex.IsMatch(word, "^[a-z]+$"))) return NotClosing;
+            var rest = words.Where(word => !EyeWords.Contains(word)).ToArray();
+            if (rest.Length != 1 || rest[0] != "blink") return NotClosing;
+            return side == NotClosing ? ClosingBoth : side;
+        }
 
         internal static int PartialFamily(string shape, bool left)
         {
