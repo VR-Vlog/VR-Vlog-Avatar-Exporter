@@ -15,23 +15,19 @@ public static class ExporterStartupProbe
         var menuEntries=TypeCache.GetMethodsWithAttribute<MenuItem>()
             .SelectMany(m=>m.GetCustomAttributes(typeof(MenuItem), false).Cast<MenuItem>())
             .Where(m=>m.menuItem.StartsWith("VR Vlog/", StringComparison.Ordinal)).Select(m=>m.menuItem).ToArray();
-        // One export entry; a package with the transfer module also lists its two transfers.
+        // No export entry; a package with the transfer module lists its two transfers.
         var transfers=new[]{"VR Vlog/アプリに転送（かんたん）...","VR Vlog/アプリに転送（通常）..."};
-        if(menuEntries.Count(m=>m=="VR Vlog/VRMを書き出す...")!=1 || menuEntries.Any(m=>m!="VR Vlog/VRMを書き出す..." && !transfers.Contains(m)))
-            throw new Exception("Exporter menu must contain exactly one export entry and nothing but the app transfers besides");
-        Debug.Log("PROBE startup registered=" + (DependencyDiagnostics.OpenExporter != null) + " errors=" + EditorUtility.scriptCompilationFailed);
+        if(menuEntries.Any(m=>!transfers.Contains(m)))
+            throw new Exception("Exporter menu must contain nothing but the app transfers");
+        Debug.Log("PROBE startup registered=" + DependencyDiagnostics.BackendReady + " errors=" + EditorUtility.scriptCompilationFailed);
         foreach (var assembly in CompilationPipeline.GetAssemblies(AssembliesType.Editor).Where(a => a.name.StartsWith("VRVlog")))
             Debug.Log("PROBE graph="+assembly.name+" defines="+string.Join(",",assembly.defines.Where(d=>d.StartsWith("VRVLOG"))));
         foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies().Where(a=>a.GetName().Name.StartsWith("VRVlog")))
             Debug.Log("PROBE loaded="+assembly.FullName);
-        if (!EditorApplication.ExecuteMenuItem("VR Vlog/VRMを書き出す...")) throw new Exception("Menu missing");
-        var windows=Resources.FindObjectsOfTypeAll<EditorWindow>().Where(w=>w.GetType().FullName.StartsWith("VRVlog")).ToArray();
-        Debug.Log("PROBE windows="+string.Join(",", windows.Select(w=>w.GetType().FullName)));
-        bool success=windows.Any(w=>w.GetType().Name=="ExperimentalExpressionCaptureWindow" && w.titleContent.text==VRVlog.LilToonExporter.ExporterLocalization.T("VRM書き出し") && w.titleContent.image==null);
-        foreach(var w in windows) w.Close();
-        if(!success) throw new Exception("Exporter did not open");
+        if(!DependencyDiagnostics.BackendReady || DependencyDiagnostics.StartupError(DependencyDiagnostics.Installed())!=null)
+            throw new Exception("Exporter backend is not ready");
         DependencyDiagnostics.RefreshBackend();
-        if(DependencyDiagnostics.OpenExporter==null) throw new Exception("Refresh lost backend");
+        if(!DependencyDiagnostics.BackendReady) throw new Exception("Refresh lost backend");
         DependencyDiagnostics.ReloadBackend();
         var report=DependencyDiagnostics.CreateReport();
         if(!report.Contains("Status: Ready")) throw new Exception("Diagnostics did not become ready");

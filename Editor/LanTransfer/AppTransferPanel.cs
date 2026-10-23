@@ -67,8 +67,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // On the board: its "戻る" to the objects page, which asks first while this transfers.
         [NonSerialized] private Action back;
         // On the board: whether "VRMを保存" is the blue button instead of "QRコードを作る". The board
-        // opened to save a VRM says so; opened to transfer, and in the window, the QR is the blue one.
-        // Read on every refresh, as the board can change between the two.
+        // passes false, so the QR is the blue one there as in the window. Read on every refresh.
         [NonSerialized] private Func<bool> savePrimary;
         // Consent is for the avatar on screen, so it is asked again each time.
         [NonSerialized] private bool consented;
@@ -386,7 +385,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Refresh();
         }
 
-        // The expression board in its transfer mode, for the avatar on screen. From the quick
+        // The expression board, for the avatar on screen. From the quick
         // transfer this switches to the detailed one, so the window closes.
         private void EditDetails()
         {
@@ -993,9 +992,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(createButton, !sending);
             Show(regenerateButton, sending);
             Show(closeButton, sending && !embedded);
-            // The order stays; only the blue moves, to one button by where this opened: "VRMを保存" on the
-            // board opened from "VRMを書き出す", "QRコードを作る" from "アプリに転送" and in the window.
-            // Re-read on every refresh.
+            // The order stays; only the blue moves, to one button by savePrimary. The board and the window
+            // both make "QRコードを作る" the blue one. Re-read on every refresh.
             var saveFirst = savePrimary != null && savePrimary();
             saveButton.EnableInClassList("primary", saveFirst);
             createButton.EnableInClassList("primary", !saveFirst);
