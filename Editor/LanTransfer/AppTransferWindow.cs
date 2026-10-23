@@ -18,11 +18,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string QuickMenu = "アプリに転送（かんたん）...", DetailedMenu = "アプリに転送（通常）...";
         internal const string QuickMenuPath = ExporterMenu.Hierarchy + QuickMenu, DetailedMenuPath = ExporterMenu.Hierarchy + DetailedMenu;
         internal const string QuickMenuBarPath = ExporterMenu.MenuBar + QuickMenu, DetailedMenuBarPath = ExporterMenu.MenuBar + DetailedMenu;
+        internal const string QuickAssetsPath = ExporterMenu.Assets + QuickMenu, DetailedAssetsPath = ExporterMenu.Assets + DetailedMenu;
         // The quick entry first, then the detailed one, in both menus.
         internal const int QuickMenuPriority = ExporterMenu.HierarchyPriority + ExporterMenu.QuickTransferOrder,
             DetailedMenuPriority = ExporterMenu.HierarchyPriority + ExporterMenu.DetailedTransferOrder;
         internal const int QuickMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.QuickTransferOrder,
             DetailedMenuBarPriority = ExporterMenu.MenuBarPriority + ExporterMenu.DetailedTransferOrder;
+        internal const int QuickAssetsPriority = ExporterMenu.AssetsPriority + ExporterMenu.QuickTransferOrder,
+            DetailedAssetsPriority = ExporterMenu.AssetsPriority + ExporterMenu.DetailedTransferOrder;
         // "QRができたら音を鳴らす" on the QR screen, kept for every project on this PC.
         internal const string QrReadySoundPreference = "VRVlog.AppTransfer.QrReadySound";
         internal static bool QrReadySound
@@ -38,22 +41,26 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         [MenuItem(QuickMenuPath, false, QuickMenuPriority)]
         [MenuItem(QuickMenuBarPath, false, QuickMenuBarPriority)]
+        [MenuItem(QuickAssetsPath, false, QuickAssetsPriority)]
         private static void OpenFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
             if (selected != null) Open(selected);
         }
 
-        // Listed only in versions that transfer, and for one avatar root: the one right-clicked,
-        // or in the menu bar the one selected in the Hierarchy. Otherwise the entry is grey.
+        // Listed only in versions that transfer, and for one avatar root: the one right-clicked
+        // in the Hierarchy or the Project window, or in the menu bar the one selected. Otherwise
+        // the entry is grey.
         [MenuItem(QuickMenuPath, true)]
         [MenuItem(QuickMenuBarPath, true)]
+        [MenuItem(QuickAssetsPath, true)]
         private static bool CanOpenFromMenu() => CloudTransferAvailability.Enabled && ExporterMenu.OneAvatarRootSelected();
 
         // The detailed transfer starts on the expression board. When the exporter cannot
         // run, the quick window opens instead and says why.
         [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
         [MenuItem(DetailedMenuBarPath, false, DetailedMenuBarPriority)]
+        [MenuItem(DetailedAssetsPath, false, DetailedAssetsPriority)]
         private static void OpenDetailedFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
@@ -66,6 +73,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         [MenuItem(DetailedMenuPath, true)]
         [MenuItem(DetailedMenuBarPath, true)]
+        [MenuItem(DetailedAssetsPath, true)]
         private static bool CanOpenDetailedFromMenu() => CanOpenFromMenu();
 
         public static void Open(GameObject target) => Open(target, false);

@@ -1034,6 +1034,7 @@ BEHAVIOR_CASES = {
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
         'PosesOverTheAppLimitMatch': 1,
+        'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
     },
 }
 INTEGRATION_CASES = {

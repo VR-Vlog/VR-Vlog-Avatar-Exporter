@@ -272,6 +272,81 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The Project window's context menu hands the prefab asset itself to both
+        // transfers. They write what the same avatar in a scene writes, and leave
+        // the open scene and the prefab file as they were.
+        [Test]
+        public void APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged()
+        {
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var folder = "Assets/VRVlogPrefabExport-" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            GameObject prefab = null;
+            try
+            {
+                prefab = SaveAsPrefab(fixture.Source, folder);
+                var prefabPath = AssetDatabase.GetAssetPath(prefab);
+                var prefabText = File.ReadAllText(prefabPath);
+                var scene = fixture.Source.scene;
+                // The avatar in the scene now refers to the saved copies.
+                Assert.That(EditorSceneManager.SaveScene(scene), Is.True);
+                var roots = scene.GetRootGameObjects();
+                Assert.That(scene.isDirty, Is.False);
+
+                var fromScene = ExportQuick(fixture.Source);
+                var (quick, normal) = ExportBoth(prefab);
+                AssertSame(quick, normal);
+                AssertSame(fromScene, quick);
+
+                Assert.That(scene.isDirty, Is.False, "The open scene is not marked as changed.");
+                Assert.That(scene.GetRootGameObjects(), Is.EqualTo(roots), "Nothing is left in the open scene.");
+                Assert.That(EditorUtility.IsDirty(prefab), Is.False, "The prefab is not marked as changed.");
+                AssetDatabase.SaveAssets();
+                Assert.That(File.ReadAllText(prefabPath), Is.EqualTo(prefabText), "The prefab file is unchanged.");
+            }
+            finally
+            {
+                // Saving through the board remembers the author for the prefab too.
+                if (prefab != null) ExportAuthorTests.Forget(ExportAuthor.Identity(prefab));
+                AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
+        // The fixture keeps its mesh, material and Avatar in memory; a prefab can
+        // only refer to assets, so copies of them are saved next to it. The avatar
+        // in the scene switches to the same copies (saving names them after their
+        // files), so both refer to the same assets.
+        static GameObject SaveAsPrefab(GameObject source, string folder)
+        {
+            var copies = new Dictionary<Object, Object>();
+            T Saved<T>(T value, string extension) where T : Object
+            {
+                if (value == null) return null;
+                if (!copies.TryGetValue(value, out var copy))
+                {
+                    copy = Object.Instantiate(value);
+                    AssetDatabase.CreateAsset(copy, folder + "/" + copies.Count + extension);
+                    copies.Add(value, copy);
+                }
+                return (T)copy;
+            }
+            var animator = source.GetComponent<Animator>();
+            animator.avatar = Saved(animator.avatar, ".asset");
+            foreach (var skin in source.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                skin.sharedMesh = Saved(skin.sharedMesh, ".asset");
+                skin.sharedMaterials = skin.sharedMaterials.Select(material => Saved(material, ".mat")).ToArray();
+                // A renderer the editor never drew has no bounds yet, and reading them
+                // later would write them into the prefab. Reading them now does what
+                // drawing it once does for a prefab made in the editor.
+                _ = skin.localBounds;
+            }
+            var prefab = PrefabUtility.SaveAsPrefabAsset(source, folder + "/" + source.name + ".prefab", out var saved);
+            Assert.That(saved, Is.True);
+            Assert.That(PrefabUtility.IsPartOfPrefabInstance(source), Is.False, "The avatar in the scene stays a plain object.");
+            return prefab;
+        }
+
         static string[] Animations(Dictionary<string, object> json) =>
             json.TryGetValue("extensions", out var extensions) && extensions is Dictionary<string, object> map &&
             map.TryGetValue(VRVlog.Poses.HumanoidAnimationData.Extension, out var poses) && poses is Dictionary<string, object> extension

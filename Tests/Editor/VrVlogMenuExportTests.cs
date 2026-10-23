@@ -1,3 +1,5 @@
+using System;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -8,11 +10,11 @@ using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // "VRMを書き出す..." in an avatar's Hierarchy context menu opens the export window with
-    // that avatar chosen, or the diagnostics when the export cannot start.
+    // "VRMを書き出す..." in an avatar's Hierarchy or Project window context menu opens the
+    // export window with that avatar chosen, or the diagnostics when the export cannot start.
     public sealed class VrVlogMenuExportTests
     {
-        const string ContextExport = "GameObject/VR Vlog/VRMを書き出す...";
+        const string ContextExport = "GameObject/VR Vlog/VRMを書き出す...", ProjectExport = "Assets/VR Vlog/VRMを書き出す...";
 
         static GameObject Source(ExperimentalExpressionCaptureWindow window) =>
             (GameObject)typeof(ExperimentalExpressionCaptureWindow).GetField("source", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(window);
@@ -65,6 +67,45 @@ namespace VRVlog.LilToonExporter.Tests
                 Selection.objects = selection;
                 CloseWindows();
                 Object.DestroyImmediate(first); Object.DestroyImmediate(second);
+            }
+        }
+
+        // From the Project window the board takes the prefab asset itself; nothing is
+        // placed in the open scene for it.
+        [Test]
+        public void ExportFromAPrefabsContextMenuOpensTheExportWindowWithThatPrefab()
+        {
+            CloseWindows();
+            var folder = "Assets/VRVlogMenuExport-" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", Path.GetFileName(folder));
+            var selection = Selection.objects;
+            var source = new GameObject("SampleAvatar_prefab", typeof(Animator));
+            try
+            {
+                var prefab = PrefabUtility.SaveAsPrefabAsset(source, folder + "/SampleAvatar_prefab.prefab");
+                Object.DestroyImmediate(source);
+                var scene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+                var roots = scene.GetRootGameObjects();
+                var ready = DependencyDiagnostics.StartupError(DependencyDiagnostics.Installed()) == null;
+                Selection.activeObject = prefab;
+                Assert.That(EditorApplication.ExecuteMenuItem(ProjectExport), Is.True);
+                var windows = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>();
+                if (!ready)
+                {
+                    Assert.That(windows, Is.Empty, DependencyDiagnostics.CreateReport());
+                    return;
+                }
+                Assert.That(windows.Length, Is.EqualTo(1), DependencyDiagnostics.CreateReport());
+                Assert.That(Source(windows[0]), Is.SameAs(prefab));
+                Assert.That(Session(windows[0]), Is.Null);
+                Assert.That(scene.GetRootGameObjects(), Is.EqualTo(roots));
+            }
+            finally
+            {
+                Selection.objects = selection;
+                CloseWindows();
+                if (source != null) Object.DestroyImmediate(source);
+                AssetDatabase.DeleteAsset(folder);
             }
         }
     }

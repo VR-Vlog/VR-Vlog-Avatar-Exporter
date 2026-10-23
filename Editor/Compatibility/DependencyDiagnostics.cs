@@ -184,7 +184,10 @@ namespace VRVlog.LilToonExporter.Compatibility
             else OpenExporter();
         }
 
+        // A prefab asset itself becomes the board's avatar: the export works on a copy in a
+        // scene of its own, so neither the open scene nor the prefab changes.
         [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, false, ExporterMenu.HierarchyPriority + ExporterMenu.ExportOrder)]
+        [MenuItem(ExporterMenu.Assets + ExporterMenu.Export, false, ExporterMenu.AssetsPriority + ExporterMenu.ExportOrder)]
         static void OpenForAvatarFromMenu(MenuCommand command)
         {
             var selected = command.context as GameObject ?? Selection.activeGameObject;
@@ -192,6 +195,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         }
 
         [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, true)]
+        [MenuItem(ExporterMenu.Assets + ExporterMenu.Export, true)]
         static bool CanOpenForAvatarFromMenu() => ExporterMenu.OneAvatarRootSelected();
 
         public static void OpenDiagnostics() => EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境"));
