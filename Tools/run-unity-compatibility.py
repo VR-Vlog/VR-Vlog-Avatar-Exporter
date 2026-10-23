@@ -831,6 +831,7 @@ INTEGRATION_CASES = {
     },
     'NdmfAnimationModeSamplingTests': {
         'ExportSurvivesAnOptimizingPassThatSamplesTheRootThroughAnimationMode': 1,
+        'GenericAvatarLendsAaoAControllerThatAnimationModeCanSample': 1,
     },
     'NdmfBlinkPreparationTests': {
         'InstalledAaoMergeKeepsTheSelectedRendererInCallbackFreeBlinkPreview': 1,

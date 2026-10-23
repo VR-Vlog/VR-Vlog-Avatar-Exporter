@@ -11,6 +11,11 @@
       "name": "nadena.dev.ndmf",
       "expression": "",
       "define": "VRVLOG_TEST_NDMF"
+    },
+    {
+      "name": "nadena.dev.ndmf",
+      "expression": "1.8.0",
+      "define": "VRVLOG_TEST_NDMF_PLATFORMS"
     }
   ]
 }
