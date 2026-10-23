@@ -130,6 +130,39 @@ namespace VRVlog.LilToonExporter.Tests
             return control;
         }
 
+        private AnimatorState NeutralFxGate(string parameter = "Dance")
+        {
+            controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
+            var machine = Layer("Dance gate"); var neutral = State(machine, "DISABLE dance"); machine.defaultState = neutral;
+            var disabled = State(machine, "ENABLE dance");
+            PlayableControl(neutral, "FX", 1, 0); PlayableControl(disabled, "FX", 0, 0);
+            Transition(neutral, disabled, parameter, 1);
+            return neutral;
+        }
+
+        private List<VrChatExpressionMenu.MorphValue> Play(IDictionary<string, float> selection) =>
+            ExperimentalInstalledExpressionPlayer.Sample(avatar, metadata, selection);
+
+        [Test]
+        public void FxOffSelectionIsRejectedAndLaterSamplesStartFromFreshDefaults()
+        {
+            Gate().motion = Clip("Menu face", 75); NeutralFxGate();
+            var selection = new Dictionary<string, float> { ["Menu"] = 1, ["Dance"] = 1 };
+            Assert.That(Assert.Throws<InvalidOperationException>(() => Play(selection)).Message,
+                Does.Contain("ENABLE dance").And.Contain("FXの重み"));
+            Assert.That(Play(new Dictionary<string, float> { ["Menu"] = 1 }).Single(v => v.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
+        }
+
+        [Test]
+        public void NonUnitFxCommandCannotBeCancelledByAnotherCommandOnTheSameState()
+        {
+            Gate().motion = Clip("Menu face", 75);
+            var machine = Layer("Multiple FX commands"); var state = State(machine, "Disable then restore"); machine.defaultState = state;
+            PlayableControl(state, "FX", 0, 0); PlayableControl(state, "FX", 1, 0);
+            Assert.That(Assert.Throws<InvalidOperationException>(() => Play(new Dictionary<string, float> { ["Menu"] = 1 })).Message,
+                Does.Contain("Disable then restore").And.Contain("FXの重み"));
+        }
+
         [TestCase("Action", "VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")]
         [TestCase("Gesture", "VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")]
         [TestCase("Additive", "VRC.SDK3.Avatars.Components.VRCPlayableLayerControl")]

@@ -171,6 +171,21 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(messages, Does.Not.Contain(ExpressionSettlement.SelfTransition));
         }
 
+        // An exit edge waiting on a trigger that is not set cannot be followed.
+        // The final check cannot read triggers, so the edge is reported as held,
+        // and the moving face is still checked up to its last key.
+        [Test]
+        public void AHeldExitTimeIsReportedSeparatelyAndStillChecked()
+        {
+            controller.AddParameter("Later", AnimatorControllerParameterType.Trigger);
+            var smile = Selected(Clip("Slow face", AnimationCurve.Linear(0, 0, 10, 100)));
+            var edge = Timed(smile, State(controller.layers[0].stateMachine, "Later", Clip("Later", 30)), 5);
+            edge.AddCondition(AnimatorConditionMode.If, 0, "Later");
+            var messages = new List<string>();
+            Assert.That(Play(messages), Is.EqualTo(100).Within(.01));
+            Assert.That(messages, Is.EqualTo(new[] { ExpressionSettlement.FinalKeyOfClip, ExpressionSettlement.HeldTransitions }));
+        }
+
         // A stopped or reversed clock never reaches the clip's last key.
         [TestCase(0f)] [TestCase(-1f)]
         public void AMovingClipOnAStoppedOrReversedClockIsNotSaved(float speed)

@@ -1038,6 +1038,82 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(neutral.Single().Weight, Is.EqualTo(expected.Weights["Face size"]).Within(.01));
         }
 
+        // A fractional pupil layer keeps the base layer as native support.
+        // Its reachable clips are checked before evaluation, so a state that
+        // is left within the first Evaluate is still rejected.
+        void SampleNativeSupportBase()
+        {
+            var metadata = new VrChatExpressionMenu.Source { Controller = controller };
+            var roots = new HashSet<EditorCurveBinding> { EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal") };
+            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, roots, null, metadata);
+            Assert.That(dependencies.NativeSupportLayers, Does.Contain(0));
+            VrChatExpressionSampler.SampleNeutral(avatar, controller, dependencies, metadata, null);
+        }
+
+        [TestCase(false, false, false)]
+        [TestCase(false, true, true)]
+        [TestCase(true, false, true)]
+        [TestCase(true, true, false)]
+        public void NativeSupportBaseRejectsUnsafeZeroDurationInitialOrIntermediateMotion(bool writeDefaults, bool animationEvent, bool intermediate)
+        {
+            var unsafeClip = Clip("Skipped unsupported base", ("Face size", 90));
+            AnimationUtility.SetEditorCurve(unsafeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Linear(0, 0, 30, 100));
+            if (animationEvent) AnimationUtility.SetAnimationEvents(unsafeClip, new[] { new AnimationEvent { time = 30, functionName = "UnsupportedFutureCallback" } });
+            else AnimationUtility.SetObjectReferenceCurve(unsafeClip, EditorCurveBinding.PPtrCurve("Face", typeof(SkinnedMeshRenderer), "m_Mesh"),
+                new[] { new ObjectReferenceKeyframe { time = 0, value = mesh } });
+            var safeClip = Clip("Final supported base", ("Face size", 90));
+            AnimationUtility.SetEditorCurve(safeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Linear(0, 0, 30, 100));
+            var machine = controller.layers[0].stateMachine;
+            var unsafeState = State(machine, "Skipped unsupported", unsafeClip);
+            var steady = State(machine, "Steady supported", safeClip);
+            machine.defaultState = unsafeState;
+            void Immediately(AnimatorState source, AnimatorState target)
+            {
+                var transition = source.AddTransition(target); transition.hasExitTime = false; transition.hasFixedDuration = true; transition.duration = 0;
+                transition.AddCondition(AnimatorConditionMode.Equals, 0, "Menu");
+            }
+            if (intermediate)
+            {
+                var initial = State(machine, "Safe initial", safeClip); machine.defaultState = initial;
+                Immediately(initial, unsafeState);
+            }
+            Immediately(unsafeState, steady);
+            Permanent(AddLayer("Fractional pupil"), writeDefaults);
+            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
+            var before = EditorJsonUtility.ToJson(controller);
+            var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
+            Assert.That(error.Message, Is.EqualTo(animationEvent ? "常時適用FXと表情の影響範囲を確定できません。" : "表情への遷移にマテリアル・オブジェクトの差し替えが含まれます。"));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
+            var skin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
+            Assert.That(skin.sharedMesh, Is.SameAs(mesh));
+            Assert.That(Enumerable.Range(0, mesh.blendShapeCount).Select(skin.GetBlendShapeWeight), Is.All.Zero);
+        }
+
+        [Test]
+        public void NativeSupportBaseValidatesBlendTreeMotionsConservatively()
+        {
+            var safeClip = Clip("Current supported base", ("Face size", 90));
+            AnimationUtility.SetEditorCurve(safeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
+                AnimationCurve.Linear(0, 0, 30, 100));
+            var unsafeClip = Clip("Unobserved unsupported base", ("Face size", 90));
+            AnimationUtility.SetAnimationEvents(unsafeClip, new[] { new AnimationEvent { time = 30, functionName = "UnsupportedFutureCallback" } });
+            var machine = controller.layers[0].stateMachine; var current = State(machine, "Current supported", safeClip); machine.defaultState = current;
+            controller.AddParameter("BaseTree", AnimatorControllerParameterType.Float);
+            var tree = new BlendTree { name = "Support tree", blendType = BlendTreeType.Simple1D, blendParameter = "BaseTree", useAutomaticThresholds = false };
+            AssetDatabase.AddObjectToAsset(tree, controller);
+            tree.children = new[] { new ChildMotion { motion = safeClip, threshold = 0, timeScale = 1 }, new ChildMotion { motion = unsafeClip, threshold = 1, timeScale = 1 } };
+            current.motion = tree;
+            Permanent(AddLayer("Fractional pupil"));
+            var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
+            var before = EditorJsonUtility.ToJson(controller);
+            var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
+            Assert.That(error.Message, Is.EqualTo("常時適用FXと表情の影響範囲を確定できません。"));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
+            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(2), Is.Zero);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public async Task FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport(bool additive)
