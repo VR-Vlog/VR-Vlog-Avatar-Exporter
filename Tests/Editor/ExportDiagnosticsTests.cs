@@ -11,6 +11,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             "SecretAvatarRoot", "SecretHairObject", "SecretHiddenObject", "SecretMeshAsset", "SecretMaterial", "SecretTexture",
             "SecretShape", "SecretAuthor", "SecretVrmTitle", "SecretExpression", "秘密の髪", "SecretClip", "someone",
+            "SecretLayer", "Secret Share", "Secret Person", "髪",
         };
 
         GameObject root;
@@ -121,11 +122,19 @@ namespace VRVlog.LilToonExporter.Tests
             var report = new ExportFallbackReport();
             report.Record(ExportOutcome.Omitted, "ブレンドシェイプ", "SecretHairObject",
                 "SecretHairObject: 「SecretClip」を省きました C:/Users/someone/Desktop/a.anim").Path = "SecretAvatarRoot/SecretHairObject";
+            report.Record(ExportOutcome.Approximated, "マテリアル", "SecretMaterial", "SecretMaterial: SecretTexture を縮小しました");
             var warnings = new[]
             {
                 "表情 SecretExpression の動きを止めました",
                 "秘密の髪 を書き出しませんでした",
                 "Assets/SecretFolder/SecretTexture.png を縮小しました",
+                // A name the VRM does not hold, paths with spaces, and a one-character name.
+                "FX の SecretLayer を読めませんでした",
+                @"\\fileserver\Secret Share\a.png を読めませんでした",
+                "/Users/Secret Person/a.png を読めませんでした",
+                "髪 を書き出しませんでした",
+                // A fixed sentence of the exporter is written as it is.
+                "元のVRMの瞬き設定が出力時に失われました。",
             };
             return ExportDiagnostics.Record(root, Vrm(), report, warnings, ExportDiagnostics.QuickTransfer).Text();
         }
@@ -138,6 +147,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(text, Does.Not.Contain("Secret"));
             Assert.That(text, Does.Not.Contain("C:/"));
             Assert.That(text, Does.Not.Contain("Assets/"));
+            Assert.That(text, Does.Not.Contain("/Users/"));
+            Assert.That(text, Does.Not.Contain(@"\\"));
         }
 
         [Test]
@@ -167,11 +178,20 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var text = Text();
             Assert.That(text, Does.Contain("[変換で変えた項目]"));
-            Assert.That(text, Does.Contain("省略 [ブレンドシェイプ]"));
-            Assert.That(text, Does.Contain("「*」を省きました <path>"));
-            Assert.That(text, Does.Contain("表情 * の動きを止めました"));
-            Assert.That(text, Does.Contain("* を書き出しませんでした"));
-            Assert.That(text, Does.Contain("<path> を縮小しました"));
+            Assert.That(text, Does.Contain("省略 [ブレンドシェイプ] 文面は省略 / 対象 メッシュ #1"));
+            Assert.That(text, Does.Contain("近似 [マテリアル] 文面は省略 / 対象 マテリアル #1"));
+            Assert.That(text, Does.Contain("参考 [そのほかの知らせ] 文面は省略（7件）"));
+            Assert.That(text, Does.Contain("参考 [そのほかの知らせ] 元のVRMの瞬き設定が出力時に失われました。"));
+        }
+
+        [Test]
+        public void AnUnreadableVrmHasNoChangeSection()
+        {
+            var text = ExportDiagnostics.Record(root, new byte[] { 1, 2, 3 }, null, new[] { "SecretLayer" }, ExportDiagnostics.QuickTransfer).Text();
+            Assert.That(text, Does.Contain("VRMを読めませんでした"));
+            Assert.That(text, Does.Not.Contain("[変換で変えた項目]"));
+            Assert.That(text, Does.Not.Contain("なし"));
+            Assert.That(text, Does.Not.Contain("Secret"));
         }
 
         [Test]
@@ -184,11 +204,14 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void ShaderNamesOutsideThePublicListAreHidden()
+        public void ShadersShowOnlyTheirFamily()
         {
-            Assert.That(ExportDiagnostics.ShaderText("Hidden/lilToonFurTwoPass"), Is.EqualTo("Hidden/lilToonFurTwoPass（ファー・2パス）"));
-            Assert.That(ExportDiagnostics.ShaderText("_lil/[Optional] lilToonOutlineOnlyCutout"), Does.Contain("輪郭線のみ・カットアウト"));
+            Assert.That(ExportDiagnostics.ShaderText("Hidden/lilToonFurTwoPass"), Is.EqualTo("lilToon（ファー・2パス）"));
+            Assert.That(ExportDiagnostics.ShaderText("_lil/[Optional] lilToonOutlineOnlyCutout"), Is.EqualTo("lilToon（輪郭線のみ・カットアウト）"));
+            Assert.That(ExportDiagnostics.ShaderText("Standard"), Is.EqualTo("Standard"));
             Assert.That(ExportDiagnostics.ShaderText("SecretShop/SecretShader"), Is.EqualTo("その他（lilToon以外）"));
+            Assert.That(ExportDiagnostics.ShaderText("ToonShader_Secret/Body"), Is.EqualTo("その他（lilToon以外）"));
+            Assert.That(ExportDiagnostics.ShaderText("StandardSecret"), Does.Not.Contain("Secret"));
             Assert.That(ExportDiagnostics.ShaderText("Hidden/InternalErrorShader"), Is.EqualTo("シェーダーなし"));
         }
     }

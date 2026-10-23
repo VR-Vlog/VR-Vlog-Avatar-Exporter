@@ -4,30 +4,33 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using UnityEditor;
 using UnityEngine;
 using VRVlog.LilToon;
 
 namespace VRVlog.LilToonExporter
 {
     // Text a user pastes when hair or a body vanishes or turns see-through in
-    // the app. It is read from the written VRM, so it shows what the app gets,
-    // and it never carries names: meshes and materials are numbered, shader
-    // names outside a fixed public list are hidden, and every name the avatar
-    // or the VRM holds is masked in the lines taken from the export report.
+    // the app. It is read from the written VRM, so it shows what the app gets.
+    // It is built only from numbers and fixed words, never from text that can
+    // hold a name: meshes and materials are numbered, a shader shows as its
+    // family, and a line of the export report shows its reason only when that
+    // reason is a fixed sentence of the exporter.
     internal sealed class ExportDiagnostics
     {
         internal const string QuickTransfer = "かんたん転送";
         internal const string DetailedTransfer = "通常の転送";
         internal const string TransferSave = "転送画面から保存";
         internal const string BoardSave = "表情ボードから保存";
+        internal const string ReasonHidden = "文面は省略";
 
-        const string Mask = "*";
-
-        // Shader names starting with one of these are public package names and kept as they are.
-        static readonly string[] PublicShaderPrefixes =
+        // Shader families by name prefix. Only the family label is written, never the shader name.
+        static readonly (string Prefix, string Family)[] ShaderFamilies =
         {
-            "lilToon", "Hidden/lilToon", "_lil/", "Hidden/ltspass", "Standard", "Unlit/", "Legacy Shaders/", "Mobile/", "Particles/",
-            "VRM/", "VRM10/", "UniGLTF/", "Universal Render Pipeline/", "UnityChanToonShader/", "Toon", ".poiyomi/", "Poiyomi",
+            ("lilToon", "lilToon"), ("Hidden/lilToon", "lilToon"), ("_lil/", "lilToon"), ("Hidden/ltspass", "lilToon"),
+            ("Standard", "Standard"), ("Unlit/", "Unlit"), ("Legacy Shaders/", "Legacy Shaders"), ("Mobile/", "Mobile"),
+            ("Particles/", "Particles"), ("VRM/MToon", "MToon"), ("VRM10/", "MToon"), ("UniGLTF/", "UniGLTF"),
+            ("Universal Render Pipeline/", "URP"), ("UnityChanToonShader/", "UnityChanToonShader"), (".poiyomi/", "Poiyomi"),
         };
 
         // Parts of a shader name that change how a material draws, in the order they are listed.
@@ -48,6 +51,9 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<int, byte[]> images = new Dictionary<int, byte[]>();
         readonly Dictionary<int, string> alpha = new Dictionary<int, string>();
         string text;
+        // False when the VRM could not be read and only the head was written.
+        bool read = true;
+        static HashSet<string> fixedTexts;
 
         sealed class MeshLine
         {
@@ -75,7 +81,7 @@ namespace VRVlog.LilToonExporter
             try { Last = Build(source, bytes, report, warnings, kind); }
             catch (Exception error)
             {
-                Last = new ExportDiagnostics(bytes);
+                Last = new ExportDiagnostics(bytes) { read = false };
                 Last.head.Add("VR Vlog 書き出し診断");
                 Last.head.Add("VRMを読めませんでした: " + error.GetType().Name);
             }
@@ -119,9 +125,12 @@ namespace VRVlog.LilToonExporter
                     builder.Append(" / テクスチャ ").AppendLine(material.Textures);
                 }
             }
-            builder.AppendLine("[変換で変えた項目]");
-            if (changes.Count == 0) builder.AppendLine("なし");
-            foreach (var line in changes) builder.AppendLine(line);
+            if (read)
+            {
+                builder.AppendLine("[変換で変えた項目]");
+                if (changes.Count == 0) builder.AppendLine("なし");
+                foreach (var line in changes) builder.AppendLine(line);
+            }
             return text = builder.ToString();
         }
 
@@ -146,13 +155,20 @@ namespace VRVlog.LilToonExporter
 
             // Meshes in node order; a mesh used by several nodes is listed once.
             var meshesJson = Array(json, "meshes");
-            var listedMeshes = new HashSet<int>();
+            var listedMeshes = new Dictionary<int, int>();
             var vertexTotal = 0L;
+            // The numbers a report line's targets show as, by the name in the VRM. The names themselves are not written.
+            var numbers = new Dictionary<string, string>(StringComparer.Ordinal);
             foreach (var rawNode in Array(json, "nodes"))
             {
                 if (!(rawNode is Dictionary<string, object> node) || !node.ContainsKey("mesh")) continue;
                 var meshIndex = Integer(node, "mesh");
-                if (!listedMeshes.Add(meshIndex) || meshIndex < 0 || meshIndex >= meshesJson.Count) continue;
+                if (meshIndex < 0 || meshIndex >= meshesJson.Count) continue;
+                if (!listedMeshes.TryGetValue(meshIndex, out var number))
+                    listedMeshes[meshIndex] = number = diagnostics.meshes.Count + 1;
+                if (node.TryGetValue("name", out var rawNodeName) && rawNodeName is string nodeName && !numbers.ContainsKey(nodeName))
+                    numbers[nodeName] = "メッシュ #" + number;
+                if (number <= diagnostics.meshes.Count) continue;
                 var primitives = Array(meshesJson[meshIndex] as Dictionary<string, object>, "primitives")
                     .OfType<Dictionary<string, object>>().ToList();
                 var line = new MeshLine { Submeshes = primitives.Count, Skinned = node.ContainsKey("skin") };
@@ -268,18 +284,79 @@ namespace VRVlog.LilToonExporter
                 head.Add("元のアバター レンダラー " + renderers.Length + " / 初期で非表示 " + inactive + " / 無効 " + disabled);
             }
 
-            var names = Names(source, json, report);
+            for (var index = 0; index < gltfMaterials.Count; index++)
+                if (gltfMaterials[index] is Dictionary<string, object> material && material.TryGetValue("name", out var rawName) &&
+                    rawName is string name && !numbers.ContainsKey(name))
+                    numbers[name] = "マテリアル #" + (index + 1);
+
             var list = ExportResultList.Build(report, warnings);
             head.Add("変換の結果 " + string.Join("・", ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome) + list.Summary[outcome])) +
                 "・参考" + list.NoticeCount + (list.MissingShaderCount > 0 ? " / シェーダーなし " + list.MissingShaderCount : ""));
+            // Lines that read the same once the names are gone are written once with their count.
+            var counts = new Dictionary<(string, string), int>();
+            var order = new List<(string Line, string Targets)>();
             foreach (var row in list.Rows)
             {
-                var line = ExportResultList.Label(row.Outcome) + " [" + names.Apply(row.Group) + "] " + names.Apply(row.Content);
-                if (row.Count > 1) line += "（" + row.Count + "件）";
-                diagnostics.changes.Add(line);
+                var key = (ChangeLine(row), Targets(row, numbers));
+                if (!counts.ContainsKey(key)) order.Add(key);
+                counts[key] = (counts.TryGetValue(key, out var count) ? count : 0) + row.Count;
             }
+            foreach (var key in order)
+                diagnostics.changes.Add(key.Line + (counts[key] > 1 ? "（" + counts[key] + "件）" : "") + key.Targets);
             return diagnostics;
         }
+
+        // One line of the report as fixed words. The group is a category the exporter's code names. The reason is
+        // written only when it is fixed text of the exporter; a reason built with a name shows as "文面は省略".
+        internal static string ChangeLine(ExportResultRow row) =>
+            ExportResultList.Label(row.Outcome) + " [" + row.Group + "] " + (IsFixedText(row.Content) ? row.Content : ReasonHidden);
+
+        // The targets of a report line as mesh and material numbers.
+        internal static string Targets(ExportResultRow row, IReadOnlyDictionary<string, string> numbers)
+        {
+            var line = new StringBuilder();
+            var known = new List<string>();
+            var unknown = 0;
+            foreach (var target in row.Targets)
+            {
+                if (target.Name != null && numbers.TryGetValue(target.Name, out var number))
+                {
+                    if (!known.Contains(number)) known.Add(number);
+                }
+                else unknown++;
+            }
+            if (known.Count > 0) line.Append(" / 対象 ").Append(string.Join("・", known)).Append(unknown > 0 ? " ほか" + unknown : "");
+            return line.ToString();
+        }
+
+        // True for a sentence or word the exporter itself writes: a source or a translation in its locale tables.
+        // Text built with a name, a path or an exception message is never one of them.
+        internal static bool IsFixedText(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            if (fixedTexts == null)
+            {
+                var found = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var guid in AssetDatabase.FindAssets("ExporterLocale_ t:TextAsset"))
+                {
+                    var path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!Regex.IsMatch(path, @"/Editor/Locales/ExporterLocale_[A-Za-z-]+\.json$")) continue;
+                    var asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+                    var table = asset != null ? JsonUtility.FromJson<LocaleTable>(asset.text) : null;
+                    foreach (var entry in table?.entries ?? new LocaleEntry[0])
+                    {
+                        if (entry == null) continue;
+                        if (!string.IsNullOrEmpty(entry.source)) found.Add(entry.source);
+                        if (!string.IsNullOrEmpty(entry.translated)) found.Add(entry.translated);
+                    }
+                }
+                fixedTexts = found;
+            }
+            return fixedTexts.Contains(text);
+        }
+
+        [Serializable] sealed class LocaleTable { public LocaleEntry[] entries; }
+        [Serializable] sealed class LocaleEntry { public string source, translated; }
 
         // The decoded main texture's alpha, measured when the text is first made.
         string Alpha(int image, float cutoff)
@@ -320,15 +397,16 @@ namespace VRVlog.LilToonExporter
             if (string.IsNullOrEmpty(shader))
             {
                 // The mobile record names its own family instead of the shader.
-                var family = record != null && record.TryGetValue("shaderFamily", out var raw) ? raw as string : null;
-                return family != null && Regex.IsMatch(family, "^[A-Za-z0-9_ -]{1,32}$") ? "lilToon（" + family + "）" : "不明";
+                var mobile = record != null && record.TryGetValue("shaderFamily", out var raw) ? raw as string : null;
+                return mobile != null && Regex.IsMatch(mobile, "^[A-Za-z0-9_ -]{1,32}$") ? "lilToon（" + mobile + "）" : "不明";
             }
             if (shader == "Hidden/InternalErrorShader") return "シェーダーなし";
-            if (!PublicShaderPrefixes.Any(prefix => shader.StartsWith(prefix, StringComparison.Ordinal))) return "その他（lilToon以外）";
+            var family = ShaderFamilies.FirstOrDefault(known => shader.StartsWith(known.Prefix, StringComparison.Ordinal)).Family;
+            if (family == null) return "その他（lilToon以外）";
             var traits = new List<string>();
             foreach (var (part, label) in ShaderTraits)
                 if (shader.IndexOf(part, StringComparison.Ordinal) >= 0 && !(part == "Outline" && traits.Contains("輪郭線のみ"))) traits.Add(label);
-            return shader + (traits.Count > 0 ? "（" + string.Join("・", traits) + "）" : "");
+            return family + (traits.Count > 0 ? "（" + string.Join("・", traits) + "）" : "");
         }
 
         static string IndexFormat(int componentType)
@@ -385,96 +463,6 @@ namespace VRVlog.LilToonExporter
             var length = Integer(view, "byteLength");
             try { return LilToonGlbExtension.ImageSize(binary, offset, length); }
             catch (Exception) { return Tuple.Create(0, 0); }
-        }
-
-        // Every name the avatar, the VRM or the report can show, so a line from the report never carries one.
-        static Redactor Names(GameObject source, Dictionary<string, object> json, ExportFallbackReport report)
-        {
-            var names = new HashSet<string>(StringComparer.Ordinal);
-            void Add(string name)
-            {
-                if (string.IsNullOrWhiteSpace(name)) return;
-                name = name.Trim();
-                names.Add(name);
-                // "Hair (1)" and "Hair.001" also show as "Hair".
-                var stem = Regex.Replace(name, @"(\s*\(\d+\)|\.\d+)$", "");
-                if (stem.Length > 0) names.Add(stem);
-            }
-            if (source != null)
-            {
-                foreach (var transform in source.GetComponentsInChildren<Transform>(true)) Add(transform.name);
-                foreach (var renderer in source.GetComponentsInChildren<Renderer>(true))
-                {
-                    foreach (var material in renderer.sharedMaterials)
-                    {
-                        if (material == null) continue;
-                        Add(material.name);
-                        foreach (var property in material.GetTexturePropertyNames())
-                            if (material.HasProperty(property) && material.GetTexture(property) is Texture texture && texture != null) Add(texture.name);
-                    }
-                    var filter = renderer.GetComponent<MeshFilter>();
-                    var mesh = renderer is SkinnedMeshRenderer skinned ? skinned.sharedMesh : filter != null ? filter.sharedMesh : null;
-                    if (mesh == null) continue;
-                    Add(mesh.name);
-                    for (var i = 0; i < mesh.blendShapeCount; i++) Add(mesh.GetBlendShapeName(i));
-                }
-            }
-            CollectStrings(json, Add);
-            foreach (var entry in report?.Results ?? (IReadOnlyList<ExportResultEntry>)System.Array.Empty<ExportResultEntry>())
-            {
-                Add(entry.Name);
-                foreach (var part in (entry.Path ?? "").Split('/')) Add(part);
-            }
-            return new Redactor(names);
-        }
-
-        // Names in the VRM: every "name", the metadata, and the keys of custom expressions.
-        static void CollectStrings(object node, Action<string> add, string key = null)
-        {
-            if (node is Dictionary<string, object> map)
-            {
-                foreach (var pair in map)
-                {
-                    if (pair.Key == "custom" && pair.Value is Dictionary<string, object> custom) foreach (var name in custom.Keys) add(name);
-                    CollectStrings(pair.Value, add, pair.Key);
-                }
-            }
-            else if (node is List<object> list) foreach (var item in list) CollectStrings(item, add, key);
-            else if (node is string value && (key == "name" || key == "authors" || key == "copyrightInformation" || key == "contactInformation"))
-                add(value);
-        }
-
-        // Masks names and paths. Built once per export from every name that can show.
-        internal sealed class Redactor
-        {
-            readonly Regex ascii;
-            readonly List<string> others;
-
-            internal Redactor(IEnumerable<string> names)
-            {
-                // Longest first, so "Hair_Back" is masked whole before "Hair".
-                var ordered = names.Where(name => name.Length >= 2 || name.Any(c => c > 0x7f)).Distinct(StringComparer.Ordinal)
-                    .OrderByDescending(name => name.Length).ToList();
-                var plain = ordered.Where(name => name.All(c => c < 0x80)).Select(Regex.Escape).ToList();
-                ascii = plain.Count == 0 ? null
-                    : new Regex(@"(?<![A-Za-z0-9_])(?:" + string.Join("|", plain) + @")(?![A-Za-z0-9_])", RegexOptions.CultureInvariant);
-                others = ordered.Where(name => name.Any(c => c >= 0x80)).ToList();
-            }
-
-            internal string Apply(string text)
-            {
-                if (string.IsNullOrEmpty(text)) return "";
-                // Paths first: a drive path or a project path may hold names not on the avatar.
-                text = Regex.Replace(text, @"[A-Za-z]:[\\/][^\s「」""']*", "<path>");
-                text = Regex.Replace(text, @"(?<![A-Za-z0-9_])(Assets|Packages)/[^\s「」""']*", "<path>");
-                foreach (var name in others) text = text.Replace(name, Mask);
-                if (ascii != null) text = ascii.Replace(text, Mask);
-                // Quoted words are names in the report's sentences.
-                text = Regex.Replace(text, "「[^」]*」", "「" + Mask + "」");
-                text = Regex.Replace(text, "『[^』]*』", "『" + Mask + "』");
-                text = Regex.Replace(text, "\"[^\"]*\"", "\"" + Mask + "\"");
-                return text;
-            }
         }
 
         static string Number(long value) => value.ToString("#,0", CultureInfo.InvariantCulture);

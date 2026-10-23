@@ -32,7 +32,8 @@ BEHAVIOR_CASES = {
         'TheTextNumbersEachMeshAndMaterial': 1,
         'TheTextListsWhatTheConversionChanged': 1,
         'TheSameBytesAreRecordedOnce': 1,
-        'ShaderNamesOutsideThePublicListAreHidden': 1,
+        'AnUnreadableVrmHasNoChangeSection': 1,
+        'ShadersShowOnlyTheirFamily': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
