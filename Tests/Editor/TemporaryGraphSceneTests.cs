@@ -42,8 +42,9 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
 
-        [Test]
-        public void SamplingAnExpressionKeepsTheSavedSceneUnmodified()
+        // Saves and reopens a scene holding an avatar whose FX has a face layer
+        // (Face=1 sets Face size to 75) and a layer that never touches the face.
+        UnityEngine.SceneManagement.Scene SavedScene(out GameObject avatar, out VrChatExpressionMenu.Source metadata)
         {
             var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Face", AnimatorControllerParameterType.Int);
@@ -62,7 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
 
             var mesh = BaseShapeFixture.Create(); AssetDatabase.CreateAsset(mesh, folder + "/Mesh.asset");
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            var avatar = new GameObject("Avatar", typeof(Animator));
+            avatar = new GameObject("Avatar", typeof(Animator));
             avatar.GetComponent<Animator>().runtimeAnimatorController = controller;
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
             body.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
@@ -72,11 +73,26 @@ namespace VRVlog.LilToonExporter.Tests
             scene = EditorSceneManager.OpenScene(folder + "/Scene.unity", OpenSceneMode.Single);
             avatar = scene.GetRootGameObjects().Single(root => root.name == "Avatar");
             Assert.That(scene.isDirty, Is.False);
+            metadata = new VrChatExpressionMenu.Source { Controller = controller };
+            return scene;
+        }
 
-            var metadata = new VrChatExpressionMenu.Source { Controller = controller };
-            var values = VrChatExpressionSampler.Sample(avatar, controller, metadata.Defaults,
+        [Test]
+        public void SamplingAnExpressionKeepsTheSavedSceneUnmodified()
+        {
+            var scene = SavedScene(out var avatar, out var metadata);
+            var values = VrChatExpressionSampler.Sample(avatar, metadata.Controller, metadata.Defaults,
                 new Dictionary<string, float> { ["Face"] = 1 }, null, metadata);
+            Assert.That(values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(scene.isDirty, Is.False);
+        }
 
+        // The expression board plays installed expressions through this player.
+        [Test]
+        public void PlayingAnInstalledExpressionKeepsTheSavedSceneUnmodified()
+        {
+            var scene = SavedScene(out var avatar, out var metadata);
+            var values = ExperimentalInstalledExpressionPlayer.Sample(avatar, metadata, new Dictionary<string, float> { ["Face"] = 1 });
             Assert.That(values.Single(value => value.Shape == "Face size").Weight, Is.EqualTo(75).Within(.01));
             Assert.That(scene.isDirty, Is.False);
         }
