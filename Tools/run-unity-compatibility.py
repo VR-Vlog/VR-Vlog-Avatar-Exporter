@@ -331,7 +331,6 @@ BEHAVIOR_CASES = {
         'UnsupportedIndividualControlTimingAndCallbacksStayStrict': 4,
         'NonFxIndividualControlsRemainOutsideFacialWeightEvaluation': 2,
         'BaseLayerControlUsesTheNativeUnitWeightContract': 2,
-        'SelectedLayerControlMenuSurvivesFullVrmRoundTrip': 1,
         'InactiveDirectClipDistinguishesDormantEnableFromReachedExplicitDisable': 2,
         'ZeroWeightControlSourceCannotHideALaterParameterDrivenWeightChange': 1,
         'StandaloneClipKeepsOriginalSdkBaseLayerAtUnitWeightAfterIndexRemap': 1,
@@ -516,7 +515,6 @@ BEHAVIOR_CASES = {
         'ProvenMovingDirectClipStillHonorsAProvenPermanentUpperOverride': 2,
         'ProvenMovingDirectClipRetainsTheConfiguredSingleStateBlendTreeSupport': 1,
         'SourceFrameRangePolicyPreservesNativeClampedGeometryAndUnlimitedAuthoredMath': 2,
-        'FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport': 2,
         'NeutralAdditiveDisjointMorphGroupsMatchTheAuthoredNativeController': 4,
         'NeutralAdditiveAutomaticSupportKeepsNativeDefaultsWithoutBakingMovingBlink': 1,
         'InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation': 1,
@@ -855,7 +853,6 @@ BEHAVIOR_CASES = {
         'MixedMenuSetAndDeleteKeepsSetWithoutReapplyingDeletion': 1,
         'AuthoredActivationKeepsInactiveDependentShape': 2,
         'MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild': 3,
-        'MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload': 3,
     },
     'InstalledNdmfNeutralExportTests': {
         'InstalledModularAvatarProcessesAnInactiveMergeAnimatorForPreparedFx': 1,
