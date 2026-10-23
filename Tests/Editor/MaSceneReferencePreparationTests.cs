@@ -216,7 +216,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("")]
         [TestCase(null)]
-        public void MissingDirectTargetAndMissingPathRemainRejectedWithoutEditingTheSource(string referencePath)
+        public void MissingDirectTargetAndMissingPathWarnWithoutEditingTheSource(string referencePath)
         {
             CreateFixture();
             SetRawMergeReference(null, referencePath);
@@ -228,7 +228,12 @@ namespace VRVlog.LilToonExporter.Tests
             clone = Object.Instantiate(source);
             Assert.DoesNotThrow(() => NdmfExportPreparation.ValidateCopy(source, clone),
                 "An unresolved target must reach NDMF's Resolving and MA validation passes.");
-            Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.Prepare(source, clone));
+            // MA leaves the unmerged rig where it is; the export keeps it and warns.
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.Prepare(source, clone, warnings))
+                Assert.That(clone.transform.Find("clothing-merge"), Is.Not.Null);
+            CollectionAssert.Contains(warnings, string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
+                clone.name + "/clothing-merge (" + merge.GetType().Name + ")", "Merge Armature"));
             Assert.That(EditorJsonUtility.ToJson(merge), Is.EqualTo(sourceSettings));
         }
 
@@ -448,8 +453,12 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(NativeMergeTarget(copiedMerge), Is.Null,
                 "The same nonempty path has a different native root after detaching only the selected subtree.");
             Assert.That(EffectiveSerializedTarget(copiedMerge, "mergeTarget"), Is.Null);
-            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.Prepare(source, clone));
-            StringAssert.Contains("Modular Avatar", error.Message);
+            // Left unmerged with a warning, never attached through the other root.
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.Prepare(source, clone, warnings))
+                Assert.That(clone.transform.Find("clothing-merge"), Is.Not.Null);
+            CollectionAssert.Contains(warnings, string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
+                clone.name + "/clothing-merge (" + merge.GetType().Name + ")", "Merge Armature"));
             Assert.That(EditorJsonUtility.ToJson(merge), Is.EqualTo(sourceSettings));
             Assert.That(source.transform.parent, Is.SameAs(enclosing.transform));
         }

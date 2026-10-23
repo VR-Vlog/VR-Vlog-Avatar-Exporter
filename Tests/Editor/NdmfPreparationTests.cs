@@ -686,6 +686,26 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.IsFalse(sourceTag.gameObject.activeSelf);
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void TargetStillMissingAfterResolutionWarnsAndExportsTheObjectWhereMaLeavesIt(bool boneProxy)
+        {
+            // MA logs a missing target as NonFatal and leaves that object
+            // unattached, so the export goes on with one warning per object.
+            var copyTag = boneProxy ? AddBoneProxy(clone, "unattached accessory") : AddMerge(clone, "unattached wardrobe", true, null);
+            if (boneProxy) AddBoneProxy(source, "unattached accessory");
+            else AddMerge(source, "unattached wardrobe", true, null);
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), warnings))
+                Assert.AreSame(clone.transform, copyTag.transform.parent);
+            Assert.AreEqual(2, FakeProcessor.Calls, "Transforming still runs after the warning.");
+            var subject = "copy/" + copyTag.name + " (" + copyTag.GetType().Name + ")";
+            CollectionAssert.Contains(warnings, string.Format(ExporterLocalization.T(NdmfExportPreparation.UnresolvedFollowingTargetWarning),
+                subject, boneProxy ? "Bone Proxy" : "Merge Armature"));
+            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.ValidateSource(source));
+            StringAssert.Contains("追従先を取得できません", error.Message);
+        }
+
         [Test]
         public void ActiveMergePreservesAnInactiveTargetAttachmentChain()
         {
@@ -718,6 +738,17 @@ namespace VRVlog.LilToonExporter.Tests
             reference.GetType().GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { target == null ? null : target.gameObject });
             node.SetActive(active);
             return component;
+        }
+
+        private static Component AddBoneProxy(GameObject root, string name)
+        {
+            var type = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            if (type == null) Assert.Ignore("Install Modular Avatar to test its real authoring metadata.");
+            var marker = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ??
+                InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (marker != null && root.GetComponent(marker) == null) root.AddComponent(marker);
+            // A new Bone Proxy has no bone and no path: its target is missing.
+            return Child(root.transform, name, Vector3.zero).gameObject.AddComponent(type);
         }
 
         private static void DisableFixturePosePreview(Component component)

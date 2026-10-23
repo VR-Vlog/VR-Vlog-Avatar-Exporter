@@ -35,6 +35,7 @@ namespace VRVlog.LilToonExporter
         // Filled only when the caller tolerates lost shapes.
         internal readonly List<string> LostMorphs = new List<string>();
         internal const string LostGeneratedMorphs = "Modular Avatar / NDMF の処理で、以前の書き出しで作られた表情用のBlendShapeが失われたため省略しました: ";
+        internal const string UnresolvedFollowingTargetWarning = "{0}: 取り付け先のボーンが見つからないため体の動きについてきません\nModular Avatar の {1} で取り付け先を設定して書き出し直す";
         private string temporaryAssetPath, temporaryAssetGuid;
         // NDMF's asset saver writes with AssetDatabase, so the folder must be
         // under Assets. A domain starts with no live folder: leases do not
@@ -353,7 +354,11 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal static void ValidateSource(GameObject source, Func<Transform, bool> excluded = null, bool deferUnresolvedTargets = false)
+        // unresolvedTargets: after the canonical resolvers ran, a target that is
+        // still missing becomes a warning there, as MA leaves that object where
+        // it is instead of failing the build.
+        internal static void ValidateSource(GameObject source, Func<Transform, bool> excluded = null, bool deferUnresolvedTargets = false,
+            ICollection<string> unresolvedTargets = null)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             foreach (var component in RelevantAuthoring(source, excluded))
@@ -364,8 +369,13 @@ namespace VRVlog.LilToonExporter
                 if (target == null)
                 {
                     if (deferUnresolvedTargets) continue; // Validate against the explicit root on the owned copy.
-                    throw new InvalidOperationException(ScenePath(component.transform) + " (" + component.GetType().Name +
-                        "): Modular Avatar の追従先を取得できません。Merge Armature / Bone Proxy の対象を設定してから書き出してください。");
+                    var subject = ScenePath(component.transform) + " (" + component.GetType().Name + ")";
+                    if (unresolvedTargets == null)
+                        throw new InvalidOperationException(subject +
+                            ": Modular Avatar の追従先を取得できません。Merge Armature / Bone Proxy の対象を設定してから書き出してください。");
+                    unresolvedTargets.Add(string.Format(ExporterLocalization.T(UnresolvedFollowingTargetWarning), subject,
+                        property == "mergeTargetObject" ? "Merge Armature" : "Bone Proxy"));
+                    continue;
                 }
                 if (target != source.transform && !target.IsChildOf(source.transform))
                     throw new InvalidOperationException(component.name + ": Modular Avatar の追従先が選択したアバターの外にあります。アバター全体を選ぶか、追従先を同じアバター内に設定してください。");
@@ -477,12 +487,13 @@ namespace VRVlog.LilToonExporter
                         if (IsSuccessful(bridge, context))
                         {
                             // MA treats missing attachment targets as NonFatal,
-                            // which NDMF.Successful does not reject. After the
-                            // official resolvers and generators have run, ensure
-                            // included attachments are safe and fully resolved
-                            // before MA can silently omit a merge or proxy.
+                            // which NDMF.Successful does not reject, and leaves
+                            // that object unattached. After the official
+                            // resolvers and generators have run, ensure included
+                            // attachments are safe, and warn about each one MA
+                            // will leave unattached instead of failing the export.
                             ResolveMaSceneReferences(clone);
-                            ValidateSource(clone);
+                            ValidateSource(clone, unresolvedTargets: warnings ?? new List<string>());
                             RequireCopySceneReferences(clone, Dependencies(clone));
                             Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Transforming, bridge.Transforming }));
                         }
