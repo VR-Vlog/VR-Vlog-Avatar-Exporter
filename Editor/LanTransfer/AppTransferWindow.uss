@@ -233,6 +233,16 @@
     justify-content: center;
 }
 
+/* The checkbox comes first and the terms link sits under it, so the gap
+   between them is on the link row and none is added above the block. */
+.consent .check-row {
+    margin-top: 0;
+}
+
+.consent .row--terms {
+    margin-top: 4px;
+}
+
 .consent .label-col {
     width: auto;
 }

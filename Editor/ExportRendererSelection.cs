@@ -41,8 +41,10 @@ namespace VRVlog.LilToonExporter
             return target.activeInHierarchy;
         }
 
-        // The avatar itself or one of its parents is inactive in the scene.
-        internal static bool HiddenInScene(GameObject avatar) => avatar != null && !avatar.activeInHierarchy;
+        // The avatar itself or one of its parents is inactive in the scene. A prefab
+        // asset is never active in a hierarchy, so only its root's own flag counts.
+        internal static bool HiddenInScene(GameObject avatar) =>
+            avatar != null && (UnityEditor.EditorUtility.IsPersistent(avatar) ? !avatar.activeSelf : !avatar.activeInHierarchy);
 
         public static IEnumerable<Renderer> Enumerate(GameObject avatar)
         {
