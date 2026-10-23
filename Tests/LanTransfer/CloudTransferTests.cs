@@ -42,6 +42,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("0.11.15-beta.2", true)]
         [TestCase("0.11.15+beta.2", false)]
         [TestCase("0.11.16", false)]
+        [TestCase("1.0.0", true)]
+        [TestCase("1.0.1", false)]
         [TestCase("not-a-beta", false)]
         [TestCase(null, false)]
         public void CloudTransferSupportsTheAdoptedStableVersion(string version, bool enabled) =>
