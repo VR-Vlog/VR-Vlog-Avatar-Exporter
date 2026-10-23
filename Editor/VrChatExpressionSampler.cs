@@ -21,83 +21,18 @@ namespace VRVlog.LilToonExporter
         // A layer or clip weight at or below this counts as not playing.
         private const float NegligibleWeight = 0.00001f;
 
-        // Source exclusions name the original hierarchy. After authoring passes,
-        // an active retained renderer can occupy an omitted object's old path.
-        // The omission must not transfer to that unrelated retained identity.
-        internal static bool IsExcludedPreparedPath(GameObject avatar, string path, Func<string, bool> originalExcludedPath)
-        {
-            if (originalExcludedPath?.Invoke(path) != true) return false;
-            return !avatar.GetComponentsInChildren<SkinnedMeshRenderer>().Any(renderer => renderer.enabled && renderer.sharedMesh != null &&
-                renderer.gameObject.activeInHierarchy && AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform) == path);
-        }
-
-        internal const string MenuOverCandidateLimit = "表情候補が512件を超えるため表情メニューの表情を省きました";
-
-        // The menu is read in full, so it can push the other faces past the
-        // candidate limit. Then the menu's faces are left out and the
-        // gestures, FX and FaceEmo faces are kept, as when the menu fails to read.
-        internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath = null, VrChatMenuImportPolicy menuPolicy = null,
-            GameObject authoringSource = null, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
-        {
-            try { return AnalyzeOnce(avatar, excludedPath, menuPolicy, authoringSource, faceEmoBindings); }
-            catch (ExpressionCandidateLimitException) when (menuPolicy?.SkipAll != true)
-            {
-                var source = AnalyzeOnce(avatar, excludedPath, new VrChatMenuImportPolicy { SkipAll = true, Reason = MenuOverCandidateLimit },
-                    authoringSource, faceEmoBindings);
-                source.MenuOmittedForCandidateLimit = true;
-                return source;
-            }
-        }
-
-        static VrChatExpressionMenu.Source AnalyzeOnce(GameObject avatar, Func<string, bool> excludedPath, VrChatMenuImportPolicy menuPolicy,
-            GameObject authoringSource, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
+        // The export's faces are the board's list; no menu, gesture, FX,
+        // authored or FaceEmo face is played. The menu is still read for its
+        // parameters and controllers, which the neutral and the list use.
+        internal static VrChatExpressionMenu.Source Analyze(GameObject avatar, Func<string, bool> excludedPath,
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> listFaces, FaceEmoExpressions.BindingSnapshot faceEmoBindings = null)
         {
             using var inspectCache = ExpressionInspectCache.Begin();
-            var source = VrChatExpressionMenu.Read(avatar, menuPolicy);
+            var source = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipPlayback = true });
             NeutralInputProof.Read(avatar, source);
             source.FacialProjectionSession = new FacialProjectionScope.Session(avatar);
-            try
-            {
-                for (var index = 0; index < source.Entries.Count; index++)
-                {
-                    var entry = source.Entries[index];
-                    if (entry.Error != null) continue;
-                    ShowProgress(entry.Name, 0.5f * index / source.Entries.Count);
-                    try
-                    {
-                        var context = FixedExpressionContext.Create(source.Controller, source.Defaults, source);
-                        // Settlement messages reach the export warnings and
-                        // the result list through entry.Messages.
-                        var settlement = new List<string>();
-                        var trees = new List<string>();
-                        var values = SampleFixed(avatar, source.Controller, source.Defaults, entry.Parameters, excludedPath, source, entry.Unevaluated, context,
-                            messages: settlement, settledTreeLayers: trees);
-                        // A Radial Puppet commonly selects a BlendTree state.
-                        // Like an FX tree knot, a moving child cannot become
-                        // one settled frame, and this path has no animated reading.
-                        if (settlement.Count > 0 && trees.Count > 0) throw new InvalidOperationException(VrChatFxExpressions.SettledFxTreeOmitted);
-                        entry.Values.AddRange(values);
-                        foreach (var message in settlement) if (!entry.Messages.Contains(message)) entry.Messages.Add(message);
-                        if (context.UsedParameters.Count > 0)
-                            entry.Messages.Add("外部入力は通常状態・設定済み初期値で固定表情として保存しました（自動切り替えは再現しません）: " +
-                                string.Join(", ", context.UsedParameters.OrderBy(name => name, StringComparer.Ordinal).Select(name => name + "=" +
-                                    (entry.Parameters.TryGetValue(name, out var selectedValue) ? selectedValue : context.Values[name]).ToString("G9", CultureInfo.InvariantCulture))));
-                    }
-                    catch (InvalidOperationException error) { entry.Error = error.Message; }
-                }
-                // The menu loop fills the first half of the bar; each of the
-                // four imports below takes an eighth of the rest.
-                var step = 0;
-                source.Progress = name => ShowProgress(name, 0.5f + step * 0.125f);
-                VrChatGestureExpressions.Add(avatar, source, excludedPath);
-                step++;
-                VrChatFxExpressions.Add(avatar, source, excludedPath, menuPolicy);
-                step++;
-                VrChatAuthoredFaces.Add(avatar, source, excludedPath, menuPolicy);
-                step++;
-                FaceEmoExpressions.Add(avatar, source, excludedPath, authoringSource, faceEmoBindings);
-            }
-            finally { source.FacialProjectionSession = null; source.Progress = null; EditorUtility.ClearProgressBar(); }
+            try { AddListFaces(avatar, source, excludedPath, listFaces, faceEmoBindings); }
+            finally { source.FacialProjectionSession = null; EditorUtility.ClearProgressBar(); }
             return source;
         }
 
@@ -105,6 +40,58 @@ namespace VRVlog.LilToonExporter
         {
             if (EditorUtility.DisplayCancelableProgressBar("VRChatの表情を読み込み中", name, fraction))
                 throw new OperationCanceledException();
+        }
+
+        // The list-only export reads each listed clip as the gesture reader
+        // does, so a moving clip keeps its animation and a still one its
+        // values, and both are baked like any other face. A clip that reader
+        // rejects keeps the board's frame of its visible BlendShapes. A clip
+        // FaceEmo registers is read as FaceEmo's own faces are, so the common
+        // DEFAULT FACE and its permanent overrides still apply.
+        static void AddListFaces(GameObject avatar, VrChatExpressionMenu.Source source, Func<string, bool> excludedPath,
+            IReadOnlyList<(string Name, UnityEngine.Object Clip, float Time)> faces, FaceEmoExpressions.BindingSnapshot faceEmoBindings)
+        {
+            if (faces == null) return;
+            if (faces.Count > 512) throw new ExpressionCandidateLimitException("表情候補が512個を超えています。");
+            for (var index = 0; index < faces.Count; index++)
+            {
+                var face = faces[index];
+                var clip = (AnimationClip)face.Clip;
+                ShowProgress(face.Name, (float)index / faces.Count);
+                var entry = new VrChatExpressionMenu.Entry
+                {
+                    Id = "list/" + index, Name = face.Name, ExportName = face.Name,
+                    Source = VRVlog.Expressions.ExpressionSource.Gesture, Clip = clip
+                };
+                source.Entries.Add(entry);
+                if (faceEmoBindings != null && faceEmoBindings.RegisteredClips.Contains(clip))
+                {
+                    entry.Id = "faceemo/list/" + index; entry.Source = VRVlog.Expressions.ExpressionSource.FaceEmo;
+                    try { FaceEmoExpressions.ReadClip(avatar, clip, entry, source, excludedPath, faceEmoBindings); }
+                    catch (InvalidOperationException error) { entry.Error = error.Message; }
+                    continue;
+                }
+                try { VrChatGestureExpressions.ReadClip(avatar, clip, entry, excludedPath, source); }
+                catch (InvalidOperationException)
+                {
+                    entry.Values.Clear(); entry.Animation.Clear(); entry.Messages.Clear();
+                    entry.Duration = 0; entry.Loop = false; entry.UsesFacialProjection = false;
+                    foreach (var binding in AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape))
+                    {
+                        if (excludedPath?.Invoke(binding.path) == true) continue;
+                        SkinnedMeshRenderer renderer;
+                        try { renderer = FindRenderer(avatar, binding.path); }
+                        catch (InvalidOperationException) { continue; }
+                        if (renderer == null || !renderer.enabled || !renderer.gameObject.activeInHierarchy) continue;
+                        entry.Values.Add(new MorphValue
+                        {
+                            Path = binding.path, Shape = binding.propertyName.Substring("blendShape.".Length),
+                            Weight = AnimationUtility.GetEditorCurve(clip, binding).Evaluate(face.Time)
+                        });
+                    }
+                    if (entry.Values.Count == 0) entry.Error = "顔のBlendShapeを含まないアニメーションです。";
+                }
+            }
         }
 
         // The user-facing export captures one explicit environment. Runtime
@@ -141,29 +128,6 @@ namespace VRVlog.LilToonExporter
             if (unresolved.Count != 0)
                 throw new InvalidOperationException("常時適用するFXの変形を確定できません。統合後のBlendShape設定を確認してください。");
             return values;
-        }
-
-        // Invoke on the committed post-Transforming copy. Native animation
-        // evaluation occurs on another disposable copy and writes back weights
-        // only; shared meshes/controllers and the source remain untouched. Call
-        // after Analyze: all expression probes must use the prepared authored
-        // weights rather than evaluating an already blended neutral base again.
-        internal static void ApplyMergedDefaults(GameObject source, GameObject clone, ICollection<string> warnings = null,
-            VrChatMenuImportPolicy menuPolicy = null, Func<string, bool> excludedPath = null)
-        {
-            if (source == null || clone == null) throw new ArgumentNullException(source == null ? nameof(source) : nameof(clone));
-            if (source == clone || clone.transform.IsChildOf(source.transform) || source.transform.IsChildOf(clone.transform) || EditorUtility.IsPersistent(clone))
-                throw new InvalidOperationException("FXの初期状態には原本から独立した書き出し用コピーが必要です。");
-            var metadata = VrChatExpressionMenu.Read(clone, menuPolicy);
-            var values = SampleDefaults(clone, metadata.Controller, metadata.Defaults, excludedPath, metadata);
-            foreach (var value in values)
-            {
-                var renderer = FindRenderer(clone, value.Path);
-                var index = renderer.sharedMesh.GetBlendShapeIndex(value.Shape);
-                if (index < 0) throw new InvalidOperationException("常時適用するFXのBlendShapeが見つかりません: " + value.Shape);
-                renderer.SetBlendShapeWeight(index, value.Weight);
-            }
-            if (values.Count > 0) warnings?.Add("統合後のFXにある常時適用の顔・体形設定を、一時コピーと表情の初期状態へ反映しました。");
         }
 
         // Direct clips (including moving gestures) bypass menu parameter
@@ -467,10 +431,12 @@ namespace VRVlog.LilToonExporter
                             {
                                 leaf.behaviours = sourceMachines[index].behaviours;
                                 if (index + 1 == sourceMachines.Length) break;
-                                var child = leaf.AddStateMachine(sourceMachines[index + 1].name); owned.Add(child);
-                                var enter = leaf.AddEntryTransition(child); owned.Add(enter); leaf = child;
+                                var child = new AnimatorStateMachine { name = sourceMachines[index + 1].name, hideFlags = HideFlags.HideAndDontSave }; owned.Add(child);
+                                var enter = new AnimatorTransition { destinationStateMachine = child, hideFlags = HideFlags.HideAndDontSave }; owned.Add(enter);
+                                leaf.stateMachines = new[] { new ChildAnimatorStateMachine { stateMachine = child } };
+                                leaf.entryTransitions = new[] { enter }; leaf = child;
                             }
-                        var state = leaf.AddState("Probe"); owned.Add(state); state.motion = motion; state.writeDefaultValues = defaults;
+                        var state = PrivateState(leaf, "Probe"); owned.Add(state); state.motion = motion; state.writeDefaultValues = defaults;
                         if (selected && sourceBehaviours != null) state.behaviours = sourceBehaviours;
                         leaf.defaultState = state;
                         return new AnimatorControllerLayer { name = layerName, stateMachine = machine,
@@ -1084,7 +1050,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var machine = new AnimatorStateMachine { name = layers[index].name, hideFlags = HideFlags.HideAndDontSave };
                         probe.owned.Add(machine);
-                        var idle = machine.AddState("Prepared independent rest"); probe.owned.Add(idle);
+                        var idle = PrivateState(machine, "Prepared independent rest"); probe.owned.Add(idle);
                         idle.writeDefaultValues = false; machine.defaultState = idle;
                         layers[index] = new AnimatorControllerLayer { name = layers[index].name, stateMachine = machine,
                             defaultWeight = 0, syncedLayerIndex = -1, blendingMode = AnimatorLayerBlendingMode.Override };
@@ -1655,6 +1621,16 @@ namespace VRVlog.LilToonExporter
                         if (capturedMorphs == null || capturedMorphs.Contains(binding)) history.Add(binding);
                     }
                 }
+        }
+
+        // AnimatorStateMachine.AddState, AddStateMachine and AddEntryTransition
+        // record Undo, which marks the open scene modified even when the graph
+        // is hidden and never saved. Temporary graphs assign the arrays instead.
+        internal static AnimatorState PrivateState(AnimatorStateMachine machine, string name)
+        {
+            var state = new AnimatorState { name = name, hideFlags = HideFlags.HideAndDontSave };
+            machine.states = machine.states.Append(new ChildAnimatorState { state = state }).ToArray();
+            return state;
         }
 
         // An Any State transition with Can Transition To Self keeps restarting

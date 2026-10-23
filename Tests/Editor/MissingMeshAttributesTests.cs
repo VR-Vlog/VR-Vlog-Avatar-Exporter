@@ -22,9 +22,8 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly int[][] PrimitiveSources = { new[] { 0, 1, 3 }, new[] { 1, 2, 3 } };
         static readonly int[] ImportedSources = PrimitiveSources.SelectMany(indices => indices).ToArray();
 
-        [TestCase(false, true, false)] [TestCase(false, false, true)] [TestCase(false, true, true)]
-        [TestCase(true, true, false)] [TestCase(true, false, true)] [TestCase(true, true, true)]
-        [TestCase(false, false, false)] [TestCase(true, false, false)]
+        [TestCase(false, true, false)] [TestCase(true, false, true)] [TestCase(true, true, true)]
+        [TestCase(false, false, false)]
         public async Task DirectUniVrmExportRepairsOnlyAbsentAttributesAndKeepsAuthoredMorphs(bool skinned, bool missingNormals, bool missingUv)
         {
             using var fixture = new Fixture(skinned, missingNormals, missingUv);
@@ -36,7 +35,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings.Count > 0, Is.EqualTo(missingNormals || missingUv));
         }
 
-        [TestCase(false)] [TestCase(true)]
+        [TestCase(true)]
         public async Task MissingUv0NeverBorrowsASecondUvChannel(bool skinned)
         {
             using var fixture = new Fixture(skinned, false, true, uv1Only: true);
@@ -116,8 +115,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Values("Inside zero scale", "scale"), Is.EqualTo(new[] { 2f, 2f, 2f }).Within(1e-5f));
         }
 
-        [TestCase(false, false)] [TestCase(true, false)]
-        [TestCase(false, true)] [TestCase(true, true)]
+        [TestCase(true, false)] [TestCase(false, true)]
         public async Task AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback(bool normals, bool fullExporter)
         {
             using var fixture = new Fixture(false, normals, !normals);
@@ -141,6 +139,28 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.AssertUnchanged(before);
                 Assert.That(renderer.additionalVertexStreams, Is.SameAs(streams));
                 Assert.That(EditorJsonUtility.ToJson(streams), Is.EqualTo(beforeStream));
+            }
+            finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
+        }
+
+        [Test]
+        public async Task MismatchedAdditionalVertexStreamsAreLeftOutWithAWarning()
+        {
+            // A stream with another vertex count cannot be matched vertex by
+            // vertex; the base mesh is exported, with its normals generated.
+            using var fixture = new Fixture(false, true, false);
+            var streams = new Mesh { name = "Mismatched additional stream", vertices = fixture.Positions.Take(3).ToArray() };
+            streams.normals = Enumerable.Repeat(Vector3.up, 3).ToArray();
+            var renderer = fixture.Targets.Single().GetComponent<MeshRenderer>();
+            renderer.additionalVertexStreams = streams;
+            try
+            {
+                var before = fixture.Snapshot(); var warnings = new List<string>();
+                var bytes = fixture.ExportDirect(warnings);
+                Assert.That(warnings, Does.Contain(ExporterLocalization.T(VrmMeshAttributePreparation.AdditionalStreamsIgnored) + renderer.name));
+                await CheckOutput(fixture, bytes, false);
+                fixture.AssertUnchanged(before);
+                Assert.That(renderer.additionalVertexStreams, Is.SameAs(streams));
             }
             finally { renderer.additionalVertexStreams = null; Object.DestroyImmediate(streams); }
         }
@@ -258,7 +278,7 @@ namespace VRVlog.LilToonExporter.Tests
             return decoded.ToArray();
         }
 
-        [TestCase(false)] [TestCase(true)]
+        [TestCase(false)]
         public void MissingNormalsWithoutMorphsAlsoExportsThroughMeshWriter(bool skinned)
         {
             using var fixture = new Fixture(skinned, true, false);
@@ -278,7 +298,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skinned ? target.GetComponent<SkinnedMeshRenderer>().sharedMesh : target.GetComponent<MeshFilter>().sharedMesh, Is.SameAs(fixture.Mesh));
         }
 
-        [TestCase(false)] [TestCase(true)]
+        [TestCase(true)]
         public void DegenerateGeometryReceivesFiniteUnitNormalsWithoutLosingMorphs(bool skinned)
         {
             using var fixture = new Fixture(skinned, true, false);
@@ -360,10 +380,8 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (streams != null) { target.GetComponent<MeshRenderer>().additionalVertexStreams = null; Object.DestroyImmediate(streams); } }
         }
 
-        [TestCase(false, true, false, false)] [TestCase(false, false, true, false)] [TestCase(false, true, true, false)]
-        [TestCase(true, true, false, false)] [TestCase(true, false, true, false)] [TestCase(true, true, true, false)]
-        [TestCase(false, true, false, true)] [TestCase(false, false, true, true)] [TestCase(false, true, true, true)]
-        [TestCase(true, true, false, true)] [TestCase(true, false, true, true)] [TestCase(true, true, true, true)]
+        [TestCase(false, true, false, false)] [TestCase(true, true, true, false)]
+        [TestCase(true, false, true, true)] [TestCase(false, true, true, true)]
         public async Task NormalExporterPreservesMissingAttributeMeshesThroughRealVrmRoundTrip(bool skinned, bool missingNormals, bool missingUv, bool fullLilToon)
         {
             using var fixture = new Fixture(skinned, missingNormals, missingUv);

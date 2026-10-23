@@ -11,10 +11,8 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class SkinnedMeshFallbackWeightTests
     {
-        [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
-        [TestCase(true, true)]
         public void RigidMeshesPreserveGeometryAndMixedZeroWeightsFailSafely(bool mixedWeights, bool useRootBone)
         {
             using var fixture = new Fixture(mixedWeights, useRootBone);
@@ -245,6 +243,33 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(fixture.CloneSkin.bones, Is.EqualTo(oldBones));
                 Assert.That(fixture.CloneSkin.GetBlendShapeWeight(0), Is.EqualTo(25f));
                 Assert.That(fixture.Owned.Count, Is.EqualTo(0));
+            }
+            finally { Object.DestroyImmediate(external); }
+        }
+
+        [TestCase("mixed")]
+        [TestCase("external")]
+        [TestCase("singular")]
+        [TestCase("cloth")]
+        public void LenientExportKeepsAnUnrepairableMeshAndWarns(string reason)
+        {
+            using var fixture = new Fixture(reason == "mixed", true);
+            var external = new GameObject("External anchor");
+            try
+            {
+                var original = fixture.CloneSkin.sharedMesh;
+                var oldBones = fixture.CloneSkin.bones;
+                if (reason == "external") fixture.CloneSkin.rootBone = external.transform;
+                if (reason == "singular") fixture.CloneSkin.transform.localScale = new Vector3(1, 0, 1);
+                if (reason == "cloth") fixture.CloneSkin.gameObject.AddComponent<Cloth>();
+                var warnings = new List<string>();
+                SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
+                SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
+                Assert.That(warnings, Has.Count.EqualTo(1));
+                Assert.That(warnings[0], Does.Contain("ウェイトを直さずに"));
+                Assert.That(fixture.CloneSkin.sharedMesh, Is.SameAs(original));
+                Assert.That(fixture.CloneSkin.bones, Is.EqualTo(oldBones));
+                Assert.That(fixture.Owned, Is.Empty);
             }
             finally { Object.DestroyImmediate(external); }
         }

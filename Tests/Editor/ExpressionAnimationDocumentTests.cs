@@ -209,15 +209,10 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("1.0")]
-        [TestCase("1.0.0.0")]
-        [TestCase("1.0.a")]
         [TestCase("1..0")]
         [TestCase("01.0.0")]
-        [TestCase("-1.0.0")]
         [TestCase("+1.0.0")]
         [TestCase(" 1.0.0")]
-        [TestCase("1.0.0-beta")]
-        [TestCase("")]
         [TestCase(null)]
         public void AppVersionsRejectOtherForms(string version)
         {

@@ -60,7 +60,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             if (!owned) return;
             owned = false;
-            LanVrmTransferServer.TryDelete(SnapshotPath);
+            TransferTempDirectory.TryDelete(SnapshotPath);
         }
     }
 }

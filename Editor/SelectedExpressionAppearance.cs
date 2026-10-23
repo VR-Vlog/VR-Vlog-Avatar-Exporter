@@ -3,6 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -139,7 +140,5 @@ namespace VRVlog.LilToonExporter
             return channel < 3 && QualitySettings.activeColorSpace == ColorSpace.Linear &&
                 Mathf.LinearToGammaSpace(Mathf.GammaToLinearSpace(value)) == color;
         }
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
     }
 }

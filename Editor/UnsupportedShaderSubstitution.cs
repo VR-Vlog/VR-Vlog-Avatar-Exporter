@@ -10,6 +10,7 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using VRVlog.LilToon;
 using ShaderPropertyType = UnityEngine.Rendering.ShaderPropertyType;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -19,12 +20,14 @@ namespace VRVlog.LilToonExporter
     // what can be read in common: main image and color, cutout/transparency,
     // normal map, emission and shadow color. The rest of the export then
     // treats them as ordinary lilToon materials.
-    internal static class UnsupportedShaderSubstitution
+    internal static partial class UnsupportedShaderSubstitution
     {
         internal const string Warning = "非対応のシェーダーを公式lilToonで近似しました（主画像・色・明るさ・透過・法線・発光・影色のみ）: ";
         internal const string KeptForExpressions = "表情で色や画像の位置を動かす材質は元のシェーダーのまま書き出しました: ";
         internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
+        internal const string ToonMapped = "他のトゥーンシェーダーの設定を公式lilToonの同じ役割の項目へ写しました（影・マットキャップ・リム・アウトライン・発光・ステンシルを含む）: ";
+        internal const string DroppedEffects = "元のシェーダーの効果のうち公式lilToonに無いものは書き出していません: ";
 
         const string Opaque = "lilToon";
         const string Cutout = "Hidden/lilToonCutout";
@@ -37,8 +40,10 @@ namespace VRVlog.LilToonExporter
             material != null && (material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
                 material.shader.name != MToon10Meta.UnityShaderName);
 
+        // Images baked for the substitutes are added to textures, which the
+        // caller destroys with the export copy.
         internal static void Apply(GameObject copy, ICollection<Material> created, ICollection<string> warnings,
-            ExportFallbackReport fallbacks, Action<Material, Material> track)
+            ExportFallbackReport fallbacks, Action<Material, Material> track, List<Texture2D> textures = null)
         {
             if (copy == null || EditorUtility.IsPersistent(copy))
                 throw new ArgumentException("An independent export copy is required.", nameof(copy));
@@ -49,6 +54,8 @@ namespace VRVlog.LilToonExporter
             var kept = new List<string>();
             var failed = new List<string>();
             var colorSkipped = new List<string>();
+            var mapped = new List<string>();
+            var dropped = new List<string>();
             foreach (var renderer in ExportRendererSelection.Enumerate(copy))
             {
                 // Only renderers that become glTF meshes, as in LilToonFullSnapshot.
@@ -74,14 +81,19 @@ namespace VRVlog.LilToonExporter
                         else
                         {
                             var skipped = false;
-                            try { substitute = Create(source, out skipped); }
+                            var toon = false;
+                            IReadOnlyList<string> effects = Array.Empty<string>();
+                            try { substitute = Create(source, out skipped, out toon, out effects, textures); }
                             catch (Exception) { substitute = null; }
                             if (substitute == null) { if (!failed.Contains(source.name)) failed.Add(source.name); }
                             else
                             {
                                 created.Add(substitute);
                                 track?.Invoke(substitute, source);
-                                if (!substituted.Contains(source.name)) substituted.Add(source.name);
+                                var list = toon ? mapped : substituted;
+                                if (!list.Contains(source.name)) list.Add(source.name);
+                                var line = source.name + " (" + string.Join(", ", effects) + ")";
+                                if (effects.Count > 0 && !dropped.Contains(line)) dropped.Add(line);
                                 if (skipped && !colorSkipped.Contains(source.name)) colorSkipped.Add(source.name);
                             }
                         }
@@ -96,6 +108,8 @@ namespace VRVlog.LilToonExporter
             }
             if (warnings == null) return;
             if (substituted.Count > 0) warnings.Add(ExporterLocalization.T(Warning) + string.Join(", ", substituted));
+            if (mapped.Count > 0) warnings.Add(ExporterLocalization.T(ToonMapped) + string.Join(", ", mapped));
+            if (dropped.Count > 0) warnings.Add(ExporterLocalization.T(DroppedEffects) + string.Join(", ", dropped));
             if (colorSkipped.Count > 0) warnings.Add(ExporterLocalization.T(ColorAdjustmentSkipped) + string.Join(", ", colorSkipped));
             if (kept.Count > 0) warnings.Add(ExporterLocalization.T(KeptForExpressions) + string.Join(", ", kept));
             if (failed.Count > 0) warnings.Add(ExporterLocalization.T(Failed) + string.Join(", ", failed));
@@ -120,11 +134,21 @@ namespace VRVlog.LilToonExporter
 
         // colorSkipped tells that the source adjusted its main color in a way
         // the substitute does not reproduce.
-        internal static Material Create(Material source, out bool colorSkipped)
+        internal static Material Create(Material source, out bool colorSkipped) => Create(source, out colorSkipped, out _, out _);
+
+        // toon tells that the source was a toon shader whose sections were
+        // mapped one by one; dropped names its sections that official lilToon
+        // does not have. Masks baked for it are added to textures; without
+        // textures, an effect whose mask needs baking is turned off.
+        internal static Material Create(Material source, out bool colorSkipped, out bool toon, out IReadOnlyList<string> dropped,
+            List<Texture2D> textures = null)
         {
             var values = new SourceValues(source);
-            colorSkipped = false;
-            return LooksLikeLilToon(source) || values.SavedLilToon(source) ? FromDerived(source, values) : FromGeneric(source, values, out colorSkipped);
+            colorSkipped = false; toon = false; dropped = Array.Empty<string>();
+            if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
+            if (!IsSectionedToon(source, values)) return FromGeneric(source, values, false, out colorSkipped);
+            toon = true;
+            return FromSectionedToon(source, values, textures, out colorSkipped, out dropped);
         }
 
         internal static bool LooksLikeLilToon(Material material) =>
@@ -201,11 +225,11 @@ namespace VRVlog.LilToonExporter
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
 
-        static Material FromGeneric(Material source, SourceValues values, out bool colorSkipped)
+        static Material FromGeneric(Material source, SourceValues values, bool outline, out bool colorSkipped)
         {
             colorSkipped = false;
             var mode = GenericMode(source, values);
-            var material = New(source, mode, outline: false);
+            var material = New(source, mode, outline);
             if (material == null) return null;
 
             Texture main = null; var mainScale = Vector2.one; var mainOffset = Vector2.zero;
@@ -688,8 +712,6 @@ namespace VRVlog.LilToonExporter
         // Every slot the generic mapping fills is a 2D slot.
         static bool Flat(Texture texture) => texture != null && texture.dimension == TextureDimension.Tex2D;
         static bool Contains(string value, string part) => value.IndexOf(part, StringComparison.OrdinalIgnoreCase) >= 0;
-        static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
-        static bool Finite(Vector4 value) => Finite(value.x) && Finite(value.y) && Finite(value.z) && Finite(value.w);
 
         static void Set(Material material, string name, float value)
         {

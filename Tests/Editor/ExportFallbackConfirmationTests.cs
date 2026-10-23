@@ -94,12 +94,11 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExportStageGuard.DisplayName(ExportStage.PhysBone), Is.EqualTo("揺れ物"));
         }
 
-        [TestCase(false, false)][TestCase(true, true)]
-        public void BatchAndNonInteractiveCallersSaveWithoutTheList(bool interactive, bool batch)
+        [Test] public void BatchModeSavesWithoutTheList()
         {
-            ExportFallbackConfirmation.IsBatchMode = () => batch;
+            ExportFallbackConfirmation.IsBatchMode = () => true;
             var saved = 0;
-            ExportFallbackConfirmation.Confirm(AllFallbacks(), null, "a.vrm", null, interactive, () => saved++);
+            ExportFallbackConfirmation.Confirm(AllFallbacks(), null, "a.vrm", null, interactive: true, () => saved++);
             Assert.That(saved, Is.EqualTo(1));
             Assert.That(dialog.Calls, Is.Empty);
         }
@@ -166,7 +165,7 @@ namespace VRVlog.LilToonExporter.Tests
             var collider = new GameObject("Collider_box").transform; collider.SetParent(fixture.Source.transform, false);
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var calls = 0; var completed = 0; var blinkSettings = 0;
             dialog.Answer = export;
             Selection.objects = new Object[0];
@@ -209,7 +208,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-fallback-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var completed = 0;
             try
             {
@@ -324,7 +323,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()[0].sharedMaterial = missing;
                 var report = new ExportRecoveryReport();
-                var warnings = new List<string>();
+                // A warning the caller already has stays once, after the summary.
+                var warnings = new List<string> { "Earlier" };
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 // The export is not blocked; the VRM is still written.
@@ -335,6 +335,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var summary = string.Format(ExporterLocalization.T(UniVrmOneClickExporter.MissingShaderWarningFormat), 1) + "Missing";
                 Assert.That(warnings.Count(warning => warning == summary), Is.EqualTo(1));
                 Assert.That(warnings[0], Is.EqualTo(summary), "The summary comes before the other warnings.");
+                Assert.That(warnings.Count(warning => warning == "Earlier"), Is.EqualTo(1));
                 var result = ExportResultList.Build(report.Fallbacks, warnings, "a.vrm");
                 Assert.That(result.MissingShaderCount, Is.EqualTo(1));
                 Assert.That(result.Rows.Any(row => row.Content == ExportFallbackConfirmation.MissingShaderReason &&

@@ -57,18 +57,20 @@ namespace VRVlog.LilToonExporter
         internal static ExportOptimizationBindings Capture(GameObject clone, VrmTrackingProfile trackingProfile = null,
             UnifiedExpressionPreparation preparation = null, object objectRegistry = null, NeutralShapeSnapshot neutral = null,
             bool preservePreparedNeutral = false, IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs = null,
-            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null)
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs = null, bool optimizes = true)
         {
             if (clone == null) throw new ArgumentNullException(nameof(clone));
             ExportRendererSelection.RequireActiveRoot(clone);
             if (EditorUtility.IsPersistent(clone)) throw new ArgumentException("An independent export copy is required.", nameof(clone));
-            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs);
+            return new ExportOptimizationBindings(clone, trackingProfile, preparation, objectRegistry, neutral, preservePreparedNeutral, menuMorphs, keptMorphs, optimizes);
         }
 
+        // optimizes is false when the build passes are skipped: AAO components
+        // stay on the copy unprocessed, so no mapping (and no adapter) is needed.
         ExportOptimizationBindings(GameObject clone, VrmTrackingProfile trackingProfile, UnifiedExpressionPreparation preparation,
             object objectRegistry, NeutralShapeSnapshot neutral, bool preservePreparedNeutral,
             IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> menuMorphs,
-            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs)
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> keptMorphs, bool optimizes)
         {
             avatar = clone;
             this.objectRegistry = objectRegistry;
@@ -83,7 +85,7 @@ namespace VRVlog.LilToonExporter
             }
             if (clone.GetComponent<ExportOptimizationMarker>() != null)
                 throw new InvalidOperationException("表情の最適化保護が既に開始されています。");
-            expectsMapping = clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerAuthoring);
+            expectsMapping = optimizes && clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerAuthoring);
             if (expectsMapping && !ExportOptimizationMarker.AvatarOptimizerAdapterAvailable)
                 throw new InvalidOperationException("Avatar Optimizer の表情互換処理を読み込めません。対応する Avatar Optimizer 1.7 以上・2.0 未満を導入し、Unity のコンパイル完了後に再度書き出してください。");
             marker = clone.AddComponent<ExportOptimizationMarker>();
@@ -317,7 +319,10 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        internal void ValidateAndApply(Action<Object, Object> assetCopyObserver = null)
+        // conflicts is given by lenient exports: a merge that gives one output
+        // shape two weights keeps the first and lists the clip there instead
+        // of stopping.
+        internal void ValidateAndApply(Action<Object, Object> assetCopyObserver = null, List<(string Clip, string Shape)> conflicts = null)
         {
             RequireAlive();
             if (applied) return;
@@ -326,7 +331,7 @@ namespace VRVlog.LilToonExporter
             if (marker.MappingError != null) throw new InvalidOperationException(marker.MappingError);
             // Detect a lossy merge before recreating no-op meshes, cloning
             // materials, invoking copy observers or replacing VRM settings.
-            ValidateAuthoredMorphWeights();
+            ValidateAuthoredMorphWeights(conflicts);
             foreach (var route in morphs.Values)
             {
                 if (route.NoOp && (route.Removed || route.Renderer == null || route.Renderer.sharedMesh == null || route.Renderer.sharedMesh.GetBlendShapeIndex(route.Shape) < 0))
@@ -362,7 +367,7 @@ namespace VRVlog.LilToonExporter
             route.Renderer = skin; route.Shape = name; route.Removed = false;
         }
 
-        void ValidateAuthoredMorphWeights()
+        void ValidateAuthoredMorphWeights(List<(string Clip, string Shape)> conflicts)
         {
             foreach (var snapshot in clips.Values)
             {
@@ -380,7 +385,13 @@ namespace VRVlog.LilToonExporter
                     if (index < 0) continue; // Lost routes retain the existing validation/recovery path.
                     var key = (route.Renderer.GetInstanceID(), index);
                     if (weights.TryGetValue(key, out var previous) && !previous.Equals(item.Binding.Weight))
-                        throw new InvalidOperationException("最適化で元のVRM表情の適用量が衝突しました: " + snapshot.Template.name + " / " + route.Label);
+                    {
+                        if (conflicts == null)
+                            throw new InvalidOperationException("最適化で元のVRM表情の適用量が衝突しました: " + snapshot.Template.name + " / " + route.Label);
+                        // RemapAuthoredMorphs keeps the first route's declarations.
+                        conflicts.Add((snapshot.Template.name, route.Label));
+                        continue;
+                    }
                     weights[key] = item.Binding.Weight;
                 }
             }
@@ -508,16 +519,10 @@ namespace VRVlog.LilToonExporter
         {
             RequireApplied();
             nodes.Clear();
-            foreach (var skin in unified.Select(item => item.Route.Renderer).Concat(profile.SelectMany(expression => expression.Morphs).Select(item => item.Route.Renderer)).Distinct())
-            {
-                var index = nodeIndex(skin);
-                if (index < 0)
-                    throw new InvalidOperationException("追跡表情の対象が最終VRMにありません: " + skin.name);
-                nodes.Add(skin, index);
-            }
-            // A missing menu node fails in the menu output stage instead,
-            // where generated menu targets are resolved as well.
-            foreach (var skin in menu.Select(route => route.Renderer).Distinct().Where(skin => !nodes.ContainsKey(skin)))
+            // A missing node fails in the tracking or menu output stage instead,
+            // which the lenient export leaves out; here no stage guards it.
+            foreach (var skin in unified.Select(item => item.Route.Renderer).Concat(profile.SelectMany(expression => expression.Morphs).Select(item => item.Route.Renderer))
+                .Concat(menu.Select(route => route.Renderer)).Distinct())
             {
                 var index = nodeIndex(skin);
                 if (index >= 0) nodes.Add(skin, index);
@@ -592,7 +597,7 @@ namespace VRVlog.LilToonExporter
 
         Dictionary<string, object> OutputBinding(Dictionary<string, object> json, OptimizationMorphRoute route, float weight)
         {
-            if (!nodes.TryGetValue(route.Renderer, out var node)) throw new InvalidOperationException("追跡表情の出力nodeが未確定です。");
+            if (!nodes.TryGetValue(route.Renderer, out var node)) throw new InvalidOperationException("追跡表情の対象が最終VRMにありません: " + route.Renderer.name);
             var nodeList = JsonArray(json, "nodes"); var meshList = JsonArray(json, "meshes");
             if (node < 0 || node >= nodeList.Count || !(nodeList[node] is Dictionary<string, object> outputNode) || !outputNode.TryGetValue("mesh", out var rawMesh))
                 throw new InvalidOperationException("追跡表情の出力nodeが不正です。");

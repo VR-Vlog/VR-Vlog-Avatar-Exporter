@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -152,25 +153,22 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        const string LayerAlphaShaderName = "Hidden/VRVlog/LayerAlphaBaker";
         const string PackageIncludeRoot = "Packages/" + Compatibility.LilToonInstallation.PackageName + "/";
-        static Shader layerAlphaUnderAssets;
-        static string layerAlphaUnderAssetsFolder;
+        static Shader layerAlpha;
+        static string layerAlphaFolder;
 
-        // LayerAlphaBaker includes lilToon by its package path. lilToon under
-        // Assets leaves that path empty, so compile the same source against
-        // the Assets folder instead.
+        // LayerAlphaBakerSource includes lilToon by its package path. lilToon
+        // under Assets leaves that path empty, so the source is compiled in
+        // memory, against the Assets folder when lilToon is there.
         internal static Shader LayerAlphaShader()
         {
-            var shader = Shader.Find(LayerAlphaShaderName);
             var folder = Compatibility.LilToonInstallation.Find()?.AssetsFolder;
-            if (shader == null || folder == null) return shader;
-            if (layerAlphaUnderAssets != null && layerAlphaUnderAssetsFolder == folder) return layerAlphaUnderAssets;
-            if (layerAlphaUnderAssets != null) UnityEngine.Object.DestroyImmediate(layerAlphaUnderAssets);
-            layerAlphaUnderAssets = ShaderUtil.CreateShaderAsset(LayerAlphaSource(System.IO.File.ReadAllText(System.IO.Path.GetFullPath(AssetDatabase.GetAssetPath(shader))), folder), false);
-            layerAlphaUnderAssets.hideFlags = HideFlags.HideAndDontSave;
-            layerAlphaUnderAssetsFolder = folder;
-            return layerAlphaUnderAssets;
+            if (layerAlpha != null && layerAlphaFolder == folder) return layerAlpha;
+            if (layerAlpha != null) UnityEngine.Object.DestroyImmediate(layerAlpha);
+            layerAlpha = ShaderUtil.CreateShaderAsset(folder == null ? LayerAlphaBakerSource.Text : LayerAlphaSource(LayerAlphaBakerSource.Text, folder), false);
+            layerAlpha.hideFlags = HideFlags.HideAndDontSave;
+            layerAlphaFolder = folder;
+            return layerAlpha;
         }
 
         internal static string LayerAlphaSource(string source, string lilToonFolder) =>
@@ -188,10 +186,7 @@ namespace VRVlog.LilToonExporter
             var shader = layerAlpha ? LayerAlphaShader() : Shader.Find("Hidden/ltsother_baker");
             if (shader == null || !shader.isSupported || ShaderUtil.ShaderHasError(shader)) throw new InvalidOperationException("lilToonのベイク用シェーダーを利用できません。");
             var baker = new Material(shader);
-            RenderTexture target = null;
             Texture2D result = null;
-            var previous = RenderTexture.active;
-            var previousSrgb = GL.sRGBWrite;
             try
             {
                 baker.CopyPropertiesFromMaterial(material);
@@ -247,25 +242,10 @@ namespace VRVlog.LilToonExporter
                     height = Mathf.Max(1, Mathf.RoundToInt(height * scale));
                     warnings?.Add(material.name + ": メインカラーの焼き込み画像をモバイル向けに " + width + "×" + height + " へ縮小しました。");
                 }
-                target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
-                GL.sRGBWrite = QualitySettings.activeColorSpace == ColorSpace.Linear;
-                // The pixels are read back at once: compile the pass now instead
-                // of drawing the Editor's placeholder while it compiles.
-                var asyncCompilation = ShaderUtil.allowAsyncCompilation;
-                ShaderUtil.allowAsyncCompilation = false;
-                try { Graphics.Blit(material.GetTexture("_MainTex") ?? Texture2D.whiteTexture, target, baker, 0); }
-                finally { ShaderUtil.allowAsyncCompilation = asyncCompilation; }
-                RenderTexture.active = target;
-                result = new Texture2D(width, height, TextureFormat.RGBA32, false, false)
-                {
-                    name = DeterministicNames.Unique(material.name + "__VRVlog_Main_" + DeterministicNames.Hash("Main", origin, material.name),
-                        candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
-                    wrapModeU = material.GetTexture("_MainTex")?.wrapModeU ?? TextureWrapMode.Repeat,
-                    wrapModeV = material.GetTexture("_MainTex")?.wrapModeV ?? TextureWrapMode.Repeat,
-                    filterMode = material.GetTexture("_MainTex")?.filterMode ?? FilterMode.Bilinear
-                };
-                result.ReadPixels(new Rect(0, 0, width, height), 0, 0, false);
-                result.Apply(false, false);
+                var bakedName = DeterministicNames.Unique(material.name + "__VRVlog_Main_" + DeterministicNames.Hash("Main", origin, material.name),
+                    candidate => textures.Exists(texture => texture != null && texture.name == candidate));
+                result = GpuReadback.BakeRgba32(width, height, bakedName, material.GetTexture("_MainTex"),
+                    target => GpuReadback.BlitCompiled(material.GetTexture("_MainTex") ?? Texture2D.whiteTexture, target, baker, 0));
                 textures.Add(result);
                 if (material.HasProperty("_ShadowColorTex") && material.GetTexture("_MainTex") != null &&
                     material.GetTexture("_ShadowColorTex") == material.GetTexture("_MainTex"))
@@ -283,10 +263,7 @@ namespace VRVlog.LilToonExporter
             }
             finally
             {
-                GL.sRGBWrite = previousSrgb;
-                RenderTexture.active = previous;
                 if (result != null) UnityEngine.Object.DestroyImmediate(result);
-                if (target != null) RenderTexture.ReleaseTemporary(target);
                 UnityEngine.Object.DestroyImmediate(baker);
             }
         }
@@ -393,7 +370,6 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         private static Vector4 Vector(Material material, string name, Vector4 fallback) =>
             material.HasProperty(name) ? material.GetVector(name) : fallback;
         private static float Value(Material m, string name, float fallback = 0) => m.HasProperty(name) ? m.GetFloat(name) : fallback;

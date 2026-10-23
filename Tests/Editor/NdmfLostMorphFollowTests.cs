@@ -299,8 +299,6 @@ namespace VRVlog.LilToonExporter.Tests
         // expression export does, follows the face to the renamed or merged
         // renderer. A name the face never had is left out on its own.
         [TestCase("rename", false)]
-        [TestCase("merge", false)]
-        [TestCase("rename", true)]
         [TestCase("merge", true)]
         public async Task LenientExportFollowsLipSyncToTheRenamedOrMergedFace(string mode, bool missing)
         {

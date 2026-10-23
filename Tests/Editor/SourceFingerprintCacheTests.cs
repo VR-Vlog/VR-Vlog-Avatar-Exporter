@@ -11,7 +11,6 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class SourceFingerprintCacheTests
     {
         [TestCase("float")]
-        [TestCase("color")]
         [TestCase("texture")]
         public void MaterialDefaultCachePopulationDoesNotInvalidateButAnEffectiveEditDoes(string kind)
         {

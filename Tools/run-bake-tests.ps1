@@ -5,9 +5,12 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
 $taskRepo = Split-Path -Parent $PSScriptRoot
 $taskSources = @(
     (Join-Path $taskRepo 'Editor/LilToonMainTextureBaker.cs'),
+    (Join-Path $taskRepo 'Editor/LayerAlphaBakerSource.cs'),
     (Join-Path $taskRepo 'Editor/MaterialBakeIssue.cs'),
     (Join-Path $taskRepo 'Editor/ExportRendererSelection.cs'),
     (Join-Path $taskRepo 'Editor/DeterministicNames.cs'),
+    (Join-Path $taskRepo 'Editor/NumericChecks.cs'),
+    (Join-Path $taskRepo 'Editor/GpuReadback.cs'),
     (Join-Path $PSScriptRoot 'BakeTestShim.cs'),
     (Join-Path $PSScriptRoot 'BakeBehaviorTests.cs')
 )

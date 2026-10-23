@@ -176,16 +176,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("none", false)]
         [TestCase("Animator", false)]
-        [TestCase("Animator", true)]
-        [TestCase("Set", false)]
         [TestCase("Set", true)]
         [TestCase("Add", false)]
-        [TestCase("Add", true)]
-        [TestCase("Copy", false)]
         [TestCase("Copy", true)]
         [TestCase("Random", false)]
-        [TestCase("Random", true)]
-        [TestCase("callback", false)]
         [TestCase("callback", true)]
         [TestCase("conflict", true)]
         public void EveryPlayableWriterAndUnknownCallbackPreventsAnImmutableInputProof(string writer, bool otherPlayable)

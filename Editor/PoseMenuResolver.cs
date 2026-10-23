@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -51,7 +52,7 @@ namespace VRVlog.LilToonExporter
                             throw new InvalidOperationException("Expression Parametersが未定義・重複または外部入力に依存します: " + pair.Key);
                         var type = Member(definitions[0], "valueType")?.ToString();
                         var value = pair.Value;
-                        if (!PoseSampling.Finite(value) || !(type == "Bool" && value == 1 ||
+                        if (!Finite(value) || !(type == "Bool" && value == 1 ||
                             type == "Int" && value >= 0 && value <= 255 && value == Math.Floor(value) ||
                             type == "Float" && value >= -1 && value <= 1))
                             throw new InvalidOperationException("Expression Parametersの型・操作値を確定できません: " + pair.Key);
@@ -78,12 +79,14 @@ namespace VRVlog.LilToonExporter
                         var outer = Member(source, "mask") as AvatarMask;
                         var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                         AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
-                        var controllerHasBody = controller.layers.Any(l => States(l.stateMachine).Any(s => HasBody(Clip(s), skipMuscles, bodyPaths) || s.motion is BlendTree));
+                        AnimationClip Replace(AnimationClip clip) => replacements.TryGetValue(clip, out var replacement) ? replacement : clip;
+                        bool Body(AnimatorState s) => s.motion is BlendTree tree ? TreeHasBody(tree, Replace, skipMuscles, bodyPaths) : HasBody(Clip(s), skipMuscles, bodyPaths);
+                        var controllerHasBody = controller.layers.Any(l => States(l.stateMachine).Any(Body));
                         for (var i = 0; i < controller.layers.Length; i++)
                         {
                             var layer = controller.layers[i];
                             var all = States(layer.stateMachine).ToArray();
-                            var hasBody = all.Any(s => HasBody(Clip(s), skipMuscles, bodyPaths)) || all.Any(s => s.motion is BlendTree);
+                            var hasBody = all.Any(Body);
                             var behaviours = all.SelectMany(s => s.behaviours).Concat(Behaviours(layer.stateMachine)).ToArray();
                             // Tracking controls persist across states and can
                             // affect clips in other (even bodyless) layers.
@@ -133,7 +136,7 @@ namespace VRVlog.LilToonExporter
                                 var target = Member(b, "layer")?.ToString();
                                 var weight = Convert.ToSingle(Member(b, "goalWeight"));
                                 var duration = Convert.ToSingle(Member(b, "blendDuration"));
-                                if (duration != 0 || !PoseSampling.Finite(weight) || weight < 0 || weight > 1 || target == null || !weights.ContainsKey(target))
+                                if (duration != 0 || !Finite(weight) || weight < 0 || weight > 1 || target == null || !weights.ContainsKey(target))
                                     throw new InvalidOperationException("時間依存のPlayable Layer重みは未対応です。");
                                 if (controlledWeights.TryGetValue(target, out var previous) && previous != weight)
                                     throw new InvalidOperationException("複数レイヤーから重みが変更されるため順序を確定できません。");
@@ -165,7 +168,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (!weights.TryGetValue(item.type, out var playableWeight)) throw new InvalidOperationException("不明なPlayable Layerです。");
                         var weight = item.index == 0 ? 1 : item.layer.defaultWeight;
-                        if (!PoseSampling.Finite(weight) || weight < 0 || weight > 1) throw new InvalidOperationException("レイヤー重みが不正です。");
+                        if (!Finite(weight) || weight < 0 || weight > 1) throw new InvalidOperationException("レイヤー重みが不正です。");
                         if (weight == 0) continue;
                         // Disabling a body layer can expose a lower static pose.
                         var poseLayer = new PoseLayer { Clip = item.clip, Weight = weight, Mask = item.layer.avatarMask, SkipMuscles = item.skipMuscles,
@@ -222,7 +225,8 @@ namespace VRVlog.LilToonExporter
                     var controller = ExpressionDependencies.Controller(runtime); var replacements = ExpressionDependencies.Overrides(runtime);
                     var skipMuscles = type == "FX" && controller.layers.Length > 0 && controller.layers[0].avatarMask == null;
                     AnimationClip Clip(AnimatorState state) => state.motion is AnimationClip clip && replacements.TryGetValue(clip, out var replacement) ? replacement : state.motion as AnimationClip;
-                    bool Body(AnimatorState s) => s.motion is BlendTree || HasBody(Clip(s), skipMuscles, bodyPaths);
+                    AnimationClip Replace(AnimationClip clip) => replacements.TryGetValue(clip, out var replacement) ? replacement : clip;
+                    bool Body(AnimatorState s) => s.motion is BlendTree tree ? TreeHasBody(tree, Replace, skipMuscles, bodyPaths) : HasBody(Clip(s), skipMuscles, bodyPaths);
                     // A synced layer replaces motions of another layer's graph.
                     AnimatorStateMachine Machine(AnimatorControllerLayer l) => l.syncedLayerIndex >= 0 ? controller.layers[l.syncedLayerIndex].stateMachine : l.stateMachine;
                     var controllerHasBody = controller.layers.Any(l => l.syncedLayerIndex >= 0 || States(Machine(l)).Any(Body));
@@ -344,7 +348,7 @@ namespace VRVlog.LilToonExporter
                                 type == AnimatorControllerParameterType.Float && comparison ||
                                 type == AnimatorControllerParameterType.Int && (comparison || equality);
                             var value = selected[c.parameter];
-                            if (!valid || !PoseSampling.Finite(value) || !PoseSampling.Finite(c.threshold) ||
+                            if (!valid || !Finite(value) || !Finite(c.threshold) ||
                                 type == AnimatorControllerParameterType.Int && (value != Math.Floor(value) || (double)value < int.MinValue || (double)value > int.MaxValue || c.threshold != Math.Floor(c.threshold)))
                                 throw new InvalidOperationException("Animatorパラメーターの型・条件・値を確定できません（Triggerも未対応）: " + c.parameter);
                         }
@@ -395,6 +399,21 @@ namespace VRVlog.LilToonExporter
                 case AnimatorConditionMode.Less: return value < c.threshold;
                 default: throw new InvalidOperationException("未対応のAnimator条件です。");
             }
+        }
+        // A BlendTree can move the body only through a clip under it. A tree
+        // that only blends BlendShapes or object activity (Modular Avatar
+        // 1.19 builds its Reactive Components this way) is not a body layer.
+        // A motion that is neither a clip nor a tree counts as body.
+        static bool TreeHasBody(BlendTree tree, Func<AnimationClip, AnimationClip> replace, bool skipMuscles, ISet<string> bodyPaths, int depth = 0)
+        {
+            if (depth > 64) throw new InvalidOperationException("BlendTreeの階層が深すぎます。");
+            foreach (var child in tree.children)
+            {
+                if (child.motion == null) continue;
+                if (child.motion is BlendTree inner ? TreeHasBody(inner, replace, skipMuscles, bodyPaths, depth + 1)
+                    : !(child.motion is AnimationClip clip) || HasBody(replace(clip), skipMuscles, bodyPaths)) return true;
+            }
+            return false;
         }
         static bool Tracking(StateMachineBehaviour b) => b != null && (b.GetType().Name == "VRCAnimatorTrackingControl" || b.GetType().Name == "VRCAnimatorLocomotionControl");
         internal static bool HasBody(AnimationClip clip, bool skipMuscles = false, ISet<string> bodyPaths = null) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(b =>

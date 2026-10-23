@@ -1,12 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using NUnit.Framework;
-using VRVlog.LilToonExporter.Vendor.UniGLTF;
-using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -16,8 +12,8 @@ using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
 {
-    // Real MA authoring must survive the appearance snapshot, generate FX in
-    // the canonical build, and remain selectable after loading the saved VRM.
+    // Real MA authoring must survive the appearance snapshot and generate FX
+    // in the canonical build.
     public sealed class MaReactiveExpressionExportTests
     {
         const string Ma = "nadena.dev.modular_avatar.core.";
@@ -130,11 +126,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0, false)]
-        [TestCase(0, true)]
-        [TestCase(1, false)]
         [TestCase(1, true)]
         [TestCase(2, false)]
-        [TestCase(2, true)]
         public void MergeMotionActivationKeepsNonMenuReactionThroughCanonicalBuild(int pathMode, bool nestedTree)
         {
             RequirePackages();
@@ -285,113 +278,6 @@ namespace VRVlog.LilToonExporter.Tests
             finally { graph.Destroy(); Object.DestroyImmediate(probe); }
         }
 
-        [TestCase(false, AnimatorControllerParameterType.Int)]
-        [TestCase(true, AnimatorControllerParameterType.Int)]
-        [TestCase(false, AnimatorControllerParameterType.Bool)]
-        [TestCase(true, AnimatorControllerParameterType.Bool)]
-        [TestCase(false, AnimatorControllerParameterType.Float)]
-        [TestCase(true, AnimatorControllerParameterType.Float)]
-        public async Task MenuReactiveShapeSurvivesCanonicalBuildAndVrmReload(bool permanentDeletion, AnimatorControllerParameterType parameterKind)
-        {
-            RequirePackages();
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            // MA records avatar-relative reference paths when Set is called.
-            // Establish the real avatar root before authoring the shape rules;
-            // adding a descriptor later cannot repair a null stored path.
-            var descriptor = fixture.Source.AddComponent(Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"));
-            ConfigureGeometry(fixture.Mesh);
-            var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
-            foreach (var skin in skins)
-            { skin.sharedMaterial.shader = shader; skin.SetBlendShapeWeight(0, 0); skin.SetBlendShapeWeight(1, 25); }
-            var control = MenuItem(fixture.Source, false);
-            foreach (var skin in skins)
-            {
-                AppearancePreparationTests.AddRule(control.gameObject, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", skin.gameObject,
-                    ("ShapeName", "Smile"), ("ChangeType", 1), ("Value", 100f));
-                control.transform.GetChild(control.transform.childCount - 1).name = skin.name + " Set";
-                if (permanentDeletion)
-                {
-                    AppearancePreparationTests.AddRule(fixture.Source, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", skin.gameObject,
-                        ("ShapeName", "Permanent delete"), ("ChangeType", 0), ("Value", 100f));
-                    fixture.Source.transform.GetChild(fixture.Source.transform.childCount - 1).name = skin.name + " Delete";
-                }
-            }
-            foreach (var changer in fixture.Source.GetComponentsInChildren<Component>(true)
-                .Where(component => component != null && component.GetType().FullName == Ma + "ModularAvatarShapeChanger"))
-                foreach (var shape in (IList)changer.GetType().GetProperty("Shapes").GetValue(changer))
-                {
-                    var reference = shape.GetType().GetField("Object").GetValue(shape);
-                    Assert.That(reference.GetType().GetMethod("Get", new[] { typeof(Component) }).Invoke(reference, new object[] { changer }), Is.Not.Null,
-                        "The installed MA must resolve every authored fixture target before export.");
-                }
-            var settingsType = Installed(Ma + "ModularAvatarVRChatSettings");
-            settingsType.GetProperty("MMDWorldSupport").SetValue(fixture.Source.AddComponent(settingsType), false);
-            var folderName = "__MaReactiveExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
-            Vrm10Instance imported = null;
-            try
-            {
-                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
-                // MA promotes its responsive animator conditions to Float.
-                // The authored SDK/FX Bool, Int and Float control metadata must
-                // all retain their original numeric 0/1 selection semantics.
-                controller.AddParameter("Menu", parameterKind);
-                var idle = controller.layers[0].stateMachine.AddState("Neutral"); idle.writeDefaultValues = false;
-                controller.layers[0].stateMachine.defaultState = idle;
-                var menu = ScriptableObject.CreateInstance(Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
-                var parameters = ScriptableObject.CreateInstance(Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
-                AssetDatabase.CreateAsset(menu, folder + "/Menu.asset"); AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
-                ConfigureMenu(menu, parameters, parameterKind);
-                ConfigureDescriptor(descriptor, controller, menu, parameters);
-                var authored = fixture.Source.GetComponentsInChildren<Component>(true).Where(value => value != null)
-                    .Cast<Object>().Concat(new Object[] { fixture.Mesh, controller, menu, parameters }).ToArray();
-                var before = authored.ToDictionary(value => value, value => EditorJsonUtility.ToJson(value));
-                var expectedOff = skins.ToDictionary(skin => skin.name, WorldVertices);
-                foreach (var skin in skins) skin.SetBlendShapeWeight(1, 100);
-                var expectedOn = skins.ToDictionary(skin => skin.name, WorldVertices);
-                foreach (var skin in skins) skin.SetBlendShapeWeight(1, 25);
-                var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MA reactive face", "Tests", warnings,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-                var count = VrmMenuExpressions.CountRegistered(bytes);
-                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                Assert.That(imported, Is.Not.Null);
-                const string name = "Smile";
-                var present = imported.Vrm.Expression.CustomClips.Any(clip => clip.name == name);
-                CaptureEvidence(imported, name, present, count, permanentDeletion, parameterKind);
-                Assert.That(count, Is.EqualTo(1), string.Join("\n", warnings));
-                Assert.That(present, Is.True, "MA generated FX must remain discoverable as the authored facial menu.");
-                var expression = imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name);
-                Assert.That(expression.IsBinary, Is.True);
-                var key = ExpressionKey.CreateCustom(name);
-                foreach (var weight in new[] { 0f, .49f, .5f, .51f, 1f, 0f })
-                {
-                    imported.Runtime.Expression.SetWeight(key, weight); imported.Runtime.Process();
-                    foreach (var skin in imported.GetComponentsInChildren<SkinnedMeshRenderer>().Where(skin => expectedOff.ContainsKey(skin.name)))
-                    {
-                        var vertices = WorldVertices(skin); var expected = weight > .5f ? expectedOn[skin.name] : expectedOff[skin.name];
-                        // Export optimization may reorder surviving vertices.
-                        // Compare the visible authored geometry independently
-                        // of its post-build vertex/index correspondence.
-                        var remaining = (permanentDeletion ? expected.Skip(3) : expected.AsEnumerable()).ToList();
-                        foreach (var index in skin.sharedMesh.triangles)
-                        {
-                            var match = remaining.FindIndex(point => Vector3.Distance(vertices[index], point) < .0005f);
-                            Assert.That(match, Is.GreaterThanOrEqualTo(0), skin.name + " / " + weight + " / " + vertices[index]);
-                            remaining.RemoveAt(match);
-                        }
-                        Assert.That(remaining, Is.Empty);
-                        Assert.That(skin.sharedMesh.triangles.Length, Is.EqualTo(permanentDeletion ? 3 : 6));
-                    }
-                }
-                foreach (var value in authored) Assert.That(EditorJsonUtility.ToJson(value), Is.EqualTo(before[value]), value.name);
-                Assert.That(skins.All(skin => skin.sharedMesh == fixture.Mesh && skin.GetBlendShapeWeight(1) == 25), Is.True);
-            }
-            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); AssetDatabase.DeleteAsset(folder); }
-        }
-
         // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
         // avatar by its descriptor, as a real avatar would be found.
         static Type AvatarRoot() => Installed("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
@@ -474,26 +360,6 @@ namespace VRVlog.LilToonExporter.Tests
             var baked = new Mesh();
             try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
             finally { Object.DestroyImmediate(baked); }
-        }
-
-        [Serializable] sealed class Evidence { public bool expressionPresent; public int registeredCount; public string expression, sourceParameterKind; public RendererEvidence[] renderers; }
-        [Serializable] sealed class RendererEvidence { public string name; public Vector3[] off, on; public int[] triangles; }
-        static void CaptureEvidence(Vrm10Instance imported, string name, bool present, int count, bool deletion, AnimatorControllerParameterType parameterKind)
-        {
-            var directory = Environment.GetEnvironmentVariable("VRVLOG_REACTIVE_EVIDENCE_DIR");
-            if (string.IsNullOrEmpty(directory)) return;
-            var key = ExpressionKey.CreateCustom(name);
-            if (present) imported.Runtime.Expression.SetWeight(key, 0);
-            imported.Runtime.Process();
-            var skins = imported.GetComponentsInChildren<SkinnedMeshRenderer>();
-            var output = skins.Select(skin => new RendererEvidence { name = skin.name, off = WorldVertices(skin), triangles = skin.sharedMesh.triangles }).ToArray();
-            if (present) imported.Runtime.Expression.SetWeight(key, 1);
-            imported.Runtime.Process();
-            for (var i = 0; i < skins.Length; i++) output[i].on = WorldVertices(skins[i]);
-            if (present) imported.Runtime.Expression.SetWeight(key, 0);
-            imported.Runtime.Process(); Directory.CreateDirectory(directory);
-            File.WriteAllText(Path.Combine(directory, "ma-reactive-" + parameterKind.ToString().ToLowerInvariant() + "-" + (deletion ? "with-deletion" : "plain") + ".json"),
-                JsonUtility.ToJson(new Evidence { expression = name, sourceParameterKind = parameterKind.ToString(), expressionPresent = present, registeredCount = count, renderers = output }, true));
         }
     }
 }

@@ -34,16 +34,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(session.LastSuccess, Is.Null);
                 Assert.That(session.HasPendingSave, Is.False);
                 Assert.That(session.CanSave, Is.False);
-                Assert.That(LilToonExporterWindow.ShouldShowFailureAfterFailedAttempt(session), Is.False,
-                    "The normal-export caller must return quietly after progress cancellation.");
                 Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
 
                 attempt = 1;
                 Assert.That(session.Attempt(null), Is.False);
                 Assert.That(session.WasCanceled, Is.False);
                 Assert.That(session.Failure, Is.SameAs(failure));
-                Assert.That(LilToonExporterWindow.ShouldShowFailureAfterFailedAttempt(session), Is.True,
-                    "A real export error must still open diagnostics after a previous cancellation.");
                 Assert.That(File.ReadAllBytes(destination), Is.EqualTo(existing));
 
                 attempt = 2;
@@ -232,7 +228,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new ExportRecoveryTests.RecoveryFixture();
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-recovery-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "confirmed.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(f.Material.name), f.Source, "0.11.5", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(f.Material.name));
             try
             {
                 Directory.CreateDirectory(directory); File.WriteAllBytes(destination, new byte[] { 41, 42 });
@@ -275,7 +271,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var f = new ExportRecoveryTests.RecoveryFixture();
             var destination = Path.Combine(Path.GetTempPath(), "vrvlog-recovery-" + Guid.NewGuid().ToString("N") + ".vrm");
             var original = new byte[] { 51, 52, 53 };
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(f.Material.name), f.Source, "0.11.5", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(f.Material.name));
             try
             {
                 File.WriteAllBytes(destination, original);

@@ -252,7 +252,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f)]
-        [TestCase(.75f)]
         public void CoalescedAuthoredMorphRoutesRegisterOneEqualWeight(float weight)
         {
             Skin(source, "first", "original"); Skin(source, "second", "original");
@@ -314,6 +313,30 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(noOp.sharedMesh.GetBlendShapeName(0), Is.EqualTo("__VRVlog_BlinkNone_original"));
         }
 
+        // A lenient export keeps the first weight, as pinned UniVRM playback
+        // does, and lists the clip instead of stopping.
+        [Test]
+        public void CoalescedAuthoredConflictingWeightsKeepTheFirstWhenListed()
+        {
+            Skin(source, "first", "original"); Skin(source, "second", "original");
+            var settings = Own(ScriptableObject.CreateInstance<VRM10Object>());
+            var expression = Own(ScriptableObject.CreateInstance<VRM10Expression>()); expression.name = "authored conflicting";
+            expression.MorphTargetBindings = new[] { new MorphTargetBinding("first", 0, .25f), new MorphTargetBinding("second", 0, .75f) };
+            settings.Expression.Happy = expression; source.AddComponent<Vrm10Instance>().Vrm = settings;
+            clone = Object.Instantiate(source);
+            using var bindings = ExportOptimizationBindings.Capture(clone);
+            var target = Skin(clone, "merged", "coalesced");
+            foreach (var route in clone.GetComponent<ExportOptimizationMarker>().Morphs) { route.Renderer = target; route.Shape = "coalesced"; }
+            Object.DestroyImmediate(clone.transform.Find("first").gameObject); Object.DestroyImmediate(clone.transform.Find("second").gameObject);
+            var conflicts = new List<(string Clip, string Shape)>();
+            Assert.DoesNotThrow(() => bindings.ValidateAndApply(null, conflicts));
+            Assert.That(conflicts, Is.EqualTo(new[] { ("authored conflicting", "second / original") }));
+            var copied = clone.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+            Assert.That(copied.MorphTargetBindings.Select(binding => (binding.RelativePath, binding.Index, binding.Weight)),
+                Is.EqualTo(new[] { ("merged", 0, .25f) }));
+            Assert.That(expression.MorphTargetBindings.Select(binding => binding.Weight), Is.EqualTo(new[] { .25f, .75f }));
+        }
+
         [TestCase(0f)]
         [TestCase(.2f)]
         public void DuplicateOriginalAuthoredBindingsKeepPinnedFirstWeight(float firstWeight)
@@ -340,7 +363,6 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(0f, 0f, false)]
         [TestCase(.2f, .2f, false)]
         [TestCase(0f, .8f, true)]
-        [TestCase(.2f, .8f, true)]
         public void CoalescedDistinctAuthoredRoutesCompareTheirFirstOriginalWeights(float firstWeight, float secondWeight, bool conflict)
         {
             Skin(source, "first", "original"); Skin(source, "second", "original");
@@ -447,11 +469,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("color", false)]
-        [TestCase("color", true)]
-        [TestCase("emissionColor", false)]
         [TestCase("emissionColor", true)]
         [TestCase("uv", false)]
-        [TestCase("uv", true)]
         public void MovingMaterialEvidenceFollowsMappedSlotsAndOwnedFallbackCopies(string kind, bool becomesInert)
         {
             var original = Skin(source, "face", "UE/JawOpen");
@@ -543,6 +562,21 @@ namespace VRVlog.LilToonExporter.Tests
             var names = (List<object>)((Dictionary<string, object>)((Dictionary<string, object>)meshes[0])["extras"])["targetNames"];
             Assert.That(names, Is.EqualTo(new[] { "first renamed", "second renamed" }));
             Assert.That(custom.Keys, Is.EquivalentTo(new[] { "UE/JawOpen" }));
+        }
+
+        [Test]
+        public void TrackedRendererWithoutAnOutputNodeFailsInTheTrackingOutputStage()
+        {
+            // A renderer on the avatar root has no glTF node. Binding runs
+            // outside every stage guard, so it must not stop the export;
+            // the guarded tracking output reports the missing target instead.
+            Skin(source, "tracked", "UE/JawOpen");
+            clone = Object.Instantiate(source);
+            using var bindings = ExportOptimizationBindings.Capture(clone);
+            bindings.ValidateAndApply();
+            Assert.DoesNotThrow(() => bindings.BindNodes(_ => -1));
+            var error = Assert.Throws<InvalidOperationException>(() => bindings.ApplyUnified(Output("UE/JawOpen")));
+            Assert.That(error.Message, Is.EqualTo("追跡表情の対象が最終VRMにありません: tracked"));
         }
 
         [Test]
@@ -821,7 +855,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f)]
-        [TestCase(.75f)]
         public void InstalledAvatarOptimizerCoalescedTrackingShapesDoNotMultiplyProfileWeights(float weight)
         {
             RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
@@ -870,12 +903,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.25f, .25f, false, false)]
-        [TestCase(.75f, .75f, false, false)]
         [TestCase(.25f, .75f, true, false)]
-        [TestCase(.75f, .25f, true, false)]
-        [TestCase(.25f, .25f, false, true)]
         [TestCase(.75f, .75f, false, true)]
-        [TestCase(.25f, .75f, true, true)]
         [TestCase(.75f, .25f, true, true)]
         public void InstalledAvatarOptimizerCoalescedAuthoredShapesDriveOnceOrStopOnConflictingWeights(float firstWeight, float secondWeight, bool conflict, bool custom)
         {

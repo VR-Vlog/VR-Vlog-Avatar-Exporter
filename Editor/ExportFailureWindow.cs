@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
             window.message = exception.Message;
             window.technicalDetails = exception.ToString();
             var report = ExportRecoveryReport.FromException(null, exception);
-            window.supportText = report.BuildSupportText();
+            window.supportText = report.BuildSupportText(LilToonExporterWindow.PackageVersion());
             window.SetIssues(report.Diagnostics);
             window.ShowUtility();
         }
@@ -86,7 +86,7 @@ namespace VRVlog.LilToonExporter
         {
             message = session.WasCanceled ? ExporterLocalization.T("キャンセル") : session.Failure?.Message;
             technicalDetails = session.Failure?.ToString();
-            supportText = session.Report?.BuildSupportText() ?? "";
+            supportText = session.Report?.BuildSupportText(LilToonExporterWindow.PackageVersion()) ?? "";
             selected.Clear();
             foreach (var action in session.SelectedOptions.Actions) selected.Add(action.Id);
             var diagnostics = (session.Report?.Diagnostics ?? new List<ExportRecoveryDiagnostic>())
@@ -106,7 +106,7 @@ namespace VRVlog.LilToonExporter
         private void SetIssues(IEnumerable<ExportRecoveryDiagnostic> diagnostics)
         {
             var all = diagnostics.Where(issue => issue != null).ToArray();
-            fullDetails = ExportDetailsText.Failure(message, technicalDetails, all);
+            fullDetails = ExportDetailsText.Failure(message, technicalDetails, all, LilToonExporterWindow.PackageVersion());
             detailsFeedback = null;
             detailsSaveFailed = false;
             issues.Clear();
@@ -141,7 +141,8 @@ namespace VRVlog.LilToonExporter
             if (hadSession && session == null)
             {
                 EditorGUILayout.HelpBox(ExporterLocalization.T("Unityの再読み込みで確認内容が無効になりました。書き出し画面から再度書き出してください。"), MessageType.Warning);
-                if (GUILayout.Button(ExporterLocalization.T("書き出し画面を開く"))) { LilToonExporterWindow.Open(); Close(); }
+                // The same entry point as the export menu item, so a retry exports what the board exports.
+                if (GUILayout.Button(ExporterLocalization.T("書き出し画面を開く"))) { Compatibility.DependencyDiagnostics.Open(); Close(); }
                 ExportDetailsText.DrawActions(fullDetails, ref detailsFeedback, ref detailsSaveFailed, ref detailsFeedbackScroll);
                 return;
             }

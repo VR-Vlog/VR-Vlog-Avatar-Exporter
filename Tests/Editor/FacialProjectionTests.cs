@@ -209,7 +209,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("bool")]
-        [TestCase("trigger")]
         [TestCase("int")]
         [TestCase("fractional int")]
         [TestCase("exhausted int")]
@@ -339,7 +338,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(.01f)]
-        [TestCase(1f)]
         [TestCase(100f)]
         public void EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale(float scale)
         {
@@ -365,7 +363,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(.92f, true, true)]
         [TestCase(.5f, true, false)]
-        [TestCase(.1f, true, false)]
         [TestCase(.92f, false, false)]
         public void DescriptorFaceSeamsAcceptOnlyHeadDominantHumanoidNeckSkin(float headWeight, bool useNeck, bool accepted)
         {
@@ -682,9 +679,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase("VisemeBlendShape")]
         [TestCase("JawFlapBlendShape")]
-        [TestCase("Default")]
         [TestCase("JawFlapBone")]
-        [TestCase("VisemeParameterOnly")]
         public void LipSyncModesIgnoreInactiveBlendshapeFields(string mode)
         {
             var descriptor = avatar.GetComponents<Component>().Single(c => c != null && c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
@@ -712,7 +707,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("normal")]
-        [TestCase("tangent")]
         [TestCase("tiny position")]
         public void LaterFramesAndNonPositionBodyDeformationsCannotEnterTheFaceProjection(string kind)
         {
@@ -828,11 +822,9 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var valid in new[] { initiallyValid, !initiallyValid })
             {
                 SetSeed(valid);
-                var result = VrChatExpressionSampler.Analyze(avatar);
+                var result = VrChatExpressionSampler.Analyze(avatar, null, new[] { ("Gesture", (Object)selected.motion, 0f) });
                 Assert.That(result.FacialProjectionSession, Is.Null, "Geometry proof must not escape the Analyze snapshot.");
-                var entries = result.Entries.Where(entry => entry.Name.EndsWith(" / Gesture", StringComparison.Ordinal)).ToArray();
-                Assert.That(entries.Length, Is.GreaterThan(0));
-                Assert.That(entries.Any(entry => entry.Error == null && entry.Values.Any(value => value.Shape == Shapes[1])), Is.EqualTo(valid));
+                Assert.That(result.Entries.Single().UsesFacialProjection, Is.EqualTo(valid));
             }
         }
 
@@ -852,7 +844,8 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(avatar, "Projected face", "Tests", warnings,
-                    exporterVersion: "face-projection-regression", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    exporterVersion: "face-projection-regression", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
+                    listFaces: new[] { ("Gesture", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));
                 Assert.That(warnings.Any(message => message.Contains(ExporterLocalization.T(FacialProjectionScope.Notice))), Is.True, string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());

@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -39,6 +40,39 @@ namespace VRVlog.LilToonExporter
         // Clips a gesture enters in any of the avatar's controllers. The gesture route exports them even
         // when they change nothing, so the board keeps them.
         readonly HashSet<AnimationClip> gestureClips = new HashSet<AnimationClip>();
+        // Clips that Motion Time states play (a Radial Puppet's), and clips
+        // that other states play. A clip only the first kind plays is held at
+        // one frame, as the menu export holds it, instead of being animated.
+        readonly HashSet<AnimationClip> timedClips = new HashSet<AnimationClip>();
+        readonly HashSet<AnimationClip> playedClips = new HashSet<AnimationClip>();
+
+        internal bool HeldAtOneFrame(AnimationClip clip) => timedClips.Contains(clip) && !playedClips.Contains(clip);
+
+        void CollectTimedClips(RuntimeAnimatorController runtime)
+        {
+            var replacements = new Dictionary<AnimationClip, AnimationClip>();
+            if (runtime is AnimatorOverrideController overrides)
+            {
+                var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+                overrides.GetOverrides(pairs);
+                foreach (var pair in pairs) if (pair.Value != null) replacements[pair.Key] = pair.Value;
+                runtime = overrides.runtimeAnimatorController;
+            }
+            if (!(runtime is AnimatorController controller)) return;
+            var layers = controller.layers;
+            IEnumerable<AnimatorState> States(AnimatorStateMachine machine) => machine == null ? Enumerable.Empty<AnimatorState>() :
+                machine.states.Select(child => child.state).Concat(machine.stateMachines.SelectMany(child => States(child.stateMachine)));
+            foreach (var layer in layers)
+            {
+                var synced = layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length;
+                foreach (var state in States(synced ? layers[layer.syncedLayerIndex].stateMachine : layer.stateMachine))
+                {
+                    if (state == null || !((synced ? layer.GetOverrideMotion(state) ?? state.motion : state.motion) is AnimationClip clip)) continue;
+                    if (replacements.TryGetValue(clip, out var replacement)) clip = replacement;
+                    (state.timeParameterActive ? timedClips : playedClips).Add(clip);
+                }
+            }
+        }
 
         void CaptureClipRoots()
         {
@@ -52,6 +86,8 @@ namespace VRVlog.LilToonExporter
                     // all its clips shown.
                     try { gestureClips.UnionWith(VrChatGestureExpressions.TargetClips(controller)); }
                     catch (Exception) { gestureClips.UnionWith(controller.animationClips.Where(clip => clip != null)); }
+                    try { CollectTimedClips(controller); }
+                    catch (Exception) { }
                 }
                 foreach (var clip in controller.animationClips.Where(clip => clip != null))
                 {
@@ -74,11 +110,13 @@ namespace VRVlog.LilToonExporter
                     var root = (string)null;
                     if (component.GetType().FullName == "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator")
                     {
-                        var mode = component.GetType().GetField("pathMode").GetValue(component).ToString();
+                        // Another Modular Avatar version may lack these fields: without a
+                        // mode the root stays unknown, without a root object it is the component's.
+                        var mode = component.GetType().GetField("pathMode")?.GetValue(component)?.ToString();
                         if (mode == "Absolute") root = "";
-                        else
+                        else if (mode != null)
                         {
-                            var reference = component.GetType().GetField("relativePathRoot").GetValue(component);
+                            var reference = component.GetType().GetField("relativePathRoot")?.GetValue(component);
                             var owner = reference?.GetType().GetMethod("Get", new[] { typeof(Component) })?.Invoke(reference, new object[] { Source.transform }) as GameObject;
                             root = AnimationUtility.CalculateTransformPath((owner != null ? owner : component.gameObject).transform, Source.transform);
                         }
@@ -302,11 +340,13 @@ namespace VRVlog.LilToonExporter
         // Lip-sync and blink switches in the avatar's controllers hold mouth or eyelid shapes at the 0 they
         // already rest at. The VRM leaves them out, so the board treats them as unsupported: they are not
         // shown, and an exclusion saved before still counts. A clip that moves a shape away from the face
-        // on the board, a FaceEmo face and a clip a gesture enters stay faces.
+        // on the board, a FaceEmo face and a clip a gesture enters stay faces. A hand pose a gesture
+        // enters that only holds the face shapes at rest is a hand pose, not a face.
         string NoFaceError(AnimationClip clip, Pose pose)
         {
-            if (!clipRoots.ContainsKey(clip) || gestureClips.Contains(clip) || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
-            if (AnimationUtility.GetCurveBindings(clip).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
+            var gestureFace = gestureClips.Contains(clip) && AnimationUtility.GetCurveBindings(clip).All(PoseSampling.IsBlendShape);
+            if (!clipRoots.ContainsKey(clip) || gestureFace || faceEmoBindings.RegisteredClips.Contains(clip)) return null;
+            if (AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Any(binding => AnimationUtility.GetEditorCurve(clip, binding).keys
                 .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
             for (var i = 0; i < Baseline.Rows.Count; i++)
                 if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
@@ -329,8 +369,13 @@ namespace VRVlog.LilToonExporter
             if (AnimationUtility.GetAnimationEvents(clip).Length != 0)
                 throw new InvalidOperationException(ExporterLocalization.T("Animation Eventを含みます。この実験版ではイベント付きの表情は収録できません。"));
             var bindings = AnimationUtility.GetCurveBindings(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding))
+            // A clip a hand gesture enters is a face in VRChat even when it also turns a bone (an eye
+            // highlight) or the body. The export reads only its BlendShapes, so the board leaves those
+            // curves out too. Shown objects, materials and parameters still make it unsupported.
+            var gesture = gestureClips.Contains(clip);
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
+            bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
                 throw new InvalidOperationException(ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ") +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
@@ -369,6 +414,9 @@ namespace VRVlog.LilToonExporter
             return pose;
         }
 
+        static bool IgnoredBesideFace(EditorCurveBinding binding) => !binding.isPPtrCurve &&
+            (binding.type == typeof(Transform) || PoseSampling.IsHumanoidChannel(binding) || NeutralShapePlan.IsInertDynamicsBinding(binding));
+
         static string ClipId(AnimationClip clip, float time)
         {
             AssetDatabase.TryGetGUIDAndLocalFileIdentifier(clip, out string guid, out long localId);
@@ -377,21 +425,6 @@ namespace VRVlog.LilToonExporter
         }
 
         internal void PreviewClip(AnimationClip clip, float time = 0) => ApplyUnchecked(BuildClipPose(clip, time, "プレビュー"));
-
-        internal ImportResult ImportClips(IEnumerable<ClipInput> inputs)
-        {
-            RequireValid();
-            var result = new ImportResult(); var staged = new List<Pose>();
-            var names = new HashSet<string>(Expressions.Select(pose => pose.Name), StringComparer.Ordinal);
-            foreach (var input in inputs)
-            {
-                var pose = BuildClipPoseUnchecked(input.Clip, input.Time, input.Name);
-                if (!names.Add(pose.Name)) { result.Skipped.Add(pose.Name + ": 同名の表情を登録済みです。"); continue; }
-                staged.Add(pose); result.Imported.Add(pose.Name);
-            }
-            Expressions.AddRange(staged); // Atomic: invalid files never publish a partial batch or change the preview.
-            return result;
-        }
 
         // Replace only records owned by this window's file list. Validate the
         // complete batch before changing any record; manual/loaded faces stay.
@@ -429,31 +462,6 @@ namespace VRVlog.LilToonExporter
             if (clip == null || reference.Time < 0 || reference.Time > clip.length)
                 throw new InvalidOperationException(ExporterLocalization.T("ポーズの元クリップが見つからないか、時刻が範囲外です: ") + reference.Name);
             return new ManualPose { Clip = clip, Name = reference.Name, Category = reference.Category, Time = reference.Time };
-        }
-
-        byte[] InjectSourcePoses(byte[] bytes, ICollection<string> warnings, PoseExportOptions poseOptions, Vector3 rootScale,
-            ExportRecoveryReport report = null)
-        {
-            // APL definitions still belong to the original avatar; generated
-            // menu poses belong to the prepared copy. Collect both before
-            // binding the data to the final VRM's Humanoid nodes.
-            using var poses = new PoseExportSession(Source, poseOptions.Copy(), exclusions.Contains);
-            poses.CollectPrepared(Copy, warnings);
-            var failed = poses.Entries.FirstOrDefault(entry => entry.Source.Contains("手動") && entry.Error != null && !poseOptions.Excluded.Contains(entry.Id));
-            if (failed != null) throw new InvalidOperationException(ExporterLocalization.T("ポーズを書き出せません: ") + failed.Name + " / " + failed.Error);
-            PoseLimitChooser.Apply(poses, warnings, report);
-            var document = GlbDocument.Read(bytes);
-            var extensions = (Dictionary<string, object>)document.Json["extensions"];
-            var vrm = (Dictionary<string, object>)extensions["VRMC_vrm"];
-            var bones = (Dictionary<string, object>)((Dictionary<string, object>)vrm["humanoid"])["humanBones"];
-            int Node(string name)
-            {
-                if (!bones.TryGetValue(name, out var value)) throw new InvalidOperationException(ExporterLocalization.T("出力VRMにポーズの骨がありません: ") + name);
-                return Convert.ToInt32(((Dictionary<string, object>)value)["node"], CultureInfo.InvariantCulture);
-            }
-            foreach (var pose in poses.Selected()) foreach (var bone in pose.Bones) bone.Node = Node(bone.Name);
-            foreach (var animation in poses.SelectedAnimations()) foreach (var bone in animation.Bones) bone.Node = Node(bone.Name);
-            return poses.Inject(bytes, rootScale);
         }
     }
 }

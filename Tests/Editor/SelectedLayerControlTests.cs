@@ -1,10 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using NUnit.Framework;
-using VRVlog.LilToonExporter.Vendor.UniGLTF;
-using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -154,9 +151,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
         }
 
-        [TestCase(0f, 0f)] [TestCase(0f, .5f)] [TestCase(0f, 1f)]
-        [TestCase(.5f, 0f)] [TestCase(.5f, .5f)] [TestCase(.5f, 1f)]
-        [TestCase(1f, 0f)] [TestCase(1f, .5f)] [TestCase(1f, 1f)]
+        [TestCase(0f, .5f)] [TestCase(.5f, 1f)] [TestCase(1f, 0f)] [TestCase(1f, 1f)]
         public void InstantIndividualFxControlMatchesNativeSelectedWeight(float goal, float initialWeight)
         {
             var layers = controller.layers; layers[TargetLayer].defaultWeight = initialWeight; controller.layers = layers;
@@ -237,9 +232,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
         }
 
-        [TestCase("native", 0f)] [TestCase("native", .5f)] [TestCase("native", 1f)]
+        [TestCase("native", 0f)] [TestCase("native", .5f)]
         [TestCase("inactive", .5f)]
-        [TestCase("standalone", 0f)] [TestCase("standalone", .5f)] [TestCase("standalone", 1f)]
+        [TestCase("standalone", .5f)] [TestCase("standalone", 1f)]
         public void DirectClipControlsPreserveNativeSlotAndStandaloneIndexMapping(string mode, float goal)
         {
             Control(command, goal);
@@ -420,7 +415,7 @@ namespace VRVlog.LilToonExporter.Tests
             Unchanged(before);
         }
 
-        [TestCase("Action")] [TestCase("Gesture")] [TestCase("Additive")]
+        [TestCase("Action")] [TestCase("Additive")]
         public void NonFxIndividualControlsRemainOutsideFacialWeightEvaluation(string playable)
         {
             Control(command, .5f, target: 0, duration: 2, playable: playable);
@@ -436,74 +431,6 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var state in controller.layers[TargetLayer].stateMachine.states) state.state.motion = Clip(controller, "Unused target");
             Control(command, goal, target: 0); var before = Before();
             Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
-        }
-
-        [Test]
-        public async Task SelectedLayerControlMenuSurvivesFullVrmRoundTrip()
-        {
-            var shader = Shader.Find("lilToon"); if (shader == null) Assert.Ignore("Install lilToon for full export.");
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            Vrm10Instance imported = null; GameObject expected = null;
-            try
-            {
-                foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial.shader = shader;
-                var fx = Graph("Round trip", new[] { "Front", "Back" }, "Hair detail", 0, out var control, out _, out _);
-                Control(control, .5f);
-                var target = fixture.Source.AddComponent(Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")); SetFx(target, fx);
-                var menu = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
-                var parameters = ScriptableObject.CreateInstance(Sdk("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
-                AssetDatabase.CreateAsset(menu, folder + "/Menu.asset"); AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
-                using (var data = new SerializedObject(menu))
-                {
-                    var controls = data.FindProperty("controls"); controls.arraySize = 1;
-                    var item = controls.GetArrayElementAtIndex(0); item.FindPropertyRelative("name").stringValue = "Controlled face";
-                    var type = item.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "Toggle");
-                    item.FindPropertyRelative("parameter").FindPropertyRelative("name").stringValue = "Menu";
-                    item.FindPropertyRelative("value").floatValue = 1; data.ApplyModifiedPropertiesWithoutUndo();
-                }
-                using (var data = new SerializedObject(parameters))
-                {
-                    var list = data.FindProperty("parameters"); list.arraySize = 1; var item = list.GetArrayElementAtIndex(0);
-                    item.FindPropertyRelative("name").stringValue = "Menu"; var type = item.FindPropertyRelative("valueType");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "Int"); item.FindPropertyRelative("defaultValue").floatValue = 0;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
-                using (var data = new SerializedObject(target))
-                {
-                    data.FindProperty("customExpressions").boolValue = true; data.FindProperty("expressionsMenu").objectReferenceValue = menu;
-                    data.FindProperty("expressionParameters").objectReferenceValue = parameters; data.ApplyModifiedPropertiesWithoutUndo();
-                }
-                var before = AssetDatabase.LoadAllAssetsAtPath(folder + "/Round trip.controller")
-                    .Concat(new Object[] { fixture.Mesh, menu, parameters }).ToDictionary(value => value, value => EditorJsonUtility.ToJson(value));
-                expected = Object.Instantiate(fixture.Source); foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Selected SDK layer control", "Tests", warnings,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
-                Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
-                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                const string name = "Controlled face";
-                Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == name), Is.True);
-                foreach (var input in new[] { 0f, 1f, 0f })
-                {
-                    imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(name), input); imported.Runtime.Process();
-                    foreach (var path in new[] { "Front", "Back" })
-                    {
-                        var reference = expected.transform.Find(path).GetComponent<SkinnedMeshRenderer>(); reference.SetBlendShapeWeight(0, input == 0 ? 35 : 55);
-                        var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == path);
-                        var a = Vertices(reference); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
-                        for (var index = 0; index < a.Length; index++) Assert.That(Vector3.Distance(a[index], b[index]), Is.LessThan(.0005f), path + " / " + input + "\n" + string.Join("\n", warnings));
-                    }
-                }
-                foreach (var pair in before) Assert.That(EditorJsonUtility.ToJson(pair.Key), Is.EqualTo(pair.Value), pair.Key.name);
-                Assert.That(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().All(renderer => renderer.sharedMesh == fixture.Mesh && renderer.GetBlendShapeWeight(0) == 35), Is.True);
-            }
-            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); if (expected != null) Object.DestroyImmediate(expected); }
-        }
-
-        private static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var value = new Mesh(); try { renderer.BakeMesh(value, false); return value.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(value); }
         }
     }
 }

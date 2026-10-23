@@ -119,13 +119,6 @@ namespace VRVlog.LilToonExporter
             return session;
         }
 
-        internal ExportRecoveryPreview CreatePreview(ExportRecoveryOptions options)
-        {
-            if (CheckForChanges())
-                throw new InvalidOperationException(ExporterLocalization.T("アバターまたは関連アセットが変わりました。再検査してから保存してください。"));
-            return ExportRecoveryPreview.Create(Source, options, previewExcludedObjects, previewGimmicks);
-        }
-
         internal bool CheckForChanges()
         {
             if (!IsInvalidated && (Source == null || stamp == null || !stamp.Matches(Source)))

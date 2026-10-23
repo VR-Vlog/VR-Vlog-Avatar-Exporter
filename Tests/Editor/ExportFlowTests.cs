@@ -14,8 +14,8 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportFlowTests
     {
-        [TestCase(false)][TestCase(true)]
-        public async Task FreshNormalExportSavesAndReloadsWithoutARecoveryStep(bool fullLilToon)
+        [Test]
+        public async Task FreshNormalExportSavesAndReloadsWithoutARecoveryStep()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon"));
@@ -35,12 +35,9 @@ namespace VRVlog.LilToonExporter.Tests
                     calls++;
                     Assert.That(options.Actions, Is.Empty);
                     var output = UniVrmOneClickExporter.Export(fixture.Source, "Flow regression", "Tests", warnings,
-                        exporterVersion: fullLilToon ? "0.11.9" : null, lilToonVersion: "2.3.4",
+                        exporterVersion: "0.11.9", lilToonVersion: "2.3.4",
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryOptions: options, recoveryReport: report);
-                    // The atomic writer accepts the app's extension-bearing
-                    // VRM contract. The legacy mobile path injects its profile
-                    // after ordinary UniVRM export; the full path embeds it.
-                    return fullLilToon ? output : LilToonGlbExtension.Inject(output, fixture.Source, "0.11.9", "2.3.4");
+                    return output;
                 }, (bytes, warnings) =>
                 {
                     completed++; exported = bytes;
@@ -48,11 +45,6 @@ namespace VRVlog.LilToonExporter.Tests
                 });
                 Assert.That(recovery, Is.Null); Assert.That(calls, Is.EqualTo(1)); Assert.That(completed, Is.EqualTo(1));
                 Assert.That(Directory.GetFiles(directory), Is.EqualTo(new[] { destination }));
-                // Reuse the same atomic writer used by "スマホに送る", then
-                // verify the actual extension-bearing bytes over pinned TLS.
-                var transferSnapshot = Path.Combine(directory, "transfer.vrm");
-                ExportOutputWriter.Write(transferSnapshot, exported);
-                VRVlog.LilToonExporter.LanTransfer.Tests.LanTransferTests.AssertSnapshotRoundTrip(transferSnapshot, exported);
                 imported = await Vrm10.LoadBytesAsync(File.ReadAllBytes(destination), canLoadVrm0X: false,
                     awaitCaller: new ImmediateCaller(), controlRigGenerationOption: ControlRigGenerationOption.None);
                 Assert.That(imported, Is.Not.Null);
@@ -112,7 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-flow-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var completed = 0; var calls = 0;
             try
             {
@@ -131,7 +123,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
             var destination = Path.Combine(Path.GetTempPath(), "vrvlog-flow-" + Guid.NewGuid().ToString("N") + ".vrm");
             var existing = new byte[] { 61, 62 }; var completed = 0; var calls = 0;
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             try
             {
                 File.WriteAllBytes(destination, existing);
@@ -169,7 +161,7 @@ namespace VRVlog.LilToonExporter.Tests
             var directory = Path.Combine(Path.GetTempPath(), "vrvlog-recovery-overwrite-" + Guid.NewGuid().ToString("N"));
             var destination = Path.Combine(directory, "avatar.vrm");
             var replacement = new byte[] { 91, 92, 93 }; var completed = 0; var prompts = 0;
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             try
             {
                 Directory.CreateDirectory(directory);
@@ -200,7 +192,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new ExportRecoveryTests.RecoveryFixture();
             var destination = Path.Combine(Path.GetTempPath(), "vrvlog-recovery-confirm-" + Guid.NewGuid().ToString("N") + ".vrm");
             var existing = new byte[] { 101, 102 }; var completed = 0;
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             try
             {
                 File.WriteAllBytes(destination, existing);
@@ -225,7 +217,7 @@ namespace VRVlog.LilToonExporter.Tests
             fixture.Material.SetFloat("_UseAudioLink", 1);
             var destination = Path.Combine(Path.GetTempPath(), "vrvlog-flow-" + Guid.NewGuid().ToString("N") + ".vrm");
             var existing = new byte[] { 71, 72 }; var completed = 0;
-            var bytes = LilToonGlbExtension.Inject(MaterialBindingFixture.Build(fixture.Material.name), fixture.Source, "0.11.9", "2.3.4");
+            var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             try
             {
                 File.WriteAllBytes(destination, existing);

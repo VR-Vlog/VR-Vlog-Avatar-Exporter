@@ -23,9 +23,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // Everything of the QR screen except the header and the QR area itself. The QR notice wraps at
         // twice the default font size: at the minimum width of 420 every translation takes 2 lines (65 at
         // most, zh-Hans) where one 18-high line used to be, so 47 more than before needs no scrolling.
-        // The "VRMをPCに保存" row under both screens and its hairline (AppTransferWindow.uss).
-        private const float SaveRowHeight = 41f;
-        private const float TransferChrome = 253f + SaveRowHeight;
+        // The buttons and the save result line under both screens, and the QR screen's hairline above
+        // them (AppTransferWindow.uss).
+        private const float FooterHeight = 69f;
+        private const float TransferChrome = 208f + FooterHeight;
         internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
         // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
         private const float WarningFontSize = 24f, SmallestWarningFontSize = 12f;
@@ -40,8 +41,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The start dialog names the transfer it stops. Sentences, so kept out of AppTransferText.
         internal const string StopUploadText = "「{0}」のアップロードを中止します";
         internal const string StopQrText = "「{0}」で表示中のQRは使えなくなります";
-        // The secondary button under the transfer, and the line next to it once it saved.
-        internal const string SaveCopyText = "VRMをPCに保存";
+        // The button next to "QRコードを作る" on both screens, and the line under the buttons once it saved.
+        internal const string SaveCopyText = "VRMを保存";
         internal const string SavedCopyText = "{0}を保存しました";
         internal const string SavedCopyMissingShadersText = "{0}を保存しました・シェーダーが見つからないマテリアル{1}個";
         // On the form once "QRコードを作る" sends the saved file instead of exporting again.
@@ -61,8 +62,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [SerializeField] private bool detailed;
         // The window showing this panel; null on the expression board.
         [NonSerialized] internal AppTransferWindow Window;
-        // On the expression board, which already shows the header, the avatar and the way back.
+        // On the expression board, which already shows the header and the avatar.
         [NonSerialized] private bool embedded;
+        // On the board: its "戻る" to the objects page, which asks first while this transfers.
+        [NonSerialized] private Action back;
+        // On the board: whether "VRMを保存" is the blue button instead of "QRコードを作る". The board
+        // opened to save a VRM says so; opened to transfer, and in the window, the QR is the blue one.
+        // Read on every refresh, as the board can change between the two.
+        [NonSerialized] private Func<bool> savePrimary;
         // Consent is for the avatar on screen, so it is asked again each time.
         [NonSerialized] private bool consented;
         // The privacy policy row stays once shown, so ticking it does not move the form.
@@ -86,7 +93,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private float pixelsPerPoint;
         // On the board, the most the QR area may take of the page's height (FitToArea).
         [NonSerialized] private float embeddedRoom = float.PositiveInfinity;
-        // The last "VRMをPCに保存" for this avatar: the file written, or why nothing was.
+        // The last "VRMを保存" of this panel for this avatar: the file written, or why nothing was.
         [NonSerialized] private string savedCopy, saveProblem;
         [NonSerialized] private int savedCopyMissingShaders;
         // What the saved file and the transfer's exported copy were written from, so pressing the other
@@ -94,27 +101,33 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private WrittenVrm savedWritten, sentWritten;
 
         [NonSerialized] private bool built;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
+        // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
+        [NonSerialized] private bool pressedWhileBlocked, authorMarked;
+        [NonSerialized] private IMGUIContainer termsView;
+        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
-        [NonSerialized] private Button diagnosticsButton, summaryButton, createButton, messageButton, regenerateButton, closeButton, saveButton;
-        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+        [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
+        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, consentHint, privacyLink, privacyText,
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
         [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
-        [NonSerialized] private Image qrImage, warningIcon;
-        [NonSerialized] private ScrollView transferScroll;
+        [NonSerialized] private Image qrImage, qrCover, warningIcon;
+        [NonSerialized] private ScrollView formScroll, transferScroll;
         [NonSerialized] private VisualElement transferBody;
         [NonSerialized] private IMGUIContainer uploadBar;
 
-        // The third page of the expression board in its transfer mode, for the board's avatar.
-        // Resolved by the board by name, as the exporter is here. It lives while it is on the
-        // board's page: leaving the page or closing the board cancels the transfer and deletes
-        // the copy, as closing the window does.
-        public static VisualElement CreateEmbedded(GameObject avatar)
+        // The third page of the expression board, for the board's avatar. Resolved by the board by
+        // name, as the exporter is here. It lives while it is on the board's page: leaving the page
+        // or closing the board cancels the transfer and deletes the copy, as closing the window does.
+        public static VisualElement CreateEmbedded(GameObject avatar) => CreateEmbedded(avatar, null, null);
+
+        // The same with the board's "戻る" next to the buttons, and which of "VRMを保存" and
+        // "QRコードを作る" is the blue one (savePrimary, read on every refresh).
+        public static VisualElement CreateEmbedded(GameObject avatar, Action back, Func<bool> savePrimary)
         {
-            var panel = new AppTransferPanel { detailed = true, embedded = true };
+            var panel = new AppTransferPanel { detailed = true, embedded = true, back = back, savePrimary = savePrimary };
             var element = new VisualElement();
             panel.Build(element);
             panel.Select(avatar, true);
@@ -134,10 +147,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         // Another avatar cancels the upload or the QR on screen, so it is asked first.
         internal static bool ConfirmEndingTransfer() => EditorUtility.DisplayDialog(T("アバターを変更"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("変更する"), T("戻る"));
+            T("このQRコードは使えなくなります"), T("変更する"), T("転送を続ける"));
 
         internal static bool ConfirmRedoingTransfer() => EditorUtility.DisplayDialog(T("QRを作り直す"),
-            T("進行中の転送を中止します。表示中のQRは使えなくなります。"), T("作り直す"), T("戻る"));
+            T("このQRコードは使えなくなります"), T("作り直す"), T("転送を続ける"));
 
         private static string T(string source) => ExporterLocalization.T(source);
         private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
@@ -190,6 +203,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (untouched) avatarName = target == null ? "" : opened ? RememberedName(target) ?? target.name : target.name;
             consented = false;
             nameFits = null;
+            pressedWhileBlocked = false;
             Exporter?.SelectAvatar(target);
             SetMinimumSize(FormMinimumSize);
             Refresh();
@@ -281,14 +295,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 return;
             }
             flow.Tick(time);
+            SyncQr();
             var view = flow.View;
-            if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
-            else ClearQr();
-            view = flow.View;
             if (view == polledView && time < nextRepaint) return;
             polledView = view;
             nextRepaint = time + 0.2;
             Refresh();
+        }
+
+        // The OS notification sound, once per QR that is ready behind "QRを表示".
+        // The real QR exists only while it is shown.
+        private void SyncQr()
+        {
+            if (AppTransferFlow.ShouldBeepForQr(flow.View, flow.TakeQrReady(), AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+            if (flow.QrRevealed) { if (qrTexture == null) ShowQr(); }
+            else ClearQr();
         }
 
         private void ShowQr()
@@ -299,8 +320,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ClearQr();
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
-            // The OS notification sound, once per QR that is now on screen.
-            if (AppTransferFlow.ShouldBeepForQr(flow.View, qrTexture != null, AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+        }
+
+        // "QRを表示": the QR is drawn now, not when it became ready.
+        private void RevealQr()
+        {
+            flow.RevealQr();
+            if (flow.QrRevealed && qrTexture == null) ShowQr();
+            Refresh();
+        }
+
+        // "QRを隠す": back to the cover. The QR stays valid until its deadline.
+        private void HideQr()
+        {
+            flow.HideQr();
+            ClearQr();
+            Refresh();
         }
 
         private string Reason()
@@ -311,9 +346,37 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 CloudVrmTransferWindow.PrivacyConsentAccepted);
         }
 
+        // The inputs to show in red, by the same checks as Reason.
+        private RequiredInput MarkedInputs(bool pressed)
+        {
+            if (nameFits == null) nameFits = AppTransferFlow.NameFits(avatarName);
+            return AppTransferFlow.MarkedInputs(pressed, avatar != null, avatarName, nameFits.Value, Exporter?.HasAuthor() ?? false, consented,
+                CloudVrmTransferWindow.PrivacyConsentAccepted);
+        }
+
+        // The first red field above the footer, scrolled into view when it is outside the form's scroll.
+        private void RevealFirstMarked()
+        {
+            var marked = MarkedInputs(true);
+            var target = (marked & RequiredInput.Avatar) != 0 ? (VisualElement)avatarLabel
+                : (marked & RequiredInput.Name) != 0 ? (VisualElement)nameLabel
+                : (marked & RequiredInput.Author) != 0 ? termsView : null;
+            if (target != null && formScroll != null) formScroll.ScrollTo(target);
+        }
+
         private void Begin()
         {
-            if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode || Reason() != null) return;
+            if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
+            var reason = Reason();
+            if (AppTransferFlow.BoardBlocks(reason)) return;
+            if (reason != null)
+            {
+                pressedWhileBlocked = true;
+                Refresh();
+                RevealFirstMarked();
+                return;
+            }
+            pressedWhileBlocked = false;
             if (!MayStart()) return;
             transferName = AppTransferFlow.TransferName(avatarName);
             placeholderSide = TransferQrCode.Encode(AppTransferFlow.PlaceholderLink(transferName)).Width;
@@ -359,9 +422,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private bool CanSaveCopy => Exporter != null && avatar != null && !EditorApplication.isPlayingOrWillChangePlaymode && BoardReady
             && !BoardNeedsFix && Exporter.HasAuthor() && Flow.View != AppTransferView.Exporting;
 
-        // "VRMをPCに保存": once this transfer has exported, the very file it sends, copied where the user picks.
-        // Before that, the VRM it would send, saved as "VRMを保存" saves it, with the same destination dialog,
-        // result list and recovery window; "QRコードを作る" then sends that file. The transfer on screen
+        // "VRMを保存": once this transfer has exported, the very file it sends, copied where the user picks.
+        // Before that, the VRM it would send, saved as the board's own save does, with the same destination
+        // dialog, result list and recovery window; "QRコードを作る" then sends that file. The transfer on screen
         // goes on. Without a name, the avatar's, as the board's own save names it.
         private void SaveCopy()
         {
@@ -440,7 +503,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private WrittenVrm Written(string hash, string key, GameObject source) =>
             hash == null || Exporter == null ? null : new WrittenVrm(hash, key, Exporter.SourceStamp(source, detailed));
 
-        // "QRコードを作る" after "VRMをPCに保存" sends the saved file while the name, author and VRM terms are
+        // "QRコードを作る" after "VRMを保存" sends the saved file while the name, author and VRM terms are
         // the ones it was written with and nothing it was made from has changed. Cheap, for the result line:
         // after a change in a scene it says nothing. RunExport checks the avatar itself on every press, as
         // a file reimported on disk changes it without any change in a scene.
@@ -537,7 +600,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var name = avatarName.Trim();
             var wireName = transferName;
             var fromBoard = detailed;
-            // After "VRMをPCに保存", the saved file is sent; nothing is exported a second time.
+            // After "VRMを保存", the saved file is sent; nothing is exported a second time.
             sentWritten = null;
             if (MayReuseSavedCopy(true) && ReuseSavedCopy(path))
             {
@@ -728,6 +791,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             readTerms = root.Q<Label>("read-terms");
             consentToggle = root.Q<Toggle>("consent-toggle");
             consentText = root.Q<Label>("consent-text");
+            consentHint = root.Q<Label>("consent-hint");
             privacyRow = root.Q("privacy");
             privacyLink = root.Q<Label>("privacy-link");
             privacyToggle = root.Q<Toggle>("privacy-toggle");
@@ -739,6 +803,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             slotRow = root.Q("slot-row");
             slot = root.Q("slot");
             qrImage = root.Q<Image>("qr");
+            qrCover = root.Q<Image>("qr-cover");
+            revealArea = root.Q("reveal");
+            showQrButton = root.Q<Button>("show-qr");
+            hideQrButton = root.Q<Button>("hide-qr");
             slotMessage = root.Q("message");
             messageTitle = root.Q<Label>("message-title");
             messageBody = root.Q<Label>("message-body");
@@ -754,32 +822,42 @@ namespace VRVlog.LilToonExporter.LanTransfer
             barFill = root.Q("bar-fill");
             lifetimeLabel = root.Q<Label>("lifetime");
             soundToggle = root.Q<Toggle>("sound");
+            backButton = root.Q<Button>("back");
             regenerateButton = root.Q<Button>("regenerate");
             closeButton = root.Q<Button>("close");
             saveButton = root.Q<Button>("save");
             saveResult = root.Q<Label>("save-result");
             saveOpen = root.Q<Label>("save-open");
 
-            // The board above shows the header, the avatar and the way back to the faces and objects,
-            // and its "戻る" leaves the QR screen, so the panel has no "閉じる" there.
+            // The board above shows the header and the avatar. Its "戻る" to the objects page sits at
+            // the left of the buttons and leaves the QR screen, so the panel has no "閉じる" there
+            // (RefreshTransfer). The window has neither "戻る" nor another page to go back to.
             if (embedded)
             {
                 Show(root.Q("header"), false);
                 Show(root.Q("header-line"), false);
                 Show(root.Q("avatar-row"), false);
                 Show(root.Q("summary"), false);
-                Show(closeButton, false);
             }
+            Show(backButton, embedded && back != null);
             // Only the board's page cancels the transfer when it is left; the window says nothing new.
             Show(leaveNote, embedded);
 
             var headerIcon = root.Q<Image>("header-icon");
             headerIcon.image = ExporterWindowIcon.Texture;
             headerIcon.scaleMode = ScaleMode.ScaleToFit;
+            var versionLabel = root.Q<Label>("version");
+            versionLabel.text = ExporterWindowHeader.Version;
+            Show(versionLabel, ExporterWindowHeader.Version.Length > 0);
             warningIcon = root.Q<Image>("warning-icon");
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
+            qrCover.image = QrCover.Texture;
+            qrCover.scaleMode = ScaleMode.StretchToFill;
+            // Only "QRを表示" takes the click, not the area around it.
+            qrCover.pickingMode = PickingMode.Ignore;
+            revealArea.pickingMode = PickingMode.Ignore;
             var probe = root.Q<IMGUIContainer>("scale-probe");
             probe.onGUIHandler = ProbeScale;
             // Only measures the display scale: no Tab stop, no clicks.
@@ -814,12 +892,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             readTerms.RegisterCallback<ClickEvent>(_ => Application.OpenURL(AppTransferFlow.TermsUrl));
             privacyLink.RegisterCallback<ClickEvent>(_ => Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl));
             // The VRM terms are the IMGUI section shared with the export window.
-            root.Q<IMGUIContainer>("terms").onGUIHandler = DrawTerms;
+            termsView = root.Q<IMGUIContainer>("terms");
+            termsView.onGUIHandler = DrawTerms;
             diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;
             summaryButton.clicked += EditDetails;
+            backButton.clicked += () => back?.Invoke();
             createButton.clicked += Begin;
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
+            showQrButton.clicked += RevealQr;
+            hideQrButton.clicked += HideQr;
             closeButton.clicked += () => { if (Window != null) Window.Close(); };
             saveButton.clicked += SaveCopy;
             saveOpen.RegisterCallback<ClickEvent>(_ => { if (savedCopy != null && File.Exists(savedCopy)) EditorUtility.RevealInFinder(savedCopy); });
@@ -828,6 +910,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The export starts once the panel has drawn the Exporting state.
             slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
             slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
+            formScroll = root.Q<ScrollView>("form-scroll");
             transferScroll = root.Q<ScrollView>("transfer-scroll");
             transferBody = transferScroll.Q(className: "body");
             transferScroll.verticalScroller.valueChanged += _ => PlaceSlot();
@@ -854,7 +937,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var entry = exporter;
             if (entry == null) return;
             EditorGUI.BeginChangeCheck();
-            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms();
+            var markAuthor = (MarkedInputs(pressedWhileBlocked) & RequiredInput.Author) != 0;
+            using (new EditorGUI.DisabledScope(EditorApplication.isPlayingOrWillChangePlaymode)) entry.DrawTerms(markAuthor);
+            authorMarked = markAuthor;
             // The author decides the reason line below.
             if (EditorGUI.EndChangeCheck()) root.schedule.Execute(Refresh);
         }
@@ -898,6 +983,24 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (sending) RefreshTransfer(view);
             else RefreshForm();
             RefreshSaveRow();
+            RefreshActions(sending);
+        }
+
+        // One row of buttons under both screens: "戻る" at the left on the board, then at the right
+        // "VRMを保存" and "QRコードを作る", which the QR screen turns into "QRを作り直す" of the same width,
+        // so "VRMを保存" stays where it was. The window's QR screen adds "閉じる" at the end.
+        private void RefreshActions(bool sending)
+        {
+            backButton.text = T("戻る");
+            Show(createButton, !sending);
+            Show(regenerateButton, sending);
+            Show(closeButton, sending && !embedded);
+            // The order stays; only the blue moves, to one button by where this opened: "VRMを保存" on the
+            // board opened from "VRMを書き出す", "QRコードを作る" from "アプリに転送" and in the window.
+            // Re-read on every refresh.
+            var saveFirst = savePrimary != null && savePrimary();
+            saveButton.EnableInClassList("primary", saveFirst);
+            createButton.EnableInClassList("primary", !saveFirst);
         }
 
         private void RefreshForm()
@@ -908,14 +1011,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Show(problemBox, entry == null);
             diagnosticsButton.text = T("VR Vlog 動作環境");
             Show(diagnosticsButton, entry == null);
-            playingBox.text = T("Playモードを終了すると編集できます。");
+            playingBox.text = T("Playモードを終了すると編集できます");
             // The board says this above its pages.
             Show(playingBox, playing && !embedded);
             formFields.SetEnabled(!playing && entry != null);
             // The terms and the consent sit above the button, outside the fields, and lock with them.
             consentFields.SetEnabled(!playing && entry != null);
 
-            avatarLabel.text = T("アバター");
+            avatarLabel.text = T(AppTransferText.Avatar);
             if (avatarField.value != avatar) avatarField.SetValueWithoutNotify(avatar);
             // What the export takes from elsewhere, and where to change it.
             summaryText.text = entry != null ? entry.SettingsSummary(avatar, detailed) : "";
@@ -927,6 +1030,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             termsLabel.text = T(AppTransferText.Terms);
             readTerms.text = T(AppTransferText.ReadTerms);
             consentText.text = AppTransferFlow.ConsentText;
+            consentHint.text = T(AppTransferText.ConsentHint);
             consentToggle.SetValueWithoutNotify(consented);
             // The same saved choice, link and wording as "スマホに送る".
             if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
@@ -935,11 +1039,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             privacyText.text = T("プライバシーポリシーに同意する");
             privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
 
-            // One fixed line says why the button is disabled, so nothing below it moves.
+            // One fixed line says what is missing, so nothing below it moves; a list too long for it is in the tooltip.
             var reason = entry == null ? null : Reason();
-            reasonLabel.text = reason == null ? "" : T(reason);
+            reasonLabel.text = AppTransferFlow.ReasonText(reason, avatar != null, avatarName, nameFits ?? true, Exporter?.HasAuthor() ?? false, consented,
+                CloudVrmTransferWindow.PrivacyConsentAccepted, T);
+            reasonLabel.tooltip = reasonLabel.text;
+            var marked = entry == null ? RequiredInput.None : MarkedInputs(pressedWhileBlocked);
+            avatarLabel.EnableInClassList("missing", (marked & RequiredInput.Avatar) != 0);
+            nameLabel.EnableInClassList("missing", (marked & RequiredInput.Name) != 0);
+            nameHint.EnableInClassList("missing", (marked & RequiredInput.Name) != 0);
+            consentText.EnableInClassList("missing", (marked & RequiredInput.Consent) != 0);
+            privacyText.EnableInClassList("missing", (marked & RequiredInput.PrivacyConsent) != 0);
+            // The author is the IMGUI section, which draws its red itself once asked to draw again.
+            if (authorMarked != ((marked & RequiredInput.Author) != 0)) { authorMarked = !authorMarked; termsView.MarkDirtyRepaint(); }
             createButton.text = T(AppTransferText.Create);
-            createButton.SetEnabled(!playing && entry != null && reason == null);
+            // Pressed while an input is missing, it marks that input; only the board's own problems keep it disabled.
+            createButton.SetEnabled(!playing && entry != null && !AppTransferFlow.BoardBlocks(reason) && (reason == null || MarkedInputs(true) != RequiredInput.None));
             createHint.text = T(AppTransferText.CreateHint);
         }
 
@@ -955,10 +1070,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Reserve(leaveNote, view == AppTransferView.Uploading || view == AppTransferView.Waiting);
             // The area keeps the size of the QR through every state, so the rows below never move.
             slotRow.style.height = SlotSide;
-            var showQr = view == AppTransferView.Waiting && qrTexture != null;
-            slot.EnableInClassList("slot--qr", showQr);
+            var waiting = view == AppTransferView.Waiting;
+            var showQr = waiting && qrTexture != null;
+            // A ready QR waits behind a blurred picture that is not made from it, with "QRを表示" on top.
+            var covered = waiting && !showQr;
+            slot.EnableInClassList("slot--qr", showQr || covered);
             qrImage.image = showQr ? qrTexture : null;
             Show(qrImage, showQr);
+            Show(qrCover, covered);
+            Show(revealArea, covered);
+            showQrButton.text = T(AppTransferText.ShowQr);
 
             // A failure or an ended transfer says why in place, with the one thing to do next.
             string title = null, body = null, button = null;
@@ -999,20 +1120,23 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (view == AppTransferView.Exporting) slot.MarkDirtyRepaint();
             PlaceSlot();
 
-            var waiting = view == AppTransferView.Waiting;
-            scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
+            scanLabel.text = showQr ? T(AppTransferText.ScanWithCamera) : "";
+            hideQrButton.text = T(AppTransferText.HideQr);
+            Show(hideQrButton, showQr);
             warningText.text = T(AppTransferText.DoNotShare);
             FitWarning();
-            Reserve(warningRow, waiting);
+            // Its place is kept in every state, so it does not move when the QR appears.
+            Reserve(warningRow, AppTransferFlow.ShowsDoNotShare(view));
             var counting = waiting || view == AppTransferView.Expired;
-            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
+            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : showQr ? AppTransferText.Waiting : AppTransferText.QrHidden) : "";
             var seconds = waiting ? flow.Remaining : 0;
             remainingLabel.text = counting ? string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60) : "";
             remainingLabel.EnableInClassList("expired", view == AppTransferView.Expired);
             barFill.style.width = Length.Percent(waiting ? flow.RemainingFraction * 100f : 0f);
             lifetimeLabel.text = counting ? string.Format(T(AppTransferText.Lifetime), CloudTransferProtocol.LifetimeMinutes) : "";
             regenerateButton.text = T(AppTransferText.Regenerate);
-            Show(regenerateButton, waiting);
+            // Its place stays while it is hidden, so "VRMを保存" next to it does not move.
+            Reserve(regenerateButton, waiting);
             closeButton.text = T("閉じる");
             soundToggle.text = soundToggle.tooltip = T(AppTransferText.QrReadySound);
             soundToggle.SetValueWithoutNotify(AppTransferWindow.QrReadySound);
@@ -1042,7 +1166,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             internal Action<GameObject> SelectAvatar;
             internal Func<bool> HasAuthor;
-            internal Action DrawTerms;
+            internal Action<bool> DrawTerms;
             internal Func<GameObject, string, string, Action, string> Export;
             internal Func<GameObject, string> RememberedName;
             internal Func<GameObject, bool, string> SettingsSummary;
@@ -1071,7 +1195,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     {
                         SelectAvatar = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), target, "SelectAvatar"),
                         HasAuthor = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "HasAuthor"),
-                        DrawTerms = (Action)Delegate.CreateDelegate(typeof(Action), target, "DrawTerms"),
+                        DrawTerms = (Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>), target, "DrawTerms"),
                         Export = (Func<GameObject, string, string, Action, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string, string, Action, string>), target, "Export"),
                         RememberedName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "RememberedName"),
                         SettingsSummary = (Func<GameObject, bool, string>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, string>), target, "SettingsSummary"),

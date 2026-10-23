@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using UnityEngine;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -9,8 +10,10 @@ namespace VRVlog.LilToonExporter
     {
         // A mesh without any weights renders rigidly at its renderer transform;
         // rootBone controls its bounds. Encode that placement as an explicit joint.
+        // A lenient export keeps a mesh it cannot repair as it is and warns;
+        // each repair restores the renderer before it throws.
         internal static void Preserve(GameObject clone, ICollection<Mesh> ownedMeshes, ICollection<string> warnings,
-            ICollection<Transform> fixedRootJoints = null)
+            ICollection<Transform> fixedRootJoints = null, bool lenient = false)
         {
             if (ownedMeshes == null) throw new ArgumentNullException(nameof(ownedMeshes));
             // UniVRM renames duplicate node names with one warning each; one
@@ -20,8 +23,17 @@ namespace VRVlog.LilToonExporter
             foreach (var renderer in ExportRendererSelection.Enumerate(clone))
                 if (renderer is SkinnedMeshRenderer skin && skin.sharedMesh != null)
                 {
-                    RemapOmittedRootJoint(clone.transform, skin, warnings, fixedRootJoints, names);
-                    Preserve(clone.transform, skin, ownedMeshes, warnings, fixedRootJoints);
+                    try
+                    {
+                        RemapOmittedRootJoint(clone.transform, skin, warnings, fixedRootJoints, names);
+                        Preserve(clone.transform, skin, ownedMeshes, warnings, fixedRootJoints);
+                    }
+                    catch (InvalidOperationException error) when (lenient)
+                    {
+                        // Preserve runs again after the build passes; warn once.
+                        var message = error.Message + "このメッシュはウェイトを直さずに書き出します。";
+                        if (warnings != null && !warnings.Contains(message)) warnings.Add(message);
+                    }
                 }
         }
 
@@ -289,7 +301,6 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool Close(float a, float b) => Finite(a) && Finite(b) && Mathf.Abs(a - b) <= 0.0002f * Mathf.Max(1f, Mathf.Abs(a));
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
         private static float[] ReadBlendWeights(SkinnedMeshRenderer skin, Mesh mesh)
         {
             var values = new float[mesh.blendShapeCount];

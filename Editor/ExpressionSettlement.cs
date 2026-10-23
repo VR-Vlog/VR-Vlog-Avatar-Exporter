@@ -6,6 +6,7 @@ using UnityEditor.Animations;
 using UnityEngine;
 using UnityEngine.Animations;
 using UnityEngine.Playables;
+using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
 {
@@ -285,8 +286,6 @@ namespace VRVlog.LilToonExporter
 
         private static bool Advancing(AnimatorStateInfo info) =>
             Finite(info.normalizedTime) && Finite(info.length) && info.length > 0 && Finite(info.speed * info.speedMultiplier) && info.speed * info.speedMultiplier > 0;
-
-        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
         internal static Dictionary<string, float> Parameters(AnimatorControllerPlayable playable, AnimatorController controller)
         {

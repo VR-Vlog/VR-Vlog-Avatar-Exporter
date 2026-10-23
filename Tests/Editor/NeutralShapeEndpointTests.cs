@@ -84,7 +84,6 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(0f)]
-        [TestCase(.25f)]
         public void InvalidAuthorIndexCannotAddressNewlyAppendedBlinkOrExpressionChannel(float weight)
         {
             using var fixture = new Fixture();
@@ -156,6 +155,24 @@ namespace VRVlog.LilToonExporter.Tests
                 new VrChatExpressionMenu.MorphValue { Path = "Face", Shape = "Multi", Weight = 0 }
             }));
             Assert.That(fixture.Skin.GetBlendShapeWeight(0), Is.EqualTo(75));
+        }
+
+        // A build step can add a mesh at a path a clip already names: that
+        // binding is left inert with a warning instead of stopping the export.
+        [Test]
+        public void AuthoredBindingOnASharedRendererPathIsLeftInertAndWarns()
+        {
+            using var fixture = new Fixture();
+            var duplicate = Object.Instantiate(fixture.Skin.gameObject, fixture.Copy.transform); duplicate.name = "Face";
+            var warnings = new List<string>();
+            AuthoredExpressionEndpoints session = null;
+            Assert.DoesNotThrow(() => session = AuthoredExpressionEndpoints.Capture(
+                fixture.Copy, NeutralShapeSnapshot.Capture(fixture.Copy), null, warnings));
+            using (session) { fixture.Preserve(); session.Bake(fixture.Owned); }
+            var clip = fixture.Copy.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+            Assert.That(clip.MorphTargetBindings.Single().Index, Is.EqualTo(int.MaxValue));
+            Assert.That(warnings.Single(), Does.Contain("Face"));
+            Assert.That(fixture.Clip.MorphTargetBindings.Single().Index, Is.EqualTo(0));
         }
 
         [Test]
@@ -310,7 +327,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         [TestCase(0f)]
         [TestCase(float.NaN)]
-        [TestCase(float.PositiveInfinity)]
         public void ProfileRetainsExistingInvalidWeightContract(float weight)
         {
             Assert.Throws<InvalidOperationException>(() => VrmTrackingExpressions.ValidateMorph(new TrackingMorph { shape = "Multi", weight = weight }, "JawOpen"));

@@ -22,7 +22,7 @@ namespace VRVlog.LilToonExporter
         private ExportSettings settings = new ExportSettings();
         private AvatarLicenseOptions license { get => settings.License; set => settings.License = value; }
         private bool showTerms = EditorPrefs.GetBool(TermsFoldoutPreference, false);
-        private GUIStyle summaryStyle;
+        private GUIStyle summaryStyle, missingLabelStyle, missingLineStyle;
         // The window asks for the summary several times a second; the store is read again only after a save.
         private GameObject countedAvatar;
         private int countedRevision = -1, excludedCount;
@@ -33,7 +33,7 @@ namespace VRVlog.LilToonExporter
 
         // The author is the avatar's remembered one, else what this window
         // already holds, else the author of an open export window. The license
-        // comes from an export window showing this avatar, else the avatar's
+        // comes from a board showing its own information page for this avatar, else the avatar's
         // remembered settings; an avatar without any starts from the default.
         public void SelectAvatar(GameObject avatar)
         {
@@ -41,8 +41,8 @@ namespace VRVlog.LilToonExporter
             if (avatar != null) author = ExportAuthor.Replace(author, ExportAuthor.ForSelection(ExportAuthor.Remembered(avatar), author));
             foreach (var window in Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>())
             {
-                // A board opened for the transfer hides its author and license; they are asked here.
-                if (window.TransferMode) continue;
+                // A board whose third page is the transfer panel hides its author and license; they are asked here.
+                if (!window.ShowsOwnInfo) continue;
                 if (!HasAuthor()) author = ExportAuthor.Replace(author, window.Author ?? "");
                 var shown = window.LicenseFor(avatar);
                 if (shown != null) license = shown;
@@ -97,19 +97,32 @@ namespace VRVlog.LilToonExporter
 
         // The VRM meta fields of the export window. The author is required and
         // always shown; the license is optional and starts folded, like the export
-        // windows, and this window remembers whether it was opened.
-        public void DrawTerms()
+        // windows, and this window remembers whether it was opened. markAuthor draws
+        // the author's label and the line under it in red, after "QRコードを作る" was pressed without one.
+        public void DrawTerms(bool markAuthor)
         {
             if (summaryStyle == null) summaryStyle = new GUIStyle(EditorStyles.miniLabel) { wordWrap = false, clipping = TextClipping.Clip };
+            if (missingLabelStyle == null)
+            {
+                // The red of the window's own warnings (AppTransferWindow.uss).
+                var red = EditorGUIUtility.isProSkin ? new Color32(245, 107, 102, 255) : new Color32(184, 36, 31, 255);
+                missingLabelStyle = new GUIStyle(EditorStyles.label);
+                missingLabelStyle.normal.textColor = missingLabelStyle.focused.textColor = missingLabelStyle.hover.textColor = red;
+                missingLineStyle = new GUIStyle(EditorStyles.miniLabel);
+                missingLineStyle.normal.textColor = red;
+            }
             var previousLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 164f;
             try
             {
-                author = EditorGUILayout.TextField(new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。")), author);
+                var label = new GUIContent(ExporterLocalization.T("作者名"), ExporterLocalization.T("VRMファイルに記録される作者名です。"));
+                var rect = EditorGUILayout.GetControlRect();
+                var field = EditorGUI.PrefixLabel(rect, GUIUtility.GetControlID(FocusType.Passive), label, markAuthor ? missingLabelStyle : EditorStyles.label);
+                author = EditorGUI.TextField(field, author);
             }
             finally { EditorGUIUtility.labelWidth = previousLabelWidth; }
             // The line is always reserved so typing does not move the rows below.
-            EditorGUILayout.LabelField(HasAuthor() ? "" : ExporterLocalization.T(ExportAuthor.Required), EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(HasAuthor() ? "" : ExporterLocalization.T(ExportAuthor.Required), markAuthor ? missingLineStyle : EditorStyles.miniLabel);
             var open = EditorGUILayout.Foldout(showTerms, ExporterLocalization.T("VRMの利用条件"), true);
             if (open != showTerms)
             {
@@ -137,7 +150,7 @@ namespace VRVlog.LilToonExporter
         public string Export(GameObject avatar, string name, string destination, Action saved)
         {
             if (saved == null) throw new ArgumentNullException(nameof(saved));
-            // The window keeps its button disabled without an author; a retry or
+            // The window does not start without an author; a retry or
             // another caller stops here before any file or recovery session starts.
             if (!HasAuthor()) return ExporterLocalization.T(ExportAuthor.Required);
             lastMissingShaderCount = 0;
@@ -167,8 +180,8 @@ namespace VRVlog.LilToonExporter
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
         }
 
-        // "VRMをPCに保存" on the transfer screen: what the transfer would send (detailed: the open board,
-        // quick: a board prepared out of sight), saved as "VRMを保存" saves, to a file the user picks.
+        // "VRMを保存" on the transfer screen: what the transfer would send (detailed: the open board,
+        // quick: a board prepared out of sight), saved as the board's own save does, to a file the user picks.
         // saved gets the path and the missing shader count once the file is written. Returns null when
         // it saved or the user canceled, and the reason when it failed.
         public string SaveCopy(GameObject avatar, string name, bool detailed, Action<string, int> saved)

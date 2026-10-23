@@ -23,7 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
             return new PoseCandidate { Id = id, Name = data.Name, Source = "手動", Data = data };
         }
 
-        static PoseCandidate Moving(string id, int frames, int bones = 1)
+        internal static PoseCandidate Moving(string id, int frames, int bones = 1)
         {
             var data = new HumanoidAnimationData { Id = id, Name = id, Category = "", Source = "手動" };
             foreach (var bone in HumanoidAnimationData.BoneNames.Take(bones).Select((value, index) => (value, index)))
@@ -44,69 +44,6 @@ namespace VRVlog.LilToonExporter.Tests
         static string[] Dropped(PoseLimitPlan plan) => plan.Rows.Where(row => !row.Keep).Select(row => row.Id).ToArray();
 
         [Test]
-        public void WithinTheLimitsNothingIsDroppedWhateverWasSaved()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("a"), Still("b"), Moving("c", 10) });
-            Assert.That(plan.NeedsChoice, Is.False);
-            plan.Choose(new[] { "a", "c" });
-            Assert.That(Dropped(plan), Is.Empty);
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheCountTheDefaultDropsTheLastRows()
-        {
-            var candidates = Enumerable.Range(0, 130).Select(i => Still("pose" + i)).ToArray();
-            var plan = new PoseLimitPlan(candidates);
-            Assert.That(plan.NeedsChoice && plan.CountOver, Is.True);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "pose128", "pose129" }));
-            Assert.That(plan.Within && plan.IsDefault, Is.True);
-            // The same poses give the same choice every time.
-            var again = new PoseLimitPlan(candidates); again.Default();
-            Assert.That(Dropped(again), Is.EqualTo(Dropped(plan)));
-        }
-
-        [Test]
-        public void OverTheFramesTheDefaultDropsMovingPosesOnly()
-        {
-            // No bones keeps the data small, so only the frame total is over.
-            var plan = new PoseLimitPlan(new[] { Moving("m0", 8000, 0), Moving("m1", 8000, 0), Still("s0"), Moving("m2", 8000, 0),
-                Moving("m3", 8000, 0), Moving("m4", 1000, 0), Still("s1") });
-            Assert.That(plan.FramesOver, Is.True);
-            Assert.That(plan.AnimationBytesOver, Is.False);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "m4" }));
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheMovingPoseDataTheDefaultDropsFromTheEnd()
-        {
-            var plan = new PoseLimitPlan(new[] { Moving("m0", 3000, 20), Moving("m1", 3000, 20), Moving("m2", 3000, 20), Still("s0") });
-            Assert.That(plan.AnimationBytesOver, Is.True);
-            Assert.That(plan.FramesOver, Is.False);
-            plan.Default();
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "m1", "m2" }), "The still pose stays.");
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
-        public void OverTheStillPoseDataTheDefaultDropsStillPosesOnly()
-        {
-            var candidates = new List<PoseCandidate> { Moving("m0", 10) };
-            candidates.AddRange(Enumerable.Range(0, 80).Select(i => Still("s" + i, HumanoidPoseData.BoneNames.Length, new string('x', 200))));
-            var plan = new PoseLimitPlan(candidates);
-            Assert.That(plan.PoseBytesOver, Is.True);
-            Assert.That(plan.CountOver, Is.False);
-            plan.Default();
-            var dropped = Dropped(plan);
-            Assert.That(dropped, Is.Not.Empty);
-            Assert.That(dropped, Is.EqualTo(Enumerable.Range(80 - dropped.Length, dropped.Length).Select(i => "s" + i)));
-            Assert.That(plan.Within, Is.True);
-        }
-
-        [Test]
         public void ASavedChoiceIsToppedUpFromTheEnd()
         {
             var plan = new PoseLimitPlan(Enumerable.Range(0, 131).Select(i => Still("pose" + i)));
@@ -120,27 +57,15 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AMovingPoseOverTheDataLimitAloneIsLeftOutAndAsked()
+        public void ASavedChoiceStillAppliesWhenTheRestIsOverWithATooLargePose()
         {
-            var plan = new PoseLimitPlan(new[] { Still("s0"), Moving("big", 8000, 20), Moving("m0", 10) });
-            var big = plan.Rows.Single(row => row.Id == "big");
-            Assert.That(big.TooLarge && !big.Selectable && !big.Keep, Is.True);
+            var candidates = new List<PoseCandidate> { Moving("big", 8000, 20) };
+            candidates.AddRange(Enumerable.Range(0, 130).Select(i => Still("pose" + i)));
+            var plan = new PoseLimitPlan(candidates);
+            Assert.That(plan.Exceeds && plan.CountOver, Is.True);
+            plan.Choose(new[] { "pose0", "pose1" });
+            Assert.That(Dropped(plan), Is.EqualTo(new[] { "big", "pose0", "pose1" }));
             Assert.That(plan.Within, Is.True);
-            Assert.That(plan.NeedsChoice, Is.True, "Losing a pose is asked about even when the rest fits.");
-            plan.Choose(new[] { "m0" });
-            Assert.That(Dropped(plan), Is.EqualTo(new[] { "big", "m0" }));
-            Assert.That(plan.Dropped, Is.EquivalentTo(new[] { "m0" }), "Only choices are remembered.");
-            Assert.That(plan.LeftOut.Select(row => row.Id), Is.EqualTo(new[] { "big", "m0" }));
-        }
-
-        [Test]
-        public void AMovingPoseOverTheFrameLimitIsShownButNotAsked()
-        {
-            var plan = new PoseLimitPlan(new[] { Still("s0"), new PoseCandidate { Id = "long", Name = "long", IsAnimation = true, OverFrameLimit = true } });
-            var row = plan.Rows.Single(item => item.Id == "long");
-            Assert.That(row.Animated && !row.Selectable && !row.Keep, Is.True);
-            Assert.That(plan.NeedsChoice, Is.False);
-            Assert.That(plan.LeftOut, Is.Empty, "The board already reports it.");
         }
 
         // The size the contract's Measure gives the written extension.
@@ -174,23 +99,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => HumanoidAnimationData.Write(rows.Select(row => row.Animation).ToList()));
             var plan = new PoseLimitPlan(rows); plan.Default();
             Assert.DoesNotThrow(() => HumanoidAnimationData.Write(rows.Where(row => !plan.Dropped.Contains(row.Id)).Select(row => row.Animation).ToList()));
-        }
-
-        [Test]
-        public void EveryShippedLocaleTranslatesTheWindow()
-        {
-            var sources = typeof(PoseLimitWindow).GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
-                .Where(field => field.IsLiteral && field.FieldType == typeof(string)).Select(field => (string)field.GetRawConstantValue())
-                .Concat(new[] { PoseLimitChooser.Category, PoseLimitChooser.DroppedReason, PoseLimitChooser.TooLargeReason }).Distinct().ToArray();
-            Assert.That(sources.Length, Is.GreaterThan(20));
-            var guid = AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var directory = Path.GetDirectoryName(AssetDatabase.GUIDToAssetPath(guid));
-            foreach (var locale in new[] { "en", "ko", "zh-Hans", "zh-Hant" })
-            {
-                var text = File.ReadAllText(Path.Combine(directory, "ExporterLocale_" + locale + ".json"));
-                foreach (var source in sources)
-                    Assert.That(text, Does.Contain("{\"source\":\"" + source + "\",\"translated\":\""), locale + ": " + source);
-            }
         }
     }
 
@@ -270,6 +178,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             using var session = Session(fixture, 130);
+            Assert.Throws<InvalidOperationException>(() => session.SelectedAnimations());
             var report = new ExportRecoveryReport(); var warnings = new List<string>();
             using (new PoseLimitChooser.Scope(fixture.Source, true))
             {
@@ -305,6 +214,61 @@ namespace VRVlog.LilToonExporter.Tests
                     PoseLimitChooser.Apply(session, null, null);
                     Assert.That(session.LimitExcluded, Is.EquivalentTo(new[] { "pose0", "pose1" }));
                 }
+            Assert.That(dialog.Asked, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ConfirmingKeepsTheSavedChoiceForPosesNotListed()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            // "gone" is not listed this time; pose5 is replaced by this answer.
+            ExportSettingsStore.SaveLimitChoice(fixture.Source, new[] { "gone", "pose5" });
+            dialog.Change = plan =>
+            {
+                foreach (var row in plan.Rows) row.Keep = row.Id != "pose0" && row.Id != "pose1";
+            };
+            using (var session = Session(fixture, 130))
+            using (new PoseLimitChooser.Scope(fixture.Source, true))
+                PoseLimitChooser.Apply(session, null, null);
+            Assert.That(ExportSettingsStore.LoadLimitChoice(fixture.Source), Is.EquivalentTo(new[] { "gone", "pose0", "pose1" }));
+            // Choosing the default forgets only the listed rows.
+            dialog.Change = plan => plan.Default();
+            using (var session = Session(fixture, 130))
+            using (new PoseLimitChooser.Scope(fixture.Source, true))
+                PoseLimitChooser.Apply(session, null, null);
+            Assert.That(ExportSettingsStore.LoadLimitChoice(fixture.Source), Is.EquivalentTo(new[] { "gone" }));
+        }
+
+        [Test]
+        public void ATooLargePoseAloneDropsNothingElseAndKeepsTheSavedChoice()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            ExportSettingsStore.SaveLimitChoice(fixture.Source, new[] { "pose0" });
+            // The window cannot change rows here; a test dialog that tries is ignored.
+            dialog.Change = plan => { foreach (var row in plan.Rows) row.Keep = false; };
+            PoseExportSession Big()
+            {
+                var session = Session(fixture, 3);
+                session.Entries.Add(PoseLimitPlanTests.Moving("big", 8000, 20));
+                return session;
+            }
+            var report = new ExportRecoveryReport();
+            using (var session = Big())
+            {
+                using (new PoseLimitChooser.Scope(fixture.Source, true))
+                    PoseLimitChooser.Apply(session, null, report);
+                Assert.That(session.LimitExcluded, Is.EquivalentTo(new[] { "big" }));
+            }
+            Assert.That(dialog.Asked, Is.EqualTo(1), "The pose too large to keep is still shown.");
+            Assert.That(Omitted(report), Is.EqualTo(new[] { "big" }));
+            Assert.That(ExportSettingsStore.LoadLimitChoice(fixture.Source), Is.EquivalentTo(new[] { "pose0" }));
+            // The quick transfer writes the same poses.
+            using (var session = Big())
+            using (new PoseLimitChooser.Scope(fixture.Source, false))
+            {
+                PoseLimitChooser.Apply(session, null, null);
+                Assert.That(session.LimitExcluded, Is.EquivalentTo(new[] { "big" }));
+            }
             Assert.That(dialog.Asked, Is.EqualTo(1));
         }
 

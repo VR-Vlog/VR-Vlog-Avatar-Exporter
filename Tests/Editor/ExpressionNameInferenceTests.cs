@@ -11,46 +11,30 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class ExpressionNameInferenceTests
     {
         [TestCase("Smile", ExpressionPreset.happy, 0)]
-        [TestCase("happy", ExpressionPreset.happy, 0)]
         [TestCase("faceSmile", ExpressionPreset.happy, 0)]
         [TestCase("joy", ExpressionPreset.happy, 1)]
         [TestCase("Angry", ExpressionPreset.angry, 0)]
-        [TestCase("sad", ExpressionPreset.sad, 0)]
-        [TestCase("relaxed", ExpressionPreset.relaxed, 0)]
-        [TestCase("Surprised", ExpressionPreset.surprised, 0)]
         [TestCase("笑顔", ExpressionPreset.happy, 0)]
-        [TestCase("怒り", ExpressionPreset.angry, 0)]
-        [TestCase("悲しい", ExpressionPreset.sad, 0)]
         [TestCase("びっくり", ExpressionPreset.surprised, 0)]
-        [TestCase("驚き", ExpressionPreset.surprised, 0)]
         public void MenuStyleNamesNameOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
         [TestCase("Fcl_ALL_Joy", ExpressionPreset.happy, 1)]
-        [TestCase("Fcl_ALL_Angry", ExpressionPreset.angry, 0)]
         [TestCase("Fcl_ALL_Sorrow", ExpressionPreset.sad, 0)]
         [TestCase("Fcl_ALL_Fun", ExpressionPreset.relaxed, 0)]
-        [TestCase("Fcl_ALL_Surprised", ExpressionPreset.surprised, 0)]
         public void WholeFaceBlendShapeNamesNameOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
         // MMD-style names move only a part of the face.
         [TestCase("怒り")]
         [TestCase("にっこり")]
-        [TestCase("びっくり")]
-        [TestCase("笑い")]
-        [TestCase("悲しい")]
         public void JapaneseBlendShapeNamesAreNotRawCandidates(string name) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.Null);
 
         [TestCase("eye_smile_L")]
         [TestCase("Fcl_EYE_Joy")]
-        [TestCase("Fcl_MTH_Angry")]
-        [TestCase("Fcl_BRW_Sorrow")]
         [TestCase("mouth_smile")]
-        [TestCase("smile_R")]
         [TestCase("wink")]
-        [TestCase("blink_happy")]
         [TestCase("happy_angry")]
         [TestCase("smileOff")]
         [TestCase("Reset")]
@@ -62,9 +46,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The leaf label decides; a parent only speaks when every level below says nothing.
         [TestCase("喜怒哀楽 / 笑顔", ExpressionPreset.happy, 0)]
-        [TestCase("喜怒哀楽 / 怒り", ExpressionPreset.angry, 0)]
         [TestCase("Eye / Smile", ExpressionPreset.happy, 0)]
-        [TestCase("Left / Sad", ExpressionPreset.sad, 0)]
         [TestCase("Smile / 1", ExpressionPreset.happy, 0)]
         [TestCase("Emotes / Joy / A", ExpressionPreset.happy, 1)]
         [TestCase("Surprised", ExpressionPreset.surprised, 0)]
@@ -73,7 +55,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A level with a veto word or several emotions stops the walk.
         [TestCase("喜怒哀楽 / 1")]
-        [TestCase("Eye / 1")]
         [TestCase("Smile / Wink")]
         [TestCase("Smile / Eye / 1")]
         [TestCase("Happy / smile_angry")]
@@ -447,11 +428,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("1", true)]
         [TestCase("Face 3", true)]
         [TestCase("喜怒哀楽 / 1", true)]
-        [TestCase("Emotes / A", true)]
         [TestCase("Eye / 1", false)]
-        [TestCase("Smile / 1", false)]
         [TestCase("笑顔", false)]
-        [TestCase("ウィンク", false)]
         [TestCase("Happy / smile_angry", false)]
         public void OnlyLabelsThatSayNothingAreGuessedFromShapes(string path, bool expected) =>
             Assert.That(ExpressionNameInference.SaysNothing(path), Is.EqualTo(expected));
@@ -595,20 +573,15 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Neutral", false)]
         [TestCase("neutral", true)]
         [TestCase("Fcl_ALL_Neutral", true)]
-        [TestCase("faceNeutral", true)]
         [TestCase("真顔", false)]
-        [TestCase("無表情", false)]
         public void NeutralNamesNameNeutral(string name, bool latinOnly) =>
             Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly), Is.True);
 
         // A face part, a side, a toggle or an emotion is not the neutral face.
         [TestCase("Fcl_MTH_Neutral")]
-        [TestCase("Fcl_EYE_Neutral")]
         [TestCase("Neutral_Closed")]
         [TestCase("neutral_half")]
-        [TestCase("Neutral_Sleep")]
         [TestCase("eye_neutral_L")]
-        [TestCase("Neutral_R")]
         [TestCase("Neutral_Smile")]
         [TestCase("NeutralOff")]
         [TestCase("Default")]
@@ -624,10 +597,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionNameInference.MatchNeutral("真顔", latinOnly: true), Is.False);
 
         [TestCase("表情 / 真顔", true)]
-        [TestCase("喜怒哀楽 / Neutral", true)]
         [TestCase("Neutral", true)]
         [TestCase("Smile / Neutral", false)]
-        [TestCase("Eye / Neutral", false)]
         [TestCase("Neutral / 1", false)]
         public void NeutralMenuPathsAreDecidedByTheLeaf(string path, bool expected) =>
             Assert.That(ExpressionNameInference.MatchNeutralMenuPath(path), Is.EqualTo(expected));

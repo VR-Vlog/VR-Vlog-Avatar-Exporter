@@ -292,7 +292,7 @@ class PackageTests(unittest.TestCase):
     def test_partial_transfer_dependency_set_is_rejected(self):
         name = sorted(package.TRANSFER_DLL_PATHS)[0]
         self.git("rm", "--cached", name)
-        with self.assertRaisesRegex(ValueError, "Both pinned transfer DLLs"):
+        with self.assertRaisesRegex(ValueError, "All pinned transfer DLLs"):
             package.build(self.root, self.root / "invalid.zip")
 
     def test_both_missing_or_modified_transfer_dlls_are_rejected(self):
@@ -304,7 +304,7 @@ class PackageTests(unittest.TestCase):
             (self.root / name).write_bytes(original)
         for name in package.TRANSFER_DLL_PATHS:
             self.git("rm", "--cached", name)
-        with self.assertRaisesRegex(ValueError, "Both pinned transfer DLLs"):
+        with self.assertRaisesRegex(ValueError, "All pinned transfer DLLs"):
             package.build(self.root, self.root / "missing.zip")
 
     def test_unreadable_shipped_source_cannot_bypass_transfer_verification(self):

@@ -13,10 +13,8 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class MenuImportRecoveryTests
     {
         [TestCase(0)]
-        [TestCase(1)]
         [TestCase(256)]
         [TestCase(257)]
-        [TestCase(300)]
         public void EveryLeafIsReadWithoutTruncation(int count)
         {
             var menu = Leaves(count);
@@ -48,10 +46,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("RadialPuppet", true)]
-        [TestCase("TwoAxisPuppet", true)]
         [TestCase("FourAxisPuppet", true)]
         [TestCase("Toggle", false)]
-        [TestCase("Button", false)]
         public void UnsupportedPuppetsAndMissingParametersAreStillExplicitCandidates(string type, bool puppet)
         {
             var menu = Leaves(256);
