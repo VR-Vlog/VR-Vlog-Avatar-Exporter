@@ -52,6 +52,19 @@ https://vrvlog.fun/exporter/index.json
 </details>
 
 <details>
+<summary>インストーラーのunitypackageで導入する場合</summary>
+
+VCC・ALCOMを開かずに、Unityで開いているプロジェクトへ入れられます。
+
+1. [Releases](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases)から `com.vrvlog.liltoon-vrm-exporter-installer-<版>.unitypackage` をダウンロードする。
+2. Unityで開いているプロジェクトのProjectウィンドウへドラッグ&ドロップし、Importを押す。
+3. 確認の画面で「Install」を押す。このリポジトリ（`https://vrvlog.fun/exporter/index.json`）がプロジェクトとVCC・ALCOMに登録され、エクスポーターが `Packages` に入る。インストーラーのファイルは終わると自動で消える。
+
+インストーラーは、ダウンロードした版と同じ系列（0.12.0のインストーラーなら0.12.x）のうち、VPMの一覧にある最新の版を入れます。ベータ版のインストーラーはベータ版も選びます。Releaseに出た直後で一覧にまだ載っていない版は入らないので、少し待ってからやり直してください。特定の版を入れたいときはZIPで導入してください。
+
+</details>
+
+<details>
 <summary>ZIPで手動導入する場合</summary>
 
 1. [インストールページ](https://vrvlog.fun/exporter/)の「ZIPで導入」を開く。
