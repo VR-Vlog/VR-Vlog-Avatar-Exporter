@@ -20,7 +20,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
         internal static bool IsStableFromOne(string version)
         {
-            var match = Regex.Match(version ?? "", @"\A(\d+)\.\d+\.\d+\z");
+            var match = Regex.Match(version ?? "", @"\A([0-9]+)\.[0-9]+\.[0-9]+\z");
             return match.Success && int.TryParse(match.Groups[1].Value, out var major) && major >= 1;
         }
 

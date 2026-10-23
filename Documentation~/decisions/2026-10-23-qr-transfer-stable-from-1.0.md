@@ -10,12 +10,12 @@ QR転送を使える版は、エディタ側の `CloudTransferAvailability.IsSup
 ## 決定
 
 - 安定版は、メジャーが1以上（`1.0.0` 以降）ならQR転送を含める。`0.11.15` は従来どおり含め、それ以外の0.x安定版は書き出し専用のまま変えない。プレリリースの扱いも変えない。
-- エディタ側とビルド側で同じ規則にする。どちらも `X.Y.Z` の形だけを安定版として扱い、`1.0.1+build.1` のようにビルドメタデータが付いた版は含めない（これまでの `0.11.15+beta.2` と同じ扱い）。
+- エディタ側とビルド側で同じ規則にする。どちらも `X.Y.Z` の形だけを安定版として扱い、`1.0.1+build.1` のようにビルドメタデータが付いた版は含めない（これまでの `0.11.15+beta.2` と同じ扱い）。数字はASCIIの `0-9` だけを認める（`\d` は全角数字にも当たり、C#とPythonで数値への変換の結果が分かれるため）。
 - `package.json` の `vrvlogCloudTransfer: false` で外せることは変えない。
 
 ## 確認
 
-- `CloudTransferTests.CloudTransferIsOnForStableFromOneZero` で、`1.0.0`・`1.0.1`・`1.1.0`・`2.0.0`・`10.0.0` が真、`0.11.16`・`0.12.0`・`1.0.1+build.1`・`1.0`・`null` が偽になることを確かめる。
+- `CloudTransferTests.CloudTransferIsOnForStableFromOneZero` で、`1.0.0`・`1.0.1`・`1.1.0`・`2.0.0`・`10.0.0` が真、`0.11.16`・`0.12.0`・`1.0.1+build.1`・`1.0`・全角の `１.0.0`・`null` が偽になることを確かめる。
 - `Tools/test-package.py` の `test_stable_from_one_zero_keeps_transfer_and_honors_opt_out` で、`1.0.1`・`1.1.0`・`2.0.0` のZIPに転送のDLLとガイドが入り、`vrvlogCloudTransfer: false` と0.x安定版では入らないことを確かめる。
 
 ## 検討して採らなかった案

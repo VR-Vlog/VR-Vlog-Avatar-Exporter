@@ -50,6 +50,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("10.0.0", true)]
         [TestCase("1.0.1+build.1", false)]
         [TestCase("1.0", false)]
+        [TestCase("１.0.0", false)]
         [TestCase("not-a-beta", false)]
         [TestCase(null, false)]
         public void CloudTransferIsOnForStableFromOneZero(string version, bool enabled) =>

@@ -58,7 +58,7 @@ def transfer_adopted(version):
     applies to every channel."""
     if prerelease(version):
         return True
-    match = re.fullmatch(r"(\d+)\.\d+\.\d+", version)
+    match = re.fullmatch(r"([0-9]+)\.[0-9]+\.[0-9]+", version)
     return version == "0.11.15" or match is not None and int(match[1]) >= 1
 
 
