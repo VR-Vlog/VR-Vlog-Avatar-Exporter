@@ -23,6 +23,8 @@ namespace VRVlog.LilToonExporter
         {
             (ExportGimmickRules.PlatformFilter, "VRChat専用の指定"),
             (ExportGimmickRules.VrChatOnlyStructure, "VRChatでだけ動く仕組み"),
+            (ExportGimmickRules.SkeletonTakeover, "体の骨を付け替える仕組み"),
+            (ExportGimmickRules.PoseMotion, "ポーズのアニメーション"),
             (ExportGimmickRules.CameraGimmick, "カメラ"),
             (ExportGimmickRules.RenderTextureCamera, "カメラ映像の表示"),
             (ExportGimmickRules.LightLimitSettings, "照明の設定"),

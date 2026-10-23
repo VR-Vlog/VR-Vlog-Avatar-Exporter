@@ -3411,6 +3411,124 @@ namespace VRVlog.LilToonExporter.Tests
             board.AssertKept();
         }
 
+        static AnimationClip SmileFile(float weight)
+        {
+            var clip = new AnimationClip { name = "Smile file" };
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Smile"), AnimationCurve.Constant(0, 1, weight));
+            return clip;
+        }
+
+        static void Drop(FollowBoard board, AnimationClip clip, ExpressionPreset preset) =>
+            board.Run(() => board.Delegate<Action<AnimationClip, ExpressionBoard.Place>>("MoveTo")(clip, ExpressionBoard.Place.Slot(preset)));
+
+        // Moving a face on the board when the editor reported no edit: the face
+        // moves without hashing the avatar, and the blink line, which does not
+        // read the slots, is left as it is.
+        [Test]
+        public void ADropWithoutAnEditDoesNotHashTheSource()
+        {
+            using var board = new FollowBoard();
+            var clip = SmileFile(100);
+            try
+            {
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                board.Advance();
+                board.Set("blinkFallbackStale", false);
+                var before = board.Session;
+                ExpressionBoardTimings.Clear();
+                Drop(board, clip, ExpressionPreset.sad);
+                board.Advance();
+                Assert.That(SourceChecks(), Is.Zero, string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
+                Assert.That(board.Get<bool>("blinkFallbackStale"), Is.False);
+                Assert.That(board.Session, Is.SameAs(before));
+                Assert.That(board.Session.Presets[ExpressionPreset.sad].ResolveClip(), Is.SameAs(clip));
+                board.AssertKept();
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
+        // An edit the editor reports (here through Undo) makes the next drop
+        // hash the avatar, follow it and keep the slots.
+        [UnityTest]
+        public IEnumerator ADropAfterAReportedEditFollowsTheSource()
+        {
+            var board = new FollowBoard();
+            var clip = SmileFile(100);
+            try
+            {
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                var before = board.Session;
+                var edits = ExperimentalExpressionCaptureSession.EditorEdits.Count;
+                var back = board.Fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
+                Undo.RecordObject(back, "Edit");
+                back.SetBlendShapeWeight(0, 50);
+                for (var frame = 0; frame < 30 && ExperimentalExpressionCaptureSession.EditorEdits.Count == edits; frame++) yield return null;
+                Assert.That(ExperimentalExpressionCaptureSession.EditorEdits.Count, Is.Not.EqualTo(edits), "The editor reported the edit.");
+                FollowBoard.ExpectFollowed();
+                Drop(board, clip, ExpressionPreset.sad);
+                Assert.That(board.Session, Is.Not.SameAs(before));
+                Assert.That(board.Session.Presets[ExpressionPreset.sad].ResolveClip(), Is.SameAs(clip));
+                board.AssertKept();
+            }
+            finally { board.Dispose(); Object.DestroyImmediate(clip); }
+        }
+
+        // With the window shown, drawing the faces, previewing them and moving
+        // them on the copy are not edits of the source: the drops that follow
+        // do not hash the avatar.
+        [UnityTest]
+        public IEnumerator TheBoardsOwnWorkIsNotReportedAsAnEdit()
+        {
+            var opening = ExperimentalExpressionCaptureSession.EditorEdits.Count;
+            var board = new FollowBoard();
+            var clip = SmileFile(100);
+            try
+            {
+                board.Delegate<Action<AnimationClip>>("AddClip")(clip);
+                board.Window.Show();
+                for (var frame = 0; frame < 10; frame++) { board.Window.Repaint(); yield return null; }
+                TestContext.WriteLine("Edits reported while the board opened: " + (ExperimentalExpressionCaptureSession.EditorEdits.Count - opening));
+                var edits = ExperimentalExpressionCaptureSession.EditorEdits.Count;
+                var before = board.Session;
+                foreach (var preset in new[] { ExpressionPreset.sad, ExpressionPreset.angry, ExpressionPreset.relaxed })
+                {
+                    ExpressionBoardTimings.Clear();
+                    Drop(board, clip, preset);
+                    Assert.That(SourceChecks(), Is.Zero, string.Join(", ", ExpressionBoardTimings.Last.Select(step => step.Step)));
+                    for (var frame = 0; frame < 10; frame++) { board.Window.Repaint(); yield return null; }
+                }
+                Assert.That(ExperimentalExpressionCaptureSession.EditorEdits.Count, Is.EqualTo(edits));
+                Assert.That(board.Session, Is.SameAs(before));
+                Assert.That(board.Session.Presets[ExpressionPreset.relaxed].ResolveClip(), Is.SameAs(clip));
+            }
+            finally { board.Dispose(); Object.DestroyImmediate(clip); }
+        }
+
+        // The slots reuse a face read once, as a copy, and read it again when
+        // the file changes.
+        [Test]
+        public void ASlotReadsItsFaceAgainAfterTheFileChanges()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+            using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+            var clip = SmileFile(100);
+            try
+            {
+                var assignment = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                var first = session.BuildPresetPose(ExpressionPreset.happy, assignment);
+                first.Rows[0].Weights[0] = 12;
+                var second = session.BuildPresetPose(ExpressionPreset.happy, assignment);
+                Assert.That(second, Is.Not.SameAs(first));
+                Assert.That(second.Rows[0].Weights[0], Is.Not.EqualTo(12), "A change to one result does not reach the next.");
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Is.Null);
+
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Smile"), AnimationCurve.Constant(0, 1, 0));
+                Assert.That(session.PresetError(ExpressionPreset.happy, assignment), Does.Contain(ExporterLocalization.T("0より大きい変形がありません。")));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         // A retry from the recovery window, perhaps with the board closed, after
         // the avatar changed: the same export on a new copy of the avatar as it is.
         [Test]

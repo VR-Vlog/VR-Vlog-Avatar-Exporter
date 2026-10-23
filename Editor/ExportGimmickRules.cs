@@ -62,6 +62,8 @@ namespace VRVlog.LilToonExporter
         // Not table rules: ExportGimmickDetection checks them after the table.
         internal const string PlatformFilter = "platform-filter";
         internal const string VrChatOnlyStructure = "vrchat-only-structure";
+        internal const string PoseMotion = "pose-motion";
+        internal const string SkeletonTakeover = "skeleton-takeover";
 
         internal const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
         internal const string ContactSender = "VRC.SDK3.Dynamics.Contact.Components.VRCContactSender";
@@ -70,6 +72,8 @@ namespace VRVlog.LilToonExporter
         internal const string MergeArmature = "nadena.dev.modular_avatar.core.ModularAvatarMergeArmature";
         internal const string MeshSettings = "nadena.dev.modular_avatar.core.ModularAvatarMeshSettings";
         internal const string PlatformFilterType = "nadena.dev.modular_avatar.core.ModularAvatarPlatformFilter";
+        internal const string WorldFixedObject = "nadena.dev.modular_avatar.core.ModularAvatarWorldFixedObject";
+        internal const string BoneProxy = "nadena.dev.modular_avatar.core.ModularAvatarBoneProxy";
 
         static ExportGimmickValue Contact(string path, string parameter) =>
             new ExportGimmickValue { Path = path, Type = ContactReceiver, Property = "parameter", Value = parameter };

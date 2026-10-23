@@ -164,6 +164,40 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => TransferQrCode.DisplaySide(2 * TransferQrCode.QuietZone));
         }
 
+        // The app icon covers MarkShare of the drawn side; the QR must read with that square blank, for a
+        // short name and for the longest name that is still marked.
+        [Test]
+        public void MarkedQrReadsWithTheCentreCoveredAndLongNamesFallBackToUnmarked()
+        {
+            var longestMarked = "";
+            while (TransferQrCode.CanMark(AppTransferFlow.PlaceholderLink(AppTransferFlow.TransferName(longestMarked + "あ")))) longestMarked += "あ";
+            Assert.That(longestMarked.Length >= 64, Is.True);
+            foreach (var name in new[] { "SampleAvatar_v1.2", longestMarked, new string('a', 300) })
+            {
+                var link = Link(AppTransferFlow.TransferName(name));
+                Assert.That(TransferQrCode.CanMark(link), Is.True);
+                var matrix = TransferQrCode.Encode(link, true);
+                // The drawn mark is snapped to whole points; one module more on every side covers that.
+                var blank = (int)Math.Ceiling(matrix.Width * TransferQrCode.MarkShare) + 2;
+                var from = (matrix.Width - blank) / 2;
+                const int zoom = 4;
+                var pixels = new byte[matrix.Width * zoom * matrix.Height * zoom];
+                for (var y = 0; y < matrix.Height * zoom; y++)
+                    for (var x = 0; x < matrix.Width * zoom; x++)
+                    {
+                        int mx = x / zoom, my = y / zoom;
+                        var covered = mx >= from && mx < from + blank && my >= from && my < from + blank;
+                        pixels[y * matrix.Width * zoom + x] = matrix[mx, my] && !covered ? (byte)0 : (byte)255;
+                    }
+                var image = new ZXing.RGBLuminanceSource(pixels, matrix.Width * zoom, matrix.Height * zoom, ZXing.RGBLuminanceSource.BitmapFormat.Gray8);
+                Assert.That(new ZXing.QrCode.QRCodeReader().decode(new ZXing.BinaryBitmap(new ZXing.Common.HybridBinarizer(image))).Text, Is.EqualTo(link), name);
+            }
+            // Past that, the QR is drawn as before (error correction M, no icon); every name that fit still fits.
+            var unmarked = AppTransferFlow.PlaceholderLink(AppTransferFlow.TransferName(longestMarked + "あ"));
+            Assert.That(TransferQrCode.CanMark(unmarked), Is.False);
+            Assert.That(AppTransferFlow.NameFits(longestMarked + "あ"), Is.True);
+        }
+
         [Test]
         public void QrFittedToAHeightKeepsWholePixelModulesAndTwoHundredPointsOfSymbol()
         {
@@ -769,13 +803,18 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     Assert.That(Shown("revealArea"), Is.True);
                     Assert.That(Shown("hideQrButton"), Is.False);
                     Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
-                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.Empty);
+                    // The caption and the corner marks stay while it is covered; the icon belongs to the QR.
+                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.EqualTo(Localized(AppTransferText.ScanWithCamera)));
+                    Assert.That(Shown("qrFrame"), Is.True);
+                    Assert.That(Shown("qrMark"), Is.False);
 
                     Call(panel, "RevealQr");
                     Poll();
                     Assert.That(Qr() != null, Is.True);
                     Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image, Is.SameAs(Qr()));
                     Assert.That(Shown("qrImage"), Is.True);
+                    Assert.That(Shown("qrMark"), Is.True);
+                    Assert.That(Shown("qrFrame"), Is.True);
                     Assert.That(Shown("qrCover"), Is.False);
                     Assert.That(Shown("revealArea"), Is.False);
                     Assert.That(Shown("hideQrButton"), Is.True);

@@ -36,6 +36,11 @@ namespace VRVlog.LilToonExporter
         internal readonly List<string> LostMorphs = new List<string>();
         internal const string LostGeneratedMorphs = "Modular Avatar / NDMF の処理で、以前の書き出しで作られた表情用のBlendShapeが失われたため省略しました: ";
         private string temporaryAssetPath, temporaryAssetGuid;
+        // NDMF's asset saver writes with AssetDatabase, so the folder must be
+        // under Assets. A domain starts with no live folder: leases do not
+        // outlive a reload, an editor quit or a crash, which skip Dispose.
+        internal const string TemporaryAssetFolderPrefix = "VRVlogExportTemp-";
+        private static readonly HashSet<string> liveTemporaryAssetPaths = new HashSet<string>(StringComparer.Ordinal);
         // NDMF tracks asset replacements made by authoring/optimization passes.
         // Keep the optional public registry available to the preparation callback.
         internal object ObjectRegistry { get; private set; }
@@ -884,6 +889,8 @@ namespace VRVlog.LilToonExporter
                     var path = temporaryAssetPath;
                     var guid = temporaryAssetGuid;
                     temporaryAssetPath = temporaryAssetGuid = null;
+                    // A folder left here is removed by the next cleanup.
+                    liveTemporaryAssetPaths.Remove(path);
                     // Do not remove a replacement folder or a moved/user asset.
                     if (AssetDatabase.IsValidFolder(path) && AssetDatabase.AssetPathToGUID(path) == guid)
                     {
@@ -896,14 +903,42 @@ namespace VRVlog.LilToonExporter
 
         private void CreateTemporaryAssetDirectory()
         {
-            var name = "VRVlogExportTemp-" + Guid.NewGuid().ToString("N");
+            DeleteStaleTemporaryAssetDirectories();
+            var name = TemporaryAssetFolderPrefix + Guid.NewGuid().ToString("N");
             var guid = AssetDatabase.CreateFolder("Assets", name);
             var path = AssetDatabase.GUIDToAssetPath(guid);
             if (string.IsNullOrEmpty(guid) || path != "Assets/" + name || !AssetDatabase.IsValidFolder(path))
+            {
+                if (AssetDatabase.IsValidFolder("Assets/" + name)) AssetDatabase.DeleteAsset("Assets/" + name);
                 throw new InvalidOperationException("書き出し用の一時保存先を作成できませんでした。UnityプロジェクトのAssetsフォルダーへの書き込み権限と空き容量を確認してください。");
+            }
             temporaryAssetPath = path;
             temporaryAssetGuid = guid;
+            liveTemporaryAssetPaths.Add(path);
         }
+
+#if UNITY_5_3_OR_NEWER
+        [InitializeOnLoadMethod]
+        private static void DeleteStaleTemporaryAssetDirectoriesOnLoad() =>
+            EditorApplication.delayCall += DeleteStaleTemporaryAssetDirectories;
+#endif
+
+        // Removes the folders of earlier exports that ended without Dispose,
+        // at editor start, after each reload and before each new folder.
+        internal static void DeleteStaleTemporaryAssetDirectories()
+        {
+            foreach (var path in AssetDatabase.GetSubFolders("Assets"))
+            {
+                if (!IsTemporaryAssetFolderName(path.Substring("Assets/".Length)) || liveTemporaryAssetPaths.Contains(path)) continue;
+                if (!AssetDatabase.DeleteAsset(path))
+                    Debug.LogWarning("VR Vlog: 以前の書き出しの一時データを削除できませんでした: " + path);
+            }
+        }
+
+        internal static bool IsTemporaryAssetFolderName(string name) =>
+            name.Length == TemporaryAssetFolderPrefix.Length + 32 &&
+            name.StartsWith(TemporaryAssetFolderPrefix, StringComparison.Ordinal) &&
+            name.Skip(TemporaryAssetFolderPrefix.Length).All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
 
         private static InvalidOperationException BuildFailure(object context, Exception cause)
         {
