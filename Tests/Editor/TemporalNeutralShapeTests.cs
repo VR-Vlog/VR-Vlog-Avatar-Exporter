@@ -353,7 +353,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Temporal prepared neutral", "Tests", warnings, blinkOptions: blink);
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Temporal prepared neutral", "Tests", warnings, blinkOptions: blink,
+                    listFaces: new[] { (idleClip.name, idleClip, 0f) });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == endpoint.name), Is.True);
                 Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
