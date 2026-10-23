@@ -478,12 +478,12 @@ namespace VRVlog.LilToonExporter
         {
             if (source == null) return "source (deleted)";
             if (source.GetInstanceID() != sourceId) return "source (another object)";
-            var current = marks == null ? null : new List<ExportSourceFingerprint.Mark>();
-            var now = current == null ? ExportSourceFingerprint.Capture(source, out var rotations) : ExportSourceFingerprint.Capture(source, out rotations, current);
-            if (now != hash) return current == null ? "source" : FirstDifference(current);
-            if (rotations.Length != partialRotations.Length) return "partial rotations " + partialRotations.Length + " -> " + rotations.Length;
-            for (var index = 0; index < rotations.Length; index++)
-                if (!partialRotations[index].Matches(rotations[index])) return partialRotations[index].Describe(rotations[index]);
+            var parts = marks == null ? null : new List<ExportSourceFingerprint.Mark>();
+            var now = parts == null ? ExportSourceFingerprint.Capture(source, out var current) : ExportSourceFingerprint.Capture(source, out current, parts);
+            if (now != hash) return parts == null ? "source" : FirstDifference(parts);
+            if (current.Length != partialRotations.Length) return "partial rotations " + partialRotations.Length + " -> " + current.Length;
+            for (var index = 0; index < current.Length; index++)
+                if (!partialRotations[index].Matches(current[index])) return partialRotations[index].Describe(current[index]);
             return null;
         }
 
