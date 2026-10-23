@@ -1,7 +1,7 @@
 # Projectでアバターのprefabを右クリックして書き出す・転送する
 
 - 日付: 2026-10-23
-- 対象: `Editor/ExportRendererSelection.cs`（`HiddenInScene`）・`Editor/Compatibility/ExporterMenu.cs`（`Assets`・`AssetsPriority`・`ValidateOrder`）・`Editor/Compatibility/DependencyDiagnostics.cs`（`OpenForAvatarFromMenu`）・`Editor/LanTransfer/AppTransferWindow.cs`（`OpenFromMenu`・`OpenDetailedFromMenu`）・`Editor/LilToonExportMenuValidation.cs`・`Tests/LanTransfer/VrVlogMenuTests.cs`・`Tests/Editor/VrVlogMenuExportTests.cs`・`Tests/Editor/QuickTransferMatchesDefaultNormalTests.cs`・`Tools/run-unity-compatibility.py`・`README.md`・`CHANGELOG.md`
+- 対象: `Editor/ExportRendererSelection.cs`（`HiddenInScene`）・`Editor/Compatibility/ExporterMenu.cs`（`Assets`・`AssetsPriority`・`ValidateOrder`）・`Editor/LanTransfer/AppTransferWindow.cs`（`OpenFromMenu`・`OpenDetailedFromMenu`）・`Editor/LilToonExportMenuValidation.cs`・`Tests/LanTransfer/VrVlogMenuTests.cs`・`Tests/Editor/QuickTransferMatchesDefaultNormalTests.cs`・`Tools/run-unity-compatibility.py`・`Tools/MaterialTestShim.cs`・`Tools/BakeTestShim.cs`・`README.md`・`CHANGELOG.md`
 
 ## 背景
 
@@ -9,7 +9,7 @@
 
 ## 決定
 
-- Projectの右クリック（Unityの `Assets` メニュー）の **VR Vlog** に、Hierarchyの右クリックと同じ3項目（**アプリに転送（かんたん）...**・**アプリに転送（通常）...**・区切り線・**VRMを書き出す...**）を同じ順・同じ区切りで足す。どれもHierarchyの項目と同じメソッドを呼ぶので、選ばれているものの扱いは1か所にある。
+- Projectの右クリック（Unityの `Assets` メニュー）の **VR Vlog** に、Hierarchyの右クリックと同じ2項目（**アプリに転送（かんたん）...**・**アプリに転送（通常）...**）を同じ順で足す。同じ日に両方のメニューから **VRMを書き出す...** が消えたので（`2026-10-23-remove-export-menu.md`）、Projectにも出さない。VRMファイルだけを保存するときは **アプリに転送（通常）** の3ページ目の **VRMを保存** を使う。どれもHierarchyの項目と同じメソッドを呼ぶので、選ばれているものの扱いは1か所にある。
 - 選べる条件もHierarchyと同じ `ExporterMenu.OneAvatarRootSelected`（1つだけ選んでいて、Animatorがあり、親にAnimatorが無い）にした。Projectでprefabを選ぶとその一番上のオブジェクトが `Selection.gameObjects` に入るので、追加の判定は要らない。prefabの中のオブジェクト・Animatorの無いprefab・2つ以上の選択・フォルダでは灰色になる。
 - prefabアセットは、シーンに置かずにそのまま表情ボードのアバターにする。書き出しは元のアバターを専用のプレビューシーンに複製してから処理する（`NdmfExportPreparation.InstantiateOwnedCopy`）ので、prefabアセットを渡しても開いているシーンに Undo・未保存の変更は出ず、prefabも変わらない。シーンにある同じアバターを書き出したときと同じVRMになる。
 - prefabアセットのオブジェクトは、Unityでは表示中でも `activeInHierarchy` が常に偽になる。書き出しはもともと非表示のアバターに対応していて（複製のルートだけを表示にし、中の表示はルートからの `activeSelf` で見る）、prefabアセットもこの経路を通る。そのままだと結果一覧に「非表示のアバター」が出るので、`ExportRendererSelection.HiddenInScene` はprefabアセットではルートの `activeSelf` だけを見るようにした。
@@ -19,9 +19,8 @@
 
 - `VrVlogMenuTests.TheProjectWindowListsTheHierarchyEntries` で、Projectの項目がHierarchyと同じ名前・同じ相対の優先度・同じメソッドで、**Validate lilToon VRM** がそのあとの区切り線の先にあることを確かめる。
 - `VrVlogMenuTests.TheProjectWindowEntriesNeedOneAvatarPrefab` で、アバターのprefabだけで選べ、Animatorの無いprefab・prefabの中のオブジェクト・2つのprefab・フォルダでは選べないことを確かめる。
-- `VrVlogMenuExportTests.ExportFromAPrefabsContextMenuOpensTheExportWindowWithThatPrefab` で、Projectの **VRMを書き出す...** がそのprefabを指定した表情ボードを開き、シーンに何も足さないことを確かめる。
 - `QuickTransferMatchesDefaultNormalTests.APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged` で、prefabアセットから書き出したVRMがシーンの同じアバターから書き出したVRMと一致し、書き出したあともシーンが未保存にならず、prefabのファイルが変わらないことを確かめる。
-- Unity 2022.3.22f1で、変更前と変更後のProjectの右クリックメニューを撮って比べ、変更後のメニューからダミーのアバターのprefabを書き出した（PRに画像）。
+- Unity 2022.3.22f1で、変更前と変更後のProjectの右クリックメニューを撮って比べ、変更後のメニューの **アプリに転送（通常）...** でダミーのアバターのprefabを表情ボードに開き、**VRMを保存** と同じ処理でVRMを保存した（PRに画像）。
 
 ## 検討して採らなかった案
 

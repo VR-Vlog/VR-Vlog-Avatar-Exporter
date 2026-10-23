@@ -16,18 +16,18 @@ namespace VRVlog.LilToonExporter.Compatibility
         const string BackendAssembly = "VRVlog.LilToonExporter.Editor";
         const string BackendType = "VRVlog.LilToonExporter.ExperimentalExpressionCaptureWindow";
         const string BackendDefinition = "Packages/com.vrvlog.liltoon-vrm-exporter/Editor/VRVlog.LilToonExporter.Editor.asmdef";
-        static Action openExporter;
-        static Action<GameObject> openExporterFor;
+        static bool backendReady;
         static string backendError;
 
-        // Resolve at the point of use. Opening the menu must not depend on an
-        // InitializeOnLoadMethod callback having registered a delegate earlier.
+        // Whether the backend Unity loaded has the board's entry point, the detailed transfer's
+        // OpenForTransfer. Nothing is opened. Resolved at the point of use: it must not depend
+        // on an InitializeOnLoadMethod callback having registered anything earlier.
         // Do not load DLLs from disk: only use the backend Unity actually loaded.
-        public static Action OpenExporter
+        public static bool BackendReady
         {
             get
             {
-                if (openExporter != null) return openExporter;
+                if (backendReady) return true;
                 backendError = null;
                 try
                 {
@@ -35,14 +35,14 @@ namespace VRVlog.LilToonExporter.Compatibility
                     {
                         if (assembly.GetName().Name != BackendAssembly) continue;
                         var type = assembly.GetType(BackendType, false);
-                        var method = type?.GetMethod("Open", BindingFlags.Public | BindingFlags.Static,
-                            null, Type.EmptyTypes, null);
-                        if (method == null || method.ReturnType != typeof(void))
+                        var method = type?.GetMethod("OpenForTransfer", BindingFlags.Public | BindingFlags.Static,
+                            null, new[] { typeof(GameObject) }, null);
+                        if (method == null || method.ReturnType != typeof(bool))
                         {
                             backendError = "書き出し画面の入口が見つかりません。";
                             break;
                         }
-                        openExporter = (Action)Delegate.CreateDelegate(typeof(Action), method);
+                        backendReady = true;
                         break;
                     }
                 }
@@ -52,42 +52,13 @@ namespace VRVlog.LilToonExporter.Compatibility
                     backendError = exception.GetType().Name;
                 }
                 // A miss is not cached; a later assembly load can recover immediately.
-                return openExporter;
-            }
-        }
-
-        // The same window with an avatar already chosen, for the Hierarchy context menu.
-        // Resolved like OpenExporter; whether the export can start is still decided there.
-        public static Action<GameObject> OpenExporterFor
-        {
-            get
-            {
-                if (openExporterFor != null) return openExporterFor;
-                try
-                {
-                    foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                    {
-                        if (assembly.GetName().Name != BackendAssembly) continue;
-                        var method = assembly.GetType(BackendType, false)?.GetMethod("OpenFor",
-                            BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null);
-                        if (method != null && method.ReturnType == typeof(void))
-                            openExporterFor = (Action<GameObject>)Delegate.CreateDelegate(typeof(Action<GameObject>), method);
-                        break;
-                    }
-                }
-                catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException ||
-                    exception is FileLoadException || exception is BadImageFormatException || exception is ArgumentException)
-                {
-                    // Left unresolved: OpenFor falls back to the plain export window.
-                }
-                return openExporterFor;
+                return backendReady;
             }
         }
 
         public static void RefreshBackend()
         {
-            openExporter = null;
-            openExporterFor = null;
+            backendReady = false;
             backendError = null;
         }
 
@@ -122,7 +93,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             // The lilToon message already names its own fix.
             var lilToonError = LilToonError(packages);
             if (lilToonError != null) return lilToonError;
-            if (OpenExporter != null) return null;
+            if (BackendReady) return null;
             if (EditorUtility.scriptCompilationFailed)
                 return "Unityでコンパイルエラーが発生しています。Consoleの赤いエラーを確認してください。黄色い更新通知だけでは書き出しを止めません。";
             return "書き出し処理の準備が完了していません。「再読み込み」を押してください。" +
@@ -133,7 +104,7 @@ namespace VRVlog.LilToonExporter.Compatibility
         {
             if (IsBusy) return;
             RefreshBackend();
-            if (Error(Installed()) != null || OpenExporter != null) return;
+            if (Error(Installed()) != null || BackendReady) return;
             // An explicit retry repairs stale import/compilation state without
             // editing package versions, project settings, or avatar assets.
             AssetDatabase.ImportAsset(BackendDefinition, ImportAssetOptions.ForceUpdate);
@@ -155,7 +126,7 @@ namespace VRVlog.LilToonExporter.Compatibility
             text.AppendLine("Status: " + (StartupError(packages) ?? "Ready"));
             text.AppendLine("Compiling: " + EditorApplication.isCompiling + "; Updating: " + EditorApplication.isUpdating +
                 "; Compilation failed: " + EditorUtility.scriptCompilationFailed);
-            text.AppendLine("Backend entry point: " + (OpenExporter != null));
+            text.AppendLine("Backend entry point: " + BackendReady);
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                 if (assembly.GetName().Name == BackendAssembly) text.AppendLine("Loaded: " + assembly.FullName);
             foreach (var assembly in CompilationPipeline.GetAssemblies(AssembliesType.Editor))
@@ -167,36 +138,6 @@ namespace VRVlog.LilToonExporter.Compatibility
                 }
             return text.ToString();
         }
-
-        [MenuItem(ExporterMenu.MenuBar + ExporterMenu.Export, false, ExporterMenu.MenuBarPriority + ExporterMenu.ExportOrder)]
-        public static void Open()
-        {
-            if (StartupError(Installed()) == null) OpenExporter();
-            else OpenDiagnostics();
-        }
-
-        // From an avatar's context menu: the export window with that avatar chosen, or the
-        // diagnostics when the export cannot start.
-        public static void OpenFor(GameObject avatar)
-        {
-            if (StartupError(Installed()) != null) OpenDiagnostics();
-            else if (OpenExporterFor != null) OpenExporterFor(avatar);
-            else OpenExporter();
-        }
-
-        // A prefab asset itself becomes the board's avatar: the export works on a copy in a
-        // scene of its own, so neither the open scene nor the prefab changes.
-        [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, false, ExporterMenu.HierarchyPriority + ExporterMenu.ExportOrder)]
-        [MenuItem(ExporterMenu.Assets + ExporterMenu.Export, false, ExporterMenu.AssetsPriority + ExporterMenu.ExportOrder)]
-        static void OpenForAvatarFromMenu(MenuCommand command)
-        {
-            var selected = command.context as GameObject ?? Selection.activeGameObject;
-            if (selected != null) OpenFor(selected);
-        }
-
-        [MenuItem(ExporterMenu.Hierarchy + ExporterMenu.Export, true)]
-        [MenuItem(ExporterMenu.Assets + ExporterMenu.Export, true)]
-        static bool CanOpenForAvatarFromMenu() => ExporterMenu.OneAvatarRootSelected();
 
         public static void OpenDiagnostics() => EditorWindow.GetWindow<DependencyDiagnosticsWindow>(true, T("VR Vlog 動作環境"));
     }
@@ -233,8 +174,6 @@ namespace VRVlog.LilToonExporter.Compatibility
                     DependencyDiagnostics.ReloadBackend();
                     Refresh();
                 }
-            using (new EditorGUI.DisabledScope(error != null))
-                if (GUILayout.Button(T("書き出し画面を開く"))) DependencyDiagnostics.Open();
             if (GUILayout.Button(T("診断情報をコピー"))) EditorGUIUtility.systemCopyBuffer = DependencyDiagnostics.CreateReport();
         }
     }

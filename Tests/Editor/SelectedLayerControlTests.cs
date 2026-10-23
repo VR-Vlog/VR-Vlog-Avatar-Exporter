@@ -114,12 +114,6 @@ namespace VRVlog.LilToonExporter.Tests
             layer.FindPropertyRelative("animatorController").objectReferenceValue = fx; data.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private List<VrChatExpressionMenu.MorphValue> Sample(float menu = 1)
-        {
-            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
-            return VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, new Dictionary<string, float> { ["Menu"] = menu }, metadata: metadata);
-        }
-
         private Dictionary<Object, string> Before() => AssetDatabase.LoadAllAssetsAtPath(folder + "/FX.controller")
             .Concat(new Object[] { mesh, descriptor }).ToDictionary(value => value, value => EditorJsonUtility.ToJson(value));
 
@@ -149,87 +143,6 @@ namespace VRVlog.LilToonExporter.Tests
                 return copy.transform.Find("Body").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(shapeIndex);
             }
             finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
-        }
-
-        [TestCase(0f, .5f)] [TestCase(.5f, 1f)] [TestCase(1f, 0f)] [TestCase(1f, 1f)]
-        public void InstantIndividualFxControlMatchesNativeSelectedWeight(float goal, float initialWeight)
-        {
-            var layers = controller.layers; layers[TargetLayer].defaultWeight = initialWeight; controller.layers = layers;
-            Control(command, goal); var before = Before();
-            var reference = Graph("Reference", new[] { "Body" }, "Body size", initialWeight, out _, out _, out _);
-            var expected = Native(reference, goal);
-            Assert.That(expected, Is.EqualTo(30 + 50 * goal).Within(.01));
-            Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(expected).Within(.01));
-            Unchanged(before);
-        }
-
-        [Test]
-        public void SelectedControlCanEnableAStaticInitiallyZeroTarget()
-        {
-            var machine = controller.layers[TargetLayer].stateMachine;
-            neutral.transitions = Array.Empty<AnimatorStateTransition>(); machine.RemoveState(selected);
-            AnimationUtility.SetEditorCurve((AnimationClip)neutral.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"), AnimationCurve.Constant(0, 1, 80));
-            var layers = controller.layers; layers[TargetLayer].defaultWeight = 0; controller.layers = layers;
-            var on = State(controller.layers[1].stateMachine, "Menu enables target", Clip(controller, "On"));
-            Control(on, 1); To(command, on, 1);
-            var before = Before();
-            Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01));
-            Unchanged(before);
-        }
-
-        [Test]
-        public void AControlOnALateExitTimeTargetIsFollowed()
-        {
-            var machine = controller.layers[TargetLayer].stateMachine;
-            neutral.transitions = Array.Empty<AnimatorStateTransition>(); machine.RemoveState(selected);
-            AnimationUtility.SetEditorCurve((AnimationClip)neutral.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"), AnimationCurve.Constant(0, 1, 80));
-            var layers = controller.layers; layers[TargetLayer].defaultWeight = 0; controller.layers = layers;
-            var source = controller.layers[1].stateMachine;
-            var wait = State(source, "Menu waits", Clip(controller, "Wait", new[] { "Body" }, "Body size", 30));
-            var on = State(source, "Menu enables target later", Clip(controller, "On"));
-            Control(on, 1); To(command, wait, 1);
-            var late = wait.AddTransition(on); late.hasExitTime = true; late.exitTime = 6; late.duration = 0;
-            var before = Before();
-            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
-            var messages = new List<string>();
-            var values = VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, new Dictionary<string, float> { ["Menu"] = 1 },
-                metadata: metadata, messages: messages);
-            Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01));
-            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-            Unchanged(before);
-        }
-
-        [Test]
-        public void LayerRelaySelectionUsesStateEntryOrderAndFreshProbes()
-        {
-            Control(command, 0); var on = State(controller.layers[1].stateMachine, "Relay enables layer", Clip(controller, "On"));
-            Control(on, 1); To(command, on, 1); To(on, command, 0);
-            var before = Before();
-            foreach (var menu in new[] { 1f, 0f, 1f })
-                Assert.That(Sample(menu).Single(value => value.Shape == "Body size").Weight, Is.EqualTo(menu == 0 ? 30 : 80).Within(.01));
-            Unchanged(before);
-        }
-
-        [TestCase(false)] [TestCase(true)]
-        public void GeneratedConstantSignalRelayDoesNotDiscardSelectedExpressions(bool maNames)
-        {
-            var parameter = maNames ? "__MA/Internal/MMDNotActive" : "Internal relay signal";
-            controller.AddParameter(new AnimatorControllerParameter { name = parameter, type = AnimatorControllerParameterType.Float, defaultFloat = 0 });
-            var layers = controller.layers; layers[1].name = maNames ? "Modular Avatar: MMD Control" : "Generic relay"; controller.layers = layers;
-            var machine = layers[1].stateMachine;
-            command.name = "Initial";
-            var clip = (AnimationClip)command.motion;
-            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), parameter), AnimationCurve.Constant(0, 1, 1));
-            var off = State(machine, maNames ? "MMD" : "Disabled", clip); Control(off, 0);
-            var on = State(machine, maNames ? "NotMMD" : "Enabled", clip); Control(on, 1);
-            void Relay(AnimatorState from, AnimatorState to, AnimatorConditionMode mode)
-            {
-                var transition = from.AddTransition(to); transition.hasExitTime = false; transition.duration = 0;
-                transition.AddCondition(mode, .5f, parameter);
-            }
-            Relay(command, off, AnimatorConditionMode.Less); Relay(off, on, AnimatorConditionMode.Greater); Relay(on, off, AnimatorConditionMode.Less);
-            var before = Before();
-            Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
         }
 
         [TestCase("native", 0f)] [TestCase("native", .5f)]
@@ -278,21 +191,6 @@ namespace VRVlog.LilToonExporter.Tests
                 dormantEnable ? "A normally unreachable enable command cannot erase the legacy inactive authored clip." :
                     "A reached SDK disable is an explicit effect: preserve the native underlay instead of exposing the inactive candidate.");
             Unchanged(before);
-        }
-
-        [Test]
-        public void ZeroWeightControlSourceCannotHideALaterParameterDrivenWeightChange()
-        {
-            controller.AddParameter("Future control input", AnimatorControllerParameterType.Float);
-            var layers = controller.layers; layers[1].defaultWeight = 0; controller.layers = layers;
-            Control(command, 1);
-            AnimationUtility.SetEditorCurve((AnimationClip)command.motion, EditorCurveBinding.FloatCurve("", typeof(Animator), "Future control input"),
-                AnimationCurve.Linear(0, 0, 10, 1));
-            var later = State(controller.layers[1].stateMachine, "Delayed disable", Clip(controller, "Delayed disable")); Control(later, 0);
-            var transition = command.AddTransition(later); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(AnimatorConditionMode.Greater, .5f, "Future control input");
-            var before = Before(); var error = Assert.Throws<InvalidOperationException>(() => Sample());
-            Assert.That(error.Message, Does.Contain("Future control input")); Unchanged(before);
         }
 
         [Test]
@@ -372,65 +270,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(controller.layers[TargetLayer].defaultWeight, Is.Zero);
             Assert.That(controller.layers[TargetLayer].stateMachine.states.Length, Is.EqualTo(2));
             Assert.That(command.behaviours, Does.Contain(sdkControl)); Unchanged(before);
-        }
-
-        [TestCase(false)] [TestCase(true)]
-        public void ConflictingIndividualCommandsCannotChooseCallbackOrder(bool sameState)
-        {
-            Control(command, 0);
-            Control(sameState ? command : controller.layers[2].stateMachine.defaultState, 1);
-            var before = Before(); var error = Assert.Throws<InvalidOperationException>(() => Sample());
-            Assert.That(error.Message, Does.Contain("VRCAnimatorLayerControl")); Unchanged(before);
-        }
-
-        [TestCase("duration")] [TestCase("machine")] [TestCase("moving")] [TestCase("lateControl")]
-        public void UnsupportedIndividualControlTimingAndCallbacksStayStrict(string kind)
-        {
-            if (kind == "machine") Configure(controller.layers[1].stateMachine.AddStateMachineBehaviour(Sdk("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")), 1, TargetLayer, 0, "FX");
-            else Control(command, 1, duration: kind == "duration" ? 1 : 0);
-            if (kind == "moving")
-            {
-                AnimationUtility.SetEditorCurve((AnimationClip)selected.motion, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"), AnimationCurve.Linear(0, 0, 1, 100));
-                var settings = AnimationUtility.GetAnimationClipSettings((AnimationClip)selected.motion); settings.loopTime = true;
-                AnimationUtility.SetAnimationClipSettings((AnimationClip)selected.motion, settings);
-            }
-            if (kind == "lateControl")
-            {
-                var later = State(controller.layers[1].stateMachine, "Future layer disable", Clip(controller, "Later")); Control(later, 0);
-                var transition = command.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
-            }
-            var before = Before();
-            if (kind == "moving" || kind == "lateControl")
-            {
-                // The state's own clock is settled and reported: a loop at its
-                // first frame, a later control after its exit time.
-                var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
-                var messages = new List<string>();
-                var values = VrChatExpressionSampler.SampleFixed(avatar, controller, metadata.Defaults, new Dictionary<string, float> { ["Menu"] = 1 },
-                    metadata: metadata, messages: messages);
-                Assert.That(values.Single(value => value.Shape == "Body size").Weight, kind == "moving" ? Is.EqualTo(0).Within(1.7) : Is.EqualTo(30).Within(.01));
-                Assert.That(messages, Does.Contain(kind == "moving" ? ExpressionSettlement.LoopingFinal : ExpressionSettlement.FollowedTransitions));
-            }
-            else Assert.Throws<InvalidOperationException>(() => Sample());
-            Unchanged(before);
-        }
-
-        [TestCase("Action")] [TestCase("Additive")]
-        public void NonFxIndividualControlsRemainOutsideFacialWeightEvaluation(string playable)
-        {
-            Control(command, .5f, target: 0, duration: 2, playable: playable);
-            var before = Before(); Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
-        }
-
-        [TestCase(0f)] [TestCase(.5f)]
-        public void BaseLayerControlUsesTheNativeUnitWeightContract(float goal)
-        {
-            var baseMachine = controller.layers[0].stateMachine;
-            var baseRest = baseMachine.defaultState;
-            var baseSelected = State(baseMachine, "Selected base", Clip(controller, "Base selected", new[] { "Body" }, value: 80)); To(baseRest, baseSelected, 1);
-            foreach (var state in controller.layers[TargetLayer].stateMachine.states) state.state.motion = Clip(controller, "Unused target");
-            Control(command, goal, target: 0); var before = Before();
-            Assert.That(Sample().Single(value => value.Shape == "Body size").Weight, Is.EqualTo(80).Within(.01)); Unchanged(before);
         }
     }
 }

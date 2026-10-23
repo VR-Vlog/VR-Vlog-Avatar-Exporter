@@ -360,7 +360,6 @@ namespace VRVlog.LilToonExporter.Tests
             var blink = (BlinkExportOptions)Board.GetMethod("ExportBlinkOptions", Flags).Invoke(window, null);
             return new[]
             {
-                "transferMode " + window.TransferMode,
                 "page " + window.Page,
                 "automaticBlink " + Board.GetField("automaticBlink", Flags).GetValue(window),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
@@ -401,7 +400,7 @@ namespace VRVlog.LilToonExporter.Tests
         static ExperimentalExpressionCaptureWindow OpenNormal(GameObject avatar)
         {
             Assert.That(ExperimentalExpressionCaptureWindow.OpenForTransfer(avatar), Is.True);
-            var window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single(item => item != null && item.TransferMode);
+            var window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single(item => item != null);
             var advance = Board.GetMethod("Advance", Flags);
             bool Busy() => Board.GetField("pending", Flags).GetValue(window) != null || (bool)Board.GetField("candidateValidationPending", Flags).GetValue(window);
             for (var step = 0; step < 20 && Busy(); step++) advance.Invoke(window, null);

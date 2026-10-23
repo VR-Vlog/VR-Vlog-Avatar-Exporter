@@ -121,10 +121,6 @@ namespace VRVlog.LilToonExporter.Tests
             : ExpressionDependencies.Analyze(fx, selected.Keys, null, source, source.Defaults, selected,
                 new[] { OpenBinding }, fixedContext: Context());
 
-        private List<VrChatExpressionMenu.MorphValue> Selected(IDictionary<string, float> selected = null) =>
-            VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults, selected ?? new Dictionary<string, float> { ["Menu"] = 1 },
-                null, source, fixedContext: Context());
-
         private void SetParameter(AnimatorController controller, AnimatorControllerParameterType type, float value)
         {
             var parameters = controller.parameters; var parameter = parameters.Single(item => item.name == Axis);
@@ -247,12 +243,10 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 Assert.That(constants, Is.Empty, "An unreachable binding cannot certify a supplied default that Unity does not apply.");
                 Assert.Throws<InvalidOperationException>(() => Dependencies());
-                Assert.Throws<InvalidOperationException>(() => Selected());
             }
             else
             {
                 Assert.That(constants[Axis], Is.EqualTo(initial));
-                Assert.That(Selected().Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(true)).Within(.01));
             }
             Assert.That(objects.Select(value => EditorJsonUtility.ToJson(value)), Is.EqualTo(before));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
@@ -279,7 +273,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(native.AfterCallback, Is.Zero.Within(.00001));
             Assert.That(native.Settled, Is.Zero.Within(.00001));
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context()), Is.Empty);
-            Assert.Throws<InvalidOperationException>(() => Selected());
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
 
@@ -339,7 +332,6 @@ namespace VRVlog.LilToonExporter.Tests
             var nativeNeutral = Native(false); var nativeSelected = Native(true);
             Assert.That(nativeNeutral, Is.EqualTo(75).Within(.01)); Assert.That(nativeSelected, Is.EqualTo(100).Within(.01));
             Assert.That(NeutralShapeSampler.Sample(avatar).Single(value => value.Shape == "Open").Weight, Is.EqualTo(nativeNeutral).Within(.01));
-            Assert.That(Selected().Single(value => value.Shape == "Open").Weight, Is.EqualTo(nativeSelected).Within(.01));
             var dependencies = Dependencies();
             Assert.That(dependencies.NeutralFixedValues[Axis], Is.EqualTo(initial));
             Assert.That(dependencies.Layers.Contains(1), Is.True, "Retain the native empty/tracking support layer.");
@@ -422,7 +414,6 @@ namespace VRVlog.LilToonExporter.Tests
             SetControllers();
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context()), Is.Empty);
             Assert.Throws<InvalidOperationException>(() => Dependencies());
-            Assert.Throws<InvalidOperationException>(() => Selected());
             // The manually supplied expression type is checked by this source
             // context; the descriptor has no expression-parameter asset.
             if (kind != "conflicting expression type") Assert.Throws<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar));
@@ -434,7 +425,6 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var selected = new Dictionary<string, float> { ["Menu"] = 1, [Axis] = 1 };
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context(), source.Defaults, selected), Is.Empty);
-            Assert.That(Assert.Throws<InvalidOperationException>(() => Selected(selected)).Message, Does.Contain(Axis));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
 
@@ -444,7 +434,6 @@ namespace VRVlog.LilToonExporter.Tests
             reset.motion = Clip("Additional face", 0);
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context()).ContainsKey(Axis), Is.True);
             Assert.That(Assert.Throws<NeutralShapeSamplingException>(() => Dependencies()).Message, Does.Contain("blendShape.Open"));
-            Assert.That(Assert.Throws<InvalidOperationException>(() => Selected()).Message, Does.Contain("blendShape.Open"));
             var warnings = new List<string>();
             Assert.That(NeutralShapeSampler.Sample(avatar, warnings: warnings), Is.Empty);
             Assert.That(warnings.Any(value => value.Contains("blendShape.Open") && value.Contains("FX以外")), Is.True);
@@ -463,15 +452,10 @@ namespace VRVlog.LilToonExporter.Tests
             if (matching)
             {
                 Assert.That(constants[Axis], Is.EqualTo(.25f));
-                var values = VrChatExpressionSampler.SampleFixed(avatar, fx, defaults, new Dictionary<string, float> { ["Menu"] = 1 },
-                    null, source, fixedContext: Context());
-                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(100).Within(.01));
             }
             else
             {
                 Assert.That(constants, Is.Empty);
-                Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, fx, defaults,
-                    new Dictionary<string, float> { ["Menu"] = 1 }, null, source, fixedContext: Context()));
             }
         }
 
@@ -491,22 +475,17 @@ namespace VRVlog.LilToonExporter.Tests
                 ParameterDriverExpressionTests.Op(kind == "Bool Add" ? "Add" : kind == "missing Copy source" ? "Copy" : "Set", "Needed",
                     kind == "nonfinite Set" ? float.NaN : 1, kind == "missing Copy source" ? "NotDeclared" : null));
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context()).ContainsKey(Axis), Is.True);
-            Assert.Throws<InvalidOperationException>(() => Selected());
             Assert.Throws<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void OnlyAnIndependentUnchangedInputCanPruneAConflictingProducer(bool selectedGate)
+        [Test]
+        public void OnlyAnIndependentUnchangedInputCanPruneAConflictingProducer()
         {
             fx.AddParameter("FaceMode", AnimatorControllerParameterType.Int); additional.AddParameter("FaceMode", AnimatorControllerParameterType.Int);
             var other = State(additional.layers[0].stateMachine, "Different option", Clip("Option empty"));
             Transition(reset, other).AddCondition(AnimatorConditionMode.Equals, 1, "FaceMode");
             ParameterDriverExpressionTests.Driver(other, ParameterDriverExpressionTests.Op("Set", Axis, 1));
-            var selected = new Dictionary<string, float> { ["Menu"] = 1, ["FaceMode"] = selectedGate ? 1 : 0 };
-            if (selectedGate) Assert.Throws<InvalidOperationException>(() => Selected(selected));
-            else Assert.That(Selected(selected).Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(true)).Within(.01));
             // Appearance ownership still covers authored menu alternatives.
             source.MenuInputs.Add("FaceMode");
             var alternate = State(fx.layers[0].stateMachine, "Alternative appearance", Clip("Alternative", 25));
@@ -551,9 +530,8 @@ namespace VRVlog.LilToonExporter.Tests
             return idle;
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void SoleDormantResetPreservesTheNativeNeutralAndSelectedExpression(bool selected)
+        [Test]
+        public void SoleDormantResetPreservesTheNativeNeutralAndSelectedExpression()
         {
             SoleDormantReset();
             var raw = ExpressionDependencies.Inspect(additional, null,
@@ -567,8 +545,8 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Context().Values.ContainsKey("ResetGate"), Is.False);
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context())[Axis], Is.Zero);
             var before = new Object[] { fx, additional, skin, mesh }.Select(value => EditorJsonUtility.ToJson(value)).ToArray();
-            var values = selected ? Selected() : NeutralShapeSampler.Sample(avatar);
-            Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(selected)).Within(.01));
+            var values = NeutralShapeSampler.Sample(avatar);
+            Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(false)).Within(.01));
             Assert.That(new Object[] { fx, additional, skin, mesh }.Select(value => EditorJsonUtility.ToJson(value)).ToArray(), Is.EqualTo(before));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
@@ -605,7 +583,6 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve((AnimationClip)neutral.motion, EditorCurveBinding.FloatCurve("", typeof(Animator), "ResetGate"),
                     AnimationCurve.Linear(0, 0, 10, 1));
             Assert.That(AdditionalParameterConstants.Prove(fx, source, Context(), source.Defaults, selected), Is.Empty);
-            Assert.Throws<InvalidOperationException>(() => Selected(selected));
             if (kind != "selected gate") Assert.Throws<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
@@ -620,7 +597,6 @@ namespace VRVlog.LilToonExporter.Tests
             else if (kind == "unknown") idle.AddStateMachineBehaviour<UnknownStateCallbackProbe>();
             else AnimationUtility.SetAnimationEvents((AnimationClip)idle.motion,
                 new[] { new AnimationEvent { time = 0, functionName = "LiveUnknownProducer" } });
-            Assert.Throws<InvalidOperationException>(() => Selected());
             if (kind == "morph")
             {
                 var warnings = new List<string>();
@@ -646,8 +622,6 @@ namespace VRVlog.LilToonExporter.Tests
             var selected = new Dictionary<string, float> { ["Menu"] = 1 };
             var constants = AdditionalParameterConstants.Prove(fx, source, context, source.Defaults, selected);
             Assert.That(constants, Is.Empty, "An automatic external default does not prove a restored or unclassified startup value.");
-            Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                selected, null, source, fixedContext: context));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
 
@@ -665,20 +639,6 @@ namespace VRVlog.LilToonExporter.Tests
             var selected = new Dictionary<string, float> { ["Menu"] = 1 };
             var constants = AdditionalParameterConstants.Prove(fx, source, context, source.Defaults, selected);
             Assert.That(constants, Is.Empty, "A saved or unknown gate must retain its potentially changing producer.");
-            if (supplied)
-            {
-                // This existing explicit-environment path sets the external
-                // gate before graph startup; it does not use the new reset
-                // proof to classify a saved default as an invariant input.
-                var normal = VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                    new Dictionary<string, float> { ["Menu"] = 0 }, null, source, fixedContext: context);
-                var values = VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                    selected, null, source, fixedContext: context);
-                Assert.That(normal.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(false)).Within(.01));
-                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(true)).Within(.01));
-            }
-            else Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                selected, null, source, fixedContext: context));
             Assert.That(objects.Select(value => EditorJsonUtility.ToJson(value)), Is.EqualTo(before));
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
@@ -724,14 +684,10 @@ namespace VRVlog.LilToonExporter.Tests
             if (kind == "unsynced remote")
             {
                 Assert.That(constants[Axis], Is.Zero, "A known unsynced input has no remote producer.");
-                var values = VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults, selected, null, source, fixedContext: context);
-                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(Native(true)).Within(.01));
             }
             else
             {
                 Assert.That(constants, Is.Empty, "A network producer cannot be removed using an unknown, changing or remote IsLocal input.");
-                Assert.Throws<InvalidOperationException>(() => VrChatExpressionSampler.SampleFixed(avatar, fx, source.Defaults,
-                    selected, null, source, fixedContext: context));
             }
             Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(35));
         }
