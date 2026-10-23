@@ -11,11 +11,12 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 ## 決定
 
-### ExportRecoveryTests（メソッド 22 → 22、ケース 31 → 27）
+### ExportRecoveryTests（メソッド 22 → 22、ケース 31 → 28）
 
 残したもの:
 
 - `SourceStampRejectsChangesToSourceAndRelatedAssets` の hierarchy・component・animation: 子の追加・コンポーネントの無効化・アニメーションの変更で記録が古くなることを、書き出しの復旧の画面の経路で確かめるのはここだけ。
+- `ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile` の rotation: 親を回しても（`SetParent(…, false)` で親の下に置き、親を Y 軸で 25 度回す）記録が古くならないことを確かめるのはここだけ。10/22 にシーンでの置き方を元データの変更とみなさないようにした修正の確認として残す。
 - `ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile` の active: 親を非表示にすると記録が古くなることを確かめるのはここだけ。メソッドの引数はそのままにした。
 - `OnlyAnIdentifiedOptionalLayerGetsALayerRecipe`（2 ケース）: 復旧の案内の段階・理由・直し方が空でないことと、操作の種類を確かめるのはここだけ。迷ったので残した。
 - そのほかの 19 メソッド: それぞれ別の失敗の診断、復旧の操作、プレビュー用のコピーの扱いを確かめ、同じ確認がほかに無い。
@@ -23,7 +24,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 消したもの:
 
 - `SourceStampRejectsChangesToSourceAndRelatedAssets` の material: `SourceFingerprintPruneTests.ChangesThatReachTheFileStillStopTheBoard` の material が、同じ `ExportRecoverySourceStamp.Matches` で材質の色の変更を確かめる。表情ボードと書き出しの復旧は同じ記録を使う。
-- `ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile` の position・rotation・scale: `SourceFingerprintPruneTests.MovingTheRootInTheSceneKeepsTheBoardCurrentButItsScaleDoesNot` が、ルートの位置・向き・親の追加では記録が古くならず、親の拡大縮小では古くなることを同じ記録で確かめる。
+- `ParentChangesInvalidateTheCapturedSourceOnlyWhenTheyReachTheFile` の position・scale: `SourceFingerprintPruneTests.MovingTheRootInTheSceneKeepsTheBoardCurrentButItsScaleDoesNot` が、ルートの位置・向き・親の追加では記録が古くならず、親の拡大縮小では古くなることを同じ記録で確かめる。親を回すケースはそちらに無いので rotation は残した。
 
 ### ExportSourceFingerprintSerializationTests（メソッド 9 → 9、ケース 55 → 50）
 
@@ -56,7 +57,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 - `UnsavedMeshInputsInvalidateTheStamp` の normals・tangents・colors: 頂点の属性はまとめて生のバイトで指紋に足すので、vertices・uv0 と同じ処理を通る。
 - `UnsavedMeshInputsInvalidateTheStamp` の morphNormal: `HundredMorphsAtHundredThousandVerticesRemainCorrectAndReportNativeTiming` が同じ `SetShapes(…, "morphNormal")` の変更で記録が古くなることを確かめる。
-- `CustomRenderTextureAuthoredSettings…` の initMaterialColor: テストの材質と初期化の材質は同じものなので、materialColor と同じ材質の値の変更を確かめていた。
+- `CustomRenderTextureAuthoredSettings…` の initMaterialColor: 材質の `_Glossiness`（float）を変えていた。指紋は材質の値を `SerializedData` で型によらず同じ処理で足す。`MaterialData` の `ShaderPropertyType` の分岐は、遅延で読まれる値を確定させるために読むだけなので、float と色は同じ経路を通る。materialColor が同じ経路を確かめる。
 
 ### NeutralShapeExportTests（メソッド 1 → 1、ケース 6 → 3）
 
@@ -67,6 +68,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 消したもの:
 
 - lilToon の拡張を付ける 3 ケース: `exporterVersion`・`lilToonVersion` は材質の書き出し（lilToon の拡張を足す段階）だけを変え、中立の顔とモーフは同じ処理を通る。拡張を付けないケースが同じ組み合わせを確かめる。`2026-10-23-minimize-repeated-testcases.md` で MToon と lilToon を同じ経路とみなしたのと同じ判断。
+- 引数 `fullLilToon`: 残った 3 ケースはどれも false を渡すので、引数を消して `exporterVersion`・`lilToonVersion` に false のときの値（null）を直接渡すようにした。3 ケースの中身は変わらない。
 
 ### ParameterDriverExpressionTests（メソッド 17 → 17、ケース 34 → 32）
 
@@ -81,6 +83,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 
 - `LocomotionControlDoesNotBlockFixedFacialSampling` の (true, true): `IsLocomotionControl` は種類と項目があるかだけを見て値を見ない。ほかのコントローラーに置いても、直接呼ぶ判定は変わらない。(false, false) が同じ判定を確かめる。
 - `TemporaryPoseSpaceDoesNotBlockFixedFacialSampling` の (true, true): `IsTemporaryPoseSpace` は遅延の時間だけを見て、入る・抜ける、固定の遅延の値を見ない。(false, false) が同じ判定を確かめる。
+- 2 つのメソッドの引数（`disabled`・`otherPlayable`・`enter`・`fixedDelay`）と、`otherPlayable` が true のときだけ通る `Other.controller` を作って `metadata.OtherControllers` に足す処理: 残った行はどれも false を渡し、そこへ届かない。引数を消して値を直接書き、どちらも `[Test]` にした。確認の内容は変わらない。
 
 ### DirectExpressionNativeLayersTests（メソッド 11 → 11、ケース 21 → 21）
 
@@ -107,7 +110,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 | ファイル | メソッド | ケース |
 | --- | --- | --- |
 | DirectExpressionNativeLayersTests | 11 → 11 | 21 → 21 |
-| ExportRecoveryTests | 22 → 22 | 31 → 27 |
+| ExportRecoveryTests | 22 → 22 | 31 → 28 |
 | ExportSourceFingerprintSerializationTests | 9 → 9 | 55 → 50 |
 | MergedFixedNeutralSamplingTests | 4 → 4 | 11 → 11 |
 | NeutralCurveConditionTests | 4 → 4 | 5 → 5 |
@@ -115,7 +118,7 @@ mk が 10/23 に「テストに関しても必要最低限にする方針にし�
 | NeutralShapeSamplerTests | 67 → 67 | 140 → 140 |
 | ParameterDriverExpressionTests | 17 → 17 | 34 → 32 |
 | SourceFingerprintTests | 13 → 13 | 62 → 57 |
-| 合計 | 148 → 148 | 365 → 346 |
+| 合計 | 148 → 148 | 365 → 347 |
 
 ## 検証
 

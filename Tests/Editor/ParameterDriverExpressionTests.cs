@@ -185,34 +185,27 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrChatParameterDriver.IsNonFxPlayableControl(on), Is.True);
         }
 
-        [TestCase(false, false)]
-        public void LocomotionControlDoesNotBlockFixedFacialSampling(bool disabled, bool otherPlayable)
+        [Test]
+        public void LocomotionControlDoesNotBlockFixedFacialSampling()
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);
-            var state = face;
-            if (otherPlayable)
-            {
-                var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Other.controller");
-                state = State(other.layers[0].stateMachine, "Locomotion control"); other.layers[0].stateMachine.defaultState = state;
-                metadata.OtherControllers.Add(other);
-            }
-            var control = SdkBehaviour(state, "VRC.SDK3.Avatars.Components.VRCAnimatorLocomotionControl");
+            var control = SdkBehaviour(face, "VRC.SDK3.Avatars.Components.VRCAnimatorLocomotionControl");
             using (var data = new SerializedObject(control))
             {
-                data.FindProperty("disableLocomotion").boolValue = disabled;
+                data.FindProperty("disableLocomotion").boolValue = false;
                 data.ApplyModifiedPropertiesWithoutUndo();
             }
             Assert.That(VrChatParameterDriver.IsLocomotionControl(control), Is.True);
         }
-        [TestCase(false, false)]
-        public void TemporaryPoseSpaceDoesNotBlockFixedFacialSampling(bool enter, bool fixedDelay)
+        [Test]
+        public void TemporaryPoseSpaceDoesNotBlockFixedFacialSampling()
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);
             var control = SdkBehaviour(face, "VRC.SDK3.Avatars.Components.VRCAnimatorTemporaryPoseSpace");
             using (var data = new SerializedObject(control))
             {
-                data.FindProperty("enterPoseSpace").boolValue = enter;
-                data.FindProperty("fixedDelay").boolValue = fixedDelay;
+                data.FindProperty("enterPoseSpace").boolValue = false;
+                data.FindProperty("fixedDelay").boolValue = false;
                 data.FindProperty("delayTime").floatValue = .5f;
                 data.ApplyModifiedPropertiesWithoutUndo();
             }
