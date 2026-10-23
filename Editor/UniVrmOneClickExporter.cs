@@ -1252,6 +1252,12 @@ namespace VRVlog.LilToonExporter
             // are averaged into the main image (lilToon 2.3.4 lilGetMatCap).
             var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures, matcapBakes)) ?? Texture(source, "_MainTex");
             var parametricRim = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission);
+            // MToon's rim image also scales its MatCap. Without a parametric rim
+            // it carries the MatCap mask and main-color tint instead. A MatCap
+            // mask goes in even when a rim or backlight is on: losing the mask
+            // lights the whole mesh, while the rim only shrinks to the mask.
+            var matcapWeight = hidden || !MatcapApproximation.Masked(source) && (rimEnabled || parametricRim.maxColorComponent > 0f)
+                ? null : MatcapApproximation.Weight(source, textures, matcapBakes);
             var context = new MToon10Context(material)
             {
                 AlphaMode = AlphaMode(source),
@@ -1283,10 +1289,7 @@ namespace VRVlog.LilToonExporter
                 ParametricRimLiftFactor = 0f,
                 RimLightingMixFactor = Mathf.Clamp01(rimEnabled ? Float(source, "_RimEnableLighting", 1f) :
                     matcapAdditive ? Float(source, "_MatCapEnableLighting", 1f) : 1f),
-                // MToon's rim image also scales its MatCap. Without a parametric
-                // rim it carries the MatCap mask and main-color tint instead.
-                RimMultiplyTexture = rimEnabled ? Texture(source, "_RimColorTex")
-                    : !hidden && parametricRim.maxColorComponent <= 0f ? MatcapApproximation.Weight(source, textures, matcapBakes) : null,
+                RimMultiplyTexture = matcapWeight ?? (rimEnabled ? Texture(source, "_RimColorTex") : null),
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10

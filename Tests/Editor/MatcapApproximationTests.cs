@@ -36,6 +36,42 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Destroy(material, created, textures, mask, main); }
         }
 
+        [TestCase("_UseRim", "_RimColor")]
+        [TestCase("_UseBacklight", "_BacklightColor")]
+        public void MaskStaysWhenARimLightIsOn(string toggle, string color)
+        {
+            var material = Create(1);
+            var mask = Image(Color.black, Color.white, Color.black, Color.white);
+            var rim = Solid(Color.white);
+            var main = Solid(Color.white);
+            var created = new List<Material>();
+            var textures = new List<Texture2D>();
+            try
+            {
+                material.SetTexture("_MainTex", main);
+                material.SetTexture("_MatCapBlendMask", mask);
+                material.SetFloat(toggle, 1);
+                material.SetColor(color, Color.white);
+                material.SetTexture("_RimColorTex", rim);
+                var fallback = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures);
+                Assert.That(textures, Has.Count.EqualTo(1));
+                Assert.That(fallback.GetColor("_RimColor").maxColorComponent, Is.GreaterThan(0f));
+                var weight = (Texture2D)fallback.GetTexture("_RimTex");
+                Assert.AreSame(textures[0], weight, "The mask replaces the rim image.");
+                Assert.That(Linear(weight.GetPixel(0, 0)).maxColorComponent, Is.EqualTo(0f).Within(.015f));
+                Assert.That(Linear(weight.GetPixel(1, 0)).r, Is.EqualTo(1f).Within(.015f));
+                // Without a mask the MatCap covers the mesh in lilToon too, so
+                // the rim keeps its own image.
+                material.SetTexture("_MatCapBlendMask", null);
+                material.SetFloat("_MatCapMainStrength", 1);
+                var unmasked = UniVrmOneClickExporter.CreateMToonFallback(material, created, null, false, textures).GetTexture("_RimTex");
+                if (toggle == "_UseRim") Assert.AreSame(rim, unmasked);
+                else Assert.IsNull(unmasked);
+                Assert.That(textures, Has.Count.EqualTo(1));
+            }
+            finally { Destroy(material, created, textures, mask, rim, main); }
+        }
+
         [Test]
         public void MultiplyMatcapDarkensTheMainImageWhereMasked()
         {
