@@ -32,6 +32,7 @@ namespace VRVlog.LilToonExporter
         private int lastOmittedStageCount;
         // The notes of the last saved export, as LastNotes of the board.
         private string[] lastNotes = Array.Empty<string>();
+        private ExportDiagnostics lastDiagnostics;
 
         // The author is the avatar's remembered one, else what this window
         // already holds. The license is the avatar's remembered settings; an
@@ -55,6 +56,9 @@ namespace VRVlog.LilToonExporter
 
         // The notes of the export last saved by Export, ExportDetailed or SaveCopy, each once.
         public string[] LastNotes() => lastNotes;
+
+        // Name-free text about the export last saved by Export, ExportDetailed or SaveCopy, made when asked, or null.
+        public Func<string> LastDiagnostics() => lastDiagnostics == null ? null : (Func<string>)lastDiagnostics.Text;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -199,6 +203,7 @@ namespace VRVlog.LilToonExporter
             Action<string, int> SavedFrom(ExperimentalExpressionCaptureWindow from) => (path, missing) =>
             {
                 lastNotes = from.LastNotes;
+                lastDiagnostics = from.LastDiagnostics;
                 saved(path, missing);
             };
             if (open != null) return open.SaveTransferCopy(name, targetAuthor, license, destination, SavedFrom(open));
@@ -269,6 +274,7 @@ namespace VRVlog.LilToonExporter
                 lastMissingShaderCount = board.LastMissingShaderCount;
                 lastOmittedStageCount = board.LastOmittedStageCount;
                 lastNotes = board.LastNotes;
+                lastDiagnostics = board.LastDiagnostics;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }, interactive);
