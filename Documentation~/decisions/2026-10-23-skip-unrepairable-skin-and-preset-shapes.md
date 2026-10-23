@@ -17,7 +17,7 @@
 
 ## 決定
 
-- `SkinnedMeshFallbackWeights.Preserve` に `lenient` 引数を足し、`ExportCore` は `guard.ContinueOnFailure` を渡す。lenient のときはレンダラーごとに例外を受け、そのメッシュは元のスキニングのまま書き出して警告を出す。各処理は例外を投げる前にレンダラーとメッシュを元に戻している（`finally`）ので、受けたあとのコピーは手を付ける前と同じになる。strict のときは今までどおり止まる。ほかの lenient の扱い（`ReplaceLilToonMaterials` など）と同じ書き方にした。
+- `SkinnedMeshFallbackWeights.Preserve` に `lenient` 引数を足し、`ExportCore` は `guard.ContinueOnFailure` を渡す。lenient のときはレンダラーごとに例外を受け、そのメッシュはウェイトを直さずに書き出して警告を出す（書き出しは段を外して 2 回目の処理を走らせることがあるので、同じ警告は 1 件にまとめる）。各処理は例外を投げる前にレンダラーとメッシュを元に戻している（`finally`）ので、受けたあとのコピーは手を付ける前と同じになる。strict のときは今までどおり止まる。ほかの lenient の扱い（`ReplaceLilToonMaterials` など）と同じ書き方にした。
 - `AuthorPresets` は、解決できないシェイプだけをそのプリセットから外し、プリセット名とパス・シェイプ名を警告に出す。警告は書き出しの試行ごとの一覧に入るように、`authorCopyExpressions` のコールバックに試行の警告の一覧を渡す形にした（呼び出し元は表情ボードの 1 か所だけ）。`AuthorPresets` はインスタンスの状態を使わないので `static` にしてテストから直接呼べるようにした。
 - かんたん転送も同じ `SaveVrm` を通るので、通常の書き出しとの一致は変わらない。
 

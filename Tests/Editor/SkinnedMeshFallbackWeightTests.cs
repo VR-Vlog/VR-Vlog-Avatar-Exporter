@@ -264,8 +264,9 @@ namespace VRVlog.LilToonExporter.Tests
                 if (reason == "cloth") fixture.CloneSkin.gameObject.AddComponent<Cloth>();
                 var warnings = new List<string>();
                 SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
+                SkinnedMeshFallbackWeights.Preserve(fixture.Clone, fixture.Owned, warnings, lenient: true);
                 Assert.That(warnings, Has.Count.EqualTo(1));
-                Assert.That(warnings[0], Does.Contain("元のスキニングのまま"));
+                Assert.That(warnings[0], Does.Contain("ウェイトを直さずに"));
                 Assert.That(fixture.CloneSkin.sharedMesh, Is.SameAs(original));
                 Assert.That(fixture.CloneSkin.bones, Is.EqualTo(oldBones));
                 Assert.That(fixture.Owned, Is.Empty);

@@ -30,7 +30,9 @@ namespace VRVlog.LilToonExporter
                     }
                     catch (InvalidOperationException error) when (lenient)
                     {
-                        warnings?.Add(error.Message + "このメッシュは元のスキニングのまま書き出します。");
+                        // Preserve runs again after the build passes; warn once.
+                        var message = error.Message + "このメッシュはウェイトを直さずに書き出します。";
+                        if (warnings != null && !warnings.Contains(message)) warnings.Add(message);
                     }
                 }
         }
