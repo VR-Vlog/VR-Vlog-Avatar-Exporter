@@ -187,9 +187,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (session != null || uploading != null) Repaint();
         }
         // Shared with the "アプリに転送" window. The texture is one pixel per module, quiet zone included.
-        internal static Texture2D RenderQr(string payload)
+        internal static Texture2D RenderQr(string payload, bool marked = false)
         {
-            var matrix = TransferQrCode.Encode(payload);
+            var matrix = TransferQrCode.Encode(payload, marked);
             var pixels = new Color32[matrix.Width * matrix.Height];
             for (var y = 0; y < matrix.Height; y++) for (var x = 0; x < matrix.Width; x++)
                 pixels[(matrix.Height - y - 1) * matrix.Width + x] = matrix[x, y] ? new Color32(0, 0, 0, 255) : new Color32(255, 255, 255, 255);
