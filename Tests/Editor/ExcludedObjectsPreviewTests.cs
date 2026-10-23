@@ -167,6 +167,82 @@ namespace VRVlog.LilToonExporter.Tests
             finally { preview?.Dispose(); fixture.Dispose(); }
         }
 
+        // A camera kept far from the body and a skinned mesh whose bounds were
+        // widened on purpose do not shrink the avatar: the fit is the body.
+        [Test]
+        public void TheFitIsTheBodyNotAFarGimmickOrWidenedBounds()
+        {
+            var fixture = new AttachmentConnectionTests.Fixture();
+            ExcludedObjectsPreview preview = null;
+            try
+            {
+                var far = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                far.transform.SetParent(fixture.Source.transform, false);
+                far.transform.position = new Vector3(6, 8, -4);
+                fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().localBounds = new Bounds(Vector3.zero, Vector3.one * 20);
+                var drawn = fixture.Source.GetComponentsInChildren<Renderer>().Select(item => item.bounds).Aggregate((all, next) => { all.Encapsulate(next); return all; });
+                Assert.That(drawn.size.y, Is.GreaterThan(15));
+
+                var body = ExcludedObjectsPreview.BodyBounds(fixture.Source);
+                Assert.That(body.HasValue, Is.True);
+                // The hair mesh: 1.7 to 1.91 high, 0.12 wide either way with the blend shape.
+                Assert.That(body.Value.min.y, Is.EqualTo(1.7f).Within(.02f));
+                Assert.That(body.Value.max.y, Is.EqualTo(1.9f + .0035f).Within(.02f));
+                Assert.That(body.Value.size.x, Is.LessThan(.3f));
+
+                // The camera stays where it was framed whatever is hidden or brought back.
+                preview = new ExcludedObjectsPreview(fixture.Source);
+                preview.Show(new[] { far }, null);
+                var framing = preview.Framing;
+                Assert.That(framing.max.y, Is.LessThan(2.1f));
+                preview.Show(null, null);
+                Assert.That(preview.Framing, Is.EqualTo(framing));
+            }
+            finally { preview?.Dispose(); fixture.Dispose(); }
+        }
+
+        // Without a humanoid skeleton every mesh counts, by its vertices, in the
+        // avatar's own axes when it is turned in the scene; when everything lies
+        // out of the skeleton's reach every mesh counts again.
+        [Test]
+        public void WithoutASkeletonOrInReachTheFitStillHoldsTheMeshes()
+        {
+            var plain = new GameObject("Plain");
+            try
+            {
+                var near = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                near.transform.SetParent(plain.transform, false);
+                var aside = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                aside.transform.SetParent(plain.transform, false);
+                aside.transform.position = new Vector3(3, 0, 0);
+                var body = ExcludedObjectsPreview.BodyBounds(plain);
+                Assert.That(body.HasValue, Is.True);
+                Assert.That(body.Value.min.x, Is.EqualTo(-.5f).Within(.001f));
+                Assert.That(body.Value.max.x, Is.EqualTo(3.5f).Within(.001f));
+                plain.transform.rotation = Quaternion.Euler(0, 90, 0);
+                var turned = ExcludedObjectsPreview.BodyBounds(plain).Value;
+                Assert.That(turned.min.x, Is.EqualTo(-.5f).Within(.001f));
+                Assert.That(turned.max.x, Is.EqualTo(3.5f).Within(.001f));
+                Assert.That(turned.size.z, Is.EqualTo(1).Within(.001f));
+                Object.DestroyImmediate(near); Object.DestroyImmediate(aside);
+                Assert.That(ExcludedObjectsPreview.BodyBounds(plain).HasValue, Is.False);
+            }
+            finally { Object.DestroyImmediate(plain); }
+
+            var fixture = new AttachmentConnectionTests.Fixture();
+            try
+            {
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) Object.DestroyImmediate(skin.gameObject);
+                var far = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                far.transform.SetParent(fixture.Source.transform, false);
+                far.transform.position = new Vector3(6, 8, -4);
+                var body = ExcludedObjectsPreview.BodyBounds(fixture.Source);
+                Assert.That(body.HasValue, Is.True);
+                Assert.That(body.Value.center, Is.EqualTo(new Vector3(6, 8, -4)));
+            }
+            finally { fixture.Dispose(); }
+        }
+
         [TestCase(568f, .4f)]
         [TestCase(1400f, .5f)]
         public void ThePreviewTakesTwoFifthsToHalfOfTheWidth(float width, float ratio)
