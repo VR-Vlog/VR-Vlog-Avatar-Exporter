@@ -564,7 +564,8 @@ namespace VRVlog.LilToonExporter
                     authorCopyExpressions: (clone, copyWarnings) => AuthorPresets(clone, presetFaces.Select(face => (face.Preset, face.Morphs)), authored, copyWarnings),
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
-                    listFaces: listFaces.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList());
+                    listFaces: listFaces.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList(),
+                    listFaceSources: listFaces.Select(face => face.Clip).ToList());
                 UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                 return authoredVrm;
             }

@@ -24,8 +24,8 @@ namespace VRVlog.LilToonExporter
 
         // Extensions checked to hold no accessor, bufferView or morph target
         // index other than the ones handled here. Any other extension keeps
-        // the file unchanged. VRVLOG_materials_liltoon and the pose
-        // extensions are added after this stage.
+        // the file unchanged. VRVLOG_materials_liltoon, the pose and the
+        // hand gesture extensions are added after this stage.
         internal static readonly string[] KnownExtensions =
         {
             "VRMC_vrm", "VRMC_springBone", "VRMC_springBone_extended_collider", "VRMC_springBone_limit",
