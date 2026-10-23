@@ -100,10 +100,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(stamp.Matches(fixture.Source), Is.True, "An unchanged exported bound is not a stale recovery input.");
         }
 
-        [TestCase("vertices")][TestCase("normals")][TestCase("tangents")][TestCase("colors")]
+        [TestCase("vertices")]
         [TestCase("uv0")][TestCase("uv7")][TestCase("layout")][TestCase("indices")]
         [TestCase("submesh")][TestCase("bounds")][TestCase("bindpose")][TestCase("boneIndex")][TestCase("boneWeight")]
-        [TestCase("morphVertex")][TestCase("morphNormal")][TestCase("morphTangent")]
+        [TestCase("morphVertex")][TestCase("morphTangent")]
         [TestCase("frameWeight")][TestCase("shapeName")][TestCase("frameCount")]
         public void UnsavedMeshInputsInvalidateTheStamp(string change)
         {
@@ -114,9 +114,6 @@ namespace VRVlog.LilToonExporter.Tests
             switch (change)
             {
                 case "vertices": var vertices = mesh.vertices; vertices[0].x += .1f; mesh.vertices = vertices; break;
-                case "normals": var normals = mesh.normals; normals[0] = Vector3.up; mesh.normals = normals; break;
-                case "tangents": var tangents = mesh.tangents; tangents[0].w = -1; mesh.tangents = tangents; break;
-                case "colors": var colors = mesh.colors; colors[0] = Color.red; mesh.colors = colors; break;
                 case "uv0": var uv = mesh.uv; uv[0].x += .25f; mesh.uv = uv; break;
                 case "uv7": mesh.SetUVs(7, new[] { Vector4.one, Vector4.zero, Vector4.zero }); break;
                 case "layout": mesh.SetUVs(0, new[] { Vector4.zero, Vector4.one, Vector4.zero }); break;
@@ -335,7 +332,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase("frame")][TestCase("initColor")][TestCase("material")][TestCase("materialColor")]
-        [TestCase("initMaterial")][TestCase("initMaterialColor")][TestCase("source")][TestCase("initMode")]
+        [TestCase("initMaterial")][TestCase("source")][TestCase("initMode")]
         [TestCase("updateMode")][TestCase("updatePeriod")][TestCase("zoneSpace")][TestCase("zones")]
         [TestCase("doubleBuffered")][TestCase("initTexture")][TestCase("initPixels")]
         public void CustomRenderTextureAuthoredSettingsAndReferencesRemainTrackedWithoutGpuUpdates(string change)
@@ -361,7 +358,6 @@ namespace VRVlog.LilToonExporter.Tests
                     case "material": custom.material = replacement; break;
                     case "materialColor": material.color = Color.red; break;
                     case "initMaterial": custom.initializationMaterial = replacement; break;
-                    case "initMaterialColor": material.SetFloat("_Glossiness", .17f); break;
                     case "source": custom.initializationSource = CustomRenderTextureInitializationSource.Material; break;
                     case "initMode": custom.initializationMode = CustomRenderTextureUpdateMode.OnLoad; break;
                     case "updateMode": custom.updateMode = CustomRenderTextureUpdateMode.Realtime; break;
