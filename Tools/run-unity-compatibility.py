@@ -30,7 +30,6 @@ BEHAVIOR_CASES = {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
         'DegenerateGeometryReceivesFiniteUnitNormalsWithoutLosingMorphs': 1,
         'DirectUniVrmExportRepairsOnlyAbsentAttributesAndKeepsAuthoredMorphs': 4,
-        'FacesTooLargeForFloatNormalsReceiveFiniteUnitNormals': 1,
         'FailureDuringExportRestoresMissingAttributeSourceMesh': 2,
         'MismatchedAdditionalVertexStreamsAreLeftOutWithAWarning': 1,
         'MissingNormalsWithoutMorphsAlsoExportsThroughMeshWriter': 1,

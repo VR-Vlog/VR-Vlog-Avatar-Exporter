@@ -60,18 +60,18 @@ namespace VRVlog.LilToonExporter
                     {
                         entry.Prepared.RecalculateNormals();
                         var normals = entry.Prepared.normals;
-                        // Unity generates nothing when the bounds overflow
-                        // float; every vertex then gets the fallback below.
-                        if (normals.Length != source.vertexCount) normals = new Vector3[source.vertexCount];
+                        if (normals.Length != source.vertexCount)
+                            throw new InvalidOperationException(renderer.name + ": 未設定の頂点法線を生成できませんでした。");
                         var zeroNormals = 0;
                         for (var i = 0; i < normals.Length; i++)
                         {
                             var normal = normals[i];
+                            if (!Finite(normal.x) || !Finite(normal.y) || !Finite(normal.z))
+                                throw new InvalidOperationException(renderer.name + ": 頂点法線の生成結果に非有限値が含まれています。");
                             // Degenerate/cancelling faces cannot define a
-                            // direction, and faces too large for float
-                            // overflow it. Keep their geometry and morphs, but
-                            // do not emit invalid zero-length or non-finite glTF normals.
-                            if (!Finite(normal.x) || !Finite(normal.y) || !Finite(normal.z) || normal.x == 0 && normal.y == 0 && normal.z == 0)
+                            // direction. Keep their geometry and morphs, but
+                            // do not emit invalid zero-length glTF normals.
+                            if (normal.x == 0 && normal.y == 0 && normal.z == 0)
                             { normals[i] = Vector3.forward; zeroNormals++; }
                         }
                         if (zeroNormals > 0)
