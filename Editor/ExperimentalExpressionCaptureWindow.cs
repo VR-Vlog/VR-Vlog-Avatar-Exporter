@@ -27,6 +27,11 @@ namespace VRVlog.LilToonExporter
         PreviewRenderUtility preview;
         Action pending;
         bool candidateValidationPending, opening;
+        // The copy was built again from the avatar since the last action. The
+        // idle reads (blink line, thumbnails, slot menu) then use it as it is,
+        // so a value that reads differently each time does not rebuild it over
+        // and over while nothing is done on the board.
+        bool followedSinceAction;
         string error, status;
         Vector2 pageScroll;
         Vector3 center;
@@ -300,14 +305,50 @@ namespace VRVlog.LilToonExporter
             if (pending == null && candidateValidationPending && session != null) pending = RefreshCandidateValidation;
             if (pending == null) { AdvanceIdle(); return; }
             var action = pending; pending = null;
-            try { using (ExperimentalExpressionCaptureSession.Batch()) action(); error = null; }
+            try { using (ExperimentalExpressionCaptureSession.Batch()) RunFollowingSource(action); error = null; }
             catch (OperationCanceledException) { status = ExporterLocalization.T("操作をキャンセルしました。"); }
             catch (Exception exception) { error = exception.Message; Debug.LogException(exception); }
             finally { EditorUtility.ClearProgressBar(); Repaint(); }
         }
 
+        // An action that finds the copy out of date runs once more on a copy
+        // of the avatar as it is. Each action checks the source before it
+        // changes anything, so the second run starts from the same choices.
+        void RunFollowingSource(Action action)
+        {
+            try { action(); }
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (session != null)
+            {
+                FollowSource(changed.Detail);
+                action();
+            }
+        }
+
+        internal const string FollowedSourceFormat = "元のアバターがプレビューのコピーと違っていたため、表情ボードの選択を残したままコピーを作り直しました。違っていた値: {0}";
+
+        // The copy no longer matches the avatar: a change in the scene, an
+        // import, or a value that reads differently after a reload. Everything
+        // the board holds apart from the copy (files, slots, exclusions, poses,
+        // blink) is kept, so the copy is made again from the avatar as it is,
+        // the way a change of the excluded objects rebuilds it. What differed
+        // goes to the Console, so a copy rebuilt for no visible change can be traced.
+        void FollowSource(string detail)
+        {
+            // Faces recorded on the copy itself would not survive it; the board records none.
+            if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
+                throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
+            Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), detail ?? ""));
+            followedSinceAction = true;
+            // As when the window opens: objects that leave no preview wait in
+            // the list with the reason, and the copy has every object.
+            var current = session.ExcludedObjects.ToArray();
+            var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
+            if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; }
+            RevalidateClips();
+        }
+
         // A queued action replaces any apply-on-leave still waiting, so its flag goes too.
-        void Queue(Action action) { pending = action; applyingOnLeave = false; error = null; Repaint(); }
+        void Queue(Action action) { pending = action; applyingOnLeave = false; followedSinceAction = false; error = null; Repaint(); }
 
         internal static void AnimationAssetsReimported()
         {
@@ -326,6 +367,7 @@ namespace VRVlog.LilToonExporter
         {
             if (session == null || preview == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
             using var batch = ExperimentalExpressionCaptureSession.Batch();
+            if (followedSinceAction) session.TrustCopyForBatch();
             RefreshBlinkFallback();
             if (thumbnailRequests.Count > 0) using (ExpressionBoardTimings.Step("thumbnails")) RenderThumbnails();
         }
@@ -336,6 +378,8 @@ namespace VRVlog.LilToonExporter
             blinkFallbackStale = false;
             using var timing = ExpressionBoardTimings.Step("blinkFallback");
             try { blinkFallback = session.BlinkFallbackDescription(ExportBlinkOptions()); }
+            // The next update builds the copy again and reads the line from it.
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException) { candidateValidationPending = true; blinkFallbackStale = true; }
             catch (Exception exception) when (!(exception is OperationCanceledException)) { blinkFallback = exception.Message; }
             Repaint();
         }
@@ -360,6 +404,11 @@ namespace VRVlog.LilToonExporter
         // every update.
         void RenderThumbnails()
         {
+            // An out-of-date copy would draw old faces, and each would fail with
+            // the changed-avatar message: they wait, keeping their requests, for
+            // the copy to be built again. The rest of the batch uses this check.
+            try { session.RequireSourceForBatch(); }
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException) { candidateValidationPending = true; Repaint(); return; }
             ExperimentalExpressionCaptureSession.Pose original;
             try { original = session.CurrentFace(); }
             catch (Exception exception) when (!(exception is OperationCanceledException))
@@ -452,20 +501,16 @@ namespace VRVlog.LilToonExporter
         {
             candidateValidationPending = false;
             if (session == null) return;
-            if (!session.HasCurrentSource)
-            {
-                // A changed registered clip is also part of the guarded source.
-                // Rebuild the owned preview rather than restamping stale geometry.
-                // Retain the user's explicit files and settings; save rebuilds their records.
-                if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
-                    throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-                // An edit can leave the objects outside the avatar or make them hide
-                // every mesh; the preview then opens with every object and the list
-                // waits with the reason, as when the window opens.
-                var current = session.ExcludedObjects.ToArray();
-                var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
-                if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; }
-            }
+            // A changed registered clip is also part of the guarded source.
+            // Rebuild the owned preview rather than restamping stale geometry.
+            // Retain the user's explicit files and settings; save rebuilds their records.
+            if (session.SourceDifference() is string difference) { FollowSource(difference); return; }
+            RevalidateClips();
+        }
+
+        // Every file's reason again, for a copy that may draw them differently.
+        void RevalidateClips()
+        {
             clipErrors.Clear();
             foreach (var pair in session.ClipErrors((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
                 .Select(item => item.Clip).Concat(clipInputs.Select(input => input.Clip)))) clipErrors[pair.Key] = pair.Value;
@@ -1916,6 +1961,7 @@ namespace VRVlog.LilToonExporter
         void MoveTo(AnimationClip clip, Place target)
         {
             RebuildBoard();
+            session.RequireSourceForBatch();
             if (!board.Move(clip, target)) return;
             ApplyAutomaticPresets();
             SaveChoices();
@@ -2328,7 +2374,16 @@ namespace VRVlog.LilToonExporter
                 menu.AddItem(new GUIContent(group + "/" + Item(board.NameOf(clip))), current?.ResolveClip() == clip, () => Queue(() => MoveTo(clip, Place.Slot(preset))));
             }
             System.Collections.Generic.IReadOnlyList<(string Path, string Shape)> options;
-            try { options = session.PresetShapeOptions(); }
+            try
+            {
+                using (ExperimentalExpressionCaptureSession.Batch())
+                {
+                    if (followedSinceAction) session.TrustCopyForBatch();
+                    options = session.PresetShapeOptions();
+                }
+            }
+            // The list would come from an old copy: the next update builds it again, and the menu opens on the next click.
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException) { candidateValidationPending = true; Repaint(); return; }
             catch (InvalidOperationException exception) { error = exception.Message; options = Array.Empty<(string, string)>(); }
             foreach (var option in options)
                 Add("BlendShape/" + Item(string.IsNullOrEmpty(option.Path) ? "(root)" : option.Path) + "/" + Item(option.Shape),
@@ -2436,7 +2491,15 @@ namespace VRVlog.LilToonExporter
             // Recording used to check the source first; the list-only save checks it here.
             // The first attempt below runs right after, so its Export need not
             // hash the source again; a retry from the recovery window does.
-            session.RequireCurrentSource();
+            // A copy that no longer matches is built again from the avatar with
+            // the board's choices, and the save goes on unless the board, as it
+            // then is, has a reason to stop.
+            try { session.RequireCurrentSource(); }
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException changed)
+            {
+                FollowSource(changed.Detail);
+                if (BoardBlockReason() is string blocked) throw new InvalidOperationException(blocked);
+            }
             var sourceChecked = true;
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
@@ -2508,8 +2571,9 @@ namespace VRVlog.LilToonExporter
                 if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
                 var checkedNow = sourceChecked; sourceChecked = false;
-                var exported = target.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                    poses, presets.Select(value => value.Copy()).ToArray(), checkedNow);
+                var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
+                    from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2521,6 +2585,21 @@ namespace VRVlog.LilToonExporter
                 catch { recovery.ReleaseInput(); throw; }
             }
             return recovery;
+        }
+
+        // A retry from the recovery window after the avatar changed, perhaps
+        // with the board closed: the same choices on a copy of the avatar as it is.
+        internal static byte[] ExportOnTheAvatarAsItIs(ExperimentalExpressionCaptureSession target, bool sourceChecked,
+            System.Collections.Generic.ICollection<string> warnings, Func<ExperimentalExpressionCaptureSession, bool, byte[]> export)
+        {
+            try { return export(target, sourceChecked); }
+            catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
+            {
+                Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
+                using var current = new ExperimentalExpressionCaptureSession(target.Source, replayInstalledDefaults: false, target.ExcludedObjects, target.GimmickOptions);
+                foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
+                return export(current, true);
+            }
         }
 
         internal void OpenSavedTransfer()

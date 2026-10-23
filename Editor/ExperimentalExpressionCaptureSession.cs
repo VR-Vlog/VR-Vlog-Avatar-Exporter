@@ -42,6 +42,15 @@ namespace VRVlog.LilToonExporter
             public List<PresetAssignment> Presets;
         }
 
+        // The source or a recorded mesh no longer matches the copy. The board
+        // keeps every choice apart from the copy, so it builds the copy again
+        // from the avatar as it is and carries on; Detail says what differed.
+        internal sealed class SourceChangedException : InvalidOperationException
+        {
+            internal string Detail { get; }
+            internal SourceChangedException(string message, string detail) : base(message) { Detail = detail; }
+        }
+
         internal sealed class Channel
         {
             internal SkinnedMeshRenderer Renderer;
@@ -228,7 +237,7 @@ namespace VRVlog.LilToonExporter
                 // Settle source read caches before guarding subsequent edits.
                 // Like the recovery window, a partially driven VRChat rotation
                 // may differ by the solver's re-encoding noise only.
-                sourceStamp = ExportRecoverySourceStamp.Capture(source);
+                sourceStamp = ExportRecoverySourceStamp.Capture(source, detailed: true);
                 // The stamps were just taken from the source as it is: the rest
                 // of this batch need not hash the whole avatar again.
                 if (batchDepth > 0) validatedBatch = batchId;
@@ -237,6 +246,25 @@ namespace VRVlog.LilToonExporter
         }
 
         internal bool HasCurrentSource => !disposed && Source != null && sourceStamp.Matches(Source);
+
+        // What differs between the source and the copy, null when they match.
+        // A match also counts as the check of this batch.
+        internal string SourceDifference()
+        {
+            if (disposed || Copy == null) return null;
+            var difference = Source == null ? "source (deleted)" : sourceStamp.Difference(Source) ?? ChannelDifference(hashed: false);
+            if (difference == null && batchDepth > 0) validatedBatch = batchId;
+            return difference;
+        }
+
+        string ChannelDifference(bool hashed)
+        {
+            foreach (var channel in Channels)
+                if (channel.Renderer == null || !channel.Renderer.enabled || !channel.Renderer.gameObject.activeInHierarchy ||
+                    channel.Renderer.sharedMesh != channel.Mesh || !hashed && MeshStamp(channel.Mesh) != channel.MeshHash)
+                    return "mesh " + channel.Path;
+            return null;
+        }
 
         // Hashing the whole source avatar and its meshes takes a long time on a
         // real avatar, and preparing the board checks the session once per
@@ -262,12 +290,11 @@ namespace VRVlog.LilToonExporter
             if (disposed || Copy == null) throw new InvalidOperationException(ExporterLocalization.T("表情記録のコピーがありません。"));
             var hashed = sourceChecked || !always && batchDepth > 0 && validatedBatch == batchId;
             using var timing = hashed ? null : ExpressionBoardTimings.Step("validate");
-            if (Source == null || !hashed && !sourceStamp.Matches(Source))
-                throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-            foreach (var channel in Channels)
-                if (channel.Renderer == null || !channel.Renderer.enabled || !channel.Renderer.gameObject.activeInHierarchy ||
-                    channel.Renderer.sharedMesh != channel.Mesh || !hashed && MeshStamp(channel.Mesh) != channel.MeshHash)
-                    throw new InvalidOperationException(ExporterLocalization.T("書き出し用メッシュが変更されました。「変更」からアバターを指定し直してください。"));
+            if (Source == null) throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
+            if (!hashed && sourceStamp.Difference(Source) is string difference)
+                throw new SourceChangedException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"), difference);
+            if (ChannelDifference(hashed) is string mesh)
+                throw new SourceChangedException(ExporterLocalization.T("書き出し用メッシュが変更されました。「変更」からアバターを指定し直してください。"), mesh);
             if (batchDepth > 0) validatedBatch = batchId;
         }
 
@@ -284,6 +311,17 @@ namespace VRVlog.LilToonExporter
 
         // Stops a save before the export when the source changed after the board opened.
         internal void RequireCurrentSource() => RequireValid(always: true);
+
+        // The batch's check, for an action that changes the board before it
+        // reads the copy: a copy built again for a changed source then sees the
+        // same choices when the action runs again.
+        internal void RequireSourceForBatch() => RequireValid();
+
+        // The rest of this batch reads the copy as it is, without hashing the
+        // source: for the board's idle reads right after it built the copy
+        // again from an avatar that still reads differently. Exports and
+        // RequireCurrentSource hash it all the same.
+        internal void TrustCopyForBatch() { if (!disposed && batchDepth > 0) validatedBatch = batchId; }
 
         internal void RestoreBaseline()
         {

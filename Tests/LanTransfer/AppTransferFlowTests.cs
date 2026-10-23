@@ -400,6 +400,20 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // A failure reads one sentence per line, so a wrap never leaves a 「。」 alone on the last line.
+        [TestCase("元のアバターが変更されました。「変更」からアバターを指定し直してください。", "元のアバターが変更されました\n「変更」からアバターを指定し直してください")]
+        [TestCase("書き出せませんでした。\n原因: 「a。」を確認してください。", "書き出せませんでした\n原因: 「a。」を確認してください")]
+        [TestCase("。", "")]
+        [TestCase("Could not export. Try again.", "Could not export. Try again.")]
+        [TestCase("", "")]
+        [TestCase(null, "")]
+        public void FailureReadsOneSentencePerLine(string text, string expected)
+        {
+            var shown = AppTransferFlow.SentencePerLine(text);
+            Assert.That(shown, Is.EqualTo(expected));
+            Assert.That(shown.Split('\n').Any(line => line.Trim() == "。"), Is.False);
+        }
+
         [Test]
         public void SnapshotThatCannotBeTransferredFailsInPlaceAndIsDeleted()
         {

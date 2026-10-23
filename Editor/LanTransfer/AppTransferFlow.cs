@@ -328,6 +328,33 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal string FailureText(Func<string, string> translate) =>
             failure != null ? failure.Length == 0 ? "" : translate(failure) : session != null ? session.DisplayMessage(translate) : "";
 
+        // One sentence per line and no 「。」 at a line's end, as the rest of
+        // this screen: a label that wraps just before a 「。」 leaves it alone
+        // on the last line. A 「。」 inside quotes stays.
+        internal static string SentencePerLine(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text ?? "";
+            var lines = new List<string>();
+            foreach (var line in text.Split('\n'))
+            {
+                var start = 0;
+                for (var i = 0; i < line.Length; i++)
+                {
+                    if (line[i] != '。' || i + 1 < line.Length && "」』）)".IndexOf(line[i + 1]) >= 0) continue;
+                    Add(line.Substring(start, i - start));
+                    start = i + 1;
+                }
+                Add(line.Substring(start));
+            }
+            return string.Join("\n", lines);
+
+            void Add(string piece)
+            {
+                piece = piece.Trim();
+                if (piece.Length > 0) lines.Add(piece);
+            }
+        }
+
         internal void BeginExport() { Stop(); exporting = true; }
         internal void ExportCanceled() => exporting = false;
         internal void ExportFailed(string reason)

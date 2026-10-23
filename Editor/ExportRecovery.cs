@@ -459,20 +459,54 @@ namespace VRVlog.LilToonExporter
         readonly int sourceId;
         readonly Hash128 hash;
         readonly ExportSourceFingerprint.PartialRotation[] partialRotations;
-        ExportRecoverySourceStamp(int sourceId, Hash128 hash, ExportSourceFingerprint.PartialRotation[] partialRotations)
-        { this.sourceId = sourceId; this.hash = hash; this.partialRotations = partialRotations; }
-        internal static ExportRecoverySourceStamp Capture(GameObject source)
+        // Kept by a detailed stamp, which can then say which input differs.
+        readonly List<ExportSourceFingerprint.Mark> marks;
+        ExportRecoverySourceStamp(int sourceId, Hash128 hash, ExportSourceFingerprint.PartialRotation[] partialRotations, List<ExportSourceFingerprint.Mark> marks)
+        { this.sourceId = sourceId; this.hash = hash; this.partialRotations = partialRotations; this.marks = marks; }
+        internal static ExportRecoverySourceStamp Capture(GameObject source, bool detailed = false)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            var hash = ExportSourceFingerprint.Capture(source, out var partialRotations);
-            return new ExportRecoverySourceStamp(source.GetInstanceID(), hash, partialRotations);
+            var marks = detailed ? new List<ExportSourceFingerprint.Mark>() : null;
+            var hash = marks == null ? ExportSourceFingerprint.Capture(source, out var partialRotations) : ExportSourceFingerprint.Capture(source, out partialRotations, marks);
+            return new ExportRecoverySourceStamp(source.GetInstanceID(), hash, partialRotations, marks);
         }
-        internal bool Matches(GameObject source)
+        internal bool Matches(GameObject source) => Difference(source) == null;
+
+        // Null when the source matches; otherwise what first differs. A
+        // detailed stamp names the part (object, partial rotation, asset).
+        internal string Difference(GameObject source)
         {
-            if (source == null || source.GetInstanceID() != sourceId || hash != ExportSourceFingerprint.Capture(source, out var current) || current.Length != partialRotations.Length) return false;
-            for (var index = 0; index < current.Length; index++) if (!partialRotations[index].Matches(current[index])) return false;
-            return true;
+            if (source == null) return "source (deleted)";
+            if (source.GetInstanceID() != sourceId) return "source (another object)";
+            var current = marks == null ? null : new List<ExportSourceFingerprint.Mark>();
+            var now = current == null ? ExportSourceFingerprint.Capture(source, out var rotations) : ExportSourceFingerprint.Capture(source, out rotations, current);
+            if (now != hash) return current == null ? "source" : FirstDifference(current);
+            if (rotations.Length != partialRotations.Length) return "partial rotations " + partialRotations.Length + " -> " + rotations.Length;
+            for (var index = 0; index < rotations.Length; index++)
+                if (!partialRotations[index].Matches(rotations[index])) return partialRotations[index].Describe(rotations[index]);
+            return null;
         }
 
+        string FirstDifference(List<ExportSourceFingerprint.Mark> current)
+        {
+            for (var index = 0; index < Math.Max(marks.Count, current.Count); index++)
+            {
+                if (index >= marks.Count) return "added " + Describe(current[index]);
+                if (index >= current.Count) return "removed " + Describe(marks[index]);
+                if (marks[index].State == current[index].State) continue;
+                // Another object at the same place: the list of parts itself changed.
+                if (!ReferenceEquals(marks[index].Value, current[index].Value) || marks[index].Label != current[index].Label)
+                    return Describe(marks[index]) + " -> " + Describe(current[index]);
+                return Describe(current[index]);
+            }
+            return "source";
+        }
+
+        static string Describe(ExportSourceFingerprint.Mark mark)
+        {
+            if (mark.Value == null) return mark.Label;
+            var path = mark.Value is Component component ? component.transform.name : mark.Value is GameObject gameObject ? gameObject.name : mark.Value.name;
+            return mark.Label + " '" + path + "'";
+        }
     }
 }

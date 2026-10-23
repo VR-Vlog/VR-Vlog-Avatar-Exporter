@@ -3145,33 +3145,76 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
         }
 
-        // An edit after the board opened still stops the transfer, as before.
-        [Test]
-        public void ATransferAfterAnEditOfTheSourceStops()
+        // The board as the transfer screen opens it, with the happy slot set.
+        // Edit() changes the scene the way a user would, leaving the slot's object in place.
+        sealed class FollowBoard : IDisposable
         {
-            using var fixture = new AttachmentConnectionTests.Fixture();
-            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-            var type = typeof(ExperimentalExpressionCaptureWindow);
-            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            static readonly System.Reflection.BindingFlags Flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            static readonly Type Type = typeof(ExperimentalExpressionCaptureWindow);
+            internal readonly AttachmentConnectionTests.Fixture Fixture = new AttachmentConnectionTests.Fixture();
+            internal readonly ExperimentalExpressionCaptureWindow Window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            int edits;
+
+            internal FollowBoard()
+            {
+                foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                Fixture.Mesh.AddBlendShapeFrame("Smile", 100, Enumerable.Repeat(new Vector3(0, .03f, 0), 3).ToArray(), new Vector3[3], new Vector3[3]);
+                Set("source", Fixture.Source);
+                Set("automaticBlink", false);
+                Delegate<Action>("Prepare")();
+                Session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(ExpressionPreset.happy, "Front", "Smile"));
+            }
+
+            internal ExperimentalExpressionCaptureSession Session => Get<ExperimentalExpressionCaptureSession>("session");
+            internal string Error => Get<string>("error");
+            internal T Get<T>(string field) => (T)Type.GetField(field, Flags).GetValue(Window);
+            internal void Set(string field, object value) => Type.GetField(field, Flags).SetValue(Window, value);
+            internal T Delegate<T>(string method) where T : Delegate => (T)System.Delegate.CreateDelegate(typeof(T), Window, Type.GetMethod(method, Flags));
+
+            internal void Edit() => Fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 36 + edits++);
+            internal void Advance() => Delegate<Action>("Advance")();
+            internal void Run(Action action) { Delegate<Action<Action>>("Queue")(action); Advance(); }
+            internal void Choose(ExpressionPreset preset, string path) =>
+                Run(() => Delegate<Action<ExpressionPreset, ExperimentalExpressionCaptureSession.PresetAssignment>>("ChoosePreset")(preset,
+                    ExperimentalExpressionCaptureSession.PresetAssignment.ForShape(preset, path, "Smile")));
+
+            internal static void ExpectFollowed() => LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex("^" +
+                System.Text.RegularExpressions.Regex.Escape(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.FollowedSourceFormat).Split('{')[0])));
+
+            internal void AssertKept()
+            {
+                Assert.That(Error, Is.Null);
+                Assert.That(Session.Presets.TryGetValue(ExpressionPreset.happy, out var happy) && happy.IsShape && happy.Path == "Front", Is.True, "The slot set before the edit stays.");
+                Assert.That(Session.SourceDifference(), Is.Null, "The rebuilt copy is of the avatar as it is now.");
+            }
+
+            public void Dispose() { Object.DestroyImmediate(Window); Fixture.Dispose(); }
+        }
+
+        // The H case: the avatar reads differently when the transfer saves. The
+        // board rebuilds its copy with the same slots and the VRM is written.
+        [Test]
+        public void ATransferAfterAnEditOfTheSourceFollowsItWithTheSameChoices()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
             var path = Path.Combine(Path.GetTempPath(), "vrvlog-transfer-edited-" + Guid.NewGuid().ToString("N") + ".vrm");
             try
             {
-                type.GetField("source", flags).SetValue(window, fixture.Source);
-                type.GetField("automaticBlink", flags).SetValue(window, false);
-                type.GetMethod("Prepare", flags).Invoke(window, null);
-                fixture.Source.transform.Find("Front").name = "Front edited";
+                board.Edit();
+                FollowBoard.ExpectFollowed();
                 var saved = false;
-                var exception = Assert.Throws<InvalidOperationException>(() => window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true));
-                Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
-                Assert.That(saved, Is.False);
-                Assert.That(File.Exists(path), Is.False);
+                Assert.That(board.Window.TransferExport("Avatar", "Tests", new AvatarLicenseOptions(), path, () => saved = true), Is.Null);
+                Assert.That(saved, Is.True);
+                Assert.That(File.Exists(path), Is.True);
+                Assert.That(board.Session, Is.Not.SameAs(before));
+                board.AssertKept();
             }
-            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); }
+            finally { if (File.Exists(path)) File.Delete(path); }
         }
 
         // Inside a batch the records and the standard faces use the batch's
-        // check, but Export hashes the source again and sees an edit.
+        // check, but Export hashes the source again and sees an edit, with what differed.
         [Test]
         public void ExportInABatchStillSeesAnEditOfTheSource()
         {
@@ -3184,9 +3227,193 @@ namespace VRVlog.LilToonExporter.Tests
                 session.ReplaceClipRecords(Array.Empty<ExperimentalExpressionCaptureSession.ClipInput>(), null);
                 fixture.Source.transform.Find("Front").name = "Front edited";
                 Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, assignment), "The batch was checked already.");
-                var exception = Assert.Throws<InvalidOperationException>(() => session.Export("Test", "Tests", Listed()));
+                var exception = Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() => session.Export("Test", "Tests", Listed()));
                 Assert.That(exception.Message, Is.EqualTo(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。")));
+                Assert.That(exception.Detail, Is.Not.Null.And.Not.Empty);
             }
+        }
+
+        // A slot chosen after an edit: the choice reads the copy, finds it out
+        // of date, and runs again on a rebuilt one instead of showing the message.
+        [Test]
+        public void AChoiceAfterAnEditOfTheSourceRunsOnARebuiltCopy()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+            Assert.That(board.Session.Presets[ExpressionPreset.sad].Path, Is.EqualTo("Front"), "The choice itself is made.");
+        }
+
+        // The files are checked again after an import or a change in the scene; an edit rebuilds the copy.
+        [Test]
+        public void CheckingTheFilesAfterAnEditRebuildsTheCopyWithoutAnError()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Set("candidateValidationPending", true);
+            board.Advance();
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+        }
+
+        // The blink line under unchosen blink slots is read while nothing is
+        // queued. An out-of-date copy waits for the rebuild; the line never
+        // becomes the changed-avatar message.
+        [Test]
+        public void TheBlinkLineNeverShowsTheChangedSourceMessage()
+        {
+            using var board = new FollowBoard();
+            var message = ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。");
+            board.Edit();
+            board.Set("blinkFallbackStale", true);
+            board.Advance();
+            Assert.That(board.Get<string>("blinkFallback") ?? "", Does.Not.Contain(message));
+            Assert.That(board.Get<bool>("candidateValidationPending"), Is.True);
+            FollowBoard.ExpectFollowed();
+            board.Advance();
+            board.Advance();
+            Assert.That(board.Get<bool>("blinkFallbackStale"), Is.False);
+            Assert.That(board.Get<string>("blinkFallback") ?? "", Does.Not.Contain(message));
+            board.AssertKept();
+        }
+
+        // The slot menu lists BlendShapes from the copy. An out-of-date one
+        // opens no menu and no error; the copy is rebuilt on the next update.
+        [Test]
+        public void ThePresetMenuWaitsForTheRebuiltCopy()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Edit();
+            board.Delegate<Action<ExpressionPreset, Rect>>("ShowPresetMenu")(ExpressionPreset.sad, new Rect(0, 0, 10, 10));
+            Assert.That(board.Error, Is.Null);
+            Assert.That(board.Get<bool>("candidateValidationPending"), Is.True);
+            FollowBoard.ExpectFollowed();
+            board.Advance();
+            Assert.That(board.Session, Is.Not.SameAs(before));
+            board.AssertKept();
+        }
+
+        // A value that reads differently every time does not rebuild the copy
+        // over and over: the idle reads trust the copy built for it, and the next action checks again.
+        [Test]
+        public void AValueThatReadsDifferentlyEachTimeRebuildsOncePerAction()
+        {
+            using var board = new FollowBoard();
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            board.Set("candidateValidationPending", true);
+            board.Advance();
+            var followed = board.Session;
+            for (var i = 0; i < 3; i++)
+            {
+                board.Edit();
+                board.Set("blinkFallbackStale", true);
+                board.Advance();
+                Assert.That(board.Session, Is.SameAs(followed), "Nothing was done on the board.");
+                Assert.That(board.Get<bool>("candidateValidationPending"), Is.False);
+            }
+            FollowBoard.ExpectFollowed();
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.Not.SameAs(followed));
+            board.AssertKept();
+        }
+
+        // A retry from the recovery window, perhaps with the board closed, after
+        // the avatar changed: the same export on a new copy of the avatar as it is.
+        [Test]
+        public void ARetryFromTheRecoveryWindowAfterAnEditExportsTheAvatarAsItIs()
+        {
+            using var board = new FollowBoard();
+            var target = board.Session;
+            board.Edit();
+            FollowBoard.ExpectFollowed();
+            var used = new System.Collections.Generic.List<ExperimentalExpressionCaptureSession>();
+            var warnings = new System.Collections.Generic.List<string>();
+            var bytes = ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, false, warnings, (from, sourceChecked) =>
+            {
+                used.Add(from);
+                return from.Export("Test", "Tests", Listed(), warnings, sourceChecked: sourceChecked);
+            });
+            Assert.That(bytes, Is.Not.Null.And.Not.Empty);
+            Assert.That(used.Count, Is.EqualTo(2));
+            Assert.That(used[0], Is.SameAs(target));
+            Assert.That(used[1], Is.Not.SameAs(target));
+            Assert.That(target.Copy, Is.Not.Null, "The board's own copy is left to the board.");
+            // A first attempt the save has just checked runs as it is.
+            Assert.Throws<ExperimentalExpressionCaptureSession.SourceChangedException>(() =>
+                ExperimentalExpressionCaptureWindow.ExportOnTheAvatarAsItIs(target, true, warnings, (from, sourceChecked) =>
+                    { if (from != target) Assert.Fail("Only a retry rebuilds."); throw new ExperimentalExpressionCaptureSession.SourceChangedException("m", "d"); }));
+        }
+
+        // Leaving objects out rebuilds the copy from the avatar. Nothing of the
+        // avatar changes, so the next action finds the copy current.
+        [Test]
+        public void ExcludingAnObjectDoesNotLookLikeAnEditOfTheSource()
+        {
+            using var board = new FollowBoard();
+            board.Set("excludedObjectEdits", new System.Collections.Generic.List<GameObject> { board.Fixture.Source.transform.Find("Back").gameObject });
+            board.Run(board.Delegate<Action>("ApplyExcludedObjects"));
+            Assert.That(board.Get<string>("excludedObjectError"), Is.Null);
+            Assert.That(board.Session.ExcludedObjects.Count, Is.EqualTo(1));
+            board.Advance();
+            var excluded = board.Session;
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.SameAs(excluded));
+            board.Set("excludedObjectEdits", new System.Collections.Generic.List<GameObject>());
+            board.Run(board.Delegate<Action>("ApplyExcludedObjects"));
+            board.Advance();
+            var included = board.Session;
+            board.Choose(ExpressionPreset.surprised, "Front");
+            Assert.That(board.Session, Is.SameAs(included));
+            board.AssertKept();
+        }
+
+        // The objects page shows its own copy of the avatar, made when the page
+        // opens and dropped when it is left; another session's copy comes and
+        // goes the same way. Neither reads as an edit of the avatar.
+        [Test]
+        public void PagesAndOtherCopiesLeaveTheSourceAsItWas()
+        {
+            using var board = new FollowBoard();
+            var before = board.Session;
+            board.Set("page", ExperimentalExpressionCaptureWindow.ObjectsPage);
+            board.Window.RefreshObjectsPreview();
+            Assert.That(board.Window.ObjectsPreview, Is.Not.Null);
+            board.Window.GoTo(ExperimentalExpressionCaptureWindow.InfoPage);
+            board.Advance();
+            Assert.That(board.Window.ObjectsPreview, Is.Null);
+            board.Window.GoTo(ExperimentalExpressionCaptureWindow.ExpressionsPage);
+            board.Advance();
+            using (new ExperimentalExpressionCaptureSession(board.Fixture.Source, false)) { }
+            board.Choose(ExpressionPreset.sad, "Front");
+            Assert.That(board.Session, Is.SameAs(before));
+            Assert.DoesNotThrow(board.Session.RequireCurrentSource);
+            board.AssertKept();
+        }
+
+        // What a domain reload does to the stamp: the same avatar hashed again
+        // matches, detailed or not, and a detailed stamp names the part that changed.
+        [Test]
+        public void ADetailedStampMatchesTheSameAvatarAndNamesWhatChanged()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var stamp = ExportRecoverySourceStamp.Capture(fixture.Source, detailed: true);
+            var plain = ExportRecoverySourceStamp.Capture(fixture.Source);
+            Assert.That(stamp.Difference(fixture.Source), Is.Null);
+            Assert.That(ExportRecoverySourceStamp.Capture(fixture.Source, detailed: true).Difference(fixture.Source), Is.Null);
+            Assert.That(plain.Matches(fixture.Source), Is.True);
+            Assert.That(ExportSourceFingerprint.Compute(fixture.Source), Is.EqualTo(ExportSourceFingerprint.Compute(fixture.Source)));
+            fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 50);
+            Assert.That(stamp.Difference(fixture.Source), Is.EqualTo(typeof(SkinnedMeshRenderer).FullName + " 'Back'"));
+            Assert.That(plain.Difference(fixture.Source), Is.EqualTo("source"));
+            Assert.That(stamp.Matches(fixture.Source), Is.False);
         }
     }
 
