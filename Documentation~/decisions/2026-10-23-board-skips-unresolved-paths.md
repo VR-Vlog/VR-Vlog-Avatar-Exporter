@@ -18,7 +18,7 @@ VRChat SDK でアップロードできるアバターの構成から、表情ボ
 - 表情ボードは、パスで特定できないメッシュと、BlendShape の値が NaN や無限大のメッシュを表情の記録対象から外し、パスを警告に出す。同じ階層に同じ名前のメッシュがあるときの既存の扱い（`skippedPaths` と警告）に合わせた。外したメッシュも書き出しにはそのまま入る。
 - FX の基準表情を読む処理は、キャンセル以外のすべての例外を受けて警告に出し、基準の顔はそのままにする。
 - Merge Animator のフィールドが無いときは、`pathMode` が無ければ相対パスの基点を不明のまま、`relativePathRoot` が無ければコンポーネントのオブジェクトを基点にする。
-- `AvatarBaseShape.Rebase` は評価できない BlendShape だけを元のフレームのまま書き写し、その値を 0 にせず残す。ほかの BlendShape は今までどおり基本の形に保存する。保存しなかった BlendShape の名前を警告に出す。メッシュそのものを作り直せないとき（`Rebase` が例外を投げたとき）は、そのメッシュを元のまま書き出して警告を出す。
+- `AvatarBaseShape.Rebase` は評価できない BlendShape だけを元のフレームのまま書き写す。ほかの BlendShape は今までどおり基本の形に保存する。書き出し用のコピーでは、評価できない BlendShape も含めてすべての値を 0 にする。書き出しの後段（`ExportOptimizationBindings.Capture` の `ProtectRebasedNeutral`）は値が 0 でない BlendShape があると止まるためで、評価できない BlendShape の調整した値は書き出さない。書き出さなかった BlendShape の名前を警告に出す。
 - `AuthoredExpressionEndpoints` は、複数のメッシュが共有するパスを指すバインドを、メッシュが無いバインドと同じ扱い（どのメッシュにも効かない状態）にして、パスを警告に出す。警告は書き出しの試行ごとの一覧に入るように、`Capture` に警告の一覧を渡す。
 - どれも今まで止まっていた構成だけで動きが変わる。今書き出せているアバターの出力は変わらない。かんたん転送も同じ処理を通るので、通常の書き出しとの一致は変わらない。
 
@@ -26,12 +26,12 @@ VRChat SDK でアップロードできるアバターの構成から、表情ボ
 
 - `ExperimentalExpressionCaptureTests.AMeshItsPathCannotNameIsLeftOutAndWarns`: 名前に「/」を含むオブジェクトの下のメッシュがあっても表情ボードが開き、そのメッシュだけが記録対象から外れて警告が出ること。
 - `ExperimentalExpressionCaptureTests.AMeshWithAnInvalidWeightIsLeftOutAndWarns`: BlendShape の値が NaN のメッシュが記録対象から外れ、ボードが開くこと。Unity が NaN を設定どおりに保たない版では結果を決めずに終える（`Assume`）。
-- `BaseShapeTests.PreserveKeepsAShapeWithUnsupportedFramesAndWarns` と `BaseShapeFixture.UnsupportedFrameChecks`: 重みが負のフレームを持つ BlendShape がそのまま残って値も保たれ、ほかの BlendShape は基本の形に保存され、警告が出ること。
+- `BaseShapeTests.PreserveLeavesOutTheValueOfAShapeWithUnsupportedFramesAndWarns` と `BaseShapeFixture.UnsupportedFrameChecks`: 重みが負のフレームを持つ BlendShape が元のフレームのまま残って値は 0 になり、ほかの BlendShape は基本の形に保存され、警告が出ること。
 - `NeutralShapeEndpointTests.AuthoredBindingOnASharedRendererPathIsLeftInertAndWarns`: 同じパスのメッシュが 2 つあっても VRM の表情の取り込みが止まらず、そのバインドがどのメッシュにも効かない状態になり、警告が出ること。
 - Merge Animator のフィールドが無い場合はテストを足していない。テストを回す環境には実際の Modular Avatar が入っていて、フィールドが無い版を作れない。
 
 ## 欠点
 
 - 記録対象から外したメッシュの表情は表情ボードでは記録されず、そのメッシュは書き出しで基本の顔のまま動かない。警告でパスを伝えるので、名前を直せば記録できる。
-- 保存できなかった BlendShape は基本の形に入らず、元の値のまま VRM の BlendShape として残る。VRM を読むアプリによっては、その値を使わずに 0 から表示することがある。
+- 評価できなかった BlendShape は、元のアバターで調整した値が書き出した VRM に入らない。その BlendShape は元のフレームのまま VRM に残るので、表情としては動かせる。
 - 同じパスを指す VRM 表情のバインドは効かなくなる。どちらのメッシュに効かせるかを推測しないためで、名前を分ければ元どおり効く。

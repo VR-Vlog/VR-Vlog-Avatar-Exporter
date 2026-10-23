@@ -66,22 +66,13 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                List<int> kept;
-                // A mesh Unity will not rebuild (for example repeated shape names)
-                // is exported as authored, with its weights, instead of stopping.
-                try { kept = Rebase(mesh, baked, weights); }
-                catch (Exception error) when (error is InvalidOperationException || error is ArgumentException)
-                {
-                    warnings?.Add($"{skin.name}: BlendShapeの構成に対応できないため、調整済みBlendShapeを基本の形に保存せずそのまま書き出しました。");
-                    continue;
-                }
+                var kept = Rebase(mesh, baked, weights);
                 copy.sharedMesh = baked;
-                for (var i = 0; i < weights.Length; i++)
-                    if (!kept.Contains(i)) copy.SetBlendShapeWeight(i, 0f);
+                for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
                 warnings?.Add($"{skin.name}: 調整済みBlendShapeを基本の顔・体形として保存しました。表情はこの形から変化します。");
                 if (kept.Count > 0)
-                    warnings?.Add($"{skin.name}: フレームの構成に対応できないBlendShapeは基本の形に保存せず、そのまま書き出しました: " +
-                        string.Join(", ", kept.ConvertAll(mesh.GetBlendShapeName)));
+                    warnings?.Add(string.Format(ExporterLocalization.T("{0}: フレームの構成に対応できないBlendShapeは調整した値を書き出さずに、元の形のまま書き出しました: {1}"),
+                        skin.name, string.Join(", ", kept.ConvertAll(mesh.GetBlendShapeName))));
             }
         }
 
@@ -167,7 +158,7 @@ namespace VRVlog.LilToonExporter
         private static bool Nonzero(Vector3 value) => value.x != 0f || value.y != 0f || value.z != 0f;
 
         // Returns the shapes whose frames cannot be evaluated. They are copied as
-        // authored and keep their weight: only their rest stays out of the base.
+        // authored; their adjusted value is neither stored in the base nor exported.
         internal static List<int> Rebase(Mesh source, Mesh target, float[] weights)
         {
             if (ReferenceEquals(source, target)) throw new ArgumentException("The source mesh must remain unchanged.");

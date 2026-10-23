@@ -44,8 +44,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // A shape whose frames the rest cannot be evaluated from is written as
-        // authored with its weight; the other shapes are still stored in the base.
-        [Test] public void PreserveKeepsAShapeWithUnsupportedFramesAndWarns()
+        // authored at weight 0; the other shapes are still stored in the base.
+        [Test] public void PreserveLeavesOutTheValueOfAShapeWithUnsupportedFramesAndWarns()
         {
             var source = new GameObject("Avatar");
             GameObject clone = null;
@@ -69,7 +69,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.AreNotSame(mesh, copy.sharedMesh);
                 Assert.AreEqual(2f, copy.sharedMesh.vertices[0].x, 0.00001f);
                 Assert.AreEqual(0f, copy.GetBlendShapeWeight(0));
-                Assert.AreEqual(30f, copy.GetBlendShapeWeight(2));
+                Assert.AreEqual(0f, copy.GetBlendShapeWeight(2));
                 Assert.AreEqual(3, copy.sharedMesh.GetBlendShapeFrameCount(2));
                 Assert.That(warnings.Exists(warning => warning.Contains("Unusual frames")), warnings.Count.ToString());
                 Assert.AreEqual(1f, mesh.vertices[0].x);
