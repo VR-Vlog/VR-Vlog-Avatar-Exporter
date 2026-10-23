@@ -63,6 +63,8 @@ https://vrvlog.fun/exporter/index.json
 
 Existing personal and organization repository registrations remain supported. Keep the current registration; no migration, second registration or reinstall is required. All listing endpoints are synchronized after approved publication.
 
+To install from Unity without opening VCC / ALCOM, download `com.vrvlog.liltoon-vrm-exporter-installer-<version>.unitypackage` from [Releases](https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/releases) and import it into the open project. After you confirm, it adds `https://vrvlog.fun/exporter/index.json` to the project and to the VCC / ALCOM repositories, installs the exporter into `Packages`, and removes its own files. It installs the newest version in the listing within the same series (0.12.x for a 0.12.0 installer); beta installers also accept betas. A version that was just released may not be in the listing yet; wait a moment and retry. To install a specific version, use the ZIP.
+
 For manual installation, use **ZIPで導入** on the installation page. Download the exporter ZIP and extract it into a folder under the project's `Packages` directory, with its `package.json` directly inside that folder.
 
 Back up your Unity project before updating. Re-export from the original avatar to apply exporter changes to an existing VRM.

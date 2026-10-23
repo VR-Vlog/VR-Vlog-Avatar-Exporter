@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
-            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject> authorCopyExpressions = null,
+            GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,
             bool inferEmotionPresets = true, VrChatVisemeExport.Captured descriptorVisemes = null,
             bool inferNeutralAndGazePresets = false, IReadOnlyCollection<string> keepEmptyPresets = null, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces = null)
         {
@@ -373,7 +373,7 @@ namespace VRVlog.LilToonExporter
             string exporterVersion, string lilToonVersion, bool suppressHdrTextureEmission, IEnumerable<GameObject> excludedObjects,
             MaterialBakeOptions bakeOptions, ExportGimmickOptions gimmickOptions, BlinkExportOptions blinkOptions, PoseExportOptions poseOptions,
             ExportRecoveryOptions recoveryOptions, ExportRecoveryReport recoveryReport, AvatarLicenseOptions licenseOptions, bool disableAudioLink,
-            Action<GameObject> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
+            Action<GameObject, ICollection<string>> authorCopyExpressions, ExportStageGuard guard, bool inferEmotionPresets, VrChatVisemeExport.Captured descriptorVisemes,
             bool inferNeutralAndGazePresets, IReadOnlyCollection<string> keepEmptyPresets, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces, bool bakeMatcaps)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
@@ -463,7 +463,7 @@ namespace VRVlog.LilToonExporter
                 if (exporterVersion == null) LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);
                 var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone);
                 if (requiresPreparation)
-                    SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
+                    SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 var unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,
                     suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission) : null;
                 var faceEmoBindings = guard.Step(ExportStage.FaceEmo, () => FaceEmoExpressions.Capture(source, clone, ExcludedBinding,
@@ -473,7 +473,7 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 // Caller-selected faces join the copy as authored VRM clips, so
                 // the same identity capture, relocation and neutral baking apply.
-                authorCopyExpressions?.Invoke(clone);
+                authorCopyExpressions?.Invoke(clone, warnings);
                 expressionBindings.CaptureAuthoredExpressions();
                 using var preparation = guard.Watch(ExportStage.BuildProcess, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
@@ -690,7 +690,7 @@ namespace VRVlog.LilToonExporter
                     LilToonMainTextureBaker.Prepare(clone, temporaryMaterials, temporaryTextures, fallbackWarnings, suppressSharedTextureEmission, suppressHdrTextureEmission, approximationOnly: fullSnapshot != null);
                 });
                 // Also cover meshes/joints newly created by authoring passes.
-                SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints);
+                SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 // MA has already applied its authored Merge Armature / Bone
                 // Proxy connections. Independent props are not evidence of a
                 // failed hair attachment and must not trigger a modal edit.
