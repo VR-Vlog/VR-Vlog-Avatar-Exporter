@@ -57,12 +57,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             transferScroll.style.display = done ? DisplayStyle.None : DisplayStyle.Flex;
             Show(changeAvatarButton, done && changeAvatar != null);
             regenerateButton.EnableInClassList("primary", done);
+            // At the narrowest width a longer translation is cut short; the tooltip still has all of it.
+            backButton.tooltip = done ? T(AppTransferText.BackToBoard) : null;
             if (!done) return;
 
             // The language is in the key: the page is built again when it changes.
             var key = view + "|" + missingShaders + "|" + T(AppTransferText.Completed) + "|" + (failed ? flow.FailureText(T) : "");
             if (doneBuiltFor != key || doneBuiltNotes != exportNotes) { BuildDone(failed); doneBuiltFor = key; doneBuiltNotes = exportNotes; }
             changeAvatarButton.text = T(AppTransferText.ChooseAnotherAvatar);
+            changeAvatarButton.tooltip = changeAvatarButton.text;
             backButton.text = T(AppTransferText.BackToBoard);
             // The next transfer in blue, where "QRを作り直す" was, so "VRMを保存" does not move.
             regenerateButton.text = T(failed ? AppTransferText.Retry : AppTransferText.TransferAgain);

@@ -833,9 +833,9 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var done = Element<UnityEngine.UIElements.VisualElement>("doneView");
                     Assert.That(Shown(done), Is.True);
                     Assert.That(Shown(Element<UnityEngine.UIElements.ScrollView>("transferScroll")), Is.False);
-                    var texts = done.Query<UnityEngine.UIElements.Label>().ToList().Select(label => label.text).ToArray();
+                    var texts = UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.Label>(done).ToList().Select(label => label.text).ToArray();
                     Assert.That(texts, Does.Contain(Localized(failed ? AppTransferText.TransferFailed : AppTransferText.Completed)));
-                    var folds = done.Query<UnityEngine.UIElements.Foldout>().ToList();
+                    var folds = UnityEngine.UIElements.UQueryExtensions.Query<UnityEngine.UIElements.Foldout>(done).ToList();
                     var regenerate = Element<UnityEngine.UIElements.Button>("regenerateButton");
                     if (failed)
                     {
