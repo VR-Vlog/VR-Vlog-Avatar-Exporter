@@ -141,7 +141,8 @@ namespace VRVlog.LilToonExporter
                 utility.BeginPreview(rect, GUIStyle.none);
                 camera.transform.position = center + Quaternion.AngleAxis(yaw, Vector3.up) * copy.transform.forward * distance * zoom;
                 camera.transform.LookAt(center, Vector3.up);
-                utility.Render();
+                // Our own fit: Render would widen the view of a narrow rectangle again.
+                utility.Render(false, false);
                 GUI.DrawTexture(rect, utility.EndPreview(), ScaleMode.StretchToFill, false);
             }
             if (!rect.Contains(current.mousePosition)) return false;
