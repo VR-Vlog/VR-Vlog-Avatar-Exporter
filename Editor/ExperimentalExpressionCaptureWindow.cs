@@ -77,6 +77,9 @@ namespace VRVlog.LilToonExporter
         System.Collections.Generic.HashSet<ExportGimmickFinding> gimmicksRemoved = new System.Collections.Generic.HashSet<ExportGimmickFinding>();
         // What each row holds (the dim column), worked out with the analysis.
         System.Collections.Generic.Dictionary<ExportGimmickFinding, string> gimmickContents = new System.Collections.Generic.Dictionary<ExportGimmickFinding, string>();
+        System.Collections.Generic.Dictionary<ExportGimmickFinding, string> contentsWidthOf;
+        int contentsWidthFont = -1;
+        float contentsWidth;
         ExperimentalExpressionCaptureSession gimmickSession;
         bool gimmicksStale = true;
         double nextGimmickScan;
@@ -1163,7 +1166,14 @@ namespace VRVlog.LilToonExporter
             }
             if (objectsPreview == null) return;
             var (objects, renderers) = PreviewHidden((System.Collections.Generic.IReadOnlyList<GameObject>)excludedObjectEdits ?? session.ExcludedObjects, gimmicksRemoved);
-            objectsPreview.Show(objects, renderers);
+            // Show rebuilds the copy when an object added after the page opened is excluded, and that can throw too.
+            try { objectsPreview.Show(objects, renderers); }
+            catch (Exception exception) when (!(exception is OperationCanceledException))
+            {
+                ReleaseObjectsPreview();
+                objectsPreviewError = exception.Message;
+                Debug.LogException(exception);
+            }
         }
 
         internal ExcludedObjectsPreview ObjectsPreview => objectsPreview;
@@ -1273,7 +1283,11 @@ namespace VRVlog.LilToonExporter
             var settings = SavedSettings();
             var autoExclude = settings.AutoExcludeGimmicks;
             var choices = new[] { ExporterLocalization.T("除外"), ExporterLocalization.T("含める") };
-            var contentsWidth = gimmickContents.Values.Select(text => dimText.CalcSize(new GUIContent(text ?? "")).x).DefaultIfEmpty(0).Max() + 4;
+            if (contentsWidthOf != gimmickContents || contentsWidthFont != dimText.fontSize)
+            {
+                contentsWidth = gimmickContents.Values.Select(text => dimText.CalcSize(new GUIContent(text ?? "")).x).DefaultIfEmpty(0).Max() + 4;
+                contentsWidthOf = gimmickContents; contentsWidthFont = dimText.fontSize;
+            }
             foreach (var (group, findings) in gimmickGroups)
             {
                 EditorGUILayout.Space(4);
