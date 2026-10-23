@@ -1273,6 +1273,7 @@ namespace VRVlog.LilToonExporter
             var settings = SavedSettings();
             var autoExclude = settings.AutoExcludeGimmicks;
             var choices = new[] { ExporterLocalization.T("除外"), ExporterLocalization.T("含める") };
+            var contentsWidth = gimmickContents.Values.Select(text => dimText.CalcSize(new GUIContent(text ?? "")).x).DefaultIfEmpty(0).Max() + 4;
             foreach (var (group, findings) in gimmickGroups)
             {
                 EditorGUILayout.Space(4);
@@ -1288,7 +1289,7 @@ namespace VRVlog.LilToonExporter
                     // A row kept by a kept parent sits under it and names it.
                     var parent = ExportGimmickChoices.InheritedFrom(finding, settings);
                     if (parent != null) row.xMin += indent;
-                    var (nameRect, fieldRect, reasonRect, choiceRect) = GimmickRow(row, choiceWidth, gap);
+                    var (nameRect, fieldRect, reasonRect, choiceRect) = GimmickRow(row, choiceWidth, gap, contentsWidth);
                     var rowName = ExportGimmickChoices.RowName(finding);
                     var reason = ExporterLocalization.T(finding.Reason ?? "");
                     var path = ExportGimmickChoices.PathOf(finding, source);
@@ -1322,15 +1323,18 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // name | object field | contents | choice on one line. A narrow window
-        // keeps the field readable and shortens the name and the contents first.
-        internal static (Rect Name, Rect Field, Rect Contents, Rect Toggle) GimmickRow(Rect row, float toggleWidth, float gap)
+        // name | object field | contents | choice on one line. The contents keep
+        // their widest text (up to 2/5 of the room), so the list column beside
+        // the preview never cuts them; the name and the field share the rest.
+        internal static (Rect Name, Rect Field, Rect Contents, Rect Toggle) GimmickRow(Rect row, float toggleWidth, float gap, float contentsWidth)
         {
             var rest = Mathf.Max(0, row.width - toggleWidth - gap * 3);
-            var field = Mathf.Max(rest * .35f, Mathf.Min(120, rest * .5f));
-            var name = new Rect(row.x, row.y, (rest - field) * .55f, row.height);
+            var contentsSize = Mathf.Min(Mathf.Max(0, contentsWidth), rest * .4f);
+            var shared = rest - contentsSize;
+            var field = Mathf.Max(shared * .35f, Mathf.Min(120, shared * .5f));
+            var name = new Rect(row.x, row.y, shared - field, row.height);
             var fieldRect = new Rect(name.xMax + gap, row.y, field, row.height);
-            var contents = new Rect(fieldRect.xMax + gap, row.y, rest - field - name.width, row.height);
+            var contents = new Rect(fieldRect.xMax + gap, row.y, contentsSize, row.height);
             return (name, fieldRect, contents, new Rect(row.xMax - toggleWidth, row.y, toggleWidth, row.height));
         }
 
