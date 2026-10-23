@@ -146,7 +146,7 @@ namespace VRVlog.LilToonExporter
             var values = new SourceValues(source);
             colorSkipped = false; toon = false; dropped = Array.Empty<string>();
             if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
-            if (!IsSectionedToon(source, values)) return FromGeneric(source, values, false, out colorSkipped);
+            if (!IsSectionedToon(source, values)) return FromGeneric(source, values, false, textures, out colorSkipped);
             toon = true;
             return FromSectionedToon(source, values, textures, out colorSkipped, out dropped);
         }
@@ -214,7 +214,8 @@ namespace VRVlog.LilToonExporter
 
         static readonly string[] MainTextures = { "_MainTex", "_BaseMap", "_BaseColorMap", "_MainTexture", "_Albedo", "_AlbedoMap", "_Diffuse", "_DiffuseMap", "_BaseTex" };
         static readonly string[] MainColors = { "_BaseColor", "_Color", "_MainColor", "_TintColor" };
-        static readonly string[] Cutoffs = { "_Cutoff", "_AlphaCutoff", "_Clipping_Level", "_AlphaClipThreshold", "_Cutout" };
+        // _Clipping_Level is not a cutoff: UTS adds it to the mask (see UtsAlpha).
+        static readonly string[] Cutoffs = { "_Cutoff", "_AlphaCutoff", "_AlphaClipThreshold", "_Cutout", "_CutoutCutoutAdjust", "_CutoutThreshold", "_MaskClipValue" };
         static readonly string[] NormalTextures = { "_BumpMap", "_NormalMap", "_NormalTex" };
         static readonly string[] NormalScales = { "_BumpScale", "_NormalScale", "_NormalMapScale" };
         static readonly string[] EmissionTextures = { "_EmissionMap", "_EmissiveMap", "_Emissive_Tex", "_EmissionTex", "_EmissiveTex", "_Emission" };
@@ -225,7 +226,7 @@ namespace VRVlog.LilToonExporter
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
 
-        static Material FromGeneric(Material source, SourceValues values, bool outline, out bool colorSkipped)
+        static Material FromGeneric(Material source, SourceValues values, bool outline, List<Texture2D> textures, out bool colorSkipped)
         {
             colorSkipped = false;
             var mode = GenericMode(source, values);
@@ -276,14 +277,17 @@ namespace VRVlog.LilToonExporter
             ApplyEmission(source, values, material);
             ApplyShade(values, material, main, color);
 
-            foreach (var name in new[] { "_Cull", "_CullMode" })
+            foreach (var name in new[] { "_Cull", "_CullMode", "_Culling" })
                 if (values.TryFloat(name, out var cull) && (cull == 0 || cull == 1 || cull == 2)) { Set(material, "_Cull", cull); break; }
+            ApplyFamilyAlpha(source, values, material, mode, main, mainScale, mainOffset, textures);
             if (source.shader != null && source.shader.name.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) >= 0) Set(material, "_AsUnlit", 1);
             return material;
         }
 
         static Mode GenericMode(Material source, SourceValues values)
         {
+            var family = FamilyMode(source, values);
+            if (family.HasValue) return family.Value;
             if (values.Keyword("_ALPHABLEND_ON") || values.Keyword("_ALPHAPREMULTIPLY_ON") || values.Keyword("_SURFACE_TYPE_TRANSPARENT") ||
                 values.Float("_Surface", 0) == 1 || values.Float("_Mode", 0) >= 2 || values.Float("_ClippingMode", 0) == 2) return Mode.Transparent;
             if (values.Keyword("_ALPHATEST_ON") || values.Float("_AlphaClip", 0) > .5f || values.Float("_Mode", 0) == 1 ||
@@ -300,13 +304,20 @@ namespace VRVlog.LilToonExporter
 
         // Whether a blended source writes depth. A declared _ZWrite holds the
         // authored value; otherwise the ZWrite command in the shader file
-        // decides. Built-in and missing shaders have no file to read, and
-        // Unity's built-in blended shaders do not write depth.
+        // decides. Built-in shaders have no file to read, and Unity's built-in
+        // blended shaders do not write depth. A missing shader has only its
+        // saved values, read by the names toon shaders use.
         static bool WritesDepth(Material source, SourceValues values)
         {
+            // UTS3 declares a _ZWrite its color pass does not use.
+            if (Family(values) == AlphaFamily.Uts3 && values.TryFloat("_ZWriteMode", out var uts)) return uts > .5f;
             if (values.TryFloat("_ZWrite", out var declared)) return declared > .5f;
             var text = ShaderText(source);
-            return text != null && ShaderWritesDepth(text, name => values.Float(name, 0));
+            if (text != null) return ShaderWritesDepth(text, name => values.Float(name, 0));
+            if (source.shader != null && source.shader.name != MissingShader) return false;
+            foreach (var name in new[] { "_ZWriteMode", "_EnableZWrite", "_AL_ZWrite" })
+                if (values.TryFloat(name, out var saved)) return saved > .5f;
+            return false;
         }
 
         // Whether no pass draws color on its own: each has ColorMask 0 or a
@@ -749,7 +760,10 @@ namespace VRVlog.LilToonExporter
                             case ShaderPropertyType.Color: case ShaderPropertyType.Vector: vectors[name] = material.GetVector(name); break;
                         }
                     }
-                    foreach (var keyword in material.shaderKeywords) keywords.Add(keyword);
+                    // A keyword the shader's own passes do not use was left by
+                    // an earlier shader and changes nothing.
+                    foreach (var keyword in material.shaderKeywords)
+                        if (OwnKeyword(shader, keyword)) keywords.Add(keyword);
                     Queue = material.renderQueue;
                     return;
                 }
@@ -829,7 +843,23 @@ namespace VRVlog.LilToonExporter
             internal bool DeclaresKeyword(Material material, string name)
             {
                 if (material.shader == null || material.shader.name == MissingShader) return keywords.Contains(name);
-                return material.shader.keywordSpace.FindKeyword(name).isValid;
+                return OwnKeyword(material.shader, name);
+            }
+
+            // The keyword space also holds the fallback's keywords, so a toon
+            // shader that falls back to Standard lists _ALPHABLEND_ON; only a
+            // keyword a pass of the subshader that draws uses counts. The
+            // fallback's subshaders are not valid pass identifiers.
+            static bool OwnKeyword(Shader shader, string name)
+            {
+                var keyword = shader.keywordSpace.FindKeyword(name);
+                if (!keyword.isValid) return false;
+                var data = ShaderUtil.GetShaderData(shader);
+                var active = data?.ActiveSubshaderIndex ?? -1;
+                if (active < 0 || data.ActiveSubshader == null) return true;
+                for (var pass = 0; pass < data.ActiveSubshader.PassCount; pass++)
+                    if (ShaderUtil.PassHasKeyword(shader, new PassIdentifier((uint)active, (uint)pass), keyword)) return true;
+                return false;
             }
         }
     }
