@@ -37,12 +37,20 @@ namespace VRVlog.LilToonExporter
                     var clipping = Mathf.RoundToInt(values.Float("_ClippingMode", 0));
                     return clipping == 2 ? Mode.Transparent : clipping == 1 ? Mode.Cutout : Mode.Opaque;
                 case AlphaFamily.Uts2:
-                    // Each variant is its own shader. Transparent blends;
-                    // TransClipping and Clipping only clip.
+                    // Each variant is its own shader. Transparent blends, and so
+                    // does TransClipping except in the ToonColor and Mobile
+                    // shaders, which only clip like Clipping.
                     if (source.shader != null && source.shader.name != MissingShader)
-                        return Contains(source.shader.name, "Transparent") ? Mode.Transparent : Contains(source.shader.name, "Clipping") ? Mode.Cutout : Mode.Opaque;
-                    var queue = values.Queue;
-                    return queue > 2500 ? Mode.Transparent : queue >= 2450 ? Mode.Cutout : Mode.Opaque;
+                    {
+                        var name = source.shader.name;
+                        if (Contains(name, "Transparent")) return Mode.Transparent;
+                        if (Contains(name, "TransClipping") && !Contains(name, "ToonColor") && !Contains(name, "Mobile")) return Mode.Transparent;
+                        return Contains(name, "Clipping") ? Mode.Cutout : Mode.Opaque;
+                    }
+                    // Only the clipping variants declare _Clipping_Level, so a
+                    // missing one at least clips; the error shader's queue says
+                    // nothing about it.
+                    return values.Queue > 2500 ? Mode.Transparent : Mode.Cutout;
                 case AlphaFamily.MToon:
                     var blend = Mathf.RoundToInt(values.Float("_BlendMode", 0));
                     return blend == 0 ? Mode.Opaque : blend == 1 ? Mode.Cutout : Mode.Transparent;

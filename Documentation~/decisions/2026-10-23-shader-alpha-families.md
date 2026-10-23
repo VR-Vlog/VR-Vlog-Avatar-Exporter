@@ -21,7 +21,7 @@ lilToon以外のシェーダーを置き換えるとき、透過は「主画像�
 
 | 系統 | 見分け方 | 写し方 |
 | --- | --- | --- |
-| レベル型（旧版） | `_Clipping_Level` があり `_ClippingMode` が無い | 種類はシェーダー名（Transparentは半透明、Clipping・TransClippingは切り抜き。TransClippingは混ぜない）。マスクを `_ClippingMask`（無ければ白）にして a = m（反転は Scale −1・Value 1）、Valueに値を足し、しきい値0.5。マスクのタイリングは主画像からの相対に直す。主画像のアルファを使う設定は、反転なしならモード3・4で値だけ足し、反転ありなら反転したアルファを焼く。半透明は値の代わりに `_Tweak_transparency` を足し、しきい値を 0.5 − 値 + Tweak にする。基本色のアルファは1にする |
+| レベル型（旧版） | `_Clipping_Level` があり `_ClippingMode` が無い | 種類はシェーダー名（Transparentと、ToonColor・Mobile以外のTransClippingは半透明。Clippingと、ToonColor・MobileのTransClippingは切り抜き。シェーダーが無い材質は `_Clipping_Level` を持つのが切り抜きの版だけなので、描画順が半透明でなければ切り抜き）。マスクを `_ClippingMask`（無ければ白）にして a = m（反転は Scale −1・Value 1）、Valueに値を足し、しきい値0.5。マスクのタイリングは主画像からの相対に直す。主画像のアルファを使う設定は、反転なしならモード3・4で値だけ足し、反転ありなら反転したアルファを焼く。半透明は値の代わりに `_Tweak_transparency` を足し、しきい値を 0.5 − 値 + Tweak にする。基本色のアルファは1にする |
 | レベル型（新版） | `_Clipping_Level` と `_ClippingMode` がある | 種類は `_ClippingMode`（2で半透明）と `_TransparentEnabled`。写し方は旧版と同じで、マスクは主画像と同じ座標。深度は `_ZWriteMode` を読む（`_ZWrite` は色のパスで使われない） |
 | アルファの元を選ぶ型 | `_AL_Source` | 0は主画像×色、1はマスクの赤、2はマスクのアルファ（焼く）を a にする。`_AL_InvMaskVal` で反転。半透明は `_AL_Power` を掛ける |
 | アルファ倍率と輝度マスクの型 | `_AlphaMaskStrength` と `_Culling` | 色のアルファに `_Alpha` を掛ける（1を超える分は、切り抜きならしきい値を割り、半透明なら1で止める）。マスクの輝度を lerp(1, 輝度, 強さ) で掛ける（モード2・Scale 強さ・Value 1 − 強さ。色付きのマスクは輝度を焼く）。カリングは `_Culling` |

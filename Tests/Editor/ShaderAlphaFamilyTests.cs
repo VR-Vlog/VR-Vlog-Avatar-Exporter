@@ -91,16 +91,46 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.5f));
         }
 
-        // TransClipping does not blend in UTS2; it clips the main alpha plus the level.
-        [Test] public void UtsTransClippingClipsTheMainAlphaPlusTheLevel()
+        // The ToonColor and Mobile TransClipping shaders do not blend; they clip
+        // the main alpha plus the level.
+        [Test] public void UtsToonColorTransClippingClipsTheMainAlphaPlusTheLevel()
         {
-            var source = Probe("Toon_DoubleShadeWithFeather_TransClipping", Uts);
+            var source = Probe("ToonColor_DoubleShadeWithFeather_TransClipping", Uts);
             source.SetTexture("_MainTex", Texture("main", new Color(1, 1, 1, .4f)));
             source.SetFloat("_IsBaseMapAlphaAsClippingMask", 1); source.SetFloat("_Clipping_Level", .2f);
             var output = Substitute(source);
             Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
             AssertMask(output, 3, 0, .2f);
             Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.5f));
+        }
+
+        // The other TransClipping shaders blend m + tweak and clip where m +
+        // level falls below 0.5.
+        [Test] public void UtsTransClippingBlendsTheMainAlphaPlusTheTweak()
+        {
+            var source = Probe("Toon_DoubleShadeWithFeather_TransClipping", Uts);
+            source.SetTexture("_MainTex", Texture("main", new Color(1, 1, 1, .4f)));
+            source.SetFloat("_IsBaseMapAlphaAsClippingMask", 1); source.SetFloat("_Clipping_Level", .2f); source.SetFloat("_Tweak_transparency", .1f);
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
+            AssertMask(output, 3, 0, .1f);
+            Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.4f).Within(1e-5));
+        }
+
+        // Only the clipping variants declare _Clipping_Level, so a missing one
+        // clips even though the error shader's queue is opaque.
+        [Test] public void UtsWithAMissingShaderStillClips()
+        {
+            var clip = Texture("clip", Color.gray);
+            var source = Probe("Toon_DoubleShadeWithFeather_Clipping", Uts);
+            source.SetTexture("_ClippingMask", clip); source.SetFloat("_Clipping_Level", .3f);
+            source.renderQueue = -1;
+            source.shader = Shader.Find("Hidden/InternalErrorShader");
+            Assume.That(source.shader, Is.Not.Null);
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
+            AssertMask(output, 1, 1, .3f);
+            Assert.That(output.GetTexture("_AlphaMask"), Is.SameAs(clip));
         }
 
         [Test] public void UtsTransparentBakesAnInvertedMainAlphaAndShiftsTheCutoffByTheTweak()
