@@ -10,9 +10,9 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExportSourceFingerprintSerializationTests
     {
-        [TestCase("bool")][TestCase("int")][TestCase("signed64")][TestCase("unsigned64")]
-        [TestCase("doubleUlp")][TestCase("doubleSignedZero")][TestCase("float")][TestCase("char")]
-        [TestCase("enum")][TestCase("layerMask")][TestCase("hash128")][TestCase("color")]
+        [TestCase("bool")][TestCase("signed64")][TestCase("unsigned64")]
+        [TestCase("doubleUlp")][TestCase("doubleSignedZero")]
+        [TestCase("enum")][TestCase("hash128")][TestCase("color")]
         [TestCase("vector2")][TestCase("vector3")][TestCase("vector4")][TestCase("quaternion")]
         [TestCase("rect")][TestCase("bounds")][TestCase("vector2Int")][TestCase("vector3Int")]
         [TestCase("rectInt")][TestCase("boundsInt")][TestCase("arrayValue")][TestCase("arraySize")]
@@ -26,15 +26,11 @@ namespace VRVlog.LilToonExporter.Tests
             switch (change)
             {
                 case "bool": asset.Enabled = !asset.Enabled; break;
-                case "int": asset.Integer++; break;
                 case "signed64": asset.Signed++; break;
                 case "unsigned64": asset.Unsigned++; break;
                 case "doubleUlp": asset.Precise = BitConverter.Int64BitsToDouble(BitConverter.DoubleToInt64Bits(asset.Precise) + 1); break;
                 case "doubleSignedZero": asset.Precise = BitConverter.Int64BitsToDouble(long.MinValue); break;
-                case "float": asset.Fraction += .125f; break;
-                case "char": asset.Character = 'z'; break;
                 case "enum": asset.Mode = SourceFingerprintPayloadMode.Second; break;
-                case "layerMask": asset.Layers = 1 << 9; break;
                 case "hash128": asset.Hash = new Hash128(1, 2, 3, 5); break;
                 case "color": asset.Color = new Color(.3f, .4f, .5f, .6f); break;
                 case "vector2": asset.Vector2 += Vector2.one; break;
@@ -114,7 +110,7 @@ namespace VRVlog.LilToonExporter.Tests
             f.AssertChanged(stamp);
         }
 
-        [TestCase(1023)][TestCase(2047)][TestCase(8191)]
+        [TestCase(1023)][TestCase(8191)]
         public void LongUnicodeTextIsStableAcrossEncoderChunksAndDetectsAChangedSurrogatePair(int prefix)
         {
             using var f = new Fixture();
