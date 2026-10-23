@@ -88,6 +88,16 @@
     text-overflow: ellipsis;
 }
 
+/* The same place and width as ExporterWindowHeader.VersionWidth / VersionGap in the IMGUI windows. */
+.version {
+    width: 110px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    -unity-text-align: middle-right;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
 .scale-probe {
     position: absolute;
     left: 0;

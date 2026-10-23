@@ -332,7 +332,7 @@ assert 'session.CreatePreview(' not in recovery_comparison
 assert 'GUILayout.Toolbar(' not in recovery_comparison
 assert 'controlRigGenerationOption: ControlRigGenerationOption.None' in recovery_comparison
 assert '!HasVrmPreview || !session.CanSave' in recovery_comparison
-assert 'BuildSupportText()' in failure_window
+assert 'BuildSupportText(LilToonExporterWindow.PackageVersion())' in failure_window
 assert (root / "Tests/Editor/ExportRecoveryTests.cs").is_file()
 assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
