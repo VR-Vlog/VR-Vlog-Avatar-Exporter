@@ -98,6 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
         // only fires there once the steps name them.
         [TestCase(nameof(ExportStage.OptimizerEvidence))]
         [TestCase(nameof(ExportStage.TrackingOutput))]
+        [TestCase(nameof(ExportStage.ObjectToggles))]
         public void AFailureInsideTheBuildCallbackKeepsTheBuildPasses(string stageName)
         {
             var stage = (ExportStage)Enum.Parse(typeof(ExportStage), stageName);
