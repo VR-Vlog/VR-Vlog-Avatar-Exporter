@@ -17,6 +17,33 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class ExperimentalExpressionCaptureTests
     {
+        [Test]
+        public void APresetShapeTheCopyCannotResolveIsLeftOutWithAWarning()
+        {
+            var root = new GameObject("Avatar");
+            var mesh = new Mesh { vertices = new Vector3[3], triangles = new[] { 0, 1, 2 } };
+            mesh.AddBlendShapeFrame("Smile", 100f, new Vector3[3], null, null);
+            var assets = new System.Collections.Generic.List<Object>();
+            try
+            {
+                var face = new GameObject("Face");
+                face.transform.SetParent(root.transform, false);
+                face.AddComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
+                var warnings = new System.Collections.Generic.List<string>();
+                ExperimentalExpressionCaptureSession.AuthorPresets(root, new[] { (ExpressionPreset.happy, new System.Collections.Generic.List<(string, string, float)> {
+                    ("Face", "Smile", 100f), ("Face", "Missing shape", 100f), ("Missing renderer", "Smile", 100f) }) }, assets, warnings);
+                var bindings = root.GetComponent<Vrm10Instance>().Vrm.Expression.Happy.MorphTargetBindings;
+                Assert.That(bindings.Select(binding => (binding.RelativePath, binding.Index)), Is.EqualTo(new[] { ("Face", 0) }));
+                Assert.That(warnings, Has.Count.EqualTo(2));
+            }
+            finally
+            {
+                foreach (var asset in assets) Object.DestroyImmediate(asset);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
         // The board's list: each clip at its last frame, as DefaultTime reads it.
         static (string, AnimationClip, float)[] Listed(params AnimationClip[] clips) =>
             clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip))).ToArray();
