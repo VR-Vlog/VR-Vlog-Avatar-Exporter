@@ -26,7 +26,7 @@ namespace VRVlog.LilToonExporter
             internal string Path;
         }
 
-        // The clips that Add reads as gesture faces, whatever they hold.
+        // The clips that gesture states play, whatever they hold. The expression board marks them as gesture faces.
         internal static HashSet<AnimationClip> TargetClips(RuntimeAnimatorController runtime)
         {
             var result = new HashSet<AnimationClip>();

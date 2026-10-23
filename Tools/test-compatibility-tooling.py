@@ -197,7 +197,7 @@ class ExporterProfileResultTests(unittest.TestCase):
 
     def test_additive_case_cannot_be_replaced_by_duplicate_override_case(self):
         suite = 'MergedFxDefaultsTests'
-        method = 'NeutralWeightedUpperLayerKeepsMovingBaseWithoutBakingUnrelatedMorphs'
+        method = 'DirectClipUsesLayerPriorityWithWriteDefaults'
         cases = self.remove(suite, method)
         cases[1].set('fullname', cases[0].get('fullname'))
         self.root.extend(cases)
@@ -264,7 +264,7 @@ class UnityProfilePolicyTests(unittest.TestCase):
         # Additional-playable proof is an exporter behavior requirement in both
         # profiles; it cannot move behind an optional integration-only gate.
         for profile in ('exporter-behavior', 'exporter-integration'):
-            for suite, variants in (('AdditionalPlayableCallbackTests', 41), ('AdditionalParameterConstantTests', 66), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 62), ('SelectedLayerControlTests', 12), ('SelectedExpressionAppearanceTests', 48), ('HeldAutomaticExpressionTests', 98), ('FacialDepthEnvelopeTests', 20), ('ParameterDriverExpressionTests', 63), ('VrChatMenuExpressionTests', 64)):
+            for suite, variants in (('AdditionalPlayableCallbackTests', 41), ('AdditionalParameterConstantTests', 66), ('TemporalNeutralShapeTests', 23), ('NeutralLayerControlTests', 62), ('SelectedLayerControlTests', 12), ('SelectedExpressionAppearanceTests', 48), ('HeldAutomaticExpressionTests', 98), ('FacialDepthEnvelopeTests', 20), ('ParameterDriverExpressionTests', 19), ('VrChatMenuExpressionTests', 35)):
                 self.assertIn(unity_runner.NAMESPACE + suite,
                               unity_runner.profile_filters(profile))
                 self.assertEqual(sum(unity_runner.required_regressions(profile)[suite].values()), variants)

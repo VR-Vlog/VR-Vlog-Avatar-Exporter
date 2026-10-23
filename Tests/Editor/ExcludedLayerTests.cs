@@ -79,18 +79,8 @@ namespace VRVlog.LilToonExporter.Tests
             var transition = DelayedTransition(next);
             if (ongoingTransition) { transition.exitTime = 0.5f; transition.duration = 10; }
             if (petUsesMenuParameter) transition.AddCondition(AnimatorConditionMode.If, 0, "Smile");
-            if (petUsesMenuParameter) Assert.Throws<InvalidOperationException>(() => Sample(controller));
-            else Assert.That(Sample(controller).Single().Weight, Is.EqualTo(60).Within(.01f),
-                "A disjoint layer with explicit, nonempty WD-Off motions cannot affect the face.");
             using var exclusions = new ExportObjectExclusions(avatar, new[] { pet });
             Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, controller, exclusions.ContainsPath).Contains(1), Is.True);
-            var values = Sample(controller, exclusions.ContainsPath);
-            Assert.That(values.Count, Is.EqualTo(1));
-            Assert.That(values.Single().Path, Is.EqualTo("Face"));
-            Assert.That(values.Single().Weight, Is.EqualTo(60).Within(.01f));
-            Assert.That(avatar.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(0), Is.Zero);
-            Assert.That(pet.transform.localPosition, Is.EqualTo(Vector3.zero));
-            Assert.That(controller.layers[1].defaultWeight, Is.EqualTo(1));
         }
 
         [Test]
@@ -102,10 +92,6 @@ namespace VRVlog.LilToonExporter.Tests
             DelayedTransition(future);
             using var exclusions = new ExportObjectExclusions(avatar, new[] { pet });
             Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, controller, exclusions.ContainsPath).Contains(1), Is.False);
-            // The retained layer is settled through its exit time instead of
-            // being dropped, so the delayed face wins over the menu's value.
-            var values = SampleTimed(controller, exclusions.ContainsPath);
-            Assert.That(values.Single().Weight, Is.EqualTo(90).Within(.01f));
         }
 
         [Test]
@@ -127,8 +113,6 @@ namespace VRVlog.LilToonExporter.Tests
             DelayedTransition(next);
             using var exclusions = new ExportObjectExclusions(avatar, new[] { pet });
             Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, controller, exclusions.ContainsPath).Contains(1), Is.False);
-            // The final WD-Off state moves only the pet, so the menu's 60 stays.
-            Assert.That(SampleTimed(controller, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
         }
 
         [Test]
@@ -147,11 +131,9 @@ namespace VRVlog.LilToonExporter.Tests
                     "A null override still uses the original retained-face clip.");
                 overrides[faceClip] = petClip;
                 Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, overrides, exclusions.ContainsPath).Contains(1), Is.True);
-                Assert.That(Sample(overrides, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
                 overrides[petClip] = faceClip;
                 Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, overrides, exclusions.ContainsPath).Contains(1), Is.False,
                     "Replacing an excluded clip with a retained face must restore timed-state validation.");
-                Assert.That(SampleTimed(overrides, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
             }
             finally { Object.DestroyImmediate(overrides); }
         }
@@ -173,8 +155,6 @@ namespace VRVlog.LilToonExporter.Tests
             DelayedTransition(future);
             using var exclusions = new ExportObjectExclusions(avatar, new[] { pet });
             Assert.That(VrChatExpressionSampler.FindExcludedLayers(controller, controller, exclusions.ContainsPath).Contains(1), Is.False);
-            // The pet layer never binds the face, so the menu's value survives.
-            Assert.That(SampleTimed(controller, exclusions.ContainsPath).Single().Weight, Is.EqualTo(60).Within(.01f));
         }
 
         [Test]
@@ -188,23 +168,6 @@ namespace VRVlog.LilToonExporter.Tests
             var ignored = VrChatExpressionSampler.FindExcludedLayers(controller, controller, _ => true);
             Assert.That(ignored.Contains(1), Is.False);
             Assert.That(ignored.Contains(2), Is.False);
-        }
-
-        private List<VrChatExpressionMenu.MorphValue> Sample(RuntimeAnimatorController runtime, Func<string, bool> excludedPath = null) =>
-            VrChatExpressionSampler.Sample(avatar, runtime,
-                new Dictionary<string, float> { ["Smile"] = 0 },
-                new Dictionary<string, float> { ["Smile"] = 1 }, excludedPath);
-
-        // A layer that is not excluded keeps its timed exits: the sample
-        // follows them to the final state and reports the approximation.
-        private List<VrChatExpressionMenu.MorphValue> SampleTimed(RuntimeAnimatorController runtime, Func<string, bool> excludedPath)
-        {
-            var messages = new List<string>();
-            var values = VrChatExpressionSampler.Sample(avatar, runtime,
-                new Dictionary<string, float> { ["Smile"] = 0 },
-                new Dictionary<string, float> { ["Smile"] = 1 }, excludedPath, messages: messages);
-            Assert.That(messages, Does.Contain(ExpressionSettlement.FollowedTransitions));
-            return values;
         }
 
         private AnimatorStateTransition DelayedTransition(AnimatorState next)

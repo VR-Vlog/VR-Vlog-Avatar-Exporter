@@ -18,7 +18,7 @@
   - `NeutralShapePlan.CreateObservedHistoryProjection`
   - これらだけが出していた文言 5 件（4 言語の訳を含む）
 - 中立の顔と一覧の表情の読み取りが使うものは残した。`VrChatGestureExpressions.ReadCurve`・`TargetClips`・`HasChangingMorph`・`ReadClip`・`ReadPose`、`FaceEmoExpressions.ReadClip`、`ExpressionSettlement`、`PoseMenuResolver`、`PoseSampling`、`VrChatExpressionMenu.Read`（`SkipPlayback`）、`ValidateFixedPose`・`SampleNeutral`・`ApplyPermanentOverrides` などで、中身は変えていない。
-- `VrChatExpressionSampler.Sample`・`SampleDefaults` と、それが使う内部の評価も残した。これらは前の変更より前から製品のコードには呼ばれず、テストだけが使っている。多くのテストが FX レイヤーの評価をこの入口で確かめていて、消すとそれらを書き直すことになるので、消すかどうかは別に決める。
+- `VrChatExpressionSampler.Sample`・`SampleDefaults` と、それが使う内部の評価も残した。これらは前の変更より前から製品のコードには呼ばれず、テストだけが使っている。多くのテストが FX レイヤーの評価をこの入口で確かめていて、消すとそれらを書き直すことになるので、消すかどうかは別に決める。続く `2026-10-23-remove-test-only-sampler.md` で、`Sample`・`SampleDefaults`・`Evaluate` を消した。
 
 表情ボードから書き出す VRM は変わらない。
 
