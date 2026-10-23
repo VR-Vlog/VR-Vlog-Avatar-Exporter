@@ -460,6 +460,40 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void OneClickExportClearsCopiedReferencesToBonesOutsideTheAvatar()
+        {
+            // Instantiate keeps a skin's references to scene objects outside the
+            // avatar, which UniVRM cannot look up among the exported nodes.
+            var shader = Shader.Find("lilToon");
+            if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
+            using var f = new Fixture();
+            var exportMaterial = new Material(shader);
+            var outside = new GameObject("Outside bone").transform;
+            try
+            {
+                foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
+                    skin.sharedMaterials = new[] { exportMaterial };
+                var front = f.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+                var head = front.rootBone;
+                front.bones = new[] { outside, head };
+                front.rootBone = outside;
+                var warnings = new List<string>();
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Outside bones", "Test", warnings,
+                    exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(bytes, Is.Not.Empty);
+                var prefix = ExporterLocalization.T(UniVrmOneClickExporter.OutsideBonesDropped);
+                Assert.That(warnings.Where(w => w.StartsWith(prefix, StringComparison.Ordinal)), Is.EqualTo(new[] { prefix + "Front" }));
+                Assert.That(front.bones, Is.EqualTo(new[] { outside, head }));
+                Assert.That(front.rootBone, Is.SameAs(outside));
+            }
+            finally
+            {
+                Object.DestroyImmediate(outside.gameObject);
+                Object.DestroyImmediate(exportMaterial);
+            }
+        }
+
         [TestCase(0)]
         [TestCase(7)]
         public async Task ManualAndMaAppearanceMatchAfterCompleteExportAndReload(int changes)
