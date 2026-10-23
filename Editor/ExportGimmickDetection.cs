@@ -221,7 +221,8 @@ namespace VRVlog.LilToonExporter
             foreach (var component in components.OfType<MonoBehaviour>())
             {
                 var root = ToolRoot(source.transform, component.transform);
-                if (root == null || Known(root) || !PlaysBodyPose(component, motions)) continue;
+                // A component on a bone gives the skeleton as its root, which is never a tool.
+                if (root == null || Known(root) || hips != null && hips.IsChildOf(root) || !PlaysBodyPose(component, motions)) continue;
                 // Bound to the body: an outfit, whatever its animator does.
                 if (root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Any(skin => !excluded(skin.transform) && skin.bones.Length > 0) ||
                     root.GetComponentsInChildren<Component>(true).Any(c => IsType(c, BoundTypes))) continue;
