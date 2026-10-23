@@ -165,12 +165,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return missing;
         }
 
+        // Filling the fields does not fix the board, so these reasons keep "QRコードを作る" disabled.
+        internal static bool BoardBlocks(string reason) =>
+            reason == AppTransferText.NeedsBoard || reason == AppTransferText.NeedsBoardFix;
+
         // The line above "QRコードを作る": the reason as it is when one input is missing or the board is the
         // problem, otherwise every missing input in the order of the window, so one look tells what is left.
         internal static string ReasonText(string reason, bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted, Func<string, string> translate)
         {
             if (reason == null) return "";
-            if (reason == AppTransferText.NeedsBoard || reason == AppTransferText.NeedsBoardFix) return translate(reason);
+            if (BoardBlocks(reason)) return translate(reason);
             var items = new List<string>();
             if (!hasAvatar) items.Add(AppTransferText.Avatar);
             if (!HasListedName(name)) items.Add(AppTransferText.Name);

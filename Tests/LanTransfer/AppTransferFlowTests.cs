@@ -70,6 +70,11 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(Line(true, "SampleAvatar", false, false, true, true), Is.EqualTo("短い名前・作者名がそろうと作れます"));
             Assert.That(Line(false, "", true, false, false, false), Is.EqualTo("アバター・名前・作者名・利用規約の同意・プライバシーポリシーの同意がそろうと作れます"));
             Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoard, true, "", true, false, false, true, same), Is.EqualTo(AppTransferText.NeedsBoard));
+            // The board's own reasons keep the button disabled even when a field is also missing.
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoard), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoardFix), Is.True);
+            Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsAuthor), Is.False);
+            Assert.That(AppTransferFlow.BoardBlocks(null), Is.False);
         }
 
         // Cases an attribute cannot carry: a lone surrogate, and a name whose visible

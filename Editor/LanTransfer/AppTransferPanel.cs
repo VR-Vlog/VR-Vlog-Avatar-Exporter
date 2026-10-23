@@ -346,7 +346,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private void Begin()
         {
             if (Exporter == null || EditorApplication.isPlayingOrWillChangePlaymode) return;
-            if (Reason() != null)
+            var reason = Reason();
+            if (AppTransferFlow.BoardBlocks(reason)) return;
+            if (reason != null)
             {
                 pressedWhileBlocked = true;
                 Refresh();
@@ -1020,7 +1022,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (authorMarked != ((marked & RequiredInput.Author) != 0)) { authorMarked = !authorMarked; termsView.MarkDirtyRepaint(); }
             createButton.text = T(AppTransferText.Create);
             // Pressed while an input is missing, it marks that input; only the board's own problems keep it disabled.
-            createButton.SetEnabled(!playing && entry != null && (reason == null || MarkedInputs(true) != RequiredInput.None));
+            createButton.SetEnabled(!playing && entry != null && !AppTransferFlow.BoardBlocks(reason) && (reason == null || MarkedInputs(true) != RequiredInput.None));
             createHint.text = T(AppTransferText.CreateHint);
         }
 
