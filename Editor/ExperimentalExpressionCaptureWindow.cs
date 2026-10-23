@@ -2485,7 +2485,8 @@ namespace VRVlog.LilToonExporter
             }
             var recovery = LilToonExporterWindow.ExportAndSaveNormally(target.Source, path, (options, report, warnings) => {
                 // A retry from the recovery window runs outside any batch; in
-                // one attempt the standard faces use the check Export makes.
+                // one attempt the standard faces use the check made for it (the
+                // one above on the first attempt, Export's own on a retry).
                 using var batch = ExperimentalExpressionCaptureSession.Batch();
                 // Both transfers let a failing stage follow the project-wide choice,
                 // as the export window does, so "かんたん" and "通常" write the same

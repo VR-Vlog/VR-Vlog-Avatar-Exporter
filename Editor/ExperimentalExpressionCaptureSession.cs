@@ -225,7 +225,8 @@ namespace VRVlog.LilToonExporter
         // real avatar, and preparing the board checks the session once per
         // file and per slot. Inside one Batch nothing else in the editor runs,
         // so the source cannot change: the hashes are checked once per batch.
-        // Export checks them again anyway, as it writes the file.
+        // Export checks them again as it writes the file, unless its caller
+        // has just checked them (sourceChecked).
         static int batchDepth, batchId;
         int validatedBatch;
         sealed class BatchScope : IDisposable
