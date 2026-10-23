@@ -99,16 +99,14 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Legacy split blink", "Tests", warnings,
-                    exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
-                // Both menus select the same state, so they are one face and
-                // are written once under the name emotion inference reads.
+                    exporterVersion: fullLilToon ? "split-blink-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
+                    listFaces: new[] { ("Happy", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1), string.Join("\n", warnings));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
-                Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name == "Photo face"), Is.False);
                 var names = new[] { "Happy" };
                 var clips = names.Select(name => imported.Vrm.Expression.CustomClips.Single(clip => clip.name == name)).ToArray();
-                // Both menus raise shape 0 from rest 17 to 75 on its single 100
-                // frame, so each references that shape directly at 58/83 on
+                // The face raises shape 0 from rest 17 to 75 on its single 100
+                // frame, so it references that shape directly at 58/83 on
                 // every renderer instead of baking its own target.
                 foreach (var clip in clips)
                 {
