@@ -43,6 +43,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string SnapshotUnreadable = "書き出したVRMを開けません";
         internal const string ScanWithCamera = "スマホのカメラで読み取る";
         internal const string DoNotShare = "QRを他の人に見せたり配信に映したりしないでください";
+        internal const string ShowQr = "QRを表示";
+        internal const string HideQr = "QRを隠す";
+        internal const string QrHidden = "QRを表示していません";
         internal const string Waiting = "読み取り待ち";
         internal const string StatusUnknown = "状態を確認できません";
         internal const string Lifetime = "有効期限{0}分";
@@ -120,6 +123,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private double nextPoll;
         private long shownRemaining;
         private bool exporting;
+        // The user showed this QR; whether its sound has played.
+        private bool revealed, announced;
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
@@ -164,10 +169,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal static string ReasonText(string reason, Func<string, string> translate) =>
             BoardBlocks(reason) ? translate(reason) : "";
 
-        // The OS notification sound plays only when a QR has just appeared on screen; a QR
-        // that could not be drawn, a failed or canceled transfer and an ended wait stay silent.
-        internal static bool ShouldBeepForQr(AppTransferView view, bool qrShown, bool soundOn) =>
-            soundOn && qrShown && view == AppTransferView.Waiting;
+        // The OS notification sound plays once when a QR is ready, before it is shown: the QR
+        // waits behind "QRを表示". A failed or canceled transfer and an ended wait stay silent.
+        internal static bool ShouldBeepForQr(AppTransferView view, bool qrReady, bool soundOn) =>
+            soundOn && qrReady && view == AppTransferView.Waiting;
 
         // "QRを他の人に見せたり…" is read before the QR appears: from the export, through the upload,
         // and under the QR. Once there is no QR coming (done, failed, canceled, expired) it goes.
@@ -287,6 +292,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
 
         internal string Link => View == AppTransferView.Waiting ? session.ImportLink : null;
+        // The QR is drawn only after the user asks for it; every new QR starts hidden.
+        internal bool QrRevealed => revealed && View == AppTransferView.Waiting;
+        internal void RevealQr() { if (View == AppTransferView.Waiting) revealed = true; }
+        internal void HideQr() => revealed = false;
+
+        // True once for each QR that becomes ready, shown or not, so its sound plays once.
+        internal bool TakeQrReady()
+        {
+            if (announced || View != AppTransferView.Waiting) return false;
+            announced = true;
+            return true;
+        }
         internal bool Encrypting => session?.State == CloudTransferState.Preparing;
         internal long Transferred => session?.Transferred ?? 0;
         internal long UploadSize => session?.UploadSize ?? 0;
@@ -347,6 +364,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             session?.Dispose();
             Abandon(ref uploading); Abandon(ref polling);
             failure = null; StatusUnknown = false; shownRemaining = 0;
+            revealed = announced = false;
             session = createSession(source);
             // File I/O and the multipart upload run away from the Editor thread.
             var current = session;
@@ -387,6 +405,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Abandon(ref uploading); Abandon(ref polling);
             source?.Dispose(); source = null;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
+            revealed = announced = false;
         }
 
         // Observe abandoned task failures without logging transport details.
