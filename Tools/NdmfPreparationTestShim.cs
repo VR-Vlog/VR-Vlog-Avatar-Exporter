@@ -181,6 +181,7 @@ namespace UnityEditor
         public static string GUIDToAssetPath(string guid) => folders.FirstOrDefault(item => item.Value==guid).Key ?? "";
         public static string AssetPathToGUID(string path) => folders.TryGetValue(path,out var guid) ? guid : "";
         public static bool IsValidFolder(string path) => path=="Assets" || folders.ContainsKey(path);
+        public static string[] GetSubFolders(string path) => folders.Keys.Where(key => key.StartsWith(path+"/",StringComparison.Ordinal) && key.IndexOf('/',path.Length+1)<0).ToArray();
         public static void CreateAsset(Object value,string path) { value.persistent = true; assets.Add(path,value); }
         public static bool DeleteAsset(string path)
         {

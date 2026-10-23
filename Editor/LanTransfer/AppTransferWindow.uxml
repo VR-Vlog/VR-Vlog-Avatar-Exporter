@@ -70,6 +70,9 @@
                     <ui:VisualElement name="slot-row" class="slot-row">
                         <ui:VisualElement name="slot" class="slot">
                             <ui:Image name="qr" class="qr" />
+                            <ui:VisualElement name="qr-mark" class="qr-mark" picking-mode="Ignore">
+                                <ui:Image name="qr-mark-icon" class="qr-mark-icon" picking-mode="Ignore" />
+                            </ui:VisualElement>
                             <ui:Image name="qr-cover" class="qr-cover" />
                             <ui:VisualElement name="reveal" class="slot-inner">
                                 <ui:Button name="show-qr" class="primary slot-button reveal-button" />
@@ -83,10 +86,18 @@
                                 <ui:Label name="upload-title" class="t slot-title" />
                                 <ui:IMGUIContainer name="upload-bar" class="upload-bar" />
                             </ui:VisualElement>
+                            <ui:VisualElement name="qr-frame" class="qr-frame" picking-mode="Ignore">
+                                <ui:VisualElement class="qr-corner qr-corner--top qr-corner--left" picking-mode="Ignore" />
+                                <ui:VisualElement class="qr-corner qr-corner--top qr-corner--right" picking-mode="Ignore" />
+                                <ui:VisualElement class="qr-corner qr-corner--bottom qr-corner--left" picking-mode="Ignore" />
+                                <ui:VisualElement class="qr-corner qr-corner--bottom qr-corner--right" picking-mode="Ignore" />
+                            </ui:VisualElement>
                         </ui:VisualElement>
                     </ui:VisualElement>
                     <ui:VisualElement class="scan-row">
-                        <ui:Label name="scan" class="t scan" />
+                        <ui:VisualElement name="scan-caption" class="scan" picking-mode="Ignore">
+                            <ui:Label name="scan" class="t scan-text" />
+                        </ui:VisualElement>
                         <ui:Button name="hide-qr" class="mini hide-qr" />
                     </ui:VisualElement>
                     <ui:VisualElement name="warning" class="warning">
@@ -108,12 +119,14 @@
             </ui:ScrollView>
             <ui:VisualElement class="hairline" />
         </ui:VisualElement>
-        <!-- Under both the form and the QR screen in one order, so "VRMを保存" stays in one place through
-             the transfer. The order is fixed; which of "VRMを保存" and "QRコードを作る" is blue follows where it opened (AppTransferPanel). -->
+        <!-- Under both the form and the QR screen. On the form "VRMを保存" sits beside "QRコードを作る"; from
+             the export on it moves to the left end (AppTransferPanel.RefreshActions). Which of the two is blue
+             follows where it opened. -->
         <ui:VisualElement name="actions" class="actions">
             <ui:Button name="back" class="action back" />
-            <ui:VisualElement class="fill" />
+            <ui:VisualElement name="fill-before-save" class="fill" />
             <ui:Button name="save" class="action save" />
+            <ui:VisualElement name="fill-after-save" class="fill" />
             <ui:Button name="create" class="action primary create" />
             <ui:Button name="regenerate" class="action regenerate" />
             <ui:Button name="close" class="action close" />

@@ -175,6 +175,8 @@ namespace VRVlog.LilToonExporter
                 else if (included.Count > 0 ? !included.Contains(GenericPlatform) : excludedPlatforms.Contains(GenericPlatform))
                     Add(target, ExportGimmickRules.PlatformFilter, PlatformFilterReason, null);
             }
+            foreach (var (tool, ruleId, reason) in PoseTools(source, excluded))
+                if (!Skipped(tool)) Add(tool, ruleId, reason, null);
             foreach (var candidate in source.GetComponentsInChildren<Transform>(true)
                          .Where(t => t != source.transform && !excluded(t) && ExportRendererSelection.ActiveUnder(t.gameObject, source.transform) &&
                                      t.GetComponents<Component>().Any(c => IsType(c, StructuralEntryTypes)))
@@ -182,6 +184,133 @@ namespace VRVlog.LilToonExporter
                 if (!Skipped(candidate) && VrChatOnly(source, candidate, excluded, out var review))
                     Add(candidate, ExportGimmickRules.VrChatOnlyStructure, VrChatOnlyReason, review);
         }
+
+        internal const string PoseMotionReason = "体の姿勢を動かすポーズ用のアニメーションを持つ仕組みです。ポーズはアプリで付けます。";
+        internal const string SkeletonTakeoverReason = "書き出しの前の処理で体の骨を別の場所へ付け替える仕組みです。VRMで体の骨の親子が崩れ、ポーズが付かなくなります。";
+        // The trunk and legs. Hands, fingers, the head and the face also move
+        // in gestures, expressions, held items and head tracking.
+        static readonly HumanBodyBones[] TrunkAndLegs =
+        {
+            HumanBodyBones.Spine, HumanBodyBones.Chest, HumanBodyBones.UpperChest,
+            HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg,
+            HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot, HumanBodyBones.LeftToes, HumanBodyBones.RightToes
+        };
+        static HashSet<string> bodyMuscles;
+
+        // Pose tools replace the pose the app gives the avatar. Two kinds are
+        // found by what they do, without names: one plays motions of the trunk
+        // or legs (a sitting pose), the other fixes an object in the world and
+        // hangs the hips from it, so the build moves the skeleton out of its
+        // humanoid order. Each is removed as the tool's whole hierarchy.
+        static List<(Transform Root, string RuleId, string Reason)> PoseTools(GameObject source, Func<Transform, bool> excluded)
+        {
+            var found = new List<(Transform Root, string RuleId, string Reason)>();
+            bool Known(Transform root) => found.Any(f => root == f.Root || root.IsChildOf(f.Root) || f.Root.IsChildOf(root));
+            var components = source.GetComponentsInChildren<Component>(true)
+                .Where(c => c != null && c.transform != source.transform && !excluded(c.transform)).ToArray();
+            var animator = source.GetComponent<Animator>();
+            var hips = animator != null && animator.isHuman ? HumanoidBones.Resolve(animator, HumanBodyBones.Hips) : null;
+            foreach (var fixedObject in components.Where(c => IsType(c, new[] { ExportGimmickRules.WorldFixedObject })))
+            {
+                var root = ToolRoot(source.transform, fixedObject.transform);
+                if (root == null || Known(root)) continue;
+                if (components.Any(c => c.transform.IsChildOf(root) && IsType(c, new[] { ExportGimmickRules.BoneProxy }) && FollowsHips(c, hips)))
+                    found.Add((root, ExportGimmickRules.SkeletonTakeover, SkeletonTakeoverReason));
+            }
+            var motions = new Dictionary<UnityEngine.Object, bool>();
+            foreach (var component in components.OfType<MonoBehaviour>())
+            {
+                var root = ToolRoot(source.transform, component.transform);
+                if (root == null || Known(root) || !PlaysBodyPose(component, motions)) continue;
+                // Bound to the body: an outfit, whatever its animator does.
+                if (root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Any(skin => !excluded(skin.transform) && skin.bones.Length > 0) ||
+                    root.GetComponentsInChildren<Component>(true).Any(c => IsType(c, BoundTypes))) continue;
+                found.Add((root, ExportGimmickRules.PoseMotion, PoseMotionReason));
+            }
+            return found;
+        }
+
+        // The outermost prefab instance below the avatar root holds the whole
+        // tool; without one, the child of the avatar root that holds it.
+        static Transform ToolRoot(Transform source, Transform at)
+        {
+            Transform instance = null, child = null;
+            for (var t = at; t != null; t = t.parent)
+            {
+                if (t == source) return instance ?? child;
+                child = t;
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(t.gameObject)) instance = t;
+            }
+            return null;
+        }
+
+        static bool FollowsHips(Component proxy, Transform hips)
+        {
+            using (var serialized = new SerializedObject(proxy))
+            {
+                var bone = serialized.FindProperty("boneReference");
+                var path = serialized.FindProperty("subPath");
+                if (bone != null && (bone.propertyType == SerializedPropertyType.Enum || bone.propertyType == SerializedPropertyType.Integer) &&
+                    bone.intValue == (int)HumanBodyBones.Hips && string.IsNullOrEmpty(path?.stringValue)) return true;
+            }
+            if (hips == null) return false;
+            try { return NdmfExportPreparation.FollowingTarget(proxy) == hips; }
+            catch (Exception) { return false; }
+        }
+
+        // The pose library's settings are read by pose import and removed from
+        // the copy before the build (PoseExportSession). VRChat's own components
+        // (the descriptor, stations) hold the avatar's sitting and locomotion.
+        static bool PlaysBodyPose(Component component, Dictionary<UnityEngine.Object, bool> motions)
+        {
+            var type = component.GetType();
+            if (type.FullName == PoseExportSession.AplType ||
+                type.Namespace != null && (type.Namespace == "VRC" || type.Namespace.StartsWith("VRC.", StringComparison.Ordinal))) return false;
+            using var serialized = new SerializedObject(component);
+            var property = serialized.GetIterator();
+            while (property.Next(true))
+                if (property.propertyType == SerializedPropertyType.ObjectReference && MovesBody(property.objectReferenceValue, motions)) return true;
+            return false;
+        }
+
+        static bool MovesBody(UnityEngine.Object value, Dictionary<UnityEngine.Object, bool> motions)
+        {
+            if (value == null) return false;
+            if (motions.TryGetValue(value, out var known)) return known;
+            motions[value] = false;
+            bodyMuscles ??= new HashSet<string>(Enumerable.Range(0, HumanTrait.MuscleCount)
+                .Where(i => TrunkAndLegs.Contains((HumanBodyBones)HumanTrait.BoneFromMuscle(i))).Select(i => HumanTrait.MuscleName[i]), StringComparer.Ordinal);
+            var moves = value switch
+            {
+                AnimationClip clip => AnimationUtility.GetCurveBindings(clip).Any(b => b.type == typeof(Animator) && bodyMuscles.Contains(b.propertyName)),
+                // Walk the states instead of reading animationClips, which logs
+                // an error for every blend tree parameter the controller lacks.
+                AnimatorOverrideController overrides => MovesBody(overrides.runtimeAnimatorController, motions) || OverrideClips(overrides).Any(clip => MovesBody(clip, motions)),
+                UnityEditor.Animations.AnimatorController controller => LayersMoveBody(controller.layers, motions),
+                UnityEditor.Animations.AnimatorStateMachine machine => machine.states.Any(child => MovesBody(child.state != null ? child.state.motion : null, motions)) ||
+                    machine.stateMachines.Any(child => MovesBody(child.stateMachine, motions)),
+                UnityEditor.Animations.BlendTree tree => tree.children.Any(child => MovesBody(child.motion, motions)),
+                _ => false
+            };
+            return motions[value] = moves;
+        }
+
+        // A synced layer reuses another layer's states with its own motions.
+        static bool LayersMoveBody(UnityEditor.Animations.AnimatorControllerLayer[] layers, Dictionary<UnityEngine.Object, bool> motions) =>
+            layers.Any(layer => MovesBody(layer.stateMachine, motions) ||
+                layer.syncedLayerIndex >= 0 && layer.syncedLayerIndex < layers.Length &&
+                States(layers[layer.syncedLayerIndex].stateMachine).Any(state => MovesBody(layer.GetOverrideMotion(state), motions)));
+
+        static IEnumerable<AnimationClip> OverrideClips(AnimatorOverrideController overrides)
+        {
+            var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+            overrides.GetOverrides(pairs);
+            return pairs.Select(pair => pair.Value).Where(clip => clip != null);
+        }
+
+        static IEnumerable<UnityEditor.Animations.AnimatorState> States(UnityEditor.Animations.AnimatorStateMachine machine) => machine == null
+            ? Enumerable.Empty<UnityEditor.Animations.AnimatorState>()
+            : machine.states.Select(child => child.state).Where(state => state != null).Concat(machine.stateMachines.SelectMany(child => States(child.stateMachine)));
 
         static int Depth(Transform t)
         {
