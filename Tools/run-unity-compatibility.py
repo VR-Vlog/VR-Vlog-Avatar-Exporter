@@ -516,6 +516,7 @@ BEHAVIOR_CASES = {
         'ProvenMovingDirectClipStillHonorsAProvenPermanentUpperOverride': 2,
         'ProvenMovingDirectClipRetainsTheConfiguredSingleStateBlendTreeSupport': 1,
         'SourceFrameRangePolicyPreservesNativeClampedGeometryAndUnlimitedAuthoredMath': 2,
+        'FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport': 2,
         'NeutralAdditiveDisjointMorphGroupsMatchTheAuthoredNativeController': 4,
         'NeutralAdditiveAutomaticSupportKeepsNativeDefaultsWithoutBakingMovingBlink': 1,
         'InstalledMaReparentsFaceEmoRendererAndMergesPermanentPupilFxBeforeEvaluation': 1,
@@ -773,6 +774,7 @@ BEHAVIOR_CASES = {
     },
     'DirectFxExpressionDiscoveryTests': {
         'CustomFxParameterDiscoversFaceWithoutAMenuOrFaceEmo': 1,
+        'DescriptorFxIsAuthoritativeWhenRootAnimatorControllerIsNone': 1,
         'NestedMachineEntryCombinesItsGateAndItsExpressionCondition': 1,
         'NestedMachineEntryRetainsItsPrecedingStateGate': 1,
         'NestedEntryStateCycleTerminatesWithoutLosingAnIndependentExpression': 1,

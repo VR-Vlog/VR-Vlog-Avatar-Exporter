@@ -197,7 +197,7 @@ class ExporterProfileResultTests(unittest.TestCase):
 
     def test_additive_case_cannot_be_replaced_by_duplicate_override_case(self):
         suite = 'MergedFxDefaultsTests'
-        method = 'NeutralWeightedUpperLayerKeepsMovingBaseWithoutBakingUnrelatedMorphs'
+        method = 'FractionalStationaryFxGeometrySurvivesOneClickExportAndVrmReimport'
         cases = self.remove(suite, method)
         cases[1].set('fullname', cases[0].get('fullname'))
         self.root.extend(cases)
