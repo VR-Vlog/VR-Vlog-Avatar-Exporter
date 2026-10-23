@@ -134,9 +134,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void AvatarWithoutHandGesturesWritesNothing()
         {
             if (!BuildAvatar()) return;
-            var parameters = fx.parameters.Where(parameter => !parameter.name.StartsWith("Gesture", StringComparison.Ordinal)).ToArray();
-            fx.layers = new[] { fx.layers[0] };
-            fx.parameters = parameters;
+            // The face layers stay, so only the missing gesture parameters stop it.
+            fx.parameters = fx.parameters.Where(parameter => !parameter.name.StartsWith("Gesture", StringComparison.Ordinal)).ToArray();
             Assert.That(Capture(), Is.Null);
             Assert.That(ExpressionGestureCapture.Capture(avatar, Array.Empty<(Object, Object)>()), Is.Null);
         }
