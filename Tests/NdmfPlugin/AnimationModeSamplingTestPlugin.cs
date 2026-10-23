@@ -10,6 +10,10 @@ namespace VRVlog.LilToonExporter.Tests
     // AnimationMode, as plugins that photograph menu icons do. It does nothing
     // until a test sets Armed, so a project that only installs the package is safe.
     // NdmfAnimationModeSamplingTests resets the counters before each export.
+    // It runs on generic-platform avatars too, where AAO needs the lent controller.
+#if VRVLOG_TEST_NDMF_PLATFORMS
+    [RunsOnAllPlatforms]
+#endif
     public sealed class AnimationModeSamplingTestPlugin : Plugin<AnimationModeSamplingTestPlugin>
     {
         public static bool Armed;

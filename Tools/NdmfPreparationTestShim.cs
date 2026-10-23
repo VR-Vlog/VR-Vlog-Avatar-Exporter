@@ -52,6 +52,7 @@ namespace UnityEngine
         public Component AddComponent(Type type) { var value = (Component)Activator.CreateInstance(type); value.gameObject = this; components.Add(value); return value; }
         public T GetComponent<T>() where T : Component => components.OfType<T>().FirstOrDefault(x => x != null);
         public Component GetComponent(Type type) => components.FirstOrDefault(x => x != null && type.IsInstanceOfType(x));
+        public T[] GetComponents<T>() where T : Component => components.OfType<T>().Where(x => x != null).ToArray();
         public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component => components.OfType<T>()
             .Concat(transform.children.SelectMany(c => c.gameObject.GetComponentsInChildren<T>(includeInactive))).Where(x => x != null).ToArray();
     }
