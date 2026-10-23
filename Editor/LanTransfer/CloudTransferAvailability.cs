@@ -12,10 +12,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
 #else
         internal static bool Enabled => false;
 #endif
-        // Stable 0.11.15 adopts the reviewed beta.2 transfer module. Older stable
+        // Stable 0.11.15 adopts the reviewed beta.2 transfer module and stable 1.0.0
+        // adopts 0.12.0-beta.10 with the transfer menus. Older stable
         // packages remain export-only; future stable releases require adoption.
         internal static bool IsSupportedVersion(string version) =>
-            version == "0.11.15" || IsPrereleaseVersion(version);
+            version == "0.11.15" || version == "1.0.0" || IsPrereleaseVersion(version);
 
         internal static bool IsPrereleaseVersion(string version) => version != null &&
             Regex.IsMatch(version, @"\A\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?\z");
