@@ -451,6 +451,12 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in Slots.SelectMany(slot => slot)) Need(binding.Renderer, binding.Shape);
             foreach (var candidate in candidates) Need(candidate.Binding.Renderer, candidate.Binding.Shape);
             foreach (var pair in inferredEndpoints) Need(pair.Key.Renderer, pair.Key.Shape);
+            // Sides read from the bilateral name are a guess: if the build
+            // passes lose them, follow the bilateral closure alone as before.
+            var inferredSides = Inferences.FindIndex(line => line.StartsWith(InferredSidesLog, StringComparison.Ordinal));
+            var bilateral = Slots[0].ToArray();
+            var keptCandidates = candidates.ToArray();
+            var keptEndpoints = inferredEndpoints.ToArray();
             try
             {
                 var map = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
@@ -471,6 +477,18 @@ namespace VRVlog.LilToonExporter
             // without blink; only a cancellation still stops the export.
             catch (Exception e) when (!ExportStageGuard.IsCancellation(e))
             {
+                if (inferredSides >= 0)
+                {
+                    foreach (var slot in Slots) slot.Clear();
+                    Slots[0].AddRange(bilateral);
+                    candidates.Clear();
+                    candidates.AddRange(keptCandidates.Where(candidate => bilateral.Any(binding =>
+                        binding.Renderer == candidate.Binding.Renderer && binding.Shape == candidate.Binding.Shape)));
+                    inferredEndpoints.Clear();
+                    foreach (var pair in keptEndpoints) inferredEndpoints.Add(pair.Key, pair.Value);
+                    Inferences.RemoveAt(inferredSides);
+                    return FollowPrepared(prepared, follow, out moved, out reason);
+                }
                 reason = e.Message;
                 moved = false;
                 DisableLost();
@@ -483,6 +501,7 @@ namespace VRVlog.LilToonExporter
             foreach (var slot in Slots) slot.Clear();
             candidates.Clear();
             inferredEndpoints.Clear();
+            Inferences.Clear();
             Array.Clear(authored, 0, authored.Length);
             PreserveAuthored = false;
             ConfiguredByDescriptor = false;

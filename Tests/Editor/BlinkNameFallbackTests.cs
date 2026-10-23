@@ -180,6 +180,29 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Shapes(session, 1), Is.EqualTo(new[] { "まばたき_L" }));
         }
 
+        // A build pass that loses a guessed side keeps the bilateral blink the
+        // current rules found; losing the bilateral shape still drops blink.
+        [TestCase("まばたき", true, TestName = "LosingAnInferredSideKeepsTheBilateralBlink")]
+        [TestCase("まばたき_L,まばたき_R", false, TestName = "LosingTheBilateralShapeStillDropsBlink")]
+        public void BuildPassesThatLoseInferredShapes(string kept, bool keepsBlink)
+        {
+            var skin = Face("まばたき", "まばたき_L:L", "まばたき_R:R");
+            using var session = BlinkExportSession.CaptureForExport(root);
+            Assert.That(session.Inferences.Single(), Does.StartWith(BlinkExportSession.InferredSidesLog));
+            var keptShapes = kept.Split(',');
+            var lost = Object.Instantiate(skin.sharedMesh); owned.Add(lost);
+            lost.ClearBlendShapes();
+            var deltas = Enumerable.Repeat(Vector3.down * .01f, 6).ToArray();
+            foreach (var shape in keptShapes) lost.AddBlendShapeFrame(shape, 100, deltas, null, null);
+            skin.sharedMesh = lost;
+            Assert.That(session.FollowPrepared(root, (renderer, shape) => renderer, out _, out _), Is.EqualTo(keepsBlink));
+            Assert.That(session.Disabled, Is.EqualTo(!keepsBlink));
+            Assert.That(Shapes(session, 0), Is.EqualTo(keepsBlink ? new[] { "まばたき" } : new string[0]));
+            Assert.That(Shapes(session, 1), Is.Empty);
+            Assert.That(Shapes(session, 2), Is.Empty);
+            Assert.That(session.Inferences, Is.Empty);
+        }
+
         [Test] public void DescriptorClosureGainsItsOwnSides()
         {
             var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
