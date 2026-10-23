@@ -41,21 +41,21 @@
         <ui:VisualElement class="hairline" />
         <ui:VisualElement class="form-footer">
             <ui:VisualElement name="consent" class="consent">
-                <ui:VisualElement class="row row--terms">
-                    <ui:Label name="terms-label" class="t label-col bold" />
-                    <ui:Label name="read-terms" class="t link" />
-                </ui:VisualElement>
                 <ui:VisualElement class="check-row">
                     <ui:Toggle name="consent-toggle" class="check" />
                     <ui:Label name="consent-text" class="t check-text" />
                 </ui:VisualElement>
+                <ui:VisualElement class="row row--terms">
+                    <ui:Label name="terms-label" class="t label-col bold" />
+                    <ui:Label name="read-terms" class="t link" />
+                </ui:VisualElement>
                 <ui:VisualElement name="privacy" class="privacy">
-                    <ui:VisualElement class="row row--terms">
-                        <ui:Label name="privacy-link" class="t link" />
-                    </ui:VisualElement>
                     <ui:VisualElement class="check-row">
                         <ui:Toggle name="privacy-toggle" class="check" />
                         <ui:Label name="privacy-text" class="t check-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="row row--terms">
+                        <ui:Label name="privacy-link" class="t link" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
