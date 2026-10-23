@@ -49,7 +49,6 @@
                     <ui:Toggle name="consent-toggle" class="check" />
                     <ui:Label name="consent-text" class="t check-text" />
                 </ui:VisualElement>
-                <ui:Label name="consent-hint" class="t mini grey consent-hint" />
                 <ui:VisualElement name="privacy" class="privacy">
                     <ui:VisualElement class="row row--terms">
                         <ui:Label name="privacy-link" class="t link" />
@@ -60,7 +59,6 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
-            <ui:Label name="create-hint" class="t mini grey create-hint" />
             <ui:Label name="reason" class="t reason" />
         </ui:VisualElement>
         </ui:VisualElement>

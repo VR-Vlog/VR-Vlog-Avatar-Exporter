@@ -55,21 +55,19 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(AppTransferFlow.MarkedInputs(true, true, "SampleAvatar", true, true, true, true), Is.EqualTo(RequiredInput.None));
         }
 
-        // One missing input keeps its own sentence; two or more are all named on the one line, and the board's reasons stay as they are.
+        // Only the board's reasons are written on the line; a missing input leaves it empty, because its field turns red instead.
         [Test]
-        public void ReasonLineNamesEveryMissingInput()
+        public void ReasonLineShowsOnlyTheBoard()
         {
             Func<string, string> same = text => text;
             string Line(bool hasAvatar, string name, bool nameFits, bool hasAuthor, bool consented, bool privacyAccepted) =>
-                AppTransferFlow.ReasonText(AppTransferFlow.BlockReason(hasAvatar, true, name, nameFits, hasAuthor, consented, privacyAccepted),
-                    hasAvatar, name, nameFits, hasAuthor, consented, privacyAccepted, same);
+                AppTransferFlow.ReasonText(AppTransferFlow.BlockReason(hasAvatar, true, name, nameFits, hasAuthor, consented, privacyAccepted), same);
             Assert.That(Line(true, "SampleAvatar", true, true, true, true), Is.EqualTo(""));
-            Assert.That(Line(true, "SampleAvatar", true, false, true, true), Is.EqualTo(AppTransferText.NeedsAuthor));
-            Assert.That(Line(true, "SampleAvatar", true, true, false, true), Is.EqualTo(AppTransferText.NeedsConsent));
-            Assert.That(Line(true, "SampleAvatar", true, false, false, true), Is.EqualTo("作者名・利用規約の同意がそろうと作れます"));
-            Assert.That(Line(true, "SampleAvatar", false, false, true, true), Is.EqualTo("短い名前・作者名がそろうと作れます"));
-            Assert.That(Line(false, "", true, false, false, false), Is.EqualTo("アバター・名前・作者名・利用規約の同意・プライバシーポリシーの同意がそろうと作れます"));
-            Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoard, true, "", true, false, false, true, same), Is.EqualTo(AppTransferText.NeedsBoard));
+            Assert.That(Line(true, "SampleAvatar", true, false, true, true), Is.EqualTo(""));
+            Assert.That(Line(true, "SampleAvatar", true, false, false, true), Is.EqualTo(""));
+            Assert.That(Line(false, "", true, false, false, false), Is.EqualTo(""));
+            Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoard, same), Is.EqualTo(AppTransferText.NeedsBoard));
+            Assert.That(AppTransferFlow.ReasonText(AppTransferText.NeedsBoardFix, same), Is.EqualTo(AppTransferText.NeedsBoardFix));
             // The board's own reasons keep the button disabled even when a field is also missing.
             Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoard), Is.True);
             Assert.That(AppTransferFlow.BoardBlocks(AppTransferText.NeedsBoardFix), Is.True);
