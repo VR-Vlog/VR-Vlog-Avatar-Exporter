@@ -795,6 +795,93 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // On the board the QR area gives way once the transfer ends: the result at the top, the notes
+        // folded by kind under it, and at the bottom the way back, another avatar and "もう一度転送" in blue.
+        // A failure has the same page with its reason and "もう一度". The next transfer brings the QR area back.
+        [TestCase("completed")]
+        [TestCase("failed")]
+        public async Task TheBoardShowsTheResultAndTheNextStepsInPlaceOfTheQrOnceTheTransferEnds(string remote)
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            var failed = remote == "failed";
+            using (var run = new FlowRun())
+            {
+                var panel = PanelWith(run.Flow, detailed: true);
+                typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, true);
+                typeof(AppTransferPanel).GetField("avatarName", field).SetValue(panel, "fixture");
+                var changes = 0;
+                typeof(AppTransferPanel).GetField("changeAvatar", field).SetValue(panel, (Action)(() => changes++));
+                T Element<T>(string name) where T : UnityEngine.UIElements.VisualElement => (T)typeof(AppTransferPanel).GetField(name, field).GetValue(panel);
+                bool Shown(UnityEngine.UIElements.VisualElement element) => element.style.display.value != UnityEngine.UIElements.DisplayStyle.None;
+                try
+                {
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    typeof(AppTransferPanel).GetField("exportNotes", field).SetValue(panel, TransferNotes.Build(
+                        Enumerable.Range(1, 10).Select(index => "表情を省略: メニュー " + index.ToString("00") + " — 動かない表情です").Append("除外: 小物 01")));
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    panel.Refresh();
+                    Assert.That(Element<UnityEngine.UIElements.VisualElement>("doneView") == null || !Shown(Element<UnityEngine.UIElements.VisualElement>("doneView")), Is.True);
+
+                    run.Transport.RemoteState = remote;
+                    await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                    panel.Refresh();
+                    var done = Element<UnityEngine.UIElements.VisualElement>("doneView");
+                    Assert.That(Shown(done), Is.True);
+                    Assert.That(Shown(Element<UnityEngine.UIElements.ScrollView>("transferScroll")), Is.False);
+                    var texts = done.Query<UnityEngine.UIElements.Label>().ToList().Select(label => label.text).ToArray();
+                    Assert.That(texts, Does.Contain(Localized(failed ? AppTransferText.TransferFailed : AppTransferText.Completed)));
+                    var folds = done.Query<UnityEngine.UIElements.Foldout>().ToList();
+                    var regenerate = Element<UnityEngine.UIElements.Button>("regenerateButton");
+                    if (failed)
+                    {
+                        Assert.That(texts, Does.Contain(run.Flow.FailureText(Localized)));
+                        Assert.That(folds, Is.Empty);
+                        Assert.That(regenerate.text, Is.EqualTo(Localized(AppTransferText.Retry)));
+                    }
+                    else
+                    {
+                        Assert.That(texts, Does.Contain(string.Format(Localized(AppTransferText.NoteCount), 10)));
+                        // One kind of notes, then the record of what was left out.
+                        Assert.That(folds.Select(fold => fold.text), Is.EqualTo(new[] { Localized("表情を省略"), Localized("除外") }));
+                        // The shared reason once, the first targets and the rest on request.
+                        var faces = folds[0].contentContainer.Children().OfType<UnityEngine.UIElements.Label>().Select(label => label.text).ToArray();
+                        Assert.That(faces.Length, Is.EqualTo(1 + AppTransferPanel.FirstNoteItems + 1));
+                        Assert.That(faces[0], Is.EqualTo("動かない表情です"));
+                        Assert.That(faces[1], Is.EqualTo("メニュー 01"));
+                        Assert.That(faces.Last(), Is.EqualTo(string.Format(Localized(AppTransferText.ShowRest), 10 - AppTransferPanel.FirstNoteItems)));
+                        Assert.That(regenerate.text, Is.EqualTo(Localized(AppTransferText.TransferAgain)));
+                    }
+                    Assert.That(Shown(regenerate) && regenerate.ClassListContains("primary"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Button>("saveButton").ClassListContains("primary"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Button>("backButton").text, Is.EqualTo(Localized(AppTransferText.BackToBoard)));
+                    var another = Element<UnityEngine.UIElements.Button>("changeAvatarButton");
+                    Assert.That(Shown(another), Is.True);
+                    Assert.That(another.text, Is.EqualTo(Localized(AppTransferText.ChooseAnotherAvatar)));
+                    Assert.That(changes, Is.EqualTo(0));
+
+                    // "もう一度転送" or "もう一度": the QR area is back for the next transfer.
+                    Retry(panel);
+                    panel.Refresh();
+                    Assert.That(Shown(done), Is.False);
+                    Assert.That(Shown(Element<UnityEngine.UIElements.ScrollView>("transferScroll")), Is.True);
+                    Assert.That(Shown(another), Is.False);
+                    Assert.That(regenerate.ClassListContains("primary"), Is.False);
+                }
+                finally
+                {
+                    Call(panel, "StopAndClean");
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
+                }
+            }
+        }
+
         private static void Call(AppTransferPanel panel, string method) =>
             typeof(AppTransferPanel).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, null);
 

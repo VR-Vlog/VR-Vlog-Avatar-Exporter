@@ -19,6 +19,8 @@ namespace VRVlog.LilToonExporter
         internal int LastMissingShaderCount { get; private set; }
         // Failing stages the last save or transfer left out; "VRMを保存" stops at them instead.
         internal int LastOmittedStageCount { get; private set; }
+        // The notes of the last save or transfer, each once. The transfer screen groups them after the transfer.
+        internal string[] LastNotes { get; private set; } = Array.Empty<string>();
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -2466,6 +2468,7 @@ namespace VRVlog.LilToonExporter
                 // A plain field: still set when the recovery window saves after this board closed.
                 LastMissingShaderCount = missingShaders;
                 LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
+                LastNotes = (warnings ?? Enumerable.Empty<string>()).Distinct(StringComparer.Ordinal).ToArray();
                 if (written != null)
                 {
                     // For a transfer, the details of this export go to the Console.
@@ -2578,7 +2581,17 @@ namespace VRVlog.LilToonExporter
                     new object[] { source, (Action)(() => PanelBack(TransferPanelTransferring)), (Func<bool>)(() => false) }) as UnityEngine.UIElements.VisualElement;
             }
             catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
-            if (transferPanel != null) transferPanel.style.position = UnityEngine.UIElements.Position.Absolute;
+            if (transferPanel != null)
+            {
+                transferPanel.style.position = UnityEngine.UIElements.Position.Absolute;
+                // "別のアバターを選ぶ" after a transfer: the avatar change of the first page.
+                try
+                {
+                    LilToonExporterWindow.EmbeddedChangeAvatarMethod()?.Invoke(null, new object[] { transferPanel,
+                        (Action)(() => { if (ConfirmChangeAvatar()) Queue(ChangeAvatar); }) });
+                }
+                catch (System.Reflection.TargetInvocationException exception) { Debug.LogException(exception.InnerException ?? exception); }
+            }
             return transferPanel;
         }
 
