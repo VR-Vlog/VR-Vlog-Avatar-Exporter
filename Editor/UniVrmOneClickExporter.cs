@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.ObjectToggles;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
@@ -466,6 +467,8 @@ namespace VRVlog.LilToonExporter
             var fixedRootJoints = new HashSet<Transform>();
             ExportOptimizationBindings optimizerBindings = null;
             AuthoredExpressionEndpoints authoredEndpoints = null;
+            ObjectToggleCapture objectToggles = null;
+            ObjectToggleData objectToggleData = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -592,6 +595,10 @@ namespace VRVlog.LilToonExporter
                     // would be blamed on the build passes and retried without them.
                     // Stopping from the limit window cancels; the guard rethrows it.
                     guard.Watch(ExportStage.PoseCapture, () => PoseLimitChooser.Apply(poses, warnings, recoveryReport));
+                    // Menu toggles turn their default-off meshes on here, before
+                    // the base shape, neutral and optimizer captures below read
+                    // the active renderers.
+                    objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -802,6 +809,10 @@ namespace VRVlog.LilToonExporter
                         optimizerBindings.Bind(converter, model, storage);
                         int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
                         visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
+                        // Default-off meshes are already on in the copy; without the
+                        // extension they would show, so a failure writes the file
+                        // again without the toggles.
+                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                     }, warnings: warnings);
                 guard.Watch(ExportStage.BuildProcess, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
@@ -891,6 +902,7 @@ namespace VRVlog.LilToonExporter
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
+                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
