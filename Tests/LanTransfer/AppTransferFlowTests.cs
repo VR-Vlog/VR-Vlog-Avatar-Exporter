@@ -452,9 +452,54 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         [TestCase("Waiting", true, false, false)]
         [TestCase("Waiting", false, true, false)]
         [TestCase("Failed", true, true, false)]
-        public void OnlyAQrOnScreenWithTheSoundOnBeeps(string view, bool qrShown, bool soundOn, bool beeps)
+        public void OnlyAReadyQrWithTheSoundOnBeeps(string view, bool qrReady, bool soundOn, bool beeps)
         {
-            Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrShown, soundOn), Is.EqualTo(beeps));
+            Assert.That(AppTransferFlow.ShouldBeepForQr((AppTransferView)Enum.Parse(typeof(AppTransferView), view), qrReady, soundOn), Is.EqualTo(beeps));
+        }
+
+        // A ready QR stays hidden until "QRを表示"; "QRを隠す" and a new QR hide it again.
+        [Test]
+        public async Task EveryNewQrStartsHiddenAndIsReadyOnce()
+        {
+            var currentTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var run = new FlowRun(() => currentTime))
+            {
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                // Asked for while uploading, it does not carry over to the QR.
+                run.Flow.RevealQr();
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.True);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+                run.Flow.RevealQr();
+                Assert.That(run.Flow.QrRevealed, Is.True);
+                run.Flow.HideQr();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                // Showing it again is the same QR: no second sound.
+                run.Flow.RevealQr();
+                Assert.That(run.Flow.QrRevealed, Is.True);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+
+                run.Flow.Regenerate();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.True);
+
+                run.Flow.RevealQr();
+                currentTime += 180;
+                run.Tick();
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Expired));
+                Assert.That(run.Flow.QrRevealed, Is.False);
+                Assert.That(run.Flow.TakeQrReady(), Is.False);
+                run.Flow.Regenerate();
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.QrRevealed, Is.False);
+
+                run.Flow.RevealQr();
+                run.Flow.Stop();
+                Assert.That(run.Flow.QrRevealed, Is.False);
+            }
         }
 
         [Test]
@@ -648,6 +693,85 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 finally { AppTransferPanel.Live.Remove(other); }
             }
         }
+
+        // The real QR is neither made nor drawn until "QRを表示", in the window and on the board alike.
+        [TestCase(false)]
+        [TestCase(true)]
+        public async Task TheQrIsDrawnOnlyAfterShowQrAndANewQrHidesIt(bool embedded)
+        {
+            const BindingFlags field = BindingFlags.NonPublic | BindingFlags.Instance;
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var sound = AppTransferWindow.QrReadySound;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            using (var run = new FlowRun())
+            {
+                var panel = PanelWith(run.Flow, detailed: embedded);
+                typeof(AppTransferPanel).GetField("embedded", field).SetValue(panel, embedded);
+                typeof(AppTransferPanel).GetField("avatarName", field).SetValue(panel, "fixture");
+                UnityEngine.Texture Qr() => (UnityEngine.Texture)typeof(AppTransferPanel).GetField("qrTexture", field).GetValue(panel);
+                T Element<T>(string name) where T : UnityEngine.UIElements.VisualElement => (T)typeof(AppTransferPanel).GetField(name, field).GetValue(panel);
+                bool Shown(string name) => Element<UnityEngine.UIElements.VisualElement>(name).style.display.value != UnityEngine.UIElements.DisplayStyle.None;
+                void Poll() { Call(panel, "SyncQr"); panel.Refresh(); }
+                try
+                {
+                    AppTransferWindow.QrReadySound = false;
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrCover").image, Is.SameAs(QrCover.Texture));
+                    Assert.That(Shown("qrCover"), Is.True);
+                    Assert.That(Shown("revealArea"), Is.True);
+                    Assert.That(Shown("hideQrButton"), Is.False);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.QrHidden)));
+                    Assert.That(Element<UnityEngine.UIElements.Label>("scanLabel").text, Is.Empty);
+
+                    Call(panel, "RevealQr");
+                    Poll();
+                    Assert.That(Qr() != null, Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Image>("qrImage").image, Is.SameAs(Qr()));
+                    Assert.That(Shown("qrImage"), Is.True);
+                    Assert.That(Shown("qrCover"), Is.False);
+                    Assert.That(Shown("revealArea"), Is.False);
+                    Assert.That(Shown("hideQrButton"), Is.True);
+                    Assert.That(Element<UnityEngine.UIElements.Label>("statusLabel").text, Is.EqualTo(Localized(AppTransferText.Waiting)));
+
+                    Call(panel, "HideQr");
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Shown("qrCover"), Is.True);
+
+                    // "QRを作り直す" while it is shown: the new QR starts hidden.
+                    Call(panel, "RevealQr");
+                    Assert.That(Qr() != null, Is.True);
+                    Retry(panel);
+                    Assert.That(Qr() == null, Is.True);
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Poll();
+                    Assert.That(Qr() == null, Is.True);
+                    Assert.That(Shown("qrImage"), Is.False);
+                    Assert.That(Shown("qrCover"), Is.True);
+                }
+                finally
+                {
+                    Call(panel, "StopAndClean");
+                    typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
+                    AppTransferWindow.QrReadySound = sound;
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
+                }
+            }
+        }
+
+        private static void Call(AppTransferPanel panel, string method) =>
+            typeof(AppTransferPanel).GetMethod(method, BindingFlags.NonPublic | BindingFlags.Instance).Invoke(panel, null);
 
         // A refused upload, whose "もう一度" starts the transfer again from the same copy.
         private static async Task FailOnce(FlowRun run)
