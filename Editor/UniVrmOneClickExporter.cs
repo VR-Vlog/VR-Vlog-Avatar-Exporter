@@ -586,6 +586,12 @@ namespace VRVlog.LilToonExporter
                             warnings?.Add(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning) + " " + ExporterLocalization.T(blink.UnresolvedReason));
                             recoveryReport.Fallbacks.Add(ExportFallbackKind.Blink);
                         }
+                        // Only the fixed sentence is translated, not the shape names after it.
+                        foreach (var inference in blink.Inferences)
+                        {
+                            var names = inference.IndexOf(": ", StringComparison.Ordinal) + 2;
+                            warnings?.Add(ExporterLocalization.T(inference.Substring(0, names)) + inference.Substring(names));
+                        }
                         neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
                     }
                     using var bakeTiming = ExpressionBoardTimings.Step("export.bake");
