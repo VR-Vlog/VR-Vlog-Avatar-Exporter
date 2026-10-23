@@ -194,7 +194,7 @@ namespace VRVlog.LilToonExporter
         internal byte[] Inject(byte[] bytes, IEnumerable<VrmMenuExpressions.Expression> expressions)
         {
             var document = GlbDocument.Read(bytes);
-            var written = new HashSet<string>(Object(document.Json, "extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
+            var written = new HashSet<string>(Member(document.Json, "extensions", "VRMC_vrm", "expressions", "custom")?.Keys ?? Enumerable.Empty<string>(), StringComparer.Ordinal);
             var listed = (expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>()).Where(expression => expression?.Clip != null).ToList();
             var data = Resolve(face => listed.Where(expression => ReferenceEquals(expression.Clip, faceClips[face]))
                 .Select(expression => expression.RegisteredName ?? expression.MergedInto).Where(name => name != null && written.Contains(name)));
@@ -208,7 +208,7 @@ namespace VRVlog.LilToonExporter
             return document.Write();
         }
 
-        static Dictionary<string, object> Object(Dictionary<string, object> current, params string[] keys)
+        static Dictionary<string, object> Member(Dictionary<string, object> current, params string[] keys)
         {
             foreach (var key in keys)
             {
