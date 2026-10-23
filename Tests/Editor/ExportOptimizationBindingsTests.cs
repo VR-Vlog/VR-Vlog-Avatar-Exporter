@@ -565,6 +565,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void TrackedRendererWithoutAnOutputNodeFailsInTheTrackingOutputStage()
+        {
+            // A renderer on the avatar root has no glTF node. Binding runs
+            // outside every stage guard, so it must not stop the export;
+            // the guarded tracking output reports the missing target instead.
+            Skin(source, "tracked", "UE/JawOpen");
+            clone = Object.Instantiate(source);
+            using var bindings = ExportOptimizationBindings.Capture(clone);
+            bindings.ValidateAndApply();
+            Assert.DoesNotThrow(() => bindings.BindNodes(_ => -1));
+            var error = Assert.Throws<InvalidOperationException>(() => bindings.ApplyUnified(Output("UE/JawOpen")));
+            Assert.That(error.Message, Is.EqualTo("追跡表情の対象が最終VRMにありません: tracked"));
+        }
+
+        [Test]
         public void ExplicitProfileUsesMappedNodeAndIndexWithoutDependingOnGlobalShapeNames()
         {
             Skin(source, "first", "original"); Skin(source, "second", "original");
