@@ -121,7 +121,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var report = new ExportFallbackReport();
             report.Record(ExportOutcome.Omitted, "ブレンドシェイプ", "SecretHairObject",
-                "SecretHairObject: 「SecretClip」を省きました C:/Users/someone/Desktop/a.anim").Path = "SecretAvatarRoot/SecretHairObject";
+                "SecretHairObject: 「SecretClip」を省きました C:/Work/someone/Desktop/a.anim").Path = "SecretAvatarRoot/SecretHairObject";
             report.Record(ExportOutcome.Approximated, "マテリアル", "SecretMaterial", "SecretMaterial: SecretTexture を縮小しました");
             var warnings = new[]
             {
@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // A name the VRM does not hold, paths with spaces, and a one-character name.
                 "FX の SecretLayer を読めませんでした",
                 @"\\fileserver\Secret Share\a.png を読めませんでした",
-                "/Users/Secret Person/a.png を読めませんでした",
+                "/Volumes/Secret Person/a.png を読めませんでした",
                 "髪 を書き出しませんでした",
                 // A fixed sentence of the exporter is written as it is.
                 "元のVRMの瞬き設定が出力時に失われました。",
@@ -147,7 +147,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(text, Does.Not.Contain("Secret"));
             Assert.That(text, Does.Not.Contain("C:/"));
             Assert.That(text, Does.Not.Contain("Assets/"));
-            Assert.That(text, Does.Not.Contain("/Users/"));
+            Assert.That(text, Does.Not.Contain("/Volumes/"));
             Assert.That(text, Does.Not.Contain(@"\\"));
         }
 
