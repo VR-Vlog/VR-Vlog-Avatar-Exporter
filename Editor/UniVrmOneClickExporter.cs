@@ -155,6 +155,7 @@ namespace VRVlog.LilToonExporter
         internal const string LostBlinkFollowedWarning = "ビルド処理で閉眼用の変形が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
         internal const string LostBlinkWarning ="ビルド処理で閉眼用の変形を追えなくなったため、瞬きなしで書き出しました。";
         internal const string LostTrackingWarning = "ビルド処理で表情トラッキング用の変形を追えなくなったため、元の変形との照合を省略しました。";
+        internal const string OptimizedWeightConflictWarning = "最適化で表情「{0}」の変形「{1}」が別の変形とまとめられ適用量が食い違ったため、先に設定された適用量を使いました。";
 
         // The technical reason behind a lost-shape warning. Other languages show
         // it only when it has a translation, never as raw Japanese.
@@ -609,24 +610,37 @@ namespace VRVlog.LilToonExporter
                     // routes for both automatic and explicitly authored tracking.
                     unifiedPreparation = trackingProfile == null ? guard.Watch(ExportStage.TrackingOutput, () => new UnifiedExpressionPreparation(clone,
                         suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission)) : null;
+                    // Without the build passes AAO never runs, so its components
+                    // on the copy promise no mapping.
                     optimizerBindings = guard.Watch(ExportStage.OptimizerEvidence, () => ExportOptimizationBindings.Capture(clone,
                         trackingProfile == null ? null : authoredEndpoints.TrackingProfile, unifiedPreparation,
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone)));
+                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: !guard.IsOmitted(ExportStage.BuildProcess)));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
                 // A lenient export retries without the build passes; a source
                 // that already lacks them still stops.
                 guard.Watch(ExportStage.BuildProcess, () => ValidatePreparedHumanoid(source, clone));
-                optimizerBindings.ValidateAndApply((copy, original) =>
+                // The same holds for expressions or materials the optimizer
+                // lost: the routes feed the menu, blink, Lip Sync and tracking
+                // output, so the file is written again without the build passes.
+                var weightConflicts = guard.ContinueOnFailure ? new List<(string Clip, string Shape)>() : null;
+                guard.Watch(ExportStage.BuildProcess, () => optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;
                     recoveryReport.Track(copiedMaterial, originalMaterial);
                     recovery?.Track(copiedMaterial, originalMaterial);
-                });
+                }, weightConflicts));
+                if (weightConflicts != null)
+                    foreach (var conflict in weightConflicts)
+                    {
+                        var conflictReason = string.Format(ExporterLocalization.T(OptimizedWeightConflictWarning), conflict.Clip, conflict.Shape);
+                        warnings?.Add(conflictReason);
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情", conflict.Clip, conflictReason);
+                    }
                 guard.Watch(ExportStage.BlinkCapture, () => blink.Remap(optimizerBindings));
                 capturedVisemes?.Remap(optimizerBindings);
                 // Direct references stay as captured; MenuBinding resolves them later.
