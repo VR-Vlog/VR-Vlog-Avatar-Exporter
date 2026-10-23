@@ -367,6 +367,18 @@
     position: absolute;
 }
 
+.qr-cover {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    bottom: 0;
+}
+
+.reveal-button {
+    margin-top: 0;
+}
+
 .slot-inner {
     position: absolute;
     left: 20px;
@@ -409,13 +421,36 @@
     margin-top: 10px;
 }
 
-.scan {
+.scan-row {
     height: 18px;
     flex-shrink: 0;
     margin-top: 8px;
+}
+
+/* The label spans the row so it stays centred under the QR; the button sits over its right end. */
+.scan {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
     -unity-text-align: middle-center;
     white-space: nowrap;
     overflow: hidden;
+}
+
+/* "QRを隠す": a fixed width, so the text of a language clips instead of reaching the label. */
+.hide-qr {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 80px;
+    height: 18px;
+    margin: 0;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 /* The notice is twice the default size and wraps, so a narrow window never cuts it short.

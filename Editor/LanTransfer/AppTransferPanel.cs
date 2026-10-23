@@ -101,16 +101,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private WrittenVrm savedWritten, sentWritten;
 
         [NonSerialized] private bool built;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, warningRow, barFill;
+        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, warningRow, barFill;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
-        [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, regenerateButton, closeButton, saveButton;
+        [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
         [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, consentHint, privacyLink, privacyText,
             reasonLabel, createHint, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
         [NonSerialized] private TextField nameField;
         [NonSerialized] private Toggle consentToggle, privacyToggle, soundToggle;
-        [NonSerialized] private Image qrImage, warningIcon;
+        [NonSerialized] private Image qrImage, qrCover, warningIcon;
         [NonSerialized] private ScrollView transferScroll;
         [NonSerialized] private VisualElement transferBody;
         [NonSerialized] private IMGUIContainer uploadBar;
@@ -291,14 +291,21 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 return;
             }
             flow.Tick(time);
+            SyncQr();
             var view = flow.View;
-            if (view == AppTransferView.Waiting) { if (qrTexture == null) ShowQr(); }
-            else ClearQr();
-            view = flow.View;
             if (view == polledView && time < nextRepaint) return;
             polledView = view;
             nextRepaint = time + 0.2;
             Refresh();
+        }
+
+        // The OS notification sound, once per QR that is ready behind "QRを表示".
+        // The real QR exists only while it is shown.
+        private void SyncQr()
+        {
+            if (AppTransferFlow.ShouldBeepForQr(flow.View, flow.TakeQrReady(), AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+            if (flow.QrRevealed) { if (qrTexture == null) ShowQr(); }
+            else ClearQr();
         }
 
         private void ShowQr()
@@ -309,8 +316,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ClearQr();
             try { qrTexture = CloudVrmTransferWindow.RenderQr(link); }
             catch { flow.Fail(AppTransferText.NeedsShorterName); }
-            // The OS notification sound, once per QR that is now on screen.
-            if (AppTransferFlow.ShouldBeepForQr(flow.View, qrTexture != null, AppTransferWindow.QrReadySound)) EditorApplication.Beep();
+        }
+
+        // "QRを表示": the QR is drawn now, not when it became ready.
+        private void RevealQr()
+        {
+            flow.RevealQr();
+            if (flow.QrRevealed && qrTexture == null) ShowQr();
+            Refresh();
+        }
+
+        // "QRを隠す": back to the cover. The QR stays valid until its deadline.
+        private void HideQr()
+        {
+            flow.HideQr();
+            ClearQr();
+            Refresh();
         }
 
         private string Reason()
@@ -750,6 +771,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             slotRow = root.Q("slot-row");
             slot = root.Q("slot");
             qrImage = root.Q<Image>("qr");
+            qrCover = root.Q<Image>("qr-cover");
+            revealArea = root.Q("reveal");
+            showQrButton = root.Q<Button>("show-qr");
+            hideQrButton = root.Q<Button>("hide-qr");
             slotMessage = root.Q("message");
             messageTitle = root.Q<Label>("message-title");
             messageBody = root.Q<Label>("message-body");
@@ -796,6 +821,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
             warningIcon.image = EditorGUIUtility.IconContent("console.warnicon").image;
             warningIcon.scaleMode = ScaleMode.ScaleToFit;
             qrImage.scaleMode = ScaleMode.StretchToFill;
+            qrCover.image = QrCover.Texture;
+            qrCover.scaleMode = ScaleMode.StretchToFill;
+            // Only "QRを表示" takes the click, not the area around it.
+            qrCover.pickingMode = PickingMode.Ignore;
+            revealArea.pickingMode = PickingMode.Ignore;
             var probe = root.Q<IMGUIContainer>("scale-probe");
             probe.onGUIHandler = ProbeScale;
             // Only measures the display scale: no Tab stop, no clicks.
@@ -837,6 +867,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             createButton.clicked += Begin;
             messageButton.clicked += Retry;
             regenerateButton.clicked += Retry;
+            showQrButton.clicked += RevealQr;
+            hideQrButton.clicked += HideQr;
             closeButton.clicked += () => { if (Window != null) Window.Close(); };
             saveButton.clicked += SaveCopy;
             saveOpen.RegisterCallback<ClickEvent>(_ => { if (savedCopy != null && File.Exists(savedCopy)) EditorUtility.RevealInFinder(savedCopy); });
@@ -991,10 +1023,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
             Reserve(leaveNote, view == AppTransferView.Uploading || view == AppTransferView.Waiting);
             // The area keeps the size of the QR through every state, so the rows below never move.
             slotRow.style.height = SlotSide;
-            var showQr = view == AppTransferView.Waiting && qrTexture != null;
-            slot.EnableInClassList("slot--qr", showQr);
+            var waiting = view == AppTransferView.Waiting;
+            var showQr = waiting && qrTexture != null;
+            // A ready QR waits behind a blurred picture that is not made from it, with "QRを表示" on top.
+            var covered = waiting && !showQr;
+            slot.EnableInClassList("slot--qr", showQr || covered);
             qrImage.image = showQr ? qrTexture : null;
             Show(qrImage, showQr);
+            Show(qrCover, covered);
+            Show(revealArea, covered);
+            showQrButton.text = T(AppTransferText.ShowQr);
 
             // A failure or an ended transfer says why in place, with the one thing to do next.
             string title = null, body = null, button = null;
@@ -1035,14 +1073,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (view == AppTransferView.Exporting) slot.MarkDirtyRepaint();
             PlaceSlot();
 
-            var waiting = view == AppTransferView.Waiting;
-            scanLabel.text = waiting ? T(AppTransferText.ScanWithCamera) : "";
+            scanLabel.text = showQr ? T(AppTransferText.ScanWithCamera) : "";
+            hideQrButton.text = T(AppTransferText.HideQr);
+            Show(hideQrButton, showQr);
             warningText.text = T(AppTransferText.DoNotShare);
             FitWarning();
             // Its place is kept in every state, so it does not move when the QR appears.
             Reserve(warningRow, AppTransferFlow.ShowsDoNotShare(view));
             var counting = waiting || view == AppTransferView.Expired;
-            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : AppTransferText.Waiting) : "";
+            statusLabel.text = waiting ? T(flow.StatusUnknown ? AppTransferText.StatusUnknown : showQr ? AppTransferText.Waiting : AppTransferText.QrHidden) : "";
             var seconds = waiting ? flow.Remaining : 0;
             remainingLabel.text = counting ? string.Format(T("残り {0}:{1:00}"), seconds / 60, seconds % 60) : "";
             remainingLabel.EnableInClassList("expired", view == AppTransferView.Expired);
