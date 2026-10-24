@@ -327,19 +327,24 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var checkedWords = 0;
             foreach (var entry in ExpressionNameInference.Emotions)
-                foreach (var word in entry.Words)
+                foreach (var word in entry.English.Concat(entry.Japanese))
                 {
                     var latin = word.All(character => character < 128);
+                    var japanese = entry.Japanese.Contains(word);
                     var names = latin
                         ? new[] { word, word.ToUpperInvariant(), char.ToUpperInvariant(word[0]) + word.Substring(1), "Face_" + word + "_01", "face" + char.ToUpperInvariant(word[0]) + word.Substring(1) }
                         : new[] { word, "表情_" + word, word + "02" };
                     foreach (var name in names)
                         Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), name);
                     if (latin) Assert.That(Session.SuggestPreset(word + "x"), Is.Not.EqualTo(entry.Preset).Or.Null, "Latin words match whole words only: " + word);
+                    // Japanese words, romaji too, are read only in menu and clip names, never in raw BlendShape names.
+                    Assert.That(ExpressionNameInference.MatchEmotion(word, englishOnly: true),
+                        japanese ? Is.Null : Is.EqualTo(((ExpressionPreset, int)?)(entry.Preset, entry.Tier)), word);
                     checkedWords++;
                 }
             Assert.That(checkedWords, Is.GreaterThan(50));
-            var words = ExpressionNameInference.Emotions.SelectMany(entry => entry.Words).ToArray();
+            var words = ExpressionNameInference.Emotions.SelectMany(entry => entry.English.Concat(entry.Japanese)).ToArray();
+            Assert.That(ExpressionNameInference.Emotions.SelectMany(entry => entry.English).All(word => word.All(character => character < 128)), "English words are ASCII.");
             Assert.That(words.Distinct().Count(), Is.EqualTo(words.Length), "A word belongs to one emotion and tier.");
             foreach (var veto in ExpressionNameInference.VetoWords.Concat(ExpressionNameInference.VetoParts))
                 Assert.That(Session.SuggestPreset("Smile " + veto), Is.Null, veto);
@@ -739,9 +744,9 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(suggested.Keys, Is.EquivalentTo(new[] { ExpressionPreset.happy }), "'Smile' is suggested; the MMD-style '怒り' is not.");
             Assert.That(session.PresetShapeOptions().Any(option => option.Shape == "怒り"), Is.True, "It can still be chosen by hand.");
             Assert.That(session.PresetError(ExpressionPreset.angry, Session.PresetAssignment.ForShape(ExpressionPreset.angry, "Front", "怒り")), Is.Null);
-            Assert.That(ExpressionNameInference.MatchEmotion("怒り", latinOnly: true), Is.Null);
-            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_BRW_Angry", latinOnly: true), Is.Null);
-            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_ALL_Angry", latinOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 0)));
+            Assert.That(ExpressionNameInference.MatchEmotion("怒り", englishOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_BRW_Angry", englishOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion("Fcl_ALL_Angry", englishOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(ExpressionPreset.angry, 0)));
         }
 
         [Test]

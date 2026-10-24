@@ -16,20 +16,33 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Angry", ExpressionPreset.angry, 0)]
         [TestCase("笑顔", ExpressionPreset.happy, 0)]
         [TestCase("びっくり", ExpressionPreset.surprised, 0)]
+        [TestCase("Suprised_1", ExpressionPreset.surprised, 0)]
+        [TestCase("Nagomi_1", ExpressionPreset.relaxed, 0)]
+        [TestCase("Bikkuri", ExpressionPreset.surprised, 0)]
+        [TestCase("Egao", ExpressionPreset.happy, 0)]
+        [TestCase("ikari", ExpressionPreset.angry, 0)]
+        [TestCase("Shobon", ExpressionPreset.sad, 0)]
+        [TestCase("Namida", ExpressionPreset.sad, 1)]
+        [TestCase("Relieved", ExpressionPreset.relaxed, 1)]
+        [TestCase("Amazed", ExpressionPreset.surprised, 0)]
         public void MenuStyleNamesNameOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
         [TestCase("Fcl_ALL_Joy", ExpressionPreset.happy, 1)]
         [TestCase("Fcl_ALL_Sorrow", ExpressionPreset.sad, 0)]
         [TestCase("Fcl_ALL_Fun", ExpressionPreset.relaxed, 0)]
+        [TestCase("Face_Suprised", ExpressionPreset.surprised, 0)]
+        [TestCase("Sorrowful", ExpressionPreset.sad, 0)]
         public void WholeFaceBlendShapeNamesNameOneEmotion(string name, ExpressionPreset expected, int tier) =>
-            Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
+            Assert.That(ExpressionNameInference.MatchEmotion(name, englishOnly: true), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 
-        // MMD-style names move only a part of the face.
+        // MMD-style names move only a part of the face, romanized too.
         [TestCase("怒り")]
         [TestCase("にっこり")]
+        [TestCase("bikkuri")]
+        [TestCase("nagomi")]
         public void JapaneseBlendShapeNamesAreNotRawCandidates(string name) =>
-            Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion(name, englishOnly: true), Is.Null);
 
         [TestCase("eye_smile_L")]
         [TestCase("Fcl_EYE_Joy")]
@@ -38,10 +51,23 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("happy_angry")]
         [TestCase("smileOff")]
         [TestCase("Reset")]
+        [TestCase("Eyes_Nagomi")]
+        [TestCase("eye_nagomi1")]
+        [TestCase("eyebrow_surprised")]
+        [TestCase("Peace")]
+        [TestCase("Thumbup")]
+        [TestCase("Doyagao")]
+        [TestCase("Jitome")]
+        [TestCase("Kyoton")]
+        [TestCase("Bittersmile")]
+        [TestCase("Gunu_2")]
+        [TestCase("Wink_1")]
+        [TestCase("Heart eye")]
+        [TestCase("Smirk")]
         public void PartialOneSidedOrMixedNamesNameNothing(string name)
         {
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.Null);
-            Assert.That(ExpressionNameInference.MatchEmotion(name, latinOnly: true), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion(name, englishOnly: true), Is.Null);
         }
 
         // The leaf label decides; a parent only speaks when every level below says nothing.
@@ -355,7 +381,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(table.PartOf("口角下げ"), Is.EqualTo("mouth.frown"));
             Assert.That(table.PartOf("困る"), Is.EqualTo("brow.sad"));
             Assert.That(table.PartOf("Eye_Smile_L"), Is.EqualTo("eye.happy"), "A one-side name reads through its plain form.");
-            Assert.That(table.PartOf("Fcl_ALL_Joy"), Is.EqualTo("whole.happy"), "A Latin whole-face name is the whole face.");
+            Assert.That(table.PartOf("Fcl_ALL_Joy"), Is.EqualTo("whole.happy"), "An English whole-face name is the whole face.");
             Assert.That(table.PartOf("Body_Height"), Is.Null);
             Assert.That(table.Classify(Moves("笑い", 100, "にやり", 100))?.Preset, Is.EqualTo(ExpressionPreset.happy));
             Assert.That(table.Classify(Moves("困る", 100, "口角下げ", 100)), Is.Null, "Sad parts alone do not decide sad.");
@@ -574,8 +600,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("neutral", true)]
         [TestCase("Fcl_ALL_Neutral", true)]
         [TestCase("真顔", false)]
-        public void NeutralNamesNameNeutral(string name, bool latinOnly) =>
-            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly), Is.True);
+        public void NeutralNamesNameNeutral(string name, bool englishOnly) =>
+            Assert.That(ExpressionNameInference.MatchNeutral(name, englishOnly), Is.True);
 
         // A face part, a side, a toggle or an emotion is not the neutral face.
         [TestCase("Fcl_MTH_Neutral")]
@@ -589,12 +615,12 @@ namespace VRVlog.LilToonExporter.Tests
         public void PartialOrMixedNeutralNamesNameNothing(string name)
         {
             Assert.That(ExpressionNameInference.MatchNeutral(name), Is.False);
-            Assert.That(ExpressionNameInference.MatchNeutral(name, latinOnly: true), Is.False);
+            Assert.That(ExpressionNameInference.MatchNeutral(name, englishOnly: true), Is.False);
         }
 
         [Test]
         public void JapaneseNeutralNamesAreNotRawCandidates() =>
-            Assert.That(ExpressionNameInference.MatchNeutral("真顔", latinOnly: true), Is.False);
+            Assert.That(ExpressionNameInference.MatchNeutral("真顔", englishOnly: true), Is.False);
 
         [TestCase("表情 / 真顔", true)]
         [TestCase("Neutral", true)]

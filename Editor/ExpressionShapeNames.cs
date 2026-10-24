@@ -90,8 +90,8 @@ namespace VRVlog.LilToonExporter
             var key = Normalize(name);
             listed = parts.TryGetValue(key, out var part) || parts.TryGetValue(Stripped(key), out part);
             if (listed) return part;
-            // A Latin name that names one whole emotion (Fcl_ALL_Joy) is the whole face.
-            var match = ExpressionNameInference.MatchEmotion(name, latinOnly: true);
+            // An English name that names one whole emotion (Fcl_ALL_Joy) is the whole face.
+            var match = ExpressionNameInference.MatchEmotion(name, englishOnly: true);
             return match != null ? "whole." + match.Value.Preset : null;
         }
 
