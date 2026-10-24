@@ -304,6 +304,11 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("cry_face", ExpressionPreset.sad, 1)]
         [TestCase("Fun", ExpressionPreset.relaxed, 0)]
         [TestCase("Smile Cry", ExpressionPreset.happy, 0)]
+        [TestCase("Smile Tears", ExpressionPreset.happy, 0)]
+        [TestCase("Sad Tears", ExpressionPreset.sad, 0)]
+        [TestCase("泣き顔_涙あり", ExpressionPreset.sad, 1)]
+        [TestCase("嬉し涙", ExpressionPreset.happy, 0)]
+        [TestCase("Cry_Tears", ExpressionPreset.sad, 1)]
         public void NamesSuggestOneEmotion(string name, ExpressionPreset expected, int tier) =>
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.EqualTo(((ExpressionPreset, int)?)(expected, tier)));
 

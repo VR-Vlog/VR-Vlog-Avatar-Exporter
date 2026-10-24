@@ -22,8 +22,10 @@ namespace VRVlog.LilToonExporter
         // morph (びっくり = eyes, にっこり = mouth). ASCII words must match a
         // whole word (split at symbols, digits and camelCase); other words
         // match inside the name, so a kana word that ends other words
-        // (わらい in あざわらい) is not listed. Tier 0 words name the emotion
-        // itself and win over the looser tier 1 words.
+        // (わらい in あざわらい) is not listed. Tears are not listed either: a
+        // name with tears alone is an effect toggled beside Cheek or Sweat,
+        // and "Smile Tears" is read by its smile. Tier 0 words name the
+        // emotion itself and win over the looser tier 1 words.
         internal static readonly (ExpressionPreset Preset, int Tier, string[] Words, string[] MenuWords)[] Emotions =
         {
             (ExpressionPreset.happy, 0, new[] { "happy", "happiness", "smile", "smiling", "grin", "grinning" },
@@ -48,15 +50,15 @@ namespace VRVlog.LilToonExporter
                 new[] { "ぎょっ", "ギョッ" }),
         };
 
-        // A side, a part of the face or an effect on it (tears are a toggle
-        // beside Cheek and Sweat), a wink/blink, a toggle, a hand sign or a
-        // face that is none of the five emotions is not a whole emotion. Such
-        // a name decides "no emotion" itself; a menu parent is never read for it.
+        // A side, a part of the face, a wink/blink, a toggle, a hand sign or a
+        // face that is none of the five emotions (jitome, a sneer) is not a
+        // whole emotion. Such a name decides "no emotion" itself; a menu
+        // parent is never read for it.
         internal static readonly string[] VetoWords = { "eye", "eyes", "mouth", "brow", "eyebrow", "cheek", "wink", "blink", "left", "right", "l", "r",
-            "off", "reset", "none", "default", "brw", "mth", "teeth", "tongue", "nose", "tear", "tears", "teary", "namida",
-            "peace", "thumbup", "jitome", "doya", "doyagao", "kyoton", "gunu" };
-        internal static readonly string[] VetoParts = { "目", "口", "眉", "頬", "涙", "なみだ", "ウィンク", "まばたき", "解除", "左", "右",
-            "ジト", "ドヤ", "きょとん", "キョトン", "ぐぬ" };
+            "off", "reset", "none", "default", "brw", "mth", "teeth", "tongue", "nose",
+            "peace", "thumb", "thumbs", "thumbup", "jitome", "doya", "doyagao", "kyoton", "gunu" };
+        internal static readonly string[] VetoParts = { "目", "口", "眉", "頬", "ウィンク", "まばたき", "解除", "左", "右",
+            "ジト", "ドヤ", "きょとん", "キョトン", "ぐぬ", "嘲笑", "あざ笑", "あざわら", "作り笑", "つくりわら" };
 
         // Alias order expresses a documented preference (e.g. authored VRChat
         // visemes before a generic mouth shape). Never use substring matching.

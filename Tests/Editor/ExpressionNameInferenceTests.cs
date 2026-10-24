@@ -92,6 +92,12 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Nagomi / Peace")]
         [TestCase("笑顔 / きょとん")]
         [TestCase("Smile / Doya_1")]
+        [TestCase("笑顔 / あざわらい")]
+        [TestCase("笑顔 / つくりわらい")]
+        [TestCase("Smile / ThumbUp")]
+        [TestCase("Smile / ThumbsUp")]
+        [TestCase("Smile / thumb_up")]
+        [TestCase("Egao / Thumbs_Up")]
         public void MenuPathsWithoutAWholeEmotionNameNothing(string path) =>
             Assert.That(ExpressionNameInference.MatchMenuPath(path), Is.Null);
 
@@ -216,18 +222,18 @@ namespace VRVlog.LilToonExporter.Tests
                 "A caller that names no candidates fills nothing from custom names.");
         }
 
-        // Tears are an effect toggled beside Cheek or Sweat, in menus and
-        // raw shapes alike, not a sad face; a crying face says Cry.
+        // Tears alone are an effect toggled beside Cheek or Sweat, in menus
+        // and raw shapes alike, not a sad face; a crying face says Cry.
         [TestCase("Teary")]
         [TestCase("Tear")]
         [TestCase("other_tear_1")]
         [TestCase("TearFlow")]
         [TestCase("涙_ON")]
-        [TestCase("Sad / Tear")]
-        public void TearsNameNothing(string name)
+        [TestCase("Namida")]
+        public void TearsAloneNameNothing(string name)
         {
             Assert.That(ExpressionNameInference.MatchEmotion(name, rawShape: true), Is.Null);
-            Assert.That(ExpressionNameInference.MatchMenuPath(name), Is.Null);
+            Assert.That(ExpressionNameInference.MatchEmotion(name), Is.Null);
         }
 
         // Romaji words fill from menu faces only; English whole-face words from raw shapes too.
