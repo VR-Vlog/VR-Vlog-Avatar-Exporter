@@ -253,6 +253,70 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
         }
 
+        // Every face clip writes the same mouth bone. When the rest face holds
+        // it at the prepared pose, another pose in a sibling face is motion of
+        // that bone. A channel the rest face leaves alone, or a rest face that
+        // moves the bone itself, still claims the rest morph.
+        [TestCase("jitter")]
+        [TestCase("constantPose")]
+        [TestCase("positionOnly")]
+        [TestCase("restDiffers")]
+        public void RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance(string scenario)
+        {
+            const string signal = "Face select";
+            controller.AddParameter(signal, AnimatorControllerParameterType.Int);
+            ConfigureTransientInputMetadata(signal, "menu", true);
+            using (var data = new SerializedObject(descriptor))
+            using (var menu = new SerializedObject(data.FindProperty("expressionsMenu").objectReferenceValue))
+            {
+                menu.FindProperty("controls").GetArrayElementAtIndex(0).FindPropertyRelative("value").floatValue = 23;
+                menu.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var mouth = new GameObject("Mouth"); mouth.transform.SetParent(avatar.transform, false);
+            mouth.transform.localEulerAngles = new Vector3(-44.712f, 0, 0);
+            var source = mouth.transform.localRotation;
+            var position = mouth.transform.localPosition;
+            var idle = Open(75);
+            foreach (var axis in new[] { (Name: "x", Value: scenario == "restDiffers" ? -30f : -44.712f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                AnimationUtility.SetEditorCurve((AnimationClip)idle.motion, EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "localEulerAnglesRaw." + axis.Name),
+                    AnimationCurve.Constant(0, 1, axis.Value));
+            var sibling = Clip("Open", AnimationCurve.Constant(0, 1, 10)); sibling.name = "Sibling face";
+            var rotationX = EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "localEulerAnglesRaw.x");
+            if (scenario == "jitter")
+            {
+                AnimationUtility.SetEditorCurve(sibling, rotationX, new AnimationCurve(new Keyframe(0, 0), new Keyframe(.5f, -.456f), new Keyframe(1, 0)));
+                var settings = AnimationUtility.GetAnimationClipSettings(sibling); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(sibling, settings);
+            }
+            else if (scenario == "positionOnly")
+            {
+                foreach (var axis in new[] { (Name: "x", Value: -44.712f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                    AnimationUtility.SetEditorCurve(sibling, EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "localEulerAnglesRaw." + axis.Name),
+                        AnimationCurve.Constant(0, 1, axis.Value));
+                AnimationUtility.SetEditorCurve(sibling, EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "m_LocalPosition.y"),
+                    AnimationCurve.Constant(0, 1, .02f));
+            }
+            else AnimationUtility.SetEditorCurve(sibling, rotationX, AnimationCurve.Constant(0, 1, -30));
+            var face = State(controller.layers[0].stateMachine, sibling);
+            var choose = idle.AddTransition(face); choose.hasExitTime = false; choose.duration = 0;
+            choose.AddCondition(AnimatorConditionMode.Equals, 23, signal);
+            var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            if (scenario == "jitter" || scenario == "constantPose")
+            {
+                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
+                Assert.That(warnings, Is.Empty);
+            }
+            else
+            {
+                Assert.That(values.Select(value => value.Shape), Does.Not.Contain("Open"));
+                var cited = scenario == "positionOnly" ? new[] { sibling.name, "m_LocalPosition" } : new[] { "localEulerAnglesRaw" };
+                Assert.That(warnings.Any(warning => cited.All(warning.Contains)), Is.True, string.Join("\n", warnings));
+            }
+            Assert.That(Quaternion.Angle(mouth.transform.localRotation, source), Is.LessThan(.001));
+            Assert.That(Vector3.Distance(mouth.transform.localPosition, position), Is.LessThan(1e-6));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+        }
+
         // A face selected by a driver value that only a dormant built-in
         // branch sets is not an appearance option. A menu value or a saved
         // parameter can still select it.

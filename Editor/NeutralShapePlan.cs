@@ -73,6 +73,11 @@ namespace VRVlog.LilToonExporter
             plan.AllowUnchangedAppearance = allowUnchangedAppearance;
             plan.ResolveCommittedMorphs();
             var ownershipLayers = ExpressionDependencies.NormalInputLayers(runtime, source, fixedContext, excludedPath);
+            // The clips the neutral probe reaches with fixed inputs, computed
+            // as the sampler does: their explicit holds define each layer's rest.
+            var restClips = fixedContext == null ? new HashSet<AnimationClip>() : ExpressionDependencies.NeutralClips(runtime,
+                ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
             // Matching raw values prove an Override contribution. Additive
             // defaults/reference poses can change another layer's appearance;
@@ -130,6 +135,14 @@ namespace VRVlog.LilToonExporter
                     // pose. Holding that pose changes nothing, so it does not
                     // tie the clip's morphs to an appearance option.
                     if (invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding)) continue;
+                    // The layer's rest clip explicitly holds this channel at the
+                    // prepared pose: the copy stands in the rest alternative for
+                    // it. Another pose in a sibling face clip is motion of the
+                    // same channel, not wardrobe.
+                    if (binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
+                            rest != clip && restClips.Contains(rest) && invariantClips.Contains(rest) &&
+                            AnimationUtility.GetEditorCurve(rest, binding) != null &&
+                            SelectedExpressionAppearance.IsUnchangedTransform(prepared, rest, binding)))) continue;
                     // An alternate layout path absent from the prepared copy
                     // cannot bind in Unity. It is neither a visual change nor
                     // evidence that accompanying morphs belong to appearance.
