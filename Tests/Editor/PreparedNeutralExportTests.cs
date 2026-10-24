@@ -347,7 +347,23 @@ namespace VRVlog.LilToonExporter.Tests
                 imported.Runtime.Process();
                 Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
                 foreach (var skin in imported.GetComponentsInChildren<SkinnedMeshRenderer>())
+                {
                     Assert.That(skin.sharedMesh.vertices[0].y, Is.EqualTo(fixture.Mesh.vertices[0].y).Within(.00001f));
+                    // The open rest must keep the full closing delta: Blink 0 -> 1 -> 0 is open, closed, open.
+                    var baked = new Mesh();
+                    try
+                    {
+                        imported.Runtime.Expression.SetWeight(ExpressionKey.Blink, 0); imported.Runtime.Process();
+                        skin.BakeMesh(baked, false); var openY = baked.vertices[0].y;
+                        foreach (var (weight, expectedY) in new[] { (1f, openY - .03f), (0f, openY) })
+                        {
+                            imported.Runtime.Expression.SetWeight(ExpressionKey.Blink, weight); imported.Runtime.Process();
+                            skin.BakeMesh(baked, false);
+                            Assert.That(baked.vertices[0].y, Is.EqualTo(expectedY).Within(.00001f), skin.name + " / blink " + weight);
+                        }
+                    }
+                    finally { Object.DestroyImmediate(baked); }
+                }
                 Assert.That(sourceSkins.All(skin => skin.sharedMesh == fixture.Mesh && skin.GetBlendShapeWeight(0) == 100), Is.True);
                 Assert.That(clip, Is.SameAs(controller.layers[0].stateMachine.defaultState.motion));
             }
