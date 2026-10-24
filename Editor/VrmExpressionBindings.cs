@@ -256,7 +256,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var name in names.OfType<string>())
                 {
                     rawOrder++;
-                    var match = ExpressionNameInference.MatchEmotion(name, englishOnly: true);
+                    var match = ExpressionNameInference.MatchEmotion(name, rawShape: true);
                     if (match != null && open.Contains(match.Value.Preset)) raw.Add((match.Value.Preset, match.Value.Tier, rawOrder, name));
                 }
             foreach (var group in raw.GroupBy(item => item.Preset))
@@ -319,7 +319,7 @@ namespace VRVlog.LilToonExporter
             foreach (var names in MeshTargetNames(nodes, meshes).Select(item => item.Names))
                 foreach (var name in names.OfType<string>())
                 {
-                    if (!tried.Add(name) || !ExpressionNameInference.MatchNeutral(name, englishOnly: true)) continue;
+                    if (!tried.Add(name) || !ExpressionNameInference.MatchNeutral(name, rawShape: true)) continue;
                     var bindings = BindEverywhere(nodes, meshes, new[] { name }, StringComparison.Ordinal, preset, warnings);
                     if (bindings == null) continue;
                     SetFilled(vrm, preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } },

@@ -615,7 +615,7 @@ namespace VRVlog.LilToonExporter
             // offered by hand, not as automatic initial values.
             foreach (var option in PresetShapeOptions())
             {
-                var match = ExpressionNameInference.MatchEmotion(option.Shape, englishOnly: true); order++;
+                var match = ExpressionNameInference.MatchEmotion(option.Shape, rawShape: true); order++;
                 if (match != null) candidates.Add((match.Value.Preset, match.Value.Tier, order, preset => PresetAssignment.ForShape(preset, option.Path, option.Shape)));
             }
             var result = new Dictionary<ExpressionPreset, PresetAssignment>();

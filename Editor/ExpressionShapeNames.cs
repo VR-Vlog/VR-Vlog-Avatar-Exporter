@@ -91,7 +91,7 @@ namespace VRVlog.LilToonExporter
             listed = parts.TryGetValue(key, out var part) || parts.TryGetValue(Stripped(key), out part);
             if (listed) return part;
             // An English name that names one whole emotion (Fcl_ALL_Joy) is the whole face.
-            var match = ExpressionNameInference.MatchEmotion(name, englishOnly: true);
+            var match = ExpressionNameInference.MatchEmotion(name, rawShape: true);
             return match != null ? "whole." + match.Value.Preset : null;
         }
 
