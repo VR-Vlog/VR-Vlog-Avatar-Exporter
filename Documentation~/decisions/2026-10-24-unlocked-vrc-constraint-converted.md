@@ -1,7 +1,7 @@
 # Lock がオフの VRChat のコンストレイントも VRM のコンストレイントに変換する
 
 - 日付: 2026-10-24
-- 対象: `Editor/ConstraintExport.cs`・`Editor/Locales/*.json`・`Tests/Editor/ConstraintExportTests.cs`
+- 対象: `Editor/ConstraintExport.cs`・`Editor/Locales/*.json`・`Tests/Editor/ConstraintExportTests.cs`・`CHANGELOG.md`
 - 改める記録: `2026-10-22-unlocked-constraint-listed.md` の「変換しない理由」と、Lock がオフの VRChat のコンストレイントを省略として一覧に出す決定
 
 ## 背景
