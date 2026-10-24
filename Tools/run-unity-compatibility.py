@@ -34,6 +34,8 @@ BEHAVIOR_CASES = {
         'TheSameBytesAreRecordedOnce': 1,
         'AnUnreadableVrmHasNoChangeSection': 1,
         'ShadersShowOnlyTheirFamily': 1,
+        'TheTextCountsThePartsNotWrittenByKind': 1,
+        'WithoutGimmicksTheSectionSaysNone': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
