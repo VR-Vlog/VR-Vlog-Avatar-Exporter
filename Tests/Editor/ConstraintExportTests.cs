@@ -303,8 +303,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AnUnlockedUnityConstraintIsStillConverted()
         {
-            // Unity ignores Lock in Play Mode, so the app would move the target
-            // the same as a locked one. Only VRChat's Locked is honoured.
+            // Lock only matters while editing; in Play Mode and in the app the
+            // target moves the same as a locked one.
             using var f = new Fixture();
             f.Constraint<RotationConstraint>(f.B, 1, f.A).locked = false;
             f.A.localRotation = f.B.localRotation = Quaternion.identity;
@@ -454,7 +454,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [TestCase(true)][TestCase(false)]
-        public void AnUnlockedOrOffVrchatConstraintIsListed(bool isActive)
+        public void AnUnlockedVrchatConstraintIsConvertedUnlessOff(bool isActive)
         {
             var type = AppDomain.CurrentDomain.GetAssemblies()
                 .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
@@ -473,10 +473,17 @@ namespace VRVlog.LilToonExporter.Tests
             }
             f.A.localRotation = f.B.localRotation = Quaternion.identity;
             var result = f.Convert();
+            Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
+            if (isActive)
+            {
+                // VRChat drives an unlocked constraint at runtime the same as a locked one.
+                Assert.That(f.B.GetComponent<Vrm10RotationConstraint>().Source, Is.EqualTo(f.A));
+                Assert.That((result.Sources, result.Kept, result.Omitted), Is.EqualTo((1, 1, 0)));
+                return;
+            }
             Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
             Assert.That(result.Omitted, Is.EqualTo(1));
-            Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
-            Assert.That(f.Entry.Reason, Is.EqualTo(isActive ? ConstraintExport.OmittedUnlocked : ConstraintExport.OmittedOff));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedOff));
             Assert.That(f.Warnings.Single(), Does.Contain("省略1件"));
         }
 
