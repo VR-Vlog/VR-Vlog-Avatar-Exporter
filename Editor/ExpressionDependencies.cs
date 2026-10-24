@@ -60,11 +60,12 @@ namespace VRVlog.LilToonExporter
             internal readonly HashSet<string> DriverWrites = new HashSet<string>(StringComparer.Ordinal);
             internal readonly HashSet<string> CurveWrites = new HashSet<string>(StringComparer.Ordinal);
             internal readonly HashSet<EditorCurveBinding> Morphs = new HashSet<EditorCurveBinding>();
+            internal readonly HashSet<EditorCurveBinding> DynamicMorphs = new HashSet<EditorCurveBinding>();
             internal readonly HashSet<AnimationClip> Clips = new HashSet<AnimationClip>();
             internal readonly List<VrChatParameterDriver.Program> DriverPrograms = new List<VrChatParameterDriver.Program>();
             internal readonly Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> FxCommands = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
             internal readonly Dictionary<StateMachineBehaviour, SdkLayerWeightControl> WeightControls = new Dictionary<StateMachineBehaviour, SdkLayerWeightControl>();
-            internal bool WriteDefaults, HasBindings, EmptyMotion, FxControl, DynamicMorph, Timed, NonMorphBindings;
+            internal bool WriteDefaults, HasBindings, EmptyMotion, FxControl, Timed, NonMorphBindings;
         }
 
         internal readonly HashSet<int> Layers = new HashSet<int>();
@@ -879,11 +880,15 @@ namespace VRVlog.LilToonExporter
                 // A timed initializer may write a constant zero and then hold
                 // it forever with WD Off. Keep those writes; the sampler checks
                 // whether its eventual active state still has a timed exit.
-                if (!tracking.DynamicMorph && !external) continue;
+                if (tracking.DynamicMorphs.Count == 0 && !external) continue;
                 // A live tracking layer may share its automatic channel with a
                 // constant DEFAULT FACE underlay. Its other effects must be
-                // empty before it can be left out of the neutral graph.
-                layer.Morphs.Clear(); layer.HasBindings = false; layer.EmptyMotion = false;
+                // empty before it can be left out of the neutral graph. Live
+                // input drives every channel; a timed clip drives only its
+                // varying ones, so a constant channel held beside a blink
+                // loop (a closed-mouth viseme) stays the default face.
+                if (external) layer.Morphs.Clear(); else layer.Morphs.ExceptWith(tracking.DynamicMorphs);
+                if (layer.Morphs.Count == 0) { layer.HasBindings = false; layer.EmptyMotion = false; }
             }
         }
 
@@ -1442,7 +1447,7 @@ namespace VRVlog.LilToonExporter
                 if (PoseSampling.IsBlendShape(binding))
                 {
                     info.Morphs.Add(binding);
-                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;
+                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorphs.Add(binding);
                 }
                 else info.NonMorphBindings = true;
             }

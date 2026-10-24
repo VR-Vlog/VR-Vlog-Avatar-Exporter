@@ -233,7 +233,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Binding-derived members (Morphs, HasBindings, NonMorphBindings,
-        // DynamicMorph) depend on the caller's path exclusion. Copies leave
+        // DynamicMorphs) depend on the caller's path exclusion. Copies leave
         // them unset; a replay rebuilds them from the recorded clips.
         private static ExpressionDependencies.Layer Copy(ExpressionDependencies.Layer source, Dictionary<object, object> map)
         {

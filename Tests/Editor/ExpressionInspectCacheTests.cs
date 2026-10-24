@@ -198,7 +198,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Join(layer.CurveWrites, x => x) + Join(layer.Morphs, x => x.path + "/" + x.propertyName) + Join(layer.Clips, x => x.name) +
                 Join(layer.DriverPrograms, Program) + Join(layer.FxCommands, x => Behaviour(x.Key) + "=" + Program(x.Value)) +
                 Join(layer.WeightControls, x => Behaviour(x.Key) + "=" + Weight(x.Value)) + "/" + layer.WriteDefaults + "/" + layer.HasBindings +
-                "/" + layer.EmptyMotion + "/" + layer.FxControl + "/" + layer.DynamicMorph + "/" + layer.Timed + "/" + layer.NonMorphBindings);
+                "/" + layer.EmptyMotion + "/" + layer.FxControl + "/" + string.Join(",", layer.DynamicMorphs.Select(binding => binding.path + ":" + binding.propertyName).OrderBy(name => name, StringComparer.Ordinal)) + "/" + layer.Timed + "/" + layer.NonMorphBindings);
             return string.Join("\n", text) + "\n" + Join(drivers, x => Behaviour(x.Key) + "=" + Program(x.Value)) + Join(unknown, x => x);
         }
     }
