@@ -1,7 +1,7 @@
 # 顔のボーンを準備済みの姿勢に戻すだけの曲線を、衣装・ギミックとの連動の根拠にしない
 
 - 日付: 2026-10-25
-- 対象: `Editor/NeutralShapePlan.cs`、`Editor/SelectedExpressionAppearance.cs`、`Editor/ExpressionDependencies.cs`、`Editor/NeutralInputProof.cs`、`Editor/VrChatExpressionMenu.cs`、`Tests/Editor/NeutralShapeSamplerTests.cs`、`Tools/run-unity-compatibility.py`
+- 対象: `Editor/NeutralShapePlan.cs`、`Editor/SelectedExpressionAppearance.cs`、`Editor/ExpressionDependencies.cs`、`Editor/NeutralInputProof.cs`、`Editor/VrChatExpressionMenu.cs`、`Editor/ExportGimmickRules.cs`、`Tests/Editor/NeutralShapeSamplerTests.cs`、`Tools/run-unity-compatibility.py`、`CHANGELOG.md`、`Compatibility/AvatarPreservation.md`
 
 ## 背景
 
@@ -23,6 +23,7 @@ FXの通常時の顔・体形を基準形へ戻す処理（`2026-10-25-restore-f
 - 集合を持たせないパラメーターは次のとおり。FX以外の再生レイヤー・Animatorの曲線・Add・Copy・Randomで書き込まれるもの、Saved・同期で他人の値が入りうるもの、Puppetの軸、型や初期値が宣言ごとに違うもの。これらは今までどおり任意の値を取るとみなす。メニューの値は`NeutralInputProof.ReadMenus`が`Source.MenuValues`・`MenuContinuous`に集める。
 - 同じレイヤーの別の表情のTransform曲線も、条件を満たせば見た目の根拠にしない。表情レイヤーはどのクリップも同じ目・口のボーンのチャンネルを書き、待機状態のクリップはそれを準備済みの姿勢に保ち、ループする表情の1つは目のボーンを小さく揺らす。そこで、クリップCのTransform曲線bについて、Cを持つレイヤー（`clipOwners`）に、C以外で固定値のまま待機中に到達するクリップR（`restClips`、サンプラーと同じ`FixedNeutralValues`・`NeutralClips`で求める）があり、Rが`invariantClips`に含まれ、R自身がbの曲線を持ち、`IsUnchangedTransform(R, b)`が真なら、bは根拠にしない。Cの値は見ない。待機状態のクリップがそのチャンネルを準備済みの姿勢に明示的に保つので、書き出し用コピーはそのチャンネルについて待機状態の代わりになる。別の表情が同じチャンネルを動かすのは、そのチャンネルの動きであって衣装の状態ではない。
 - 待機状態のクリップRがbを時間で動かすとき（`SelectedExpressionAppearance.IsMovingTransform(R, b)`。軸ごとではなく、`IsUnchangedTransform`と同じくプロパティ単位で、どれかの軸の曲線が一定でなければ真）も、bは根拠にしない。髪や羽のレイヤーの待機状態のクリップが羽のボーンの回転をループで揺らし、顔のレイヤーと同じメニューのIntで選ぶ別のクリップがそのボーンを別の姿勢にする構成で、別のクリップが見た目の変更と判定され、同じIntを読む顔のレイヤーのシェイプキーがすべて保持されて口が消えていた。ループするRはそのチャンネルに1つの値を持たないので、時間で変わるシェイプキーと同じく、書き出し用コピーがそのチャンネルについて待機状態の代わりになる。そのレイヤー自身の待機状態が時間で動かすチャンネルは、そのレイヤーの動きであって衣装の状態ではない。この規則はR自身の曲線にも当てる（Rを別のクリップに限ると、ループするR自身が見た目の変更と判定され、同じ理由で顔のシェイプキーが保持される）。
+- `NeutralShapePlan.IsInertDynamicsBinding`の許可リストに、Unity標準の`ParticleSystem`のPPtrでない曲線（`EmissionModule.rateOverTime.scalar`などのモジュールの設定）と、`VRCHeadChop`の`m_Enabled`を足す。FXの常に到達する補助レイヤーの待機状態がこれらを変えていると、「BlendShape以外の変化が含まれます」として通常時の顔全体が書き出し用コピーの値に戻っていた。パーティクルのモジュールは放出だけを決め、VRCHeadChopは一人称視点で頭のボーンを縮めるだけで編集モードでは動かないので、どちらも読み取るBlendShapeの値を変えられない。それ以外のコンポーネントのプロパティ（`BoxCollider`の大きさなど）は、これまでどおり拒否する。
 
 アバター名・ボーン名・特定の構成での分岐は足さない。
 

@@ -1191,6 +1191,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(PhysBoneSpringExport.ColliderType, 1f)]
         [TestCase(ExportGimmickRules.ContactReceiver, 0f)]
         [TestCase(ExportGimmickRules.ContactSender, 1f)]
+        [TestCase(ExportGimmickRules.HeadChop, 1f)]
         public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled)
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
@@ -1216,6 +1217,34 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(plan.AllowsEvaluationBinding(clip, binding), Is.True);
             Assert.That(plan.EvaluationBindingRejection(clip, binding), Is.Null);
             Assert.That(component.enabled, Is.False); Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));
+            Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
+        }
+
+        [Test]
+        public void ParticleEffectSupportIsHarmless()
+        {
+            Open(75); skin.SetBlendShapeWeight(0, 17);
+            var target = new GameObject("Sparkle"); target.transform.SetParent(avatar.transform, false);
+            var particles = target.AddComponent<ParticleSystem>();
+            var emission = particles.emission; emission.rateOverTime = 2;
+            var clip = new AnimationClip { name = "Particle switch" };
+            var binding = EditorCurveBinding.FloatCurve(target.name, typeof(ParticleSystem), "EmissionModule.rateOverTime.scalar");
+            AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 5));
+            AssetDatabase.AddObjectToAsset(clip, controller);
+            var support = Layer("Particle support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            Assert.That(values.Select(value => value.Shape), Is.EqualTo(new[] { "Open" }));
+            Assert.That(values.Single().Weight, Is.EqualTo(75).Within(.01));
+            Assert.That(warnings.Any(value => value.Contains("rateOverTime")), Is.False, string.Join("\n", warnings));
+            Assert.That(particles.emission.rateOverTime.constant, Is.EqualTo(2)); Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));
+            var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
+            var plan = NeutralShapePlan.Create(avatar, controller, new[] { new[] {
+                EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Open") } },
+                source: metadata, fixedContext: FixedExpressionContext.Create(controller, metadata.Defaults, metadata));
+            Assert.That(plan.AllowsEvaluationBinding(clip, binding), Is.True);
+            Assert.That(plan.EvaluationBindingRejection(clip, binding), Is.Null);
+            Assert.That(particles.emission.rateOverTime.constant, Is.EqualTo(2)); Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(17));
             Assert.That(EditorJsonUtility.ToJson(controller), Is.EqualTo(before));
         }
 

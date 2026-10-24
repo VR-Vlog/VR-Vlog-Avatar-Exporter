@@ -434,13 +434,21 @@ namespace VRVlog.LilToonExporter
         // contribute neither to the blend shape weights the probe reads nor to
         // the exported appearance, and the probe disables every Behaviour, so
         // enabling one runs nothing (none of them runs in edit mode either).
-        // Their enable curves pass as evaluation support.
+        // Their enable curves pass as evaluation support. VRCHeadChop only
+        // scales head bones for the local first-person view, and its enable
+        // curve runs nothing in edit mode either. Unity's native ParticleSystem
+        // module settings (emission rate, colour, ...) only drive particle
+        // emission, so any float curve on it cannot move a blend shape weight.
+        // Other component properties stay rejected.
         internal static bool IsInertDynamicsBinding(EditorCurveBinding binding)
         {
-            if (binding.isPPtrCurve || binding.propertyName != "m_Enabled") return false;
+            if (binding.isPPtrCurve) return false;
+            if (binding.type == typeof(ParticleSystem)) return true;
+            if (binding.propertyName != "m_Enabled") return false;
             var name = binding.type?.FullName;
             return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
-                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
+                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender ||
+                name == ExportGimmickRules.HeadChop;
         }
 
         private static bool IsMaterial(EditorCurveBinding binding) => typeof(Renderer).IsAssignableFrom(binding.type) &&
