@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using VRVlog.ObjectToggles;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
@@ -466,6 +467,8 @@ namespace VRVlog.LilToonExporter
             var fixedRootJoints = new HashSet<Transform>();
             ExportOptimizationBindings optimizerBindings = null;
             AuthoredExpressionEndpoints authoredEndpoints = null;
+            ObjectToggleCapture objectToggles = null;
+            ObjectToggleData objectToggleData = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -592,6 +595,10 @@ namespace VRVlog.LilToonExporter
                     // would be blamed on the build passes and retried without them.
                     // Stopping from the limit window cancels; the guard rethrows it.
                     guard.Watch(ExportStage.PoseCapture, () => PoseLimitChooser.Apply(poses, warnings, recoveryReport));
+                    // Menu toggles turn their default-off meshes on here, before
+                    // the base shape, neutral and optimizer captures below read
+                    // the active renderers.
+                    objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -802,6 +809,10 @@ namespace VRVlog.LilToonExporter
                         optimizerBindings.Bind(converter, model, storage);
                         int OutputNode(GameObject go) => converter.Nodes.TryGetValue(go, out var node) ? model.Nodes.IndexOf(node) : -1;
                         visemes = capturedVisemes != null ? capturedVisemes.Resolve(OutputNode) : VrChatVisemeExport.Capture(clone, OutputNode);
+                        // Default-off meshes are already on in the copy; without the
+                        // extension they would show, so a failure writes the file
+                        // again without the toggles.
+                        if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                     }, warnings: warnings);
                 guard.Watch(ExportStage.BuildProcess, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
@@ -891,6 +902,7 @@ namespace VRVlog.LilToonExporter
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
+                if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 return AvatarFormatRequirements.Write(exported);
             }
@@ -1240,6 +1252,12 @@ namespace VRVlog.LilToonExporter
             // are averaged into the main image (lilToon 2.3.4 lilGetMatCap).
             var baseTexture = (hidden ? null : MatcapApproximation.Darkened(source, textures, matcapBakes)) ?? Texture(source, "_MainTex");
             var parametricRim = FallbackColor(source, MaterialColorType.rimColor, suppressSharedTextureEmission);
+            // MToon's rim image also scales its MatCap. Without a parametric rim
+            // it carries the MatCap mask and main-color tint instead. A MatCap
+            // mask goes in even when a rim or backlight is on: losing the mask
+            // lights the whole mesh, while the rim only shrinks to the mask.
+            var matcapWeight = hidden || !MatcapApproximation.Masked(source) && (rimEnabled || parametricRim.maxColorComponent > 0f)
+                ? null : MatcapApproximation.Weight(source, textures, matcapBakes);
             var context = new MToon10Context(material)
             {
                 AlphaMode = AlphaMode(source),
@@ -1271,10 +1289,7 @@ namespace VRVlog.LilToonExporter
                 ParametricRimLiftFactor = 0f,
                 RimLightingMixFactor = Mathf.Clamp01(rimEnabled ? Float(source, "_RimEnableLighting", 1f) :
                     matcapAdditive ? Float(source, "_MatCapEnableLighting", 1f) : 1f),
-                // MToon's rim image also scales its MatCap. Without a parametric
-                // rim it carries the MatCap mask and main-color tint instead.
-                RimMultiplyTexture = rimEnabled ? Texture(source, "_RimColorTex")
-                    : !hidden && parametricRim.maxColorComponent <= 0f ? MatcapApproximation.Weight(source, textures, matcapBakes) : null,
+                RimMultiplyTexture = matcapWeight ?? (rimEnabled ? Texture(source, "_RimColorTex") : null),
                 OutlineWidthMode = outlineEnabled ? MToon10OutlineMode.World : MToon10OutlineMode.None,
                 // lilToon stores this UI value in centimetre-like units and
                 // multiplies it by 0.01 in the outline vertex shader. MToon10
@@ -1351,7 +1366,9 @@ namespace VRVlog.LilToonExporter
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
                 case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
                     ? MobileMaterialMath.MatcapColor(Color(source, "_RimColor", UnityEngine.Color.black), 1f)
-                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f ? Color(source, "_BacklightColor", UnityEngine.Color.black) : UnityEngine.Color.black;
+                    // lilToon 2.x scales backlight by its color alpha, like the rim above.
+                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f
+                        ? MobileMaterialMath.MatcapColor(Color(source, "_BacklightColor", UnityEngine.Color.black), 1f) : UnityEngine.Color.black;
                 case MaterialColorType.outlineColor: return Color(source, "_OutlineColor", UnityEngine.Color.black);
                 default: throw new ArgumentOutOfRangeException(nameof(type));
             }

@@ -1,6 +1,6 @@
 # 多様なアバターの書き出しと見た目の保持
 
-安定版 **1.1.0** では、表情ボードで表情・ポーズを指定します。MA/NDMFの前処理後コピーの値を基準の顔・体形に使うため、VRChat使用時と異なる場合があります。対応するファイルと収録範囲は[VRM書き出しガイド](../Documentation~/ExperimentalExpressionCapture.md)を確認してください。[クラウドQR転送](../Documentation~/CloudTransfer.md)でスマホへ送れます。ALCOMの通常の一覧から選択でき、**Show pre-release packages** の有効化は不要です。
+安定版 **1.2.0** では、表情ボードで表情・ポーズを指定します。MA/NDMFの前処理後コピーの値を基準の顔・体形に使うため、VRChat使用時と異なる場合があります。対応するファイルと収録範囲は[VRM書き出しガイド](../Documentation~/ExperimentalExpressionCapture.md)を確認してください。[クラウドQR転送](../Documentation~/CloudTransfer.md)でスマホへ送れます。ALCOMの通常の一覧から選択でき、**Show pre-release packages** の有効化は不要です。
 
 ## 旧0.11.15-beta.1の仕様
 
