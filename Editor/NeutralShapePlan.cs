@@ -139,9 +139,9 @@ namespace VRVlog.LilToonExporter
                     // prepared pose: the copy stands in the rest alternative for
                     // it. Another pose in a sibling face clip is motion of the
                     // same channel, not wardrobe. A channel the rest clip moves
-                    // over time is likewise motion.
+                    // over time is likewise motion, in the rest clip itself too.
                     if (binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
-                            rest != clip && restClips.Contains(rest) && invariantClips.Contains(rest) &&
+                            restClips.Contains(rest) && invariantClips.Contains(rest) &&
                             AnimationUtility.GetEditorCurve(rest, binding) != null &&
                             (SelectedExpressionAppearance.IsUnchangedTransform(prepared, rest, binding) ||
                              SelectedExpressionAppearance.IsMovingTransform(rest, binding))))) continue;
