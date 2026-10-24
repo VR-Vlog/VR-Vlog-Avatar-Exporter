@@ -75,6 +75,39 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // A constant Transform curve equal to the prepared pose. Axes the
+        // clip omits keep the prepared value. Rotation uses Unity's
+        // Quaternion equality, so raw Euler wrap and q/-q are the same pose.
+        internal static bool IsUnchangedTransform(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
+        {
+            if (avatar == null || clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
+                binding.path == null || binding.propertyName == null) return false;
+            var dot = binding.propertyName.LastIndexOf('.');
+            if (dot < 0) return false;
+            var property = binding.propertyName.Substring(0, dot);
+            var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
+                AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray();
+            if (matches.Length == 0) return true; // Unity cannot bind an absent prepared target.
+            if (matches.Length != 1)
+                throw new InvalidOperationException("表情の見た目の対象を一意に指定できません: " + clip.name + " / " + binding.path);
+            var target = matches[0]; var valid = true;
+            float Axis(string axis, float current)
+            {
+                var component = EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis);
+                if (AnimationUtility.GetEditorCurve(clip, component) == null) return current;
+                if (ConstantValue(clip, component, out var value) && Finite(value)) return value;
+                valid = false; return current;
+            }
+            switch (property)
+            {
+                case "m_LocalPosition": { var p = target.localPosition; var v = new Vector3(Axis("x", p.x), Axis("y", p.y), Axis("z", p.z)); return valid && v.Equals(p); }
+                case "m_LocalScale": { var s = target.localScale; var v = new Vector3(Axis("x", s.x), Axis("y", s.y), Axis("z", s.z)); return valid && v.Equals(s); }
+                case "localEulerAnglesRaw": { var e = target.localEulerAngles; var v = new Vector3(Axis("x", e.x), Axis("y", e.y), Axis("z", e.z)); return valid && Quaternion.Euler(v) == target.localRotation; }
+                case "m_LocalRotation": { var q = target.localRotation; var r = new Quaternion(Axis("x", q.x), Axis("y", q.y), Axis("z", q.z), Axis("w", q.w)); return valid && r == q; }
+                default: return false;
+            }
+        }
+
         private static bool ConstantValue(AnimationClip clip, EditorCurveBinding binding, out float value)
         {
             value = 0;

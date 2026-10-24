@@ -126,6 +126,10 @@ namespace VRVlog.LilToonExporter
                 {
                     if (unchangedClips?.Contains(clip) == true &&
                         SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)) continue;
+                    // A face clip commonly resets its bones to the prepared
+                    // pose. Holding that pose changes nothing, so it does not
+                    // tie the clip's morphs to an appearance option.
+                    if (invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding)) continue;
                     // An alternate layout path absent from the prepared copy
                     // cannot bind in Unity. It is neither a visual change nor
                     // evidence that accompanying morphs belong to appearance.
