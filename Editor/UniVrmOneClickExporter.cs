@@ -610,8 +610,11 @@ namespace VRVlog.LilToonExporter
                     recoveryReport.Phase = ExportPhase.Expressions;
                     // The normal face and body are what the FX defaults show, as in
                     // VRChat. Left out, the copy's own values stay the rest pose.
-                    guard.Step(ExportStage.FxRest, () => NeutralShapeSnapshot.Apply(clone,
-                        NeutralShapeSampler.Sample(clone, preparedMenuBindings.ExcludesPreparedPath, warnings)));
+                    // Reading the FX only falls back in place; writing the values
+                    // into the copy is a Step like every other change to it.
+                    var fxRest = guard.Run(ExportStage.FxRest, () => NeutralShapeSampler.Sample(clone,
+                        preparedMenuBindings.ExcludesPreparedPath, warnings), () => null);
+                    if (fxRest != null) guard.Step(ExportStage.FxRest, () => NeutralShapeSnapshot.Apply(clone, fxRest));
                     NeutralShapeSnapshot neutral;
                     using (ExpressionBoardTimings.Step("export.defaultFace"))
                     {

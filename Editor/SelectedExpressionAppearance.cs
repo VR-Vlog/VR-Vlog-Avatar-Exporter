@@ -75,22 +75,18 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        // A constant Transform curve equal to the prepared pose. Axes the
-        // clip omits keep the prepared value. Rotation uses Unity's
-        // Quaternion equality, so raw Euler wrap and q/-q are the same pose.
-        internal static bool IsUnchangedTransform(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
+        // A constant Transform curve on target equal to its prepared pose.
+        // Axes the clip omits keep the prepared value. Rotations compare as
+        // poses, so raw Euler wrap and q/-q are the same pose. The caller
+        // resolves binding.path to target once per hierarchy.
+        internal static bool IsUnchangedTransform(Transform target, AnimationClip clip, EditorCurveBinding binding)
         {
-            if (avatar == null || clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
+            if (target == null || clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
                 binding.path == null || binding.propertyName == null) return false;
             var dot = binding.propertyName.LastIndexOf('.');
             if (dot < 0) return false;
             var property = binding.propertyName.Substring(0, dot);
-            var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>
-                AnimationUtility.CalculateTransformPath(transform, avatar.transform) == binding.path).ToArray();
-            if (matches.Length == 0) return true; // Unity cannot bind an absent prepared target.
-            if (matches.Length != 1)
-                throw new InvalidOperationException("表情の見た目の対象を一意に指定できません: " + clip.name + " / " + binding.path);
-            var target = matches[0]; var valid = true;
+            var valid = true;
             float Axis(string axis, float current)
             {
                 var component = EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis);

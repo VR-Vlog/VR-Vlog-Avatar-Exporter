@@ -15,7 +15,7 @@ PR #128（0.11.15-beta.1）で、書き出し時に`NeutralShapeSampler.Sample`�
 
 ## 決定
 
-- `ExportStage.FxRest`（表示名「FXの通常時の顔・体形」、Phaseは`Expressions`）を足し、`NeutralShapeSampler.Sample`と`NeutralShapeSnapshot.Apply`をその`guard.Step`の中で呼ぶ。置き場所は表情・ジェスチャーの取り込みの後、`NormalizeSourceWeights`・`blink.ResolvePreparedNeutral`・`Capture`の前にする。瞬きの準備済み基準形は、FXで開いた目を見てから決まる。
+- `ExportStage.FxRest`（表示名「FXの通常時の顔・体形」、Phaseは`Expressions`）を足し、FXを読むだけの`NeutralShapeSampler.Sample`は`guard.Run`（失敗したらその場で省いて続ける）、書き出し用コピーへ値を書く`NeutralShapeSnapshot.Apply`は`guard.Step`（ほかの段と同じく、失敗したら段を省いて書き出しをやり直す）の中で呼ぶ。置き場所は表情・ジェスチャーの取り込みの後、`NormalizeSourceWeights`・`blink.ResolvePreparedNeutral`・`Capture`の前にする。瞬きの準備済み基準形は、FXで開いた目を見てから決まる。
 - 時間で変わるBlendShape曲線は焼き込まず、書き出し用コピーの値を保持する（サンプラーの既存の扱いのまま）。同じクリップの一定の曲線は焼き込む。
 - `FxRest`の`Outcome`は`Approximated`にする。この段階が失敗したときは、`ContinueOnStageFailure`で段階だけを省いて書き出しを続け、顔・体形は書き出し用コピーの値になる。1.2.0までと同じ見た目なので、書き出し自体は止めない。
 - `preservePreparedNeutral: true`は残す。`FxRest`を省いたときにAAOが省いたFXの定数曲線を基準形へ焼き込み直さないようにするためと、サンプラーが保持した時間で変わる変形を守るため。代わりに、値が0の変形をAAOが固定する最適化は効かないままになる。
@@ -28,4 +28,5 @@ PR #128（0.11.15-beta.1）で、書き出し時に`NeutralShapeSampler.Sample`�
 ## 欠点
 
 - `preservePreparedNeutral: true`を残すので、値が0の変形をAAOで固定する最適化は効かない。
+- `ContinueOnStageFailure`をオフにした書き出しでは、ほかの段と同じく`FxRest`の失敗で書き出しが止まる。1.2.0まではこの段が無かったので、オフの設定で今まで書き出せていたアバターが止まることがありうる。
 - 時間で変わる変形や固定できないFXの状態は、#128より前と同じく書き出し用コピーの値のままなので、VRChatでの見た目と異なる場合がある。その部分は書き出し結果に対象と理由を表示する。

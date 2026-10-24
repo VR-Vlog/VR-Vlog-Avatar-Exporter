@@ -241,7 +241,7 @@ BEHAVIOR_CASES = {
         'UnknownComponentPropertyPreservesPreparedNeutralAndReportsTarget': 1,
         'ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest': 1,
         'FaceBoneHeldAtThePreparedPoseDoesNotClaimTheRestMorph': 2,
-        'RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance': 4,
+        'RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance': 5,
         'SharedInputLayerWhoseRestMovesTheBoneDoesNotCoupleTheFace': 4,
         'DriverSelectedFaceReachableOnlyThroughDormantBuiltInDoesNotOwnTheRestMorph': 3,
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 2,

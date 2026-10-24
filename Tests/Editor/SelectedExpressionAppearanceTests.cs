@@ -609,7 +609,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var (axis, value) in new[] { ("x", 0f), ("y", kind == "euler full turn" ? 390f : 40f), ("z", 0f) })
                     Curve("Dummy", typeof(Transform), "localEulerAnglesRaw." + axis, AnimationCurve.Constant(0, 1, value));
             var property = kind.EndsWith("quaternion") ? "m_LocalRotation.x" : "localEulerAnglesRaw.y";
-            Assert.That(SelectedExpressionAppearance.IsUnchangedTransform(avatar, clip,
+            Assert.That(SelectedExpressionAppearance.IsUnchangedTransform(dummy.transform, clip,
                 EditorCurveBinding.FloatCurve("Dummy", typeof(Transform), property)), Is.EqualTo(unchanged));
         }
     }

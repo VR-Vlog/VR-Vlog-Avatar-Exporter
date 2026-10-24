@@ -255,12 +255,14 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Every face clip writes the same mouth bone. When the rest face holds
         // it at the prepared pose, another pose in a sibling face is motion of
-        // that bone. A channel the rest face leaves alone, or a rest face that
-        // moves the bone itself, still claims the rest morph.
+        // that bone. A channel the rest face leaves alone, a rest face that
+        // moves the bone itself, or another layer sharing the sibling face
+        // without such a rest, still claims the rest morph.
         [TestCase("jitter")]
         [TestCase("constantPose")]
         [TestCase("positionOnly")]
         [TestCase("restDiffers")]
+        [TestCase("sharedWithoutRest")]
         public void RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance(string scenario)
         {
             const string signal = "Face select";
@@ -299,6 +301,14 @@ namespace VRVlog.LilToonExporter.Tests
             var face = State(controller.layers[0].stateMachine, sibling);
             var choose = idle.AddTransition(face); choose.hasExitTime = false; choose.duration = 0;
             choose.AddCondition(AnimatorConditionMode.Equals, 23, signal);
+            if (scenario == "sharedWithoutRest")
+            {
+                var blank = new AnimationClip { name = "Other rest" };
+                AssetDatabase.AddObjectToAsset(blank, controller);
+                var other = Layer("Other face"); other.defaultState = State(other, blank);
+                var shared = other.defaultState.AddTransition(State(other, sibling)); shared.hasExitTime = false; shared.duration = 0;
+                shared.AddCondition(AnimatorConditionMode.Equals, 23, signal);
+            }
             var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             if (scenario == "jitter" || scenario == "constantPose")

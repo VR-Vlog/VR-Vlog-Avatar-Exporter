@@ -138,14 +138,18 @@ namespace VRVlog.LilToonExporter
                     // layer's rest clip holds the channel at the prepared pose
                     // (or moves it over time), another pose in a sibling face
                     // clip is motion of the same channel, not wardrobe; so is the
-                    // rest clip's own time-varying curve. Motion stays evaluable
-                    // like any supported Transform curve.
-                    var motion = invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding) ||
-                        binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
+                    // rest clip's own time-varying curve. A clip shared by several
+                    // layers is motion only if every one of them has such a rest.
+                    // Motion stays evaluable like any supported Transform curve.
+                    // An absent target is handled as unbound below.
+                    bool Held(AnimationClip held) => plan.targets.TryGetValue(binding.path, out var found) && found.Length == 1 &&
+                        SelectedExpressionAppearance.IsUnchangedTransform(found[0], held, binding);
+                    var motion = invariantClips.Contains(clip) && (Held(clip) ||
+                        binding.type == typeof(Transform) && clipOwners[clip].All(index => ownershipLayers[index].Clips.Any(rest =>
                             restClips != null && restClips[index].Contains(rest) && invariantClips.Contains(rest) &&
                             AnimationUtility.GetEditorCurve(rest, binding) != null &&
-                            (SelectedExpressionAppearance.IsUnchangedTransform(prepared, rest, binding) ||
-                             SelectedExpressionAppearance.IsMovingTransform(rest, binding))));
+                            (Held(rest) ||
+                             SelectedExpressionAppearance.IsMovingTransform(rest, binding)))));
                     // An alternate layout path absent from the prepared copy
                     // cannot bind in Unity. It is neither a visual change nor
                     // evidence that accompanying morphs belong to appearance.
