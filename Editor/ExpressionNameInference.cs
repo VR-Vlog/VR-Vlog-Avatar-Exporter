@@ -15,27 +15,50 @@ namespace VRVlog.LilToonExporter
     //   GazeShapes, either one shape or a pair moving both eyes.
     internal static class ExpressionNameInference
     {
-        // Latin words must match a whole word (split at symbols, digits and
-        // camelCase); Japanese words match inside the name. Tier 0 words name
-        // the emotion itself and win over the looser tier 1 words.
-        internal static readonly (ExpressionPreset Preset, int Tier, string[] Words)[] Emotions =
+        // Words are read in every name, raw BlendShape names included.
+        // MenuWords (Japanese: kana, kanji and romaji such as "nagomi") only
+        // in names an author gave a whole expression (menu items, clips),
+        // because a raw Japanese shape name is usually an MMD-style part
+        // morph (びっくり = eyes, にっこり = mouth). ASCII words must match a
+        // whole word (split at symbols, digits and camelCase); other words
+        // match inside the name, so a kana word that ends other words
+        // (わらい in あざわらい) is not listed. Tears are not listed either: a
+        // name with tears alone is an effect toggled beside Cheek or Sweat,
+        // and "Smile Tears" is read by its smile. Tier 0 words name the
+        // emotion itself and win over the looser tier 1 words.
+        internal static readonly (ExpressionPreset Preset, int Tier, string[] Words, string[] MenuWords)[] Emotions =
         {
-            (ExpressionPreset.happy, 0, new[] { "happy", "happiness", "smile", "smiling", "grin", "笑顔", "えがお", "喜び", "嬉し", "うれし", "にこにこ", "ニコニコ", "にっこり", "スマイル", "ハッピー" }),
-            (ExpressionPreset.angry, 0, new[] { "angry", "anger", "furious", "mad", "怒", "いかり", "イライラ", "ぷんぷん", "プンプン" }),
-            (ExpressionPreset.sad, 0, new[] { "sad", "sadness", "sorrow", "unhappy", "悲", "哀", "かなし", "しょんぼり", "しょぼん" }),
-            (ExpressionPreset.relaxed, 0, new[] { "relax", "relaxed", "calm", "fun", "peaceful", "楽", "和み", "なごみ", "穏", "リラックス", "ほっこり", "まったり" }),
-            (ExpressionPreset.surprised, 0, new[] { "surprise", "surprised", "suprise", "shock", "shocked", "astonished", "驚", "びっくり", "ビックリ", "おどろ" }),
-            (ExpressionPreset.happy, 1, new[] { "joy", "joyful", "laugh", "laughing", "glad", "cheerful", "笑", "喜", "にこ", "ニコ" }),
-            (ExpressionPreset.angry, 1, new[] { "rage", "annoyed", "grumpy", "むっ", "ムッ" }),
-            (ExpressionPreset.sad, 1, new[] { "cry", "crying", "tear", "tears", "weep", "泣", "涙", "なみだ" }),
-            (ExpressionPreset.relaxed, 1, new[] { "chill", "gentle", "serene", "安らぎ", "やすらぎ" }),
-            (ExpressionPreset.surprised, 1, new[] { "wow", "gasp", "startled", "ぎょっ", "ギョッ" }),
+            (ExpressionPreset.happy, 0, new[] { "happy", "happiness", "smile", "smiling", "grin", "grinning" },
+                new[] { "笑顔", "えがお", "喜び", "嬉し", "うれし", "にこにこ", "ニコニコ", "にっこり", "ニッコリ", "スマイル", "ハッピー", "egao", "nikoniko", "nikkori", "ureshi", "ureshii" }),
+            (ExpressionPreset.angry, 0, new[] { "angry", "anger", "furious", "mad" },
+                new[] { "怒", "いかり", "イライラ", "ぷんぷん", "プンプン", "ikari", "okori", "punpun", "iraira" }),
+            (ExpressionPreset.sad, 0, new[] { "sad", "sadness", "sorrow", "sorrowful", "unhappy" },
+                new[] { "悲", "哀", "かなし", "しょんぼり", "しょぼん", "kanashii", "kanashimi", "shonbori", "shobon" }),
+            (ExpressionPreset.relaxed, 0, new[] { "relax", "relaxed", "calm", "fun", "peaceful" },
+                new[] { "楽", "和み", "なごみ", "ナゴミ", "穏", "リラックス", "ほっこり", "まったり", "nagomi", "hokkori", "mattari" }),
+            (ExpressionPreset.surprised, 0, new[] { "surprise", "surprised", "suprise", "suprised", "surprize", "surprized", "shock", "shocked", "astonished", "amazed" },
+                new[] { "驚", "びっくり", "ビックリ", "おどろ", "bikkuri", "odoroki" }),
+            (ExpressionPreset.happy, 1, new[] { "joy", "joyful", "laugh", "laughing", "glad", "cheerful", "delighted", "pleased" },
+                new[] { "笑", "喜", "にこ", "ニコ", "warai" }),
+            (ExpressionPreset.angry, 1, new[] { "rage", "annoyed", "grumpy", "irritated", "irate" },
+                new[] { "むっ", "ムッ" }),
+            (ExpressionPreset.sad, 1, new[] { "cry", "crying", "weep", "sob", "sobbing", "gloomy" },
+                new[] { "泣" }),
+            (ExpressionPreset.relaxed, 1, new[] { "chill", "gentle", "serene", "relieved", "comfy", "cozy" },
+                new[] { "安らぎ", "やすらぎ", "yasuragi" }),
+            (ExpressionPreset.surprised, 1, new[] { "wow", "gasp", "startled", "stunned", "omg" },
+                new[] { "ぎょっ", "ギョッ" }),
         };
 
-        // A side, a part of the face, a wink/blink or a toggle is not a whole emotion.
+        // A side, a part of the face, a wink/blink, a toggle, a hand sign or a
+        // face that is none of the five emotions (jitome, a sneer) is not a
+        // whole emotion. Such a name decides "no emotion" itself; a menu
+        // parent is never read for it.
         internal static readonly string[] VetoWords = { "eye", "eyes", "mouth", "brow", "eyebrow", "cheek", "wink", "blink", "left", "right", "l", "r",
-            "off", "reset", "none", "default", "brw", "mth", "teeth", "tongue", "nose" };
-        internal static readonly string[] VetoParts = { "目", "口", "眉", "頬", "ウィンク", "まばたき", "解除", "左", "右" };
+            "off", "reset", "none", "default", "brw", "mth", "teeth", "tongue", "nose",
+            "peace", "thumb", "thumbs", "thumbup", "jitome", "doya", "doyagao", "kyoton", "gunu" };
+        internal static readonly string[] VetoParts = { "目", "口", "眉", "頬", "ウィンク", "まばたき", "解除", "左", "右",
+            "ジト", "ドヤ", "きょとん", "キョトン", "ぐぬ", "嘲笑", "あざ笑", "あざわら", "作り笑", "つくりわら" };
 
         // Alias order expresses a documented preference (e.g. authored VRChat
         // visemes before a generic mouth shape). Never use substring matching.
@@ -47,7 +70,8 @@ namespace VRVlog.LilToonExporter
             ("oh", new[] { "vrc.v.oh", "vrc.v_oh", "mouth_o", "Oh", "O", "Fcl_MTH_O" }),
         };
 
-        internal static readonly string[] NeutralWords = { "neutral", "真顔", "無表情", "ニュートラル" };
+        // Split by source as in Emotions.
+        internal static readonly (string[] Words, string[] MenuWords) NeutralWords = (new[] { "neutral" }, new[] { "真顔", "無表情", "ニュートラル" });
         // A neutral name with one of these is a variant (eyes closed, half
         // open, asleep), not the resting face.
         internal static readonly string[] NeutralVetoWords = { "close", "closed", "half", "open", "sleep", "sleepy" };
@@ -67,10 +91,13 @@ namespace VRVlog.LilToonExporter
         static string[] LatinWords(string name) => Regex.Matches(name ?? "", "[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+")
             .Cast<Match>().Select(match => match.Value.ToLowerInvariant()).ToArray();
 
-        static bool IsLatin(string word) => word.All(character => character < 128);
+        // An ASCII word matches a whole word of the name, another word any part of it.
+        static bool Says(string name, string[] nameWords, string word) => word.All(character => character < 128)
+            ? nameWords.Contains(word) : name.IndexOf(word, StringComparison.Ordinal) >= 0;
 
-        internal static (ExpressionPreset Preset, int Tier)? MatchEmotion(string name, bool latinOnly = false) =>
-            Evaluate(name, latinOnly, out _);
+        // rawShape reads only Words, not MenuWords: for raw BlendShape names.
+        internal static (ExpressionPreset Preset, int Tier)? MatchEmotion(string name, bool rawShape = false) =>
+            Evaluate(name, rawShape, out _);
 
         // A VRChat menu path ("Sub / Leaf"). The leaf label decides; parent
         // levels are read, nearest first, only while every level below says
@@ -105,13 +132,13 @@ namespace VRVlog.LilToonExporter
         }
 
         // True for a name that says neutral and nothing else: no emotion, no
-        // face part, side or toggle. latinOnly as in MatchEmotion.
-        internal static bool MatchNeutral(string name, bool latinOnly = false)
+        // face part, side or toggle. rawShape as in MatchEmotion.
+        internal static bool MatchNeutral(string name, bool rawShape = false)
         {
-            if (string.IsNullOrWhiteSpace(name) || Vetoed(name) || Evaluate(name, latinOnly, out _) != null) return false;
+            if (string.IsNullOrWhiteSpace(name) || Vetoed(name) || Evaluate(name, rawShape, out _) != null) return false;
             var words = LatinWords(name);
             if (words.Any(NeutralVetoWords.Contains)) return false;
-            return NeutralWords.Any(word => IsLatin(word) ? words.Contains(word) : !latinOnly && name.IndexOf(word, StringComparison.Ordinal) >= 0);
+            return NeutralWords.Words.Concat(rawShape ? Array.Empty<string>() : NeutralWords.MenuWords).Any(word => Says(name, words, word));
         }
 
         // A menu path names neutral only by its leaf, and only when no level
@@ -130,7 +157,7 @@ namespace VRVlog.LilToonExporter
 
         // decided is false only when the name has neither a veto word nor any
         // emotion word, i.e. it says nothing about an emotion.
-        static (ExpressionPreset Preset, int Tier)? Evaluate(string name, bool latinOnly, out bool decided)
+        static (ExpressionPreset Preset, int Tier)? Evaluate(string name, bool rawShape, out bool decided)
         {
             decided = false;
             if (string.IsNullOrWhiteSpace(name)) return null;
@@ -139,8 +166,8 @@ namespace VRVlog.LilToonExporter
             var words = LatinWords(name);
             for (var tier = 0; tier <= 1; tier++)
             {
-                var found = Emotions.Where(entry => entry.Tier == tier && entry.Words.Any(word => IsLatin(word)
-                    ? words.Contains(word) : !latinOnly && name.IndexOf(word, StringComparison.Ordinal) >= 0)).Select(entry => entry.Preset).Distinct().ToArray();
+                var found = Emotions.Where(entry => entry.Tier == tier && entry.Words.Concat(rawShape ? Array.Empty<string>() : entry.MenuWords)
+                    .Any(word => Says(name, words, word))).Select(entry => entry.Preset).Distinct().ToArray();
                 // Two emotions in the same tier say neither.
                 if (found.Length == 1) return (found[0], tier);
                 if (found.Length > 1) return null;
