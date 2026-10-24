@@ -16,9 +16,9 @@ namespace VRVlog.LilToonExporter
     // one source becomes a child of that source instead, which moves the same
     // way (props held in a hand). The rest keep the current pose, as before,
     // and are listed in the result list. The originals stay on the copy
-    // (UniVRM does not write them). Off constraints and those with Lock off
-    // (VRChat only re-measures At Rest and Offset for them) keep the pose
-    // too and are listed; weightless ones have nothing to move.
+    // (UniVRM does not write them). Off constraints keep the pose too and are
+    // listed; weightless ones have nothing to move. Lock is not read: it only
+    // matters while editing, and VRChat drives an unlocked constraint as well.
     internal static class ConstraintExport
     {
         internal const string Category = "コンストレイント";
@@ -34,7 +34,6 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOutside = "アバターのルート・アバターの外・非表示のオブジェクトを参照しているため、今の姿勢のまま書き出しました";
         internal const string OmittedDuplicate = "同じオブジェクトに別のコンストレイントが既にあるため、今の姿勢のまま書き出しました";
         internal const string OmittedCycle = "ソースのコンストレイントをたどるとこのオブジェクトに戻り、VRMはこの循環を書けないため、今の姿勢のまま書き出しました";
-        internal const string OmittedUnlocked = "Lockがオフのため、VRChatでも対象を動かしません。今の姿勢のまま書き出しました";
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
@@ -42,7 +41,7 @@ namespace VRVlog.LilToonExporter
         {
             KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
             OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedUnlocked, OmittedOff, OmittedReparent, OmittedBound
+            OmittedOff, OmittedReparent, OmittedBound
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -61,7 +60,7 @@ namespace VRVlog.LilToonExporter
         {
             internal Component Component;
             internal Kind Kind;
-            internal bool On, Locked, LocalSpace, FreezeToWorld, X = true, Y = true, Z = true, Positions = true;
+            internal bool On, LocalSpace, FreezeToWorld, X = true, Y = true, Z = true, Positions = true;
             internal float Weight;
             internal Transform Target;
             internal Vector3 AimAxis = Vector3.forward;
@@ -101,10 +100,7 @@ namespace VRVlog.LilToonExporter
                     var sources = plan.Sources.Where(s => s.Transform != null && s.Weight > 0 && !float.IsInfinity(s.Weight)).ToArray();
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
-                    // With Lock off VRChat does not move the target either; it only
-                    // re-measures At Rest and Offset, so a VRM constraint would differ.
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : !plan.Locked ? (ExportOutcome.Omitted, OmittedUnlocked)
                         : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
                         : Apply(plan, sources, copy.transform, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
@@ -302,9 +298,9 @@ namespace VRVlog.LilToonExporter
         {
             if (!(component is IConstraint constraint) || !(component is Behaviour behaviour)) return null;
             var plan = new Plan { Component = component, Target = component.transform, Weight = constraint.weight,
-                // Unity's manual: Lock "has no effect in Play Mode", so an active Unity constraint drives its
-                // target in the app whatever Lock says. Only VRChat's Locked keeps the target still.
-                On = behaviour.isActiveAndEnabled && constraint.constraintActive, Locked = true };
+                // Lock only decides whether moving the target in the editor re-measures the offsets; in Play Mode,
+                // in VRChat and in the app an active constraint drives its target either way, so Lock is not read.
+                On = behaviour.isActiveAndEnabled && constraint.constraintActive };
             var axes = Axis.X | Axis.Y | Axis.Z;
             switch (component)
             {
@@ -342,7 +338,6 @@ namespace VRVlog.LilToonExporter
                 Component = component, Kind = kind,
                 On = (component is Behaviour behaviour ? behaviour.isActiveAndEnabled : component.gameObject.activeInHierarchy) &&
                     True("IsActive"),
-                Locked = True("Locked"),
                 Weight = settings.FindProperty("GlobalWeight")?.floatValue ?? 0,
                 LocalSpace = True("SolveInLocalSpace"), FreezeToWorld = True("FreezeToWorld"),
                 Target = settings.FindProperty("TargetTransform")?.objectReferenceValue as Transform ?? component.transform,
