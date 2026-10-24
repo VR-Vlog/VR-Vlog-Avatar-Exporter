@@ -276,7 +276,7 @@ assert "EmissiveFactorLinear = FallbackColor(source, MaterialColorType.emissionC
 assert "MatcapColorFactorSrgb = FallbackColor(source, MaterialColorType.matcapColor," in one_click
 assert "var parametricRim = FallbackColor(source, MaterialColorType.rimColor," in one_click
 assert "ParametricRimColorFactorSrgb = parametricRim," in one_click
-assert 'source.GetFloat("_UseBacklight") > .5f ? Color(source, "_BacklightColor"' in one_click
+assert '? MobileMaterialMath.MatcapColor(Color(source, "_BacklightColor", UnityEngine.Color.black), 1f)' in one_click
 assert 'backlightEnabled ? Float(source, "_BacklightDirectivity"' in one_click
 assert "ShadeColorFactorSrgb = FallbackColor(source, MaterialColorType.shadeColor," in one_click
 assert "ShadeColorTexture = shadowEnabled" in one_click

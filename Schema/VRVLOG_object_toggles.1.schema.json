@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_object_toggles/1/schema.json",
+  "title": "VRVLOG_object_toggles 1",
+  "description": "GameObjects that the avatar's VRChat Expression Menu toggles switch on and off, read by the exporter after the avatar build. Menu entries that share a parameter form a group. Each state of a group lists activeSelf of every target node for one value of the parameter, sampled with every other parameter at its default; combinations of parameters are not represented. An item is on while its group's value equals the item's value; turning it on sets the group to that value and turning it off sets it to 0. A renderer is hidden by the toggles when its node or an ancestor node is a target whose current state is false. Rules that span items are validated by the shared reader (ObjectToggleData.Read): group parameters are unique (ordinal); a node index appears at most once over all groups and the whole extension has at most 4096 targets; state values are unique in a group and include 0 and defaultValue; every active array has as many entries as the group's targets; item ids are unique; every item names an existing group and one of its state values other than 0; every group has at least one item. Node indices must be less than the glTF node count.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "groups",
+    "items"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "groups": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/$defs/group"
+      }
+    },
+    "items": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "$ref": "#/$defs/item"
+      }
+    }
+  },
+  "$defs": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "value": {
+      "type": "integer",
+      "minimum": -1000000,
+      "maximum": 1000000
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parameter",
+        "name",
+        "defaultValue",
+        "targets",
+        "states"
+      ],
+      "properties": {
+        "parameter": {
+          "$ref": "#/$defs/name"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "defaultValue": {
+          "$ref": "#/$defs/value"
+        },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "states": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/state"
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value",
+        "active"
+      ],
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/value"
+        },
+        "active": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1024,
+          "items": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "path",
+        "parameter",
+        "value"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/name"
+        },
+        "name": {
+          "$ref": "#/$defs/name"
+        },
+        "path": {
+          "type": "array",
+          "maxItems": 16,
+          "items": {
+            "$ref": "#/$defs/name"
+          }
+        },
+        "parameter": {
+          "$ref": "#/$defs/name"
+        },
+        "value": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/value"
+            },
+            {
+              "not": {
+                "const": 0
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
