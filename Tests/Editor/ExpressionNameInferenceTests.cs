@@ -64,6 +64,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Wink_1")]
         [TestCase("Heart eye")]
         [TestCase("Smirk")]
+        [TestCase("Egao_Ikari")]
         public void PartialOneSidedOrMixedNamesNameNothing(string name)
         {
             Assert.That(ExpressionNameInference.MatchEmotion(name), Is.Null);
