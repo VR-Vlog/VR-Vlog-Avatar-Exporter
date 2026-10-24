@@ -317,6 +317,69 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
         }
 
+        // Another layer reads the same menu value and poses a bone. When that
+        // layer's rest clip moves the bone over time or holds it at the
+        // prepared pose, the other pose is motion and does not tie the face to
+        // it. A rest that holds another pose or leaves the bone alone does.
+        [TestCase("sway")]
+        [TestCase("heldAtPrepared")]
+        [TestCase("heldElsewhere")]
+        [TestCase("restSilent")]
+        public void SharedInputLayerWhoseRestMovesTheBoneDoesNotCoupleTheFace(string scenario)
+        {
+            const string signal = "Face select";
+            controller.AddParameter(signal, AnimatorControllerParameterType.Int);
+            ConfigureTransientInputMetadata(signal, "menu", true);
+            using (var data = new SerializedObject(descriptor))
+            using (var menu = new SerializedObject(data.FindProperty("expressionsMenu").objectReferenceValue))
+            {
+                menu.FindProperty("controls").GetArrayElementAtIndex(0).FindPropertyRelative("value").floatValue = 23;
+                menu.ApplyModifiedPropertiesWithoutUndo();
+            }
+            var ear = new GameObject("Ear"); ear.transform.SetParent(avatar.transform, false);
+            ear.transform.localEulerAngles = new Vector3(-44.712f, 0, 0);
+            var source = ear.transform.localRotation;
+            var idle = Open(75);
+            var sibling = Clip("Open", AnimationCurve.Constant(0, 1, 10)); sibling.name = "Sibling face";
+            var face = State(controller.layers[0].stateMachine, sibling);
+            var choose = idle.AddTransition(face); choose.hasExitTime = false; choose.duration = 0;
+            choose.AddCondition(AnimatorConditionMode.Equals, 23, signal);
+            EditorCurveBinding Rotation(string axis) => EditorCurveBinding.FloatCurve(ear.name, typeof(Transform), "localEulerAnglesRaw." + axis);
+            var rest = new AnimationClip { name = "Ear rest" };
+            if (scenario == "sway")
+            {
+                AnimationUtility.SetEditorCurve(rest, Rotation("x"), new AnimationCurve(new Keyframe(0, -44.712f), new Keyframe(.5f, -40), new Keyframe(1, -44.712f)));
+                AnimationUtility.SetEditorCurve(rest, Rotation("y"), AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(rest, Rotation("z"), AnimationCurve.Constant(0, 1, 0));
+                var settings = AnimationUtility.GetAnimationClipSettings(rest); settings.loopTime = true; AnimationUtility.SetAnimationClipSettings(rest, settings);
+            }
+            else if (scenario != "restSilent")
+                foreach (var axis in new[] { (Name: "x", Value: scenario == "heldElsewhere" ? -20f : -44.712f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                    AnimationUtility.SetEditorCurve(rest, Rotation(axis.Name), AnimationCurve.Constant(0, 1, axis.Value));
+            var raised = new AnimationClip { name = "Ear raised" };
+            foreach (var axis in new[] { (Name: "x", Value: -30f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                AnimationUtility.SetEditorCurve(raised, Rotation(axis.Name), AnimationCurve.Constant(0, 1, axis.Value));
+            AssetDatabase.AddObjectToAsset(rest, controller); AssetDatabase.AddObjectToAsset(raised, controller);
+            var motion = Layer("Ear motion"); motion.defaultState = State(motion, rest);
+            var pose = State(motion, raised);
+            var select = motion.defaultState.AddTransition(pose); select.hasExitTime = false; select.duration = 0;
+            select.AddCondition(AnimatorConditionMode.Equals, 23, signal);
+            var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            if (scenario == "sway" || scenario == "heldAtPrepared")
+            {
+                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
+                Assert.That(warnings, Is.Empty);
+            }
+            else
+            {
+                Assert.That(values.Select(value => value.Shape), Does.Not.Contain("Open"));
+                Assert.That(warnings.Any(warning => warning.Contains(signal) && warning.Contains("localEulerAnglesRaw")), Is.True, string.Join("\n", warnings));
+            }
+            Assert.That(Quaternion.Angle(ear.transform.localRotation, source), Is.LessThan(.001));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+        }
+
         // A face selected by a driver value that only a dormant built-in
         // branch sets is not an appearance option. A menu value or a saved
         // parameter can still select it.

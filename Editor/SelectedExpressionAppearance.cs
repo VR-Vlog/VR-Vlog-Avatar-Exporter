@@ -108,6 +108,20 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        internal static bool IsMovingTransform(AnimationClip clip, EditorCurveBinding binding)
+        {
+            if (clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
+                binding.path == null || binding.propertyName == null) return false;
+            var dot = binding.propertyName.LastIndexOf('.');
+            if (dot < 0) return false;
+            var property = binding.propertyName.Substring(0, dot);
+            return new[] { "x", "y", "z", "w" }.Any(axis =>
+            {
+                var curve = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis));
+                return curve != null && !VrChatExpressionSampler.IsConstant(curve);
+            });
+        }
+
         private static bool ConstantValue(AnimationClip clip, EditorCurveBinding binding, out float value)
         {
             value = 0;

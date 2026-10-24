@@ -242,6 +242,7 @@ BEHAVIOR_CASES = {
         'ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest': 1,
         'FaceBoneHeldAtThePreparedPoseDoesNotClaimTheRestMorph': 2,
         'RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance': 4,
+        'SharedInputLayerWhoseRestMovesTheBoneDoesNotCoupleTheFace': 4,
         'DriverSelectedFaceReachableOnlyThroughDormantBuiltInDoesNotOwnTheRestMorph': 3,
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 2,
         'ConstraintCoupledMorphKeepsPreparedWeightWhileIndependentFaceStillSamples': 2,
