@@ -134,17 +134,18 @@ namespace VRVlog.LilToonExporter
                     // A face clip commonly resets its bones to the prepared
                     // pose. Holding that pose changes nothing, so it does not
                     // tie the clip's morphs to an appearance option.
-                    if (invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding)) continue;
                     // The layer's rest clip explicitly holds this channel at the
                     // prepared pose: the copy stands in the rest alternative for
                     // it. Another pose in a sibling face clip is motion of the
                     // same channel, not wardrobe. A channel the rest clip moves
                     // over time is likewise motion, in the rest clip itself too.
-                    if (binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
+                    // Motion stays evaluable like any supported Transform curve.
+                    var motion = invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding) ||
+                        binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
                             restClips.Contains(rest) && invariantClips.Contains(rest) &&
                             AnimationUtility.GetEditorCurve(rest, binding) != null &&
                             (SelectedExpressionAppearance.IsUnchangedTransform(prepared, rest, binding) ||
-                             SelectedExpressionAppearance.IsMovingTransform(rest, binding))))) continue;
+                             SelectedExpressionAppearance.IsMovingTransform(rest, binding))));
                     // An alternate layout path absent from the prepared copy
                     // cannot bind in Unity. It is neither a visual change nor
                     // evidence that accompanying morphs belong to appearance.
@@ -157,7 +158,7 @@ namespace VRVlog.LilToonExporter
                     if (components != 1)
                         throw new InvalidOperationException("FXの見た目のComponentを一意に指定できません: " + Describe(clip, binding));
                     plan.appearanceBindings.Add(binding);
-                    appearance.Add(binding);
+                    if (!motion) appearance.Add(binding);
                 }
                 if (appearance.Count == 0) continue;
                 visualClips.Add(clip, Describe(clip, appearance[0]));
