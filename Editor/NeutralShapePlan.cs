@@ -73,6 +73,12 @@ namespace VRVlog.LilToonExporter
             plan.AllowUnchangedAppearance = allowUnchangedAppearance;
             plan.ResolveCommittedMorphs();
             var ownershipLayers = ExpressionDependencies.NormalInputLayers(runtime, source, fixedContext, excludedPath);
+            // The clips the neutral probe reaches with fixed inputs, computed
+            // as the sampler does: their explicit holds define each layer's rest.
+            // Kept per layer, aligned with ownershipLayers (both come from Inspect).
+            var restClips = fixedContext == null ? null : ExpressionDependencies.NeutralLayerClips(runtime,
+                ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
             // Matching raw values prove an Override contribution. Additive
             // defaults/reference poses can change another layer's appearance;
@@ -126,6 +132,24 @@ namespace VRVlog.LilToonExporter
                 {
                     if (unchangedClips?.Contains(clip) == true &&
                         SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)) continue;
+                    // A face clip commonly resets its bones to the prepared
+                    // pose. Holding that pose changes nothing, so it does not
+                    // tie the clip's morphs to an appearance option. When the
+                    // layer's rest clip holds the channel at the prepared pose
+                    // (or moves it over time), another pose in a sibling face
+                    // clip is motion of the same channel, not wardrobe; so is the
+                    // rest clip's own time-varying curve. A clip shared by several
+                    // layers is motion only if every one of them has such a rest.
+                    // Motion stays evaluable like any supported Transform curve.
+                    // An absent target is handled as unbound below.
+                    bool Held(AnimationClip held) => plan.targets.TryGetValue(binding.path, out var found) && found.Length == 1 &&
+                        SelectedExpressionAppearance.IsUnchangedTransform(found[0], held, binding);
+                    var motion = invariantClips.Contains(clip) && (Held(clip) ||
+                        binding.type == typeof(Transform) && clipOwners[clip].All(index => ownershipLayers[index].Clips.Any(rest =>
+                            restClips != null && restClips[index].Contains(rest) && invariantClips.Contains(rest) &&
+                            AnimationUtility.GetEditorCurve(rest, binding) != null &&
+                            (Held(rest) ||
+                             SelectedExpressionAppearance.IsMovingTransform(rest, binding)))));
                     // An alternate layout path absent from the prepared copy
                     // cannot bind in Unity. It is neither a visual change nor
                     // evidence that accompanying morphs belong to appearance.
@@ -138,7 +162,7 @@ namespace VRVlog.LilToonExporter
                     if (components != 1)
                         throw new InvalidOperationException("FXの見た目のComponentを一意に指定できません: " + Describe(clip, binding));
                     plan.appearanceBindings.Add(binding);
-                    appearance.Add(binding);
+                    if (!motion) appearance.Add(binding);
                 }
                 if (appearance.Count == 0) continue;
                 visualClips.Add(clip, Describe(clip, appearance[0]));
@@ -414,13 +438,21 @@ namespace VRVlog.LilToonExporter
         // contribute neither to the blend shape weights the probe reads nor to
         // the exported appearance, and the probe disables every Behaviour, so
         // enabling one runs nothing (none of them runs in edit mode either).
-        // Their enable curves pass as evaluation support.
+        // Their enable curves pass as evaluation support. VRCHeadChop only
+        // scales head bones for the local first-person view, and its enable
+        // curve runs nothing in edit mode either. Unity's native ParticleSystem
+        // module settings (emission rate, colour, ...) only drive particle
+        // emission, so any float curve on it cannot move a blend shape weight.
+        // Other component properties stay rejected.
         internal static bool IsInertDynamicsBinding(EditorCurveBinding binding)
         {
-            if (binding.isPPtrCurve || binding.propertyName != "m_Enabled") return false;
+            if (binding.isPPtrCurve) return false;
+            if (binding.type == typeof(ParticleSystem)) return true;
+            if (binding.propertyName != "m_Enabled") return false;
             var name = binding.type?.FullName;
             return name == PhysBoneSpringExport.PhysBoneType || name == PhysBoneSpringExport.ColliderType ||
-                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender;
+                name == ExportGimmickRules.ContactReceiver || name == ExportGimmickRules.ContactSender ||
+                name == ExportGimmickRules.HeadChop;
         }
 
         private static bool IsMaterial(EditorCurveBinding binding) => typeof(Renderer).IsAssignableFrom(binding.type) &&

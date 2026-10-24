@@ -60,11 +60,12 @@ namespace VRVlog.LilToonExporter
             internal readonly HashSet<string> DriverWrites = new HashSet<string>(StringComparer.Ordinal);
             internal readonly HashSet<string> CurveWrites = new HashSet<string>(StringComparer.Ordinal);
             internal readonly HashSet<EditorCurveBinding> Morphs = new HashSet<EditorCurveBinding>();
+            internal readonly HashSet<EditorCurveBinding> DynamicMorphs = new HashSet<EditorCurveBinding>();
             internal readonly HashSet<AnimationClip> Clips = new HashSet<AnimationClip>();
             internal readonly List<VrChatParameterDriver.Program> DriverPrograms = new List<VrChatParameterDriver.Program>();
             internal readonly Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> FxCommands = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
             internal readonly Dictionary<StateMachineBehaviour, SdkLayerWeightControl> WeightControls = new Dictionary<StateMachineBehaviour, SdkLayerWeightControl>();
-            internal bool WriteDefaults, HasBindings, EmptyMotion, FxControl, DynamicMorph, Timed, NonMorphBindings;
+            internal bool WriteDefaults, HasBindings, EmptyMotion, FxControl, Timed, NonMorphBindings;
         }
 
         internal readonly HashSet<int> Layers = new HashSet<int>();
@@ -239,6 +240,17 @@ namespace VRVlog.LilToonExporter
             var invariant = fixedContext.Values.Where(pair => !written.Contains(pair.Key) && !incompatible.Contains(pair.Key) &&
                     (selection == null || !selection.TryGetValue(pair.Key, out var selected) || selected == pair.Value))
                 .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+            var driverValues = new Dictionary<string, HashSet<float>>(StringComparer.Ordinal);
+            var driverTypes = new Dictionary<string, (AnimatorControllerParameterType Type, bool Declared)>(StringComparer.Ordinal);
+            // VRChat stores a Set as the parameter's type; declared Ints clamp to a byte.
+            float? SetValue(VrChatParameterDriver.Operation op, (AnimatorControllerParameterType Type, bool Declared) target)
+            {
+                if (op.Kind != "Set" || op.Error != null || !NeutralShapeSnapshot.Finite(op.Value)) return null;
+                if (target.Type == AnimatorControllerParameterType.Bool) return op.Value == 0 ? 0 : 1;
+                var value = Math.Truncate((double)op.Value);
+                if (target.Declared) value = Math.Max(0, Math.Min(255, value));
+                return value < int.MinValue || value > int.MaxValue ? (float?)null : (float)value;
+            }
             if (source?.NeutralInputInventoryComplete == true)
             {
                 var normalOther = InspectOtherControllers(runtime, source, fixedContext, selection: selection);
@@ -249,6 +261,8 @@ namespace VRVlog.LilToonExporter
                         (selection == null || !selection.TryGetValue("IsLocal", out var selectedLocal) || selectedLocal == 1) &&
                         (fixedContext.Values.TryGetValue("IsLocal", out var local) ? local == 1 :
                             source.Defaults.TryGetValue("IsLocal", out local) && local == 1);
+                    float Default(AnimatorControllerParameter value) => value.type == AnimatorControllerParameterType.Bool ? (value.defaultBool ? 1 : 0) :
+                        value.type == AnimatorControllerParameterType.Int ? value.defaultInt : value.defaultFloat;
                     foreach (var parameter in UniqueParameters(runtime))
                     {
                         var name = parameter.name;
@@ -262,24 +276,70 @@ namespace VRVlog.LilToonExporter
                             persistence.Saved || persistence.NetworkSynced && !locallyNormal ||
                             !source.ExpressionParameterTypes.TryGetValue(name, out var declaredType) || declaredType != parameter.type.ToString() ||
                             parameter.type == AnimatorControllerParameterType.Trigger) continue;
-                        float Default(AnimatorControllerParameter value) => value.type == AnimatorControllerParameterType.Bool ? (value.defaultBool ? 1 : 0) :
-                            value.type == AnimatorControllerParameterType.Int ? value.defaultInt : value.defaultFloat;
                         var initial = Default(parameter);
                         if (!NeutralShapeSnapshot.Finite(initial) || !source.Defaults.TryGetValue(name, out var declaredDefault) ||
                             !NeutralShapeSnapshot.Finite(declaredDefault) || declaredDefault != initial ||
                             declarations[name].Any(value => !NeutralShapeSnapshot.Finite(Default(value)) || Default(value) != initial)) continue;
                         invariant[name] = initial;
                     }
+                    // An internal signal that only FX Set drivers write holds its
+                    // initial, menu or a Set value. Other writers, Add/Copy/Random,
+                    // curves, saved or remote values leave its domain unknown.
+                    var fxOperations = raw.SelectMany(layer => layer.DriverPrograms).SelectMany(program => program.Operations).ToArray();
+                    var curveWritten = new HashSet<string>(raw.SelectMany(layer => layer.CurveWrites), StringComparer.Ordinal);
+                    foreach (var parameter in UniqueParameters(runtime))
+                    {
+                        var name = parameter.name;
+                        var declared = source.ExpressionParameters.Contains(name);
+                        if (!fxWritten.Contains(name) || otherWritten.Contains(name) || curveWritten.Contains(name) || incompatible.Contains(name) ||
+                            parameter.type != AnimatorControllerParameterType.Int && parameter.type != AnimatorControllerParameterType.Bool ||
+                            VrChatParameterDriver.BuiltIn.Contains(name) || source.ExternalParameters.Contains(name) ||
+                            source.MenuContinuous.Contains(name) || selection?.ContainsKey(name) == true ||
+                            declared && (!source.ParameterPersistence.TryGetValue(name, out var persistence) ||
+                                persistence.Saved || persistence.NetworkSynced && !locallyNormal ||
+                                !source.ExpressionParameterTypes.TryGetValue(name, out var declaredType) || declaredType != parameter.type.ToString())) continue;
+                        var initial = Default(parameter);
+                        var target = (parameter.type, declared);
+                        if (declarations[name].Any(item => Default(item) != initial) ||
+                            declared && (!source.Defaults.TryGetValue(name, out var declaredDefault) || declaredDefault != initial) ||
+                            fxOperations.Any(op => op.Destination == name && SetValue(op, target) == null)) continue;
+                        var values = new HashSet<float> { initial };
+                        if (fixedContext.Values.TryGetValue(name, out var supplied)) values.Add(supplied);
+                        // A released toggle, button or puppet returns its parameter to 0.
+                        if (source.MenuValues.TryGetValue(name, out var menu)) { values.UnionWith(menu); values.Add(0); }
+                        driverValues.Add(name, values); driverTypes.Add(name, target);
+                    }
                 }
             }
-            return Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
+            var layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
                 new List<string>(), true, invariant);
+            // Sets in dormant states cannot select a branch. Fewer reached
+            // states only shrink the domains, so the loop terminates.
+            Dictionary<string, ISet<float>> domains = null;
+            while (driverValues.Count > 0)
+            {
+                var next = driverValues.ToDictionary(item => item.Key, item => (ISet<float>)new HashSet<float>(item.Value), StringComparer.Ordinal);
+                foreach (var op in layers.SelectMany(layer => layer.DriverPrograms).SelectMany(program => program.Operations))
+                    if (op.Destination != null && next.TryGetValue(op.Destination, out var values) && SetValue(op, driverTypes[op.Destination]) is float value)
+                        values.Add(value);
+                if (domains != null && next.All(item => domains[item.Key].SetEquals(item.Value))) break;
+                domains = next;
+                layers = Inspect(runtime, excludedPath, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(),
+                    new List<string>(), true, invariant, domains: domains);
+            }
+            return layers;
         }
 
         internal static HashSet<AnimationClip> NeutralClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
-            Func<string, bool> excludedPath) => new HashSet<AnimationClip>(Inspect(runtime, excludedPath,
+            Func<string, bool> excludedPath) => new HashSet<AnimationClip>(NeutralLayerClips(runtime, fixedValues, excludedPath)
+                .SelectMany(clips => clips));
+
+        // The same clips per FX layer, in the order of Inspect: a clip shared
+        // by two layers is a rest clip only in the layer that reaches it.
+        internal static HashSet<AnimationClip>[] NeutralLayerClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
+            Func<string, bool> excludedPath) => Inspect(runtime, excludedPath,
                 new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues)
-                .SelectMany(layer => layer.Clips));
+                .Select(layer => new HashSet<AnimationClip>(layer.Clips)).ToArray();
 
         private static ExpressionDependencies AnalyzeCore(RuntimeAnimatorController runtime, IEnumerable<string> selected,
             Func<string, bool> excludedPath, VrChatExpressionMenu.Source source, IDictionary<string, float> defaults,
@@ -879,11 +939,15 @@ namespace VRVlog.LilToonExporter
                 // A timed initializer may write a constant zero and then hold
                 // it forever with WD Off. Keep those writes; the sampler checks
                 // whether its eventual active state still has a timed exit.
-                if (!tracking.DynamicMorph && !external) continue;
+                if (tracking.DynamicMorphs.Count == 0 && !external) continue;
                 // A live tracking layer may share its automatic channel with a
                 // constant DEFAULT FACE underlay. Its other effects must be
-                // empty before it can be left out of the neutral graph.
-                layer.Morphs.Clear(); layer.HasBindings = false; layer.EmptyMotion = false;
+                // empty before it can be left out of the neutral graph. Live
+                // input drives every channel; a timed clip drives only its
+                // varying ones, so a constant channel held beside a blink
+                // loop (a closed-mouth viseme) stays the default face.
+                if (external) layer.Morphs.Clear(); else layer.Morphs.ExceptWith(tracking.DynamicMorphs);
+                if (layer.Morphs.Count == 0) { layer.HasBindings = false; layer.EmptyMotion = false; }
             }
         }
 
@@ -1026,23 +1090,32 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        internal static bool IsFalse(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues)
+        // domains: unfixed inputs proved to hold one of a few values at rest.
+        internal static bool IsFalse(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues,
+            IDictionary<string, ISet<float>> domains = null)
         {
             if (fixedValues == null) return false;
             foreach (var condition in transition.conditions)
             {
-                if (!fixedValues.TryGetValue(condition.parameter, out var value)) continue;
-                switch (condition.mode)
-                {
-                    case AnimatorConditionMode.If: if (value == 0) return true; break;
-                    case AnimatorConditionMode.IfNot: if (value != 0) return true; break;
-                    case AnimatorConditionMode.Equals: if (value != condition.threshold) return true; break;
-                    case AnimatorConditionMode.NotEqual: if (value == condition.threshold) return true; break;
-                    case AnimatorConditionMode.Greater: if (value <= condition.threshold) return true; break;
-                    case AnimatorConditionMode.Less: if (value >= condition.threshold) return true; break;
-                }
+                if (fixedValues.TryGetValue(condition.parameter, out var value)) { if (IsFalse(condition, value)) return true; }
+                else if (domains != null && !string.IsNullOrEmpty(condition.parameter) &&
+                    domains.TryGetValue(condition.parameter, out var domain) && domain.All(item => IsFalse(condition, item))) return true;
             }
             return false;
+        }
+
+        private static bool IsFalse(AnimatorCondition condition, float value)
+        {
+            switch (condition.mode)
+            {
+                case AnimatorConditionMode.If: return value == 0;
+                case AnimatorConditionMode.IfNot: return value != 0;
+                case AnimatorConditionMode.Equals: return value != condition.threshold;
+                case AnimatorConditionMode.NotEqual: return value == condition.threshold;
+                case AnimatorConditionMode.Greater: return value <= condition.threshold;
+                case AnimatorConditionMode.Less: return value >= condition.threshold;
+                default: return false;
+            }
         }
 
         // Every condition is known and holds. An edge without conditions
@@ -1068,11 +1141,18 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool? TypedCondition(AnimatorCondition condition, IDictionary<string, float> fixedValues,
-            IDictionary<string, AnimatorControllerParameterType> types)
+            IDictionary<string, AnimatorControllerParameterType> types, IDictionary<string, ISet<float>> domains = null)
         {
-            if (fixedValues == null || string.IsNullOrEmpty(condition.parameter) ||
-                !fixedValues.TryGetValue(condition.parameter, out var value) || !NeutralShapeSnapshot.Finite(value) ||
-                !types.TryGetValue(condition.parameter, out var type)) return null;
+            if (fixedValues == null || string.IsNullOrEmpty(condition.parameter)) return null;
+            if (fixedValues.TryGetValue(condition.parameter, out var value)) return TypedCondition(condition, value, types);
+            // Only a condition false for every possible value is pruned.
+            return domains != null && domains.TryGetValue(condition.parameter, out var domain) &&
+                domain.All(item => TypedCondition(condition, item, types) == false) ? false : (bool?)null;
+        }
+
+        private static bool? TypedCondition(AnimatorCondition condition, float value, IDictionary<string, AnimatorControllerParameterType> types)
+        {
+            if (!NeutralShapeSnapshot.Finite(value) || !types.TryGetValue(condition.parameter, out var type)) return null;
             if (type == AnimatorControllerParameterType.Bool)
                 return condition.mode == AnimatorConditionMode.If ? value != 0 :
                     condition.mode == AnimatorConditionMode.IfNot ? value == 0 : (bool?)null;
@@ -1089,7 +1169,8 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool IsTypedFalse(AnimatorTransitionBase transition, IDictionary<string, float> fixedValues,
-            IDictionary<string, AnimatorControllerParameterType> types) => transition.conditions.Any(condition => TypedCondition(condition, fixedValues, types) == false);
+            IDictionary<string, AnimatorControllerParameterType> types, IDictionary<string, ISet<float>> domains = null) =>
+            transition.conditions.Any(condition => TypedCondition(condition, fixedValues, types, domains) == false);
 
         private sealed class NeutralReachability
         {
@@ -1107,7 +1188,7 @@ namespace VRVlog.LilToonExporter
         // including nested entry/exit and ancestor Any State transitions. A
         // transition is pruned only when an AND condition is provably false.
         private static NeutralReachability NeutralStates(AnimatorStateMachine root, IDictionary<string, float> fixedValues,
-            IDictionary<string, AnimatorControllerParameterType> conditionTypes = null)
+            IDictionary<string, AnimatorControllerParameterType> conditionTypes = null, IDictionary<string, ISet<float>> domains = null)
         {
             if (fixedValues == null) return null;
             var parents = new Dictionary<AnimatorStateMachine, AnimatorStateMachine>();
@@ -1128,7 +1209,7 @@ namespace VRVlog.LilToonExporter
             {
                 var all = values.ToArray(); var solo = all.Any(value => value.solo);
                 return all.Where(value => !value.mute && (!solo || value.solo) &&
-                    !(conditionTypes == null ? IsFalse(value, fixedValues) : IsTypedFalse(value, fixedValues, conditionTypes)));
+                    !(conditionTypes == null ? IsFalse(value, fixedValues, domains) : IsTypedFalse(value, fixedValues, conditionTypes, domains)));
             }
             bool Always(AnimatorTransitionBase transition) => transition.conditions.All(condition =>
             {
@@ -1257,13 +1338,14 @@ namespace VRVlog.LilToonExporter
 
         internal static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls = false,
-            IDictionary<string, float> neutralFixed = null, bool typedConditions = false, int? fxLayerCount = null)
+            IDictionary<string, float> neutralFixed = null, bool typedConditions = false, int? fxLayerCount = null,
+            IDictionary<string, ISet<float>> domains = null)
         {
             var cache = ExpressionInspectCache.Current;
-            var key = cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount);
+            var key = domains != null ? null : cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount);
             if (key != null && cache.TryReplay(key, excludedPath, neutralFixed != null, drivers, unknown, out var cached)) return cached;
             var trace = key == null ? null : cache.Record(Controller(runtime).layers.Length);
-            var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, cache, trace);
+            var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains, cache, trace);
             if (trace != null) cache.Store(key, trace, result);
             return result;
         }
@@ -1271,7 +1353,7 @@ namespace VRVlog.LilToonExporter
         private static Layer[] Inspect(RuntimeAnimatorController runtime, Func<string, bool> excludedPath,
             Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, List<string> unknown, bool allowFxControls,
             IDictionary<string, float> neutralFixed, bool typedConditions, int? fxLayerCount,
-            ExpressionInspectCache cache, ExpressionInspectCache.Trace trace)
+            IDictionary<string, ISet<float>> domains, ExpressionInspectCache cache, ExpressionInspectCache.Trace trace)
         {
             void Driver(StateMachineBehaviour behaviour, VrChatParameterDriver.Program program)
             {
@@ -1297,7 +1379,7 @@ namespace VRVlog.LilToonExporter
                     sourceIndex = layers[sourceIndex].syncedLayerIndex;
                 }
                 if (sourceIndex < 0 || sourceIndex >= layers.Length) throw new InvalidOperationException("FXの同期レイヤー参照が不正です。");
-                var reached = layers[index].syncedLayerIndex < 0 ? NeutralStates(layers[sourceIndex].stateMachine, neutralFixed, conditionTypes) : null;
+                var reached = layers[index].syncedLayerIndex < 0 ? NeutralStates(layers[sourceIndex].stateMachine, neutralFixed, conditionTypes, domains) : null;
                 void ReadParameter(string name) { if (!string.IsNullOrEmpty(name)) info.Reads.Add(name); }
                 void ReadControl(string name) { ReadParameter(name); if (!string.IsNullOrEmpty(name)) info.ControlReads.Add(name); }
                 void Conditions(IEnumerable<AnimatorTransitionBase> transitions)
@@ -1305,7 +1387,7 @@ namespace VRVlog.LilToonExporter
                     var siblings = transitions.ToArray();
                     var solo = siblings.Any(t => t.solo);
                     foreach (var transition in siblings.Where(t => !t.mute && (!solo || t.solo) &&
-                        !(conditionTypes == null ? IsFalse(t, neutralFixed) : IsTypedFalse(t, neutralFixed, conditionTypes))))
+                        !(conditionTypes == null ? IsFalse(t, neutralFixed, domains) : IsTypedFalse(t, neutralFixed, conditionTypes, domains))))
                     {
                         if (transition is AnimatorStateTransition timed && timed.hasExitTime) info.Timed = true;
                         foreach (var condition in transition.conditions) ReadControl(condition.parameter);
@@ -1442,7 +1524,7 @@ namespace VRVlog.LilToonExporter
                 if (PoseSampling.IsBlendShape(binding))
                 {
                     info.Morphs.Add(binding);
-                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorph = true;
+                    if (readRanges && (cache == null ? ReadDynamic(clip, binding) : cache.Dynamic(clip, binding)) == true) info.DynamicMorphs.Add(binding);
                 }
                 else info.NonMorphBindings = true;
             }

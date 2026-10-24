@@ -240,10 +240,15 @@ BEHAVIOR_CASES = {
     'NeutralShapeSamplerTests': {
         'UnknownComponentPropertyPreservesPreparedNeutralAndReportsTarget': 1,
         'ALoopingMuscleCurveInTheRestFaceKeepsThePreparedRest': 1,
+        'FaceBoneHeldAtThePreparedPoseDoesNotClaimTheRestMorph': 2,
+        'RestFaceHoldingTheBoneMakesSiblingFacePosesMotionNotAppearance': 5,
+        'SharedInputLayerWhoseRestMovesTheBoneDoesNotCoupleTheFace': 4,
+        'DriverSelectedFaceReachableOnlyThroughDormantBuiltInDoesNotOwnTheRestMorph': 3,
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 2,
         'ConstraintCoupledMorphKeepsPreparedWeightWhileIndependentFaceStillSamples': 2,
         'ConstraintEnabledSupportKeepsPreparedRestWithoutExecutingConstraint': 2,
-        'DynamicsEnabledSupportIsHarmless': 4,
+        'DynamicsEnabledSupportIsHarmless': 5,
+        'ParticleEffectSupportIsHarmless': 1,
         'ConstraintCoupledExplicitEndpointKeepsPreparedNeutralForLaterEndpointBaking': 1,
         'UnknownPropertyFallbackCannotHideLaterActiveNaNOrAnimationEvent': 2,
         'AppearanceOnlyPreparedRestRetainsKnownFxWeightButRejectsUnknownPlayable': 2,
@@ -356,6 +361,7 @@ BEHAVIOR_CASES = {
         'MatchingShaderColorChannelsKeepTheirNativeAppliedValue': 2,
         'MaterialColorAnimationMatchesActualRenderedPixels': 4,
         'ColorCanonicalizationDoesNotRelaxOtherPropertyDomains': 4,
+        'HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns': 4,
     },
     'VrChatMenuExpressionTests': {
         'CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges': 2,
@@ -544,14 +550,16 @@ BEHAVIOR_CASES = {
         'IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints': 1,
         'OneClickManualBlinkPreservesCoupledPreparedAppearanceAndAbsoluteClosure': 1,
         'OneClickKeepsSourceTrackingEndpointsAndPreparedRestAfterMarkerRemoval': 1,
-        'ClosedPreparedEyesRequireAdjustmentWhenInitialFxIsSkipped': 2,
+        'AutomaticBlinkUsesFxOpenNeutralWhenSerializedUnifiedClosureIsFullyClosed': 2,
         'NdmfGeneratedShapeAndReboundFxUsePreparedMeshAndRendererPathInRealVrm': 4,
     },
     'NeutralShapePipelineTests': {
         'NeutralAndAbsoluteEndpointRoundTripWithLargeSharedMeshes': 4,
     },
     'NeutralShapeExportTests': {
-        'PreparedRestSurvivesExportWithoutRestoringInitialFx': 3,
+        'FxDefaultOpeningShapeSurvivesExportWithoutAnExpressionMenu': 3,
+        'FxDefaultConstantShapeBesideATimeVaryingCurveIsBakedIntoTheBase': 1,
+        'FailedFxRestStillWritesTheFileWithTheCopysValues': 1,
     },
     'UnifiedExpressionExportTests': {
         'MissingBlinkRequiresUsableUnifiedRoute': 13,

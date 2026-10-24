@@ -15,6 +15,7 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 
 - Export lilToon material settings and textures for VR Vlog's dedicated renderer, with a standard MToon fallback for other VRM viewers.
 - Preserve supported expressions, blinking, tracking morphs and appearance prepared by Modular Avatar / NDMF.
+- Save the face and body shapes that the FX layer holds constant in its normal state, such as a mouth or eyes kept open by the idle FX, as the VRM's neutral. Shapes that change over time keep the export copy's values.
 - Convert supported PhysBones to VRM SpringBones, with diagnostics for approximations and unsupported settings.
 - Set a bone-type VRM 1.0 look-at from the midpoint of the eyes when both eye bones exist. Its range comes from the Avatar Descriptor's Eye Look poses when they can be measured; otherwise UniVRM's default range is used. A VRM 1.0 look-at already edited in the avatar's Vrm10Instance settings is kept.
 - Inspect export failures and try supported recovery options on a fresh copy of the avatar.

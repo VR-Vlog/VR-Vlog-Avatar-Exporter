@@ -85,6 +85,9 @@ namespace VRVlog.LilToonExporter
             // when expression import intentionally skips menu candidates.
             internal bool NeutralInputInventoryComplete = false;
             internal readonly HashSet<string> MenuInputs = new HashSet<string>(StringComparer.Ordinal);
+            // Values a control's main parameter can take; puppet axes are continuous.
+            internal readonly Dictionary<string, HashSet<float>> MenuValues = new Dictionary<string, HashSet<float>>(StringComparer.Ordinal);
+            internal readonly HashSet<string> MenuContinuous = new HashSet<string>(StringComparer.Ordinal);
             internal readonly Dictionary<string, (bool Saved, bool NetworkSynced)> ParameterPersistence =
                 new Dictionary<string, (bool Saved, bool NetworkSynced)>(StringComparer.Ordinal);
             internal readonly Dictionary<string, string> ExpressionParameterTypes = new Dictionary<string, string>(StringComparer.Ordinal);
