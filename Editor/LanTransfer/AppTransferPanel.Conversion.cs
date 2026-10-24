@@ -16,9 +16,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string ExpressionsHold = "選択中は瞬き・口・視線の自動変形を止めます";
         internal const string NoExpressions = "VRChatから登録できた表情はありません";
         internal const string NoExpressionsDetail = "選択用の表情がVRMにない場合はアプリに表情ボタンが表示されません";
-        internal const string FxRest = "FXの初期状態の復元を省略";
-        internal const string FxRestSaved = "書き出し用コピーの設定を基本の顔と体形として保存しました";
-        internal const string FxRestLooks = "VRChatの通常時と見た目が異なる場合があります";
         internal const string Textures = "テクスチャを縮小";
         internal const string TextureCount = "{0}枚";
         internal const string Springs = "PhysBoneをVRMの揺れものに変換";
@@ -66,13 +63,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 var fold = KindRow("console.warnicon.sml", T(ConversionText.NoExpressions), "", "notes.expressions");
                 fold.Add(Detail(T(ConversionText.NoExpressionsDetail)));
-                host.Add(fold);
-            }
-            if (notes.FxRestSkipped)
-            {
-                var fold = KindRow("AnimatorController Icon", T(ConversionText.FxRest), "", "notes.fx");
-                fold.Add(Detail(T(ConversionText.FxRestSaved)));
-                fold.Add(Detail(T(ConversionText.FxRestLooks)));
                 host.Add(fold);
             }
             if (notes.Textures.Count > 0)

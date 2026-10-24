@@ -148,7 +148,7 @@ namespace VRVlog.LilToonExporter.Tests
                 { skin.SetBlendShapeWeight(0, 0); skin.sharedMaterial.shader = Shader.Find("lilToon"); }
                 var front = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 var back = fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
-                var expectedNeutral = NativeWorldVertices(front, 0);
+                var expectedNeutral = NativeWorldVertices(front, 75);
                 var expectedEndpoint = NativeWorldVertices(front, 25);
                 var expectedBack = NativeWorldVertices(back, 0);
                 var sourceVertices = fixture.Mesh.vertices;
@@ -193,7 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
                 imported.Runtime.Process();
                 var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == "Front");
                 var outputBack = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == "Back");
-                AssertVertices(NativeWorldVertices(output), expectedNeutral, "Imported base geometry must retain prepared0 rather than restore FX75.");
+                AssertVertices(NativeWorldVertices(output), expectedNeutral, "Imported base geometry must equal the source native neutral75 pose.");
                 AssertVertices(NativeWorldVertices(outputBack), expectedBack, "The other renderer sharing the original mesh must stay at zero.");
                 Assert.That(imported.Vrm.Expression.CustomClips.Any(value => value.name == expression.name), Is.True);
                 imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), 1);
@@ -249,7 +249,7 @@ namespace VRVlog.LilToonExporter.Tests
                 replacement.name = "Prepared face"; replacement.sharedMesh = replacementMesh;
                 foreach (var skin in new[] { original, replacement })
                 { skin.SetBlendShapeWeight(0, 0); skin.sharedMaterial.shader = Shader.Find("lilToon"); }
-                var expected = NativeWorldVertices(replacement, 0);
+                var expected = NativeWorldVertices(replacement, 75);
                 var clip = new AnimationClip { name = "Replacement neutral75" };
                 // The geometry key exists only on the replacement renderer;
                 // MA supplies the route to it during its real Transforming pass.
@@ -268,7 +268,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(output.name, Is.EqualTo("Prepared face"), "The installed MA pass must replace the old renderer.");
                 // No expression binds "Prepared opening", so the exporter leaves
                 // it out of the VRM; the baseline geometry below is the check.
-                AssertVertices(NativeWorldVertices(output), expected, "The replacement renderer must retain its prepared0 baseline despite its FX75 curve.");
+                AssertVertices(NativeWorldVertices(output), expected, "A processed FX curve must evaluate against the replacement's actual key.");
                 Assert.That(original, Is.Not.Null);
                 Assert.That(original.sharedMesh, Is.SameAs(fixture.Mesh));
                 Assert.That(original.GetBlendShapeWeight(0), Is.Zero);

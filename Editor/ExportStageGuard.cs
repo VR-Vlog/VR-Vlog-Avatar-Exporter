@@ -39,6 +39,7 @@ namespace VRVlog.LilToonExporter
         UnusedMorphs,
         ObjectToggles,
         ExpressionGestures,
+        FxRest,
     }
 
     // The steps a user sees. Each stage belongs to one phase; the stages stay
@@ -215,6 +216,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.UnusedMorphs: return "使われないBlendShapeの削除";
                 case ExportStage.ObjectToggles: return "メニューの表示切り替え";
                 case ExportStage.ExpressionGestures: return "ハンドジェスチャーの表情";
+                case ExportStage.FxRest: return "FXの通常時の顔・体形";
                 default: return stage.ToString();
             }
         }
@@ -247,6 +249,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.PoseOutput:
                 case ExportStage.ObjectToggles:
                 case ExportStage.ExpressionGestures:
+                case ExportStage.FxRest:
                     return ExportPhase.Expressions;
                 case ExportStage.LilToonSnapshot:
                 case ExportStage.TextureBake:
@@ -304,6 +307,8 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.BuildProcess:
                 // Left out, the file only keeps every BlendShape.
                 case ExportStage.UnusedMorphs:
+                // Left out, the face and body keep the export copy's values.
+                case ExportStage.FxRest:
                     return ExportOutcome.Approximated;
                 default:
                     return ExportOutcome.Omitted;

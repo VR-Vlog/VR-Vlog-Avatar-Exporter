@@ -544,14 +544,16 @@ BEHAVIOR_CASES = {
         'IndependentLoopOnTheInfluencingSkinBoneKeepsPreparedGeometryAndAuthoredEndpoints': 1,
         'OneClickManualBlinkPreservesCoupledPreparedAppearanceAndAbsoluteClosure': 1,
         'OneClickKeepsSourceTrackingEndpointsAndPreparedRestAfterMarkerRemoval': 1,
-        'ClosedPreparedEyesRequireAdjustmentWhenInitialFxIsSkipped': 2,
+        'AutomaticBlinkUsesFxOpenNeutralWhenSerializedUnifiedClosureIsFullyClosed': 2,
         'NdmfGeneratedShapeAndReboundFxUsePreparedMeshAndRendererPathInRealVrm': 4,
     },
     'NeutralShapePipelineTests': {
         'NeutralAndAbsoluteEndpointRoundTripWithLargeSharedMeshes': 4,
     },
     'NeutralShapeExportTests': {
-        'PreparedRestSurvivesExportWithoutRestoringInitialFx': 3,
+        'FxDefaultOpeningShapeSurvivesExportWithoutAnExpressionMenu': 3,
+        'FxDefaultConstantShapeBesideATimeVaryingCurveIsBakedIntoTheBase': 1,
+        'FailedFxRestStillWritesTheFileWithTheCopysValues': 1,
     },
     'UnifiedExpressionExportTests': {
         'MissingBlinkRequiresUsableUnifiedRoute': 13,

@@ -9,7 +9,6 @@ namespace VRVlog.LilToonExporter
         // {0} the number of expressions.
         public const string ExpressionsAdded = "VRChatから{0}個の表情を登録しました。選択中は顔の形を保つため瞬き・口・視線の自動変形を止めます。";
         public const string ExpressionsNone = "VRChatから追加できた表情は0件です。選択用の表情がVRMにない場合、アプリの表情ボタンは表示されません。";
-        public const string FxRestSkipped = "このベータ版ではFXの初期状態の復元を省略し、書き出し用コピーの設定を基本の顔・体形として保存しました。VRChatでの通常時の見た目と異なる場合があります。";
 
         // {0} texture name, {1}×{2} before, {3}×{4} after.
         public const string LilToonTextureResized = "lilToon画像「{0}」を{1}×{2}から{3}×{4}に縮小しました（読み込み時のメモリ使用量を軽減）。";
