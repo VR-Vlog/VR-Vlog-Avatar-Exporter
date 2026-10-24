@@ -15,7 +15,7 @@ FXの通常時の顔・体形を基準形へ戻す処理（`2026-10-25-restore-f
 
 ## 決定
 
-- `SelectedExpressionAppearance.IsUnchangedTransform`を足す。一定値のTransform曲線が書き出し用コピーの姿勢と一致するときだけ真を返す。クリップにない軸は準備済みの値のままとし、回転はUnityの`Quaternion`の等号で比べる（Eulerの360度の巻き戻しと`q`・`-q`を同じ姿勢として扱う）。位置と拡大縮小は完全一致で比べ、許容誤差は設けない。
+- `SelectedExpressionAppearance.IsUnchangedTransform`を足す。一定値のTransform曲線が書き出し用コピーの姿勢と一致するときだけ真を返す。クリップにない軸は準備済みの値のままとし、回転は正規化してから`Quaternion.Angle`が0かで比べる（Eulerの360度の巻き戻しと`q`・`-q`を同じ姿勢として扱う。`Quaternion`の等号は内積が+1に近いかしか見ないので`-q`を別の姿勢と判定する）。位置と拡大縮小は完全一致で比べ、許容誤差は設けない。
 - `NeutralShapePlan.Create`で、そのクリップが既存の`invariantClips`（全レイヤーがOverrideで凸結合になると確かめたクリップ。Additive・Directの木は入らない）に含まれ、曲線が`IsUnchangedTransform`のときは、見た目の根拠から外す。マテリアル・表示切り替えに対する既存の`IsUnchanged`と同じ考え方を、Transformに広げた。
 - 準備済みの姿勢と違う値・時間で変わる値は、これまでどおり見た目の変更として扱い、同じクリップのBlendShapeを保持する。
 - 自動で動くFXレイヤーの扱いを1チャンネル単位にした（`ExpressionDependencies.Layer.DynamicMorphs`）。瞬きのループのように時間で変わるチャンネルを含むレイヤーでも、変わらないチャンネルは通常時の顔として残す。

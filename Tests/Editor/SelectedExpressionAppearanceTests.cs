@@ -588,5 +588,29 @@ namespace VRVlog.LilToonExporter.Tests
             try { renderer.BakeMesh(result, false); return result.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
             finally { Object.DestroyImmediate(result); }
         }
+
+        // A constant rotation curve equal to the prepared pose holds it, written
+        // as -q or with Euler angles a full turn apart; another angle does not.
+        [TestCase("negated quaternion", true)]
+        [TestCase("euler full turn", true)]
+        [TestCase("other quaternion", false)]
+        [TestCase("other euler", false)]
+        public void HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns(string kind, bool unchanged)
+        {
+            dummy.transform.localRotation = Quaternion.Euler(0, 30, 0);
+            var q = dummy.transform.localRotation;
+            if (kind.EndsWith("quaternion"))
+            {
+                var r = kind == "negated quaternion" ? new Quaternion(-q.x, -q.y, -q.z, -q.w) : Quaternion.Euler(0, 40, 0);
+                foreach (var (axis, value) in new[] { ("x", r.x), ("y", r.y), ("z", r.z), ("w", r.w) })
+                    Curve("Dummy", typeof(Transform), "m_LocalRotation." + axis, AnimationCurve.Constant(0, 1, value));
+            }
+            else
+                foreach (var (axis, value) in new[] { ("x", 0f), ("y", kind == "euler full turn" ? 390f : 40f), ("z", 0f) })
+                    Curve("Dummy", typeof(Transform), "localEulerAnglesRaw." + axis, AnimationCurve.Constant(0, 1, value));
+            var property = kind.EndsWith("quaternion") ? "m_LocalRotation.x" : "localEulerAnglesRaw.y";
+            Assert.That(SelectedExpressionAppearance.IsUnchangedTransform(avatar, clip,
+                EditorCurveBinding.FloatCurve("Dummy", typeof(Transform), property)), Is.EqualTo(unchanged));
+        }
     }
 }

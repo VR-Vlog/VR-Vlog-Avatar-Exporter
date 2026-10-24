@@ -331,9 +331,15 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static HashSet<AnimationClip> NeutralClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
-            Func<string, bool> excludedPath) => new HashSet<AnimationClip>(Inspect(runtime, excludedPath,
+            Func<string, bool> excludedPath) => new HashSet<AnimationClip>(NeutralLayerClips(runtime, fixedValues, excludedPath)
+                .SelectMany(clips => clips));
+
+        // The same clips per FX layer, in the order of Inspect: a clip shared
+        // by two layers is a rest clip only in the layer that reaches it.
+        internal static HashSet<AnimationClip>[] NeutralLayerClips(RuntimeAnimatorController runtime, IDictionary<string, float> fixedValues,
+            Func<string, bool> excludedPath) => Inspect(runtime, excludedPath,
                 new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, fixedValues)
-                .SelectMany(layer => layer.Clips));
+                .Select(layer => new HashSet<AnimationClip>(layer.Clips)).ToArray();
 
         private static ExpressionDependencies AnalyzeCore(RuntimeAnimatorController runtime, IEnumerable<string> selected,
             Func<string, bool> excludedPath, VrChatExpressionMenu.Source source, IDictionary<string, float> defaults,

@@ -361,6 +361,7 @@ BEHAVIOR_CASES = {
         'MatchingShaderColorChannelsKeepTheirNativeAppliedValue': 2,
         'MaterialColorAnimationMatchesActualRenderedPixels': 4,
         'ColorCanonicalizationDoesNotRelaxOtherPropertyDomains': 4,
+        'HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns': 4,
     },
     'VrChatMenuExpressionTests': {
         'CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges': 2,

@@ -75,7 +75,8 @@ namespace VRVlog.LilToonExporter
             var ownershipLayers = ExpressionDependencies.NormalInputLayers(runtime, source, fixedContext, excludedPath);
             // The clips the neutral probe reaches with fixed inputs, computed
             // as the sampler does: their explicit holds define each layer's rest.
-            var restClips = fixedContext == null ? new HashSet<AnimationClip>() : ExpressionDependencies.NeutralClips(runtime,
+            // Kept per layer, aligned with ownershipLayers (both come from Inspect).
+            var restClips = fixedContext == null ? null : ExpressionDependencies.NeutralLayerClips(runtime,
                 ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
@@ -133,16 +134,15 @@ namespace VRVlog.LilToonExporter
                         SelectedExpressionAppearance.IsUnchanged(prepared, clip, binding)) continue;
                     // A face clip commonly resets its bones to the prepared
                     // pose. Holding that pose changes nothing, so it does not
-                    // tie the clip's morphs to an appearance option.
-                    // The layer's rest clip explicitly holds this channel at the
-                    // prepared pose: the copy stands in the rest alternative for
-                    // it. Another pose in a sibling face clip is motion of the
-                    // same channel, not wardrobe. A channel the rest clip moves
-                    // over time is likewise motion, in the rest clip itself too.
-                    // Motion stays evaluable like any supported Transform curve.
+                    // tie the clip's morphs to an appearance option. When the
+                    // layer's rest clip holds the channel at the prepared pose
+                    // (or moves it over time), another pose in a sibling face
+                    // clip is motion of the same channel, not wardrobe; so is the
+                    // rest clip's own time-varying curve. Motion stays evaluable
+                    // like any supported Transform curve.
                     var motion = invariantClips.Contains(clip) && SelectedExpressionAppearance.IsUnchangedTransform(prepared, clip, binding) ||
                         binding.type == typeof(Transform) && clipOwners[clip].Any(index => ownershipLayers[index].Clips.Any(rest =>
-                            restClips.Contains(rest) && invariantClips.Contains(rest) &&
+                            restClips != null && restClips[index].Contains(rest) && invariantClips.Contains(rest) &&
                             AnimationUtility.GetEditorCurve(rest, binding) != null &&
                             (SelectedExpressionAppearance.IsUnchangedTransform(prepared, rest, binding) ||
                              SelectedExpressionAppearance.IsMovingTransform(rest, binding))));
