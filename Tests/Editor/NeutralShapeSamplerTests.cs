@@ -221,6 +221,102 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
         }
 
+        // Face clips often reset their bones to the rest pose. Holding the
+        // prepared pose is no appearance option; a different pose still is.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void FaceBoneHeldAtThePreparedPoseDoesNotClaimTheRestMorph(bool preparedPose)
+        {
+            var mouth = new GameObject("Mouth"); mouth.transform.SetParent(avatar.transform, false);
+            mouth.transform.localPosition = new Vector3(0, .014191739f, 0);
+            mouth.transform.localEulerAngles = new Vector3(-44.712f, 0, 0);
+            var source = mouth.transform.localRotation;
+            var clip = (AnimationClip)Open(75).motion;
+            foreach (var axis in new[] { (Name: "x", Value: preparedPose ? -44.712f : -30f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "localEulerAnglesRaw." + axis.Name),
+                    AnimationCurve.Constant(0, 1, axis.Value));
+            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(mouth.name, typeof(Transform), "m_LocalPosition.y"),
+                AnimationCurve.Constant(0, 1, .014191739f));
+            var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            if (preparedPose)
+            {
+                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
+                Assert.That(warnings, Is.Empty);
+            }
+            else
+            {
+                Assert.That(values, Is.Empty);
+                Assert.That(warnings.Single(), Does.Contain(clip.name).And.Contain("localEulerAnglesRaw"));
+            }
+            Assert.That(Quaternion.Angle(mouth.transform.localRotation, source), Is.LessThan(.001));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+        }
+
+        // A face selected by a driver value that only a dormant built-in
+        // branch sets is not an appearance option. A menu value or a saved
+        // parameter can still select it.
+        [TestCase("dormant")]
+        [TestCase("menu50")]
+        [TestCase("saved")]
+        public void DriverSelectedFaceReachableOnlyThroughDormantBuiltInDoesNotOwnTheRestMorph(string scenario)
+        {
+            const string signal = "Face select";
+            controller.AddParameter(signal, AnimatorControllerParameterType.Int);
+            controller.AddParameter("AFK", AnimatorControllerParameterType.Bool);
+            controller.AddParameter("Touch", AnimatorControllerParameterType.Float);
+            ConfigureTransientInputMetadata(signal, "menu", true);
+            using (var data = new SerializedObject(descriptor))
+            {
+                using (var parameters = new SerializedObject(data.FindProperty("expressionParameters").objectReferenceValue))
+                {
+                    parameters.FindProperty("parameters").GetArrayElementAtIndex(0).FindPropertyRelative("saved").boolValue = scenario == "saved";
+                    parameters.ApplyModifiedPropertiesWithoutUndo();
+                }
+                using (var menu = new SerializedObject(data.FindProperty("expressionsMenu").objectReferenceValue))
+                {
+                    menu.FindProperty("controls").GetArrayElementAtIndex(0).FindPropertyRelative("value").floatValue = scenario == "menu50" ? 50 : 1;
+                    menu.ApplyModifiedPropertiesWithoutUndo();
+                }
+            }
+            var jaw = new GameObject("Jaw"); jaw.transform.SetParent(avatar.transform, false);
+            jaw.transform.localEulerAngles = new Vector3(-20, 0, 0);
+            var pose = jaw.transform.localRotation;
+            var idle = Open(75);
+            var away = Clip("Open", AnimationCurve.Constant(0, 1, 10)); away.name = "Away face";
+            foreach (var axis in new[] { (Name: "x", Value: 5f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
+                AnimationUtility.SetEditorCurve(away, EditorCurveBinding.FloatCurve(jaw.name, typeof(Transform), "localEulerAnglesRaw." + axis.Name),
+                    AnimationCurve.Constant(0, 1, axis.Value));
+            var face = State(controller.layers[0].stateMachine, away);
+            var choose = idle.AddTransition(face); choose.hasExitTime = false; choose.duration = 0;
+            choose.AddCondition(AnimatorConditionMode.Equals, 50, signal);
+            var decision = Layer("Face decision");
+            var rest = State(decision); decision.defaultState = rest;
+            ParameterDriverExpressionTests.Driver(rest, ParameterDriverExpressionTests.Op("Set", signal, 0));
+            var afk = State(decision);
+            ParameterDriverExpressionTests.Driver(afk, ParameterDriverExpressionTests.Op("Set", signal, 50));
+            var enter = decision.AddAnyStateTransition(afk); enter.hasExitTime = false; enter.duration = 0;
+            enter.AddCondition(AnimatorConditionMode.If, 0, "AFK");
+            var touched = State(decision);
+            ParameterDriverExpressionTests.Driver(touched, ParameterDriverExpressionTests.Op("Set", signal, 40));
+            var touch = rest.AddTransition(touched); touch.hasExitTime = false; touch.duration = 0;
+            touch.AddCondition(AnimatorConditionMode.Greater, .5f, "Touch");
+            var warnings = new List<string>();
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
+            if (scenario == "dormant")
+            {
+                Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
+                Assert.That(warnings, Is.Empty);
+            }
+            else
+            {
+                Assert.That(values.Select(value => value.Shape), Does.Not.Contain("Open"));
+                Assert.That(warnings, Has.Some.Contain(away.name));
+            }
+            Assert.That(Quaternion.Angle(jaw.transform.localRotation, pose), Is.LessThan(.001));
+            Assert.That(skin.GetBlendShapeWeight(0), Is.Zero);
+        }
+
         [TestCase(false)]
         [TestCase(true)]
         public void CurrentCapHairAndMaskStayTogetherWhileIndependentFaceAndPermanentMorphReconstruct(bool writeDefaults)

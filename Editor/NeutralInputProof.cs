@@ -20,6 +20,8 @@ namespace VRVlog.LilToonExporter
             if (source == null) throw new ArgumentNullException(nameof(source));
             source.NeutralInputInventoryComplete = false;
             source.MenuInputs.Clear();
+            source.MenuValues.Clear();
+            source.MenuContinuous.Clear();
             source.ParameterPersistence.Clear();
             source.ExpressionParameterTypes.Clear();
             if (avatar == null) return;
@@ -43,7 +45,7 @@ namespace VRVlog.LilToonExporter
                 if (!parametersKnown) return;
                 var menu = descriptor.FindProperty("expressionsMenu");
                 if (!Is(menu, SerializedPropertyType.ObjectReference) || menu.objectReferenceValue == null) return;
-                source.NeutralInputInventoryComplete = ReadMenus(menu.objectReferenceValue, source.MenuInputs);
+                source.NeutralInputInventoryComplete = ReadMenus(menu.objectReferenceValue, source);
             }
             catch (Exception)
             {
@@ -51,6 +53,8 @@ namespace VRVlog.LilToonExporter
                 // cannot prove a transient internal input. Keep it unknown.
                 source.NeutralInputInventoryComplete = false;
                 source.MenuInputs.Clear();
+                source.MenuValues.Clear();
+                source.MenuContinuous.Clear();
                 source.ParameterPersistence.Clear();
                 source.ExpressionParameterTypes.Clear();
             }
@@ -94,7 +98,7 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        static bool ReadMenus(UnityEngine.Object root, HashSet<string> inputs)
+        static bool ReadMenus(UnityEngine.Object root, VrChatExpressionMenu.Source source)
         {
             var pending = new Stack<UnityEngine.Object>();
             var visited = new HashSet<int>();
@@ -114,11 +118,22 @@ namespace VRVlog.LilToonExporter
                     var kind = EnumName(control.FindPropertyRelative("type"));
                     if (kind != "Button" && kind != "Toggle" && kind != "SubMenu" && kind != "TwoAxisPuppet" &&
                         kind != "FourAxisPuppet" && kind != "RadialPuppet") return false;
-                    if (!ReadInput(control.FindPropertyRelative("parameter"), inputs)) return false;
+                    if (!ReadInput(control.FindPropertyRelative("parameter"), source.MenuInputs, out var main)) return false;
+                    // An unreadable value leaves the parameter's domain unknown.
+                    var value = control.FindPropertyRelative("value");
+                    if (main != null && !Is(value, SerializedPropertyType.Float)) source.MenuContinuous.Add(main);
+                    else if (main != null)
+                    {
+                        if (!source.MenuValues.TryGetValue(main, out var values)) source.MenuValues.Add(main, values = new HashSet<float>());
+                        values.Add(value.floatValue);
+                    }
                     var subParameters = control.FindPropertyRelative("subParameters");
                     if (subParameters == null || !subParameters.isArray) return false;
                     for (var subIndex = 0; subIndex < subParameters.arraySize; subIndex++)
-                        if (!ReadInput(subParameters.GetArrayElementAtIndex(subIndex), inputs)) return false;
+                    {
+                        if (!ReadInput(subParameters.GetArrayElementAtIndex(subIndex), source.MenuInputs, out var axis)) return false;
+                        if (axis != null) source.MenuContinuous.Add(axis);
+                    }
                     if (kind != "SubMenu") continue;
                     var subMenu = control.FindPropertyRelative("subMenu");
                     if (!Is(subMenu, SerializedPropertyType.ObjectReference) || subMenu.objectReferenceValue == null) return false;
@@ -128,12 +143,13 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
-        static bool ReadInput(SerializedProperty parameter, HashSet<string> inputs)
+        static bool ReadInput(SerializedProperty parameter, HashSet<string> inputs, out string input)
         {
+            input = null;
             if (parameter == null) return false;
             var name = parameter.FindPropertyRelative("name");
             if (!Is(name, SerializedPropertyType.String)) return false;
-            if (!string.IsNullOrEmpty(name.stringValue)) inputs.Add(name.stringValue);
+            if (!string.IsNullOrEmpty(name.stringValue)) inputs.Add(input = name.stringValue);
             return true;
         }
 

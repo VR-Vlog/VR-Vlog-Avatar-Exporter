@@ -1,0 +1,35 @@
+# 顔のボーンを準備済みの姿勢に戻すだけの曲線を、衣装・ギミックとの連動の根拠にしない
+
+- 日付: 2026-10-25
+- 対象: `Editor/NeutralShapePlan.cs`、`Editor/SelectedExpressionAppearance.cs`、`Editor/ExpressionDependencies.cs`、`Editor/NeutralInputProof.cs`、`Editor/VrChatExpressionMenu.cs`、`Tests/Editor/NeutralShapeSamplerTests.cs`、`Tools/run-unity-compatibility.py`
+
+## 背景
+
+FXの通常時の顔・体形を基準形へ戻す処理（`2026-10-25-restore-fx-rest-face.md`）を戻しても、待機中のFXで口のシェイプキーを100に保って口を出すアバターで、書き出したVRMの口が消えたままだった。
+
+## 原因
+
+このアバターの表情クリップは、どれも数百のBlendShapeと一緒に、目と口のボーンのTransform曲線を持つ。値はどのクリップでも同じで、ボーンの準備済みの姿勢（rest pose＝何も再生していないときの姿勢）と一致する。つまり姿勢を戻しているだけで、見た目は変えない。
+
+`NeutralShapePlan.Create`はTransformの位置・回転・拡大縮小の曲線をすべて衣装・髪・ギミックの見た目の変更として扱う。そのため、同じクリップにあるBlendShapeを「衣装・ギミックと連動する」と判定し、書き出し用コピーの値（口のシェイプキーは0）を保持していた。書き出し結果の警告に、`localEulerAnglesRaw` を理由とする保持が約400件出ていた。
+
+## 決定
+
+- `SelectedExpressionAppearance.IsUnchangedTransform`を足す。一定値のTransform曲線が書き出し用コピーの姿勢と一致するときだけ真を返す。クリップにない軸は準備済みの値のままとし、回転はUnityの`Quaternion`の等号で比べる（Eulerの360度の巻き戻しと`q`・`-q`を同じ姿勢として扱う）。位置と拡大縮小は完全一致で比べ、許容誤差は設けない。
+- `NeutralShapePlan.Create`で、そのクリップが既存の`invariantClips`（全レイヤーがOverrideで凸結合になると確かめたクリップ。Additive・Directの木は入らない）に含まれ、曲線が`IsUnchangedTransform`のときは、見た目の根拠から外す。マテリアル・表示切り替えに対する既存の`IsUnchanged`と同じ考え方を、Transformに広げた。
+- 準備済みの姿勢と違う値・時間で変わる値は、これまでどおり見た目の変更として扱い、同じクリップのBlendShapeを保持する。
+- 自動で動くFXレイヤーの扱いを1チャンネル単位にした（`ExpressionDependencies.Layer.DynamicMorphs`）。瞬きのループのように時間で変わるチャンネルを含むレイヤーでも、変わらないチャンネルは通常時の顔として残す。
+- Parameter Driverの値で選ぶ表情も同じ扱いにする。AFKのように通常時は動かない組み込みパラメーターの分岐でしかSetされない値（例: 50）で選ばれるクリップは、ボーンの姿勢が違っても通常時の見た目の根拠にしない。`ExpressionDependencies.NormalInputLayers`で、FXのSetだけが書き込む内部のInt・Boolパラメーターに、取りうる値の集合を持たせる。集合は初期値、メニューの値（離したときの0を含む）、通常時に到達する状態のSetの値の和で、到達する状態が変わらなくなるまで繰り返す。遷移の条件が集合のどの値でも偽になるときだけ、その遷移を刈る。
+- 集合を持たせないパラメーターは次のとおり。FX以外の再生レイヤー・Animatorの曲線・Add・Copy・Randomで書き込まれるもの、Saved・同期で他人の値が入りうるもの、Puppetの軸、型や初期値が宣言ごとに違うもの。これらは今までどおり任意の値を取るとみなす。メニューの値は`NeutralInputProof.ReadMenus`が`Source.MenuValues`・`MenuContinuous`に集める。
+
+アバター名・ボーン名・特定の構成での分岐は足さない。
+
+## 検討して採らなかった案
+
+- 待機状態から到達するクリップ（restClips）を、今の固定値だけで絞る案。Driverの値は固定値に入らないので、Setでしか選ばれないクリップは絞り込めず、効果がない。
+- Transform曲線を見た目の根拠から一律に外す案。髪型の切り替えなどで本当に姿勢を変えるギミックの顔まで焼き込んでしまう。
+
+## 欠点
+
+- 位置・拡大縮小は完全一致で比べるので、書き出し用コピーの値とクリップの値が浮動小数の丸めでずれると、これまでどおり保持される。
+- Override以外のレイヤーやDirectの木を含むコントローラーでは`invariantClips`が空になり、この判定は効かない。
