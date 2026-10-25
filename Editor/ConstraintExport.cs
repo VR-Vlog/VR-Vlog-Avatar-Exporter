@@ -86,7 +86,8 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
-            var humanoid = plans.Any(p => p.Kind == Kind.Parent) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var turning = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
             // Paths point at the user's avatar, so take them before any target moves.
@@ -102,11 +103,12 @@ namespace VRVlog.LilToonExporter
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
                         : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
-                        : Apply(plan, sources, copy.transform, taken, edges, added);
+                        : Apply(plan, sources, copy.transform, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
                         taken.Add(plan.Target);
-                        if (plan.Kind != Kind.Parent) AddEdge(edges, plan.Target, sources[0].Transform);
+                        // The rotation may have moved its source up to the bone that turns.
+                        if (plan.Kind != Kind.Parent) AddEdge(edges, plan.Target, ((IVrm10Constraint)added.Last()).ConstraintSource);
                     }
                     decisions.Add((order, plan, outcome, reason));
                 }
@@ -133,8 +135,8 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken,
-            Dictionary<Transform, List<Transform>> edges, List<Component> added)
+        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> turning,
+            HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added)
         {
             if (plan.Kind == Kind.Position || plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
@@ -150,7 +152,19 @@ namespace VRVlog.LilToonExporter
                 var axes = (plan.X ? 1 : 0) + (plan.Y ? 1 : 0) + (plan.Z ? 1 : 0);
                 // Roll maps the delta through both rests in the shared parent
                 // frame, even for a local-space source.
-                if ((!plan.LocalSpace || axes == 1) && target.parent != source.parent) return (ExportOutcome.Omitted, OmittedParent);
+                if ((!plan.LocalSpace || axes == 1) && target.parent != source.parent)
+                {
+                    // A world-space rotation still matches when both ends hang
+                    // from the same turning bone through bones that never turn:
+                    // the source is then the nearest turning bone at or above it.
+                    if (axes != 3 || plan.LocalSpace) return (ExportOutcome.Omitted, OmittedParent);
+                    var moving = source;
+                    while (moving != root && !turning.Contains(moving)) moving = moving.parent;
+                    if (moving == root || moving == target || Frame(moving, root, turning) != Frame(target, root, turning))
+                        return (ExportOutcome.Omitted, OmittedParent);
+                    if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
+                    source = moving;
+                }
                 if (axes == 1)
                 {
                     var roll = target.gameObject.AddComponent<Vrm10RollConstraint>(); added.Add(roll);
@@ -159,7 +173,8 @@ namespace VRVlog.LilToonExporter
                     return (ExportOutcome.Approximated, ApproximatedRoll);
                 }
                 if (axes != 3) return (ExportOutcome.Omitted, OmittedSetting);
-                var rest = Quaternion.Angle(target.localRotation, source.localRotation);
+                // Both ends share the frame they turn in, so the world rotations compare.
+                var rest = Quaternion.Angle(target.rotation, source.rotation);
                 if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
                 var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
                 rotation.Source = source; rotation.Weight = weight;
@@ -254,6 +269,25 @@ namespace VRVlog.LilToonExporter
                 if (bone != null) bones.Add(bone);
             }
             return bones;
+        }
+
+        // Bones whose local rotation changes in the app: the skeleton, spring
+        // joints and constraint targets. Any other bone only carries its parent.
+        static HashSet<Transform> Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans, IEnumerable<Transform> authored)
+        {
+            var turning = new HashSet<Transform>(humanoid);
+            turning.UnionWith(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            turning.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
+            turning.UnionWith(authored);
+            return turning;
+        }
+
+        // The nearest turning bone above, or the root: the frame the bone turns in.
+        static Transform Frame(Transform value, Transform root, HashSet<Transform> turning)
+        {
+            var parent = value.parent;
+            while (parent != root && !turning.Contains(parent)) parent = parent.parent;
+            return parent;
         }
 
         // UniVRM does not write the root as a node, so it can be neither end.
