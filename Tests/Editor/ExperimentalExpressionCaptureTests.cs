@@ -298,7 +298,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void AnAddedFileThatBecomesUnsupportedIsRemovedAndItsReasonIsShown()
+        public void AnAddedFileThatBecomesUnsupportedStaysOnTheBoardWithItsReason()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
@@ -314,22 +314,108 @@ namespace VRVlog.LilToonExporter.Tests
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
-                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }));
-                Assert.That(board.UsesRecordRoute, Is.True, "An added file is recorded.");
-                // The user's own choice of slot goes with the file.
-                session.SetPreset(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip));
+                Assert.That(board.PlaceOf(clip).Kind, Is.EqualTo(ExpressionBoard.PlaceKind.Other));
+                Assert.That(window.BlocksExport, Is.False);
 
                 AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
                 var reason = session.ClipError(clip, clip.length);
                 Assert.That(reason, Is.Not.Null);
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
-                Assert.That(inputs, Is.Empty, "A file hidden from the board does not stay counted toward the limit.");
-                Assert.That(board.UsesRecordRoute, Is.False, "Nothing added is left to record.");
-                Assert.That(board.PlaceOf(clip).Kind, Is.Not.EqualTo(ExpressionBoard.PlaceKind.Slot));
-                Assert.That((string)type.GetField("status", flags).GetValue(window),
-                    Is.EqualTo(ExperimentalExpressionCaptureWindow.RejectedMessage(new[] { (clip.name, reason) })));
+                // The list, the board, its count and the route all see the same file.
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }), "The file stays until the user removes it.");
+                var shown = board.ItemsIn(ExpressionBoard.PlaceKind.Other).Single();
+                Assert.That(shown.Clip, Is.SameAs(clip)); Assert.That(shown.Error, Is.EqualTo(reason));
+                Assert.That(board.OtherCount, Is.EqualTo(1), "The title counts the tiles shown.");
+                Assert.That(board.UsesRecordRoute, Is.True);
+                // The save stops on the file instead of writing a VRM without it.
+                Assert.That(window.BlocksExport, Is.True);
+                Assert.That(window.BlockReason(), Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.UnexportedFileFormat), clip.name, reason)));
+
+                // Moved to the faces not exported, it no longer stops the save but stays listed.
+                type.GetMethod("MoveTo", flags).Invoke(window, new object[] { clip, ExpressionBoard.Place.Excluded });
+                Assert.That(board.ItemsIn(ExpressionBoard.PlaceKind.Excluded).Single().Clip, Is.SameAs(clip));
+                Assert.That(window.BlocksExport, Is.False);
+                type.GetMethod("MoveTo", flags).Invoke(window, new object[] { clip, ExpressionBoard.Place.Other });
+
+                // A repaired file is a usable face again where it was.
+                AnimationUtility.SetEditorCurve(clip, unsupported, null);
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                Assert.That(inputs.Single().Error, Is.Null);
+                Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { clip }));
+                Assert.That(window.BlocksExport, Is.False);
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
+        public void AnAddedFileInASlotStaysThereAndStopsTheSave()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var clip = new AnimationClip { name = "Later with bone" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                type.GetMethod("MoveTo", flags).Invoke(window, new object[] { clip, ExpressionBoard.Place.Slot(ExpressionPreset.happy) });
+
+                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                // The slot the user chose keeps the file and names its reason.
+                Assert.That(board.PlaceOf(clip), Is.EqualTo(ExpressionBoard.Place.Slot(ExpressionPreset.happy)));
+                Assert.That(window.BlocksExport, Is.True);
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(clip); }
+        }
+
+        [Test]
+        public void RemovingAnAddedFileTakesItsSlotExclusionNameAndRecordWithIt()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var kept = new AnimationClip { name = "Kept" }; var removed = new AnimationClip { name = "Removed" };
+            var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
+            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            try
+            {
+                AnimationUtility.SetEditorCurve(kept, binding, AnimationCurve.Constant(0, 1, 30));
+                AnimationUtility.SetEditorCurve(removed, binding, AnimationCurve.Constant(0, 1, 60));
+                type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetMethod("AddClips", flags).Invoke(window, new object[] { new[] { kept, removed } });
+                var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
+                var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                Assert.That(board.Rename(removed, "Renamed"), Is.True);
+                type.GetMethod("RecordBoardClips", flags).Invoke(window, null);
+                Assert.That(session.Expressions.Count, Is.EqualTo(2));
+
+                // Removed from the faces not exported, as the × there does.
+                type.GetMethod("MoveTo", flags).Invoke(window, new object[] { removed, ExpressionBoard.Place.Excluded });
+                AnimationUtility.SetEditorCurve(removed, unsupported, AnimationCurve.Constant(0, 1, 0));
+                type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
+                type.GetMethod("RemoveAddedClip", flags).Invoke(window, new object[] { removed });
+
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { kept }));
+                Assert.That(board.Find(removed), Is.Null);
+                Assert.That(board.Excluded, Does.Not.Contain(removed));
+                Assert.That(board.Names.ContainsKey(removed), Is.False);
+                Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(new[] { "Kept" }), "Its record goes too.");
+                Assert.That(window.BlocksExport, Is.False);
+
+                // In a slot the user chose, the slot is emptied.
+                type.GetMethod("MoveTo", flags).Invoke(window, new object[] { kept, ExpressionBoard.Place.Slot(ExpressionPreset.happy) });
+                type.GetMethod("RemoveAddedClip", flags).Invoke(window, new object[] { kept });
+                Assert.That(inputs, Is.Empty);
+                Assert.That(board.PlaceOf(kept).Kind, Is.Not.EqualTo(ExpressionBoard.PlaceKind.Slot));
+                Assert.That(board.UsesRecordRoute, Is.False);
+            }
+            finally { Object.DestroyImmediate(window); Object.DestroyImmediate(kept); Object.DestroyImmediate(removed); }
         }
 
         [Test]
@@ -383,7 +469,6 @@ namespace VRVlog.LilToonExporter.Tests
                 type.GetMethod("AddClip", flags).Invoke(window, new object[] { clip });
                 var inputs = (System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipInput>)type.GetField("clipInputs", flags).GetValue(window);
                 var input = inputs.Single();
-                // A file that becomes unsupported is removed instead (see the test above).
                 AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 2, 90));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
                 Assert.That(input.Error, Is.Null); Assert.That(input.Time, Is.EqualTo(2));
