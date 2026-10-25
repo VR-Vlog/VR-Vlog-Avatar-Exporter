@@ -176,8 +176,9 @@ namespace VRVlog.LilToonExporter
                     return (ExportOutcome.Approximated, ApproximatedRoll);
                 }
                 if (axes != 3) return (ExportOutcome.Omitted, OmittedSetting);
-                // Both ends share the frame they turn in, so the world rotations compare.
-                var rest = Quaternion.Angle(target.rotation, source.rotation);
+                // A world-space pair shares the frame it turns in, so the world
+                // rotations compare; a local-space one compares as authored.
+                var rest = plan.LocalSpace ? Quaternion.Angle(target.localRotation, source.localRotation) : Quaternion.Angle(target.rotation, source.rotation);
                 if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
                 var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
                 rotation.Source = source; rotation.Weight = weight;

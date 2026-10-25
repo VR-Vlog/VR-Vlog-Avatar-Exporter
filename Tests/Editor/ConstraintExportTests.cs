@@ -551,6 +551,31 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
         }
 
+        [Test]
+        public void ALocalSpaceRotationAcrossParentsComparesTheLocalRest()
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            using var f = new Fixture();
+            var component = f.B.gameObject.AddComponent(type);
+            using (var settings = new SerializedObject(component))
+            {
+                settings.FindProperty("IsActive").boolValue = true;
+                settings.FindProperty("Locked").boolValue = true;
+                settings.FindProperty("SolveInLocalSpace").boolValue = true;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = f.Other;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            // Same world rotation, 90 degrees apart in local space.
+            f.Parent.localRotation = f.Other.localRotation = Quaternion.Euler(0, 0, 90);
+            f.Convert();
+            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+        }
+
         [TestCase(true)][TestCase(false)]
         public void AnUnlockedVrchatConstraintIsConvertedUnlessOff(bool isActive)
         {
