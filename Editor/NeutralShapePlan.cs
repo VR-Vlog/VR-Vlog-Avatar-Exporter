@@ -335,6 +335,9 @@ namespace VRVlog.LilToonExporter
             if (binding.type == null || binding.path == null || string.IsNullOrEmpty(binding.propertyName))
                 throw new InvalidOperationException(ExporterLocalization.T("FXの見た目の曲線の参照が不正です: ") + Describe(clip, binding));
             if (binding.type == typeof(Animator) || PoseSampling.IsBlendShape(binding)) return;
+            // Evaluation accepts these without a target, so an object with
+            // several PhysBones needs no single one to be named.
+            if (IsInertDynamicsBinding(binding)) return;
             if (!targets.TryGetValue(binding.path, out var matches))
             { unboundAppearanceBindings.Add(binding); return; }
             if (matches.Length != 1)
