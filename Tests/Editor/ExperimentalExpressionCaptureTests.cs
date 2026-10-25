@@ -3281,8 +3281,8 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // An edit that leaves an added file unusable (its BlendShape is gone)
-        // takes the file off the board, and the transfer stops with its reason
-        // instead of writing a VRM without that face.
+        // leaves the file on the board with its reason, and the transfer stops
+        // on it instead of writing a VRM without that face.
         [Test]
         public void ATransferStopsWhenTheRebuiltCopyDropsAnAddedFile()
         {
@@ -3323,7 +3323,8 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(failure.Message, Does.Contain(clip.name));
                 Assert.That(saved, Is.False);
                 Assert.That(File.Exists(path), Is.False);
-                Assert.That(inputs, Is.Empty, "The file is off the board with its reason, as when the board checks the files.");
+                Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { clip }), "The file stays on the board with its reason, as when the board checks the files.");
+                Assert.That(inputs.Single().Error, Is.Not.Null);
             }
             finally { Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
         }

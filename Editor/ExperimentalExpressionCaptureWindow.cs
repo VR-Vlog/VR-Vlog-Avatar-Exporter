@@ -342,7 +342,7 @@ namespace VRVlog.LilToonExporter
             // Faces recorded on the copy itself would not survive it; the board records none.
             if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-            // A face hidden for a moment would take its files off the board for good.
+            // A face hidden for a moment would leave its files unusable on the board.
             if (session.HiddenFace() is string hidden)
                 throw new InvalidOperationException(string.Format(ExporterLocalization.T(HiddenFaceFormat), hidden));
             Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), detail ?? ""));
