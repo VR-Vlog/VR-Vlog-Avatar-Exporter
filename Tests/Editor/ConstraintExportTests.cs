@@ -178,20 +178,26 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo(ConstraintExport.OmittedParent));
         }
 
-        [TestCase("left out", false)][TestCase("converted", false)][TestCase("converted", true)]
-        public void AWorldSpaceRotationDoesNotFollowAConstraintTarget(string kind, bool driverFirst)
+        [TestCase("left out", false)][TestCase("converted", false)][TestCase("converted", true)][TestCase("vrm", false)][TestCase("spring", false)]
+        public void AWorldSpaceRotationDoesNotFollowABoneThatTurnsOnItsOwn(string kind, bool driverFirst)
         {
             using var f = new MergedFixture();
-            // The merged bone hangs from a constraint target. One the export
-            // leaves out never turns in VRM; one it converts here is not used
-            // either, so the result does not depend on which is converted first.
+            // The merged bone hangs from a bone that is not posed by the app.
+            // A target the export leaves out never turns in VRM; one it converts
+            // here is not used either, so the order does not matter; VRM solves
+            // other constraints and spring joints in its own order.
             var driver = Fixture.Child(f.Forearm, "Driver", f.Hand.localPosition);
             driver.rotation = f.Hand.rotation;
             if (driverFirst) driver.SetSiblingIndex(0);
             f.Merged.SetParent(driver, true);
-            var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<PositionConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
-            constraint.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
-            constraint.locked = true; constraint.constraintActive = true;
+            if (kind == "spring") driver.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            else if (kind == "vrm") driver.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Hand;
+            else
+            {
+                var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<PositionConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
+                constraint.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
+                constraint.locked = true; constraint.constraintActive = true;
+            }
             f.Convert();
             Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
