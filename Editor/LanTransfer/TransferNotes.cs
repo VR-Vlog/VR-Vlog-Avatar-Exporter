@@ -44,6 +44,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal readonly List<TransferNoteGroup> Notes = new List<TransferNoteGroup>();
         // The name-free diagnostics text of the same export, made when copied. Null without one.
         internal Func<string> Diagnostics { get; set; }
+        // The same text with the names and paths left in, made only when the user picks it.
+        internal Func<string> NamedDiagnostics { get; set; }
         // The record kinds, then the lines without a kind.
         internal readonly List<TransferNoteGroup> Records = new List<TransferNoteGroup>();
         internal int NoteCount => Notes.Sum(group => group.Count);

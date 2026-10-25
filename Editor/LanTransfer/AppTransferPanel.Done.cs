@@ -119,6 +119,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             var notes = TransferNotes.Build(Exporter?.LastNotes());
             notes.Diagnostics = Exporter?.LastDiagnostics?.Invoke();
+            notes.NamedDiagnostics = Exporter?.LastNamedDiagnostics?.Invoke();
             return notes;
         }
 
@@ -159,6 +160,26 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 copy.AddToClassList("action");
                 copy.style.width = 136;
                 line.Add(copy);
+                // The named text is behind the arrow, with where it may be sent in the item itself.
+                var named = exportNotes.NamedDiagnostics;
+                if (named != null)
+                {
+                    var arrow = new Button { name = "copy-named-diagnostics", text = "▾", tooltip = T(AppTransferText.NamedDiagnosticsItem) };
+                    arrow.clicked += () =>
+                    {
+                        var menu = new GenericMenu();
+                        menu.AddItem(new GUIContent(T(AppTransferText.NamedDiagnosticsItem)), false, () =>
+                        {
+                            EditorGUIUtility.systemCopyBuffer = named();
+                            copy.text = T(AppTransferText.DiagnosticsCopied);
+                        });
+                        menu.DropDown(arrow.worldBound);
+                    };
+                    arrow.AddToClassList("action");
+                    arrow.style.width = 22;
+                    arrow.style.marginLeft = 0;
+                    line.Add(arrow);
+                }
             }
             head.Add(line);
             var sub = new Label(failed ? AppTransferFlow.SentencePerLine(flow.FailureText(T))

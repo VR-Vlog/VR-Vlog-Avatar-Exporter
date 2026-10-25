@@ -16,8 +16,11 @@ namespace VRVlog.LilToonExporter
     // hold a name: meshes and materials are numbered, a shader shows as its
     // family, and a line of the export report shows its reason only when that
     // reason is a fixed sentence of the exporter.
+    // NamedText is a separate text for a private message: the same lines with
+    // the names and paths left in. It is made only when the user picks it.
     internal sealed class ExportDiagnostics
     {
+        internal const string NamedNotice = "名前・パスを含みます。DM など非公開の場だけで送ってください";
         internal const string QuickTransfer = "かんたん転送";
         internal const string DetailedTransfer = "通常の転送";
         internal const string TransferSave = "転送画面から保存";
@@ -49,9 +52,13 @@ namespace VRVlog.LilToonExporter
         readonly List<MaterialLine> materials = new List<MaterialLine>();
         readonly List<string> changes = new List<string>();
         readonly List<string> gimmicks = new List<string>();
+        // The lines only the named text has, and its change lines with every name kept.
+        readonly List<string> namedHead = new List<string>();
+        readonly List<string> gimmickNames = new List<string>();
+        readonly List<string> namedChanges = new List<string>();
         readonly Dictionary<int, byte[]> images = new Dictionary<int, byte[]>();
         readonly Dictionary<int, string> alpha = new Dictionary<int, string>();
-        string text;
+        string text, namedText;
         // False when the VRM could not be read and only the head was written.
         bool read = true;
         static HashSet<string> fixedTexts;
@@ -59,13 +66,13 @@ namespace VRVlog.LilToonExporter
         sealed class MeshLine
         {
             internal int Vertices, Submeshes, BlendShapes;
-            internal string Index = "", Materials = "";
+            internal string Name = "", Index = "", Materials = "";
             internal bool Skinned;
         }
 
         sealed class MaterialLine
         {
-            internal string Shader = "", Converted = "", Transparency = "", Queue = "", Sides = "", Textures = "";
+            internal string Name = "", ShaderName = "", Shader = "", Converted = "", Transparency = "", Queue = "", Sides = "", Textures = "";
             internal int MainImage = -1;
             internal string MainImageText = "";
             internal float Cutoff = 0.5f;
@@ -91,11 +98,19 @@ namespace VRVlog.LilToonExporter
 
         internal static void Forget() => Last = null;
 
-        internal string Text()
+        internal string Text() => text ?? (text = Write(false));
+
+        internal string NamedText() => namedText ?? (namedText = Write(true));
+
+        string Write(bool withNames)
         {
-            if (text != null) return text;
             var builder = new StringBuilder();
-            foreach (var line in head) builder.AppendLine(line);
+            for (var i = 0; i < head.Count; i++)
+            {
+                builder.AppendLine(head[i]);
+                if (i == 0 && withNames) builder.AppendLine(NamedNotice);
+            }
+            if (withNames) foreach (var line in namedHead) builder.AppendLine(line);
             if (meshes.Count > 0)
             {
                 builder.AppendLine("[メッシュ]");
@@ -107,7 +122,9 @@ namespace VRVlog.LilToonExporter
                         .Append(" / ブレンドシェイプ ").Append(mesh.BlendShapes)
                         .Append(" / インデックス ").Append(mesh.Index)
                         .Append(mesh.Skinned ? " / スキンあり" : " / スキンなし")
-                        .Append(" / マテリアル ").AppendLine(mesh.Materials);
+                        .Append(" / マテリアル ").Append(mesh.Materials);
+                    if (withNames) builder.Append(" / 名前 ").Append(mesh.Name);
+                    builder.AppendLine();
                 }
             }
             if (materials.Count > 0)
@@ -120,7 +137,9 @@ namespace VRVlog.LilToonExporter
                         .Append(" / 変換後 ").Append(material.Converted)
                         .Append(" / ").Append(material.Transparency)
                         .Append(" / キュー ").Append(material.Queue)
-                        .Append(" / ").AppendLine(material.Sides);
+                        .Append(" / ").Append(material.Sides);
+                    if (withNames) builder.Append(" / 名前 ").Append(material.Name).Append(" / シェーダー ").Append(material.ShaderName);
+                    builder.AppendLine();
                     builder.Append("   メイン ").Append(material.MainImageText);
                     if (material.MainImage >= 0) builder.Append(' ').Append(Alpha(material.MainImage, material.Cutoff));
                     builder.Append(" / テクスチャ ").AppendLine(material.Textures);
@@ -130,11 +149,13 @@ namespace VRVlog.LilToonExporter
             {
                 builder.AppendLine("[書き出さなかったギミック]");
                 foreach (var line in gimmicks) builder.AppendLine(line);
+                if (withNames) foreach (var line in gimmickNames) builder.AppendLine(line);
                 builder.AppendLine("[変換で変えた項目]");
-                if (changes.Count == 0) builder.AppendLine("なし");
-                foreach (var line in changes) builder.AppendLine(line);
+                var lines = withNames ? namedChanges : changes;
+                if (lines.Count == 0) builder.AppendLine("なし");
+                foreach (var line in lines) builder.AppendLine(line);
             }
-            return text = builder.ToString();
+            return builder.ToString();
         }
 
         static ExportDiagnostics Build(GameObject source, byte[] bytes, ExportFallbackReport report, IEnumerable<string> warnings, string kind)
@@ -174,7 +195,7 @@ namespace VRVlog.LilToonExporter
                 if (number <= diagnostics.meshes.Count) continue;
                 var primitives = Array(meshesJson[meshIndex] as Dictionary<string, object>, "primitives")
                     .OfType<Dictionary<string, object>>().ToList();
-                var line = new MeshLine { Submeshes = primitives.Count, Skinned = node.ContainsKey("skin") };
+                var line = new MeshLine { Submeshes = primitives.Count, Skinned = node.ContainsKey("skin"), Name = node.TryGetValue("name", out var rawName) ? rawName as string ?? "" : "" };
                 var positions = new HashSet<int>();
                 var indexTypes = new List<string>();
                 var used = new List<int>();
@@ -214,6 +235,8 @@ namespace VRVlog.LilToonExporter
                 else if (material.TryGetValue("name", out var rawName) && rawName is string name && sourceShaders.TryGetValue(name, out var found)) shader = found;
                 else shader = null;
                 line.Shader = ShaderText(shader, record);
+                line.Name = material.TryGetValue("name", out var rawMaterialName) ? rawMaterialName as string ?? "" : "";
+                line.ShaderName = shader ?? "不明";
                 line.Converted = record == null ? "MToon" : full ? "lilToon（そのまま）" : "lilToon（モバイル）";
                 var mode = material.TryGetValue("alphaMode", out var rawMode) ? rawMode as string ?? "OPAQUE" : "OPAQUE";
                 if (mode == "MASK")
@@ -285,6 +308,9 @@ namespace VRVlog.LilToonExporter
                 var inactive = renderers.Count(renderer => !renderer.gameObject.activeInHierarchy);
                 var disabled = renderers.Count(renderer => renderer.gameObject.activeInHierarchy && !renderer.enabled);
                 head.Add("元のアバター レンダラー " + renderers.Length + " / 初期で非表示 " + inactive + " / 無効 " + disabled);
+                diagnostics.namedHead.Add("アバター " + source.name);
+                diagnostics.namedHead.Add("初期で非表示 " + Paths(source, renderers.Where(renderer => !renderer.gameObject.activeInHierarchy)));
+                diagnostics.namedHead.Add("無効 " + Paths(source, renderers.Where(renderer => renderer.gameObject.activeInHierarchy && !renderer.enabled)));
             }
 
             for (var index = 0; index < gltfMaterials.Count; index++)
@@ -293,6 +319,7 @@ namespace VRVlog.LilToonExporter
                     numbers[name] = "マテリアル #" + (index + 1);
 
             diagnostics.gimmicks.AddRange(Gimmicks(source, json, report));
+            diagnostics.gimmickNames.AddRange(GimmickNames(source, report));
 
             var list = ExportResultList.Build(report, warnings);
             head.Add("変換の結果 " + string.Join("・", ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome) + list.Summary[outcome])) +
@@ -308,7 +335,59 @@ namespace VRVlog.LilToonExporter
             }
             foreach (var key in order)
                 diagnostics.changes.Add(key.Line + (counts[key] > 1 ? "（" + counts[key] + "件）" : "") + key.Targets);
+            foreach (var row in list.Rows) diagnostics.namedChanges.Add(NamedChangeLine(row));
             return diagnostics;
+        }
+
+        // The objects' paths under the avatar, or "なし".
+        static string Paths(GameObject source, IEnumerable<Component> components)
+        {
+            var paths = components.Select(component => ExportFallbackReport.RelativePath(source.transform, component.transform))
+                .Where(path => path != null).Select(path => path.Length == 0 ? source.name : path).Distinct().ToList();
+            return paths.Count == 0 ? "なし" : string.Join(", ", paths);
+        }
+
+        // Where the gimmicks and parts counted by Gimmicks are, for the named text only.
+        internal static List<string> GimmickNames(GameObject source, ExportFallbackReport report)
+        {
+            var lines = new List<string>();
+            foreach (var entry in report?.Results ?? (IReadOnlyList<ExportResultEntry>)new ExportResultEntry[0])
+                if (entry.RuleId != null && entry.Outcome == ExportOutcome.Omitted)
+                    lines.Add("外した " + ExportGimmickChoices.GroupName(entry.RuleId) + " " + (entry.Path ?? entry.Name));
+            if (source == null) return lines;
+            var parts = Parts(source);
+            for (var i = 0; i < PartKinds.Length; i++)
+                if (parts[i].Count > 0) lines.Add(PartKinds[i] + "の場所 " + Paths(source, parts[i]));
+            return lines;
+        }
+
+        // The board's part kinds, then trails and lines, which UniVRM does not write either.
+        static readonly string[] PartKinds = ExportGimmickChoices.PartNames.Concat(new[] { "トレイル・ライン" }).ToArray();
+        // Constraints get their own line, counted against the VRM, not with the parts that are never written.
+        static readonly int ConstraintKind = System.Array.IndexOf(PartKinds, "コンストレイント");
+
+        // The avatar's components by PartKinds, inactive objects included.
+        static List<Component>[] Parts(GameObject source)
+        {
+            var parts = PartKinds.Select(_ => new List<Component>()).ToArray();
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null) continue;
+                var index = component is TrailRenderer || component is LineRenderer ? parts.Length - 1 : ExportGimmickChoices.PartIndex(component);
+                if (index >= 0) parts[index].Add(component);
+            }
+            return parts;
+        }
+
+        // One line of the report with its own words: the reason as written, the targets by name.
+        internal static string NamedChangeLine(ExportResultRow row)
+        {
+            var line = new StringBuilder(ExportResultList.Label(row.Outcome)).Append(" [").Append(row.Group).Append("] ").Append(row.Content);
+            if (row.Targets.Count > 0) line.Append(" / 対象 ").Append(string.Join(", ", row.Targets.Select(target => string.IsNullOrEmpty(target.Path) ? target.Name : target.Path)));
+            if (row.Count > Math.Max(1, row.Targets.Count)) line.Append("（").Append(row.Count).Append("件）");
+            if (!string.IsNullOrEmpty(row.Reason)) line.Append(" / 理由 ").Append(row.Reason);
+            // A reason of several lines stays on its own line here.
+            return Regex.Replace(line.ToString(), @"\s*\n\s*", " ");
         }
 
         // Kinds of parts that are not written, by the exporter's own kinds:
@@ -330,27 +409,17 @@ namespace VRVlog.LilToonExporter
             lines.Add("外したギミック " + (removed.Count == 0 ? "なし" : string.Join(" / ", removed.Select(item => item.Group + " " + item.Count))));
             if (source == null) return lines;
 
-            // The board's part kinds, then trails and lines, which UniVRM does not write either.
-            var parts = new int[ExportGimmickChoices.PartNames.Length + 1];
-            var physBones = 0;
-            foreach (var component in source.GetComponentsInChildren<Component>(true))
-            {
-                if (component == null) continue;
-                if (PhysBoneSpringExport.IsPhysBone(component)) physBones++;
-                var index = component is TrailRenderer || component is LineRenderer ? parts.Length - 1 : ExportGimmickChoices.PartIndex(component);
-                if (index >= 0) parts[index]++;
-            }
-            var constraintIndex = System.Array.IndexOf(ExportGimmickChoices.PartNames, "コンストレイント");
-            var names = ExportGimmickChoices.PartNames.Concat(new[] { "トレイル・ライン" }).ToArray();
-            lines.Add("書き出さない部品 " + string.Join(" / ", names.Select((name, i) => (name, i)).Where(item => item.i != constraintIndex)
-                .Select(item => item.name + " " + parts[item.i])));
+            var parts = Parts(source);
+            var physBones = source.GetComponentsInChildren<Component>(true).Count(PhysBoneSpringExport.IsPhysBone);
+            lines.Add("書き出さない部品 " + string.Join(" / ", PartKinds.Select((name, i) => (name, i)).Where(item => item.i != ConstraintKind)
+                .Select(item => item.name + " " + parts[item.i].Count)));
 
             var springs = json.TryGetValue("extensions", out var rawExtensions) && rawExtensions is Dictionary<string, object> extensions &&
                 extensions.TryGetValue("VRMC_springBone", out var rawSprings) ? rawSprings as Dictionary<string, object> : null;
             lines.Add("揺れもの 元のPhysBone " + physBones + " / VRMの揺れもの " + Array(springs, "springs").Count);
             var constrained = Array(json, "nodes").OfType<Dictionary<string, object>>().Count(node =>
                 node.TryGetValue("extensions", out var raw) && raw is Dictionary<string, object> nodeExtensions && nodeExtensions.ContainsKey("VRMC_node_constraint"));
-            lines.Add("コンストレイント 元 " + parts[constraintIndex] + " / VRM " + constrained);
+            lines.Add("コンストレイント 元 " + parts[ConstraintKind].Count + " / VRM " + constrained);
             return lines;
         }
 

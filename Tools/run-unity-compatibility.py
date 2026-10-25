@@ -36,6 +36,9 @@ BEHAVIOR_CASES = {
         'ShadersShowOnlyTheirFamily': 1,
         'TheTextCountsThePartsNotWrittenByKind': 1,
         'WithoutGimmicksTheSectionSaysNone': 1,
+        'GimmicksOfOneGroupAreSummedAndGroupsKeepTheirOrder': 1,
+        'TheNamedTextKeepsTheNamesAndTheDefaultTextStaysWithout': 1,
+        'ANamedChangeLineStaysOnOneLine': 1,
     },
     'MissingMeshAttributesTests': {
         'AdditionalVertexStreamsPreserveAuthoredChannelInsteadOfUsingFallback': 2,
