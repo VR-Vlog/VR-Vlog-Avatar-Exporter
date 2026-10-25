@@ -72,7 +72,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string StopAndStart = "中止して始める";
         internal const string LeavingCancels = "ページを移るかボードを閉じると転送を中止します";
         // The full-body preview beside the quick window's form.
-        internal const string PreviewTitle = "書き出すオブジェクト";
+        internal const string PreviewTitle = "プレビュー";
         internal const string PreviewNote = "色と透け方はアプリと異なる場合があります";
         internal const string PreviewHint = "ドラッグで回転・ホイールで拡大";
         internal const string PreviewFailed = "プレビューを表示できませんでした";
