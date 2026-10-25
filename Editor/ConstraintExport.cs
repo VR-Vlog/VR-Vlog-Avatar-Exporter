@@ -277,18 +277,18 @@ namespace VRVlog.LilToonExporter
         }
 
         // Bones whose local rotation may change in the app: the skeleton
-        // (driven, unless it also swings), spring joints and any constraint
-        // target. Any other bone only carries its parent.
+        // (driven, unless it also swings or is constrained), spring joints and
+        // any constraint target. Any other bone only carries its parent.
         static (HashSet<Transform> Driven, HashSet<Transform> Turning) Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans,
             IEnumerable<Transform> authored)
         {
-            var springs = copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform).ToList();
+            var others = new HashSet<Transform>(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            others.UnionWith(authored);
+            others.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
             var driven = new HashSet<Transform>(humanoid);
-            driven.ExceptWith(springs);
+            driven.ExceptWith(others);
             var turning = new HashSet<Transform>(humanoid);
-            turning.UnionWith(springs);
-            turning.UnionWith(authored);
-            turning.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
+            turning.UnionWith(others);
             return (driven, turning);
         }
 
