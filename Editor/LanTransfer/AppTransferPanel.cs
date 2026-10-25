@@ -28,6 +28,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private const float FooterHeight = 69f;
         private const float TransferChrome = 224f + FooterHeight;
         internal static readonly Vector2 FormMinimumSize = new Vector2(420f, 400f);
+        // The quick window's form column beside the full-body preview, and the narrowest preview it shows.
+        private const float FormColumnWidth = 436f, PreviewMinimumWidth = 200f;
         // The QR notice's size in the window (AppTransferWindow.uss), and the smallest it is made on the board.
         private const float WarningFontSize = 24f, SmallestWarningFontSize = 12f;
         // Above the QR once the export is saved, when materials lost their shader. Kept out of
@@ -105,11 +107,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // "QRコードを作る" was pressed while something it needs was missing; the missing labels turn red.
         [NonSerialized] private bool pressedWhileBlocked, authorMarked;
         [NonSerialized] private IMGUIContainer termsView;
-        [NonSerialized] private VisualElement root, content, form, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
+        [NonSerialized] private VisualElement root, content, form, columns, mainColumn, previewLine, previewColumn, formFields, consentFields, privacyRow, transfer, slotRow, slot, slotMessage, slotUpload, revealArea, qrSample, warningRow, barFill,
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
-        [NonSerialized] private Label heading, subtitle, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+        [NonSerialized] private Label heading, subtitle, previewTitle, previewNote, previewHint, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
             reasonLabel, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
@@ -118,7 +120,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private Image qrImage, qrCover, qrMarkIcon, warningIcon;
         [NonSerialized] private ScrollView formScroll, transferScroll;
         [NonSerialized] private VisualElement transferBody, fillBeforeSave, fillAfterSave;
-        [NonSerialized] private IMGUIContainer uploadBar;
+        [NonSerialized] private IMGUIContainer uploadBar, previewView;
 
         // The third page of the expression board, for the board's avatar. Resolved by the board by
         // name, as the exporter is here. It lives while it is on the board's page: leaving the page
@@ -209,7 +211,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             nameFits = null;
             pressedWhileBlocked = false;
             Exporter?.SelectAvatar(target);
-            SetMinimumSize(FormMinimumSize);
+            SetMinimumSize(FormSize);
             Refresh();
         }
 
@@ -234,6 +236,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ObjectChangeEvents.changesPublished -= SceneChanged;
             Undo.undoRedoPerformed -= SceneChanged;
             StopAndClean();
+            exporter?.ReleaseQuickPreview();
         }
 
         // Closing cancels the transfer and deletes the exported copy. Nothing of
@@ -263,7 +266,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal void StopTransfer()
         {
             StopAndClean();
-            SetMinimumSize(FormMinimumSize);
+            SetMinimumSize(FormSize);
             Refresh();
         }
 
@@ -278,10 +281,59 @@ namespace VRVlog.LilToonExporter.LanTransfer
             qrTexture = null;
         }
 
-        // The board sizes its page itself; only the window grows for the QR.
+        // The board sizes its page itself; only the window grows, for the preview and the QR.
         private void SetMinimumSize(Vector2 size)
         {
-            if (Window != null) Window.minSize = size;
+            var window = Window;
+            if (window == null) return;
+            window.minSize = size;
+            if (window.docked) return;
+            var rect = window.position;
+            if (rect.width < size.x || rect.height < size.y)
+                window.position = new Rect(rect.x, rect.y, Mathf.Max(rect.width, size.x), Mathf.Max(rect.height, size.y));
+        }
+
+        // Only the quick window shows the preview: the board has its own on the objects page,
+        // and the detailed transfer exports what that board shows.
+        private bool HasPreview => Window != null && !detailed;
+
+        // The form, or the QR when it is the wider of the two, left of the preview.
+        private float MainColumnWidth => AtForm ? FormColumnWidth : Mathf.Max(FormColumnWidth, SlotSide + 2f * Padding);
+
+        // The smallest window for the form. With the preview it has the room for both,
+        // unless the Unity window is narrower; the preview then stays hidden (PlacePreview).
+        internal Vector2 FormSize => new Vector2(WithPreview(FormMinimumSize.x, FormColumnWidth), FormMinimumSize.y);
+
+        private float WithPreview(float alone, float column)
+        {
+            if (!HasPreview) return alone;
+            var width = column + 1f + PreviewMinimumWidth;
+            var screen = EditorGUIUtility.GetMainWindowPosition().width;
+            if (screen > 0f) width = Mathf.Min(width, screen);
+            return Mathf.Max(alone, width);
+        }
+
+        // The preview beside the form while the window has the room for both; otherwise the form
+        // takes the whole width as it does without the preview. The column never follows its text.
+        private void PlacePreview()
+        {
+            var main = MainColumnWidth;
+            var shown = HasPreview && columns.contentRect.width >= main + 1f + PreviewMinimumWidth;
+            Show(previewLine, shown);
+            Show(previewColumn, shown);
+            mainColumn.style.width = shown ? main : new StyleLength(StyleKeyword.Null);
+            mainColumn.style.flexGrow = shown ? 0f : 1f;
+        }
+
+        private void DrawPreview()
+        {
+            var entry = exporter;
+            if (entry == null) return;
+            var rect = previewView.contentRect;
+            if (entry.DrawQuickPreview(avatar, new Rect(0f, 0f, rect.width, rect.height))) previewView.MarkDirtyRepaint();
+            // Nothing turns on a failure, so its hint goes; the line keeps its place.
+            var hint = entry.QuickPreviewFailed() ? Visibility.Hidden : Visibility.Visible;
+            if (previewHint.resolvedStyle.visibility != hint) previewHint.style.visibility = hint;
         }
 
         private void Poll()
@@ -291,6 +343,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // so it follows the Editor (Play mode, the privacy choice shared with "スマホに送る").
             if (flow == null) return;
             if (!CloudTransferAvailability.Enabled) { StopAndClean(); return; }
+            // A change in a scene or a save of the avatar's settings shows in the preview within a second.
+            if (previewColumn != null && previewColumn.resolvedStyle.display == DisplayStyle.Flex && exporter != null && exporter.QuickPreviewChanged(avatar))
+                previewView.MarkDirtyRepaint();
             if (flow.View == AppTransferView.Exporting)
             {
                 // Exporting blocks the Editor: start once the panel has painted that state.
@@ -416,7 +471,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (backToForm)
             {
                 flow.Stop();
-                SetMinimumSize(FormMinimumSize);
+                SetMinimumSize(FormSize);
                 Refresh();
                 return;
             }
@@ -637,7 +692,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     exportAttempt++;
                     AppTransferFlow.Discard(path);
                     flow.ExportCanceled();
-                    SetMinimumSize(FormMinimumSize);
+                    SetMinimumSize(FormSize);
                     Refresh();
                     return;
                 }
@@ -664,7 +719,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // Nothing was handed to the upload. Delete whatever this attempt left;
             // a later save from the recovery window writes the file again.
             AppTransferFlow.Discard(path);
-            if (failure == null) { flow.ExportCanceled(); SetMinimumSize(FormMinimumSize); }
+            if (failure == null) { flow.ExportCanceled(); SetMinimumSize(FormSize); }
             else flow.ExportFailed(failure);
             Refresh();
         }
@@ -734,12 +789,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var height = HeaderHeight + side + TransferChrome + (missingShaders > 0 ? MissingShadersHeight : 0f);
             var screen = EditorGUIUtility.GetMainWindowPosition().height;
             if (screen > 0f) height = Mathf.Min(height, Mathf.Max(FormMinimumSize.y, screen));
-            var size = new Vector2(Mathf.Max(FormMinimumSize.x, side + 2f * Padding), height);
-            window.minSize = size;
-            if (window.docked) return;
-            var rect = window.position;
-            if (rect.width < size.x || rect.height < size.y)
-                window.position = new Rect(rect.x, rect.y, Mathf.Max(rect.width, size.x), Mathf.Max(rect.height, size.y));
+            var alone = Mathf.Max(FormMinimumSize.x, side + 2f * Padding);
+            SetMinimumSize(new Vector2(WithPreview(alone, Mathf.Max(FormColumnWidth, side + 2f * Padding)), height));
         }
 
         private float Snap(float value)
@@ -785,6 +836,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
             heading = root.Q<Label>("heading");
             subtitle = root.Q<Label>("subtitle");
             form = root.Q("form");
+            columns = root.Q("columns");
+            mainColumn = root.Q("main-column");
+            previewLine = root.Q("preview-line");
+            previewColumn = root.Q("preview");
+            previewTitle = root.Q<Label>("preview-title");
+            previewNote = root.Q<Label>("preview-note");
+            previewHint = root.Q<Label>("preview-hint");
+            previewView = root.Q<IMGUIContainer>("preview-view");
             problemBox = root.Q<HelpBox>("exporter-problem");
             diagnosticsButton = root.Q<Button>("diagnostics");
             playingBox = root.Q<HelpBox>("playing");
@@ -934,6 +993,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             // The export starts once the panel has drawn the Exporting state.
             slot.generateVisualContent += _ => { if (shownView == AppTransferView.Exporting) exportPainted = true; };
             slotRow.RegisterCallback<GeometryChangedEvent>(_ => PlaceSlot());
+            previewView.onGUIHandler = DrawPreview;
+            columns.RegisterCallback<GeometryChangedEvent>(_ => PlacePreview());
             formScroll = root.Q<ScrollView>("form-scroll");
             transferScroll = root.Q<ScrollView>("transfer-scroll");
             transferBody = transferScroll.Q(className: "body");
@@ -1009,6 +1070,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             RefreshSaveRow();
             RefreshActions(sending);
             RefreshDone(view, sending);
+            previewTitle.text = T(AppTransferText.PreviewTitle);
+            previewNote.text = T(AppTransferText.PreviewNote);
+            previewHint.text = T(AppTransferText.PreviewHint);
+            PlacePreview();
         }
 
         // One row of buttons under both screens: "戻る" at the left on the board. The form has "VRMを保存"
@@ -1220,6 +1285,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<GameObject, bool, object> SourceStamp;
             internal Func<object, GameObject, bool> SourceUnchanged;
             internal Func<object, bool> ChoicesUnchanged;
+            internal Func<GameObject, Rect, bool> DrawQuickPreview;
+            internal Func<GameObject, bool> QuickPreviewChanged;
+            internal Func<bool> QuickPreviewFailed;
+            internal Action ReleaseQuickPreview;
 
             internal static ExportEntry Resolve()
             {
@@ -1253,6 +1322,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         SourceStamp = (Func<GameObject, bool, object>)Delegate.CreateDelegate(typeof(Func<GameObject, bool, object>), target, "SourceStamp"),
                         SourceUnchanged = (Func<object, GameObject, bool>)Delegate.CreateDelegate(typeof(Func<object, GameObject, bool>), target, "SourceUnchanged"),
                         ChoicesUnchanged = (Func<object, bool>)Delegate.CreateDelegate(typeof(Func<object, bool>), target, "ChoicesUnchanged"),
+                        DrawQuickPreview = (Func<GameObject, Rect, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, Rect, bool>), target, "DrawQuickPreview"),
+                        QuickPreviewChanged = (Func<GameObject, bool>)Delegate.CreateDelegate(typeof(Func<GameObject, bool>), target, "QuickPreviewChanged"),
+                        QuickPreviewFailed = (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), target, "QuickPreviewFailed"),
+                        ReleaseQuickPreview = (Action)Delegate.CreateDelegate(typeof(Action), target, "ReleaseQuickPreview"),
                     };
                 }
                 catch (Exception exception) when (exception is TypeLoadException || exception is FileNotFoundException || exception is FileLoadException
