@@ -251,5 +251,100 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(preview / (width - 12), Is.EqualTo(ratio).Within(.01f));
             Assert.That(list + preview + 12, Is.EqualTo(width).Within(.01f));
         }
+
+        // The Scene view's buttons and keys (Unity 2022.3). On Windows the action
+        // key is Ctrl, so Alt, Ctrl and the left button pans; on a Mac it is
+        // Command, and Option, Control and the left button zooms.
+        [TestCase(0, false, false, false, "Orbit")]
+        [TestCase(0, true, false, false, "Orbit")]
+        [TestCase(0, true, true, true, "Pan")]
+        [TestCase(0, true, true, false, "Pan")]
+        [TestCase(0, true, false, true, "Zoom")]
+        [TestCase(1, false, false, false, "Look")]
+        [TestCase(1, true, false, false, "Zoom")]
+        [TestCase(2, false, false, false, "Pan")]
+        [TestCase(2, true, false, false, "Pan")]
+        [TestCase(3, false, false, false, "None")]
+        public void TheButtonsAreTheSceneViews(int button, bool alt, bool action, bool control, string tool)
+        {
+            Assert.That(ExcludedObjectsPreview.ToolFor(button, alt, action, control).ToString(), Is.EqualTo(tool));
+        }
+
+        // Orbit turns about the pivot, look turns in place, pan moves across the
+        // view, Alt and the wheel go toward the point under the mouse, and F brings
+        // the whole body back without turning the camera. Hiding objects moves nothing.
+        [Test]
+        public void TheCameraMovesAsInTheSceneView()
+        {
+            var fixture = new AttachmentConnectionTests.Fixture();
+            ExcludedObjectsPreview preview = null;
+            try
+            {
+                preview = new ExcludedObjectsPreview(fixture.Source);
+                preview.Show(null, null);
+                var rect = new Rect(0, 0, 200, 400);
+                var center = preview.Pivot;
+                var start = preview.CameraPose(rect);
+                float Reach(Pose pose) => Vector3.Distance(pose.position, preview.Pivot);
+                var distance = Reach(start);
+                // From the avatar's front, looking at it.
+                Assert.That(Vector3.Dot(start.rotation * Vector3.forward, fixture.Source.transform.forward), Is.EqualTo(-1).Within(.001f));
+
+                preview.Orbit(new Vector2(100, 40));
+                var orbited = preview.CameraPose(rect);
+                Assert.That(preview.Pivot, Is.EqualTo(center));
+                Assert.That(Reach(orbited), Is.EqualTo(distance).Within(.001f));
+                Assert.That(Quaternion.Angle(orbited.rotation, start.rotation), Is.GreaterThan(10));
+
+                preview.Show(new[] { fixture.Source.transform.Find("Front").gameObject }, null);
+                Assert.That(preview.CameraPose(rect).position, Is.EqualTo(orbited.position));
+
+                preview.Look(rect, new Vector2(30, 0));
+                var looked = preview.CameraPose(rect);
+                Assert.That(Vector3.Distance(looked.position, orbited.position), Is.LessThan(.0001f));
+                Assert.That(Vector3.Distance(preview.Pivot, center), Is.GreaterThan(.01f));
+
+                // F: back at the center, still turned, every corner of the body in view.
+                preview.FrameAll(rect);
+                Assert.That(preview.Pivot, Is.EqualTo(center));
+                var framed = preview.CameraPose(rect);
+                Assert.That(framed.rotation, Is.EqualTo(looked.rotation));
+                var half = Mathf.Tan(15 * Mathf.Deg2Rad);
+                var box = preview.Framing;
+                var turn = preview.Copy.transform.rotation;
+                for (var corner = 0; corner < 8; corner++)
+                {
+                    var offset = Vector3.Scale(box.extents, new Vector3((corner & 1) * 2 - 1, (corner & 2) - 1, (corner & 4) / 2 - 1));
+                    var seen = Quaternion.Inverse(framed.rotation) * (turn * (box.center + offset) - framed.position);
+                    Assert.That(seen.z, Is.GreaterThan(0));
+                    Assert.That(Mathf.Abs(seen.y / seen.z), Is.LessThanOrEqualTo(half));
+                    Assert.That(Mathf.Abs(seen.x / seen.z), Is.LessThanOrEqualTo(half * rect.width / rect.height));
+                }
+                var front = distance;
+                distance = Reach(framed);
+
+                // A drag across the whole height moves the pivot the height of the view at its distance.
+                var before = preview.CameraPose(rect);
+                preview.Pan(rect, new Vector2(0, rect.height), false);
+                var moved = preview.Pivot - center;
+                Assert.That(moved.magnitude, Is.EqualTo(2 * distance * Mathf.Tan(15 * Mathf.Deg2Rad)).Within(.001f));
+                Assert.That(Vector3.Dot(moved.normalized, before.rotation * Vector3.up), Is.EqualTo(1).Within(.001f));
+                Assert.That(preview.CameraPose(rect).rotation, Is.EqualTo(before.rotation));
+                preview.FrameAll(rect);
+
+                // At the center (the wheel) the pivot stays; at the mouse (Alt and the wheel) it moves toward the point.
+                preview.Zoom(rect, .5f, null);
+                Assert.That(preview.Pivot, Is.EqualTo(center));
+                Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(distance * .5f).Within(.001f));
+                preview.FrameAll(rect);
+                preview.Zoom(rect, .5f, rect.center + new Vector2(0, -100));
+                var up = preview.CameraPose(rect).rotation * Vector3.up;
+                Assert.That(Vector3.Dot(preview.Pivot - center, up), Is.GreaterThan(.01f));
+                preview.Zoom(rect, .0001f, null);
+                // The zoom is kept against the front's fit.
+                Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(front * .02f).Within(.001f));
+            }
+            finally { preview?.Dispose(); fixture.Dispose(); }
+        }
     }
 }

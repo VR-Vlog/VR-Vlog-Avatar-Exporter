@@ -94,7 +94,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             panel.Detailed = detailedExport;
             panel.Select(target, true);
-            window.minSize = AppTransferPanel.FormMinimumSize;
+            window.minSize = panel.FormSize;
             window.Show();
         }
 
