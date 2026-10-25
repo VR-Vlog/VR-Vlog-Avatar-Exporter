@@ -318,8 +318,10 @@ namespace VRVlog.LilToonExporter
                     rawName is string name && !numbers.ContainsKey(name))
                     numbers[name] = "マテリアル #" + (index + 1);
 
-            diagnostics.gimmicks.AddRange(Gimmicks(source, json, report));
-            diagnostics.gimmickNames.AddRange(GimmickNames(source, report));
+            // One scan of the avatar for both the counts and the places.
+            var parts = source == null ? null : Parts(source);
+            diagnostics.gimmicks.AddRange(Gimmicks(source, json, report, parts));
+            diagnostics.gimmickNames.AddRange(GimmickNames(source, report, parts));
 
             var list = ExportResultList.Build(report, warnings);
             head.Add("変換の結果 " + string.Join("・", ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome) + list.Summary[outcome])) +
@@ -348,14 +350,14 @@ namespace VRVlog.LilToonExporter
         }
 
         // Where the gimmicks and parts counted by Gimmicks are, for the named text only.
-        internal static List<string> GimmickNames(GameObject source, ExportFallbackReport report)
+        internal static List<string> GimmickNames(GameObject source, ExportFallbackReport report, List<Component>[] parts = null)
         {
             var lines = new List<string>();
             foreach (var entry in report?.Results ?? (IReadOnlyList<ExportResultEntry>)new ExportResultEntry[0])
                 if (entry.RuleId != null && entry.Outcome == ExportOutcome.Omitted)
-                    lines.Add("外した " + ExportGimmickChoices.GroupName(entry.RuleId) + " " + OneLine(string.IsNullOrEmpty(entry.Path) ? entry.Name : entry.Path));
+                    lines.Add("外した " + ExportGimmickChoices.GroupName(entry.RuleId) + " " + OneLine(string.IsNullOrEmpty(entry.Path) ? entry.Name : entry.Path) + (entry.Count > 1 ? "（" + entry.Count + "件）" : ""));
             if (source == null) return lines;
-            var parts = Parts(source);
+            parts = parts ?? Parts(source);
             for (var i = 0; i < PartKinds.Length; i++)
                 if (parts[i].Count > 0) lines.Add(PartKinds[i] + "の場所 " + Paths(source, parts[i]));
             return lines;
@@ -397,7 +399,7 @@ namespace VRVlog.LilToonExporter
         // the gimmicks a rule removed (by the board's group name), the avatar's
         // components VRM has no place for, and PhysBones and constraints next to
         // what the VRM holds after conversion. Counts only, never a name.
-        internal static List<string> Gimmicks(GameObject source, Dictionary<string, object> json, ExportFallbackReport report)
+        internal static List<string> Gimmicks(GameObject source, Dictionary<string, object> json, ExportFallbackReport report, List<Component>[] parts = null)
         {
             var lines = new List<string>();
             var removed = new List<(string Group, int Count)>();
@@ -412,7 +414,7 @@ namespace VRVlog.LilToonExporter
             lines.Add("外したギミック " + (removed.Count == 0 ? "なし" : string.Join(" / ", removed.Select(item => item.Group + " " + item.Count))));
             if (source == null) return lines;
 
-            var parts = Parts(source);
+            parts = parts ?? Parts(source);
             var physBones = source.GetComponentsInChildren<Component>(true).Count(PhysBoneSpringExport.IsPhysBone);
             lines.Add("書き出さない部品 " + string.Join(" / ", PartKinds.Select((name, i) => (name, i)).Where(item => item.i != ConstraintKind)
                 .Select(item => item.name + " " + parts[item.i].Count)));

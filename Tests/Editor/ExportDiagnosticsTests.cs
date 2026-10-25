@@ -236,6 +236,9 @@ namespace VRVlog.LilToonExporter.Tests
             second.Count = 2;
             var lines = ExportDiagnostics.Gimmicks(null, new Dictionary<string, object>(), report);
             Assert.That(lines, Is.EqualTo(new[] { "外したギミック 撫でシステム 3 / カメラ 1" }));
+            // The named lines add up to the same counts.
+            Assert.That(ExportDiagnostics.GimmickNames(null, report), Is.EqualTo(new[]
+                { "外した 撫でシステム SecretGimmick", "外した カメラ SecretCamera", "外した 撫でシステム SecretGimmick2（2件）" }));
         }
 
         [Test]

@@ -437,6 +437,7 @@ namespace VRVlog.LilToonExporter
         {
             EditorGUIUtility.systemCopyBuffer = withNames ? diagnostics.NamedText() : diagnostics.Text();
             diagnosticsCopied = true;
+            Repaint();
         }
 
         void SaveText()
