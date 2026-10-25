@@ -81,6 +81,19 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(VrChatVisemeExport.Capture(avatar, _ => 0), Is.Null);
         }
 
+        // sil and the consonants are not exported as presets, but VRChat drives
+        // them with the vowels one at a time, so the base shape reads them all.
+        [Test] public void ReadListsEveryVisemeShapeOnce()
+        {
+            var avatar = new GameObject("avatar"); owned.Add(avatar);
+            var face = new GameObject("face"); face.transform.SetParent(avatar.transform, false);
+            Descriptor(avatar, "VisemeBlendShape", face.AddComponent<SkinnedMeshRenderer>(), "lip_aa", "lip_other_0", "", "lip_oh", "lip_ou");
+            var visemes = VrChatVisemeExport.Read(avatar);
+            CollectionAssert.AreEqual(Enumerable.Range(0, 10).Select(i => "lip_other_" + i).Concat(new[] { "lip_aa", "lip_oh", "lip_ou" }), visemes.Exclusive);
+            var copy = visemes.ForClone(avatar, avatar);
+            CollectionAssert.AreEqual(visemes.Exclusive, copy.Exclusive);
+        }
+
         [Test] public void CaptureIgnoresAnUnsetFaceMesh()
         {
             var avatar = new GameObject("avatar"); owned.Add(avatar);

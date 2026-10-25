@@ -29,6 +29,7 @@ namespace VRVlog.LilToonExporter.Tests
             NativeNegativeBracketChecks(check);
             EndpointBeyondHundredChecks(check);
             UnsupportedFrameChecks(check);
+            ExclusiveVisemeChecks(check);
             var source = Create();
             var target = Create();
             try
@@ -113,6 +114,53 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 UnityEngine.Object.DestroyImmediate(source);
                 UnityEngine.Object.DestroyImmediate(target);
+            }
+        }
+
+        // Lip Sync visemes show one at a time in VRChat. Shapes: 0 sil (rest
+        // 100), 1 ou, 2 an unrelated shape resting at 50.
+        private static void ExclusiveVisemeChecks(Action<bool, string> check)
+        {
+            var source = Create(); var target = Create(); var plain = Create();
+            try
+            {
+                source.ClearBlendShapes();
+                source.AddBlendShapeFrame("vrc.v_sil", 100, Delta(0, 1, 0), Delta(1, 0, 0), Delta(0, 1, 0));
+                source.AddBlendShapeFrame("vrc.v_ou", 100, Delta(0, 0, 2), null, null);
+                source.AddBlendShapeFrame("Smile", 100, Delta(4, 0, 0), null, null);
+                var v = new Vector3[3]; var n = new Vector3[3]; var t = new Vector3[3];
+                AvatarBaseShape.Rebase(source, target, new[] { 100f, 0f, 50f }, new System.Collections.Generic.HashSet<int> { 0, 1 });
+                check(Near(target.vertices[0].x, 3) && Near(target.vertices[0].y, 1), "Every rest, sil included, is stored in the base.");
+                target.GetBlendShapeFrameVertices(1, 0, v, n, t);
+                check(Near(target.vertices[0].x + v[0].x, 3) && Near(target.vertices[0].y + v[0].y, 0) && Near(v[0].z, 2),
+                    "A viseme ends at the original base plus itself, without the other visemes' rest.");
+                check(Near(target.normals[0].x + n[0].x, 0) && Near(t[0].y, -1), "Viseme normals and tangents drop the other visemes' rest too.");
+                target.GetBlendShapeFrameVertices(0, 0, v, n, t);
+                check(Near(v[0].y, 0), "The resting viseme itself keeps a zero residual.");
+                target.GetBlendShapeFrameVertices(2, 0, v, n, t);
+                check(Near(v[0].x, 2) && Near(v[0].y, 0), "A shape outside the group only drops its own rest.");
+                AvatarBaseShape.Rebase(source, plain, new[] { 100f, 0f, 50f });
+                plain.GetBlendShapeFrameVertices(1, 0, v, n, t);
+                check(v[0].x == 0 && v[0].y == 0 && v[0].z == 2, "Without Lip Sync a viseme keeps its source delta.");
+                AvatarBaseShape.Rebase(source, target, new[] { 0f, 0f, 50f }, new System.Collections.Generic.HashSet<int> { 0, 1 });
+                AvatarBaseShape.Rebase(source, plain, new[] { 0f, 0f, 50f });
+                var same = target.vertices[0].x == plain.vertices[0].x && target.vertices[0].y == plain.vertices[0].y;
+                for (var shape = 0; shape < 3; shape++)
+                {
+                    var pv = new Vector3[3]; var pn = new Vector3[3]; var pt = new Vector3[3];
+                    target.GetBlendShapeFrameVertices(shape, 0, v, n, t);
+                    plain.GetBlendShapeFrameVertices(shape, 0, pv, pn, pt);
+                    for (var i = 0; i < 3; i++)
+                        same &= v[i].x == pv[i].x && v[i].y == pv[i].y && v[i].z == pv[i].z && n[i].x == pn[i].x && n[i].y == pn[i].y &&
+                            n[i].z == pn[i].z && t[i].x == pt[i].x && t[i].y == pt[i].y && t[i].z == pt[i].z;
+                }
+                check(same, "Visemes that all rest at zero export the same mesh as without Lip Sync.");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(source);
+                UnityEngine.Object.DestroyImmediate(target);
+                UnityEngine.Object.DestroyImmediate(plain);
             }
         }
 
