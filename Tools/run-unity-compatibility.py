@@ -253,7 +253,7 @@ BEHAVIOR_CASES = {
         'KnownConstraintSupportKeepsNativeWriteDefaultsAndIndependentMorphRest': 2,
         'ConstraintCoupledMorphKeepsPreparedWeightWhileIndependentFaceStillSamples': 2,
         'ConstraintEnabledSupportKeepsPreparedRestWithoutExecutingConstraint': 2,
-        'DynamicsEnabledSupportIsHarmless': 5,
+        'DynamicsEnabledSupportIsHarmless': 7,
         'ParticleEffectSupportIsHarmless': 1,
         'ConstraintCoupledExplicitEndpointKeepsPreparedNeutralForLaterEndpointBaking': 1,
         'UnknownPropertyFallbackCannotHideLaterActiveNaNOrAnimationEvent': 2,
