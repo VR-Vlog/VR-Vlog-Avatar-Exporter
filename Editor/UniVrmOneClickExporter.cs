@@ -469,6 +469,7 @@ namespace VRVlog.LilToonExporter
             AuthoredExpressionEndpoints authoredEndpoints = null;
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
+            VRVlog.Expressions.LipSyncData lipSync = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -599,6 +600,8 @@ namespace VRVlog.LilToonExporter
                     // the base shape, neutral and optimizer captures below read
                     // the active renderers.
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
+                    // Viseme Parameter Only reads the merged FX. A failure only warns.
+                    lipSync = LipSyncCapture.Capture(clone, warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -911,6 +914,7 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
+                if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error) when (!(error is MatcapApproximation.OverLimit))

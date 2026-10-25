@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vrvlog.app/schema/VRVLOG_lip_sync/1/schema.json",
+  "title": "VRVLOG_lip_sync 1",
+  "description": "How the app mixes the lip sync vowels, written by the exporter when the avatar's VRChat Lip Sync is Viseme Parameter Only. With dominantViseme true, only the strongest lip sync vowel shows and the others are 0; when the strongest vowel changes, the previous vowel blends out and the next blends in linearly over transitionSeconds (0 switches at once). transitionSeconds is the most common length of the FX transitions whose conditions use the Viseme parameter, in seconds rounded to the millisecond, or 0 when the FX has none. Without the extension, or with dominantViseme false, the vowels are mixed at their own weights. The shared reader (LipSyncData.Read) rejects the whole extension when anything is outside this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "dominantViseme",
+    "transitionSeconds"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "dominantViseme": {
+      "type": "boolean"
+    },
+    "transitionSeconds": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    }
+  }
+}
