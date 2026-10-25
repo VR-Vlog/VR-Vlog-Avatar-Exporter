@@ -1202,13 +1202,16 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(ExportGimmickRules.ContactReceiver, 0f)]
         [TestCase(ExportGimmickRules.ContactSender, 1f)]
         [TestCase(ExportGimmickRules.HeadChop, 1f)]
-        public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled)
+        [TestCase(PhysBoneSpringExport.PhysBoneType, 1f, 2)]
+        [TestCase(PhysBoneSpringExport.ColliderType, 0f, 2)]
+        public void DynamicsEnabledSupportIsHarmless(string typeName, float enabled, int components = 1)
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
             var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(typeName)).FirstOrDefault(value => value != null);
             if (type == null) Assert.Ignore("Install the real VRChat SDK with " + typeName + ".");
             var target = new GameObject("Ground collider"); target.transform.SetParent(avatar.transform, false);
             var component = (Behaviour)target.AddComponent(type); component.enabled = false;
+            for (var extra = 1; extra < components; extra++) ((Behaviour)target.AddComponent(type)).enabled = false;
             var clip = new AnimationClip { name = "Dynamics switch" };
             var binding = EditorCurveBinding.FloatCurve(target.name, type, "m_Enabled");
             AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, enabled));
