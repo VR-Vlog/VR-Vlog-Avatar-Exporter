@@ -61,14 +61,14 @@ namespace VRVlog.LilToonExporter
             }
             void Machine(AnimatorStateMachine machine)
             {
-                // A machine reached twice (a synced layer) counts once.
+                // Each layer counts on its own; within a layer a machine reached twice counts once.
                 if (machine == null || !visited.Add(machine)) return;
                 foreach (var transition in machine.anyStateTransitions) Count(transition, null);
                 foreach (var child in machine.states)
                     foreach (var transition in child.state?.transitions ?? Array.Empty<AnimatorStateTransition>()) Count(transition, child.state);
                 foreach (var child in machine.stateMachines) Machine(child.stateMachine);
             }
-            foreach (var layer in fx.layers) Machine(layer.stateMachine);
+            foreach (var layer in fx.layers) { visited.Clear(); Machine(layer.stateMachine); }
             if (counts.Count == 0) return 0f;
             return counts.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key).First().Key / 1000f;
         }

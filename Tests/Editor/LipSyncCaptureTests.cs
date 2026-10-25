@@ -82,6 +82,10 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws<InvalidOperationException>(() => LipSyncData.Read(null));
             Assert.Throws<InvalidOperationException>(() => LipSyncData.Write(null));
             Assert.Throws<InvalidOperationException>(() => LipSyncData.Write(new LipSyncData { DominantViseme = true, TransitionSeconds = 11 }));
+            // Values just outside the range are not rounded into it.
+            Assert.Throws<InvalidOperationException>(() => LipSyncData.Write(new LipSyncData { DominantViseme = true, TransitionSeconds = -.0001f }));
+            Assert.Throws<InvalidOperationException>(() => LipSyncData.Write(new LipSyncData { DominantViseme = true, TransitionSeconds = 10.0001f }));
+            Assert.Throws<InvalidOperationException>(() => LipSyncData.Write(new LipSyncData { DominantViseme = true, TransitionSeconds = float.NaN }));
         }
 
         [Test]
@@ -158,6 +162,20 @@ namespace VRVlog.LilToonExporter.Tests
                 transition.AddCondition(AnimatorConditionMode.Equals, value, LipSyncCapture.VisemeParameter);
             }
             Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(.07f).Within(1e-6f));
+        }
+
+        [Test]
+        public void LayersSharingAMachineEachCount()
+        {
+            var first = Layer("A");
+            var mouth = State(first, "Mouth", null);
+            Any(first, mouth, true, .1f, 0); Any(first, mouth, true, .1f, 1);
+            var second = Layer("B");
+            Any(second, State(second, "Mouth", null), true, .05f, 2);
+            Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(.1f).Within(1e-6f));
+            // A third layer on B's machine counts B's transition again: 2 against 2, the shorter wins.
+            fx.AddLayer("C"); var layers = fx.layers; layers[layers.Length - 1].stateMachine = second; fx.layers = layers;
+            Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(.05f).Within(1e-6f));
         }
 
         [Test]

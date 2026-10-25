@@ -21,12 +21,15 @@ namespace VRVlog.Expressions
         public static Dictionary<string, object> Write(LipSyncData data)
         {
             if (data == null) throw Bad();
+            // Checked before rounding, so a value just outside the range is not rounded into it.
+            var seconds = Number(data.TransitionSeconds);
+            if (seconds < 0 || seconds > MaximumTransitionSeconds) throw Bad();
             var result = new Dictionary<string, object>
             {
                 ["schemaVersion"] = (long)SchemaVersion,
                 ["dominantViseme"] = data.DominantViseme,
                 // Written to the millisecond, so 0.05f is written as 0.05.
-                ["transitionSeconds"] = Math.Round((double)data.TransitionSeconds, 3)
+                ["transitionSeconds"] = Math.Round(seconds, 3)
             };
             Read(result); // The exporter and runtime enforce the same contract.
             return result;
