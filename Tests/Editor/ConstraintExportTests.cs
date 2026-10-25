@@ -177,6 +177,24 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void AWorldSpaceRotationDoesNotFollowAConstraintTargetThatStaysStill()
+        {
+            using var f = new MergedFixture();
+            // The merged bone hangs from a bone whose constraint the export
+            // leaves out, so in VRM that bone never turns.
+            var leftOut = Fixture.Child(f.Forearm, "Left out", f.Hand.localPosition);
+            leftOut.rotation = f.Hand.rotation;
+            f.Merged.SetParent(leftOut, true);
+            var position = leftOut.gameObject.AddComponent<PositionConstraint>();
+            position.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
+            position.locked = true; position.constraintActive = true;
+            f.Convert();
+            Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
+                Is.EqualTo(ConstraintExport.OmittedParent));
+        }
+
+        [Test]
         public void AWorldSpaceRotationAcrossBonesThatNeverTurnStillChecksTheRest()
         {
             using var f = new MergedFixture();

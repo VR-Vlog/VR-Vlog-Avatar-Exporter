@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
             var added = new List<Component>();
             var moved = new List<Moved>();
             var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
-            var turning = Turning(copy, humanoid, plans, taken);
+            var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
             // Paths point at the user's avatar, so take them before any target moves.
@@ -103,7 +103,7 @@ namespace VRVlog.LilToonExporter
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
                         : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
-                        : Apply(plan, sources, copy.transform, turning, taken, edges, added);
+                        : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
                         taken.Add(plan.Target);
@@ -135,8 +135,8 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> turning,
-            HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added)
+        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> driven,
+            HashSet<Transform> turning, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added)
         {
             if (plan.Kind == Kind.Position || plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
@@ -160,7 +160,10 @@ namespace VRVlog.LilToonExporter
                     if (axes != 3 || plan.LocalSpace) return (ExportOutcome.Omitted, OmittedParent);
                     var moving = source;
                     while (moving != root && !turning.Contains(moving)) moving = moving.parent;
-                    if (moving == root || moving == target || Frame(moving, root, turning) != Frame(target, root, turning))
+                    // A constraint target the export left out, or moved under its
+                    // parent source, stays still in VRM.
+                    if (moving == root || moving == target || !driven.Contains(moving) && moving.GetComponent<IVrm10Constraint>() == null
+                        || Frame(moving, root, turning) != Frame(target, root, turning))
                         return (ExportOutcome.Omitted, OmittedParent);
                     if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
                     source = moving;
@@ -271,15 +274,18 @@ namespace VRVlog.LilToonExporter
             return bones;
         }
 
-        // Bones whose local rotation changes in the app: the skeleton, spring
-        // joints and constraint targets. Any other bone only carries its parent.
-        static HashSet<Transform> Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans, IEnumerable<Transform> authored)
+        // Bones whose local rotation may change in the app: the skeleton and
+        // spring joints (driven) and any constraint target. Any other bone only
+        // carries its parent.
+        static (HashSet<Transform> Driven, HashSet<Transform> Turning) Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans,
+            IEnumerable<Transform> authored)
         {
-            var turning = new HashSet<Transform>(humanoid);
-            turning.UnionWith(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            var driven = new HashSet<Transform>(humanoid);
+            driven.UnionWith(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            var turning = new HashSet<Transform>(driven);
             turning.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
             turning.UnionWith(authored);
-            return turning;
+            return (driven, turning);
         }
 
         // The nearest turning bone above, or the root: the frame the bone turns in.
