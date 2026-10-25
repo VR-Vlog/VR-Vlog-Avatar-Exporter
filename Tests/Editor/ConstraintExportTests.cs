@@ -204,14 +204,15 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo(ConstraintExport.OmittedParent));
         }
 
-        [TestCase("vrm", false)][TestCase("constraint", false)][TestCase("constraint", true)]
+        [TestCase("spring", false)][TestCase("vrm", false)][TestCase("constraint", false)][TestCase("constraint", true)]
         public void AWorldSpaceRotationDoesNotFollowAConstrainedHumanoidBone(string kind, bool helperFirst)
         {
             using var f = new MergedFixture();
-            // The hand itself is constrained, so its turn depends on the order
-            // VRM solves constraints in.
+            // The hand itself swings or is constrained, so its turn depends on
+            // the order VRM solves constraints and spring joints in.
             if (helperFirst) f.Wrapper.SetSiblingIndex(0);
-            if (kind == "vrm") f.Hand.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Forearm;
+            if (kind == "spring") f.Hand.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            else if (kind == "vrm") f.Hand.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Forearm;
             else
             {
                 var constraint = f.Hand.gameObject.AddComponent<RotationConstraint>();
