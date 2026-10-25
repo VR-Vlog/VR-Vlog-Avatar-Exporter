@@ -981,7 +981,7 @@ namespace VRVlog.LilToonExporter
                         var exception = ReadDiagnosticMember(error, "Exception") as Exception;
                         if (exception != null) exceptions.Add(exception);
                         var message = exception?.Message ?? error?.GetType().GetMethod("ToMessage", Type.EmptyTypes)?.Invoke(error, null) as string;
-                        if (string.IsNullOrWhiteSpace(message)) message = "処理中にエラーが発生しました。";
+                        if (string.IsNullOrWhiteSpace(message)) message = "処理中にエラーが発生しました";
                         var detail = pluginName + (string.IsNullOrWhiteSpace(pass) ? "" : " / " + pass) + ": " + message.Trim();
                         if (detail.Length > 900) detail = detail.Substring(0, 900) + "…";
                         if (!details.Contains(detail)) details.Add(detail);
@@ -989,10 +989,10 @@ namespace VRVlog.LilToonExporter
                     }
             }
             catch { /* Diagnostics must not replace the original processing failure. */ }
-            var summary = "書き出し用コピーの処理を完了できませんでした。元のアバターは変更していません。";
+            var summary = "書き出し用コピーの処理を完了できませんでした\n元のアバターは変更していません";
             if (details.Count > 0) summary += "\n\n" + string.Join("\n", details);
             else if (cause != null) summary += "\n\n" + cause.Message;
-            summary += "\n\nNDMFコンソールの該当ツールを開くと、対象オブジェクトを確認できます。「詳細をコピー」で原因の情報もコピーできます。";
+            summary += "\n\nNDMFコンソールで該当ツールを開いて対象のオブジェクトを確認\n「詳細をコピー」で原因の情報をコピー";
             var inner = exceptions.Count == 1 ? exceptions[0] : exceptions.Count > 1 ? new AggregateException(exceptions) : null;
             return new InvalidOperationException(summary, inner);
         }
