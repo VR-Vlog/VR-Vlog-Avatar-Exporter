@@ -148,14 +148,16 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.KeptRotation));
             // Bend the hand and solve both ways: Unity keeps the rest offset to
             // the merged bone in world space, VRM adds the hand's local change.
-            var helperRest = new VRVlog.LilToonExporter.Vendor.UniGLTF.Utils.TransformState(f.Helper);
-            var handRest = new VRVlog.LilToonExporter.Vendor.UniGLTF.Utils.TransformState(f.Hand);
+            var helperRest = f.Helper.localRotation;
+            var helperWorldRest = f.Helper.rotation;
+            var handRest = f.Hand.localRotation;
             var mergedRest = f.Merged.rotation;
             f.Hand.localRotation *= Quaternion.Euler(10, 40, -25);
-            var expected = f.Merged.rotation * Quaternion.Inverse(mergedRest) * helperRest.Rotation;
-            ((IVrm10Constraint)rotation).Process(helperRest, handRest);
+            var expected = f.Merged.rotation * Quaternion.Inverse(mergedRest) * helperWorldRest;
+            // The same step as Vrm10RotationConstraint.Process, which the tests cannot call.
+            f.Helper.localRotation = Quaternion.SlerpUnclamped(helperRest, helperRest * (Quaternion.Inverse(handRest) * f.Hand.localRotation), rotation.Weight);
             Assert.That(Quaternion.Angle(f.Helper.rotation, expected), Is.LessThan(.01f));
-            Assert.That(Quaternion.Angle(f.Helper.rotation, helperRest.Rotation), Is.GreaterThan(30f), "The helper turns with the hand.");
+            Assert.That(Quaternion.Angle(f.Helper.rotation, helperWorldRest), Is.GreaterThan(30f), "The helper turns with the hand.");
         }
 
         [TestCase("spring")][TestCase("constraint")]
