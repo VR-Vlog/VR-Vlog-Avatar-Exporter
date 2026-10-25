@@ -12,6 +12,10 @@
         <!-- Outside the header, which the expression board hides when it shows this view. -->
         <ui:IMGUIContainer name="scale-probe" class="scale-probe" />
         <ui:VisualElement name="header-line" class="hairline" />
+        <!-- The quick window's full-body preview sits right of everything below the header
+             (AppTransferPanel.PlacePreview); elsewhere, or without the room, main-column is all there is. -->
+        <ui:VisualElement name="columns" class="columns">
+        <ui:VisualElement name="main-column" class="main-column">
         <ui:VisualElement name="form" class="fill">
         <ui:ScrollView name="form-scroll" class="fill">
             <ui:VisualElement class="body">
@@ -136,6 +140,15 @@
         <ui:VisualElement name="save-row" class="save-row">
             <ui:Label name="save-result" class="t mini grey save-result" />
             <ui:Label name="save-open" class="t mini link save-open" />
+        </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="preview-line" class="preview-line" />
+        <ui:VisualElement name="preview" class="preview">
+            <ui:Label name="preview-title" class="t bold preview-title" />
+            <ui:IMGUIContainer name="preview-view" class="preview-view" />
+            <ui:Label name="preview-note" class="t mini grey preview-note" />
+            <ui:Label name="preview-hint" class="t mini grey preview-note" />
+        </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

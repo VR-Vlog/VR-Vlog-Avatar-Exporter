@@ -16,9 +16,9 @@ namespace VRVlog.LilToonExporter
     // one source becomes a child of that source instead, which moves the same
     // way (props held in a hand). The rest keep the current pose, as before,
     // and are listed in the result list. The originals stay on the copy
-    // (UniVRM does not write them). Off constraints and those with Lock off
-    // (VRChat only re-measures At Rest and Offset for them) keep the pose
-    // too and are listed; weightless ones have nothing to move.
+    // (UniVRM does not write them). Off constraints keep the pose too and are
+    // listed; weightless ones have nothing to move. Lock is not read: it only
+    // matters while editing, and VRChat drives an unlocked constraint as well.
     internal static class ConstraintExport
     {
         internal const string Category = "コンストレイント";
@@ -34,7 +34,6 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOutside = "アバターのルート・アバターの外・非表示のオブジェクトを参照しているため、今の姿勢のまま書き出しました";
         internal const string OmittedDuplicate = "同じオブジェクトに別のコンストレイントが既にあるため、今の姿勢のまま書き出しました";
         internal const string OmittedCycle = "ソースのコンストレイントをたどるとこのオブジェクトに戻り、VRMはこの循環を書けないため、今の姿勢のまま書き出しました";
-        internal const string OmittedUnlocked = "Lockがオフのため、VRChatでも対象を動かしません。今の姿勢のまま書き出しました";
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
@@ -42,7 +41,7 @@ namespace VRVlog.LilToonExporter
         {
             KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
             OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedUnlocked, OmittedOff, OmittedReparent, OmittedBound
+            OmittedOff, OmittedReparent, OmittedBound
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -61,7 +60,7 @@ namespace VRVlog.LilToonExporter
         {
             internal Component Component;
             internal Kind Kind;
-            internal bool On, Locked, LocalSpace, FreezeToWorld, X = true, Y = true, Z = true, Positions = true;
+            internal bool On, LocalSpace, FreezeToWorld, X = true, Y = true, Z = true, Positions = true;
             internal float Weight;
             internal Transform Target;
             internal Vector3 AimAxis = Vector3.forward;
@@ -87,7 +86,8 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
-            var humanoid = plans.Any(p => p.Kind == Kind.Parent) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
+            var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
             // Paths point at the user's avatar, so take them before any target moves.
@@ -101,16 +101,14 @@ namespace VRVlog.LilToonExporter
                     var sources = plan.Sources.Where(s => s.Transform != null && s.Weight > 0 && !float.IsInfinity(s.Weight)).ToArray();
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
-                    // With Lock off VRChat does not move the target either; it only
-                    // re-measures At Rest and Offset, so a VRM constraint would differ.
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : !plan.Locked ? (ExportOutcome.Omitted, OmittedUnlocked)
                         : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
-                        : Apply(plan, sources, copy.transform, taken, edges, added);
+                        : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
                         taken.Add(plan.Target);
-                        if (plan.Kind != Kind.Parent) AddEdge(edges, plan.Target, sources[0].Transform);
+                        // The rotation may have moved its source up to the bone that turns.
+                        if (plan.Kind != Kind.Parent) AddEdge(edges, plan.Target, ((IVrm10Constraint)added.Last()).ConstraintSource);
                     }
                     decisions.Add((order, plan, outcome, reason));
                 }
@@ -137,8 +135,8 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
-        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> taken,
-            Dictionary<Transform, List<Transform>> edges, List<Component> added)
+        static (ExportOutcome, string) Apply(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> driven,
+            HashSet<Transform> turning, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Component> added)
         {
             if (plan.Kind == Kind.Position || plan.Kind == Kind.Scale) return (ExportOutcome.Omitted, OmittedKind);
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
@@ -154,7 +152,23 @@ namespace VRVlog.LilToonExporter
                 var axes = (plan.X ? 1 : 0) + (plan.Y ? 1 : 0) + (plan.Z ? 1 : 0);
                 // Roll maps the delta through both rests in the shared parent
                 // frame, even for a local-space source.
-                if ((!plan.LocalSpace || axes == 1) && target.parent != source.parent) return (ExportOutcome.Omitted, OmittedParent);
+                if ((!plan.LocalSpace || axes == 1) && target.parent != source.parent)
+                {
+                    // A world-space rotation still matches when both ends hang
+                    // from the same turning bone through bones that never turn:
+                    // the source is then the nearest turning bone at or above it.
+                    if (axes != 3 || plan.LocalSpace) return (ExportOutcome.Omitted, OmittedParent);
+                    var moving = source;
+                    while (moving != root && !turning.Contains(moving)) moving = moving.parent;
+                    // Only a humanoid bone the app poses before any constraint can
+                    // lead: VRM solves spring joints after constraints, and a target
+                    // converted here may still be left out or moved, whatever the order.
+                    if (moving == root || moving == target || !driven.Contains(moving)
+                        || Frame(moving, root, turning) != Frame(target, root, turning))
+                        return (ExportOutcome.Omitted, OmittedParent);
+                    if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
+                    source = moving;
+                }
                 if (axes == 1)
                 {
                     var roll = target.gameObject.AddComponent<Vrm10RollConstraint>(); added.Add(roll);
@@ -163,7 +177,9 @@ namespace VRVlog.LilToonExporter
                     return (ExportOutcome.Approximated, ApproximatedRoll);
                 }
                 if (axes != 3) return (ExportOutcome.Omitted, OmittedSetting);
-                var rest = Quaternion.Angle(target.localRotation, source.localRotation);
+                // A world-space pair shares the frame it turns in, so the world
+                // rotations compare; a local-space one compares as authored.
+                var rest = plan.LocalSpace ? Quaternion.Angle(target.localRotation, source.localRotation) : Quaternion.Angle(target.rotation, source.rotation);
                 if (rest >= MaximumRestAngle) return (ExportOutcome.Omitted, OmittedRest);
                 var rotation = target.gameObject.AddComponent<Vrm10RotationConstraint>(); added.Add(rotation);
                 rotation.Source = source; rotation.Weight = weight;
@@ -260,6 +276,30 @@ namespace VRVlog.LilToonExporter
             return bones;
         }
 
+        // Bones whose local rotation may change in the app: the skeleton
+        // (driven, unless it also swings or is constrained), spring joints and
+        // any constraint target. Any other bone only carries its parent.
+        static (HashSet<Transform> Driven, HashSet<Transform> Turning) Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans,
+            IEnumerable<Transform> authored)
+        {
+            var others = new HashSet<Transform>(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            others.UnionWith(authored);
+            others.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
+            var driven = new HashSet<Transform>(humanoid);
+            driven.ExceptWith(others);
+            var turning = new HashSet<Transform>(humanoid);
+            turning.UnionWith(others);
+            return (driven, turning);
+        }
+
+        // The nearest turning bone above, or the root: the frame the bone turns in.
+        static Transform Frame(Transform value, Transform root, HashSet<Transform> turning)
+        {
+            var parent = value.parent;
+            while (parent != root && !turning.Contains(parent)) parent = parent.parent;
+            return parent;
+        }
+
         // UniVRM does not write the root as a node, so it can be neither end.
         static bool Inside(Transform root, Transform value) =>
             value != null && value != root && value.IsChildOf(root) && value.gameObject.activeInHierarchy;
@@ -302,9 +342,9 @@ namespace VRVlog.LilToonExporter
         {
             if (!(component is IConstraint constraint) || !(component is Behaviour behaviour)) return null;
             var plan = new Plan { Component = component, Target = component.transform, Weight = constraint.weight,
-                // Unity's manual: Lock "has no effect in Play Mode", so an active Unity constraint drives its
-                // target in the app whatever Lock says. Only VRChat's Locked keeps the target still.
-                On = behaviour.isActiveAndEnabled && constraint.constraintActive, Locked = true };
+                // Lock only decides whether moving the target in the editor re-measures the offsets; in Play Mode,
+                // in VRChat and in the app an active constraint drives its target either way, so Lock is not read.
+                On = behaviour.isActiveAndEnabled && constraint.constraintActive };
             var axes = Axis.X | Axis.Y | Axis.Z;
             switch (component)
             {
@@ -342,7 +382,6 @@ namespace VRVlog.LilToonExporter
                 Component = component, Kind = kind,
                 On = (component is Behaviour behaviour ? behaviour.isActiveAndEnabled : component.gameObject.activeInHierarchy) &&
                     True("IsActive"),
-                Locked = True("Locked"),
                 Weight = settings.FindProperty("GlobalWeight")?.floatValue ?? 0,
                 LocalSpace = True("SolveInLocalSpace"), FreezeToWorld = True("FreezeToWorld"),
                 Target = settings.FindProperty("TargetTransform")?.objectReferenceValue as Transform ?? component.transform,

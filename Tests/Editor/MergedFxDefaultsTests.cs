@@ -1124,7 +1124,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var menus = new MenuImportSdkRecoveryTests.SdkFixture(fixture.Source);
             var fx = (AnimatorController)VrChatExpressionMenu.Read(fixture.Source, new VrChatMenuImportPolicy { SkipAll = true }).Controller;
             // The fixture's menu and gesture clips are passed as the board's
-            // list; the exported neutral must not take the weighted FX layer.
+            // list; the exported neutral is the FX defaults, weighted layer included.
             var states = fx.layers.SelectMany(value => value.stateMachine.states).Select(child => child.state).ToArray();
             var faces = new[] { ("Menu face", (AnimationClip)states.Single(state => state.name == "Smile").motion, 0f),
                 ("Gesture face", (AnimationClip)states.Single(state => state.name == "Gesture face").motion, 0f) };
@@ -1144,9 +1144,7 @@ namespace VRVlog.LilToonExporter.Tests
             var beforeMesh = EditorJsonUtility.ToJson(fixture.Mesh);
             var beforeController = EditorJsonUtility.ToJson(fx);
             var beforeDescriptor = EditorJsonUtility.ToJson(menus.Descriptor);
-            var expectedNeutral = (Weights: Enumerable.Range(0, sourceFront.sharedMesh.blendShapeCount)
-                .ToDictionary(index => sourceFront.sharedMesh.GetBlendShapeName(index), sourceFront.GetBlendShapeWeight),
-                Vertices: WorldVertices(sourceFront));
+            var expectedNeutral = NativePose(fixture.Source, fx, "Front", new Dictionary<string, int> { ["Face"] = 0, ["GestureRight"] = 0 });
             var sampledNeutral = NeutralShapeSampler.Sample(fixture.Source);
             Vrm10Instance imported = null;
             try

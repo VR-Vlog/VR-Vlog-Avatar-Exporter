@@ -11,7 +11,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             "SecretAvatarRoot", "SecretHairObject", "SecretHiddenObject", "SecretMeshAsset", "SecretMaterial", "SecretTexture",
             "SecretShape", "SecretAuthor", "SecretVrmTitle", "SecretExpression", "秘密の髪", "SecretClip", "someone",
-            "SecretLayer", "Secret Share", "Secret Person", "髪",
+            "SecretLayer", "Secret Share", "Secret Person", "髪", "SecretGimmick", "SecretParticle",
         };
 
         GameObject root;
@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         string Text()
         {
-            var report = new ExportFallbackReport();
+            var report = Report();
             report.Record(ExportOutcome.Omitted, "ブレンドシェイプ", "SecretHairObject",
                 "SecretHairObject: 「SecretClip」を省きました C:/Work/someone/Desktop/a.anim").Path = "SecretAvatarRoot/SecretHairObject";
             report.Record(ExportOutcome.Approximated, "マテリアル", "SecretMaterial", "SecretMaterial: SecretTexture を縮小しました");
@@ -137,6 +137,16 @@ namespace VRVlog.LilToonExporter.Tests
                 "元のVRMの瞬き設定が出力時に失われました。",
             };
             return ExportDiagnostics.Record(root, Vrm(), report, warnings, ExportDiagnostics.QuickTransfer).Text();
+        }
+
+        static ExportFallbackReport Report()
+        {
+            var report = new ExportFallbackReport();
+            // A gimmick a rule removed, recorded the way UniVrmOneClickExporter.RecordOmittedGimmick does.
+            var gimmick = report.Record(ExportOutcome.Omitted, UniVrmOneClickExporter.OmittedGimmickCategory, "SecretAvatarRoot/SecretGimmick", "SecretGimmick を省略しました");
+            gimmick.RuleId = ExportGimmickRules.PettingSystem;
+            gimmick.Path = "SecretGimmick";
+            return report;
         }
 
         [Test]
@@ -185,11 +195,118 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void TheTextCountsThePartsNotWrittenByKind()
+        {
+            var parts = new GameObject("SecretParticle");
+            parts.transform.SetParent(root.transform);
+            parts.AddComponent<ParticleSystem>();
+            parts.AddComponent<AudioSource>();
+            parts.AddComponent<UnityEngine.Animations.RotationConstraint>();
+            var hidden = new GameObject("SecretGimmick");
+            hidden.transform.SetParent(root.transform);
+            hidden.AddComponent<Light>();
+            hidden.AddComponent<TrailRenderer>();
+            hidden.AddComponent<AudioSource>();
+            hidden.SetActive(false);
+
+            var text = Text();
+            Assert.That(text, Does.Contain("[書き出さなかったギミック]"));
+            Assert.That(text, Does.Contain("外したギミック 撫でシステム 1"));
+            Assert.That(text, Does.Contain("書き出さない部品 カメラ 0 / 音 2 / パーティクル 1 / ライト 1 / 接触 0 / トレイル・ライン 1"));
+            Assert.That(text, Does.Contain("揺れもの 元のPhysBone 0 / VRMの揺れもの 0"));
+            Assert.That(text, Does.Contain("コンストレイント 元 1 / VRM 0"));
+            foreach (var name in Names) Assert.That(text, Does.Not.Contain(name), name);
+        }
+
+        [Test]
+        public void WithoutGimmicksTheSectionSaysNone()
+        {
+            var text = ExportDiagnostics.Record(root, Vrm(), null, null, ExportDiagnostics.QuickTransfer).Text();
+            Assert.That(text, Does.Contain("外したギミック なし"));
+            Assert.That(text, Does.Contain("書き出さない部品 カメラ 0 / 音 0 / パーティクル 0 / ライト 0 / 接触 0 / トレイル・ライン 0"));
+        }
+
+        [Test]
+        public void GimmicksOfOneGroupAreSummedAndGroupsKeepTheirOrder()
+        {
+            var report = Report();
+            report.Record(ExportOutcome.Omitted, UniVrmOneClickExporter.OmittedGimmickCategory, "SecretCamera", "SecretCamera を省略しました").RuleId = ExportGimmickRules.CameraGimmick;
+            var second = report.Record(ExportOutcome.Omitted, UniVrmOneClickExporter.OmittedGimmickCategory, "SecretGimmick2", "SecretGimmick2 を省略しました");
+            second.RuleId = ExportGimmickRules.PettingSystem;
+            second.Count = 2;
+            var lines = ExportDiagnostics.Gimmicks(null, new Dictionary<string, object>(), report);
+            Assert.That(lines, Is.EqualTo(new[] { "外したギミック 撫でシステム 3 / カメラ 1" }));
+            // The named lines add up to the same counts.
+            Assert.That(ExportDiagnostics.GimmickNames(null, report), Is.EqualTo(new[]
+                { "外した 撫でシステム SecretGimmick", "外した カメラ SecretCamera", "外した 撫でシステム SecretGimmick2（2件）" }));
+        }
+
+        [Test]
+        public void TheNamedTextKeepsTheNamesAndTheDefaultTextStaysWithout()
+        {
+            var parts = new GameObject("SecretParticle");
+            parts.transform.SetParent(root.transform);
+            parts.AddComponent<ParticleSystem>();
+            parts.AddComponent<AudioSource>();
+            var report = Report();
+            report.Record(ExportOutcome.Omitted, "ブレンドシェイプ", "SecretHairObject", "SecretHairObject: 「SecretClip」を省きました").Path = "SecretAvatarRoot/SecretHairObject";
+            var diagnostics = ExportDiagnostics.Record(root, Vrm(), report, new[] { "表情 SecretExpression の動きを止めました" }, ExportDiagnostics.QuickTransfer);
+
+            var named = diagnostics.NamedText();
+            var lines = named.Split('\n');
+            Assert.That(lines[1].Trim(), Is.EqualTo(ExportDiagnostics.NamedNotice));
+            Assert.That(named, Does.Contain("アバター SecretAvatarRoot"));
+            Assert.That(named, Does.Contain("初期で非表示 秘密の髪"));
+            Assert.That(named, Does.Contain("無効 なし"));
+            Assert.That(named, Does.Contain("/ マテリアル #1 / 名前 SecretHairObject"));
+            Assert.That(named, Does.Contain("/ 両面 / 名前 SecretMaterial / シェーダー Standard"));
+            Assert.That(named, Does.Contain("外した 撫でシステム SecretGimmick"));
+            Assert.That(named, Does.Contain("パーティクルの場所 SecretParticle"));
+            Assert.That(named, Does.Contain("音の場所 SecretParticle"));
+            Assert.That(named, Does.Contain("省略 [ブレンドシェイプ] 「SecretClip」を省きました / 対象 SecretAvatarRoot/SecretHairObject"));
+            Assert.That(named, Does.Contain("参考 [そのほかの知らせ] 表情 SecretExpression の動きを止めました"));
+            // The counted lines are the same in both.
+            Assert.That(named, Does.Contain("書き出さない部品 カメラ 0 / 音 1 / パーティクル 1 / ライト 0 / 接触 0 / トレイル・ライン 0"));
+
+            var text = diagnostics.Text();
+            Assert.That(text, Does.Not.Contain(ExportDiagnostics.NamedNotice));
+            Assert.That(text, Does.Not.Contain("Secret"));
+            Assert.That(text, Does.Not.Contain("秘密"));
+            Assert.That(text, Does.Not.Contain("の場所"));
+        }
+
+        [Test]
+        public void NamesWithLineBreaksOrNoPathStayOnTheirLine()
+        {
+            root.name = "SecretAvatar\r\n[変換で変えた項目]";
+            var report = new ExportFallbackReport();
+            var gimmick = report.Record(ExportOutcome.Omitted, UniVrmOneClickExporter.OmittedGimmickCategory, "SecretGimmick", "SecretGimmick を省略しました");
+            gimmick.RuleId = ExportGimmickRules.PettingSystem;
+            gimmick.Path = "";
+            var named = ExportDiagnostics.Record(root, Vrm(), report, null, ExportDiagnostics.QuickTransfer).NamedText();
+            Assert.That(named, Does.Contain("アバター SecretAvatar [変換で変えた項目]"));
+            Assert.That(named, Does.Contain("外した 撫でシステム SecretGimmick"));
+            // The heading of the change section is still the only line that is just the heading.
+            Assert.That(System.Array.FindAll(named.Split('\n'), line => line.Trim() == "[変換で変えた項目]").Length, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ANamedChangeLineStaysOnOneLine()
+        {
+            var row = new ExportResultRow { Outcome = ExportOutcome.Approximated, Group = "マテリアル", Content = "SecretTexture を縮小しました", Reason = "一行目\n  二行目", Count = 3 };
+            row.Targets.Add(new ExportResultTarget { Name = "SecretMaterial" });
+            row.Targets.Add(new ExportResultTarget { Name = "SecretMaterial2", Path = "SecretAvatarRoot/SecretBody" });
+            Assert.That(ExportDiagnostics.NamedChangeLine(row),
+                Is.EqualTo("近似 [マテリアル] SecretTexture を縮小しました / 対象 SecretMaterial, SecretAvatarRoot/SecretBody（3件） / 理由 一行目 二行目"));
+        }
+
+        [Test]
         public void AnUnreadableVrmHasNoChangeSection()
         {
             var text = ExportDiagnostics.Record(root, new byte[] { 1, 2, 3 }, null, new[] { "SecretLayer" }, ExportDiagnostics.QuickTransfer).Text();
             Assert.That(text, Does.Contain("VRMを読めませんでした"));
             Assert.That(text, Does.Not.Contain("[変換で変えた項目]"));
+            Assert.That(text, Does.Not.Contain("[書き出さなかったギミック]"));
             Assert.That(text, Does.Not.Contain("なし"));
             Assert.That(text, Does.Not.Contain("Secret"));
         }

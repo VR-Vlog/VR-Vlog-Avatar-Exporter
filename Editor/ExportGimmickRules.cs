@@ -67,6 +67,7 @@ namespace VRVlog.LilToonExporter
 
         internal const string ContactReceiver = "VRC.SDK3.Dynamics.Contact.Components.VRCContactReceiver";
         internal const string ContactSender = "VRC.SDK3.Dynamics.Contact.Components.VRCContactSender";
+        internal const string HeadChop = "VRC.SDK3.Avatars.Components.VRCHeadChop";
         internal const string MenuInstaller = "nadena.dev.modular_avatar.core.ModularAvatarMenuInstaller";
         internal const string MergeAnimator = "nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator";
         internal const string MergeArmature = "nadena.dev.modular_avatar.core.ModularAvatarMergeArmature";

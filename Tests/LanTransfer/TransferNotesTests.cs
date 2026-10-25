@@ -91,7 +91,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             {
                 string.Format(ExportNoteText.LilToonRendered, "2.4.1", "2.3.4"),
                 string.Format(ExportNoteText.ExpressionsAdded, 13),
-                ExportNoteText.FxRestSkipped,
                 string.Format(ExportNoteText.LilToonTextureResized, "Body", 4096, 2048, 1024, 512),
                 string.Format(ExportNoteText.MainTextureResized, "Face", 512, 512),
                 ExportNoteText.Spring("Hair", ExportNoteText.SpringForces),
@@ -105,7 +104,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(notes.LilToonInstalled, Is.EqualTo("2.4.1"));
             Assert.That(notes.LilToonDrawn, Is.EqualTo("2.3.4"));
             Assert.That(notes.Expressions, Is.EqualTo(13));
-            Assert.That(notes.FxRestSkipped, Is.True);
             Assert.That(notes.Textures.Select(texture => (texture.Name, texture.FromWidth, texture.FromHeight, texture.Width, texture.Height)),
                 Is.EqualTo(new[] { ("Body", 4096, 2048, 1024, 512), ("Face", 0, 0, 512, 512) }));
             Assert.That(notes.SpringBones, Is.EqualTo(new[] { "Hair", "Tail" }));

@@ -17,11 +17,17 @@ namespace VRVlog.LilToonExporter
             internal SkinnedMeshRenderer Renderer;
             // Preset -> shape name. Null once the name cannot reach the output.
             internal readonly Dictionary<string, string> Shapes = new Dictionary<string, string>();
+            // Every shape the slots name, sil and the consonants included.
+            // VRChat shows one viseme at a time, so while one plays the others
+            // are at 0 rather than at their rest; the base shape follows that.
+            // Only the base shape reads it, before the optimizer renames shapes.
+            internal readonly List<string> Exclusive = new List<string>();
 
             internal Captured ForClone(GameObject source, GameObject clone)
             {
                 var copy = new Captured();
                 foreach (var pair in Shapes) copy.Shapes.Add(pair.Key, pair.Value);
+                copy.Exclusive.AddRange(Exclusive);
                 if (Renderer == null) return copy;
                 var target = ExportRecoveryCopySession.Resolve(Renderer.transform, source.transform, clone.transform);
                 var index = Array.IndexOf(Renderer.GetComponents<SkinnedMeshRenderer>(), Renderer);
@@ -98,6 +104,7 @@ namespace VRVlog.LilToonExporter
             foreach (var (slot, preset) in VrmExpressionBindings.DescriptorVisemes.Slots)
                 if (names != null && slot < names.Length && !string.IsNullOrEmpty(names[slot]))
                     result.Shapes[preset] = names[slot];
+            if (names != null) result.Exclusive.AddRange(names.Where(name => !string.IsNullOrEmpty(name)).Distinct(StringComparer.Ordinal));
             return result;
         }
 

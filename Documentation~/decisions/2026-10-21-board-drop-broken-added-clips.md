@@ -3,6 +3,7 @@
 - 日付: 2026-10-21
 - 対象: `Editor/ExperimentalExpressionCaptureWindow.cs`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`・`CHANGELOG.md`
 - [書き出せない表情をボードに並べない](2026-10-21-hide-unsupported-expressions.md) の「入れなかったもの」の 1 つ目を置き換える。
+- [追加したあとで書き出せなくなった表情ファイルを、理由つきでボードに残す](2026-10-26-board-keep-broken-added-clips.md) で置き換えた。
 
 ## 背景
 

@@ -205,7 +205,7 @@ namespace VRVlog.LilToonExporter
         private static readonly string[] OverrideKeys = { "overrideBlink", "overrideLookAt", "overrideMouth" };
 
         // Fill only empty emotion presets. Whole VRChat menu faces come first;
-        // then a raw BlendShape whose Latin name names one whole emotion; last,
+        // then a raw BlendShape whose English name names one whole emotion; last,
         // a menu face whose label says nothing, by the shapes it moves.
         // Authored presets that move anything are never changed.
         private static bool AddEmotions(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
@@ -249,14 +249,14 @@ namespace VRVlog.LilToonExporter
 
             // Japanese BlendShape names commonly follow the MMD set, where "怒り",
             // "びっくり" or "にっこり" move only the brows, eyes or mouth. Only
-            // Latin whole-face names (e.g. Fcl_ALL_Joy) are used here.
+            // English whole-face names (e.g. Fcl_ALL_Joy) are used here, not romaji.
             var raw = new List<(VRVlog.LilToonExporter.Vendor.UniVRM10.ExpressionPreset Preset, int Tier, int Order, string Name)>();
             var rawOrder = 0;
             foreach (var names in MeshTargetNames(nodes, meshes).Select(item => item.Names))
                 foreach (var name in names.OfType<string>())
                 {
                     rawOrder++;
-                    var match = ExpressionNameInference.MatchEmotion(name, latinOnly: true);
+                    var match = ExpressionNameInference.MatchEmotion(name, rawShape: true);
                     if (match != null && open.Contains(match.Value.Preset)) raw.Add((match.Value.Preset, match.Value.Tier, rawOrder, name));
                 }
             foreach (var group in raw.GroupBy(item => item.Preset))
@@ -298,7 +298,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Fill only an empty neutral preset not in keepEmpty: a menu face whose
-        // leaf says neutral, else a Latin BlendShape name that says neutral alone.
+        // leaf says neutral, else an English BlendShape name that says neutral alone.
         private static bool AddNeutral(Dictionary<string, object> vrm, List<object> nodes, List<object> meshes,
             ICollection<string> warnings, ICollection<(string Preset, string Source, string Format)> filled, IReadOnlyDictionary<string, string> candidates,
             IReadOnlyCollection<string> keepEmpty)
@@ -319,7 +319,7 @@ namespace VRVlog.LilToonExporter
             foreach (var names in MeshTargetNames(nodes, meshes).Select(item => item.Names))
                 foreach (var name in names.OfType<string>())
                 {
-                    if (!tried.Add(name) || !ExpressionNameInference.MatchNeutral(name, latinOnly: true)) continue;
+                    if (!tried.Add(name) || !ExpressionNameInference.MatchNeutral(name, rawShape: true)) continue;
                     var bindings = BindEverywhere(nodes, meshes, new[] { name }, StringComparison.Ordinal, preset, warnings);
                     if (bindings == null) continue;
                     SetFilled(vrm, preset, new Dictionary<string, object> { { "morphTargetBinds", bindings }, { "isBinary", false } },

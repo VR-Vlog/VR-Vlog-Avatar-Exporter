@@ -64,12 +64,18 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string CopyDiagnostics = "診断情報をコピー";
         internal const string DiagnosticsCopied = "コピーしました";
         internal const string DiagnosticsHint = "名前やパスは含みません";
+        internal const string NamedDiagnosticsItem = "名前・パスを含めてコピー（DM など非公開の場だけ）";
         internal const string ItemCount = "{0}件";
         internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";
         internal const string StartTransfer = "転送を始める";
         internal const string StopAndStart = "中止して始める";
         internal const string LeavingCancels = "ページを移るかボードを閉じると転送を中止します";
+        // The full-body preview beside the quick window's form.
+        internal const string PreviewTitle = "プレビュー";
+        internal const string PreviewNote = "色と透け方はアプリと異なる場合があります";
+        internal const string PreviewHint = "ドラッグで回転・中ドラッグで移動・ホイールで拡大";
+        internal const string PreviewFailed = "プレビューを表示できませんでした";
     }
 
     // One encoder for both transfer windows, so their QR codes cannot drift.

@@ -44,6 +44,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal readonly List<TransferNoteGroup> Notes = new List<TransferNoteGroup>();
         // The name-free diagnostics text of the same export, made when copied. Null without one.
         internal Func<string> Diagnostics { get; set; }
+        // The same text with the names and paths left in, made only when the user picks it.
+        internal Func<string> NamedDiagnostics { get; set; }
         // The record kinds, then the lines without a kind.
         internal readonly List<TransferNoteGroup> Records = new List<TransferNoteGroup>();
         internal int NoteCount => Notes.Sum(group => group.Count);
@@ -53,14 +55,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal string LilToonInstalled, LilToonDrawn;
         // The expressions added from VRChat; 0 when none could be, null without the note.
         internal int? Expressions;
-        internal bool FxRestSkipped;
         internal readonly List<TransferTextureNote> Textures = new List<TransferTextureNote>();
         // Every PhysBone with a note, in the order of the export.
         internal readonly List<string> SpringBones = new List<string>();
         // In the order of ExportNoteText.SpringSentences; only the sentences some PhysBone has.
         internal readonly List<TransferSpringNote> Springs = new List<TransferSpringNote>();
 
-        internal bool HasConversion => LilToonDrawn != null || Expressions != null || FxRestSkipped || Textures.Count > 0 || SpringBones.Count > 0;
+        internal bool HasConversion => LilToonDrawn != null || Expressions != null || Textures.Count > 0 || SpringBones.Count > 0;
 
         internal static TransferNotes Build(IEnumerable<string> lines)
         {
@@ -136,7 +137,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             if ((match = Read(line, ExportNoteText.ExpressionsAdded)) != null) { Expressions = Number(match, 0); return true; }
             if (Read(line, ExportNoteText.ExpressionsNone) != null) { Expressions = 0; return true; }
-            if (Read(line, ExportNoteText.FxRestSkipped) != null) { FxRestSkipped = true; return true; }
             foreach (var template in new[] { ExportNoteText.LilToonTextureResized, ExportNoteText.OutputTextureResized })
             {
                 if ((match = Read(line, template)) == null) continue;

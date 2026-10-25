@@ -75,6 +75,11 @@ namespace VRVlog.LilToonExporter
         internal Item Find(AnimationClip clip) => clip == null ? null : Items.FirstOrDefault(item => item.Clip == clip);
         internal static bool Usable(Item item) => item?.Clip != null && item.Error == null;
 
+        // A file the user added stays where it was put once it stops working,
+        // with its reason, until it is repaired or removed. The avatar's own
+        // unsupported faces are not shown.
+        internal static bool Shown(Item item) => Usable(item) || item?.Clip != null && item.Added;
+
         static AnimationClip ClipOf(PresetAssignment assignment) =>
             assignment == null || assignment.IsNone || assignment.IsShape ? null : assignment.ResolveClip();
 
@@ -166,7 +171,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Usable faces of the custom list, in board order. Unsupported faces
-        // are neither shown nor exported.
+        // are not exported.
         internal List<AnimationClip> ExportedCustom() =>
             Items.Where(item => Usable(item) && PlaceOf(item.Clip).Kind == PlaceKind.Other).Select(item => item.Clip).ToList();
 
@@ -224,9 +229,13 @@ namespace VRVlog.LilToonExporter
 
         internal bool SlotFilled(ExpressionPreset preset) => SlotValue(preset) is PresetAssignment value && !value.IsNone || authored(preset);
         internal int SlotCount(IEnumerable<ExpressionPreset> group = null) => SlotsIn(group).Count(SlotFilled);
-        internal int OtherCount => ExportedCustom().Count;
+        internal int OtherCount => ItemsIn(PlaceKind.Other).Count();
         internal int ExcludedCount => ItemsIn(PlaceKind.Excluded).Count();
-        // The faces shown in a place. Unsupported faces are left out.
-        internal IEnumerable<Item> ItemsIn(PlaceKind kind) => Items.Where(item => Usable(item) && PlaceOf(item.Clip).Kind == kind);
+        // The faces shown in a place. The avatar's unsupported faces are left out.
+        internal IEnumerable<Item> ItemsIn(PlaceKind kind) => Items.Where(item => Shown(item) && PlaceOf(item.Clip).Kind == kind);
+
+        // An added file in the custom list that can no longer be exported. It
+        // stops the save, so the list written is always the list shown.
+        internal Item Unexported => ItemsIn(PlaceKind.Other).FirstOrDefault(item => item.Error != null);
     }
 }

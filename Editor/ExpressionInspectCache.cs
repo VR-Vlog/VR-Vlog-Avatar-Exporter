@@ -72,14 +72,20 @@ namespace VRVlog.LilToonExporter
 
         // Returns null when this call must not use the cache.
         internal string Signature(RuntimeAnimatorController runtime, bool allowFxControls, IDictionary<string, float> neutralFixed,
-            bool typedConditions, int? fxLayerCount)
+            bool typedConditions, int? fxLayerCount, IDictionary<string, ISet<float>> domains = null)
         {
             if (!Persistent(runtime)) return null;
             if (runtime is AnimatorOverrideController overrides && !Persistent(overrides.runtimeAnimatorController)) return null;
             // Another key comparer could make the same entries resolve
             // differently, so only ordinal dictionaries are keyed by content.
-            if (neutralFixed != null && !(neutralFixed is Dictionary<string, float> dictionary &&
-                (ReferenceEquals(dictionary.Comparer, StringComparer.Ordinal) || ReferenceEquals(dictionary.Comparer, EqualityComparer<string>.Default))))
+            bool Ordinal<T>(IDictionary<string, T> value) => value is Dictionary<string, T> dictionary &&
+                (ReferenceEquals(dictionary.Comparer, StringComparer.Ordinal) || ReferenceEquals(dictionary.Comparer, EqualityComparer<string>.Default));
+            if (neutralFixed != null && !Ordinal(neutralFixed)) return null;
+            // Domains only decide which states and transitions a walk reaches,
+            // and the trace records what it reached. Each set is keyed by
+            // content only when it compares values with the default comparer.
+            if (domains != null && (!Ordinal(domains) || domains.Values.Any(set =>
+                !(set is HashSet<float> values && ReferenceEquals(values.Comparer, EqualityComparer<float>.Default)))))
                 return null;
             var key = new StringBuilder();
             key.Append(runtime.GetInstanceID().ToString(CultureInfo.InvariantCulture)).Append('|').Append(allowFxControls ? '1' : '0')
@@ -89,6 +95,17 @@ namespace VRVlog.LilToonExporter
                 foreach (var name in neutralFixed.Keys.OrderBy(name => name, StringComparer.Ordinal))
                     key.Append(name.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(name).Append('=')
                         .Append(BitConverter.ToInt32(BitConverter.GetBytes(neutralFixed[name]), 0).ToString(CultureInfo.InvariantCulture)).Append(';');
+            // Null domains walk every transition; an empty dictionary is kept apart anyway.
+            key.Append('|');
+            if (domains == null) key.Append('-');
+            else
+            {
+                key.Append('+');
+                foreach (var name in domains.Keys.OrderBy(name => name, StringComparer.Ordinal))
+                    key.Append(name.Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(name).Append('=')
+                        .Append(string.Join(",", domains[name].Select(value => BitConverter.ToInt32(BitConverter.GetBytes(value), 0)).OrderBy(bits => bits)
+                            .Select(bits => bits.ToString(CultureInfo.InvariantCulture)))).Append(';');
+            }
             return key.ToString();
         }
 
@@ -233,7 +250,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // Binding-derived members (Morphs, HasBindings, NonMorphBindings,
-        // DynamicMorph) depend on the caller's path exclusion. Copies leave
+        // DynamicMorphs) depend on the caller's path exclusion. Copies leave
         // them unset; a replay rebuilds them from the recorded clips.
         private static ExpressionDependencies.Layer Copy(ExpressionDependencies.Layer source, Dictionary<object, object> map)
         {

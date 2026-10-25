@@ -126,6 +126,82 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(cache.Hits, Is.EqualTo(Cases.Length * 2 - 3));
         }
 
+        private string Run(IDictionary<string, ISet<float>> domains, Dictionary<string, float> neutral = null, bool typed = false,
+            Func<string, bool> excluded = null)
+        {
+            var drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
+            var unknown = new List<string>();
+            var layers = ExpressionDependencies.Inspect(fx, excluded ?? (path => path == "Hair"), drivers, unknown, true,
+                neutral ?? new Dictionary<string, float>(StringComparer.Ordinal), typed, domains: domains);
+            return Snapshot(layers, drivers, unknown);
+        }
+
+        private static Dictionary<string, ISet<float>> Domains(params float[] menu) =>
+            new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new HashSet<float>(menu) };
+
+        private static Dictionary<string, float> Fixed(string name, float value) =>
+            new Dictionary<string, float>(StringComparer.Ordinal) { [name] = value };
+
+        [Test]
+        public void DomainsAreKeyedByContentAndReplayTheFreshWalk()
+        {
+            // Menu = 0 prunes the transition to Selected; adding 1 keeps it.
+            // Every call builds new dictionaries and sets with the same content.
+            Func<string>[] cases =
+            {
+                () => Run(Domains(0)),
+                () => Run(Domains(1, 0)),
+                () => Run(null),
+                () => Run(new Dictionary<string, ISet<float>>(StringComparer.Ordinal)),
+                () => Run(Domains()),
+                // Path exclusion is not in the key: these replay case 1.
+                () => Run(Domains(1, 0), excluded: path => false),
+                () => Run(Domains(1, 0), excluded: path => path == "Body"),
+                // A fixed value of the same input wins over its domain.
+                () => Run(Domains(1, 0), Fixed("Menu", 0)),
+                () => Run(Domains(0), Fixed("Axis", 0)),
+                () => Run(Domains(1, 0), typed: true),
+                () => Run(Domains(0), typed: true),
+            };
+            var expected = cases.Select(run => run()).ToArray();
+            Assert.That(expected[0], Does.Not.Contain("Smile"));
+            Assert.That(expected[1], Does.Contain("Smile"));
+            Assert.That(expected[7], Does.Not.Contain("Smile"));
+            Assert.That(expected[9], Does.Contain("Smile"));
+            Assert.That(expected[10], Does.Not.Contain("Smile"));
+            Assert.That(new[] { expected[1], expected[5], expected[6] }.Distinct().Count(), Is.EqualTo(3));
+            using var cache = ExpressionInspectCache.Begin();
+            for (var round = 0; round < 2; round++)
+                for (var index = 0; index < cases.Length; index++)
+                    Assert.That(cases[index](), Is.EqualTo(expected[index]), "round " + round + " case " + index);
+            // Null domains, an empty dictionary and an empty set are separate entries.
+            Assert.That(cache.Misses, Is.EqualTo(cases.Length - 2));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 2));
+            Assert.That(Run(Domains(0, 1)), Is.EqualTo(expected[1]));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 3));
+        }
+
+        private sealed class SameFloat : IEqualityComparer<float>
+        {
+            public bool Equals(float x, float y) => x.Equals(y);
+            public int GetHashCode(float value) => value.GetHashCode();
+        }
+
+        [Test]
+        public void DomainsWithOtherComparersAreNotCached()
+        {
+            var ignoreCase = new Dictionary<string, ISet<float>>(StringComparer.OrdinalIgnoreCase) { ["Menu"] = new HashSet<float> { 0 } };
+            var sorted = new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new SortedSet<float> { 0 } };
+            var compared = new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new HashSet<float>(new SameFloat()) { 0 } };
+            using var cache = ExpressionInspectCache.Begin();
+            foreach (var domains in new[] { ignoreCase, sorted, compared })
+            {
+                Run(domains);
+                Run(domains);
+            }
+            Assert.That(cache.Hits + cache.Misses, Is.EqualTo(0));
+        }
+
         [Test]
         public void OverrideControllersAreCachedSeparatelyFromTheirBase()
         {
@@ -198,7 +274,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Join(layer.CurveWrites, x => x) + Join(layer.Morphs, x => x.path + "/" + x.propertyName) + Join(layer.Clips, x => x.name) +
                 Join(layer.DriverPrograms, Program) + Join(layer.FxCommands, x => Behaviour(x.Key) + "=" + Program(x.Value)) +
                 Join(layer.WeightControls, x => Behaviour(x.Key) + "=" + Weight(x.Value)) + "/" + layer.WriteDefaults + "/" + layer.HasBindings +
-                "/" + layer.EmptyMotion + "/" + layer.FxControl + "/" + layer.DynamicMorph + "/" + layer.Timed + "/" + layer.NonMorphBindings);
+                "/" + layer.EmptyMotion + "/" + layer.FxControl + "/" + string.Join(",", layer.DynamicMorphs.Select(binding => binding.path + ":" + binding.propertyName).OrderBy(name => name, StringComparer.Ordinal)) + "/" + layer.Timed + "/" + layer.NonMorphBindings);
             return string.Join("\n", text) + "\n" + Join(drivers, x => Behaviour(x.Key) + "=" + Program(x.Value)) + Join(unknown, x => x);
         }
     }

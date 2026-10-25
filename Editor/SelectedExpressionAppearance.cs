@@ -75,6 +75,57 @@ namespace VRVlog.LilToonExporter
             return true;
         }
 
+        // A constant Transform curve on target equal to its prepared pose.
+        // Axes the clip omits keep the prepared value. Rotations compare as
+        // poses, so raw Euler wrap and q/-q are the same pose. The caller
+        // resolves binding.path to target once per hierarchy.
+        internal static bool IsUnchangedTransform(Transform target, AnimationClip clip, EditorCurveBinding binding)
+        {
+            if (target == null || clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
+                binding.path == null || binding.propertyName == null) return false;
+            var dot = binding.propertyName.LastIndexOf('.');
+            if (dot < 0) return false;
+            var property = binding.propertyName.Substring(0, dot);
+            var valid = true;
+            float Axis(string axis, float current)
+            {
+                var component = EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis);
+                if (AnimationUtility.GetEditorCurve(clip, component) == null) return current;
+                if (ConstantValue(clip, component, out var value) && Finite(value)) return value;
+                valid = false; return current;
+            }
+            switch (property)
+            {
+                case "m_LocalPosition": { var p = target.localPosition; var v = new Vector3(Axis("x", p.x), Axis("y", p.y), Axis("z", p.z)); return valid && v.Equals(p); }
+                case "m_LocalScale": { var s = target.localScale; var v = new Vector3(Axis("x", s.x), Axis("y", s.y), Axis("z", s.z)); return valid && v.Equals(s); }
+                case "localEulerAnglesRaw": { var e = target.localEulerAngles; var v = new Vector3(Axis("x", e.x), Axis("y", e.y), Axis("z", e.z)); return valid && SameRotation(Quaternion.Euler(v), target.localRotation); }
+                case "m_LocalRotation": { var q = target.localRotation; var r = new Quaternion(Axis("x", q.x), Axis("y", q.y), Axis("z", q.z), Axis("w", q.w)); return valid && SameRotation(r, q); }
+                default: return false;
+            }
+        }
+
+        // q and -q are the same rotation, which Quaternion == does not accept;
+        // Unity normalizes an animated rotation before applying it.
+        private static bool SameRotation(Quaternion a, Quaternion b)
+        {
+            if (Quaternion.Dot(a, a) < 1e-12f) return false;
+            return Quaternion.Angle(Quaternion.Normalize(a), b) == 0f;
+        }
+
+        internal static bool IsMovingTransform(AnimationClip clip, EditorCurveBinding binding)
+        {
+            if (clip == null || binding.type != typeof(Transform) || binding.isPPtrCurve ||
+                binding.path == null || binding.propertyName == null) return false;
+            var dot = binding.propertyName.LastIndexOf('.');
+            if (dot < 0) return false;
+            var property = binding.propertyName.Substring(0, dot);
+            return new[] { "x", "y", "z", "w" }.Any(axis =>
+            {
+                var curve = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis));
+                return curve != null && !VrChatExpressionSampler.IsConstant(curve);
+            });
+        }
+
         private static bool ConstantValue(AnimationClip clip, EditorCurveBinding binding, out float value)
         {
             value = 0;

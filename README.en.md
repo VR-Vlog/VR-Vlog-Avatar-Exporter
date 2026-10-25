@@ -1,4 +1,4 @@
-> Stable **1.2.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.3.0** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -15,6 +15,7 @@ Export your lilToon avatar to **VRM 1.0** for VR Vlog on iPhone. This Unity pack
 
 - Export lilToon material settings and textures for VR Vlog's dedicated renderer, with a standard MToon fallback for other VRM viewers.
 - Preserve supported expressions, blinking, tracking morphs and appearance prepared by Modular Avatar / NDMF.
+- Save the face and body shapes that the FX layer holds constant in its normal state, such as a mouth or eyes kept open by the idle FX, as the VRM's neutral. Shapes that change over time keep the export copy's values.
 - Convert supported PhysBones to VRM SpringBones, with diagnostics for approximations and unsupported settings.
 - Set a bone-type VRM 1.0 look-at from the midpoint of the eyes when both eye bones exist. Its range comes from the Avatar Descriptor's Eye Look poses when they can be measured; otherwise UniVRM's default range is used. A VRM 1.0 look-at already edited in the avatar's Vrm10Instance settings is kept.
 - Inspect export failures and try supported recovery options on a fresh copy of the avatar.
@@ -56,7 +57,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 1.2.0** from the stable versions. **Show pre-release packages** is not needed.
+3. Install **VR Vlog lilToon VRM Exporter 1.3.0** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -80,7 +81,7 @@ Stable 1.0.0 and later include QR transfer through **アプリに転送**, as di
 
 ## Quick start
 
-The steps below describe stable 1.2.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.3.0. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
 2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.

@@ -342,7 +342,7 @@ namespace VRVlog.LilToonExporter
             // Faces recorded on the copy itself would not survive it; the board records none.
             if (session.Expressions.Any(pose => !fileRecords.Values.Contains(pose)))
                 throw new InvalidOperationException(ExporterLocalization.T("元のアバターが変更されました。「変更」からアバターを指定し直してください。"));
-            // A face hidden for a moment would take its files off the board for good.
+            // A face hidden for a moment would leave its files unusable on the board.
             if (session.HiddenFace() is string hidden)
                 throw new InvalidOperationException(string.Format(ExporterLocalization.T(HiddenFaceFormat), hidden));
             Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), detail ?? ""));
@@ -523,39 +523,58 @@ namespace VRVlog.LilToonExporter
                 // Only a deleted .anim leaves a null clip here; added files are never null.
                 input.Error = input.Clip == null ? ExporterLocalization.T(DeletedClipReason) : clipErrors[input.Clip];
             }
-            DropBrokenInputs();
+            DropDeletedInputs();
             // An automatic value that stopped working is replaced, not left blocking the save.
             ApplyAutomaticPresets();
             Repaint();
         }
 
         // An added file that can no longer be exported (edited, or the avatar
-        // changed) is hidden from the board, so it is removed like a file that
-        // could not be added: it stops counting toward the limit and the
-        // recorded route, a slot the user gave it is emptied (a gaze or neutral
-        // slot is left open to be filled from names), and the reason
-        // is shown. Automatic values are suggested again from the usable faces.
-        // A file that is also one of the avatar's faces keeps its slot, as the
-        // avatar's other unusable faces do. A deleted file is removed too; its
-        // slot is kept, since the slot already shows the file as missing and
-        // the save stops with that reason.
-        void DropBrokenInputs()
+        // changed) stays on the board with its reason until the user repairs
+        // or removes it. A deleted file has nothing left to show or repair, so
+        // it is removed and named on the status line; its slot is kept, since
+        // the slot already shows the file as missing and the save stops with
+        // that reason.
+        void DropDeletedInputs()
         {
-            var broken = clipInputs.Where(input => input.Error != null).ToArray();
-            if (broken.Length == 0) return;
-            var found = new System.Collections.Generic.HashSet<AnimationClip>((recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>())
-                .Select(item => item.Clip));
-            var cleared = false;
-            foreach (var input in broken)
+            var deleted = clipInputs.Where(input => input.Clip == null).ToArray();
+            if (deleted.Length == 0) return;
+            foreach (var input in deleted) Forget(input);
+            status = RejectedMessage(deleted.Select(input => (input.Name, input.Error)));
+        }
+
+        // Takes an added file off the list together with its record, so the
+        // copy holds no face the board does not list.
+        void Forget(ExperimentalExpressionCaptureSession.ClipInput input)
+        {
+            clipInputs.Remove(input);
+            if (fileRecords.TryGetValue(input, out var pose)) { session.Expressions.Remove(pose); fileRecords.Remove(input); }
+        }
+
+        internal const string RemovedClipFormat = "「{0}」をボードから外しました";
+
+        // The user takes an added file off the board: its record, a slot they
+        // gave it, its exclusion and its name go with it. A file that is also
+        // one of the avatar's faces stays on the board as that face, with the
+        // place and name it has. The .anim itself is left as it is.
+        void RemoveAddedClip(AnimationClip clip)
+        {
+            var input = clipInputs.FirstOrDefault(item => item.Clip == clip);
+            if (input == null || board == null) return;
+            Forget(input);
+            var found = (recommendations ?? new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>()).Any(item => item.Clip == clip);
+            if (!found)
             {
-                clipInputs.Remove(input);
-                if (board == null || input.Clip == null || found.Contains(input.Clip)) continue;
                 foreach (var preset in ExperimentalExpressionCaptureSession.AssignablePresets)
-                    if (board.SlotValue(preset) is var value && value != null && !value.Automatic && !value.IsNone && !value.IsShape && value.ResolveClip() == input.Clip)
-                    { board.ClearSlot(preset); cleared = true; }
+                    if (board.SlotValue(preset) is var value && value != null && !value.Automatic && !value.IsNone && !value.IsShape && value.ResolveClip() == clip)
+                        board.ClearSlot(preset);
+                board.Excluded.Remove(clip); board.Names.Remove(clip);
             }
-            if (cleared) SaveChoices();
-            status = RejectedMessage(broken.Select(input => (input.Name, input.Error)));
+            SaveChoices();
+            if (previewClip == clip) { session.RestoreBaseline(); ShowFace(ExporterLocalization.T("基準の顔")); }
+            // Automatic values are suggested again from the faces left.
+            ApplyAutomaticPresets();
+            status = string.Format(ExporterLocalization.T(RemovedClipFormat), input.Name);
         }
 
         // A new preview of the same avatar that keeps the added files, the board,
@@ -898,8 +917,12 @@ namespace VRVlog.LilToonExporter
             var other = presetErrors.Values.FirstOrDefault(value => value != null);
             if (other != null) return other;
             if (board == null) return ExporterLocalization.T(AppTransferExport.BoardClosed);
+            if (board.Unexported is ExpressionBoard.Item unexported)
+                return string.Format(ExporterLocalization.T(UnexportedFileFormat), board.NameOf(unexported.Clip), unexported.Error);
             return null;
         }
+
+        internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
@@ -1191,7 +1214,7 @@ namespace VRVlog.LilToonExporter
             if (objectsPreview != null && objectsPreview.Usable)
             {
                 if (objectsPreview.Draw(rect)) Repaint();
-                GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
+                GUI.Label(rect, new GUIContent(string.Empty, ExcludedObjectsPreview.Controls));
             }
             else if (objectsPreviewError != null)
             {
@@ -1691,14 +1714,23 @@ namespace VRVlog.LilToonExporter
 
         static float PanelRows(int count, int columns, float size) => Gap + (count + columns - 1) / columns * (size + 8 + ExpressionSlotLayout.Name + Gap);
 
+        // A file that can no longer be exported shows the error mark in place
+        // of its face, a red frame, and its reason first in the tooltip.
         void DrawPanelTile(Rect tile, float size, ExpressionBoard.Item item, string closeTooltip, Action close)
         {
             var clip = item.Clip;
-            DrawTile(tile, new Rect(tile.x + 7, tile.y + 4, size, size), board.NameOf(clip), clip, Thumbnail(clip, null, null, size), false,
+            var thumb = new Rect(tile.x + 7, tile.y + 4, size, size);
+            var broken = item.Error != null;
+            DrawTile(tile, thumb, board.NameOf(clip), clip, broken ? null : Thumbnail(clip, null, null, size), false,
                 null, ItemTooltip(item), closeTooltip, close);
+            if (!broken || Event.current.type != EventType.Repaint) return;
+            Outline(tile, ErrorColor);
+            var icon = EditorGUIUtility.IconContent("console.erroricon").image;
+            if (icon != null) GUI.DrawTexture(new Rect(thumb.center.x - 16, thumb.center.y - 16, 32, 32), icon, ScaleMode.ScaleToFit);
         }
 
-        // count: the faces that are exported. Unsupported ones are not shown.
+        // count: the faces shown. An added file that can no longer be exported
+        // stops the save, so it is also the number exported.
         internal static string OtherTitle(int count) => string.Format(ExporterLocalization.T("その他の表情 {0}件"), count);
 
         internal const string MenuLossFormat = "表情メニューの{0}項目はVRMに入らないことがあります";
@@ -1787,11 +1819,16 @@ namespace VRVlog.LilToonExporter
             HandleDrop(rect, Place.Excluded);
         }
 
+        internal const string RemoveHint = "右クリックで「ボードから外す」";
+
         // A renamed face also names its file; the last line is how to rename.
+        // A file that can no longer be exported starts with why, and ends
+        // with how to take it off instead.
         string ItemTooltip(ExpressionBoard.Item item) =>
+            (item.Error != null ? item.Error + "\n" : "") +
             (board.Renamed(item.Clip) ? board.NameOf(item.Clip) + "\n" + ExporterLocalization.T("ファイル名") + "  " + item.Clip.name + "\n" : "") +
             (item.Added ? item.Source : ExporterLocalization.T(item.Source ?? "")) + "\n" + AssetDatabase.GetAssetPath(item.Clip) +
-            "\n" + ExporterLocalization.T("ダブルクリックで名前を変更");
+            "\n" + ExporterLocalization.T(item.Error != null ? RemoveHint : "ダブルクリックで名前を変更");
 
         // The × of a tile, drawn only while the mouse is over the tile. The
         // button is called on every event, drawn empty when hidden, so it always
@@ -1930,6 +1967,11 @@ namespace VRVlog.LilToonExporter
             }
             else if (place.Kind == PlaceKind.Slot)
                 menu.AddDisabledItem(new GUIContent(ExporterLocalization.T("名前を変更（標準の表情は名前が決まっています）")), false);
+            if (board.Find(clip)?.Added == true)
+            {
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent(ExporterLocalization.T("ボードから外す")), false, () => Queue(() => RemoveAddedClip(clip)));
+            }
             menu.ShowAsContext();
         }
 
@@ -2509,9 +2551,9 @@ namespace VRVlog.LilToonExporter
             try { session.RequireCurrentSource(); }
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed)
             {
-                // An added file the avatar as it is can no longer use is taken
-                // off the board with its reason; the save stops on that reason
-                // instead of writing a VRM without it.
+                // An added file the avatar as it is can no longer use stays on
+                // the board with its reason and stops the save below; a deleted
+                // one is taken off and the save stops on the status line.
                 var added = clipInputs.Count;
                 FollowSource(changed.Detail);
                 if (clipInputs.Count < added) throw new InvalidOperationException(status);

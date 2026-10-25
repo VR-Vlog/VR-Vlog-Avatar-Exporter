@@ -469,6 +469,7 @@ namespace VRVlog.LilToonExporter
             AuthoredExpressionEndpoints authoredEndpoints = null;
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
+            VRVlog.Expressions.LipSyncData lipSync = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -599,6 +600,8 @@ namespace VRVlog.LilToonExporter
                     // the base shape, neutral and optimizer captures below read
                     // the active renderers.
                     objectToggles = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Capture(clone, menuPolicy, warnings), () => null);
+                    // Viseme Parameter Only reads the merged FX. A failure only warns.
+                    lipSync = LipSyncCapture.Capture(clone, warnings);
                     // The faces each pair of hand gestures shows, read from the
                     // prepared copy before the bake below changes it. The board's
                     // own clip of each face is kept, since the build may play a copy.
@@ -608,10 +611,13 @@ namespace VRVlog.LilToonExporter
                             transformed.IsolatedCopyOf, transformed.ObjectRegistry), () => null);
                     recoveryReport.Stage = "基準形評価";
                     recoveryReport.Phase = ExportPhase.Expressions;
-                    // This beta retains the prepared copy's rest values. Selected
-                    // expressions still use their original FX evaluation above;
-                    // all endpoints below share this retained neutral snapshot.
-                    warnings?.Add(ExporterLocalization.T(ExportNoteText.FxRestSkipped));
+                    // The normal face and body are what the FX defaults show, as in
+                    // VRChat. Left out, the copy's own values stay the rest pose.
+                    // Reading the FX only falls back in place; writing the values
+                    // into the copy is a Step like every other change to it.
+                    var fxRest = guard.Run(ExportStage.FxRest, () => NeutralShapeSampler.Sample(clone,
+                        preparedMenuBindings.ExcludesPreparedPath, warnings), () => null);
+                    if (fxRest != null) guard.Step(ExportStage.FxRest, () => NeutralShapeSnapshot.Apply(clone, fxRest));
                     NeutralShapeSnapshot neutral;
                     using (ExpressionBoardTimings.Step("export.defaultFace"))
                     {
@@ -647,7 +653,11 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     guard.Watch(ExportStage.Expressions, () =>
                     {
-                        AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
+                        // Lip Sync as the descriptor names it on the prepared copy,
+                        // or as captured when the caller removed the descriptor.
+                        var lipSync = capturedVisemes ?? VrChatVisemeExport.Read(clone);
+                        AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings,
+                            visemeRenderer: lipSync?.Renderer, visemeShapes: lipSync?.Exclusive);
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,
@@ -904,6 +914,7 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
+                if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 return AvatarFormatRequirements.Write(exported);
             }
             catch (Exception error) when (!(error is MatcapApproximation.OverLimit))

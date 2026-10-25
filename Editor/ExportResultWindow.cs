@@ -32,6 +32,7 @@ namespace VRVlog.LilToonExporter
         internal const string CopyDiagnosticsButton = "診断情報をコピー";
         internal const string DiagnosticsCopied = "コピーしました";
         internal const string DiagnosticsHint = "名前やパスは含みません";
+        internal const string NamedDiagnosticsItem = "名前・パスを含めてコピー（DM など非公開の場だけ）";
 
         const float HeaderHeight = 32f, ToolbarHeight = 22f, ColumnHeight = 18f, FooterHeight = 40f;
         const float GroupHeight = 22f, RowHeight = 20f, LineHeight = 18f;
@@ -393,9 +394,17 @@ namespace VRVlog.LilToonExporter
             if (result != null && diagnostics != null)
             {
                 var rect = new Rect(x, y, 128f, 24f);
-                x += 128f + 6f;
+                // The named text is behind the arrow, with where it may be sent in the item itself.
+                var arrow = new Rect(rect.xMax, y, 20f, 24f);
+                x = arrow.xMax + 6f;
                 var label = ExporterLocalization.T(diagnosticsCopied ? DiagnosticsCopied : CopyDiagnosticsButton);
-                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(DiagnosticsHint)))) CopyDiagnostics();
+                if (GUI.Button(rect, new GUIContent(label, ExporterLocalization.T(DiagnosticsHint)))) CopyDiagnostics(false);
+                if (GUI.Button(arrow, new GUIContent("▾", ExporterLocalization.T(NamedDiagnosticsItem))))
+                {
+                    var menu = new GenericMenu();
+                    menu.AddItem(new GUIContent(ExporterLocalization.T(NamedDiagnosticsItem)), false, () => CopyDiagnostics(true));
+                    menu.DropDown(arrow);
+                }
             }
             var primary = IsPending && result != null;
             var buttonWidth = primary ? 112f : 88f;
@@ -424,10 +433,11 @@ namespace VRVlog.LilToonExporter
             feedbackFailed = false;
         }
 
-        void CopyDiagnostics()
+        void CopyDiagnostics(bool withNames)
         {
-            EditorGUIUtility.systemCopyBuffer = diagnostics.Text();
+            EditorGUIUtility.systemCopyBuffer = withNames ? diagnostics.NamedText() : diagnostics.Text();
             diagnosticsCopied = true;
+            Repaint();
         }
 
         void SaveText()
