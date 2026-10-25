@@ -1071,8 +1071,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
             RefreshActions(sending);
             RefreshDone(view, sending);
             previewTitle.text = T(AppTransferText.PreviewTitle);
-            previewNote.text = T(AppTransferText.PreviewNote);
-            previewHint.text = T(AppTransferText.PreviewHint);
+            // One line each, shortened in the narrowest column; the tooltip keeps the whole text.
+            previewNote.text = previewNote.tooltip = T(AppTransferText.PreviewNote);
+            previewHint.text = previewHint.tooltip = T(AppTransferText.PreviewHint);
             PlacePreview();
         }
 
