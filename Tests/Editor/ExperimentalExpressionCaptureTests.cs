@@ -403,7 +403,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 Assert.That(inputs.Select(input => input.Clip), Is.EqualTo(new[] { kept }));
                 Assert.That(board.Find(removed), Is.Null);
-                Assert.That(board.Excluded, Does.Not.Contain(removed));
+                Assert.That(board.Excluded, Has.No.Member(removed));
                 Assert.That(board.Names.ContainsKey(removed), Is.False);
                 Assert.That(session.Expressions.Select(pose => pose.Name), Is.EqualTo(new[] { "Kept" }), "Its record goes too.");
                 Assert.That(window.BlocksExport, Is.False);
