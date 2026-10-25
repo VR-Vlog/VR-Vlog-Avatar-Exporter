@@ -81,10 +81,10 @@ namespace VRVlog.LilToonExporter
                 }
                 // The quick transfer prepares the board as "通常" opens it: the
                 // avatar's last assignment, automatic where there is none.
-                return string.Format(ExporterLocalization.T("表情は前回の割り当て（なければ自動）・書き出さないオブジェクト{0}件"), excludedCount);
+                return string.Format(ExporterLocalization.T("表情は前回の割り当て（なければ自動）\n書き出さないオブジェクト{0}件"), excludedCount);
             }
             var board = ExperimentalExpressionCaptureWindow.ForTransfer(avatar);
-            return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/{1}・書き出さないオブジェクト{2}件"),
+            return board == null ? "" : string.Format(ExporterLocalization.T("VRMの表情{0}/{1}\n書き出さないオブジェクト{2}件"),
                 board.SlotCount, ExperimentalExpressionCaptureWindow.MainSlotCount, board.ExcludedObjectCount);
         }
 
@@ -294,5 +294,18 @@ namespace VRVlog.LilToonExporter
             ExportSettingsStore.Save(avatar, targetSettings);
             return targetSettings;
         }
+
+        // The full-body preview beside the quick transfer's form.
+        private readonly QuickTransferPreview quickPreview = new QuickTransferPreview();
+
+        public bool DrawQuickPreview(GameObject avatar, Rect rect) => quickPreview.Draw(avatar, rect);
+
+        // Cheap: whether the next paint would show another avatar or other exclusions.
+        public bool QuickPreviewChanged(GameObject avatar) => quickPreview.Stale(avatar);
+
+        // True while the preview shows the failure line instead of the avatar.
+        public bool QuickPreviewFailed() => quickPreview.Error != null;
+
+        public void ReleaseQuickPreview() => quickPreview.Dispose();
     }
 }
