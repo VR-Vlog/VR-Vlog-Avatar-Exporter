@@ -1342,7 +1342,7 @@ namespace VRVlog.LilToonExporter
             IDictionary<string, ISet<float>> domains = null)
         {
             var cache = ExpressionInspectCache.Current;
-            var key = domains != null ? null : cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount);
+            var key = cache?.Signature(runtime, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains);
             if (key != null && cache.TryReplay(key, excludedPath, neutralFixed != null, drivers, unknown, out var cached)) return cached;
             var trace = key == null ? null : cache.Record(Controller(runtime).layers.Length);
             var result = Inspect(runtime, excludedPath, drivers, unknown, allowFxControls, neutralFixed, typedConditions, fxLayerCount, domains, cache, trace);
