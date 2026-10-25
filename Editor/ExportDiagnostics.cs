@@ -195,7 +195,7 @@ namespace VRVlog.LilToonExporter
                 if (number <= diagnostics.meshes.Count) continue;
                 var primitives = Array(meshesJson[meshIndex] as Dictionary<string, object>, "primitives")
                     .OfType<Dictionary<string, object>>().ToList();
-                var line = new MeshLine { Submeshes = primitives.Count, Skinned = node.ContainsKey("skin"), Name = node.TryGetValue("name", out var rawName) ? rawName as string ?? "" : "" };
+                var line = new MeshLine { Submeshes = primitives.Count, Skinned = node.ContainsKey("skin"), Name = OneLine(node.TryGetValue("name", out var rawName) ? rawName as string : null) };
                 var positions = new HashSet<int>();
                 var indexTypes = new List<string>();
                 var used = new List<int>();
@@ -235,8 +235,8 @@ namespace VRVlog.LilToonExporter
                 else if (material.TryGetValue("name", out var rawName) && rawName is string name && sourceShaders.TryGetValue(name, out var found)) shader = found;
                 else shader = null;
                 line.Shader = ShaderText(shader, record);
-                line.Name = material.TryGetValue("name", out var rawMaterialName) ? rawMaterialName as string ?? "" : "";
-                line.ShaderName = shader ?? "不明";
+                line.Name = OneLine(material.TryGetValue("name", out var rawMaterialName) ? rawMaterialName as string : null);
+                line.ShaderName = shader == null ? "不明" : OneLine(shader);
                 line.Converted = record == null ? "MToon" : full ? "lilToon（そのまま）" : "lilToon（モバイル）";
                 var mode = material.TryGetValue("alphaMode", out var rawMode) ? rawMode as string ?? "OPAQUE" : "OPAQUE";
                 if (mode == "MASK")
@@ -308,7 +308,7 @@ namespace VRVlog.LilToonExporter
                 var inactive = renderers.Count(renderer => !renderer.gameObject.activeInHierarchy);
                 var disabled = renderers.Count(renderer => renderer.gameObject.activeInHierarchy && !renderer.enabled);
                 head.Add("元のアバター レンダラー " + renderers.Length + " / 初期で非表示 " + inactive + " / 無効 " + disabled);
-                diagnostics.namedHead.Add("アバター " + source.name);
+                diagnostics.namedHead.Add("アバター " + OneLine(source.name));
                 diagnostics.namedHead.Add("初期で非表示 " + Paths(source, renderers.Where(renderer => !renderer.gameObject.activeInHierarchy)));
                 diagnostics.namedHead.Add("無効 " + Paths(source, renderers.Where(renderer => renderer.gameObject.activeInHierarchy && !renderer.enabled)));
             }
@@ -344,7 +344,7 @@ namespace VRVlog.LilToonExporter
         {
             var paths = components.Select(component => ExportFallbackReport.RelativePath(source.transform, component.transform))
                 .Where(path => path != null).Select(path => path.Length == 0 ? source.name : path).Distinct().ToList();
-            return paths.Count == 0 ? "なし" : string.Join(", ", paths);
+            return paths.Count == 0 ? "なし" : OneLine(string.Join(", ", paths));
         }
 
         // Where the gimmicks and parts counted by Gimmicks are, for the named text only.
@@ -353,7 +353,7 @@ namespace VRVlog.LilToonExporter
             var lines = new List<string>();
             foreach (var entry in report?.Results ?? (IReadOnlyList<ExportResultEntry>)new ExportResultEntry[0])
                 if (entry.RuleId != null && entry.Outcome == ExportOutcome.Omitted)
-                    lines.Add("外した " + ExportGimmickChoices.GroupName(entry.RuleId) + " " + (entry.Path ?? entry.Name));
+                    lines.Add("外した " + ExportGimmickChoices.GroupName(entry.RuleId) + " " + OneLine(string.IsNullOrEmpty(entry.Path) ? entry.Name : entry.Path));
             if (source == null) return lines;
             var parts = Parts(source);
             for (var i = 0; i < PartKinds.Length; i++)
@@ -387,8 +387,11 @@ namespace VRVlog.LilToonExporter
             if (row.Count > Math.Max(1, row.Targets.Count)) line.Append("（").Append(row.Count).Append("件）");
             if (!string.IsNullOrEmpty(row.Reason)) line.Append(" / 理由 ").Append(row.Reason);
             // A reason of several lines stays on its own line here.
-            return Regex.Replace(line.ToString(), @"\s*\n\s*", " ");
+            return OneLine(line.ToString());
         }
+
+        // A name or reason with line breaks in it would start a line of its own, or look like a heading.
+        static string OneLine(string text) => Regex.Replace(text ?? "", @"\s*[\r\n]+\s*", " ");
 
         // Kinds of parts that are not written, by the exporter's own kinds:
         // the gimmicks a rule removed (by the board's group name), the avatar's

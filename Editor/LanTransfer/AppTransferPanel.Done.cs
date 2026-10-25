@@ -167,13 +167,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     var arrow = new Button { name = "copy-named-diagnostics", text = "▾", tooltip = T(AppTransferText.NamedDiagnosticsItem) };
                     arrow.clicked += () =>
                     {
-                        var menu = new GenericMenu();
-                        menu.AddItem(new GUIContent(T(AppTransferText.NamedDiagnosticsItem)), false, () =>
+                        var menu = new GenericDropdownMenu();
+                        menu.AddItem(T(AppTransferText.NamedDiagnosticsItem), false, () =>
                         {
                             EditorGUIUtility.systemCopyBuffer = named();
                             copy.text = T(AppTransferText.DiagnosticsCopied);
                         });
-                        menu.DropDown(arrow.worldBound);
+                        menu.DropDown(arrow.worldBound, arrow);
                     };
                     arrow.AddToClassList("action");
                     arrow.style.width = 22;

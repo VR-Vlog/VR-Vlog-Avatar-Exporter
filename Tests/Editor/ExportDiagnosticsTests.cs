@@ -273,6 +273,21 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void NamesWithLineBreaksOrNoPathStayOnTheirLine()
+        {
+            root.name = "SecretAvatar\r\n[変換で変えた項目]";
+            var report = new ExportFallbackReport();
+            var gimmick = report.Record(ExportOutcome.Omitted, UniVrmOneClickExporter.OmittedGimmickCategory, "SecretGimmick", "SecretGimmick を省略しました");
+            gimmick.RuleId = ExportGimmickRules.PettingSystem;
+            gimmick.Path = "";
+            var named = ExportDiagnostics.Record(root, Vrm(), report, null, ExportDiagnostics.QuickTransfer).NamedText();
+            Assert.That(named, Does.Contain("アバター SecretAvatar [変換で変えた項目]"));
+            Assert.That(named, Does.Contain("外した 撫でシステム SecretGimmick"));
+            // The heading of the change section is still the only line that is just the heading.
+            Assert.That(System.Array.FindAll(named.Split('\n'), line => line.Trim() == "[変換で変えた項目]").Length, Is.EqualTo(1));
+        }
+
+        [Test]
         public void ANamedChangeLineStaysOnOneLine()
         {
             var row = new ExportResultRow { Outcome = ExportOutcome.Approximated, Group = "マテリアル", Content = "SecretTexture を縮小しました", Reason = "一行目\n  二行目", Count = 3 };
