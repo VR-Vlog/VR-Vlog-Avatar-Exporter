@@ -32,7 +32,8 @@ namespace VRVlog.LilToonExporter
         };
 
         // The parts that only work inside VRChat, in the order a row lists them.
-        static readonly string[] PartNames = { "カメラ", "音", "パーティクル", "ライト", "接触", "コンストレイント" };
+        // The export diagnostics count the avatar's components by the same kinds.
+        internal static readonly string[] PartNames = { "カメラ", "音", "パーティクル", "ライト", "接触", "コンストレイント" };
         static readonly string[] ContactTypes = { ExportGimmickRules.ContactReceiver, ExportGimmickRules.ContactSender };
 
         // The objects the user left out by hand are not judged again.
@@ -104,10 +105,12 @@ namespace VRVlog.LilToonExporter
             return removed;
         }
 
-        internal static string GroupName(ExportGimmickFinding finding)
+        internal static string GroupName(ExportGimmickFinding finding) =>
+            finding.Unit == GimmickExclusionUnit.Renderer && finding.RuleId == null ? RendererGroup : GroupName(finding.RuleId);
+
+        internal static string GroupName(string ruleId)
         {
-            if (finding.Unit == GimmickExclusionUnit.Renderer && finding.RuleId == null) return RendererGroup;
-            foreach (var (rule, name) in GroupNames) if (rule == finding.RuleId) return name;
+            foreach (var (rule, name) in GroupNames) if (rule == ruleId) return name;
             return OtherGroup;
         }
 
@@ -173,7 +176,7 @@ namespace VRVlog.LilToonExporter
             return parts.Length == 0 ? "" : string.Format(translate(PartsFormat), string.Join("・", parts));
         }
 
-        static int PartIndex(Component component)
+        internal static int PartIndex(Component component)
         {
             if (component == null) return -1;
             if (component is Camera) return 0;

@@ -48,6 +48,7 @@ namespace VRVlog.LilToonExporter
         readonly List<MeshLine> meshes = new List<MeshLine>();
         readonly List<MaterialLine> materials = new List<MaterialLine>();
         readonly List<string> changes = new List<string>();
+        readonly List<string> gimmicks = new List<string>();
         readonly Dictionary<int, byte[]> images = new Dictionary<int, byte[]>();
         readonly Dictionary<int, string> alpha = new Dictionary<int, string>();
         string text;
@@ -127,6 +128,8 @@ namespace VRVlog.LilToonExporter
             }
             if (read)
             {
+                builder.AppendLine("[書き出さなかったギミック]");
+                foreach (var line in gimmicks) builder.AppendLine(line);
                 builder.AppendLine("[変換で変えた項目]");
                 if (changes.Count == 0) builder.AppendLine("なし");
                 foreach (var line in changes) builder.AppendLine(line);
@@ -289,6 +292,8 @@ namespace VRVlog.LilToonExporter
                     rawName is string name && !numbers.ContainsKey(name))
                     numbers[name] = "マテリアル #" + (index + 1);
 
+            diagnostics.gimmicks.AddRange(Gimmicks(source, json, report));
+
             var list = ExportResultList.Build(report, warnings);
             head.Add("変換の結果 " + string.Join("・", ExportResultList.Order.Select(outcome => ExportResultList.Label(outcome) + list.Summary[outcome])) +
                 "・参考" + list.NoticeCount + (list.MissingShaderCount > 0 ? " / シェーダーなし " + list.MissingShaderCount : ""));
@@ -304,6 +309,49 @@ namespace VRVlog.LilToonExporter
             foreach (var key in order)
                 diagnostics.changes.Add(key.Line + (counts[key] > 1 ? "（" + counts[key] + "件）" : "") + key.Targets);
             return diagnostics;
+        }
+
+        // Kinds of parts that are not written, by the exporter's own kinds:
+        // the gimmicks a rule removed (by the board's group name), the avatar's
+        // components VRM has no place for, and PhysBones and constraints next to
+        // what the VRM holds after conversion. Counts only, never a name.
+        internal static List<string> Gimmicks(GameObject source, Dictionary<string, object> json, ExportFallbackReport report)
+        {
+            var lines = new List<string>();
+            var removed = new List<(string Group, int Count)>();
+            foreach (var entry in report?.Results ?? (IReadOnlyList<ExportResultEntry>)new ExportResultEntry[0])
+            {
+                if (entry.RuleId == null || entry.Outcome != ExportOutcome.Omitted) continue;
+                var group = ExportGimmickChoices.GroupName(entry.RuleId);
+                var index = removed.FindIndex(item => item.Group == group);
+                if (index < 0) removed.Add((group, entry.Count));
+                else removed[index] = (group, removed[index].Count + entry.Count);
+            }
+            lines.Add("外したギミック " + (removed.Count == 0 ? "なし" : string.Join(" / ", removed.Select(item => item.Group + " " + item.Count))));
+            if (source == null) return lines;
+
+            // The board's part kinds, then trails and lines, which UniVRM does not write either.
+            var parts = new int[ExportGimmickChoices.PartNames.Length + 1];
+            var physBones = 0;
+            foreach (var component in source.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null) continue;
+                if (PhysBoneSpringExport.IsPhysBone(component)) physBones++;
+                var index = component is TrailRenderer || component is LineRenderer ? parts.Length - 1 : ExportGimmickChoices.PartIndex(component);
+                if (index >= 0) parts[index]++;
+            }
+            var constraintIndex = System.Array.IndexOf(ExportGimmickChoices.PartNames, "コンストレイント");
+            var names = ExportGimmickChoices.PartNames.Concat(new[] { "トレイル・ライン" }).ToArray();
+            lines.Add("書き出さない部品 " + string.Join(" / ", names.Select((name, i) => (name, i)).Where(item => item.i != constraintIndex)
+                .Select(item => item.name + " " + parts[item.i])));
+
+            var springs = json.TryGetValue("extensions", out var rawExtensions) && rawExtensions is Dictionary<string, object> extensions &&
+                extensions.TryGetValue("VRMC_springBone", out var rawSprings) ? rawSprings as Dictionary<string, object> : null;
+            lines.Add("揺れもの 元のPhysBone " + physBones + " / VRMの揺れもの " + Array(springs, "springs").Count);
+            var constrained = Array(json, "nodes").OfType<Dictionary<string, object>>().Count(node =>
+                node.TryGetValue("extensions", out var raw) && raw is Dictionary<string, object> nodeExtensions && nodeExtensions.ContainsKey("VRMC_node_constraint"));
+            lines.Add("コンストレイント 元 " + parts[constraintIndex] + " / VRM " + constrained);
+            return lines;
         }
 
         // One line of the report as fixed words. The group is a category the exporter's code names. The reason is
