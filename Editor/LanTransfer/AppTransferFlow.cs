@@ -74,7 +74,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The full-body preview beside the quick window's form.
         internal const string PreviewTitle = "プレビュー";
         internal const string PreviewNote = "色と透け方はアプリと異なる場合があります";
-        internal const string PreviewHint = "ドラッグで回転・ホイールで拡大";
+        internal const string PreviewHint = "ドラッグで回転・中ドラッグで移動・ホイールで拡大";
         internal const string PreviewFailed = "プレビューを表示できませんでした";
     }
 
