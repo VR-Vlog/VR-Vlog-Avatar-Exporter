@@ -922,7 +922,7 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません。ファイルを直すか、書き出さない表情へ移してください。{1}";
+        internal const string UnexportedFileFormat = "その他の表情の「{0}」は書き出せません・ファイルを直すか書き出さない表情へ移す・{1}";
 
         internal const string MenuShortRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件を記録して書き出しました";
         internal const string MenuShortNotRecordedFormat = "表情メニューから書き出せた表情は{0}件でした・その他の表情{1}件は記録できませんでした";
@@ -1819,7 +1819,7 @@ namespace VRVlog.LilToonExporter
             HandleDrop(rect, Place.Excluded);
         }
 
-        internal const string RemoveHint = "右クリックの「ボードから外す」で外せます";
+        internal const string RemoveHint = "右クリックで「ボードから外す」";
 
         // A renamed face also names its file; the last line is how to rename.
         // A file that can no longer be exported starts with why, and ends
