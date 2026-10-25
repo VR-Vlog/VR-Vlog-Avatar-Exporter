@@ -51,6 +51,7 @@ namespace UnityEngine
         public uint GetIndexCount(int submesh) => throw new NotSupportedException();
         public int blendShapeCount => names.Count;
         public string GetBlendShapeName(int i) => names[i];
+        public int GetBlendShapeIndex(string name) => names.IndexOf(name);
         public int GetBlendShapeFrameCount(int i) => frames[i].Count;
         public float GetBlendShapeFrameWeight(int i,int f) => frames[i][f].weight;
         public void ClearBlendShapes() { names.Clear();frames.Clear(); }

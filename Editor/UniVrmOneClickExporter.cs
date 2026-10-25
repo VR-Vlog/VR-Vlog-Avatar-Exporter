@@ -650,7 +650,11 @@ namespace VRVlog.LilToonExporter
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
                     guard.Watch(ExportStage.Expressions, () =>
                     {
-                        AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings);
+                        // Lip Sync as the descriptor names it on the prepared copy,
+                        // or as captured when the caller removed the descriptor.
+                        var lipSync = capturedVisemes ?? VrChatVisemeExport.Read(clone);
+                        AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings,
+                            visemeRenderer: lipSync?.Renderer, visemeShapes: lipSync?.Exclusive);
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,

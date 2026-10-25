@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace VRVlog.LilToonExporter
@@ -37,8 +38,16 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // A Lip Sync channel named by the VRChat convention (vrc.v_aa, vrc.v.sil).
+        // Avatars that drive visemes from their own animator use these names too.
+        internal static bool IsVisemeChannel(string name) => name != null &&
+            (name.StartsWith("vrc.v_", StringComparison.OrdinalIgnoreCase) || name.StartsWith("vrc.v.", StringComparison.OrdinalIgnoreCase));
+
+        // The Lip Sync shapes of each renderer are rebased as VRChat shows them,
+        // one at a time (see Rebase): the shapes named as visemes, plus
+        // visemeShapes, the descriptor's slots, on visemeRenderer.
         internal static void Preserve(GameObject source, GameObject clone, ICollection<Mesh> temporaryMeshes, ICollection<string> warnings,
-            Func<Transform, bool> excluded = null)
+            Func<Transform, bool> excluded = null, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
         {
             foreach (var renderer in ExportRendererSelection.Enumerate(source))
             {
@@ -66,7 +75,10 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                var kept = Rebase(mesh, baked, weights);
+                var exclusive = new HashSet<int>(Enumerable.Range(0, mesh.blendShapeCount).Where(shape => IsVisemeChannel(mesh.GetBlendShapeName(shape))));
+                if (visemeShapes != null && visemeRenderer != null && visemeRenderer == skin)
+                    exclusive.UnionWith(visemeShapes.Select(mesh.GetBlendShapeIndex).Where(shape => shape >= 0));
+                var kept = Rebase(mesh, baked, weights, exclusive);
                 copy.sharedMesh = baked;
                 for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
                 warnings?.Add($"{skin.name}: 調整済みBlendShapeを基本の顔・体形として保存しました。表情はこの形から変化します。");
@@ -159,7 +171,10 @@ namespace VRVlog.LilToonExporter
 
         // Returns the shapes whose frames cannot be evaluated. They are copied as
         // authored; their adjusted value is neither stored in the base nor exported.
-        internal static List<int> Rebase(Mesh source, Mesh target, float[] weights)
+        // exclusive lists shapes VRChat shows one at a time (Lip Sync visemes).
+        // Each of them ends where VRChat shows it, with the others of the group
+        // at 0, so it also subtracts their rest offsets stored in the base.
+        internal static List<int> Rebase(Mesh source, Mesh target, float[] weights, ICollection<int> exclusive = null)
         {
             if (ReferenceEquals(source, target)) throw new ArgumentException("The source mesh must remain unchanged.");
             if (weights.Length != source.blendShapeCount) throw new ArgumentException("BlendShape weight count mismatch.");
@@ -167,6 +182,15 @@ namespace VRVlog.LilToonExporter
             var normals = source.normals;
             var tangents = source.tangents;
             var kept = new List<int>();
+            // A shape kept as authored has no rest in the base to subtract.
+            var exclusiveRests = new List<KeyValuePair<int, Deltas>>();
+            foreach (var shape in exclusive ?? Array.Empty<int>())
+            {
+                Deltas rest;
+                try { rest = Evaluate(source, shape, weights[shape]); }
+                catch (InvalidOperationException) { continue; }
+                if (!IsZero(rest)) exclusiveRests.Add(new KeyValuePair<int, Deltas>(shape, rest));
+            }
             target.ClearBlendShapes();
             for (var shape = 0; shape < weights.Length; shape++)
             {
@@ -207,6 +231,17 @@ namespace VRVlog.LilToonExporter
                     end.Normals[v] -= rest.Normals[v];
                     end.Tangents[v] -= rest.Tangents[v];
                 }
+                if (exclusive != null && exclusive.Contains(shape))
+                    foreach (var other in exclusiveRests)
+                    {
+                        if (other.Key == shape) continue;
+                        for (var v = 0; v < vertices.Length; v++)
+                        {
+                            end.Vertices[v] -= other.Value.Vertices[v];
+                            end.Normals[v] -= other.Value.Normals[v];
+                            end.Tangents[v] -= other.Value.Tangents[v];
+                        }
+                    }
                 // Preserve shape order/names, including zero residuals: VRM clips
                 // refer to these indices. Do not bake skinning or modify bind poses.
                 target.AddBlendShapeFrame(source.GetBlendShapeName(shape), 100f, end.Vertices, end.Normals, end.Tangents);
@@ -303,6 +338,13 @@ namespace VRVlog.LilToonExporter
             for (var vertex = 0; vertex < mesh.vertexCount; vertex++)
                 if (Nonzero(rest.Vertices[vertex]) || Nonzero(rest.Normals[vertex]) || Nonzero(rest.Tangents[vertex])) return true;
             return false;
+        }
+
+        private static bool IsZero(Deltas deltas)
+        {
+            for (var vertex = 0; vertex < deltas.Vertices.Length; vertex++)
+                if (Nonzero(deltas.Vertices[vertex]) || Nonzero(deltas.Normals[vertex]) || Nonzero(deltas.Tangents[vertex])) return false;
+            return true;
         }
 
         private static bool IsZeroFrame(Mesh mesh, int shape, int frame)

@@ -236,8 +236,7 @@ namespace VRVlog.LilToonExporter
                     var index = BlinkShapeNames.Unique(names, alias);
                     if (index >= 0 && blinkSeeds.Any(seed => EquivalentBlinkGeometry(renderer.sharedMesh, seed, index))) Add(renderer, names[index]);
                 }
-                foreach (var name in names.Where(name => name.StartsWith("vrc.v.", StringComparison.OrdinalIgnoreCase) ||
-                    name.StartsWith("vrc.v_", StringComparison.OrdinalIgnoreCase))) Add(renderer, name);
+                foreach (var name in names.Where(AvatarBaseShape.IsVisemeChannel)) Add(renderer, name);
             }
             if (BlinkExportSession.TryDescriptor(avatar, null, out var blink)) Add(blink.Renderer, blink.Shape);
             var descriptor = avatar.GetComponents<Component>().FirstOrDefault(component => component != null &&
