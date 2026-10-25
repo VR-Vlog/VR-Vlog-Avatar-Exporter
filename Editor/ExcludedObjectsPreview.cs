@@ -23,12 +23,33 @@ namespace VRVlog.LilToonExporter
         readonly Dictionary<Renderer, bool> hiddenRenderers = new Dictionary<Renderer, bool>();
         Bounds bounds;
         bool framed;
-        float yaw, zoom = 1;
+        // The camera, as the Scene view keeps it: a turn, a pivot moved off the
+        // body's center by panning, and the distance as a share of the full-body fit.
+        Quaternion view;
+        Vector3 pan;
+        float zoom = 1;
+        ViewTool dragTool;
+        readonly int controlHint = "ExcludedObjectsPreview".GetHashCode();
+
+        internal enum ViewTool { None, Orbit, Pan, Zoom, Look }
 
         internal ExcludedObjectsPreview(GameObject source)
         {
             this.source = source != null ? source : throw new ArgumentNullException(nameof(source));
             Build();
+            // From the avatar's front, looking at it.
+            view = Quaternion.LookRotation(source.transform.rotation * Vector3.back, source.transform.rotation * Vector3.up);
+        }
+
+        // The keys and buttons in the tooltip, named as on this computer.
+        internal static string Controls
+        {
+            get
+            {
+                var mac = Application.platform == RuntimePlatform.OSXEditor;
+                return string.Format(ExporterLocalization.T("ドラッグ・{0}+ドラッグで回転\n中ドラッグ・{0}+{1}+ドラッグで移動\n右ドラッグで見回す\nホイール・{0}+右ドラッグで拡大\nFで全身を表示"),
+                    mac ? "Option" : "Alt", mac ? "Command" : "Ctrl");
+            }
         }
 
         internal GameObject Copy => copy;
@@ -219,37 +240,137 @@ namespace VRVlog.LilToonExporter
             return reach;
         }
 
+        float HalfView => Mathf.Tan((utility != null ? utility.camera.fieldOfView : 30) * .5f * Mathf.Deg2Rad);
+
         // The full body fits the rectangle: the camera backs off for the height,
-        // or for the width when the rectangle is the wider of the two. True when
-        // a drag or the wheel moved the camera and the window should repaint.
+        // or for the width when the rectangle is the wider of the two. Seen from
+        // the front the width is the body's, and the distance is measured at its
+        // front, which is its depth away from the center. Times the zoom.
+        float Distance(Rect rect)
+        {
+            var extent = framed ? bounds.extents : Vector3.one * .5f;
+            var fit = Mathf.Max(extent.y, extent.x / Mathf.Max(.01f, rect.width / Mathf.Max(1, rect.height))) * 1.08f;
+            return Mathf.Max(.3f, fit / HalfView + extent.z) * zoom;
+        }
+
+        internal Vector3 Pivot => (copy == null ? source.transform.position : framed ? copy.transform.rotation * bounds.center : copy.transform.position) + pan;
+
+        // Where the camera is and where it looks. For tests.
+        internal Pose CameraPose(Rect rect) => new Pose(Pivot - view * Vector3.forward * Distance(rect), view);
+
+        // The Scene view's mouse buttons (Unity 2022.3, SceneViewMotion): Alt and
+        // the left button orbits, the middle button pans (also with Alt, or Alt
+        // and the action key with the left button), the right button looks
+        // around, Alt and the right button zooms, and on a Mac Option, Control
+        // and the left button zooms too. The left button alone orbits as well:
+        // there is nothing here to select.
+        internal static ViewTool ToolFor(int button, bool alt, bool action, bool control)
+        {
+            switch (button)
+            {
+                case 0: return alt && action ? ViewTool.Pan : alt && control ? ViewTool.Zoom : ViewTool.Orbit;
+                case 1: return alt ? ViewTool.Zoom : ViewTool.Look;
+                case 2: return ViewTool.Pan;
+                default: return ViewTool.None;
+            }
+        }
+
+        // The Scene view's own steps: 0.003 radians a point, the turn up and down
+        // about the camera's right and sideways about the world's up.
+        static Quaternion Turn(Quaternion rotation, Vector2 delta)
+        {
+            rotation = Quaternion.AngleAxis(delta.y * .003f * Mathf.Rad2Deg, rotation * Vector3.right) * rotation;
+            return Quaternion.AngleAxis(delta.x * .003f * Mathf.Rad2Deg, Vector3.up) * rotation;
+        }
+
+        // Around the pivot.
+        internal void Orbit(Vector2 delta) => view = Turn(view, delta);
+
+        // The camera stays where it is and turns, so the pivot moves in front of it.
+        internal void Look(Rect rect, Vector2 delta)
+        {
+            var distance = Distance(rect);
+            var camera = Pivot - view * Vector3.forward * distance;
+            view = Turn(view, delta);
+            pan += camera + view * Vector3.forward * distance - Pivot;
+        }
+
+        // The point under the mouse keeps under it, as at the pivot's distance.
+        internal void Pan(Rect rect, Vector2 delta, bool fast)
+        {
+            var perPoint = 2 * Distance(rect) * HalfView / Mathf.Max(1, rect.height);
+            pan += view * new Vector3(-delta.x, delta.y, 0) * perPoint * (fast ? 4 : 1);
+        }
+
+        // Toward the point under the mouse, as the Scene view's wheel does; at
+        // the center when no point is given.
+        internal void Zoom(Rect rect, float factor, Vector2? at)
+        {
+            var before = Distance(rect);
+            zoom = Mathf.Clamp(zoom * factor, .02f, 10);
+            if (!at.HasValue) return;
+            var half = HalfView;
+            var x = (at.Value.x - rect.x) / Mathf.Max(1, rect.width) * 2 - 1;
+            var y = 1 - (at.Value.y - rect.y) / Mathf.Max(1, rect.height) * 2;
+            var point = view * new Vector3(x * half * rect.width / Mathf.Max(1, rect.height) * before, y * half * before, 0);
+            pan += point * (1 - Distance(rect) / before);
+        }
+
+        // F: the whole body in view again, from where the camera now looks.
+        internal void FrameAll() { pan = Vector3.zero; zoom = 1; }
+
+        // True when the mouse or F moved the camera and the window should repaint.
         internal bool Draw(Rect rect)
         {
             if (!Usable) return false;
             var current = Event.current;
+            var id = GUIUtility.GetControlID(controlHint, FocusType.Passive, rect);
             if (current.type == EventType.Repaint && rect.width > 1 && rect.height > 1)
             {
                 var camera = utility.camera;
-                var half = Mathf.Tan(camera.fieldOfView * .5f * Mathf.Deg2Rad);
-                var aspect = rect.width / rect.height;
-                var extent = framed ? bounds.extents : Vector3.one * .5f;
-                var fit = Mathf.Max(extent.y, extent.x / aspect) * 1.08f;
-                // Seen from the front: the width is the body's, and the distance is
-                // measured at its front, which is its depth away from the center.
-                var distance = Mathf.Max(.3f, fit / half + extent.z);
-                var turn = copy.transform.rotation;
-                var center = framed ? turn * bounds.center : copy.transform.position;
                 utility.BeginPreview(rect, GUIStyle.none);
-                camera.transform.position = center + turn * Quaternion.AngleAxis(yaw, Vector3.up) * Vector3.forward * distance * zoom;
-                camera.transform.LookAt(center, turn * Vector3.up);
+                var pose = CameraPose(rect);
+                camera.transform.SetPositionAndRotation(pose.position, pose.rotation);
                 // Our own fit: Render would widen the view of a narrow rectangle again.
                 utility.Render(false, false);
                 GUI.DrawTexture(rect, utility.EndPreview(), ScaleMode.StretchToFill, false);
             }
-            if (!rect.Contains(current.mousePosition)) return false;
-            if (current.type == EventType.MouseDrag && current.button == 0)
-            { yaw = Mathf.Repeat(yaw + current.delta.x + 180, 360) - 180; current.Use(); return true; }
-            if (current.type == EventType.ScrollWheel)
-            { zoom = Mathf.Clamp(zoom + current.delta.y * .04f, .25f, 2); current.Use(); return true; }
+            switch (current.GetTypeForControl(id))
+            {
+                case EventType.MouseDown:
+                    if (!rect.Contains(current.mousePosition) || GUIUtility.hotControl != 0) return false;
+                    dragTool = ToolFor(current.button, current.alt, EditorGUI.actionKey, current.control);
+                    if (dragTool == ViewTool.None) return false;
+                    GUIUtility.hotControl = id;
+                    current.Use();
+                    return false;
+                case EventType.MouseDrag:
+                    if (GUIUtility.hotControl != id) return false;
+                    if (dragTool == ViewTool.Orbit) Orbit(current.delta);
+                    else if (dragTool == ViewTool.Look) Look(rect, current.delta);
+                    else if (dragTool == ViewTool.Pan) Pan(rect, current.delta, current.shift);
+                    else if (dragTool == ViewTool.Zoom) Zoom(rect, 1 + HandleUtility.niceMouseDeltaZoom * (current.shift ? 9 : 3) * .003f, null);
+                    current.Use();
+                    return true;
+                case EventType.MouseUp:
+                    if (GUIUtility.hotControl != id) return false;
+                    GUIUtility.hotControl = 0;
+                    dragTool = ViewTool.None;
+                    current.Use();
+                    return false;
+                case EventType.ScrollWheel:
+                    if (!rect.Contains(current.mousePosition)) return false;
+                    // Alt and the wheel zooms at the center, as in the Scene view.
+                    Zoom(rect, 1 + current.delta.y * .015f, current.alt ? (Vector2?)null : current.mousePosition);
+                    current.Use();
+                    return true;
+                case EventType.KeyDown:
+                    if (current.keyCode != KeyCode.F || current.modifiers != EventModifiers.None && current.modifiers != EventModifiers.FunctionKey) return false;
+                    if (!rect.Contains(current.mousePosition) || GUIUtility.keyboardControl != 0) return false;
+                    FrameAll();
+                    current.Use();
+                    return true;
+            }
             return false;
         }
 

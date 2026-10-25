@@ -85,7 +85,7 @@ namespace VRVlog.LilToonExporter
             if (preview != null && preview.Usable)
             {
                 var moved = preview.Draw(rect);
-                GUI.Label(rect, new GUIContent(string.Empty, ExporterLocalization.T("ドラッグで回転・ホイールで拡大")));
+                GUI.Label(rect, new GUIContent(string.Empty, ExcludedObjectsPreview.Controls));
                 return moved;
             }
             if (Error != null)
