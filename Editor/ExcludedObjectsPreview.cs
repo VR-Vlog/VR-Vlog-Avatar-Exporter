@@ -324,7 +324,7 @@ namespace VRVlog.LilToonExporter
         {
             if (!Usable) return false;
             var current = Event.current;
-            var id = GUIUtility.GetControlID(controlHint, FocusType.Passive, rect);
+            var id = GUIUtility.GetControlID(controlHint, FocusType.Keyboard, rect);
             if (current.type == EventType.Repaint && rect.width > 1 && rect.height > 1)
             {
                 var camera = utility.camera;
@@ -341,7 +341,9 @@ namespace VRVlog.LilToonExporter
                     if (!rect.Contains(current.mousePosition) || GUIUtility.hotControl != 0) return false;
                     dragTool = ToolFor(current.button, current.alt, EditorGUI.actionKey, current.control);
                     if (dragTool == ViewTool.None) return false;
-                    GUIUtility.hotControl = id;
+                    // The keyboard as well, so that F reaches the preview after a click,
+                    // in the quick window's IMGUIContainer too.
+                    GUIUtility.hotControl = GUIUtility.keyboardControl = id;
                     current.Use();
                     return false;
                 case EventType.MouseDrag:
@@ -366,7 +368,7 @@ namespace VRVlog.LilToonExporter
                     return true;
                 case EventType.KeyDown:
                     if (current.keyCode != KeyCode.F || current.modifiers != EventModifiers.None && current.modifiers != EventModifiers.FunctionKey) return false;
-                    if (!rect.Contains(current.mousePosition) || GUIUtility.keyboardControl != 0) return false;
+                    if (GUIUtility.keyboardControl != id && (GUIUtility.keyboardControl != 0 || !rect.Contains(current.mousePosition))) return false;
                     FrameAll();
                     current.Use();
                     return true;
