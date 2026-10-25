@@ -60,6 +60,9 @@ namespace VRVlog.LilToonExporter
         // Name-free text about the export last saved by Export, ExportDetailed or SaveCopy, made when asked, or null.
         public Func<string> LastDiagnostics() => lastDiagnostics == null ? null : (Func<string>)lastDiagnostics.Text;
 
+        // The same text with the names and paths left in, for a private message, or null.
+        public Func<string> LastNamedDiagnostics() => lastDiagnostics == null ? null : (Func<string>)lastDiagnostics.NamedText;
+
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
 

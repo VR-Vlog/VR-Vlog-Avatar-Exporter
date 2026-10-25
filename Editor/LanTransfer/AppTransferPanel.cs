@@ -1212,6 +1212,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<int> LastOmittedStageCount;
             internal Func<string[]> LastNotes;
             internal Func<Func<string>> LastDiagnostics;
+            internal Func<Func<string>> LastNamedDiagnostics;
             internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
@@ -1243,6 +1244,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         LastOmittedStageCount = (Func<int>)Delegate.CreateDelegate(typeof(Func<int>), target, "LastOmittedStageCount"),
                         LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
                         LastDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastDiagnostics"),
+                        LastNamedDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastNamedDiagnostics"),
                         SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
                             typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),
