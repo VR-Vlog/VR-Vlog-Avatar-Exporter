@@ -126,6 +126,54 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(cache.Hits, Is.EqualTo(Cases.Length * 2 - 3));
         }
 
+        private string Run(IDictionary<string, ISet<float>> domains)
+        {
+            var drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
+            var unknown = new List<string>();
+            var layers = ExpressionDependencies.Inspect(fx, path => path == "Hair", drivers, unknown, true,
+                new Dictionary<string, float>(StringComparer.Ordinal), domains: domains);
+            return Snapshot(layers, drivers, unknown);
+        }
+
+        private static Dictionary<string, ISet<float>> Domains(params float[] menu) =>
+            new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new HashSet<float>(menu) };
+
+        [Test]
+        public void DomainsAreKeyedByContentAndReplayTheFreshWalk()
+        {
+            // Menu = 0 prunes the transition to Selected; adding 1 keeps it.
+            Func<IDictionary<string, ISet<float>>>[] cases =
+            {
+                () => Domains(0), () => Domains(1, 0), () => null, () => new Dictionary<string, ISet<float>>(StringComparer.Ordinal),
+            };
+            var expected = cases.Select(domains => Run(domains())).ToArray();
+            Assert.That(expected[0], Does.Not.Contain("Smile"));
+            Assert.That(expected[1], Does.Contain("Smile"));
+            using var cache = ExpressionInspectCache.Begin();
+            for (var round = 0; round < 2; round++)
+                for (var index = 0; index < cases.Length; index++)
+                    Assert.That(Run(cases[index]()), Is.EqualTo(expected[index]), "round " + round + " case " + index);
+            // Equal domains in new objects hit; null and an empty dictionary are separate entries.
+            Assert.That(cache.Misses, Is.EqualTo(cases.Length));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length));
+            Assert.That(Run(Domains(0, 1)), Is.EqualTo(expected[1]));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 1));
+        }
+
+        [Test]
+        public void DomainsWithOtherComparersAreNotCached()
+        {
+            var ignoreCase = new Dictionary<string, ISet<float>>(StringComparer.OrdinalIgnoreCase) { ["Menu"] = new HashSet<float> { 0 } };
+            var sorted = new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new SortedSet<float> { 0 } };
+            using var cache = ExpressionInspectCache.Begin();
+            foreach (var domains in new[] { ignoreCase, sorted })
+            {
+                Run(domains);
+                Run(domains);
+            }
+            Assert.That(cache.Hits + cache.Misses, Is.EqualTo(0));
+        }
+
         [Test]
         public void OverrideControllersAreCachedSeparatelyFromTheirBase()
         {
