@@ -1,38 +1,47 @@
 # Lip Syncの口のシェイプキーを、ほかの口の初期値を除いて基準形に合わせる
 
 - 日付: 2026-10-25
-- 対象: `Editor/AvatarBaseShape.cs`・`Editor/VrChatVisemeExport.cs`・`Editor/UniVrmOneClickExporter.cs`・`Tests/Editor/BaseShapeTests.cs`・`Tests/Editor/DescriptorVisemeExportTests.cs`・`Tests/Editor/Fixtures/BaseShapeFixture.cs`・`Tools/MeshTestShim.cs`
+- 対象: `Editor/AvatarBaseShape.cs`・`Editor/NeutralShapeSampler.cs`・`Editor/VrChatVisemeExport.cs`・`Editor/UniVrmOneClickExporter.cs`・`Tests/Editor/BaseShapeTests.cs`・`Tests/Editor/DescriptorVisemeExportTests.cs`・`Tests/Editor/Fixtures/BaseShapeFixture.cs`・`Tools/MeshTestShim.cs`
 
 ## 背景
 
 VRChatのLip Syncが **Viseme Blend Shape** のアバターには、顔のメッシュで `vrc.v_sil` を初期値100にしているもの（ほかの口は0）がある。`AvatarBaseShape.Preserve`／`Rebase` は0以外の初期値をすべて基準形に保存し、各シェイプキーからは自分の初期値だけを引いていた。このため `sil` は基準形に入り、`vrc.v_aa`・`v_ih`・`v_ou`・`v_E`・`v_oh` は元の差分のまま書き出されていた（書き出したVRMの `v_ou` の差分は元のメッシュと同じバイト列だった）。
 
+Lip Syncが **Viseme Parameter Only** で、記述子の枠が空のまま、アバター自身のFXレイヤーが `vrc.v_*` のシェイプキーを1つずつ動かすアバターでも同じことが起きる（実際に書き出したアバターはこちらだった）。
+
 アプリで `ou` を出すと「基準形（`sil` 入り）+ `ou` の差分」になり、`sil` と `ou` が重なって口が崩れる。5つの母音すべてで起き、「う」がいちばん目立つ。VRChatではLip Syncが口のシェイプキーを1つずつ動かすので、`ou` を出している間は `sil` が0になり、見える形は「元の基準形 + `ou`」になる。
 
 ## 決定
 
-- Lip Syncの口のシェイプキー（`VisemeBlendShapes` の15枠すべて。`sil` と子音も含む）を、同時に1つしか出ない組として扱う。
+- Lip Syncの口のシェイプキーを、同時に1つしか出ない組として扱う。組はレンダラーごとに次の和にする。
+  - 名前が `vrc.v_` か `vrc.v.` で始まるシェイプキー（大文字小文字を区別しない）。VRChatの命名の慣例で、Lip Syncのモードや記述子の枠に関係なく使われる。判定は `AvatarBaseShape.IsVisemeChannel` 1か所にまとめ、`NeutralShapeSampler` の自動のチャンネルも同じ判定を使う。
+  - Lip Syncが Viseme Blend Shape のとき、`VisemeSkinnedMesh` のレンダラーでは記述子の `VisemeBlendShapes` の15枠（`sil` と子音も含む）。名前が `vrc.v_*` でない口のシェイプキーのアバター向け。
 - 組のシェイプキーXの書き出す差分を「Xの最後のフレーム − Xの初期値の差分（これまでどおり）− 組のほかのシェイプキーの初期値の差分の合計」にする。位置・法線・接線のすべてに適用する。これで書き出した端点は、VRChatでXを出したときと同じ「元の基準形 + X（ほかの口は0）+ 口以外の初期値」になる。
-- 組は `VrChatVisemeExport.Read` が読む `VisemeSkinnedMesh` のレンダラーにだけ適用する。`VrChatVisemeExport.Captured` に組の名前の一覧（`Exclusive`）を足し、`UniVrmOneClickExporter` が `AvatarBaseShape.Preserve` を呼ぶときに渡す。呼び出し側が記述子を外して `descriptorVisemes` を渡したときはそれを、ないときは書き出し用コピーの記述子をその場で読む。どちらもビルド処理のあと・最適化の名前の付け替えの前なので、名前はそのときのメッシュに合う。
+- 記述子の枠は `VrChatVisemeExport.Read` が読む。`VrChatVisemeExport.Captured` に組の名前の一覧（`Exclusive`）を足し、`UniVrmOneClickExporter` が `AvatarBaseShape.Preserve` を呼ぶときに渡す。呼び出し側が記述子を外して `descriptorVisemes` を渡したときはそれを、ないときは書き出し用コピーの記述子をその場で読む。どちらもビルド処理のあと・最適化の名前の付け替えの前なので、名前はそのときのメッシュに合う。
 - 同じ名前が複数の枠にあるときは1回だけ数える。メッシュにない名前は無視する。フレームの構成に対応できず元の形のまま書き出すシェイプキー（`Rebase` の `kept`）は、初期値が基準形に入らないので、ほかの口から引かない。それ自身も元の形のまま書き出す。
-- 組の外のシェイプキーはこれまでどおり自分の初期値だけを引く。初期値がすべて0の組と、Lip Syncがシェイプキーでないアバターでは、書き出す内容は変わらない（初期値の差分がすべて0のシェイプキーは引く対象に入れないので、浮動小数点の符号も変わらない）。
+- 書き出しが合わせるのは「口のシェイプキー1つだけを100にし、ほかの口を0にした形」（VRChatのLip Syncが出す形）だけ。口を2つ以上同時に動かした形や、途中の値の形は合わせない。
+- 組の外のシェイプキーはこれまでどおり自分の初期値だけを引く。組のシェイプキーがないレンダラーと、組の初期値がすべて0のレンダラーでは、書き出す内容は変わらない（初期値の差分がすべて0のシェイプキーは引く対象に入れないので、浮動小数点の符号も変わらない）。
 
 ## 検討した代替案と不採用理由
 
 - `sil` を基準形に入れない: VRChatで口を動かしていないときの顔は `sil` 100なので、アプリの普段の顔が変わる。
 - 書き出す5つの母音（`aa`・`ee`・`ih`・`oh`・`ou`）の枠だけを組にする: 初期値100で問題になるのは枠0の `sil` で、母音の枠だけでは引けない。
-- アバターや名前ごとの特例にする: 名前に依存せず、記述子の枠から組を決める。
+- 記述子の枠だけから組を決める: Viseme Parameter Onlyのアバターは枠が空で、何も引けない。
+- 名前の慣例だけから組を決める: `vrc.v_*` でない名前の口のシェイプキーを記述子で割り当てたアバターを直せない。
+- アバターやFXのレイヤー・クリップごとの特例にする: 慣例の名前と記述子の枠という一般の規則で足りる。
 
 ## 影響
 
-- Lip Syncの口のシェイプキーが初期値0以外のアバターで、アプリの母音の口がVRChatと同じ形になる。
+- Lip Syncの口のシェイプキーが初期値0以外のアバター（Viseme Parameter OnlyでFXが `vrc.v_*` を動かすアバターを含む）で、アプリの母音の口がVRChatと同じ形になる。
 - 組のシェイプキーをメニューの表情がそのまま使う場合（直接の割り当て）も、同じ差分を使う。VRChatでは口のシェイプキーを1つずつ出すので、それに合わせた。
+- そのため、表情メニューが `sil` を0にせずに口のシェイプキーを動かす場合、VRChatでは `sil` とその口が重なって見えるが、書き出したVRMでは「基準形 + その口」になる。重なった形を再現しないことは既知の差（P3）として受け入れる。
 
 ## 範囲外
 
 - メッシュの初期値が0のとき、`sil` を100にして普段の顔を作ることはしない（VRChatが待機中に `sil` をどう扱うかに合わせた変更は別の判断）。
 - 表情ボードで利用者が明示的に選んだ口の表情（`AuthoredExpressionEndpoints`）は、選んだシェイプキーの値をそのまま絶対値の姿勢として書き出す。自動の口の候補は記述子の割り当てに任せるので、この変更が効く。
-- 元の形のまま書き出す口のシェイプキー（`kept`）から、ほかの口の初期値を引くことはしない。
+- 元の形のまま書き出す口のシェイプキー（`kept`）は調整しない。ほかの口の初期値を引かず、それ自身の初期値もほかの口から引かない。
+- 口のシェイプキーを2つ以上同時に動かした形・途中の値の形をVRChatと合わせること。
 
 ## 未決
 

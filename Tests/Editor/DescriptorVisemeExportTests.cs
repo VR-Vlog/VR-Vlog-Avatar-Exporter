@@ -94,6 +94,41 @@ namespace VRVlog.LilToonExporter.Tests
             CollectionAssert.AreEqual(visemes.Exclusive, copy.Exclusive);
         }
 
+        // The exporter can remove the descriptor from its copy and pass the
+        // captured visemes instead. Their slots still rebase the copy's face,
+        // here with shapes that are not named as VRChat visemes.
+        [Test] public void CapturedVisemesRebaseTheCloneWithoutItsDescriptor()
+        {
+            var type = DescriptorType();
+            var avatar = new GameObject("avatar"); owned.Add(avatar);
+            var face = new GameObject("face"); face.transform.SetParent(avatar.transform, false);
+            var skin = face.AddComponent<SkinnedMeshRenderer>();
+            var mesh = BaseShapeFixture.VisemeMesh(BaseShapeFixture.MouthGroup); owned.Add(mesh);
+            skin.sharedMesh = mesh;
+            var weights = new[] { 100f, 30f, 0f, 0f, 50f };
+            for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
+            var descriptor = Descriptor(avatar, "VisemeBlendShape", skin, "mouth_aa", "mouth_E", "lip_ih", "lip_oh", "mouth_ou");
+            var slots = (string[])type.GetField("VisemeBlendShapes").GetValue(descriptor);
+            slots[0] = "mouth_sil";
+            type.GetField("VisemeBlendShapes").SetValue(descriptor, slots);
+            var captured = VrChatVisemeExport.Read(avatar);
+            var clone = Object.Instantiate(avatar); owned.Add(clone);
+            Object.DestroyImmediate(clone.GetComponent(type));
+            Assert.That(VrChatVisemeExport.Read(clone), Is.Null);
+            var visemes = captured.ForClone(avatar, clone);
+            var copy = clone.GetComponentInChildren<SkinnedMeshRenderer>();
+            Assert.AreSame(copy, visemes.Renderer);
+            var temporary = new List<Mesh>();
+            try
+            {
+                AvatarBaseShape.Preserve(clone, clone, temporary, null, visemeRenderer: visemes.Renderer, visemeShapes: visemes.Exclusive);
+                Assert.AreNotSame(mesh, copy.sharedMesh);
+                Assert.IsNull(BaseShapeFixture.RebasedAsVrChatShows(mesh, weights, BaseShapeFixture.MouthGroup, new string[0], copy.sharedMesh));
+                Assert.AreSame(mesh, skin.sharedMesh);
+            }
+            finally { foreach (var item in temporary) Object.DestroyImmediate(item); }
+        }
+
         [Test] public void CaptureIgnoresAnUnsetFaceMesh()
         {
             var avatar = new GameObject("avatar"); owned.Add(avatar);

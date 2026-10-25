@@ -117,50 +117,244 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // Lip Sync visemes show one at a time in VRChat. Shapes: 0 sil (rest
-        // 100), 1 ou, 2 an unrelated shape resting at 50.
+        // A Lip Sync face that moves every vertex. Shapes: 0 sil, 1 aa, 2 ou,
+        // 3 E (moves only normals and tangents), 4 Smile (outside Lip Sync).
+        // Each has one frame at 100. VisemeGroup is named as VRChat visemes;
+        // MouthGroup is not, so only descriptor slots make it Lip Sync.
+        internal static readonly string[] VisemeGroup = { "vrc.v_sil", "vrc.v_aa", "vrc.v_ou", "vrc.v_E" };
+        internal static readonly string[] MouthGroup = { "mouth_sil", "mouth_aa", "mouth_ou", "mouth_E" };
+
+        internal static Mesh VisemeMesh(string[] group = null)
+        {
+            var names = group ?? VisemeGroup;
+            var mesh = Create();
+            mesh.ClearBlendShapes();
+            mesh.AddBlendShapeFrame(names[0], 100, Vectors(0, 1, 0, .5f, -.25f, 0, 0, .25f, .125f),
+                Vectors(1, 0, 0, 0, .5f, 0, .25f, 0, 0), Vectors(0, 1, 0, 0, 0, .5f, .375f, 0, 0));
+            mesh.AddBlendShapeFrame(names[1], 100, Vectors(0, -.5f, .25f, 0, .75f, 0, .125f, 0, -.5f),
+                Vectors(0, .25f, 0, .125f, 0, 0, 0, 0, .375f), Vectors(.25f, 0, 0, 0, .125f, 0, 0, 0, .5f));
+            mesh.AddBlendShapeFrame(names[2], 100, Vectors(0, 0, 2, .25f, 0, .5f, 0, -.5f, 0),
+                Vectors(0, .375f, 0, 0, 0, .25f, .125f, 0, 0), Vectors(0, 0, .25f, .5f, 0, 0, 0, .25f, 0));
+            mesh.AddBlendShapeFrame(names[3], 100, new Vector3[3],
+                Vectors(0, 0, .5f, .375f, 0, 0, 0, .5f, 0), Vectors(0, .75f, 0, 0, 0, .25f, .125f, 0, 0));
+            mesh.AddBlendShapeFrame("Smile", 100, Vectors(4, 0, 0, 0, 0, -1, .5f, .5f, 0),
+                Vectors(0, .125f, 0, 0, 0, 0, .25f, 0, 0), Vectors(0, 0, .125f, 0, 0, 0, 0, .375f, 0));
+            return mesh;
+        }
+
+        // Adds a viseme whose frames Rebase cannot evaluate a rest from, so it is
+        // kept as authored. Its rest at 0 is not zero.
+        internal static void AddKeptViseme(Mesh mesh, string name)
+        {
+            mesh.AddBlendShapeFrame(name, -50, Vectors(-1, 0, 0, 0, .5f, 0, 0, 0, .25f), Vectors(0, .25f, 0, 0, 0, 0, 0, 0, .125f), new Vector3[3]);
+            mesh.AddBlendShapeFrame(name, 0, Vectors(1, 0, 0, 0, -.5f, 0, .25f, 0, 0), new Vector3[3], Vectors(0, 0, .25f, 0, 0, 0, 0, 0, 0));
+            mesh.AddBlendShapeFrame(name, 100, Vectors(2, 0, 0, 0, 0, .75f, 0, .5f, 0), Vectors(.125f, 0, 0, 0, .25f, 0, 0, 0, 0), new Vector3[3]);
+        }
+
+        static Vector3[] Vectors(params float[] xyz) =>
+            new[] { new Vector3(xyz[0], xyz[1], xyz[2]), new Vector3(xyz[3], xyz[4], xyz[5]), new Vector3(xyz[6], xyz[7], xyz[8]) };
+
+        static int Bits(float value) => BitConverter.SingleToInt32Bits(value);
+        static bool Same(Vector3 a, Vector3 b) => Bits(a.x) == Bits(b.x) && Bits(a.y) == Bits(b.y) && Bits(a.z) == Bits(b.z);
+
+        static string SameAll(string what, Vector3[] expected, Vector3[] actual)
+        {
+            if (expected.Length != actual.Length) return $"{what}: {expected.Length} values, not {actual.Length}.";
+            for (var i = 0; i < expected.Length; i++)
+                if (!Same(expected[i], actual[i])) return $"{what}: vertex {i} differs.";
+            return null;
+        }
+
+        // Bitwise, so a -0 that used to be +0 counts as a change.
+        internal static string SameMesh(Mesh expected, Mesh actual)
+        {
+            var result = SameAll("vertices", expected.vertices, actual.vertices) ?? SameAll("normals", expected.normals, actual.normals);
+            if (result != null) return result;
+            var a = expected.tangents; var b = actual.tangents;
+            if (a.Length != b.Length) return "tangent count differs.";
+            for (var i = 0; i < a.Length; i++)
+                if (Bits(a[i].x) != Bits(b[i].x) || Bits(a[i].y) != Bits(b[i].y) || Bits(a[i].z) != Bits(b[i].z) || Bits(a[i].w) != Bits(b[i].w))
+                    return $"tangents: vertex {i} differs.";
+            if (expected.blendShapeCount != actual.blendShapeCount) return "BlendShape count differs.";
+            for (var shape = 0; shape < expected.blendShapeCount; shape++)
+            {
+                var name = expected.GetBlendShapeName(shape);
+                if (name != actual.GetBlendShapeName(shape)) return $"BlendShape {shape} is {actual.GetBlendShapeName(shape)}, not {name}.";
+                result = SameFrames(expected, actual, shape);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        static string SameFrames(Mesh expected, Mesh actual, int shape)
+        {
+            var name = expected.GetBlendShapeName(shape);
+            var count = expected.GetBlendShapeFrameCount(shape);
+            if (count != actual.GetBlendShapeFrameCount(shape)) return $"{name}: frame count differs.";
+            var n = expected.vertexCount;
+            for (var frame = 0; frame < count; frame++)
+            {
+                if (Bits(expected.GetBlendShapeFrameWeight(shape, frame)) != Bits(actual.GetBlendShapeFrameWeight(shape, frame)))
+                    return $"{name}: frame {frame} weight differs.";
+                var ev = new Vector3[n]; var en = new Vector3[n]; var et = new Vector3[n];
+                var av = new Vector3[n]; var an = new Vector3[n]; var at = new Vector3[n];
+                expected.GetBlendShapeFrameVertices(shape, frame, ev, en, et);
+                actual.GetBlendShapeFrameVertices(shape, frame, av, an, at);
+                var result = SameAll($"{name} frame {frame} positions", ev, av) ?? SameAll($"{name} frame {frame} normals", en, an) ??
+                    SameAll($"{name} frame {frame} tangents", et, at);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        static bool Near(Vector3 a, Vector3 b) => Math.Abs(a.x - b.x) < 0.0001f && Math.Abs(a.y - b.y) < 0.0001f && Math.Abs(a.z - b.z) < 0.0001f;
+
+        // What VRChat shows, computed independently of Rebase. Every shape but
+        // the kept ones needs one frame at 100. The base is the original plus
+        // every rest. A shape at full weight ends at the original base plus its
+        // frame plus the rest of the other shapes, leaving out the other group
+        // shapes when it is in the group (VRChat shows one viseme at a time).
+        // Kept shapes are exported exactly as authored.
+        internal static string RebasedAsVrChatShows(Mesh source, float[] weights, string[] group, string[] kept, Mesh baked)
+        {
+            var n = source.vertexCount;
+            var count = source.blendShapeCount;
+            var rests = new Vector3[count][][];
+            for (var shape = 0; shape < count; shape++)
+            {
+                var name = source.GetBlendShapeName(shape);
+                rests[shape] = new[] { new Vector3[n], new Vector3[n], new Vector3[n] };
+                if (Array.IndexOf(kept, name) >= 0) continue;
+                if (source.GetBlendShapeFrameCount(shape) != 1 || source.GetBlendShapeFrameWeight(shape, 0) != 100f)
+                    return $"{name}: the expectation needs one frame at 100.";
+                source.GetBlendShapeFrameVertices(shape, 0, rests[shape][0], rests[shape][1], rests[shape][2]);
+                for (var part = 0; part < 3; part++)
+                    for (var v = 0; v < n; v++)
+                    {
+                        var d = rests[shape][part][v];
+                        rests[shape][part][v] = new Vector3(d.x * weights[shape] / 100f, d.y * weights[shape] / 100f, d.z * weights[shape] / 100f);
+                    }
+            }
+            var original = new[] { source.vertices, source.normals, Xyz(source.tangents) };
+            var actualBase = new[] { baked.vertices, baked.normals, Xyz(baked.tangents) };
+            var parts = new[] { "positions", "normals", "tangents" };
+            var sourceTangents = source.tangents; var bakedTangents = baked.tangents;
+            for (var v = 0; v < n; v++)
+                if (Bits(sourceTangents[v].w) != Bits(bakedTangents[v].w)) return $"base tangent w of vertex {v} changed.";
+            for (var part = 0; part < 3; part++)
+                for (var v = 0; v < n; v++)
+                {
+                    var expected = original[part][v];
+                    for (var shape = 0; shape < count; shape++) expected += rests[shape][part][v];
+                    if (!Near(expected, actualBase[part][v])) return $"base {parts[part]} of vertex {v}.";
+                }
+            if (baked.blendShapeCount != count) return "BlendShape count differs.";
+            for (var shape = 0; shape < count; shape++)
+            {
+                var name = source.GetBlendShapeName(shape);
+                if (baked.GetBlendShapeName(shape) != name) return $"BlendShape {shape} is not {name}.";
+                if (Array.IndexOf(kept, name) >= 0)
+                {
+                    var result = SameFrames(source, baked, shape);
+                    if (result != null) return result;
+                    continue;
+                }
+                if (baked.GetBlendShapeFrameCount(shape) != 1 || baked.GetBlendShapeFrameWeight(shape, 0) != 100f) return $"{name}: not one frame at 100.";
+                var inGroup = Array.IndexOf(group, name) >= 0;
+                var frame = new[] { new Vector3[n], new Vector3[n], new Vector3[n] };
+                var exported = new[] { new Vector3[n], new Vector3[n], new Vector3[n] };
+                source.GetBlendShapeFrameVertices(shape, 0, frame[0], frame[1], frame[2]);
+                baked.GetBlendShapeFrameVertices(shape, 0, exported[0], exported[1], exported[2]);
+                for (var part = 0; part < 3; part++)
+                    for (var v = 0; v < n; v++)
+                    {
+                        var expected = original[part][v] + frame[part][v];
+                        for (var other = 0; other < count; other++)
+                            if (other != shape && !(inGroup && Array.IndexOf(group, source.GetBlendShapeName(other)) >= 0))
+                                expected += rests[other][part][v];
+                        if (!Near(expected, actualBase[part][v] + exported[part][v])) return $"{name}: {parts[part]} of vertex {v} at full weight.";
+                    }
+            }
+            return null;
+        }
+
+        static Vector3[] Xyz(Vector4[] values)
+        {
+            var result = new Vector3[values.Length];
+            for (var i = 0; i < values.Length; i++) result[i] = new Vector3(values[i].x, values[i].y, values[i].z);
+            return result;
+        }
+
+        static System.Collections.Generic.HashSet<int> Indices(Mesh mesh, params string[] names)
+        {
+            var result = new System.Collections.Generic.HashSet<int>();
+            foreach (var name in names) if (mesh.GetBlendShapeIndex(name) >= 0) result.Add(mesh.GetBlendShapeIndex(name));
+            return result;
+        }
+
+        // Lip Sync visemes show one at a time in VRChat, so each one is rebased
+        // without the other visemes' rest.
         private static void ExclusiveVisemeChecks(Action<bool, string> check)
         {
-            var source = Create(); var target = Create(); var plain = Create();
-            try
+            foreach (var name in new[] { "vrc.v_sil", "VRC.V_aa", "vrc.v.ou", "Vrc.V.E", "vrc.v_sil2" })
+                check(AvatarBaseShape.IsVisemeChannel(name), name + " is named as a VRChat viseme.");
+            foreach (var name in new[] { null, "", "vrc.vowel", "vrc_v_aa", "mouth_sil", "v_aa", "x.vrc.v_aa" })
+                check(!AvatarBaseShape.IsVisemeChannel(name), (name ?? "null") + " is not named as a VRChat viseme.");
+            var none = new string[0];
+            var kept = new[] { "vrc.v_kk" };
+            var withKept = new[] { "vrc.v_sil", "vrc.v_aa", "vrc.v_ou", "vrc.v_E", "vrc.v_kk" };
+            foreach (var weights in new[]
+                     {
+                         new[] { 100f, 0f, 0f, 0f, 50f }, // sil rests at 100
+                         new[] { 100f, 30f, 0f, 0f, 50f }, // two visemes rest at once
+                         new[] { 0f, 0f, 0f, 50f, 0f }, // a viseme that rests only in normals and tangents
+                     })
             {
-                source.ClearBlendShapes();
-                source.AddBlendShapeFrame("vrc.v_sil", 100, Delta(0, 1, 0), Delta(1, 0, 0), Delta(0, 1, 0));
-                source.AddBlendShapeFrame("vrc.v_ou", 100, Delta(0, 0, 2), null, null);
-                source.AddBlendShapeFrame("Smile", 100, Delta(4, 0, 0), null, null);
-                var v = new Vector3[3]; var n = new Vector3[3]; var t = new Vector3[3];
-                AvatarBaseShape.Rebase(source, target, new[] { 100f, 0f, 50f }, new System.Collections.Generic.HashSet<int> { 0, 1 });
-                check(Near(target.vertices[0].x, 3) && Near(target.vertices[0].y, 1), "Every rest, sil included, is stored in the base.");
-                target.GetBlendShapeFrameVertices(1, 0, v, n, t);
-                check(Near(target.vertices[0].x + v[0].x, 3) && Near(target.vertices[0].y + v[0].y, 0) && Near(v[0].z, 2),
-                    "A viseme ends at the original base plus itself, without the other visemes' rest.");
-                check(Near(target.normals[0].x + n[0].x, 0) && Near(t[0].y, -1), "Viseme normals and tangents drop the other visemes' rest too.");
-                target.GetBlendShapeFrameVertices(0, 0, v, n, t);
-                check(Near(v[0].y, 0), "The resting viseme itself keeps a zero residual.");
-                target.GetBlendShapeFrameVertices(2, 0, v, n, t);
-                check(Near(v[0].x, 2) && Near(v[0].y, 0), "A shape outside the group only drops its own rest.");
-                AvatarBaseShape.Rebase(source, plain, new[] { 100f, 0f, 50f });
-                plain.GetBlendShapeFrameVertices(1, 0, v, n, t);
-                check(v[0].x == 0 && v[0].y == 0 && v[0].z == 2, "Without Lip Sync a viseme keeps its source delta.");
-                AvatarBaseShape.Rebase(source, target, new[] { 0f, 0f, 50f }, new System.Collections.Generic.HashSet<int> { 0, 1 });
-                AvatarBaseShape.Rebase(source, plain, new[] { 0f, 0f, 50f });
-                var same = target.vertices[0].x == plain.vertices[0].x && target.vertices[0].y == plain.vertices[0].y;
-                for (var shape = 0; shape < 3; shape++)
+                var source = VisemeMesh(); var target = VisemeMesh();
+                try
                 {
-                    var pv = new Vector3[3]; var pn = new Vector3[3]; var pt = new Vector3[3];
-                    target.GetBlendShapeFrameVertices(shape, 0, v, n, t);
-                    plain.GetBlendShapeFrameVertices(shape, 0, pv, pn, pt);
-                    for (var i = 0; i < 3; i++)
-                        same &= v[i].x == pv[i].x && v[i].y == pv[i].y && v[i].z == pv[i].z && n[i].x == pn[i].x && n[i].y == pn[i].y &&
-                            n[i].z == pn[i].z && t[i].x == pt[i].x && t[i].y == pt[i].y && t[i].z == pt[i].z;
+                    AvatarBaseShape.Rebase(source, target, weights, Indices(source, VisemeGroup));
+                    var result = RebasedAsVrChatShows(source, weights, VisemeGroup, none, target);
+                    check(result == null, "A viseme ends at the original base plus itself, without the other visemes' rest: " + result);
                 }
-                check(same, "Visemes that all rest at zero export the same mesh as without Lip Sync.");
+                finally { UnityEngine.Object.DestroyImmediate(source); UnityEngine.Object.DestroyImmediate(target); }
             }
-            finally
             {
-                UnityEngine.Object.DestroyImmediate(source);
-                UnityEngine.Object.DestroyImmediate(target);
-                UnityEngine.Object.DestroyImmediate(plain);
+                var source = VisemeMesh(); var target = VisemeMesh();
+                try
+                {
+                    AddKeptViseme(source, "vrc.v_kk");
+                    var weights = new[] { 100f, 0f, 0f, 0f, 50f, 25f };
+                    var kept2 = AvatarBaseShape.Rebase(source, target, weights, Indices(source, withKept));
+                    check(kept2.Count == 1 && kept2[0] == 5, "A viseme with unsupported frames is kept as authored.");
+                    var result = RebasedAsVrChatShows(source, weights, withKept, kept, target);
+                    check(result == null, "A kept viseme stays as authored and is not subtracted while sil rests: " + result);
+                }
+                finally { UnityEngine.Object.DestroyImmediate(source); UnityEngine.Object.DestroyImmediate(target); }
+            }
+            foreach (var weights in new[] { new[] { 100f, 30f, 0f, 0f, 50f }, new[] { 0f, 0f, 0f, 0f, 50f } })
+            {
+                var source = VisemeMesh(); var grouped = VisemeMesh(); var plain = VisemeMesh(); var reference = VisemeMesh();
+                try
+                {
+                    AvatarBaseShape.Rebase(source, plain, weights);
+                    // Without Lip Sync each shape only drops its own rest.
+                    var result = RebasedAsVrChatShows(source, weights, none, none, plain);
+                    check(result == null, "Without Lip Sync a viseme keeps its source delta: " + result);
+                    if (weights[0] == 0f)
+                    {
+                        AvatarBaseShape.Rebase(source, grouped, weights, Indices(source, VisemeGroup));
+                        result = SameMesh(plain, grouped);
+                        check(result == null, "Visemes that all rest at zero export the same mesh as without Lip Sync: " + result);
+                    }
+                    result = SameMesh(reference, source);
+                    check(result == null, "The source mesh is unchanged: " + result);
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(source); UnityEngine.Object.DestroyImmediate(grouped); UnityEngine.Object.DestroyImmediate(plain);
+                    UnityEngine.Object.DestroyImmediate(reference);
+                }
             }
         }
 

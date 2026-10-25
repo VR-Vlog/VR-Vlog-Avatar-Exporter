@@ -38,8 +38,14 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // visemeShapes are the Lip Sync shapes of visemeRenderer in source. They
-        // are rebased as VRChat shows them, one at a time (see Rebase).
+        // A Lip Sync channel named by the VRChat convention (vrc.v_aa, vrc.v.sil).
+        // Avatars that drive visemes from their own animator use these names too.
+        internal static bool IsVisemeChannel(string name) => name != null &&
+            (name.StartsWith("vrc.v_", StringComparison.OrdinalIgnoreCase) || name.StartsWith("vrc.v.", StringComparison.OrdinalIgnoreCase));
+
+        // The Lip Sync shapes of each renderer are rebased as VRChat shows them,
+        // one at a time (see Rebase): the shapes named as visemes, plus
+        // visemeShapes, the descriptor's slots, on visemeRenderer.
         internal static void Preserve(GameObject source, GameObject clone, ICollection<Mesh> temporaryMeshes, ICollection<string> warnings,
             Func<Transform, bool> excluded = null, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
         {
@@ -69,9 +75,9 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                var exclusive = visemeShapes != null && visemeRenderer != null && visemeRenderer == skin
-                    ? new HashSet<int>(visemeShapes.Select(mesh.GetBlendShapeIndex).Where(shape => shape >= 0))
-                    : null;
+                var exclusive = new HashSet<int>(Enumerable.Range(0, mesh.blendShapeCount).Where(shape => IsVisemeChannel(mesh.GetBlendShapeName(shape))));
+                if (visemeShapes != null && visemeRenderer != null && visemeRenderer == skin)
+                    exclusive.UnionWith(visemeShapes.Select(mesh.GetBlendShapeIndex).Where(shape => shape >= 0));
                 var kept = Rebase(mesh, baked, weights, exclusive);
                 copy.sharedMesh = baked;
                 for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
