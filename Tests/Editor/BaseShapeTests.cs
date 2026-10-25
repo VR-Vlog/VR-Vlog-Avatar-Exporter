@@ -187,8 +187,9 @@ namespace VRVlog.LilToonExporter.Tests
             AssertAsVrChatShows(mesh, weights, baked, BaseShapeFixture.VisemeGroup);
             // aa at vertex 0: 0.7 of (0, -0.5, 0.25) minus sil's (0, 1, 0).
             AssertNear(new Vector3(0, -1.35f, .175f), Frame(baked, "vrc.v_aa", 0)[0], "aa drops its own rest and sil's rest.");
-            AssertNear(mesh.vertices[1] + Frame(mesh, "vrc.v_ou", 0)[1], baked.vertices[1] + Frame(baked, "vrc.v_ou", 0)[1],
-                "ou ends at the original base + ou (no smile at vertex 1).");
+            // Smile is not a viseme, so its rest at 50 stays under ou as in VRChat.
+            AssertNear(mesh.vertices[1] + Frame(mesh, "Smile", 0)[1] * .5f + Frame(mesh, "vrc.v_ou", 0)[1], baked.vertices[1] + Frame(baked, "vrc.v_ou", 0)[1],
+                "ou ends at the original base + half the smile + ou.");
         });
 
         // A viseme that rests only in its normals and tangents is still left
