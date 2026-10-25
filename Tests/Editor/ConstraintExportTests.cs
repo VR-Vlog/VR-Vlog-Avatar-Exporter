@@ -108,6 +108,133 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedParent));
         }
 
+        // A merged outfit bone under a humanoid bone drives a helper bone that
+        // hangs from that bone's parent through a wrapper, as after merging
+        // an outfit armature: the parents differ, but neither ever turns.
+        sealed class MergedFixture : IDisposable
+        {
+            internal readonly AttachmentConnectionTests.Fixture Avatar = new AttachmentConnectionTests.Fixture();
+            internal readonly Transform Hand, Forearm, Merged, Wrapper, Helper;
+            internal readonly ExportFallbackReport Report = new ExportFallbackReport();
+
+            internal MergedFixture()
+            {
+                Hand = Avatar.Copy.GetComponent<Animator>().GetBoneTransform(HumanBodyBones.LeftHand);
+                Forearm = Hand.parent;
+                Hand.localRotation = Quaternion.Euler(0, 0, -15);
+                Merged = Fixture.Child(Hand, "Merged bone", new Vector3(-.05f, 0, 0));
+                Wrapper = Fixture.Child(Forearm, "Wrapper", Vector3.zero);
+                Helper = Fixture.Child(Wrapper, "Helper", Forearm.InverseTransformPoint(Merged.position));
+                Helper.rotation = Merged.rotation;
+                var constraint = Helper.gameObject.AddComponent<RotationConstraint>();
+                constraint.AddSource(new ConstraintSource { sourceTransform = Merged, weight = 1 });
+                constraint.locked = true; constraint.constraintActive = true;
+            }
+
+            internal void Convert() => ConstraintExport.Convert(Avatar.Source, Avatar.Copy, null, Report);
+            internal ExportResultEntry Entry => Report.Results.Single();
+            public void Dispose() => Avatar.Dispose();
+        }
+
+        [Test]
+        public void AWorldSpaceRotationAcrossBonesThatNeverTurnFollowsTheTurningBone()
+        {
+            using var f = new MergedFixture();
+            f.Convert();
+            var rotation = f.Helper.GetComponent<Vrm10RotationConstraint>();
+            Assert.That(rotation, Is.Not.Null);
+            Assert.That(rotation.Source, Is.EqualTo(f.Hand), "The merged bone never turns on its own; the hand does.");
+            Assert.That(f.Entry.Outcome, Is.EqualTo(ExportOutcome.Kept));
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.KeptRotation));
+            // Bend the hand and solve both ways: Unity keeps the rest offset to
+            // the merged bone in world space, VRM adds the hand's local change.
+            var helperRest = f.Helper.localRotation;
+            var helperWorldRest = f.Helper.rotation;
+            var handRest = f.Hand.localRotation;
+            var mergedRest = f.Merged.rotation;
+            f.Hand.localRotation *= Quaternion.Euler(10, 40, -25);
+            var expected = f.Merged.rotation * Quaternion.Inverse(mergedRest) * helperWorldRest;
+            // The same step as Vrm10RotationConstraint.Process, which the tests cannot call.
+            f.Helper.localRotation = Quaternion.SlerpUnclamped(helperRest, helperRest * (Quaternion.Inverse(handRest) * f.Hand.localRotation), rotation.Weight);
+            Assert.That(Quaternion.Angle(f.Helper.rotation, expected), Is.LessThan(.01f));
+            Assert.That(Quaternion.Angle(f.Helper.rotation, helperWorldRest), Is.GreaterThan(30f), "The helper turns with the hand.");
+        }
+
+        [TestCase("spring")][TestCase("constraint")]
+        public void AWorldSpaceRotationAcrossABoneThatTurnsKeepsThePose(string between)
+        {
+            using var f = new MergedFixture();
+            // The wrapper turns on its own, so the helper no longer shares the hand's frame.
+            if (between == "spring") f.Wrapper.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            else
+            {
+                var constraint = f.Wrapper.gameObject.AddComponent<RotationConstraint>();
+                constraint.AddSource(new ConstraintSource { sourceTransform = f.Forearm, weight = 1 });
+                constraint.constraintActive = true;
+            }
+            f.Convert();
+            Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
+                Is.EqualTo(ConstraintExport.OmittedParent));
+        }
+
+        [TestCase("left out", false)][TestCase("converted", false)][TestCase("converted", true)][TestCase("vrm", false)][TestCase("spring", false)]
+        public void AWorldSpaceRotationDoesNotFollowABoneThatTurnsOnItsOwn(string kind, bool driverFirst)
+        {
+            using var f = new MergedFixture();
+            // The merged bone hangs from a bone that is not posed by the app.
+            // A target the export leaves out never turns in VRM; one it converts
+            // here is not used either, so the order does not matter; VRM solves
+            // other constraints and spring joints in its own order.
+            var driver = Fixture.Child(f.Forearm, "Driver", f.Hand.localPosition);
+            driver.rotation = f.Hand.rotation;
+            if (driverFirst) driver.SetSiblingIndex(0);
+            f.Merged.SetParent(driver, true);
+            if (kind == "spring") driver.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            else if (kind == "vrm") driver.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Hand;
+            else
+            {
+                var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<PositionConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
+                constraint.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
+                constraint.locked = true; constraint.constraintActive = true;
+            }
+            f.Convert();
+            Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
+                Is.EqualTo(ConstraintExport.OmittedParent));
+        }
+
+        [TestCase("spring", false)][TestCase("vrm", false)][TestCase("constraint", false)][TestCase("constraint", true)]
+        public void AWorldSpaceRotationDoesNotFollowAConstrainedHumanoidBone(string kind, bool helperFirst)
+        {
+            using var f = new MergedFixture();
+            // The hand itself swings or is constrained, so its turn depends on
+            // the order VRM solves constraints and spring joints in.
+            if (helperFirst) f.Wrapper.SetSiblingIndex(0);
+            if (kind == "spring") f.Hand.gameObject.AddComponent<VRM10SpringBoneJoint>();
+            else if (kind == "vrm") f.Hand.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Forearm;
+            else
+            {
+                var constraint = f.Hand.gameObject.AddComponent<RotationConstraint>();
+                constraint.AddSource(new ConstraintSource { sourceTransform = f.Forearm, weight = 1 });
+                constraint.locked = true; constraint.constraintActive = true;
+            }
+            f.Convert();
+            Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
+                Is.EqualTo(ConstraintExport.OmittedParent));
+        }
+
+        [Test]
+        public void AWorldSpaceRotationAcrossBonesThatNeverTurnStillChecksTheRest()
+        {
+            using var f = new MergedFixture();
+            f.Helper.rotation = f.Merged.rotation * Quaternion.Euler(0, 90, 0);
+            f.Convert();
+            Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
+        }
+
         [TestCase(Axis.X, RollAxis.X)][TestCase(Axis.Y, RollAxis.Y)][TestCase(Axis.Z, RollAxis.Z)]
         public void ASingleAxisRotationBecomesARoll(Axis axis, RollAxis expected)
         {
@@ -451,6 +578,31 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(rotation.Source, Is.EqualTo(f.A));
             Assert.That(rotation.Weight, Is.EqualTo(.75f));
             Assert.That(f.Entry.Name, Does.Contain("VRCRotationConstraint"));
+        }
+
+        [Test]
+        public void ALocalSpaceRotationAcrossParentsComparesTheLocalRest()
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCRotationConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            using var f = new Fixture();
+            var component = f.B.gameObject.AddComponent(type);
+            using (var settings = new SerializedObject(component))
+            {
+                settings.FindProperty("IsActive").boolValue = true;
+                settings.FindProperty("Locked").boolValue = true;
+                settings.FindProperty("SolveInLocalSpace").boolValue = true;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = f.Other;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            // Same world rotation, 90 degrees apart in local space.
+            f.Parent.localRotation = f.Other.localRotation = Quaternion.Euler(0, 0, 90);
+            f.Convert();
+            Assert.That(f.B.GetComponent<IVrm10Constraint>(), Is.Null);
+            Assert.That(f.Entry.Reason, Is.EqualTo(ConstraintExport.OmittedRest));
         }
 
         [TestCase(true)][TestCase(false)]
