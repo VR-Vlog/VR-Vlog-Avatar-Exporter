@@ -103,6 +103,23 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.CanMove(Clip("unknown"), Place.Excluded), Is.False);
         }
 
+        // An added file that stopped working is shown and counted where it is,
+        // and stops the save from the custom list; the avatar's are not shown.
+        [Test]
+        public void ABrokenAddedFileIsShownCountedAndStopsTheSave()
+        {
+            var added = Clip("added broken"); var found = Clip("found broken"); var face = Clip("face");
+            var board = Board(new[] { Item(added, "unsupported") }, new[] { Item(face), Item(found, "unsupported") });
+            Assert.That(board.ItemsIn(PlaceKind.Other).Select(item => item.Clip), Is.EqualTo(new[] { added, face }));
+            Assert.That(board.OtherCount, Is.EqualTo(2));
+            Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { face }));
+            Assert.That(board.Unexported?.Clip, Is.SameAs(added));
+            Assert.That(board.Move(added, Place.Excluded), Is.True);
+            Assert.That(board.ItemsIn(PlaceKind.Excluded).Single().Clip, Is.SameAs(added));
+            Assert.That(board.Unexported, Is.Null, "A file not exported does not stop the save.");
+            Assert.That(board.UsesRecordRoute, Is.True);
+        }
+
         [Test]
         public void ExportListFollowsTheBoardAndTheRouteDecision()
         {
