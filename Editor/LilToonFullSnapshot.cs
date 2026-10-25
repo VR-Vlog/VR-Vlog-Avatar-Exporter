@@ -35,6 +35,8 @@ namespace VRVlog.LilToonExporter
         readonly List<object> bindings = new List<object>();
         readonly Dictionary<int, Dictionary<string, object>> indexedRecords = new Dictionary<int, Dictionary<string, object>>();
         readonly HashSet<Texture> resizedWarnings = new HashSet<Texture>();
+        // Outline width masks of Delete Mesh materials (DeleteMeshMasks).
+        HashSet<Texture> deleteMeshMasks = new HashSet<Texture>();
         ICollection<string> warnings;
         bool suppressSharedTextureEmission, suppressHdrTextureEmission;
         LilToonInactiveTextureProof inactiveTextures;
@@ -44,6 +46,7 @@ namespace VRVlog.LilToonExporter
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
                 inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource)};
+            var selected = new List<(Renderer renderer, Material[] materials)>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
             {
                 // UniVRM exports mesh primitives, not particle/trail/line systems.
@@ -54,7 +57,13 @@ namespace VRVlog.LilToonExporter
                 // indices. They cannot have a full binding to an output mesh.
                 // Keep their transforms/bones and every nonempty mesh intact.
                 if(!ExportRendererSelection.HasGeometry(mesh))continue;
-                var materials = renderer.sharedMaterials;
+                selected.Add((renderer, renderer.sharedMaterials));
+            }
+            // Before any material registers a shared texture, so its size does
+            // not depend on which material reads it first.
+            result.deleteMeshMasks = DeleteMeshMasks(selected.SelectMany(s => s.materials).Select(OutlineMaskReference));
+            foreach (var (renderer, materials) in selected)
+            {
                 result.sources.Add(renderer, materials);
                 foreach (var material in materials)
                     if (material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
@@ -69,6 +78,25 @@ namespace VRVlog.LilToonExporter
             // defaults and the extension carries no lilToon records.
             return result;
         }
+
+        // lilToon 2.3.4 Delete Mesh drops outline vertices whose width, read
+        // per vertex from mip 0 of _OutlineWidthMask, is exactly 0. Area
+        // resampling moves that zero set, so the app would keep or delete other
+        // outline triangles than the Editor. These masks keep their Editor size
+        // up to the mobile maximum, and one that fits is copied unresampled.
+        internal static HashSet<T> DeleteMeshMasks<T>(IEnumerable<(T mask, float deleteMesh)> references) where T : class
+            => new HashSet<T>(references.Where(r => r.mask != null && r.deleteMesh != 0).Select(r => r.mask));
+
+        internal static int MaximumSize(bool deleteMeshMask)
+            => deleteMeshMask ? LilToonMobileProfile.MaximumTextureSize : LilToonMobileProfile.DefaultMaximumTextureSize;
+
+        // Only shaders whose 2.3.4 record carries the mask export it.
+        static (Texture mask, float deleteMesh) OutlineMaskReference(Material material)
+            => material != null && LilToon234Catalogue.RequiredProperties.TryGetValue(material.shader.name, out var required) &&
+               Array.IndexOf(required, "_OutlineWidthMask") >= 0 && material.HasProperty("_OutlineWidthMask") && material.HasProperty("_OutlineDeleteMesh")
+                ? (material.GetTexture("_OutlineWidthMask"), material.GetFloat("_OutlineDeleteMesh")) : (null, 0f);
+
+        int MaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
 
         // Null when the installed shader cannot give every 2.3.4 runtime
         // property of this shader.
@@ -194,7 +222,7 @@ namespace VRVlog.LilToonExporter
                     if ((string)record["format"] == "rgba32")
                     {
                         var stored = (List<object>)record["chunks"];
-                        record["format"] = StoreNormal(Pixels(source, true, false, true, true).ToList(), normalScale,
+                        record["format"] = StoreNormal(Pixels(source, MaximumSize(source, true), true, false, true, true).ToList(), normalScale,
                             (chunk, bytes) => payloads[(int)stored[chunk]] = new DeflatePayload(bytes));
                     }
                 }
@@ -202,7 +230,8 @@ namespace VRVlog.LilToonExporter
             }
             if (!(source is Texture2D) && !(source is Cubemap)) throw new NotSupportedException("動的テクスチャは保存できません: " + source.name);
             var chunks = new List<object>();
-            var (width, height, count, faces) = Layout(source);
+            var maximum = MaximumSize(source, normal);
+            var (width, height, count, faces) = Layout(source, maximum);
             var resized = width != source.width || height != source.height;
             // Gamma rendering can expose an UNorm GPU view of sRGB pixels.
             // Preserve the stored pixel encoding, independent of this Editor's
@@ -216,8 +245,8 @@ namespace VRVlog.LilToonExporter
             // StorageFormat chose Half for an 8-bit or block-compressed normal
             // only because of its decode; the source itself is not Half.
             var quantizable = normal && half && StorageFormat(source.graphicsFormat, false) != "rgbaHalf";
-            if (quantizable) format = StoreNormal(Pixels(source, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
-            else foreach (var bytes in Pixels(source, normal, srgb, hdr, half)) Add(bytes);
+            if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
+            else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
                 warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
             var index = textures.Count;
@@ -232,9 +261,9 @@ namespace VRVlog.LilToonExporter
             return index;
         }
 
-        static (int width, int height, int mips, int faces) Layout(Texture source)
+        static (int width, int height, int mips, int faces) Layout(Texture source, int maximum)
         {
-            var size = TextureResizePolicy.Size(source.width, source.height);
+            var size = TextureResizePolicy.Size(source.width, source.height, maximum);
             var resized = size.Item1 != source.width || size.Item2 != source.height;
             var sourceMipCount = source is Texture2D two ? two.mipmapCount : ((Cubemap)source).mipmapCount;
             // Keep intentionally mipless inputs mipless. A resized mipmapped
@@ -244,9 +273,9 @@ namespace VRVlog.LilToonExporter
         }
 
         // Every face and mip in chunk order, read one at a time.
-        static IEnumerable<byte[]> Pixels(Texture source, bool normal, bool srgb, bool hdr, bool half)
+        static IEnumerable<byte[]> Pixels(Texture source, int maximum, bool normal, bool srgb, bool hdr, bool half)
         {
-            var (width, height, count, faces) = Layout(source);
+            var (width, height, count, faces) = Layout(source, maximum);
             var resized = width != source.width || height != source.height;
             for (var face = 0; face < faces; face++)
                 for (var mip = 0; mip < count; mip++)
