@@ -37,8 +37,7 @@ namespace VRVlog.LilToonExporter
         {
             this.source = source != null ? source : throw new ArgumentNullException(nameof(source));
             Build();
-            // From the avatar's front, looking at it.
-            view = Quaternion.LookRotation(source.transform.rotation * Vector3.back, source.transform.rotation * Vector3.up);
+            view = Front;
         }
 
         // The keys and buttons in the tooltip, named as on this computer.
@@ -242,16 +241,27 @@ namespace VRVlog.LilToonExporter
 
         float HalfView => Mathf.Tan((utility != null ? utility.camera.fieldOfView : 30) * .5f * Mathf.Deg2Rad);
 
-        // The full body fits the rectangle: the camera backs off for the height,
-        // or for the width when the rectangle is the wider of the two. Seen from
-        // the front the width is the body's, and the distance is measured at its
-        // front, which is its depth away from the center. Times the zoom.
-        float Distance(Rect rect)
+        Quaternion Body => copy != null ? copy.transform.rotation : source.transform.rotation;
+
+        // From the avatar's front, looking at it.
+        Quaternion Front => Quaternion.LookRotation(Body * Vector3.back, Body * Vector3.up);
+
+        // The full body fits the rectangle, seen along the turn: the camera backs
+        // off for the height, or for the width when the rectangle is the wider of
+        // the two, and the distance is measured at the body's near side, which is
+        // its depth away from the center.
+        float Fit(Rect rect, Quaternion turn)
         {
             var extent = framed ? bounds.extents : Vector3.one * .5f;
-            var fit = Mathf.Max(extent.y, extent.x / Mathf.Max(.01f, rect.width / Mathf.Max(1, rect.height))) * 1.08f;
-            return Mathf.Max(.3f, fit / HalfView + extent.z) * zoom;
+            var axes = Quaternion.Inverse(turn) * Body;
+            Vector3 Across(Vector3 axis) => new Vector3(Mathf.Abs(axis.x), Mathf.Abs(axis.y), Mathf.Abs(axis.z));
+            var seen = Across(axes * Vector3.right) * extent.x + Across(axes * Vector3.up) * extent.y + Across(axes * Vector3.forward) * extent.z;
+            var fit = Mathf.Max(seen.y, seen.x / Mathf.Max(.01f, rect.width / Mathf.Max(1, rect.height))) * 1.08f;
+            return Mathf.Max(.3f, fit / HalfView + seen.z);
         }
+
+        // The front's fit, times the zoom: turning keeps the distance.
+        float Distance(Rect rect) => Fit(rect, Front) * zoom;
 
         internal Vector3 Pivot => (copy == null ? source.transform.position : framed ? copy.transform.rotation * bounds.center : copy.transform.position) + pan;
 
@@ -316,8 +326,9 @@ namespace VRVlog.LilToonExporter
             pan += point * (1 - Distance(rect) / before);
         }
 
-        // F: the whole body in view again, from where the camera now looks.
-        internal void FrameAll() { pan = Vector3.zero; zoom = 1; }
+        // F: the whole body in view again, at its center and seen from where the
+        // camera now looks (the Scene view's F keeps the turn too).
+        internal void FrameAll(Rect rect) { pan = Vector3.zero; zoom = Fit(rect, view) / Fit(rect, Front); }
 
         // True when the mouse or F moved the camera and the window should repaint.
         internal bool Draw(Rect rect)
@@ -362,14 +373,14 @@ namespace VRVlog.LilToonExporter
                     return false;
                 case EventType.ScrollWheel:
                     if (!rect.Contains(current.mousePosition)) return false;
-                    // Alt and the wheel zooms at the center, as in the Scene view.
-                    Zoom(rect, 1 + current.delta.y * .015f, current.alt ? (Vector2?)null : current.mousePosition);
+                    // The wheel zooms at the center and Alt and the wheel toward the mouse, as in the 3D Scene view.
+                    Zoom(rect, 1 + current.delta.y * .015f, current.alt ? current.mousePosition : (Vector2?)null);
                     current.Use();
                     return true;
                 case EventType.KeyDown:
                     if (current.keyCode != KeyCode.F || current.modifiers != EventModifiers.None && current.modifiers != EventModifiers.FunctionKey) return false;
                     if (GUIUtility.keyboardControl != id && (GUIUtility.keyboardControl != 0 || !rect.Contains(current.mousePosition))) return false;
-                    FrameAll();
+                    FrameAll(rect);
                     current.Use();
                     return true;
             }

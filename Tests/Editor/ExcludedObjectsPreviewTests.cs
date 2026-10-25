@@ -271,7 +271,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Orbit turns about the pivot, look turns in place, pan moves across the
-        // view, the wheel goes toward the point under the mouse, and F brings
+        // view, Alt and the wheel go toward the point under the mouse, and F brings
         // the whole body back without turning the camera. Hiding objects moves nothing.
         [Test]
         public void TheCameraMovesAsInTheSceneView()
@@ -304,10 +304,24 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Vector3.Distance(looked.position, orbited.position), Is.LessThan(.0001f));
                 Assert.That(Vector3.Distance(preview.Pivot, center), Is.GreaterThan(.01f));
 
-                preview.FrameAll();
+                // F: back at the center, still turned, every corner of the body in view.
+                preview.FrameAll(rect);
                 Assert.That(preview.Pivot, Is.EqualTo(center));
-                Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(distance).Within(.001f));
-                Assert.That(preview.CameraPose(rect).rotation, Is.EqualTo(looked.rotation));
+                var framed = preview.CameraPose(rect);
+                Assert.That(framed.rotation, Is.EqualTo(looked.rotation));
+                var half = Mathf.Tan(15 * Mathf.Deg2Rad);
+                var box = preview.Framing;
+                var turn = preview.Copy.transform.rotation;
+                for (var corner = 0; corner < 8; corner++)
+                {
+                    var offset = Vector3.Scale(box.extents, new Vector3((corner & 1) * 2 - 1, (corner & 2) - 1, (corner & 4) / 2 - 1));
+                    var seen = Quaternion.Inverse(framed.rotation) * (turn * (box.center + offset) - framed.position);
+                    Assert.That(seen.z, Is.GreaterThan(0));
+                    Assert.That(Mathf.Abs(seen.y / seen.z), Is.LessThanOrEqualTo(half));
+                    Assert.That(Mathf.Abs(seen.x / seen.z), Is.LessThanOrEqualTo(half * rect.width / rect.height));
+                }
+                var front = distance;
+                distance = Reach(framed);
 
                 // A drag across the whole height moves the pivot the height of the view at its distance.
                 var before = preview.CameraPose(rect);
@@ -316,18 +330,19 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(moved.magnitude, Is.EqualTo(2 * distance * Mathf.Tan(15 * Mathf.Deg2Rad)).Within(.001f));
                 Assert.That(Vector3.Dot(moved.normalized, before.rotation * Vector3.up), Is.EqualTo(1).Within(.001f));
                 Assert.That(preview.CameraPose(rect).rotation, Is.EqualTo(before.rotation));
-                preview.FrameAll();
+                preview.FrameAll(rect);
 
-                // At the center (Alt and the wheel) the pivot stays; at the mouse it moves toward the point.
+                // At the center (the wheel) the pivot stays; at the mouse (Alt and the wheel) it moves toward the point.
                 preview.Zoom(rect, .5f, null);
                 Assert.That(preview.Pivot, Is.EqualTo(center));
                 Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(distance * .5f).Within(.001f));
-                preview.FrameAll();
+                preview.FrameAll(rect);
                 preview.Zoom(rect, .5f, rect.center + new Vector2(0, -100));
                 var up = preview.CameraPose(rect).rotation * Vector3.up;
                 Assert.That(Vector3.Dot(preview.Pivot - center, up), Is.GreaterThan(.01f));
                 preview.Zoom(rect, .0001f, null);
-                Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(distance * .02f).Within(.001f));
+                // The zoom is kept against the front's fit.
+                Assert.That(Reach(preview.CameraPose(rect)), Is.EqualTo(front * .02f).Within(.001f));
             }
             finally { preview?.Dispose(); fixture.Dispose(); }
         }
