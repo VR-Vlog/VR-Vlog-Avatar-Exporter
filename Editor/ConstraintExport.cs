@@ -160,9 +160,9 @@ namespace VRVlog.LilToonExporter
                     if (axes != 3 || plan.LocalSpace) return (ExportOutcome.Omitted, OmittedParent);
                     var moving = source;
                     while (moving != root && !turning.Contains(moving)) moving = moving.parent;
-                    // A constraint target the export left out, or moved under its
-                    // parent source, stays still in VRM.
-                    if (moving == root || moving == target || !driven.Contains(moving) && moving.GetComponent<IVrm10Constraint>() == null
+                    // Only a bone that turns before this stage can lead: a target
+                    // converted here may still be left out or moved, whatever the order.
+                    if (moving == root || moving == target || !driven.Contains(moving)
                         || Frame(moving, root, turning) != Frame(target, root, turning))
                         return (ExportOutcome.Omitted, OmittedParent);
                     if (Reaches(edges, moving, target)) return (ExportOutcome.Omitted, OmittedCycle);
@@ -275,17 +275,17 @@ namespace VRVlog.LilToonExporter
             return bones;
         }
 
-        // Bones whose local rotation may change in the app: the skeleton and
-        // spring joints (driven) and any constraint target. Any other bone only
-        // carries its parent.
+        // Bones whose local rotation may change in the app: the skeleton, spring
+        // joints and authored VRM constraint targets (driven) and any constraint
+        // target. Any other bone only carries its parent.
         static (HashSet<Transform> Driven, HashSet<Transform> Turning) Turning(GameObject copy, HashSet<Transform> humanoid, IEnumerable<Plan> plans,
             IEnumerable<Transform> authored)
         {
             var driven = new HashSet<Transform>(humanoid);
             driven.UnionWith(copy.GetComponentsInChildren<VRM10SpringBoneJoint>(true).Select(joint => joint.transform));
+            driven.UnionWith(authored);
             var turning = new HashSet<Transform>(driven);
             turning.UnionWith(plans.Select(plan => plan.Target).Where(target => target != null));
-            turning.UnionWith(authored);
             return (driven, turning);
         }
 

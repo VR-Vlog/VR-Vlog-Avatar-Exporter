@@ -178,18 +178,20 @@ namespace VRVlog.LilToonExporter.Tests
                 Is.EqualTo(ConstraintExport.OmittedParent));
         }
 
-        [Test]
-        public void AWorldSpaceRotationDoesNotFollowAConstraintTargetThatStaysStill()
+        [TestCase("left out", false)][TestCase("converted", false)][TestCase("converted", true)]
+        public void AWorldSpaceRotationDoesNotFollowAConstraintTarget(string kind, bool driverFirst)
         {
             using var f = new MergedFixture();
-            // The merged bone hangs from a bone whose constraint the export
-            // leaves out, so in VRM that bone never turns.
-            var leftOut = Fixture.Child(f.Forearm, "Left out", f.Hand.localPosition);
-            leftOut.rotation = f.Hand.rotation;
-            f.Merged.SetParent(leftOut, true);
-            var position = leftOut.gameObject.AddComponent<PositionConstraint>();
-            position.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
-            position.locked = true; position.constraintActive = true;
+            // The merged bone hangs from a constraint target. One the export
+            // leaves out never turns in VRM; one it converts here is not used
+            // either, so the result does not depend on which is converted first.
+            var driver = Fixture.Child(f.Forearm, "Driver", f.Hand.localPosition);
+            driver.rotation = f.Hand.rotation;
+            if (driverFirst) driver.SetSiblingIndex(0);
+            f.Merged.SetParent(driver, true);
+            var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<PositionConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
+            constraint.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
+            constraint.locked = true; constraint.constraintActive = true;
             f.Convert();
             Assert.That(f.Helper.GetComponent<IVrm10Constraint>(), Is.Null);
             Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("/Helper", StringComparison.Ordinal)).Reason,
