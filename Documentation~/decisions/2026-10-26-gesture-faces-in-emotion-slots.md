@@ -13,14 +13,16 @@
 
 - 感情の枠に入った顔のうち、アバターのコントローラーでハンドジェスチャーが再生する顔（`ExperimentalExpressionCaptureSession.IsGestureClip`。ボードが「ジェスチャーの顔」として扱う集合と同じ）は、静止していても custom にも書く。動く顔はこれまでどおり custom にも書く。
 - プリセットはそのまま残す。表の仕様（custom の名前だけを指す）とアプリは変えない。
-- 名前の重複・予約名の扱いは、動く顔を書き足すときと同じにする。
+- 自動で入ったか手で入れたかは問わない。どちらでも表はその顔を custom の名前で指すので、custom に無いと同じようにマスが null になる。
+- 手の握り具合で進む顔（Motion Time で再生する顔）も、ハンドジェスチャーが再生する顔なので同じく custom に書く。
+- 名前の重複・予約名の扱いは、動く顔を書き足すときと同じにする（同じ名前の顔が先に custom にあれば書き足さない）。
 
 表にプリセット名も許す案は、表の仕様とアプリの再生の両方を変える必要があるので採らなかった。
 
 ## 確認
 
 - `ExperimentalExpressionCaptureTests.ListOnlyExportKeepsAStillGestureSlotFaceInTheGestureTable`: 左手のサムズアップで静止した `Nagomi` を出す FX のアバターで、`Nagomi` が relaxed に自動で入り、保存した VRM の custom にも入り、表の左手サムズアップの 8 マスがすべて `Nagomi` を指す。
-- 上のアバターを書き出し直し、null だった 2 マスが custom の顔を指すことを確かめた。
+- 背景に書いたアバターを修正前と修正後で書き出して比べた。修正前は null だった 2 マスが、修正後は新しく custom に入った顔を指す。ほかのマス・プリセットは変わらず、custom が 1 つ増えただけだった。
 
 ## 欠点
 
