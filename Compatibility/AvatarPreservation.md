@@ -1,6 +1,6 @@
 # 多様なアバターの書き出しと見た目の保持
 
-安定版 **1.3.0** では、表情ボードで表情・ポーズを指定します。対応するファイルと収録範囲は[VRM書き出しガイド](../Documentation~/ExperimentalExpressionCapture.md)を確認してください。[クラウドQR転送](../Documentation~/CloudTransfer.md)でスマホへ送れます。ALCOMの通常の一覧から選択でき、**Show pre-release packages** の有効化は不要です。
+安定版 **1.3.1** では、表情ボードで表情・ポーズを指定します。対応するファイルと収録範囲は[VRM書き出しガイド](../Documentation~/ExperimentalExpressionCapture.md)を確認してください。[クラウドQR転送](../Documentation~/CloudTransfer.md)でスマホへ送れます。ALCOMの通常の一覧から選択でき、**Show pre-release packages** の有効化は不要です。
 
 ## FXの通常時の顔・体形
 
