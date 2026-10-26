@@ -2571,14 +2571,17 @@ namespace VRVlog.LilToonExporter
             // default face is the ordinary one.
             // A moving face in an emotion slot is a still preset; as in the
             // ordinary export, it is also a custom face that keeps moving.
+            // A face a hand gesture enters is also a custom face, still or
+            // moving: the gesture table names only custom faces.
             var listed = board.ExportedCustom();
             var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
-            var movingSlotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
+            var slotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
                 .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
-                .Where(clip => clip != null && !listed.Contains(clip) && VrChatGestureExpressions.HasChangingMorph(clip, null) &&
-                    !session.HeldAtOneFrame(clip) && !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
+                .Where(clip => clip != null && !listed.Contains(clip) &&
+                    (session.IsGestureClip(clip) || VrChatGestureExpressions.HasChangingMorph(clip, null) && !session.HeldAtOneFrame(clip)) &&
+                    !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
                 .ToList();
-            var listFaces = listed.Concat(movingSlotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
+            var listFaces = listed.Concat(slotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             var savedFaces = listFaces.Count;

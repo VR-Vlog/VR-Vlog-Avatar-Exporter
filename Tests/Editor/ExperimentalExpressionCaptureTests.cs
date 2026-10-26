@@ -1577,6 +1577,84 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
         }
 
+        // A still face a hand gesture enters, put in an emotion slot by its
+        // name, is also a custom face: the gesture table names only custom
+        // faces, so without it the gesture's cell was null.
+        [Test]
+        public void ListOnlyExportKeepsAStillGestureSlotFaceInTheGestureTable()
+        {
+            var descriptorType = Sdk("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-list-gesture-slot-" + Guid.NewGuid().ToString("N") + ".vrm");
+            try
+            {
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                foreach (var parameter in new[] { "GestureLeft", "GestureRight" }) controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
+                var machine = controller.layers[0].stateMachine;
+                var empty = new AnimationClip { name = "Empty" }; AssetDatabase.AddObjectToAsset(empty, controller);
+                var nagomi = new AnimationClip { name = "Nagomi" };
+                AnimationUtility.SetEditorCurve(nagomi, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"),
+                    AnimationCurve.Constant(0, 1, 90));
+                AssetDatabase.AddObjectToAsset(nagomi, controller);
+                var idle = machine.AddState("Idle"); idle.motion = empty; idle.writeDefaultValues = true; machine.defaultState = idle;
+                var thumbsUp = machine.AddState("Thumbs up"); thumbsUp.motion = nagomi; thumbsUp.writeDefaultValues = true;
+                foreach (var (state, value) in new[] { (idle, 0), (thumbsUp, 7) })
+                {
+                    var transition = machine.AddAnyStateTransition(state);
+                    transition.hasExitTime = false; transition.duration = 0; transition.canTransitionToSelf = false;
+                    transition.AddCondition(AnimatorConditionMode.Equals, value, "GestureLeft");
+                }
+                foreach (var value in new[] { 1, 2, 3, 4, 5, 6 })
+                {
+                    var transition = machine.AddAnyStateTransition(idle);
+                    transition.hasExitTime = false; transition.duration = 0; transition.canTransitionToSelf = false;
+                    transition.AddCondition(AnimatorConditionMode.Equals, value, "GestureLeft");
+                }
+                var descriptor = fixture.Source.AddComponent(descriptorType);
+                using (var data = new SerializedObject(descriptor))
+                {
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1;
+                    var layer = list.GetArrayElementAtIndex(0); var kind = layer.FindPropertyRelative("type");
+                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                AssetDatabase.SaveAssets();
+                type.GetField("source", flags).SetValue(window, fixture.Source);
+                type.GetField("author", flags).SetValue(window, "Tests");
+                type.GetField("automaticBlink", flags).SetValue(window, false);
+                type.GetMethod("Prepare", flags).Invoke(window, null);
+                type.GetField("recommendations", flags).SetValue(window, new System.Collections.Generic.List<ExperimentalExpressionCaptureSession.ClipRecommendation>
+                    { new ExperimentalExpressionCaptureSession.ClipRecommendation { Clip = nagomi, Source = "Fixture" } });
+                type.GetMethod("RebuildBoard", flags).Invoke(window, null);
+                var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
+                var slot = board.SlotValue(ExpressionPreset.relaxed);
+                Assert.That(slot?.ResolveClip(), Is.SameAs(nagomi), "The name puts the face in the relaxed slot.");
+                Assert.That(slot.Automatic, Is.True);
+                Assert.That(board.OtherCount, Is.Zero);
+                window.SaveVrm(path);
+                var bytes = File.ReadAllBytes(path);
+                var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+                var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["preset"]).Keys, Does.Contain("relaxed"));
+                Assert.That(((System.Collections.Generic.Dictionary<string, object>)expressions["custom"]).Keys, Does.Contain(nagomi.name));
+                var table = VRVlog.Expressions.ExpressionGestureData.Read(extensions[VRVlog.Expressions.ExpressionGestureData.Extension]);
+                for (var right = 0; right < VRVlog.Expressions.ExpressionGestureData.Gestures; right++)
+                    Assert.That(table.Cells[VRVlog.Expressions.ExpressionGestureData.Cell(7, right)]?.Select(reference => reference.Expression), Is.EqualTo(new[] { nagomi.name }),
+                        "Left thumbs up with right " + right);
+            }
+            finally { Object.DestroyImmediate(window); if (File.Exists(path)) File.Delete(path); AssetDatabase.DeleteAsset(folder); }
+        }
+
         // A listed face on a mesh the build tools move is read where the mesh
         // now is, as the board's presets are, instead of being dropped.
         [Test]
