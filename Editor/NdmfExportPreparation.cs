@@ -407,9 +407,12 @@ namespace VRVlog.LilToonExporter
                 copyAvatarRoots.GetValue(clone, _ => new CopyAvatarRoot()).Marker = clone.AddComponent(marker);
         }
 
+        // stopBeforeOptimizing: a preview that reads the avatar as the export
+        // reads it in afterTransforming. Optimizing would rename, merge or
+        // remove the shapes the avatar's own clips name.
         internal static NdmfExportPreparation Prepare(GameObject source, GameObject clone, ICollection<string> warnings = null,
             Action<Material, Material> materialCopyObserver = null, Action<NdmfExportPreparation> afterTransforming = null,
-            bool skipProcessing = false, bool tolerateLostMorphs = false)
+            bool skipProcessing = false, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false)
         {
             RequireOwnedCopy(source, clone);
             // The build tools failed on an earlier attempt: export the copy as
@@ -434,12 +437,12 @@ namespace VRVlog.LilToonExporter
             var processor = FindType("nadena.dev.ndmf.AvatarProcessor");
             var package = processor != null ? PackageInfo.FindForAssembly(processor.Assembly) : null;
             var bridge = Bridge.Resolve(FindType, package?.version);
-            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming, tolerateLostMorphs);
+            return ProcessClone(source, clone, bridge, warnings, materialCopyObserver, afterTransforming, tolerateLostMorphs, stopBeforeOptimizing);
         }
 
         internal static NdmfExportPreparation ProcessClone(GameObject source, GameObject clone, Bridge bridge,
             ICollection<string> warnings = null, Action<Material, Material> materialCopyObserver = null,
-            Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false)
+            Action<NdmfExportPreparation> afterTransforming = null, bool tolerateLostMorphs = false, bool stopBeforeOptimizing = false)
         {
             RequireOwnedCopy(source, clone);
             EnsureCopyAvatarRoot(clone);
@@ -504,12 +507,14 @@ namespace VRVlog.LilToonExporter
                             lease.CaptureRendererReplacements(clone, context);
                             lease.RequireMorphs(requiredMorphs, clone, tolerateLostMorphs, warnings);
                             // Phase-end cleanup commits MA's virtual controller.
-                            // Only export callers with this preparation callback
-                            // can declare/remap morph dependencies for Optimizing.
-                            // Preview callers retain their captured renderer IDs.
-                            if (afterTransforming != null)
+                            // The callback reads the avatar after Transforming.
+                            // Only export callers continue into Optimizing, where
+                            // the callback has declared/remapped morph dependencies.
+                            // Previews (no callback, or stopBeforeOptimizing) stop
+                            // here and retain their captured renderer IDs.
+                            if (afterTransforming != null) afterTransforming(lease);
+                            if (afterTransforming != null && !stopBeforeOptimizing)
                             {
-                                afterTransforming(lease);
                                 // Every Optimizing pass sees the root as a normal NDMF build
                                 // does. The one exception stands in for the com.vrmc.vrm
                                 // Vrm10Instance, for which AAO skips the root controller: it

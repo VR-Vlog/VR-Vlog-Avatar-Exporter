@@ -19,25 +19,48 @@ namespace VRVlog.LilToonExporter.Tests
     //   merge  : append "Front" into "Back" and remove "Front"
     //   twin   : remove "Face blink" from "Front" and replace the
     //            SkinnedMeshRenderer of "Back", which has its own "Face blink"
+    // In Optimizing, as optimizers merge shapes animated together:
+    //   optimize     : rename every shape of "Front" to its name + OptimizedSuffix
+    //   optimizefail : fail, as an optimizer that cannot handle the avatar does
     public sealed class LostMorphTestPlugin : Plugin<LostMorphTestPlugin>
     {
         internal const string Marker = "__VRVlogLostMorphTest_";
         internal const string RenamedFront = "Face renamed";
         internal const string StrippedMouth = "Mouth stripped";
+        internal const string Optimize = "optimize";
+        internal const string OptimizeFail = "optimizefail";
+        internal const string OptimizedSuffix = " (optimized)";
         public static bool Armed;
 
         protected override void Configure()
         {
             InPhase(BuildPhase.Transforming).AfterPlugin("nadena.dev.modular-avatar")
                 .Run("VR-Vlog lost morph test", context => Apply(context.AvatarRootObject));
+            InPhase(BuildPhase.Optimizing)
+                .Run("VR-Vlog optimized shape test", context => ApplyOptimizing(context.AvatarRootObject));
+        }
+
+        static Transform MarkerOf(GameObject root) =>
+            root.transform.Cast<Transform>().FirstOrDefault(child => child.name.StartsWith(Marker, StringComparison.Ordinal));
+
+        static void ApplyOptimizing(GameObject root)
+        {
+            if (!Armed || !(MarkerOf(root) is Transform marker)) return;
+            if (marker.name == Marker + OptimizeFail) throw new InvalidOperationException("The failing optimizer test pass failed.");
+            if (marker.name != Marker + Optimize) return;
+            Object.DestroyImmediate(marker.gameObject);
+            var front = root.transform.Find("Front")?.GetComponent<SkinnedMeshRenderer>();
+            if (front == null) throw new InvalidOperationException("The optimized shape test needs a Front renderer.");
+            front.sharedMesh = Rebuild(front.sharedMesh, name => false, name => name + OptimizedSuffix);
         }
 
         static void Apply(GameObject root)
         {
             if (!Armed) return;
-            var marker = root.transform.Cast<Transform>().FirstOrDefault(child => child.name.StartsWith(Marker, StringComparison.Ordinal));
+            var marker = MarkerOf(root);
             if (marker == null) return;
             var mode = marker.name.Substring(Marker.Length);
+            if (mode == Optimize || mode == OptimizeFail) return;
             Object.DestroyImmediate(marker.gameObject);
             var front = root.transform.Find("Front")?.GetComponent<SkinnedMeshRenderer>();
             if (front == null) throw new InvalidOperationException("The lost morph test needs a Front renderer.");
@@ -54,7 +77,9 @@ namespace VRVlog.LilToonExporter.Tests
         static SkinnedMeshRenderer Back(GameObject root) =>
             root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back");
 
-        static Mesh Strip(Mesh mesh, Func<string, bool> removed)
+        static Mesh Strip(Mesh mesh, Func<string, bool> removed) => Rebuild(mesh, removed, name => name);
+
+        static Mesh Rebuild(Mesh mesh, Func<string, bool> removed, Func<string, string> rename)
         {
             var result = Object.Instantiate(mesh); result.name = mesh.name;
             result.ClearBlendShapes();
@@ -67,7 +92,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var vertices = new Vector3[count]; var normals = new Vector3[count]; var tangents = new Vector3[count];
                     mesh.GetBlendShapeFrameVertices(index, frame, vertices, normals, tangents);
-                    result.AddBlendShapeFrame(name, mesh.GetBlendShapeFrameWeight(index, frame), vertices, normals, tangents);
+                    result.AddBlendShapeFrame(rename(name), mesh.GetBlendShapeFrameWeight(index, frame), vertices, normals, tangents);
                 }
             }
             return result;

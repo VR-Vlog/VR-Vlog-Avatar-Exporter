@@ -167,12 +167,16 @@ namespace VRVlog.LilToonExporter
                 steps.Next("authored");
                 authoredBindings.CaptureAuthoredExpressions();
                 steps.Next("ndmf");
+                // The board reads the avatar's clips on the copy as the export
+                // reads them, after Transforming. Optimizing passes rename, merge
+                // and remove the shapes those clips name; the export follows them
+                // through Optimizing itself, so the board must not see them.
                 preparation = NdmfExportPreparation.Prepare(source, Copy, Warnings, afterTransforming: transformed => {
                     authoredBindings.RebindPrepared(transformed.PreparedRendererFor);
                     authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
                     faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
                     gimmicks.Apply(null, null, Warnings);
-                });
+                }, stopBeforeOptimizing: true);
                 steps.Next("channels");
                 if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))
