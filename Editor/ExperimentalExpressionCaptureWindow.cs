@@ -814,7 +814,7 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
-                session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
+                session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 // And the poses, as the export window writes them.
                 var storedPoses = stored.Poses ?? new PoseExportOptions();
                 session.PoseOptions.Manual.AddRange(storedPoses.Manual.Select(pose => pose.Copy()));
@@ -2574,6 +2574,7 @@ namespace VRVlog.LilToonExporter
             // A face a hand gesture enters is also a custom face, still or
             // moving: the gesture table names only custom faces.
             var listed = board.ExportedCustom();
+            var unusableNote = board.UnusableCustomNote();
             var listedNames = new System.Collections.Generic.HashSet<string>(listed.Select(board.NameOf), StringComparer.Ordinal);
             var slotFaces = ExperimentalExpressionCaptureSession.EmotionPresets.Select(board.SlotValue)
                 .Where(value => value != null && !value.IsNone && !value.IsShape).Select(value => value.ResolveClip())
@@ -2637,6 +2638,7 @@ namespace VRVlog.LilToonExporter
                 // bytes. Saving the board's own VRM (no written) stays strict.
                 if (written != null && report != null) report.ContinueOnStageFailure = ExportStageGuard.ContinueByDefault;
                 foreach (var warning in target.Warnings) warnings.Add(warning);
+                if (unusableNote != null) warnings.Add(unusableNote);
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
@@ -2664,7 +2666,7 @@ namespace VRVlog.LilToonExporter
             catch (ExperimentalExpressionCaptureSession.SourceChangedException changed) when (!sourceChecked)
             {
                 Debug.Log(string.Format(ExporterLocalization.T(FollowedSourceFormat), changed.Detail ?? ""));
-                using var current = new ExperimentalExpressionCaptureSession(target.Source, replayInstalledDefaults: false, target.ExcludedObjects, target.GimmickOptions);
+                using var current = ExperimentalExpressionCaptureSession.Create(target.Source, replayInstalledDefaults: false, target.ExcludedObjects, target.GimmickOptions);
                 foreach (var warning in current.Warnings.Where(warning => !warnings.Contains(warning))) warnings.Add(warning);
                 return export(current, true);
             }
