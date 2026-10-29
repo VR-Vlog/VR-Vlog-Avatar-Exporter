@@ -394,6 +394,42 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
         }
 
+        // An Optimizing pass renames the face shapes, as optimizers do when they
+        // merge shapes animated together. The board reads the avatar's own
+        // clips on its copy as the export reads them, after Transforming, so
+        // the face stays a face; the export follows Optimizing on its own.
+        [Test]
+        public void BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginOptimize, installed.Descriptor, installed.Proxy);
+            var source = scene.Fixture.Source;
+            var smile = new AnimationClip { name = "Smile clip" };
+            smile.SetCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Face smile", AnimationCurve.Constant(0, 0, 100));
+            AssetDatabase.CreateAsset(smile, scene.Folder + "/Smile.anim");
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(scene.Folder + "/Base.controller");
+            controller.layers[0].stateMachine.AddState("Smile").motion = smile;
+
+            // The export's own preparation runs the pass: the test would
+            // otherwise prove nothing.
+            var exportCopy = NdmfExportPreparation.InstantiateOwnedCopy(source);
+            try
+            {
+                using (NdmfExportPreparation.Prepare(source, exportCopy, afterTransforming: _ => { }))
+                    Assert.That(exportCopy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMesh.GetBlendShapeIndex("Face smile" + OptimizedSuffix),
+                        Is.GreaterThanOrEqualTo(0), "The test Optimizing pass must rename the shapes of an export.");
+            }
+            finally { Object.DestroyImmediate(exportCopy); }
+
+            using var session = new ExperimentalExpressionCaptureSession(source, false);
+            Assert.That(session.ClipError(smile, 0), Is.Null);
+            var face = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMesh;
+            Assert.That(face.GetBlendShapeIndex("Face smile"), Is.GreaterThanOrEqualTo(0), "The board's copy stops before Optimizing.");
+        }
+
+        const string LostMorphTestPluginOptimize = "optimize";
+        const string OptimizedSuffix = " (optimized)";
+
         static string PathOf(Vrm10Instance imported, string name) => AnimationUtility.CalculateTransformPath(
             imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == name).transform, imported.transform);
     }

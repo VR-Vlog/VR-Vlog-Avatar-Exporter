@@ -138,6 +138,30 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // The board's preview runs its callback after Transforming, like the
+        // export, and stops there: Optimizing would change the shapes its clips name.
+        [Test]
+        public void PreviewWithCallbackStopsBeforeOptimizingAndStillFinishes()
+        {
+            var callbacks = 0;
+            FakeProcessor.Action = ReplaceWithGenerated;
+            FakeProcessor.OptimizationAction = root => { throw new InvalidOperationException("Preview must not optimize captured renderers."); };
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease =>
+            {
+                callbacks++;
+                Assert.IsFalse(FakeContext.Last.Finished);
+            }, stopBeforeOptimizing: true))
+            {
+                Assert.AreEqual(1, callbacks);
+                Assert.AreEqual(2, FakeProcessor.Calls);
+                Assert.AreSame(FakePhase.Transforming, FakeProcessor.Ranges[1][1]);
+                Assert.AreEqual(1, FakeContext.Last.FinishCount);
+                Assert.IsTrue(generated != null);
+            }
+            Assert.IsTrue(generated == null);
+            Assert.IsFalse(UnityEditor.AssetDatabase.IsValidFolder(FakeContext.Last.AssetPath));
+        }
+
         [Test]
         public void PreparationFailureSkipsOptimizationAndStillFinishesAndCleansUp()
         {
