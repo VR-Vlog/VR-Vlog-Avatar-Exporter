@@ -20,13 +20,15 @@ namespace VRVlog.LilToonExporter.Tests
     //   twin   : remove "Face blink" from "Front" and replace the
     //            SkinnedMeshRenderer of "Back", which has its own "Face blink"
     // In Optimizing, as optimizers merge shapes animated together:
-    //   optimize : rename every shape of "Front" to its name + OptimizedSuffix
+    //   optimize     : rename every shape of "Front" to its name + OptimizedSuffix
+    //   optimizefail : fail, as an optimizer that cannot handle the avatar does
     public sealed class LostMorphTestPlugin : Plugin<LostMorphTestPlugin>
     {
         internal const string Marker = "__VRVlogLostMorphTest_";
         internal const string RenamedFront = "Face renamed";
         internal const string StrippedMouth = "Mouth stripped";
         internal const string Optimize = "optimize";
+        internal const string OptimizeFail = "optimizefail";
         internal const string OptimizedSuffix = " (optimized)";
         public static bool Armed;
 
@@ -43,7 +45,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void ApplyOptimizing(GameObject root)
         {
-            if (!Armed || !(MarkerOf(root) is Transform marker) || marker.name != Marker + Optimize) return;
+            if (!Armed || !(MarkerOf(root) is Transform marker)) return;
+            if (marker.name == Marker + OptimizeFail) throw new InvalidOperationException("The failing optimizer test pass failed.");
+            if (marker.name != Marker + Optimize) return;
             Object.DestroyImmediate(marker.gameObject);
             var front = root.transform.Find("Front")?.GetComponent<SkinnedMeshRenderer>();
             if (front == null) throw new InvalidOperationException("The optimized shape test needs a Front renderer.");
@@ -56,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
             var marker = MarkerOf(root);
             if (marker == null) return;
             var mode = marker.name.Substring(Marker.Length);
-            if (mode == Optimize) return;
+            if (mode == Optimize || mode == OptimizeFail) return;
             Object.DestroyImmediate(marker.gameObject);
             var front = root.transform.Find("Front")?.GetComponent<SkinnedMeshRenderer>();
             if (front == null) throw new InvalidOperationException("The lost morph test needs a Front renderer.");

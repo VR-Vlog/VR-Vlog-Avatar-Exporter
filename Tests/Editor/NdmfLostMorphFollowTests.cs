@@ -430,7 +430,39 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(front.GetBlendShapeWeight(shape), Is.EqualTo(100), "The board shows the face the clip makes.");
         }
 
+        // An optimizer pass that fails in Optimizing used to stop the board,
+        // and with it the quick transfer, before any file was written. The
+        // board stops before Optimizing; the lenient export leaves the build
+        // passes out and still writes the VRM.
+        [Test]
+        public async Task AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginOptimizeFail, installed.Descriptor, installed.Proxy);
+            // NDMF logs the failing pass to the Console.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()),
+                "The failing test pass must stop a strict export.");
+            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source, false))
+                Assert.That(session.Copy, Is.Not.Null);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                Assert.That(report.Fallbacks.Results.Select(result => result.Stage), Does.Contain((ExportStage?)ExportStage.BuildProcess), string.Join("\n", warnings));
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
         const string LostMorphTestPluginOptimize = "optimize";
+        const string LostMorphTestPluginOptimizeFail = "optimizefail";
         const string OptimizedSuffix = " (optimized)";
 
         static string PathOf(Vrm10Instance imported, string name) => AnimationUtility.CalculateTransformPath(
