@@ -19,6 +19,7 @@ namespace VRVlog.LilToonExporter.Tests
     //   merge  : append "Front" into "Back" and remove "Front"
     //   twin   : remove "Face blink" from "Front" and replace the
     //            SkinnedMeshRenderer of "Back", which has its own "Face blink"
+    //   transformfail : fail, as a mesh tool that cannot handle the avatar does
     // In Optimizing, as optimizers merge shapes animated together:
     //   optimize     : rename every shape of "Front" to its name + OptimizedSuffix
     //   optimizefail : fail, as an optimizer that cannot handle the avatar does
@@ -30,6 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
         internal const string Optimize = "optimize";
         internal const string OptimizeFail = "optimizefail";
         internal const string OptimizedSuffix = " (optimized)";
+        internal const string TransformFail = "transformfail";
         public static bool Armed;
 
         protected override void Configure()
@@ -61,6 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (marker == null) return;
             var mode = marker.name.Substring(Marker.Length);
             if (mode == Optimize || mode == OptimizeFail) return;
+            if (mode == TransformFail) throw new InvalidOperationException("The failing mesh tool test pass failed.");
             Object.DestroyImmediate(marker.gameObject);
             var front = root.transform.Find("Front")?.GetComponent<SkinnedMeshRenderer>();
             if (front == null) throw new InvalidOperationException("The lost morph test needs a Front renderer.");

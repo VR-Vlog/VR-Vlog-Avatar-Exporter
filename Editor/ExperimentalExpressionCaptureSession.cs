@@ -116,10 +116,31 @@ namespace VRVlog.LilToonExporter
 
         internal ExperimentalExpressionCaptureSession(GameObject source) : this(source, true) { }
 
+        internal const string WithoutBuildPassesWarning =
+            "Modular Avatar / NDMFの処理に失敗したため、表情ボードは処理前のアバターで表情を読み取りました";
+        const string BuildPassFailureKey = "VRVlog.LilToonExporter.BoardBuildPassFailure";
+
+        // The board stops before Optimizing, but Generating and Transforming can
+        // still fail. A lenient export then leaves out the build passes, so the
+        // board does too, instead of stopping the transfer before any file is
+        // written. The export still runs the build passes on its own copy.
+        internal static ExperimentalExpressionCaptureSession Create(GameObject source, bool replayInstalledDefaults,
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
+        {
+            try { return new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions); }
+            catch (Exception error) when (error.Data.Contains(BuildPassFailureKey) && ExportStageGuard.ContinueByDefault)
+            {
+                Debug.LogWarning("VR Vlog: " + error);
+                var session = new ExperimentalExpressionCaptureSession(source, replayInstalledDefaults, excludedObjects, gimmickOptions, skipBuildPasses: true);
+                session.Warnings.Add(ExporterLocalization.T(WithoutBuildPassesWarning));
+                return session;
+            }
+        }
+
         // Manual exclusions and gimmick options follow the ordinary export:
         // detection skips what is excluded by hand, and both leave Copy.
         internal ExperimentalExpressionCaptureSession(GameObject source, bool replayInstalledDefaults,
-            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null)
+            IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, bool skipBuildPasses = false)
         {
             Source = source;
             try
@@ -171,12 +192,20 @@ namespace VRVlog.LilToonExporter
                 // reads them, after Transforming. Optimizing passes rename, merge
                 // and remove the shapes those clips name; the export follows them
                 // through Optimizing itself, so the board must not see them.
-                preparation = NdmfExportPreparation.Prepare(source, Copy, Warnings, afterTransforming: transformed => {
-                    authoredBindings.RebindPrepared(transformed.PreparedRendererFor);
-                    authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
-                    faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
-                    gimmicks.Apply(null, null, Warnings);
-                }, stopBeforeOptimizing: true);
+                try
+                {
+                    preparation = NdmfExportPreparation.Prepare(source, Copy, Warnings, afterTransforming: transformed => {
+                        authoredBindings.RebindPrepared(transformed.PreparedRendererFor);
+                        authoredBindings.RebindAuthoredExpressions(transformed.IsolatedCopyOf);
+                        faceEmoBindings.RebindPrepared(transformed.PreparedRendererFor, transformed.ObjectRegistry, transformed.IsolatedCopyOf);
+                        gimmicks.Apply(null, null, Warnings);
+                    }, skipProcessing: skipBuildPasses, stopBeforeOptimizing: true);
+                }
+                catch (Exception error) when (!skipBuildPasses && !ExportStageGuard.IsCancellation(error))
+                {
+                    error.Data[BuildPassFailureKey] = true;
+                    throw;
+                }
                 steps.Next("channels");
                 if (replayInstalledDefaults) controllers = new ExperimentalExpressionControllerScope(Copy, Warnings);
                 foreach (var behaviour in Copy.GetComponentsInChildren<Behaviour>(true))

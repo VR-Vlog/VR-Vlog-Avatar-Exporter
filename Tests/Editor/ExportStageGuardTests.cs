@@ -163,9 +163,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         // An expression the optimizer lost feeds the menu, blink, Lip Sync and
         // tracking output, so a lenient export writes the file again without
-        // the build passes instead of stopping.
+        // Optimizing instead of stopping, and keeps the other build passes.
         [Test]
-        public void AnExpressionLostByTheBuildPassesLeavesThemOut()
+        public void AnExpressionLostByTheOptimizerLeavesOutOnlyOptimizing()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Lost" };
@@ -178,7 +178,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // check after the build then finds the expression gone.
                 ExportStageGuard.FaultInjection = current =>
                 {
-                    if (current != ExportStage.BuildProcess || fired > 0) return;
+                    if (current != ExportStage.Optimizing || fired > 0) return;
                     var route = Resources.FindObjectsOfTypeAll<ExportOptimizationMarker>()
                         .SelectMany(marker => marker.Morphs).FirstOrDefault(value => !value.NoOp);
                     if (route == null) return;
@@ -203,7 +203,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(bytes, Is.Not.Null.And.Not.Empty);
                 Assert.That(report.Succeeded, Is.True);
                 var entry = report.Fallbacks.Results.Single(result => result.Stage != null);
-                Assert.That(entry.Stage, Is.EqualTo(ExportStage.BuildProcess));
+                Assert.That(entry.Stage, Is.EqualTo(ExportStage.Optimizing));
                 Assert.That(entry.Reason, Does.StartWith("最適化で書き出し用の表情が失われました"));
             }
             finally

@@ -21,6 +21,9 @@ namespace VRVlog.LilToonExporter
         MaAppearance,
         FaceEmo,
         BuildProcess,
+        // NDMF's Optimizing phase only: left out first, the outfit and mesh
+        // edits of the earlier phases stay in the file.
+        Optimizing,
         Expressions,
         OptimizerEvidence,
         LilToonSnapshot,
@@ -198,6 +201,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.MaAppearance: return "Modular Avatarの表示状態の固定";
                 case ExportStage.FaceEmo: return "FaceEmoの表情";
                 case ExportStage.BuildProcess: return "Modular Avatar / NDMFの処理";
+                case ExportStage.Optimizing: return "最適化ツールの処理";
                 case ExportStage.Expressions: return "メニュー由来の表情";
                 case ExportStage.OptimizerEvidence: return "最適化ツールの材質の照合";
                 case ExportStage.LilToonSnapshot: return "lilToonの材質情報";
@@ -232,6 +236,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.MaAppearance:
                     return ExportPhase.Precheck;
                 case ExportStage.BuildProcess:
+                case ExportStage.Optimizing:
                 case ExportStage.Attachments:
                 case ExportStage.SkinRepair:
                 case ExportStage.Constraints:
@@ -305,6 +310,7 @@ namespace VRVlog.LilToonExporter
                 case ExportStage.PhysBoneVerify:
                 case ExportStage.MaAppearance:
                 case ExportStage.BuildProcess:
+                case ExportStage.Optimizing:
                 // Left out, the file only keeps every BlendShape.
                 case ExportStage.UnusedMorphs:
                 // Left out, the face and body keep the export copy's values.

@@ -215,5 +215,24 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.RenameError(smile, "closed eyes"), Is.EqualTo(ExpressionBoard.NameTakenFormat));
             Assert.That(board.RenameError(smile, "wink"), Is.Null);
         }
+
+        // The avatar's own faces the board cannot use are neither shown nor
+        // exported; the export names them once instead of dropping them silently.
+        [Test]
+        public void UnusableFacesAreNamedForTheResultList()
+        {
+            var usable = Clip("usable"); var hidden = Clip("hidden"); var excluded = Clip("excluded");
+            var more = Enumerable.Range(0, 6).Select(index => Clip("more " + index)).ToArray();
+            var board = Board(null, new[] { Item(usable), Item(hidden, "hidden mesh"), Item(excluded, "other reason") }
+                .Concat(more.Select(clip => Item(clip, "hidden mesh"))));
+            board.Excluded.Add(excluded);
+
+            Assert.That(board.ExportedCustom(), Is.EqualTo(new[] { usable }));
+            Assert.That(board.UnusableCustom().Select(item => item.Clip), Is.EqualTo(new[] { hidden }.Concat(more)),
+                "A face the user left out is not reported as unusable.");
+            Assert.That(board.UnusableCustomNote(), Is.EqualTo(string.Format(ExporterLocalization.T(ExpressionBoard.UnusableCustomFormat),
+                7, "hidden, more 0, more 1, more 2, more 3, …", "hidden mesh")));
+            Assert.That(Board(null, new[] { Item(usable) }).UnusableCustomNote(), Is.Null);
+        }
     }
 }

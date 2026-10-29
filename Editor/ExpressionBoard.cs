@@ -175,6 +175,25 @@ namespace VRVlog.LilToonExporter
         internal List<AnimationClip> ExportedCustom() =>
             Items.Where(item => Usable(item) && PlaceOf(item.Clip).Kind == PlaceKind.Other).Select(item => item.Clip).ToList();
 
+        // The faces ExportedCustom leaves out because they cannot be used. The
+        // avatar's own are not shown, so the export names them instead.
+        internal List<Item> UnusableCustom() =>
+            Items.Where(item => item?.Clip != null && !Usable(item) && PlaceOf(item.Clip).Kind == PlaceKind.Other).ToList();
+
+        internal const string UnusableCustomFormat = "使えないため書き出さなかった表情（{0}件）: {1} — {2}";
+        const int UnusableCustomNamed = 5;
+
+        // One note for the result list, null when every face can be used: the
+        // first names, and the first reason (most share one, a hidden mesh).
+        internal string UnusableCustomNote()
+        {
+            var unusable = UnusableCustom();
+            if (unusable.Count == 0) return null;
+            var names = string.Join(", ", unusable.Take(UnusableCustomNamed).Select(item => NameOf(item.Clip)));
+            if (unusable.Count > UnusableCustomNamed) names += ", …";
+            return string.Format(ExporterLocalization.T(UnusableCustomFormat), unusable.Count, names, unusable[0].Error);
+        }
+
         // Without exclusions or added files the ordinary export keeps the
         // avatar's own faces; otherwise the custom list is recorded exactly.
         // A hidden unsupported face excluded earlier still counts, so hiding
