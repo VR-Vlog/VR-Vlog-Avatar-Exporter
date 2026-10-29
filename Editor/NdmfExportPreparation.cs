@@ -459,6 +459,8 @@ namespace VRVlog.LilToonExporter
             object context = null;
             IDisposable directoryScope = null;
             Exception processError = null;
+            // Set once every earlier phase succeeded and Optimizing starts.
+            var optimizing = false;
             try
             {
                 try
@@ -527,6 +529,7 @@ namespace VRVlog.LilToonExporter
                                     && AvatarOptimizerParsesRootController(clone)
                                     ? PlaceholderController(out placeholderLayer) : null;
                                 if (placeholder != null) animator.runtimeAnimatorController = placeholder;
+                                optimizing = true;
                                 try { Invoke(() => bridge.Process.Invoke(null, new[] { context, bridge.Optimizing, bridge.Optimizing })); }
                                 finally
                                 {
@@ -551,10 +554,10 @@ namespace VRVlog.LilToonExporter
                         // A user cancellation in expression sampling remains a
                         // cancellation after Finish and owned-asset cleanup.
                         if (processError is OperationCanceledException) throw processError;
-                        throw BuildFailure(context, processError);
+                        throw MarkOptimizing(BuildFailure(context, processError), optimizing);
                     }
                     // NDMF records plugin exceptions instead of always rethrowing.
-                    RequireSuccessful(bridge, context);
+                    if (!IsSuccessful(bridge, context)) throw MarkOptimizing(BuildFailure(context, null), optimizing);
                     lease.CaptureRendererReplacements(clone, context);
                     // The exporter callback validates scoped AAO mappings;
                     // legacy callers still require exact generated names.
@@ -618,9 +621,25 @@ namespace VRVlog.LilToonExporter
             return controller;
         }
 
-        private static void RequireSuccessful(Bridge bridge, object context)
+        // A failure after Generating and Transforming succeeded: an export can
+        // be prepared again without Optimizing and keep the outfit and mesh edits.
+        private const string OptimizingFailureKey = "VRVlog.LilToonExporter.NdmfOptimizingFailure";
+
+        private static Exception MarkOptimizing(Exception failure, bool optimizing)
         {
-            if (!IsSuccessful(bridge, context)) throw BuildFailure(context, null);
+            if (optimizing) failure.Data[OptimizingFailureKey] = true;
+            return failure;
+        }
+
+        internal static bool FailedInOptimizing(Exception error)
+        {
+            for (var depth = 0; error != null && depth < 16; depth++)
+            {
+                if (error.Data.Contains(OptimizingFailureKey)) return true;
+                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(FailedInOptimizing)) return true;
+                error = error.InnerException;
+            }
+            return false;
         }
 
         private static bool IsSuccessful(Bridge bridge, object context) =>

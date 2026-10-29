@@ -79,6 +79,20 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(OutputHasNoMesh);
         }
 
+        // A failure in NDMF's Optimizing phase, after Generating and Transforming
+        // succeeded, leaves out only that phase: the retry keeps the outfit and
+        // mesh edits. Any other build failure still leaves out every build pass.
+        private static T SeparateOptimizing<T>(ExportStageGuard guard, Func<T> prepare)
+        {
+            try { return prepare(); }
+            catch (Exception error) when (guard.ContinueOnFailure && !guard.IsOmitted(ExportStage.Optimizing) &&
+                                          !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null &&
+                                          NdmfExportPreparation.FailedInOptimizing(error))
+            {
+                throw new ExportStageFailure(ExportStage.Optimizing, error);
+            }
+        }
+
         // NDMF / optimizer passes may remove the root Animator or required
         // humanoid bones from the owned copy. Stop before UniVRM saves a VRM
         // that cannot be imported as a humanoid; the source is never touched.
@@ -517,7 +531,12 @@ namespace VRVlog.LilToonExporter
                 // The clips that call added come from FX clips: a zero they key
                 // resets a default face shape, unlike a zero bind authored in a VRM.
                 expressionBindings.CaptureAuthoredExpressions(new HashSet<VRM10Expression>(ClipsOf(clone).Where(clip => !sourceClips.Contains(clip))));
-                using var preparation = guard.Watch(ExportStage.BuildProcess, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
+                // Optimizing runs only when neither it nor every build pass is left
+                // out. Its failures are left out first; once it is out, what the
+                // optimizer would have broken leaves out the build passes.
+                var optimizes = !guard.IsOmitted(ExportStage.BuildProcess) && !guard.IsOmitted(ExportStage.Optimizing);
+                var optimizerStage = optimizes ? ExportStage.Optimizing : ExportStage.BuildProcess;
+                using var preparation = guard.Watch(ExportStage.BuildProcess, () => SeparateOptimizing(guard, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
                     recovery?.Track(copy, original);
@@ -682,18 +701,19 @@ namespace VRVlog.LilToonExporter
                         objectRegistry: transformed.ObjectRegistry, neutral: neutral, preservePreparedNeutral: true,
                         menuMorphs: expressions.SelectMany(expression => expression.Direct.Select(direct => (direct.Renderer, direct.Shape))
                             .Concat(expression.DirectPoints.Values)),
-                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: !guard.IsOmitted(ExportStage.BuildProcess)));
-                }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure));
+                        keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
+                }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
+                    stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing))));
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
-                // A lenient export retries without the build passes; a source
-                // that already lacks them still stops.
-                guard.Watch(ExportStage.BuildProcess, () => ValidatePreparedHumanoid(source, clone));
+                // A lenient export retries without Optimizing, then without the
+                // build passes; a source that already lacks them still stops.
+                guard.Watch(optimizerStage, () => ValidatePreparedHumanoid(source, clone));
                 // The same holds for expressions or materials the optimizer
                 // lost: the routes feed the menu, blink, Lip Sync and tracking
-                // output, so the file is written again without the build passes.
+                // output, so the file is written again without Optimizing.
                 var weightConflicts = guard.ContinueOnFailure ? new List<(string Clip, string Shape)>() : null;
-                guard.Watch(ExportStage.BuildProcess, () => optimizerBindings.ValidateAndApply((copy, original) =>
+                guard.Watch(optimizerStage, () => optimizerBindings.ValidateAndApply((copy, original) =>
                 {
                     if (!(copy is Material copiedMaterial) || !(original is Material originalMaterial)) return;
                     recoveryReport.Track(copiedMaterial, originalMaterial);
@@ -832,7 +852,7 @@ namespace VRVlog.LilToonExporter
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
                     }, warnings: warnings);
-                guard.Watch(ExportStage.BuildProcess, () => ValidateOutputHumanoid(exported));
+                guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension
                 // or its save: over the app's image limit, export without them.
                 if (matcapBakes.Images.Count > 0 && LilToonGlbExtension.StandardCounts(exported).Textures > LilToonMobileProfile.MaximumTextures)

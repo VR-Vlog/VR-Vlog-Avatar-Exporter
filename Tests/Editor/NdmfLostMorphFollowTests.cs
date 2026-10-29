@@ -432,8 +432,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         // An optimizer pass that fails in Optimizing used to stop the board,
         // and with it the quick transfer, before any file was written. The
-        // board stops before Optimizing; the lenient export leaves the build
-        // passes out and still writes the VRM.
+        // board stops before Optimizing; the lenient export leaves out only
+        // Optimizing, so the outfit attachment still reaches the VRM.
         [Test]
         public async Task AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport()
         {
@@ -454,7 +454,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var bytes = scene.Export(warnings, report);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
-                Assert.That(report.Fallbacks.Results.Select(result => result.Stage), Does.Contain((ExportStage?)ExportStage.BuildProcess), string.Join("\n", warnings));
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.Optimizing }), string.Join("\n", warnings));
+                var back = imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back");
+                Assert.That(AnimationUtility.CalculateTransformPath(back.transform.parent, imported.transform),
+                    Is.EqualTo("Hips/Spine/Chest/Neck/Head"), "The MA Bone Proxy must still be applied.");
             }
             finally
             {
@@ -462,7 +466,47 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A pass that fails in Transforming fails the board's copy too. The
+        // board follows the lenient export: it reads the faces on a copy without
+        // the build passes and says so, and the quick transfer goes on to write
+        // a VRM. The strict setting still stops at the board.
+        [Test]
+        public void ABoardWhoseBuildPassesFailIsMadeWithoutThem()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginTransformFail, installed.Descriptor, installed.Proxy);
+            // NDMF logs the failing pass to the Console.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            var hadPreference = EditorPrefs.HasKey(ExportStageGuard.ContinuePreference);
+            var previous = EditorPrefs.GetBool(ExportStageGuard.ContinuePreference, true);
+            try
+            {
+                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, false);
+                var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false).Dispose());
+                Assert.That(failure.ToString(), Does.Contain("The failing mesh tool test pass failed."));
+
+                EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, true);
+                using (var session = ExperimentalExpressionCaptureSession.Create(scene.Fixture.Source, false))
+                {
+                    Assert.That(session.Copy, Is.Not.Null);
+                    Assert.That(session.Warnings, Does.Contain(ExporterLocalization.T(ExperimentalExpressionCaptureSession.WithoutBuildPassesWarning)));
+                    Assert.That(session.Copy.transform.Find("Back"), Is.Not.Null, "The board's copy is the avatar without the build passes.");
+                }
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var warnings = new List<string>();
+                Assert.That(scene.Export(warnings, report), Is.Not.Null.And.Not.Empty);
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.BuildProcess }), string.Join("\n", warnings));
+            }
+            finally
+            {
+                if (hadPreference) EditorPrefs.SetBool(ExportStageGuard.ContinuePreference, previous);
+                else EditorPrefs.DeleteKey(ExportStageGuard.ContinuePreference);
+            }
+        }
+
         const string LostMorphTestPluginOptimize = "optimize";
+        const string LostMorphTestPluginTransformFail = "transformfail";
         const string LostMorphTestPluginOptimizeFail = "optimizefail";
         const string OptimizedSuffix = " (optimized)";
 
