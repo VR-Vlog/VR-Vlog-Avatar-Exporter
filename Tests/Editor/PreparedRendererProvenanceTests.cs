@@ -283,6 +283,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(originalMesh.GetBlendShapeName(1), Is.EqualTo("Custom jaw"));
         }
 
+        // A zero from an FX clip resets a default face shape. When the build
+        // removed that shape there is nothing to reset: the bind is left out
+        // without stopping the export. A VRM authored zero stays inert.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ClipZeroOnARemovedShapeIsLeftOut(bool fromClip)
+        {
+            Skin(source, "Face", Mesh("Kept", "Removed"));
+            var author = Author(new MorphTargetBinding("Face", 0, .5f), new MorphTargetBinding("Face", 1, 0));
+            author.Vrm.Expression.CustomClips.Clear(); author.Vrm.Expression.Happy = author.Clip;
+            prepared = Object.Instantiate(source);
+            using var bindings = new PreparedExpressionBindings(prepared, new VrChatExpressionMenu.Source());
+            bindings.CaptureAuthoredExpressions(fromClip ? new[] { ExpressionPreset.happy } : null);
+            prepared.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh = Mesh("Generated", "Kept");
+            bindings.RebindPrepared(value => value);
+            Assert.DoesNotThrow(() => bindings.RebindAuthoredExpressions(value => value));
+            var clip = prepared.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+            Assert.That(clip.MorphTargetBindings.Select(value => (value.Index, value.Weight)),
+                Is.EqualTo(fromClip ? new[] { (1, .5f) } : new[] { (1, .5f), (1, 0f) }));
+            Assert.That(author.Clip.MorphTargetBindings.Length, Is.EqualTo(2));
+        }
+
         [TestCase(0f)]
         [TestCase(.25f)]
         public void OriginallyInvalidIndexCannotBecomeUsableWhenNdmfAddsAChannel(float weight)

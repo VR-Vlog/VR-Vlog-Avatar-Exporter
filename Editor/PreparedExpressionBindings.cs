@@ -33,6 +33,9 @@ namespace VRVlog.LilToonExporter
         {
             internal VRM10Expression Clip;
             internal AuthoredMorph[] Morphs;
+            // A zero this clip keys resets a default face shape, so it is
+            // followed like any other bind instead of left inert.
+            internal bool ClipZeros;
         }
 
         private sealed class AuthoredMorph
@@ -145,7 +148,7 @@ namespace VRVlog.LilToonExporter
 
         // Capture after pruning/recovery and before NDMF. These are the actual
         // authoring indices; an added/reordered shape must not change their meaning.
-        internal void CaptureAuthoredExpressions()
+        internal void CaptureAuthoredExpressions(ICollection<ExpressionPreset> clipZeroPresets = null)
         {
             authoredClips.Clear();
             var vrm = root.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null;
@@ -167,7 +170,8 @@ namespace VRVlog.LilToonExporter
                             ? mesh.GetBlendShapeName(value.Index) : null
                     };
                 }).ToArray();
-                authoredClips.Add(new AuthoredClip { Clip = clip, Morphs = morphs });
+                authoredClips.Add(new AuthoredClip { Clip = clip, Morphs = morphs,
+                    ClipZeros = clipZeroPresets != null && vrm.Expression.Clips.Any(entry => entry.Clip == clip && clipZeroPresets.Contains(entry.Preset)) });
             }
         }
 
@@ -200,7 +204,8 @@ namespace VRVlog.LilToonExporter
                     var old = captured.Morphs[i]; var value = values[i];
                     if (value.RelativePath != old.Value.RelativePath || value.Index != old.Value.Index ||
                         !value.Weight.Equals(old.Value.Weight)) continue;
-                    var inert = value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1;
+                    var clipZero = captured.ClipZeros && value.Weight == 0;
+                    var inert = !clipZero && (value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1);
                     LostAuthoredMorph Lost(bool followed) => new LostAuthoredMorph {
                         Clip = current.name, Path = old.Value.RelativePath, Shape = old.Shape, Followed = followed };
                     if (old.Shape == null)
@@ -231,6 +236,8 @@ namespace VRVlog.LilToonExporter
                         // Preserve disabled/invalid author binds without turning
                         // them into a new usable endpoint or inventing a channel.
                         if (inert) continue;
+                        // Resetting a shape the build removed changes nothing.
+                        if (clipZero) { dropped[i] = true; changed = true; continue; }
                         if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation + " (" +
                             old.Value.RelativePath + " / " + old.Shape + ")");
@@ -242,23 +249,24 @@ namespace VRVlog.LilToonExporter
                     if (!unique)
                     {
                         if (inert) continue;
+                        if (clipZero) { dropped[i] = true; changed = true; continue; }
                         if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException("処理後の表情のRendererパスを一意に確定できません: " + path);
                     }
-                    if (followed) lostHere.Add(Lost(true));
+                    if (followed && !clipZero) lostHere.Add(Lost(true));
                     if (path == value.RelativePath && index == value.Index) continue;
                     result[i] = new MorphTargetBinding(path, index, value.Weight); changed = true;
                 }
+                var kept = result.Where((_, i) => !dropped[i]).ToArray();
                 if (lostHere.Count > 0)
                 {
-                    var kept = result.Where((_, i) => !dropped[i]).ToArray();
                     var emptied = !kept.Any(value => value.Weight > 0 && value.Weight <= 1 && NeutralShapeSnapshot.Finite(value.Weight) &&
                             value.Index >= 0 && value.Index != int.MaxValue) &&
                         (current.MaterialColorBindings?.Length ?? 0) == 0 && (current.MaterialUVBindings?.Length ?? 0) == 0;
                     foreach (var item in lostHere) item.ClipEmptied = emptied;
                     lost.AddRange(lostHere);
-                    result = kept;
                 }
+                result = kept;
                 if (!changed) continue;
                 var copy = Object.Instantiate(current); ownedAssets.Add(copy); copy.name = current.name;
                 copy.MorphTargetBindings = result;

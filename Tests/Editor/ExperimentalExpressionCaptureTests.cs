@@ -44,6 +44,36 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A zero the clip keys stays a bind: the export resets that shape of the
+        // default face with it. A zero on a missing shape changes nothing.
+        [Test]
+        public void APresetKeepsTheZerosItsClipKeys()
+        {
+            var root = new GameObject("Avatar");
+            var mesh = new Mesh { vertices = new Vector3[3], triangles = new[] { 0, 1, 2 } };
+            mesh.AddBlendShapeFrame("Smile", 100f, new Vector3[3], null, null);
+            mesh.AddBlendShapeFrame("Default", 100f, new Vector3[3], null, null);
+            var assets = new System.Collections.Generic.List<Object>();
+            try
+            {
+                var face = new GameObject("Face");
+                face.transform.SetParent(root.transform, false);
+                face.AddComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
+                var warnings = new System.Collections.Generic.List<string>();
+                ExperimentalExpressionCaptureSession.AuthorPresets(root, new[] { (ExpressionPreset.happy, new System.Collections.Generic.List<(string, string, float)> {
+                    ("Face", "Smile", 100f), ("Face", "Default", 0f), ("Face", "Missing shape", 0f) }) }, assets, warnings);
+                var bindings = root.GetComponent<Vrm10Instance>().Vrm.Expression.Happy.MorphTargetBindings;
+                Assert.That(bindings.Select(binding => (binding.Index, binding.Weight)), Is.EqualTo(new[] { (0, 1f), (1, 0f) }));
+                Assert.That(warnings, Is.Empty);
+            }
+            finally
+            {
+                foreach (var asset in assets) Object.DestroyImmediate(asset);
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
         // The board's list: each clip at its last frame, as DefaultTime reads it.
         static (string, AnimationClip, float)[] Listed(params AnimationClip[] clips) =>
             clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip))).ToArray();

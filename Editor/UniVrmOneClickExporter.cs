@@ -38,6 +38,13 @@ namespace VRVlog.LilToonExporter
             return animator != null && animator.avatar != null && animator.avatar.isValid && animator.avatar.isHuman;
         }
 
+        // The preset slots of the copy's VRM settings. Custom clips share one
+        // slot name, so they are left out.
+        static IEnumerable<(ExpressionPreset Preset, VRM10Expression Clip)> ClipsOf(GameObject clone) =>
+            clone.TryGetComponent<Vrm10Instance>(out var instance) && instance.Vrm?.Expression != null
+                ? instance.Vrm.Expression.Clips.Where(entry => entry.Preset != ExpressionPreset.custom)
+                : Enumerable.Empty<(ExpressionPreset, VRM10Expression)>();
+
         // VRM 1.0 requires a humanoid. Without one every stage would run and the
         // saved file would then fail validation naming only a glTF bone key.
         internal static void ValidateSourceHumanoid(GameObject source)
@@ -507,8 +514,13 @@ namespace VRVlog.LilToonExporter
                 recoveryReport.Phase = ExportPhase.Skeleton;
                 // Caller-selected faces join the copy as authored VRM clips, so
                 // the same identity capture, relocation and neutral baking apply.
+                var sourceClips = new HashSet<VRM10Expression>(ClipsOf(clone).Select(entry => entry.Clip));
                 authorCopyExpressions?.Invoke(clone, warnings);
-                expressionBindings.CaptureAuthoredExpressions();
+                // Those faces come from FX clips: a zero they key resets a
+                // default face shape, unlike a zero bind authored in a VRM.
+                var clipZeroPresets = new HashSet<ExpressionPreset>(ClipsOf(clone)
+                    .Where(entry => !sourceClips.Contains(entry.Clip)).Select(entry => entry.Preset));
+                expressionBindings.CaptureAuthoredExpressions(clipZeroPresets);
                 using var preparation = guard.Watch(ExportStage.BuildProcess, () => NdmfExportPreparation.Prepare(source, clone, warnings, (copy, original) =>
                 {
                     recoveryReport.Track(copy, original);
@@ -643,7 +655,7 @@ namespace VRVlog.LilToonExporter
                         neutral = guard.Watch(ExportStage.Expressions, () => NeutralShapeSnapshot.Capture(clone));
                     }
                     using var bakeTiming = ExpressionBoardTimings.Step("export.bake");
-                    authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile, warnings));
+                    authoredEndpoints = guard.Watch(ExportStage.Expressions, () => AuthoredExpressionEndpoints.Capture(clone, neutral, trackingProfile, warnings, clipZeroPresets));
                     guard.Step(ExportStage.Expressions, () => preparedMenuBindings.Capture(menu));
                     guard.Watch(ExportStage.Expressions, () =>
                     {

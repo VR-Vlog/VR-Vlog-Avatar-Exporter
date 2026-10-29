@@ -360,10 +360,11 @@ namespace VRVlog.LilToonExporter
             foreach (var face in faces)
             {
                 var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
-                // A zero would reserve and disable the channel in the authored
-                // VRM contract; unlisted channels already keep the neutral face.
+                // A zero the clip keys is kept: it resets a default face shape,
+                // as in VRChat (clipZeroPresets in UniVrmOneClickExporter). Unlisted
+                // channels keep the default face.
                 var bindings = new List<MorphTargetBinding>();
-                foreach (var morph in face.Morphs.Where(morph => morph.Weight > 0))
+                foreach (var morph in face.Morphs)
                 {
                     string missing;
                     try
@@ -373,7 +374,8 @@ namespace VRVlog.LilToonExporter
                         missing = ExporterLocalization.T(": 元のメッシュにBlendShapeがありません: ") + morph.Path + " / " + morph.Shape;
                     }
                     catch (InvalidOperationException error) { missing = ": " + error.Message; }
-                    warnings?.Add(PresetFullLabel(face.Preset) + missing);
+                    // A zero on a missing shape changes nothing.
+                    if (morph.Weight > 0) warnings?.Add(PresetFullLabel(face.Preset) + missing);
                 }
                 expression.MorphTargetBindings = bindings.ToArray();
                 settings.Expression.AddClip(face.Preset, expression);
