@@ -17,7 +17,7 @@
 - `NdmfExportPreparation.ProcessClone` は、Generating と Transforming が成功して Optimizing を始めたあとの失敗に印を付ける（`FailedInOptimizing`）。書き出しはその失敗を `ExportStage.Optimizing` の失敗として扱い、`stopBeforeOptimizing` で書き出し直す。それ以外のビルド処理の失敗は、これまでどおり `BuildProcess` を外す。
 - 最適化後の検査（ヒューマノイド・表情とマテリアルの照合・出力のヒューマノイド）は、Optimizing を走らせたときは `Optimizing` の段階、外したあとは `BuildProcess` の段階で見る。Optimizing を外しても直らなければ、次にビルド処理を外す。
 - 表情ボードは `ExperimentalExpressionCaptureSession.Create` で作る。ビルド処理が失敗し、失敗した段階を外す設定（`ExportStageGuard.ContinueByDefault`）が有効なときは、ビルド処理を外したコピーでボードを作り直し、そのことを警告に足す。書き出しは自分のコピーでビルド処理をもう一度走らせ、失敗すれば書き出し側の仕組みで外す。厳密な設定ではこれまでどおりボードの作成で止まる。
-- 書き出しのとき、ボードで使えないため外した表情の件数・名前（5 件まで）・最初の理由を結果一覧の注意に 1 行で出す（`ExpressionBoard.UnusableCustomNote`）。書き出す中身は変えない。
+- 書き出しのとき、ボードで使えないため外した表情の件数と名前（5 件まで）を、理由ごとにまとめて結果一覧の注意に 1 行で出す（`ExpressionBoard.UnusableCustomNote`）。理由の違う表情が混ざっても、名前ごとの理由を取り違えない。書き出す中身は変えない。
 - 通常とかんたんはどちらも `PrepareWith` と `Save` を通るので、両方に同じように効く。`interactive` は確認を出すかどうかだけを決める決まりのまま。
 
 ## 確認
@@ -25,4 +25,4 @@
 - `ExportStageGuardTests.EveryStageCanFailAndTheFileIsStillWritten`（`Optimizing` を含む全段階）・`AnExpressionLostByTheOptimizerLeavesOutOnlyOptimizing`: 最適化後に表情が失われると `Optimizing` だけが外れる。
 - `NdmfLostMorphFollowTests.AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport`: Optimizing で失敗するテスト用のパスでは `Optimizing` だけが外れ、Modular Avatar で頭に付けたメッシュが VRM でも頭の下にある。
 - `NdmfLostMorphFollowTests.ABoardWhoseBuildPassesFailIsMadeWithoutThem`: Transforming で失敗するテスト用のパスでは、厳密な設定ではボードの作成が止まり、失敗した段階を外す設定ではビルド処理を外したボードが警告つきで作られ、書き出しは `BuildProcess` を外して VRM を書く。
-- `ExpressionBoardTests.UnusableFacesAreNamedForTheResultList`: 使えない項目だけを数え、ユーザーが外した項目は数えない。
+- `ExpressionBoardTests.UnusableFacesAreNamedForTheResultList`: 使えない項目だけを数え、ユーザーが外した項目は数えない。理由の違う項目は理由ごとにまとめる。

@@ -231,8 +231,13 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(board.UnusableCustom().Select(item => item.Clip), Is.EqualTo(new[] { hidden }.Concat(more)),
                 "A face the user left out is not reported as unusable.");
             Assert.That(board.UnusableCustomNote(), Is.EqualTo(string.Format(ExporterLocalization.T(ExpressionBoard.UnusableCustomFormat),
-                7, "hidden, more 0, more 1, more 2, more 3, …", "hidden mesh")));
+                7, "hidden, more 0, more 1, more 2, more 3 — hidden mesh / …")));
             Assert.That(Board(null, new[] { Item(usable) }).UnusableCustomNote(), Is.Null);
+
+            // Each name sits next to its own reason.
+            var mixed = Board(null, new[] { Item(Clip("a"), "first reason"), Item(Clip("b"), "second reason"), Item(Clip("c"), "first reason") });
+            Assert.That(mixed.UnusableCustomNote(), Is.EqualTo(string.Format(ExporterLocalization.T(ExpressionBoard.UnusableCustomFormat),
+                3, "a, c — first reason / b — second reason")));
         }
     }
 }
