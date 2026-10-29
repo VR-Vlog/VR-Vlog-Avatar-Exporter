@@ -28,7 +28,7 @@
 - `NdmfPreparationTests.PreviewWithCallbackStopsBeforeOptimizingAndStillFinishes`: `stopBeforeOptimizing: true` では Optimizing のパスが呼ばれず、コールバックは 1 回、Finish は 1 回、一時フォルダは消える。
 - `NdmfLostMorphFollowTests.BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes`: Optimizing でシェイプキーの名前をすべて変えるテスト用のパスを入れたアバター。書き出しの準備ではコピーのシェイプキーの名前が変わる（テスト用のパスが動いている）が、表情ボードの項目はエラーにならず、ボードのコピーは元の名前のまま。
 - `NdmfLostMorphFollowTests.AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport`: Optimizing で失敗するテスト用のパスを入れたアバター。厳密な書き出しは止まる（パスが動いている）が、ボードは作れ、失敗した段階を外す書き出しは VRM を書く。ボードを Optimizing まで走らせる元の形に戻すと、ボードの作成が「書き出し用コピーの処理を完了できませんでした」で失敗することも確かめた。
-- 手元の実アバター 7 体と実際のツールで、ツールの有無と設定の組み合わせ・ランダムな組み合わせを書き出し、例外・表情の数・マテリアルの欠けを比べた（結果は PR に記載）。数だけでなく、表情ごとに頂点の移動量の合計と動く頂点の数を VRM から計算して「そのまま」と比べ、修正後はすべて一致した。
+- 手元の実アバター 7 体と実際のツールで、ツールの有無と設定の組み合わせ・ランダムな組み合わせを書き出し、例外・表情の数・マテリアルの欠けを比べた（結果は PR に記載）。数だけでなく、表情ごとに頂点の移動量の合計と動く頂点の数を VRM から計算して、同じアバターをツールなしで書き出した「そのまま」と比べ、修正後はこの 2 つの指標がすべて一致した。頂点ごとの移動の向きや画像での比較はしていない。
 
 ## 欠点
 

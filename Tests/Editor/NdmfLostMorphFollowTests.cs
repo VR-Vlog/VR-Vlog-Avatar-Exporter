@@ -441,8 +441,9 @@ namespace VRVlog.LilToonExporter.Tests
             using var scene = new Scene(LostMorphTestPluginOptimizeFail, installed.Descriptor, installed.Proxy);
             // NDMF logs the failing pass to the Console.
             UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
-            Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()),
-                "The failing test pass must stop a strict export.");
+            var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
+            Assert.That(failure.ToString(), Does.Contain("The failing optimizer test pass failed."),
+                "The failing test pass must be what stops a strict export.");
             using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source, false))
                 Assert.That(session.Copy, Is.Not.Null);
             Vrm10Instance imported = null;
