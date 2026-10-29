@@ -50,8 +50,10 @@ namespace VRVlog.LilToonExporter
             usedNames = DeterministicNames.BlendShapeNames(avatar);
         }
 
+        // fxClips: the clips made from FX clips. A zero they bind resets that
+        // shape of the default face, as the FX clip does in VRChat.
         internal static AuthoredExpressionEndpoints Capture(GameObject prepared, NeutralShapeSnapshot neutral,
-            VrmTrackingProfile profile = null, ICollection<string> warnings = null)
+            VrmTrackingProfile profile = null, ICollection<string> warnings = null, ICollection<VRM10Expression> fxClips = null)
         {
             if (neutral == null || neutral.Root != prepared)
                 throw new ArgumentException("The neutral snapshot must belong to the prepared avatar.");
@@ -64,7 +66,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var clip in expression.Clips.Where(item => item.Preset != ExpressionPreset.blink &&
                     item.Preset != ExpressionPreset.blinkLeft && item.Preset != ExpressionPreset.blinkRight)
                     .Select(item => item.Clip).Distinct())
-                    session.CaptureClip(clip);
+                    session.CaptureClip(clip, fxClips != null && fxClips.Contains(clip));
             }
             if (profile != null)
             {
@@ -92,19 +94,22 @@ namespace VRVlog.LilToonExporter
             return session;
         }
 
-        void CaptureClip(VRM10Expression clip)
+        void CaptureClip(VRM10Expression clip, bool clipZeros)
         {
             var result = new ClipEndpoint { Clip = clip };
             var endpoints = new Dictionary<NeutralShapeSnapshot.RendererState, Endpoint>();
             var declared = new Dictionary<(NeutralShapeSnapshot.RendererState, int), float>();
             var bindings = clip.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>();
-            var protectedBindings = bindings.Select(binding => {
+            // An FX clip's zeros either become part of the endpoint below or
+            // change nothing; they never stay as binds that reserve a channel.
+            var kept = clipZeros ? bindings.Where(binding => binding.Weight != 0).ToArray() : bindings;
+            var protectedBindings = kept.Select(binding => {
                 var state = StateAt(binding.RelativePath);
                 return binding.Index >= 0 && binding.Index != int.MaxValue &&
                     (state == null || binding.Index >= state.OriginalMesh.blendShapeCount)
                     ? new MorphTargetBinding(binding.RelativePath, int.MaxValue, binding.Weight) : binding;
             }).ToArray();
-            if (protectedBindings.Where((binding, index) => binding.Index != bindings[index].Index).Any())
+            if (kept.Length != bindings.Length || protectedBindings.Where((binding, index) => binding.Index != kept[index].Index).Any())
                 inertBindings.Add(clip, protectedBindings);
             // Malformed declarations deliberately reserve authored coverage in
             // the existing export contract. Rewriting their positive portion
@@ -118,6 +123,8 @@ namespace VRVlog.LilToonExporter
                 // exclusion policy, preserving their scope and fallback rules.
                 if (state == null || binding.Index < 0 || binding.Index >= state.OriginalMesh.blendShapeCount)
                 {
+                    // A zero from an FX clip only resets a shape; without one it changes nothing.
+                    if (clipZeros && binding.Weight == 0) continue;
                     return;
                 }
                 // UniVRM keeps the first bind for each renderer/index. A first
@@ -125,13 +132,25 @@ namespace VRVlog.LilToonExporter
                 if (!first.Add((state, binding.Index))) continue;
                 if (binding.Weight == 0)
                 {
+                    // An FX clip's zero resets a default face shape, so it
+                    // becomes part of the endpoint; at a zero default it changes
+                    // nothing and is left out, as before.
+                    if (clipZeros)
+                    {
+                        if (state.Weights[binding.Index] != 0)
+                            SetEndpoint(endpoints, declared, state, binding.Index, 0f, "Clip", clip.name);
+                        continue;
+                    }
                     result.Retained.Add(binding);
                     continue;
                 }
                 SetEndpoint(endpoints, declared, state, binding.Index, binding.Weight * 100f, "Clip", clip.name);
             }
             result.Endpoints.AddRange(endpoints.Values);
-            if (result.Endpoints.Count > 0) clips.Add(result);
+            if (result.Endpoints.Count == 0) return;
+            clips.Add(result);
+            // The endpoint copy already leaves the zeros out.
+            inertBindings.Remove(clip);
         }
 
         // A path several meshes share names none of them: the binding is left

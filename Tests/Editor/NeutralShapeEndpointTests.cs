@@ -252,6 +252,97 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(fixture.Skin.sharedMesh.vertices[0] + delta[0], Is.EqualTo(new Vector3(0, 1, 0)));
         }
 
+        // A face from an FX clip keys A=0 and B=100 over a default face of A35
+        // and C50. The zero resets A as the clip does in VRChat; C, which the
+        // clip does not key, keeps the default face. A VRM authored zero keeps
+        // its disabled channel.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ClipZeroResetsTheDefaultFaceAndUnkeyedShapesKeepIt(bool fromClip)
+        {
+            var root = new GameObject("Avatar");
+            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
+            mesh.AddBlendShapeFrame("A", 100, new[] { Vector3.right, Vector3.zero, Vector3.zero }, null, null);
+            mesh.AddBlendShapeFrame("B", 100, new[] { Vector3.up, Vector3.zero, Vector3.zero }, null, null);
+            mesh.AddBlendShapeFrame("C", 100, new[] { Vector3.forward, Vector3.zero, Vector3.zero }, null, null);
+            var vrm = ScriptableObject.CreateInstance<VRM10Object>();
+            var source = ScriptableObject.CreateInstance<VRM10Expression>();
+            var owned = new List<Mesh>();
+            try
+            {
+                var face = new GameObject("Face"); face.transform.SetParent(root.transform, false);
+                var skin = face.AddComponent<SkinnedMeshRenderer>(); skin.sharedMesh = mesh;
+                skin.SetBlendShapeWeight(0, 35); skin.SetBlendShapeWeight(2, 50);
+                source.name = "happy";
+                source.MorphTargetBindings = new[] { new MorphTargetBinding("Face", 0, 0), new MorphTargetBinding("Face", 1, 1) };
+                vrm.Expression.Happy = source;
+                root.AddComponent<Vrm10Instance>().Vrm = vrm;
+                using (var session = AuthoredExpressionEndpoints.Capture(root, NeutralShapeSnapshot.Capture(root),
+                    fxClips: fromClip ? new[] { source } : null))
+                {
+                    AvatarBaseShape.Preserve(root, root, owned, null);
+                    session.Bake(owned);
+                    var clip = root.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+                    var result = skin.sharedMesh.vertices[0];
+                    foreach (var binding in clip.MorphTargetBindings.Where(binding => binding.Weight != 0))
+                    {
+                        var delta = new Vector3[3];
+                        skin.sharedMesh.GetBlendShapeFrameVertices(binding.Index, 0, delta, null, null);
+                        result += delta[0] * binding.Weight;
+                    }
+                    Assert.That(Vector3.Distance(skin.sharedMesh.vertices[0], new Vector3(.35f, 0, .5f)), Is.LessThan(.0001f),
+                        "The default face is in the base mesh.");
+                    Assert.That(result.x, Is.EqualTo(fromClip ? 0 : .35f).Within(.0001f));
+                    Assert.That(result.y, Is.EqualTo(1).Within(.0001f));
+                    Assert.That(result.z, Is.EqualTo(.5f).Within(.0001f));
+                    // From a clip the zero is in the endpoint; authored, it stays a zero bind.
+                    Assert.That(clip.MorphTargetBindings.Length, Is.EqualTo(fromClip ? 1 : 2));
+                    Assert.That(source.MorphTargetBindings.Length, Is.EqualTo(2));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                foreach (var value in owned) if (value != null) Object.DestroyImmediate(value);
+                Object.DestroyImmediate(source); Object.DestroyImmediate(vrm); Object.DestroyImmediate(mesh);
+            }
+        }
+
+        // A zero at a zero default face changes nothing, so it adds nothing.
+        [Test]
+        public void ClipZeroAtAZeroDefaultFaceAddsNoBind()
+        {
+            using var fixture = new Fixture(rest: 0);
+            fixture.Clip.MorphTargetBindings = new[] { new MorphTargetBinding("Face", 0, 0), new MorphTargetBinding("Face", 1, .5f) };
+            using var session = AuthoredExpressionEndpoints.Capture(fixture.Copy, NeutralShapeSnapshot.Capture(fixture.Copy),
+                fxClips: new[] { fixture.Clip });
+            fixture.Preserve(); session.Bake(fixture.Owned);
+            var clip = fixture.Copy.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+            Assert.That(clip.MorphTargetBindings.Single().Weight, Is.EqualTo(1));
+            Assert.That(fixture.Endpoint(clip).y, Is.EqualTo(2).Within(.0001f));
+        }
+
+        // Zeros at a zero default face, on a missing mesh or past the last
+        // shape change nothing. They are left out whether or not the clip
+        // also resets a default face shape, so no zero bind reserves a channel.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ClipZerosThatChangeNothingAreLeftOut(bool resetsADefaultShape)
+        {
+            using var fixture = new Fixture(rest: 0);
+            var bindings = new List<MorphTargetBinding> {
+                new MorphTargetBinding("Face", 0, 0), new MorphTargetBinding("Missing", 0, 0), new MorphTargetBinding("Face", 99, 0) };
+            if (resetsADefaultShape) bindings.Add(new MorphTargetBinding("Face", 1, 0));
+            fixture.Clip.MorphTargetBindings = bindings.ToArray();
+            using var session = AuthoredExpressionEndpoints.Capture(fixture.Copy, NeutralShapeSnapshot.Capture(fixture.Copy),
+                fxClips: new[] { fixture.Clip });
+            fixture.Preserve(); session.Bake(fixture.Owned);
+            var clip = fixture.Copy.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
+            Assert.That(clip.MorphTargetBindings.Length, Is.EqualTo(resetsADefaultShape ? 1 : 0));
+            Assert.That(fixture.Endpoint(clip).y, Is.EqualTo(resetsADefaultShape ? 0 : 1).Within(.0001f));
+            Assert.That(fixture.Clip.MorphTargetBindings.Length, Is.EqualTo(bindings.Count));
+        }
+
         [TestCase(-25f, -1f)]
         [TestCase(0f, 0f)]
         [TestCase(150f, 10f)]
