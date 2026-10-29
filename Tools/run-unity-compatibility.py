@@ -635,6 +635,7 @@ BEHAVIOR_CASES = {
     'NdmfPreparationTests': {
         'ExportPreparationRunsBetweenCanonicalPhasesOnTheSameUnfinishedContext': 1,
         'PreparationFailureSkipsOptimizationAndStillFinishesAndCleansUp': 1,
+        'PreviewWithCallbackStopsBeforeOptimizingAndStillFinishes': 1,
         'OptimizationFailureStillFinishesAndCleansUp': 1,
         'UnresolvedFollowingTargetCanReachCanonicalResolutionOnTheOwnedCopy': 1,
         'TargetStillMissingAfterResolutionWarnsAndExportsTheObjectWhereMaLeavesIt': 2,

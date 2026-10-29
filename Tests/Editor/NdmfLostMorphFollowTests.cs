@@ -394,6 +394,78 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
         }
 
+        // An Optimizing pass renames the face shapes, as optimizers do when they
+        // merge shapes animated together. The board reads the avatar's own
+        // clips on its copy as the export reads them, after Transforming, so
+        // the face stays a face; the export follows Optimizing on its own.
+        [Test]
+        public void BoardReadsTheAvatarClipsBeforeOptimizingPassesRenameTheirShapes()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginOptimize, installed.Descriptor, installed.Proxy);
+            var source = scene.Fixture.Source;
+            var smile = new AnimationClip { name = "Smile clip" };
+            smile.SetCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Face smile", AnimationCurve.Constant(0, 0, 100));
+            AssetDatabase.CreateAsset(smile, scene.Folder + "/Smile.anim");
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(scene.Folder + "/Base.controller");
+            controller.layers[0].stateMachine.AddState("Smile").motion = smile;
+
+            // The export's own preparation runs the pass: the test would
+            // otherwise prove nothing.
+            var exportCopy = NdmfExportPreparation.InstantiateOwnedCopy(source);
+            try
+            {
+                using (NdmfExportPreparation.Prepare(source, exportCopy, afterTransforming: _ => { }))
+                    Assert.That(exportCopy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMesh.GetBlendShapeIndex("Face smile" + OptimizedSuffix),
+                        Is.GreaterThanOrEqualTo(0), "The test Optimizing pass must rename the shapes of an export.");
+            }
+            finally { Object.DestroyImmediate(exportCopy); }
+
+            using var session = new ExperimentalExpressionCaptureSession(source, false);
+            Assert.That(session.ClipError(smile, 0), Is.Null);
+            var front = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var shape = front.sharedMesh.GetBlendShapeIndex("Face smile");
+            Assert.That(shape, Is.GreaterThanOrEqualTo(0), "The board's copy stops before Optimizing.");
+            session.PreviewClip(smile, smile.length);
+            Assert.That(front.GetBlendShapeWeight(shape), Is.EqualTo(100), "The board shows the face the clip makes.");
+        }
+
+        // An optimizer pass that fails in Optimizing used to stop the board,
+        // and with it the quick transfer, before any file was written. The
+        // board stops before Optimizing; the lenient export leaves the build
+        // passes out and still writes the VRM.
+        [Test]
+        public async Task AFailingOptimizingPassStopsNeitherTheBoardNorTheLenientExport()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene(LostMorphTestPluginOptimizeFail, installed.Descriptor, installed.Proxy);
+            // NDMF logs the failing pass to the Console.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
+            var failure = Assert.Throws(Is.InstanceOf<Exception>(), () => scene.Export(new List<string>(), new ExportRecoveryReport()));
+            Assert.That(failure.ToString(), Does.Contain("The failing optimizer test pass failed."),
+                "The failing test pass must be what stops a strict export.");
+            using (var session = new ExperimentalExpressionCaptureSession(scene.Fixture.Source, false))
+                Assert.That(session.Copy, Is.Not.Null);
+            Vrm10Instance imported = null;
+            try
+            {
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                Assert.That(report.Fallbacks.Results.Select(result => result.Stage), Does.Contain((ExportStage?)ExportStage.BuildProcess), string.Join("\n", warnings));
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
+        const string LostMorphTestPluginOptimize = "optimize";
+        const string LostMorphTestPluginOptimizeFail = "optimizefail";
+        const string OptimizedSuffix = " (optimized)";
+
         static string PathOf(Vrm10Instance imported, string name) => AnimationUtility.CalculateTransformPath(
             imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == name).transform, imported.transform);
     }
