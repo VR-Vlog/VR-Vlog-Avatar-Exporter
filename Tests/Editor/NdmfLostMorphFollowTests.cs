@@ -423,8 +423,11 @@ namespace VRVlog.LilToonExporter.Tests
 
             using var session = new ExperimentalExpressionCaptureSession(source, false);
             Assert.That(session.ClipError(smile, 0), Is.Null);
-            var face = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMesh;
-            Assert.That(face.GetBlendShapeIndex("Face smile"), Is.GreaterThanOrEqualTo(0), "The board's copy stops before Optimizing.");
+            var front = session.Copy.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+            var shape = front.sharedMesh.GetBlendShapeIndex("Face smile");
+            Assert.That(shape, Is.GreaterThanOrEqualTo(0), "The board's copy stops before Optimizing.");
+            session.PreviewClip(smile, smile.length);
+            Assert.That(front.GetBlendShapeWeight(shape), Is.EqualTo(100), "The board shows the face the clip makes.");
         }
 
         const string LostMorphTestPluginOptimize = "optimize";

@@ -507,9 +507,10 @@ namespace VRVlog.LilToonExporter
                             lease.CaptureRendererReplacements(clone, context);
                             lease.RequireMorphs(requiredMorphs, clone, tolerateLostMorphs, warnings);
                             // Phase-end cleanup commits MA's virtual controller.
-                            // Only export callers with this preparation callback
-                            // can declare/remap morph dependencies for Optimizing.
-                            // Preview callers, with or without the callback, stop
+                            // The callback reads the avatar after Transforming.
+                            // Only export callers continue into Optimizing, where
+                            // the callback has declared/remapped morph dependencies.
+                            // Previews (no callback, or stopBeforeOptimizing) stop
                             // here and retain their captured renderer IDs.
                             if (afterTransforming != null) afterTransforming(lease);
                             if (afterTransforming != null && !stopBeforeOptimizing)
