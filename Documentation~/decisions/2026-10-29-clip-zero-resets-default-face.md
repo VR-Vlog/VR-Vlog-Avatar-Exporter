@@ -16,10 +16,11 @@
 ## 決定
 
 - 表情ボードがプリセットに入れた顔は、アニメーションが明示的に 0 にしたシェイプキーも bind に書く（`AuthorPresets`）。
-- 書き出しは、表情ボードが作ったプリセットの枠（`authorCopyExpressions` の後に新しく入った表情。custom は除く）を `clipZeroPresets` として持つ。この枠の表情の重み 0 は「基準形の値を 0 に戻す」として扱う。
+- 書き出しは、表情ボードが作った表情（`authorCopyExpressions` の前に無く、後に入った `VRM10Expression` のオブジェクト）を `fxClips` として持つ。プリセットの枠ではなくオブジェクトで見分けるので、作者の枠や custom と同じ表情を共有していても意味が変わらない。NDMF の処理や付け直しで表情がコピーされたときは、`PreparedExpressionBindings.FxClips` がコピー後のオブジェクトを持つ。この表情の重み 0 は「基準形の値を 0 に戻す」として扱う。
   - 基準形が 0 以外のシェイプキー: 表情の終点（`__VRVlog_Endpoint_<hash>`）に 0 として入れる。終点の差分は `0 − 基準形` になる。
   - 基準形が 0 のシェイプキー・メッシュが無いもの・範囲外のもの: 何も変えないので書かない。終点を作れなかった表情からも 0 の bind は外す。VRM の重み 0 の bind としては残さないので、使わないチャンネルとして予約されることも、最適化で消さないシェイプキーとして扱われることもない。
-  - NDMF の処理後に付け直すとき（`RebindAuthoredExpressions`）は、ほかの bind と同じく追従する。シェイプキーが処理で消えたときは、0 に戻す対象が無いので黙って外す（厳密モードでも例外にしない）。
+  - NDMF の処理後に付け直すとき（`RebindAuthoredExpressions`）は、ほかの bind と同じく追従する。Renderer やシェイプキーを追えないとき（Renderer が消えた・パスが一意に決まらない・シェイプキーが無い）も、ほかの bind と同じく厳密モードは例外で止め、寛容モードは外して警告を出す。追えないことはシェイプキーが無くなった証拠にならず、黙って外すと基準形の値が表情に重なる元の不具合に戻るため。名前で別の Renderer へ追従したときも、ほかの bind と同じく警告を出す。
+  - 寛容モードで表情の bind が消えたとき、残った 0 も「基準形を 0 に戻す」効果のある bind として数える。0 だけが残った表情は「すべて見つからなくなった」（`ClipEmptied`）とは報告しない。
 - アニメーションが触れていないシェイプキーは、これまでどおり基準形の値を残す。
 - VRM で作者が書いた表情の重み 0 は、これまでどおり「使わないチャンネル」として扱う。
 
@@ -27,7 +28,8 @@
 
 - `NeutralShapeEndpointTests.ClipZeroResetsTheDefaultFaceAndUnkeyedShapesKeepIt`: 基準形 A=35・C=50 で、表情が A=0・B=100 の顔。表情ボードの顔では A が 0 に戻り（A の差分が `−0.35×dA`）、B は 100、触れていない C は 50 のまま。VRM で作者が書いた同じ表情では、これまでどおり A は 35 のまま。
 - `NeutralShapeEndpointTests.ClipZeroAtAZeroDefaultFaceAddsNoBind`・`ClipZerosThatChangeNothingAreLeftOut`: 何も変えない 0 は bind に残らない。
-- `PreparedRendererProvenanceTests.ClipZeroOnARemovedShapeIsLeftOut`: 処理で消えたシェイプキーへの 0 は、厳密モードでも例外にせず外す。
+- `PreparedRendererProvenanceTests.ClipZeroThatCannotBeFollowedStopsOrWarns`: 基準形 35 のシェイプキーへの 0 が、シェイプキーが消えた・Renderer が消えた・パスが一意に決まらない、のどれでも、厳密モードは例外、寛容モードは警告付きで外れる。
+- `PreparedRendererProvenanceTests.AClipZeroLeftAloneKeepsTheClip`: もう一方の bind を失っても 0 が残る表情は `ClipEmptied` にならない（VRM で作者が書いた 0 だけが残るときは `ClipEmptied`）。付け直しでコピーされた表情が `FxClips` に入る。
 - `ExperimentalExpressionCaptureTests.APresetKeepsTheZerosItsClipKeys`: プリセットの bind に 0 が入る。
 
 ## 欠点

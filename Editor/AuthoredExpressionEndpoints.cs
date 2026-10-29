@@ -50,10 +50,10 @@ namespace VRVlog.LilToonExporter
             usedNames = DeterministicNames.BlendShapeNames(avatar);
         }
 
-        // clipZeroPresets: slots whose clips come from FX clips. A zero they bind
-        // resets that shape of the default face, as the FX clip does in VRChat.
+        // fxClips: the clips made from FX clips. A zero they bind resets that
+        // shape of the default face, as the FX clip does in VRChat.
         internal static AuthoredExpressionEndpoints Capture(GameObject prepared, NeutralShapeSnapshot neutral,
-            VrmTrackingProfile profile = null, ICollection<string> warnings = null, ICollection<ExpressionPreset> clipZeroPresets = null)
+            VrmTrackingProfile profile = null, ICollection<string> warnings = null, ICollection<VRM10Expression> fxClips = null)
         {
             if (neutral == null || neutral.Root != prepared)
                 throw new ArgumentException("The neutral snapshot must belong to the prepared avatar.");
@@ -66,8 +66,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var clip in expression.Clips.Where(item => item.Preset != ExpressionPreset.blink &&
                     item.Preset != ExpressionPreset.blinkLeft && item.Preset != ExpressionPreset.blinkRight)
                     .Select(item => item.Clip).Distinct())
-                    session.CaptureClip(clip, clipZeroPresets != null &&
-                        expression.Clips.Any(item => item.Clip == clip && clipZeroPresets.Contains(item.Preset)));
+                    session.CaptureClip(clip, fxClips != null && fxClips.Contains(clip));
             }
             if (profile != null)
             {

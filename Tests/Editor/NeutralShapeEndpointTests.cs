@@ -278,7 +278,7 @@ namespace VRVlog.LilToonExporter.Tests
                 vrm.Expression.Happy = source;
                 root.AddComponent<Vrm10Instance>().Vrm = vrm;
                 using (var session = AuthoredExpressionEndpoints.Capture(root, NeutralShapeSnapshot.Capture(root),
-                    clipZeroPresets: fromClip ? new[] { ExpressionPreset.happy } : null))
+                    fxClips: fromClip ? new[] { source } : null))
                 {
                     AvatarBaseShape.Preserve(root, root, owned, null);
                     session.Bake(owned);
@@ -315,7 +315,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new Fixture(rest: 0);
             fixture.Clip.MorphTargetBindings = new[] { new MorphTargetBinding("Face", 0, 0), new MorphTargetBinding("Face", 1, .5f) };
             using var session = AuthoredExpressionEndpoints.Capture(fixture.Copy, NeutralShapeSnapshot.Capture(fixture.Copy),
-                clipZeroPresets: new[] { ExpressionPreset.happy });
+                fxClips: new[] { fixture.Clip });
             fixture.Preserve(); session.Bake(fixture.Owned);
             var clip = fixture.Copy.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
             Assert.That(clip.MorphTargetBindings.Single().Weight, Is.EqualTo(1));
@@ -335,7 +335,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (resetsADefaultShape) bindings.Add(new MorphTargetBinding("Face", 1, 0));
             fixture.Clip.MorphTargetBindings = bindings.ToArray();
             using var session = AuthoredExpressionEndpoints.Capture(fixture.Copy, NeutralShapeSnapshot.Capture(fixture.Copy),
-                clipZeroPresets: new[] { ExpressionPreset.happy });
+                fxClips: new[] { fixture.Clip });
             fixture.Preserve(); session.Bake(fixture.Owned);
             var clip = fixture.Copy.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
             Assert.That(clip.MorphTargetBindings.Length, Is.EqualTo(resetsADefaultShape ? 1 : 0));

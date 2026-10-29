@@ -28,14 +28,19 @@ namespace VRVlog.LilToonExporter
         private readonly HashSet<string> excludedAuthoringPaths = new HashSet<string>(StringComparer.Ordinal);
         private readonly List<Object> ownedAssets = new List<Object>();
         private readonly List<AuthoredClip> authoredClips = new List<AuthoredClip>();
+        private readonly HashSet<VRM10Expression> fxClips = new HashSet<VRM10Expression>();
+
+        // The clips made from FX clips, as the copy's VRM settings hold them
+        // after RebindAuthoredExpressions (a build pass or a rebind copies them).
+        internal ICollection<VRM10Expression> FxClips => fxClips;
 
         private sealed class AuthoredClip
         {
             internal VRM10Expression Clip;
             internal AuthoredMorph[] Morphs;
-            // A zero this clip keys resets a default face shape, so it is
-            // followed like any other bind instead of left inert.
-            internal bool ClipZeros;
+            // Made from an FX clip: a zero it keys resets a default face shape,
+            // so it is followed like any other bind instead of left inert.
+            internal bool FromFx;
         }
 
         private sealed class AuthoredMorph
@@ -148,9 +153,12 @@ namespace VRVlog.LilToonExporter
 
         // Capture after pruning/recovery and before NDMF. These are the actual
         // authoring indices; an added/reordered shape must not change their meaning.
-        internal void CaptureAuthoredExpressions(ICollection<ExpressionPreset> clipZeroPresets = null)
+        // fxClips: the clips made from FX clips, by object, so a clip an author
+        // slot or custom also uses keeps its meaning.
+        internal void CaptureAuthoredExpressions(ICollection<VRM10Expression> fxClips = null)
         {
             authoredClips.Clear();
+            this.fxClips.Clear();
             var vrm = root.TryGetComponent<Vrm10Instance>(out var instance) ? instance.Vrm : null;
             if (vrm?.Expression == null) return;
             foreach (var clip in vrm.Expression.Clips.Select(value => value.Clip).Where(value => value != null).Distinct())
@@ -170,8 +178,9 @@ namespace VRVlog.LilToonExporter
                             ? mesh.GetBlendShapeName(value.Index) : null
                     };
                 }).ToArray();
-                authoredClips.Add(new AuthoredClip { Clip = clip, Morphs = morphs,
-                    ClipZeros = clipZeroPresets != null && vrm.Expression.Clips.Any(entry => entry.Clip == clip && clipZeroPresets.Contains(entry.Preset)) });
+                var fromFx = fxClips != null && fxClips.Contains(clip);
+                if (fromFx) this.fxClips.Add(clip);
+                authoredClips.Add(new AuthoredClip { Clip = clip, Morphs = morphs, FromFx = fromFx });
             }
         }
 
@@ -187,10 +196,12 @@ namespace VRVlog.LilToonExporter
             if (vrm?.Expression == null) return;
             var currentClips = new HashSet<VRM10Expression>(vrm.Expression.Clips.Select(value => value.Clip));
             var replacements = new Dictionary<VRM10Expression, VRM10Expression>();
+            fxClips.Clear();
             foreach (var captured in authoredClips)
             {
                 var current = isolatedCopy(captured.Clip) as VRM10Expression;
                 if (current == null || !currentClips.Contains(current)) continue;
+                if (captured.FromFx) fxClips.Add(current);
                 var values = current.MorphTargetBindings ?? Array.Empty<MorphTargetBinding>();
                 // A plugin that replaced the binding array owns the new routes.
                 // Only unchanged, identity-correlated authoring binds are ours.
@@ -204,7 +215,7 @@ namespace VRVlog.LilToonExporter
                     var old = captured.Morphs[i]; var value = values[i];
                     if (value.RelativePath != old.Value.RelativePath || value.Index != old.Value.Index ||
                         !value.Weight.Equals(old.Value.Weight)) continue;
-                    var clipZero = captured.ClipZeros && value.Weight == 0;
+                    var clipZero = captured.FromFx && value.Weight == 0;
                     var inert = !clipZero && (value.Weight == 0 || !NeutralShapeSnapshot.Finite(value.Weight) || value.Weight < 0 || value.Weight > 1);
                     LostAuthoredMorph Lost(bool followed) => new LostAuthoredMorph {
                         Clip = current.name, Path = old.Value.RelativePath, Shape = old.Shape, Followed = followed };
@@ -236,8 +247,6 @@ namespace VRVlog.LilToonExporter
                         // Preserve disabled/invalid author binds without turning
                         // them into a new usable endpoint or inventing a channel.
                         if (inert) continue;
-                        // Resetting a shape the build removed changes nothing.
-                        if (clipZero) { dropped[i] = true; changed = true; continue; }
                         if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation + " (" +
                             old.Value.RelativePath + " / " + old.Shape + ")");
@@ -249,18 +258,18 @@ namespace VRVlog.LilToonExporter
                     if (!unique)
                     {
                         if (inert) continue;
-                        if (clipZero) { dropped[i] = true; changed = true; continue; }
                         if (lost != null) { dropped[i] = true; changed = true; lostHere.Add(Lost(false)); continue; }
                         throw new InvalidOperationException("処理後の表情のRendererパスを一意に確定できません: " + path);
                     }
-                    if (followed && !clipZero) lostHere.Add(Lost(true));
+                    if (followed) lostHere.Add(Lost(true));
                     if (path == value.RelativePath && index == value.Index) continue;
                     result[i] = new MorphTargetBinding(path, index, value.Weight); changed = true;
                 }
                 var kept = result.Where((_, i) => !dropped[i]).ToArray();
                 if (lostHere.Count > 0)
                 {
-                    var emptied = !kept.Any(value => value.Weight > 0 && value.Weight <= 1 && NeutralShapeSnapshot.Finite(value.Weight) &&
+                    // A clip zero still resets a default face shape.
+                    var emptied = !kept.Any(value => (value.Weight > 0 || captured.FromFx && value.Weight == 0) && value.Weight <= 1 && NeutralShapeSnapshot.Finite(value.Weight) &&
                             value.Index >= 0 && value.Index != int.MaxValue) &&
                         (current.MaterialColorBindings?.Length ?? 0) == 0 && (current.MaterialUVBindings?.Length ?? 0) == 0;
                     foreach (var item in lostHere) item.ClipEmptied = emptied;
@@ -271,6 +280,7 @@ namespace VRVlog.LilToonExporter
                 var copy = Object.Instantiate(current); ownedAssets.Add(copy); copy.name = current.name;
                 copy.MorphTargetBindings = result;
                 replacements.Add(current, copy);
+                if (fxClips.Remove(current)) fxClips.Add(copy);
             }
             if (replacements.Count == 0) return;
             var settings = Object.Instantiate(vrm); ownedAssets.Add(settings); settings.name = vrm.name;

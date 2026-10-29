@@ -361,7 +361,7 @@ namespace VRVlog.LilToonExporter
             {
                 var expression = CreatePresetExpression(face.Preset); assets.Add(expression);
                 // A zero the clip keys is kept: it resets a default face shape,
-                // as in VRChat (clipZeroPresets in UniVrmOneClickExporter). Unlisted
+                // as in VRChat (fxClips in UniVrmOneClickExporter). Unlisted
                 // channels keep the default face.
                 var bindings = new List<MorphTargetBinding>();
                 foreach (var morph in face.Morphs)

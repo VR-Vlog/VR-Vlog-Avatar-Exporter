@@ -283,26 +283,67 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(originalMesh.GetBlendShapeName(1), Is.EqualTo("Custom jaw"));
         }
 
-        // A zero from an FX clip resets a default face shape. When the build
-        // removed that shape there is nothing to reset: the bind is left out
-        // without stopping the export. A VRM authored zero stays inert.
-        [TestCase(true)]
-        [TestCase(false)]
-        public void ClipZeroOnARemovedShapeIsLeftOut(bool fromClip)
+        // A zero from an FX clip resets a default face shape (Reset at 35 here).
+        // When a build pass leaves its shape or renderer untraceable, the reset
+        // is not dropped silently: a strict export stops and a lenient one
+        // leaves it out with a warning, as for any other bind.
+        [TestCase("removed shape", false)]
+        [TestCase("removed shape", true)]
+        [TestCase("destroyed renderer", false)]
+        [TestCase("destroyed renderer", true)]
+        [TestCase("ambiguous path", false)]
+        [TestCase("ambiguous path", true)]
+        public void ClipZeroThatCannotBeFollowedStopsOrWarns(string loss, bool lenient)
         {
-            Skin(source, "Face", Mesh("Kept", "Removed"));
-            var author = Author(new MorphTargetBinding("Face", 0, .5f), new MorphTargetBinding("Face", 1, 0));
+            Skin(source, "Face", Mesh("Kept", "Reset")).SetBlendShapeWeight(1, 35);
+            var author = Author(new MorphTargetBinding("Face", 1, 0));
             author.Vrm.Expression.CustomClips.Clear(); author.Vrm.Expression.Happy = author.Clip;
             prepared = Object.Instantiate(source);
             using var bindings = new PreparedExpressionBindings(prepared, new VrChatExpressionMenu.Source());
-            bindings.CaptureAuthoredExpressions(fromClip ? new[] { ExpressionPreset.happy } : null);
-            prepared.GetComponentInChildren<SkinnedMeshRenderer>().sharedMesh = Mesh("Generated", "Kept");
+            bindings.CaptureAuthoredExpressions(new[] { author.Clip });
+            var face = prepared.GetComponentInChildren<SkinnedMeshRenderer>();
+            if (loss == "removed shape") face.sharedMesh = Mesh("Generated", "Kept");
+            else if (loss == "destroyed renderer") Object.DestroyImmediate(face.gameObject);
+            else Skin(prepared, "Face", face.sharedMesh);
             bindings.RebindPrepared(value => value);
-            Assert.DoesNotThrow(() => bindings.RebindAuthoredExpressions(value => value));
+            if (!lenient)
+            {
+                Assert.Throws<InvalidOperationException>(() => bindings.RebindAuthoredExpressions(value => value));
+                return;
+            }
+            var lost = new List<PreparedExpressionBindings.LostAuthoredMorph>();
+            bindings.RebindAuthoredExpressions(value => value, (_, __) => null, lost);
+            Assert.That(lost.Select(item => (item.Clip, item.Shape, item.Followed)), Is.EqualTo(new[] { ("UE/JawOpen", "Reset", false) }));
+            Assert.That(prepared.GetComponent<Vrm10Instance>().Vrm.Expression.Happy.MorphTargetBindings, Is.Empty);
+            Assert.That(author.Clip.MorphTargetBindings.Length, Is.EqualTo(1));
+        }
+
+        // A clip zero that remains still resets a default face shape, so losing
+        // the clip's other bind does not report the whole clip as left out. A
+        // VRM authored zero changes nothing, so there the clip is emptied.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AClipZeroLeftAloneKeepsTheClip(bool fromFx)
+        {
+            Skin(source, "Face", Mesh("Reset")).SetBlendShapeWeight(0, 35);
+            Skin(source, "Other", Mesh("Smile"));
+            var author = Author(new MorphTargetBinding("Face", 0, 0), new MorphTargetBinding("Other", 0, .5f));
+            author.Clip.MaterialColorBindings = new MaterialColorBinding[0]; author.Clip.MaterialUVBindings = new MaterialUVBinding[0];
+            author.Vrm.Expression.CustomClips.Clear(); author.Vrm.Expression.Happy = author.Clip;
+            prepared = Object.Instantiate(source);
+            using var bindings = new PreparedExpressionBindings(prepared, new VrChatExpressionMenu.Source());
+            bindings.CaptureAuthoredExpressions(fromFx ? new[] { author.Clip } : null);
+            Object.DestroyImmediate(prepared.transform.Find("Other").gameObject);
+            bindings.RebindPrepared(value => value);
+            var lost = new List<PreparedExpressionBindings.LostAuthoredMorph>();
+            bindings.RebindAuthoredExpressions(value => value, (_, __) => null, lost);
+            Assert.That(lost.Single().ClipEmptied, Is.EqualTo(!fromFx));
             var clip = prepared.GetComponent<Vrm10Instance>().Vrm.Expression.Happy;
-            Assert.That(clip.MorphTargetBindings.Select(value => (value.Index, value.Weight)),
-                Is.EqualTo(fromClip ? new[] { (1, .5f) } : new[] { (1, .5f), (1, 0f) }));
-            Assert.That(author.Clip.MorphTargetBindings.Length, Is.EqualTo(2));
+            Assert.That(clip.MorphTargetBindings.Select(value => (value.RelativePath, value.Index, value.Weight)),
+                Is.EqualTo(new[] { ("Face", 0, 0f) }));
+            // The rebind copied the clip; the copy is the one still from an FX clip.
+            Assert.That(clip, Is.Not.SameAs(author.Clip));
+            Assert.That(bindings.FxClips, Is.EqualTo(fromFx ? new[] { clip } : new VRM10Expression[0]));
         }
 
         [TestCase(0f)]
