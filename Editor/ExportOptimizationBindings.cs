@@ -48,6 +48,11 @@ namespace VRVlog.LilToonExporter
         readonly UnifiedExpressionPreparation materialEvidencePreparation;
         readonly List<ProfileExpression> profile = new List<ProfileExpression>();
         readonly HashSet<OptimizationMorphRoute> menu = new HashSet<OptimizationMorphRoute>();
+        // Shapes the app moves by name (UnusedMorphTargets.AppDrives). The
+        // optional ones were declared only for their name: losing one does
+        // not fail the export.
+        readonly HashSet<OptimizationMorphRoute> appNamed = new HashSet<OptimizationMorphRoute>();
+        readonly HashSet<OptimizationMorphRoute> optional = new HashSet<OptimizationMorphRoute>();
         readonly List<Object> owned = new List<Object>();
         readonly Dictionary<SkinnedMeshRenderer, int> nodes = new Dictionary<SkinnedMeshRenderer, int>();
         readonly bool supportsUnified;
@@ -124,6 +129,20 @@ namespace VRVlog.LilToonExporter
                 // keeps them mutable for AAO and follows renames and merges.
                 if (menuMorphs != null)
                     foreach (var (renderer, shape) in menuMorphs) menu.Add(AddMorph(renderer, shape, requireUsableEndpoint: true));
+                // A route keeps the shapes the app moves by name mutable too, so
+                // a merge that renames them ("0_Body__Blink") is followed and
+                // RestoreAppDrivenNames writes the source name back.
+                foreach (var skin in ExportRendererSelection.Enumerate(clone).OfType<SkinnedMeshRenderer>())
+                    if (skin.sharedMesh != null)
+                        for (var index = 0; index < skin.sharedMesh.blendShapeCount; index++)
+                        {
+                            var name = skin.sharedMesh.GetBlendShapeName(index);
+                            if (Generated(name) || !UnusedMorphTargets.AppDrives(name)) continue;
+                            var declared = morphs.ContainsKey((skin.GetInstanceID(), name));
+                            var route = AddMorph(skin, name, requireUsableEndpoint: false);
+                            if (!declared) { route.NoOp = false; optional.Add(route); }
+                            appNamed.Add(route);
+                        }
                 marker.Morphs = morphs.Values.ToArray();
                 marker.Materials = materials.Values.ToArray();
                 if (neutral != null) ProtectRebasedNeutral(neutral, preservePreparedNeutral);
@@ -334,6 +353,7 @@ namespace VRVlog.LilToonExporter
             ValidateAuthoredMorphWeights(conflicts);
             foreach (var route in morphs.Values)
             {
+                if (optional.Contains(route)) continue;
                 if (route.NoOp && (route.Removed || route.Renderer == null || route.Renderer.sharedMesh == null || route.Renderer.sharedMesh.GetBlendShapeIndex(route.Shape) < 0))
                     RecreateNoOp(route);
                 var skin = route.Renderer;
@@ -522,7 +542,8 @@ namespace VRVlog.LilToonExporter
             // A missing node fails in the tracking or menu output stage instead,
             // which the lenient export leaves out; here no stage guards it.
             foreach (var skin in unified.Select(item => item.Route.Renderer).Concat(profile.SelectMany(expression => expression.Morphs).Select(item => item.Route.Renderer))
-                .Concat(menu.Select(route => route.Renderer)).Distinct())
+                .Concat(menu.Select(route => route.Renderer))
+                .Concat(appNamed.Where(route => !route.Removed && route.Renderer != null).Select(route => route.Renderer)).Distinct())
             {
                 var index = nodeIndex(skin);
                 if (index >= 0) nodes.Add(skin, index);
@@ -594,6 +615,81 @@ namespace VRVlog.LilToonExporter
             if (added > 0) warnings?.Add("Unified Expressions の追跡表情を " + added + " 項目登録しました。端末で検出できる動きだけを反映します。");
             return glb.Write();
         }
+
+        // AAO's MergeSkinnedMesh can prefix the shapes it merges
+        // ("0_Body__Blink"). The app moves the shapes AppDrives names by name,
+        // so each renamed one takes its source name back where that name is
+        // free on its mesh. Every expression is bound by index by now. Returns
+        // the source and output name of each shape that keeps the new name.
+        internal (byte[] Bytes, List<(string Source, string Output)> Kept) RestoreAppDrivenNames(byte[] bytes)
+        {
+            RequireApplied();
+            var kept = new List<(string Source, string Output)>();
+            var renamed = appNamed.Where(route => !route.Removed && route.Renderer != null && route.Shape != route.SourceShape &&
+                nodes.ContainsKey(route.Renderer)).ToArray();
+            if (renamed.Length == 0) return (bytes, kept);
+            var glb = GlbDocument.Read(bytes);
+            var nodeList = JsonArray(glb.Json, "nodes"); var meshList = JsonArray(glb.Json, "meshes");
+            // Output target -> the source names that reach it. A target is
+            // renamed only when one source name reaches it and no other target
+            // of the mesh has or takes that name.
+            var targets = new Dictionary<(int Mesh, int Index), HashSet<string>>();
+            var outputs = new Dictionary<(int Mesh, int Index), string>();
+            var located = new List<(OptimizationMorphRoute Route, (int Mesh, int Index) Target)>();
+            foreach (var route in renamed)
+            {
+                var node = nodes[route.Renderer];
+                if (node < 0 || node >= nodeList.Count || !(nodeList[node] is Dictionary<string, object> outputNode) ||
+                    !outputNode.TryGetValue("mesh", out var rawMesh)) continue;
+                var mesh = Convert.ToInt32(rawMesh);
+                if (mesh < 0 || mesh >= meshList.Count) continue;
+                var names = TargetNames(meshList[mesh] as Dictionary<string, object>);
+                if (names == null) continue;
+                var matches = Enumerable.Range(0, names.Count).Where(index => string.Equals(names[index] as string, route.Shape, StringComparison.Ordinal)).ToArray();
+                if (matches.Length != 1) continue;
+                var key = (mesh, matches[0]);
+                if (!targets.TryGetValue(key, out var sources)) targets.Add(key, sources = new HashSet<string>(StringComparer.Ordinal));
+                sources.Add(route.SourceShape);
+                outputs[key] = route.Shape;
+                located.Add((route, key));
+            }
+            var restored = new Dictionary<(int Mesh, int Index), string>();
+            foreach (var pair in targets)
+            {
+                var source = pair.Value.Count == 1 ? pair.Value.First() : null;
+                var names = TargetNames(meshList[pair.Key.Mesh] as Dictionary<string, object>);
+                var free = source != null && !names.Any(name => string.Equals(name as string, source, StringComparison.Ordinal)) &&
+                           targets.Count(other => other.Key.Mesh == pair.Key.Mesh && other.Value.Contains(source)) == 1;
+                if (free) restored.Add(pair.Key, source);
+                else foreach (var name in pair.Value.OrderBy(name => name, StringComparer.Ordinal)) kept.Add((name, outputs[pair.Key]));
+            }
+            if (restored.Count == 0) return (bytes, kept);
+            foreach (var pair in restored)
+            {
+                var mesh = meshList[pair.Key.Mesh] as Dictionary<string, object>;
+                // UniVRM writes the names on the mesh; older files on each primitive.
+                foreach (var extras in new[] { mesh }.Concat(PrimitivesOf(mesh)).Select(owner => owner.TryGetValue("extras", out var value) ? value as Dictionary<string, object> : null))
+                    if (extras != null && extras.TryGetValue("targetNames", out var raw) && raw is List<object> list && pair.Key.Index < list.Count)
+                        list[pair.Key.Index] = pair.Value;
+            }
+            foreach (var (route, target) in located)
+                if (restored.ContainsKey(target)) route.Shape = route.SourceShape;
+            return (glb.Write(), kept);
+        }
+
+        static List<object> TargetNames(Dictionary<string, object> mesh)
+        {
+            if (mesh == null) return null;
+            if (mesh.TryGetValue("extras", out var extras) && extras is Dictionary<string, object> meshExtras &&
+                meshExtras.TryGetValue("targetNames", out var raw) && raw is List<object> names) return names;
+            var first = PrimitivesOf(mesh).FirstOrDefault();
+            return first != null && first.TryGetValue("extras", out var primitiveExtras) && primitiveExtras is Dictionary<string, object> values &&
+                   values.TryGetValue("targetNames", out var primitiveNames) ? primitiveNames as List<object> : null;
+        }
+
+        static IEnumerable<Dictionary<string, object>> PrimitivesOf(Dictionary<string, object> mesh) =>
+            mesh != null && mesh.TryGetValue("primitives", out var raw) && raw is List<object> primitives
+                ? primitives.OfType<Dictionary<string, object>>() : Enumerable.Empty<Dictionary<string, object>>();
 
         Dictionary<string, object> OutputBinding(Dictionary<string, object> json, OptimizationMorphRoute route, float weight)
         {
