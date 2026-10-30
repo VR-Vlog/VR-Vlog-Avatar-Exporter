@@ -129,6 +129,10 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
+        // Tests throw here to prove that a failure after the build passes,
+        // outside every stage, does not stop a lenient export.
+        internal static Action<GameObject> ConversionFaultInjection;
+
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
@@ -489,6 +493,8 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            // Set once the build passes have changed the copy; see the catch below.
+            ExportStage? builtStage = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -704,6 +710,7 @@ namespace VRVlog.LilToonExporter
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing))));
+                if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
                 // A lenient export retries without Optimizing, then without the
@@ -833,6 +840,7 @@ namespace VRVlog.LilToonExporter
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
+                ConversionFaultInjection?.Invoke(clone);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -944,6 +952,17 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 return AvatarFormatRequirements.Write(exported);
+            }
+            // The steps after the build passes, UniVRM's conversion among them,
+            // have no stage of their own. What the optimizer or another build
+            // tool made can still make one of them fail, so a lenient export is
+            // written again without Optimizing, then without the build passes,
+            // as when a check above fails. A failure without them is thrown.
+            catch (Exception error) when (builtStage is ExportStage failedStage && guard.ContinueOnFailure && !(error is MatcapApproximation.OverLimit) &&
+                                          !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null)
+            {
+                try { recoveryReport.Fail(source, error); } catch { }
+                throw new ExportStageFailure(failedStage, error);
             }
             catch (Exception error) when (!(error is MatcapApproximation.OverLimit))
             {
