@@ -469,6 +469,8 @@ namespace VRVlog.LilToonExporter.Tests
         // UniVRM's conversion and the steps around it have no stage of their
         // own. One that fails after the build passes writes the file again
         // without Optimizing; one that fails without any build pass still stops.
+        // The injected failure does not depend on the copy: this checks which
+        // attempts run.
         [Test]
         public async Task AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer()
         {
