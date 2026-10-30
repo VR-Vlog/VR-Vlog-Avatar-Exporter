@@ -653,6 +653,10 @@ namespace VRVlog.LilToonExporter
                 outputs[key] = route.Shape;
                 located.Add((route, key));
             }
+            // A renamed shape whose output target cannot be found is reported
+            // like one whose name is taken.
+            foreach (var route in renamed)
+                if (!located.Any(entry => entry.Route == route)) kept.Add((route.SourceShape, route.Shape));
             var restored = new Dictionary<(int Mesh, int Index), string>();
             foreach (var pair in targets)
             {

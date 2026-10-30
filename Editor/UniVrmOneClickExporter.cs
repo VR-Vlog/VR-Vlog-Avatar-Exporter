@@ -907,7 +907,8 @@ namespace VRVlog.LilToonExporter
                     {
                         var reason = string.Format(ExporterLocalization.T(AppDrivenNameKeptWarning), shape, output);
                         warnings?.Add(reason);
-                        recoveryReport.Fallbacks.Record(ExportOutcome.Approximated, "表情トラッキング", shape, reason);
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Approximated,
+                            shape.IndexOf("Blink", StringComparison.OrdinalIgnoreCase) >= 0 ? "瞬き" : "表情トラッキング", shape, reason);
                     }
                     return named;
                 }, () => exported);
