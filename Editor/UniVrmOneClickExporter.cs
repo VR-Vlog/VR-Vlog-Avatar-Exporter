@@ -129,6 +129,10 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
+        // Tests throw here to prove that a failure after the build passes,
+        // outside every stage, does not stop a lenient export.
+        internal static Action<GameObject> ConversionFaultInjection;
+
         public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
             string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, MaterialBakeOptions bakeOptions = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
@@ -202,6 +206,7 @@ namespace VRVlog.LilToonExporter
         internal const string LostBlinkFollowedWarning = "ビルド処理で閉眼用の変形が別のRendererへ移ったため、移動先の同じ名前の変形に付け替えました。";
         internal const string LostBlinkWarning ="ビルド処理で閉眼用の変形を追えなくなったため、瞬きなしで書き出しました。";
         internal const string LostTrackingWarning = "ビルド処理で表情トラッキング用の変形を追えなくなったため、元の変形との照合を省略しました。";
+        internal const string AppDrivenNameKeptWarning = "最適化で変形「{0}」の名前が「{1}」に変わり、元の名前に戻せませんでした。アプリが名前で動かす機能ではこの変形が動きません。";
         internal const string OptimizedWeightConflictWarning = "最適化で表情「{0}」の変形「{1}」が別の変形とまとめられ適用量が食い違ったため、先に設定された適用量を使いました。";
 
         // The technical reason behind a lost-shape warning. Other languages show
@@ -489,6 +494,8 @@ namespace VRVlog.LilToonExporter
             ObjectToggleCapture objectToggles = null;
             ObjectToggleData objectToggleData = null;
             VRVlog.Expressions.LipSyncData lipSync = null;
+            // Set once the build passes have changed the copy; see the catch below.
+            ExportStage? builtStage = null;
             try
             {
                 // MA resolves against the selected avatar after detaching its
@@ -704,6 +711,7 @@ namespace VRVlog.LilToonExporter
                         keptMorphs: capturedVisemes?.Morphs(clone), optimizes: optimizes));
                 }, skipProcessing: guard.IsOmitted(ExportStage.BuildProcess), tolerateLostMorphs: guard.ContinueOnFailure,
                     stopBeforeOptimizing: guard.IsOmitted(ExportStage.Optimizing))));
+                if (requiresPreparation && !guard.IsOmitted(ExportStage.BuildProcess)) builtStage = optimizerStage;
                 // AAO can remove the root Animator (generic platform) or
                 // required humanoid bones; UniVRM would then save silently.
                 // A lenient export retries without Optimizing, then without the
@@ -833,6 +841,7 @@ namespace VRVlog.LilToonExporter
                     if (pruned > 0) Debug.Log($"VR Vlog: left {pruned} empty objects out of the VRM.");
                 }
                 VrmExpressionBindings.DescriptorVisemes visemes = null;
+                ConversionFaultInjection?.Invoke(clone);
                 var exported = Vrm10AppearanceExporter.Export(
                     new GltfExportSettings { ExportVertexColor = true },
                     clone,
@@ -891,7 +900,17 @@ namespace VRVlog.LilToonExporter
                     var tracked = trackingProfile != null ? optimizerBindings.ApplyTracking(exported) : optimizerBindings.ApplyUnified(exported, warnings);
                     if (blink.RequiresUnifiedEvidence && !VrmUnifiedExpressions.HasUsableEvidence(tracked))
                         throw new InvalidOperationException(UnifiedExpressionPreparation.LostTracking);
-                    return tracked;
+                    // The app finds Blink, the visemes and the tracking shapes by
+                    // name; a merge that renamed one gives the name back here.
+                    var (named, kept) = optimizerBindings.RestoreAppDrivenNames(tracked);
+                    foreach (var (shape, output) in kept)
+                    {
+                        var reason = string.Format(ExporterLocalization.T(AppDrivenNameKeptWarning), shape, output);
+                        warnings?.Add(reason);
+                        recoveryReport.Fallbacks.Record(ExportOutcome.Approximated,
+                            shape.IndexOf("Blink", StringComparison.OrdinalIgnoreCase) >= 0 ? "瞬き" : "表情トラッキング", shape, reason);
+                    }
+                    return named;
                 }, () => exported);
                 // After every expression is bound: BlendShapes that nothing
                 // binds and the app does not drive by name are left out.
@@ -944,6 +963,17 @@ namespace VRVlog.LilToonExporter
                 exported = guard.Run(ExportStage.ExpressionGestures, () => gestures == null ? exported : gestures.Inject(exported, expressions), () => exported);
                 if (lipSync != null) exported = LipSyncCapture.Inject(exported, lipSync);
                 return AvatarFormatRequirements.Write(exported);
+            }
+            // The steps after the build passes, UniVRM's conversion among them,
+            // have no stage of their own. What the optimizer or another build
+            // tool made can still make one of them fail, so a lenient export is
+            // written again without Optimizing, then without the build passes,
+            // as when a check above fails. A failure without them is thrown.
+            catch (Exception error) when (builtStage is ExportStage failedStage && guard.ContinueOnFailure && !(error is MatcapApproximation.OverLimit) &&
+                                          !ExportStageGuard.IsCancellation(error) && ExportStageFailure.Find(error) == null)
+            {
+                try { recoveryReport.Fail(source, error); } catch { }
+                throw new ExportStageFailure(failedStage, error);
             }
             catch (Exception error) when (!(error is MatcapApproximation.OverLimit))
             {

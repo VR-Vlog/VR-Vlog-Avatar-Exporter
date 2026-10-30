@@ -466,6 +466,54 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // UniVRM's conversion and the steps around it have no stage of their
+        // own. One that fails after the build passes writes the file again
+        // without Optimizing; one that fails without any build pass still stops.
+        // The injected failure does not depend on the copy: this checks which
+        // attempts run.
+        [Test]
+        public async Task AFailureAfterTheBuildPassesWritesTheFileAgainWithoutTheOptimizer()
+        {
+            var installed = RequireInstalled();
+            using var scene = new Scene("rename", installed.Descriptor, installed.Proxy);
+            Vrm10Instance imported = null;
+            try
+            {
+                var attempts = 0;
+                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                {
+                    if (++attempts == 1) throw new InvalidOperationException("The optimized copy cannot be converted.");
+                };
+                var warnings = new List<string>();
+                var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
+                var bytes = scene.Export(warnings, report);
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
+                Assert.That(attempts, Is.EqualTo(2), "Converted with the build passes, then without Optimizing.");
+                Assert.That(report.Fallbacks.Results.Where(result => result.Stage != null).Select(result => result.Stage),
+                    Is.EqualTo(new ExportStage?[] { ExportStage.Optimizing }), string.Join("\n", warnings));
+                var back = imported.GetComponentsInChildren<SkinnedMeshRenderer>(true).Single(skin => skin.name == "Back");
+                Assert.That(AnimationUtility.CalculateTransformPath(back.transform.parent, imported.transform),
+                    Is.EqualTo("Hips/Spine/Chest/Neck/Head"), "The MA Bone Proxy must still be applied.");
+
+                attempts = 0;
+                UniVrmOneClickExporter.ConversionFaultInjection = copy =>
+                {
+                    attempts++;
+                    throw new InvalidOperationException("The copy cannot be converted.");
+                };
+                var failure = Assert.Throws<InvalidOperationException>(() =>
+                    scene.Export(new List<string>(), new ExportRecoveryReport { ContinueOnStageFailure = true }));
+                Assert.That(failure.Message, Is.EqualTo("The copy cannot be converted."));
+                Assert.That(attempts, Is.EqualTo(3), "Written with the build passes, without Optimizing, then without the build passes.");
+            }
+            finally
+            {
+                UniVrmOneClickExporter.ConversionFaultInjection = null;
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+            }
+        }
+
         // A pass that fails in Transforming fails the board's copy too. The
         // board follows the lenient export: it reads the faces on a copy without
         // the build passes and says so, and the quick transfer goes on to write
