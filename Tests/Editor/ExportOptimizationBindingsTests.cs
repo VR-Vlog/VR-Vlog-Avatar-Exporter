@@ -854,6 +854,62 @@ namespace VRVlog.LilToonExporter.Tests
             finally { bindings?.Dispose(); }
         }
 
+        // A merge that renames to avoid conflicts prefixes every shape. The app
+        // finds Blink and the visemes by name, so the output gives a renamed
+        // one its name back unless another shape of that mesh has or takes it.
+        [TestCase("A", true)]
+        [TestCase("Blink", false)]
+        public void InstalledAvatarOptimizerMergeGivesAppDrivenShapesTheirNamesBack(string secondShape, bool restored)
+        {
+            RequireInstalledAvatarOptimizer("MergeSkinnedMesh");
+            if (InstalledType("Anatawa12.AvatarOptimizer.MergeSkinnedMesh").GetProperty("MergeBlendShapes") == null)
+                Assert.Ignore("This rename-to-avoid-conflict fixture requires the AAO 1.8+ merge configuration API.");
+            var first = Skin(source, "first", "Blink");
+            var second = Skin(source, "second", secondShape);
+            var material = Own(new Material(Shader.Find("Unlit/Color")));
+            first.sharedMaterial = material; second.sharedMaterial = material;
+            var node = new GameObject("merged"); node.transform.SetParent(source.transform, false); node.AddComponent<SkinnedMeshRenderer>();
+            var merge = AddOptimizer(node, "MergeSkinnedMesh", 2);
+            merge.GetType().GetProperty("MergeBlendShapes").SetValue(merge, false);
+            var sources = merge.GetType().GetProperty("SourceSkinnedMeshRenderers").GetValue(merge);
+            var add = sources.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
+            add.Invoke(sources, new object[] { first }); add.Invoke(sources, new object[] { second });
+            merge.GetType().GetProperty("RemoveEmptyRendererObject").SetValue(merge, true);
+            source.AddComponent(InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            clone = Object.Instantiate(source);
+            var oldFirst = clone.transform.Find("first").GetComponent<SkinnedMeshRenderer>();
+            var oldSecond = clone.transform.Find("second").GetComponent<SkinnedMeshRenderer>();
+            ExportOptimizationBindings bindings = null;
+            try
+            {
+                using var preparation = NdmfExportPreparation.Prepare(source, clone, afterTransforming: _ => bindings = ExportOptimizationBindings.Capture(clone));
+                bindings.ValidateAndApply();
+                var firstRoute = bindings.MapMorph(oldFirst, "Blink");
+                var secondRoute = bindings.MapMorph(oldSecond, secondShape);
+                Assert.That(firstRoute.Renderer != null && secondRoute.Renderer != null, Is.True, "The optimizer must keep the shapes the app drives.");
+                Assert.That(firstRoute.Shape, Is.Not.EqualTo("Blink"), "The installed optimizer must rename the merged shapes.");
+                var mesh = firstRoute.Renderer.sharedMesh;
+                var renamed = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToArray();
+                bindings.BindNodes(renderer => renderer == firstRoute.Renderer ? 0 : -1);
+                var (bytes, kept) = bindings.RestoreAppDrivenNames(Output(renamed));
+                var names = (List<object>)((Dictionary<string, object>)((Dictionary<string, object>)((List<object>)GlbDocument.Read(bytes).Json["meshes"])[0])["extras"])["targetNames"];
+                if (restored)
+                {
+                    Assert.That(names, Is.EquivalentTo(new object[] { "Blink", "A" }));
+                    Assert.That(kept, Is.Empty);
+                    Assert.That(bindings.MapMorph(oldFirst, "Blink").Shape, Is.EqualTo("Blink"), "Later stages look the shape up by the name in the file.");
+                }
+                else
+                {
+                    Assert.That(names, Is.EquivalentTo(renamed), "Two shapes cannot both be named Blink.");
+                    Assert.That(kept.Select(item => item.Source), Is.EqualTo(new[] { "Blink", "Blink" }));
+                    Assert.That(kept.Select(item => item.Output), Is.EquivalentTo(new[] { firstRoute.Shape, secondRoute.Shape }));
+                }
+                Assert.That(first.sharedMesh.GetBlendShapeName(0), Is.EqualTo("Blink"), "The source avatar keeps its names.");
+            }
+            finally { bindings?.Dispose(); }
+        }
+
         [TestCase(.25f)]
         public void InstalledAvatarOptimizerCoalescedTrackingShapesDoNotMultiplyProfileWeights(float weight)
         {
