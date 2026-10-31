@@ -221,7 +221,7 @@ namespace VRVlog.LilToonExporter.Tests
                     return decoded.width;
                 }).ToArray();
                 Assert.That(widths, Does.Contain(size), "The MToon image of the main texture follows the same size.");
-                Assert.That(widths, Does.Not.Contain(on ? 512 : 256));
+                Assert.That(widths, Has.No.Member(on ? 512 : 256));
                 var line = TexelDensity.Plan.Line(1, TexelDensity.Bytes(512, 512) - TexelDensity.Bytes(256, 256));
                 Assert.That(warnings.Count(w => w == line), Is.EqualTo(on ? 1 : 0));
                 Assert.That(main.width, Is.EqualTo(512), "The source texture is not changed.");
