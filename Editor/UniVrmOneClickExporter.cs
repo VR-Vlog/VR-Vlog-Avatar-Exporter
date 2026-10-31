@@ -861,6 +861,8 @@ namespace VRVlog.LilToonExporter
                         // extension they would show, so a failure writes the file
                         // again without the toggles.
                         if (objectToggles != null) objectToggleData = guard.Step(ExportStage.ObjectToggles, () => objectToggles.Resolve(OutputNode, warnings), () => null);
+                        // Bones and visibility the faces move refer to output nodes.
+                        ExpressionTransformCurves.Resolve(expressions, OutputNode, clone.transform, warnings);
                     }, warnings: warnings);
                 guard.Watch(optimizerStage, () => ValidateOutputHumanoid(exported));
                 // The MatCap images must not cost a file the lilToon extension

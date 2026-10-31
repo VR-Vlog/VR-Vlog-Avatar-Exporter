@@ -199,6 +199,146 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionAnimationData.Write(new[] { animation }), Is.Not.Null);
         }
 
+        private static ExpressionAnimationData.Curve Linear(double from, double to)
+        {
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = from, InTangent = to - from, OutTangent = to - from });
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = to, InTangent = to - from, OutTangent = to - from });
+            return curve;
+        }
+
+        private static ExpressionAnimationData.Curve Held(double value)
+        {
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = value, InTangent = 0, OutTangent = 0 });
+            return curve;
+        }
+
+        private static ExpressionTransformAnimation.Track Track(int node, string property, params ExpressionAnimationData.Curve[] curves)
+        {
+            var track = new ExpressionTransformAnimation.Track { Node = node, Property = property };
+            track.Curves.AddRange(curves);
+            return track;
+        }
+
+        // Smile animates a morph and, on its clock, a bone and a visibility;
+        // Fist only holds a bone, so it has no animation and a still clock.
+        private static ExpressionAnimationDocument WithTransforms()
+        {
+            var document = Document();
+            var smile = new ExpressionTransformAnimation { Expression = "Smile", Duration = 1, Loop = false };
+            smile.Tracks.Add(Track(41, ExpressionTransformAnimation.Euler, Linear(0, -44.7), Held(0), Held(0)));
+            smile.Tracks.Add(Track(57, ExpressionTransformAnimation.Active, Held(1)));
+            document.Transforms.Add(smile);
+            var fist = new ExpressionTransformAnimation { Expression = "Fist", Duration = 0, Loop = false };
+            fist.Tracks.Add(Track(42, ExpressionTransformAnimation.Translation, Held(0), Held(-0.01), Held(0)));
+            document.Transforms.Add(fist);
+            return document;
+        }
+
+        private static Dictionary<string, object> TransformsJson() =>
+            (Dictionary<string, object>)JsonDom.Parse(JsonDom.Serialize(ExpressionAnimationData.WriteDocument(WithTransforms())));
+
+        [Test]
+        public void TransformsAreWrittenOnlyWhenPresent()
+        {
+            Assert.That(Json().ContainsKey("transforms"), Is.False);
+            var json = TransformsJson();
+            Assert.That(((List<object>)json["transforms"]).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void TransformsRoundTripThroughJson()
+        {
+            var text = JsonDom.Serialize(ExpressionAnimationData.WriteDocument(WithTransforms()));
+            var json = JsonDom.Parse(text);
+            var read = ExpressionAnimationData.ReadDocument(json);
+            // The BlendShape part reads as before; the transforms are a separate read.
+            Assert.That(read.Expressions.Count, Is.EqualTo(3));
+            Assert.That(read.Animations.Count, Is.EqualTo(2));
+            Assert.That(read.Transforms, Is.Empty);
+            var transforms = ExpressionAnimationData.ReadTransforms(json, read);
+            Assert.That(transforms.Select(t => t.Expression), Is.EqualTo(new[] { "Smile", "Fist" }));
+            Assert.That(transforms[0].Tracks.Select(t => t.Node + ":" + t.Property), Is.EqualTo(new[] { "41:euler", "57:active" }));
+            var values = new double[3];
+            transforms[0].Tracks[0].Evaluate(0.5, values);
+            Assert.That(values[0], Is.EqualTo(-22.35).Within(1e-6));
+            Assert.That(transforms[1].Duration, Is.EqualTo(0));
+            Assert.That(transforms[1].TimeAt(5), Is.EqualTo(0));
+            var copy = new ExpressionAnimationDocument();
+            copy.Expressions.AddRange(read.Expressions);
+            copy.Animations.AddRange(read.Animations);
+            copy.Transforms.AddRange(transforms);
+            Assert.That(JsonDom.Serialize(ExpressionAnimationData.WriteDocument(copy)), Is.EqualTo(text));
+        }
+
+        [Test]
+        public void LoopingTransformsWrapTheirTime()
+        {
+            var transforms = new ExpressionTransformAnimation { Expression = "Smile", Duration = 1, Loop = true };
+            Assert.That(transforms.TimeAt(1.25), Is.EqualTo(0.25));
+        }
+
+        private static Action<Dictionary<string, object>> Break(string kind)
+        {
+            Dictionary<string, object> Entry(Dictionary<string, object> json, int index) => (Dictionary<string, object>)((List<object>)json["transforms"])[index];
+            Dictionary<string, object> TrackAt(Dictionary<string, object> json, int entry, int index) => (Dictionary<string, object>)((List<object>)Entry(json, entry)["tracks"])[index];
+            List<object> Key(double value) => new List<object> { 0L, value, 0L, 0L, 0.3, 0.3 };
+            switch (kind)
+            {
+                case "unlisted expression": return json => Entry(json, 0)["expression"] = "Nope";
+                case "duplicate expression": return json => Entry(json, 1)["expression"] = "Smile";
+                case "another duration than the animation": return json => Entry(json, 0)["duration"] = 2.0;
+                case "another loop than the animation": return json => Entry(json, 0)["loop"] = true;
+                case "looping still clock": return json => Entry(json, 1)["loop"] = true;
+                case "unknown property": return json => TrackAt(json, 0, 0)["property"] = "skew";
+                case "wrong component count": return json => ((List<object>)TrackAt(json, 0, 0)["curves"]).RemoveAt(0);
+                case "euler and rotation on one node": return json => ((List<object>)Entry(json, 0)["tracks"]).Add(new Dictionary<string, object>
+                {
+                    ["node"] = 41L, ["property"] = "rotation", ["curves"] = Enumerable.Range(0, 4).Select(_ => (object)new Dictionary<string, object>
+                    {
+                        ["preWrap"] = "clamp", ["postWrap"] = "clamp", ["keys"] = new List<object> { Key(0) }
+                    }).ToList()
+                });
+                case "active above 1": return json => ((List<object>)((Dictionary<string, object>)((List<object>)TrackAt(json, 0, 1)["curves"])[0])["keys"])[0] = Key(2);
+                case "negative node": return json => TrackAt(json, 0, 0)["node"] = -1L;
+                case "no tracks": return json => Entry(json, 1)["tracks"] = new List<object>();
+                case "empty transforms": return json => json["transforms"] = new List<object>();
+                default: return json => json["transforms"] = "x";
+            }
+        }
+
+        [TestCase("unlisted expression")]
+        [TestCase("duplicate expression")]
+        [TestCase("another duration than the animation")]
+        [TestCase("another loop than the animation")]
+        [TestCase("looping still clock")]
+        [TestCase("unknown property")]
+        [TestCase("wrong component count")]
+        [TestCase("euler and rotation on one node")]
+        [TestCase("active above 1")]
+        [TestCase("negative node")]
+        [TestCase("no tracks")]
+        [TestCase("empty transforms")]
+        [TestCase("transforms not an array")]
+        public void TransformsRejectBrokenEntries(string kind)
+        {
+            var json = TransformsJson();
+            Break(kind)(json);
+            // A broken transforms key never stops the BlendShape part.
+            var document = ExpressionAnimationData.ReadDocument(json);
+            Assert.That(document.Animations.Count, Is.EqualTo(2));
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.ReadTransforms(json, document));
+        }
+
+        [Test]
+        public void WriteDocumentRejectsTransformsOnAnotherClock()
+        {
+            var document = WithTransforms();
+            document.Transforms[0].Duration = 3;
+            Assert.Throws<InvalidOperationException>(() => ExpressionAnimationData.WriteDocument(document));
+        }
+
         [Test]
         public void AppVersionsCompareNumerically()
         {
