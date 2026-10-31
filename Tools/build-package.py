@@ -5,7 +5,7 @@ import json
 import re
 import subprocess
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,7 +140,7 @@ def verify_no_transfer_dependencies(contents):
     verify_transfer_dependencies(contents, False)
 
 
-def build(root, output):
+def build(root, output, *, qr_preview=False):
     root = root.resolve()
     manifest = json.loads((root / "package.json").read_text(encoding="utf-8-sig"))
     cloud_transfer = manifest.get("vrvlogCloudTransfer", True)
@@ -168,18 +168,29 @@ def build(root, output):
         if not path.resolve().is_relative_to(root.resolve()):
             raise ValueError("Package input escapes repository: " + name)
         contents[name] = path.read_bytes()
+    if qr_preview:
+        if not transfer:
+            raise ValueError("QR preview requires a transfer-capable package")
+        # A file-local symbol pins this archive to the isolated service without
+        # changing the user's project settings or the normal release package.
+        protocol = "Editor/LanTransfer/CloudTransferProtocol.cs"
+        contents[protocol] = b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW\n" + contents[protocol]
     verify_transfer_dependencies(contents, transfer)
     if not any(name.startswith("Editor/") and name.endswith(".cs") for name in names):
         raise ValueError("Package has no Editor source")
     date_time = entry_time(root)
+    if qr_preview:
+        # ZIP timestamps have two-second resolution. Keep the two variants
+        # distinct even at the same HEAD so Unity recompiles in both directions.
+        date_time = (datetime(*date_time, tzinfo=timezone.utc) + timedelta(seconds=2)).timetuple()[:6]
     output.parent.mkdir(parents=True, exist_ok=True)
     # Stored entries avoid platform/zlib-dependent DEFLATE bytes. Pin the
     # creator OS too: Python otherwise emits different Windows/Unix headers.
-    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED if qr_preview else zipfile.ZIP_STORED) as archive:
         for name, content in contents.items():
             entry = zipfile.ZipInfo(name, date_time=date_time)
             entry.create_system = 3
-            entry.compress_type = zipfile.ZIP_STORED
+            entry.compress_type = zipfile.ZIP_DEFLATED if qr_preview else zipfile.ZIP_STORED
             entry.external_attr = 0o100644 << 16
             archive.writestr(entry, content)
     return names
@@ -188,8 +199,11 @@ def build(root, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--qr-preview", action="store_true", help="Test-only fixed Cloudflare preview package; never a production release")
     args = parser.parse_args()
     version = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"]
     output = args.output or ROOT / "artifacts" / f"com.vrvlog.liltoon-vrm-exporter-{version}.zip"
-    names = build(ROOT, output)
+    if args.qr_preview and args.output is None:
+        parser.error("--qr-preview requires an explicit --output outside release artifacts")
+    names = build(ROOT, output, qr_preview=args.qr_preview)
     print(f"Built {output.name}: {len(names)} package files")

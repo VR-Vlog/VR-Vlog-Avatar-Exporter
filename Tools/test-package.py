@@ -70,6 +70,28 @@ class PackageTests(unittest.TestCase):
         self.git("add", ".")
         self.commit("2026-10-23T05:00:00Z")
 
+    def test_preview_archive_pins_origin_without_changing_release_inputs(self):
+        protocol = "Editor/LanTransfer/CloudTransferProtocol.cs"
+        self.write(protocol, "// fixed service selection\n")
+        self.write(protocol + ".meta", "fileFormatVersion: 2\n")
+        manifest = json.loads((self.root / "package.json").read_text())
+        manifest["displayName"] = "Test Exporter"
+        self.write("package.json", json.dumps(manifest))
+        self.git("add", ".")
+        preview = self.root / "preview.zip"
+        package.build(self.root, preview, qr_preview=True)
+        with zipfile.ZipFile(preview) as archive:
+            preview_time = archive.getinfo(protocol).date_time
+            self.assertTrue(archive.read(protocol).startswith(b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW\n"))
+            self.assertEqual(archive.read("package.json"), (self.root / "package.json").read_bytes())
+        self.assertEqual((self.root / protocol).read_text(), "// fixed service selection\n")
+        release = self.root / "release.zip"
+        package.build(self.root, release)
+        with zipfile.ZipFile(release) as archive:
+            self.assertFalse(archive.read(protocol).startswith(b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW"))
+            self.assertNotEqual(archive.getinfo(protocol).date_time, preview_time)
+            self.assertEqual(json.loads(archive.read("package.json"))["version"], "0.11.12-beta.1")
+
     def git(self, *args):
         subprocess.run(["git", "-C", str(self.root), *args], check=True, capture_output=True)
 
