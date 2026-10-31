@@ -25,6 +25,7 @@ namespace VRVlog.FaceTracking
         static readonly Dictionary<string, Definition> Definitions = new Dictionary<string, Definition>(StringComparer.Ordinal);
         static readonly Dictionary<string, string> NormalizedNames = new Dictionary<string, string>(StringComparer.Ordinal);
         static readonly HashSet<string> SharedNames = new HashSet<string>(StringComparer.Ordinal);
+        static readonly HashSet<string> WholeNames = new HashSet<string>(StringComparer.Ordinal);
         static readonly IReadOnlyList<string> RegisteredNames;
 
         public static IReadOnlyList<string> AllNames { get { return RegisteredNames; } }
@@ -97,20 +98,20 @@ namespace VRVlog.FaceTracking
                 }
             }
 
-            Add("EyeClosed", 30, read => Mean(Value(read, "EyeBlinkLeft"), Value(read, "EyeBlinkRight")), "EyeClosedLeft", "EyeClosedRight");
-            Add("EyeSquint", 30, read => Math.Max(Value(read, "EyeSquintLeft"), Value(read, "EyeSquintRight")), "EyeSquintLeft", "EyeSquintRight");
-            Add("EyeWide", 30, read => Math.Max(Value(read, "EyeWideLeft"), Value(read, "EyeWideRight")), "EyeWideLeft", "EyeWideRight");
-            Add("BrowDown", 30, read => Mean(Value(read, "BrowDownLeft"), Value(read, "BrowDownRight")), "BrowLowererLeft", "BrowPinchLeft", "BrowLowererRight", "BrowPinchRight");
-            Add("BrowUp", 35, read => Mean(BrowUp(read, "Left"), BrowUp(read, "Right")), "BrowInnerUpLeft", "BrowOuterUpLeft", "BrowInnerUpRight", "BrowOuterUpRight");
+            Whole("EyeClosed", 30, read => Mean(Value(read, "EyeBlinkLeft"), Value(read, "EyeBlinkRight")), "EyeClosedLeft", "EyeClosedRight");
+            Whole("EyeSquint", 30, read => Math.Max(Value(read, "EyeSquintLeft"), Value(read, "EyeSquintRight")), "EyeSquintLeft", "EyeSquintRight");
+            Whole("EyeWide", 30, read => Math.Max(Value(read, "EyeWideLeft"), Value(read, "EyeWideRight")), "EyeWideLeft", "EyeWideRight");
+            Whole("BrowDown", 30, read => Mean(Value(read, "BrowDownLeft"), Value(read, "BrowDownRight")), "BrowLowererLeft", "BrowPinchLeft", "BrowLowererRight", "BrowPinchRight");
+            Whole("BrowUp", 35, read => Mean(BrowUp(read, "Left"), BrowUp(read, "Right")), "BrowInnerUpLeft", "BrowOuterUpLeft", "BrowInnerUpRight", "BrowOuterUpRight");
             foreach (var action in new[] { "NoseSneer", "CheekSquint", "MouthUpperUp", "MouthLowerDown", "MouthStretch", "MouthDimple", "MouthPress" })
             {
                 var a = action;
-                Add(a, 30, read => Mean(Value(read, a + "Left"), Value(read, a + "Right")), a + "Left", a + "Right");
+                Whole(a, 30, read => Mean(Value(read, a + "Left"), Value(read, a + "Right")), a + "Left", a + "Right");
             }
-            Add("LipSuck", 35, read => Mean(Value(read, "MouthRollUpper"), Value(read, "MouthRollLower")), LipCoverage("Suck"));
-            Add("MouthSmile", 30, read => Mean(Value(read, "MouthSmileLeft"), Value(read, "MouthSmileRight")), "MouthCornerPullLeft", "MouthCornerSlantLeft", "MouthCornerPullRight", "MouthCornerSlantRight");
-            Add("MouthSad", 35, read => Mean(Sad(read, "Left"), Sad(read, "Right")), "MouthFrownLeft", "MouthStretchLeft", "MouthFrownRight", "MouthStretchRight");
-            Add("MouthOpen", 35, read => (Value(read, "MouthUpperUpLeft") + Value(read, "MouthUpperUpRight") + Value(read, "MouthLowerDownLeft") + Value(read, "MouthLowerDownRight")) * 0.25f, "MouthUpperUpLeft", "MouthUpperUpRight", "MouthLowerDownLeft", "MouthLowerDownRight");
+            Whole("LipSuck", 35, read => Mean(Value(read, "MouthRollUpper"), Value(read, "MouthRollLower")), LipCoverage("Suck"));
+            Whole("MouthSmile", 30, read => Mean(Value(read, "MouthSmileLeft"), Value(read, "MouthSmileRight")), "MouthCornerPullLeft", "MouthCornerSlantLeft", "MouthCornerPullRight", "MouthCornerSlantRight");
+            Whole("MouthSad", 35, read => Mean(Sad(read, "Left"), Sad(read, "Right")), "MouthFrownLeft", "MouthStretchLeft", "MouthFrownRight", "MouthStretchRight");
+            Whole("MouthOpen", 35, read => (Value(read, "MouthUpperUpLeft") + Value(read, "MouthUpperUpRight") + Value(read, "MouthLowerDownLeft") + Value(read, "MouthLowerDownRight")) * 0.25f, "MouthUpperUpLeft", "MouthUpperUpRight", "MouthLowerDownLeft", "MouthLowerDownRight");
 
             // Only these names overlap the ARKit 52-channel vocabulary. They
             // remain usable but cannot by themselves establish a UE profile.
@@ -158,7 +159,7 @@ namespace VRVlog.FaceTracking
         public static bool IsDistinctive(string canonical)
         {
             string name;
-            return TryCanonicalize(canonical, out name) && !SharedNames.Contains(Normalize(name));
+            return TryCanonicalize(canonical, out name) && !SharedNames.Contains(Normalize(name)) && !WholeNames.Contains(name);
         }
 
         public static float Evaluate(string canonical, Func<string, float> read)
@@ -233,6 +234,15 @@ namespace VRVlog.FaceTracking
         {
             Definitions.Add(name, new Definition { Name = name, Priority = priority, Evaluate = evaluate, Coverage = coverage.Length == 0 ? new[] { name } : coverage });
             NormalizedNames.Add(Normalize(name), name);
+        }
+
+        // Whole-face composites use generic words (MouthSmile, EyeClosed)
+        // that ordinary avatars also give to manual toggle shapes. They join
+        // an established UE profile but cannot by themselves establish one.
+        static void Whole(string name, int priority, Func<Func<string, float>, float> evaluate, params string[] coverage)
+        {
+            Add(name, priority, evaluate, coverage);
+            WholeNames.Add(name);
         }
 
         static string[] LipCoverage(string action)
