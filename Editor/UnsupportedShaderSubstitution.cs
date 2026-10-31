@@ -281,6 +281,7 @@ namespace VRVlog.LilToonExporter
                 if (values.TryFloat(name, out var cull) && (cull == 0 || cull == 1 || cull == 2)) { Set(material, "_Cull", cull); break; }
             ApplyFamilyAlpha(source, values, material, mode, main, mainScale, mainOffset, textures);
             if (source.shader != null && source.shader.name.IndexOf("Unlit", StringComparison.OrdinalIgnoreCase) >= 0) Set(material, "_AsUnlit", 1);
+            if (Multiplies(source, values)) ApplyMultiply(material);
             return material;
         }
 
@@ -288,6 +289,7 @@ namespace VRVlog.LilToonExporter
         {
             var family = FamilyMode(source, values);
             if (family.HasValue) return family.Value;
+            if (Multiplies(source, values)) return Mode.Transparent;
             if (values.Keyword("_ALPHABLEND_ON") || values.Keyword("_ALPHAPREMULTIPLY_ON") || values.Keyword("_SURFACE_TYPE_TRANSPARENT") ||
                 values.Float("_Surface", 0) == 1 || values.Float("_Mode", 0) >= 2 || values.Float("_ClippingMode", 0) == 2) return Mode.Transparent;
             if (values.Keyword("_ALPHATEST_ON") || values.Float("_AlphaClip", 0) > .5f || values.Float("_Mode", 0) == 1 ||
@@ -329,6 +331,61 @@ namespace VRVlog.LilToonExporter
         {
             var text = ShaderText(source);
             return text != null && ShaderDrawsNoColor(text, values.Float);
+        }
+
+        // Whether the source multiplies what is behind it (Blend Zero SrcColor
+        // or DstColor Zero), like particle shaders that darken a cheek or a
+        // shadow. The shader file decides; a built-in shader has no file, so
+        // its name does; a missing shader has only its saved blend values.
+        static bool Multiplies(Material source, SourceValues values)
+        {
+            var text = ShaderText(source);
+            if (text != null) return ShaderMultiplies(text, values.Float);
+            if (source.shader != null && source.shader.name != MissingShader)
+                return source.shader.name.EndsWith("Particles/Multiply", StringComparison.OrdinalIgnoreCase);
+            return values.TryFloat("_SrcBlend", out var src) && values.TryFloat("_DstBlend", out var dst) && MultiplyFactors((int)src, (int)dst);
+        }
+
+        // lilToon's transparent shader outputs color premultiplied by alpha,
+        // so DstColor/OneMinusSrcAlpha gives dst * lerp(1, color, alpha): the
+        // same result as a multiply shader whose texture fades to white by
+        // alpha. The multiply ignores light, and the per-light pass adds
+        // nothing (Zero/One under its Max blend op).
+        static void ApplyMultiply(Material material)
+        {
+            Set(material, "_SrcBlend", (int)BlendMode.DstColor);
+            Set(material, "_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            Set(material, "_SrcBlendFA", (int)BlendMode.Zero);
+            Set(material, "_DstBlendFA", (int)BlendMode.One);
+            Set(material, "_AsUnlit", 1);
+        }
+
+        static bool MultiplyFactors(int source, int destination) =>
+            source == (int)BlendMode.Zero && destination == (int)BlendMode.SrcColor ||
+            source == (int)BlendMode.DstColor && destination == (int)BlendMode.Zero;
+
+        static readonly Regex BlendCommand = new Regex(@"\bBlend\s+(\[\s*(\w+)\s*\]|\w+)(?:\s+(\[\s*(\w+)\s*\]|\w+))?", RegexOptions.IgnoreCase);
+        static readonly string[] BlendFactors = { "Zero", "One", "DstColor", "SrcColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcColor", "DstAlpha", "OneMinusDstAlpha", "SrcAlphaSaturate", "OneMinusSrcAlpha" };
+
+        // Every color pass of the first SubShader blends by multiplying, by
+        // its own Blend command, else the SubShader's or the Category's.
+        // property(name, fallback) reads a material value.
+        internal static bool ShaderMultiplies(string text, Func<string, float, float> property)
+        {
+            if (!ColorPasses(text, out var shared, out var passes, out var surface, out _) || surface) return false;
+            int Factor(Group named, Group bracket)
+            {
+                if (bracket.Success) return (int)property(bracket.Value, -1);
+                return Array.FindIndex(BlendFactors, name => name.Equals(named.Value, StringComparison.OrdinalIgnoreCase));
+            }
+            bool? Multiply(string scope)
+            {
+                var match = BlendCommand.Match(scope);
+                if (!match.Success) return null;
+                return match.Groups[3].Success && MultiplyFactors(Factor(match.Groups[1], match.Groups[2]), Factor(match.Groups[3], match.Groups[4]));
+            }
+            if (passes == null) return Multiply(shared) ?? false;
+            return passes.Count > 0 && passes.All(pass => Multiply(pass) ?? Multiply(shared) ?? false);
         }
 
         // The source of a shader file, or null for built-in and missing shaders.
@@ -559,8 +616,9 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        // Splits the first SubShader into its own scope (outside the passes)
-        // and the color passes. passes is null when there are no Pass blocks;
+        // Splits the first SubShader into its own scope (outside the passes,
+        // followed by the commands of a Category around it) and the color
+        // passes. passes is null when there are no Pass blocks;
         // surface tells that the shader also generates color passes, which
         // take the SubShader commands; borrows tells that a UsePass adds
         // passes from another shader.
@@ -584,6 +642,14 @@ namespace VRVlog.LilToonExporter
                 at = pass.Index + pass.Length - 1 + body.Length;
             }
             outside.Append(subShader, at, subShader.Length - at);
+            // Commands of an enclosing Category apply to its SubShaders; the
+            // SubShader's own commands come first, then the innermost Category's,
+            // so the nearest command wins.
+            foreach (var category in Regex.Matches(text.Substring(0, start.Index), @"\bCategory\s*\{", RegexOptions.IgnoreCase).Cast<Match>().Reverse())
+            {
+                var open = category.Index + category.Length - 1;
+                if (open + Block(text, open).Length > start.Index) outside.Append('\n').Append(text, open, start.Index - open);
+            }
             shared = outside.ToString();
             surface = SurfacePragma.IsMatch(shared);
             if (bodies.Count > 0) passes = bodies.Where(pass => !DepthOnlyPass.IsMatch(pass)).ToList();
