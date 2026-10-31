@@ -314,6 +314,158 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(Value(output, "_StencilPass"), Is.EqualTo(2f));
         }
 
+        Texture2D Solid(Color color, int size = 4)
+        {
+            var texture = Own(new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "solid" });
+            texture.SetPixels(Enumerable.Repeat(color, size * size).ToArray());
+            texture.Apply(false);
+            return texture;
+        }
+
+        static void Decal(Material source, int index, Color color, int blend = 0, bool tiled = true)
+        {
+            var s = index == 0 ? "" : index.ToString();
+            source.SetFloat("_DecalEnabled" + s, 1);
+            source.SetColor("_DecalColor" + s, color);
+            source.SetFloat("_DecalBlendType" + s, blend);
+            source.SetFloat("_DecalTiled" + s, tiled ? 1 : 0);
+        }
+
+        static bool NoGraphics => SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null;
+
+        [Test] public void WithoutDecalsTheMainImageAndLayersAreUntouched()
+        {
+            var main = Solid(Color.white);
+            var source = Probe(); source.SetTexture("_MainTex", main);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetTexture("_MainTex"), Is.SameAs(main));
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_UseMain3rdTex"), Is.EqualTo(0f));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        [Test] public void AWholeTiledReplacingDecalBecomesTheSecondLayer()
+        {
+            var image = Solid(Color.black);
+            var source = Probe(); Decal(source, 0, new Color(.2f, .3f, .4f, .9f));
+            source.SetTexture("_DecalTexture", image);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(1f));
+            Assert.That(output.GetTexture("_Main2ndTex"), Is.SameAs(image));
+            Assert.That(Vector2.Distance(output.GetTextureScale("_Main2ndTex"), Vector2.one), Is.LessThan(1e-5f));
+            Assert.That(Vector2.Distance(output.GetTextureOffset("_Main2ndTex"), Vector2.zero), Is.LessThan(1e-5f));
+            AssertColor(output, "_Color2nd", new Color(.2f, .3f, .4f, .9f));
+            Assert.That(output.GetFloat("_Main2ndTexBlendMode"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_Main2ndTexIsDecal"), Is.EqualTo(0f));
+            Assert.That(output.GetFloat("_Main2ndTexAngle"), Is.EqualTo(0f).Within(1e-6));
+            Assert.That(output.GetFloat("_UseMain3rdTex"), Is.EqualTo(0f));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        // The source samples at (R(θ)(uv - c) / size + 0.5) × st.xy + st.zw;
+        // the layer must sample the same point of the image at every UV.
+        [TestCase(true)]
+        [TestCase(false)]
+        public void APlacedTurnedDecalSamplesTheSamePointsAsTheSource(bool tiled)
+        {
+            var source = Probe(); Decal(source, 0, Color.white, 8, tiled);
+            source.SetTexture("_DecalTexture", Solid(Color.white));
+            var st = tiled ? new Vector4(2, 3, .1f, .2f) : new Vector4(1, 1, 0, 0);
+            source.SetTextureScale("_DecalTexture", new Vector2(st.x, st.y)); source.SetTextureOffset("_DecalTexture", new Vector2(st.z, st.w));
+            source.SetVector("_DecalPosition", new Vector4(.3f, .6f, 0, 0));
+            source.SetVector("_DecalScale", new Vector4(.2f, .4f, 1, 0));
+            source.SetVector("_DecalSideOffset", new Vector4(.02f, .04f, .01f, .03f));
+            source.SetFloat("_DecalRotation", 30);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty);
+            Assert.That(output.GetFloat("_Main2ndTexBlendMode"), Is.EqualTo(1f), "Add");
+            Assert.That(output.GetFloat("_Main2ndTexIsDecal"), Is.EqualTo(tiled ? 0f : 1f));
+            var angle = output.GetFloat("_Main2ndTexAngle");
+            Assert.That(angle, Is.EqualTo(30 * Mathf.Deg2Rad).Within(1e-5));
+            var scale = output.GetTextureScale("_Main2ndTex"); var offset = output.GetTextureOffset("_Main2ndTex");
+            Vector2 Turn(Vector2 v) => new Vector2(v.x * Mathf.Cos(angle) - v.y * Mathf.Sin(angle), v.x * Mathf.Sin(angle) + v.y * Mathf.Cos(angle));
+            var size = new Vector2(.2f + .02f + .04f, .4f + .01f + .03f);
+            var center = new Vector2(.3f, .6f) + new Vector2((.04f - .02f) / 2, (.03f - .01f) / 2);
+            foreach (var uv in new[] { new Vector2(.1f, .2f), new Vector2(.3f, .6f), new Vector2(.35f, .55f), new Vector2(.9f, .05f) })
+            {
+                var local = Turn(uv - center);
+                var expected = Vector2.Scale(new Vector2(local.x / size.x + .5f, local.y / size.y + .5f), new Vector2(st.x, st.y)) + new Vector2(st.z, st.w);
+                var actual = Vector2.Scale(Turn(uv - new Vector2(.5f, .5f)) + new Vector2(.5f, .5f), scale) + offset;
+                Assert.That(Vector2.Distance(actual, expected), Is.LessThan(1e-4f), uv.ToString("F2"));
+            }
+        }
+
+        [Test] public void TheLastTwoDrawableDecalsBecomeLayersAndTheFirstIsBakedUnderThem()
+        {
+            if (NoGraphics) Assert.Ignore("Baking needs a graphics device.");
+            var main = Solid(Color.white);
+            var source = Probe(); source.SetTexture("_MainTex", main);
+            Decal(source, 0, Color.black); Decal(source, 1, Color.red, 2); Decal(source, 2, Color.green, 6);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty);
+            AssertColor(output, "_Color2nd", Color.red);
+            Assert.That(output.GetFloat("_Main2ndTexBlendMode"), Is.EqualTo(3f), "Multiply");
+            AssertColor(output, "_Color3rd", Color.green);
+            Assert.That(output.GetFloat("_Main3rdTexBlendMode"), Is.EqualTo(2f), "Screen");
+            var baked = output.GetTexture("_MainTex") as Texture2D;
+            Assert.That(baked, Is.Not.Null.And.Not.SameAs(main));
+            foreach (var pixel in baked.GetPixels()) Assert.That(Vector4.Distance(pixel, Color.black), Is.LessThan(1.5f / 255));
+            AssertColor(output, "_Color", Color.white);
+        }
+
+        [Test] public void APlacedDarkenDecalIsBakedOnItsAreaOnly()
+        {
+            if (NoGraphics) Assert.Ignore("Baking needs a graphics device.");
+            var source = Probe(); source.SetTexture("_MainTex", Solid(new Color(.8f, .8f, .8f, .5f), 8));
+            source.SetColor("_Color", new Color(1, 1, 1, .7f));
+            Decal(source, 0, new Color(.2f, .9f, .2f, 1), 1, false);
+            source.SetVector("_DecalPosition", new Vector4(.25f, .5f, 0, 0));
+            source.SetVector("_DecalScale", new Vector4(.5f, 1, 1, 0));
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty);
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(0f), "Darken has no layer mode.");
+            var baked = (Texture2D)output.GetTexture("_MainTex");
+            Assert.That(baked.width, Is.EqualTo(8));
+            for (var x = 0; x < 8; x++)
+            {
+                var expected = x < 4 ? new Color(.2f, .8f, .2f, .5f) : new Color(.8f, .8f, .8f, .5f);
+                Assert.That(Vector4.Distance(baked.GetPixel(x, 3), expected), Is.LessThan(2f / 255), "Column " + x + " " + baked.GetPixel(x, 3));
+            }
+            AssertColor(output, "_Color", new Color(1, 1, 1, .7f));
+        }
+
+        [Test] public void AMaskOnTheMainImagesPlacementIsCopiedToTheLayer()
+        {
+            var mask = Mask(new Color(.5f, .5f, .5f, 1));
+            var source = Probe(); Decal(source, 0, Color.red);
+            source.SetTexture("_DecalMask", mask); source.SetFloat("_Decal0MaskChannel", 0);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetTexture("_Main2ndBlendMask"), Is.SameAs(mask));
+            Assert.That(dropped, Is.Empty);
+        }
+
+        [TestCase("_DecalTextureUV", 1f)]
+        [TestCase("_DecalMirroredUVMode", 1f)]
+        [TestCase("_DecalSymmetryMode", 2f)]
+        [TestCase("_DecalRotationSpeed", 10f)]
+        [TestCase("_DecalBlendType", 3f)]
+        public void ADecalNeitherLayerNorBakeCanDrawIsReported(string name, float value)
+        {
+            var source = Probe(); Decal(source, 0, Color.red);
+            source.SetFloat(name, value);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(0f));
+            Assert.That(dropped, Is.EquivalentTo(new[] { "Decal 0" }));
+        }
+
+        [Test] public void ADecalsGlowIsReportedAndItsColorKept()
+        {
+            var source = Probe(); Decal(source, 1, Color.red); source.SetFloat("_DecalEmissionStrength1", 2);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(1f));
+            Assert.That(dropped, Is.EquivalentTo(new[] { "Decal 1 Emission" }));
+        }
+
         static float Value(Material material, string name)
         {
             var index = material.shader.FindPropertyIndex(name);

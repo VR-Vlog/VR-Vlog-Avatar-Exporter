@@ -44,6 +44,7 @@ namespace VRVlog.LilToonExporter
             ToonOutline(values, material, main, color, effects);
             ToonEmission(values, material, textures, effects);
             ToonStencil(values, material, effects);
+            ToonDecals(values, material, textures, effects);
             foreach (var (name, label) in ToonDroppedSections)
                 if (values.Float(name, 0) > .5f) Drop(effects, label);
             dropped = effects;
@@ -55,7 +56,6 @@ namespace VRVlog.LilToonExporter
         {
             ("_UseBump2ndMap", "Detail Normal"), ("_EnableBentNormal", "Bent Normal"), ("_DetailEnabled", "Details"),
             ("_PoiSkinEnabled", "Skin"), ("_BackFaceEnabled", "Backface"), ("_RGBMaskEnabled", "RGB Mask"),
-            ("_DecalEnabled", "Decal 0"), ("_DecalEnabled1", "Decal 1"), ("_DecalEnabled2", "Decal 2"), ("_DecalEnabled3", "Decal 3"),
             ("_EnableAniso", "Anisotropics"), ("_SubsurfaceScattering", "Subsurface Scattering"), ("_MochieBRDF", "Reflections & Specular"),
             ("_GGXAnisotropics", "Anisotropic Specular"), ("_ClearCoatBRDF", "Clear Coat"), ("_StylizedSpecular", "Stylized Specular"),
             ("_EnableEnvironmentalRim", "Environmental Rim"), ("_BacklightEnabled", "Backlight"), ("_LTCGIEnabled", "Area Lights"),
