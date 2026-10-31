@@ -367,8 +367,9 @@ namespace VRVlog.LilToonExporter
         static readonly Regex BlendCommand = new Regex(@"\bBlend\s+(\[\s*(\w+)\s*\]|\w+)(?:\s+(\[\s*(\w+)\s*\]|\w+))?", RegexOptions.IgnoreCase);
         static readonly string[] BlendFactors = { "Zero", "One", "DstColor", "SrcColor", "OneMinusDstColor", "SrcAlpha", "OneMinusSrcColor", "DstAlpha", "OneMinusDstAlpha", "SrcAlphaSaturate", "OneMinusSrcAlpha" };
 
-        // Every color pass of the first SubShader blends by multiplying, by
-        // its own Blend command, else the SubShader's or the Category's.
+        // The first SubShader has one color pass, and it blends by multiplying,
+        // by its own Blend command, else the SubShader's or the Category's.
+        // Several multiply passes darken more than lilToon's one pass can.
         // property(name, fallback) reads a material value.
         internal static bool ShaderMultiplies(string text, Func<string, float, float> property)
         {
@@ -385,7 +386,7 @@ namespace VRVlog.LilToonExporter
                 return match.Groups[3].Success && MultiplyFactors(Factor(match.Groups[1], match.Groups[2]), Factor(match.Groups[3], match.Groups[4]));
             }
             if (passes == null) return Multiply(shared) ?? false;
-            return passes.Count > 0 && passes.All(pass => Multiply(pass) ?? Multiply(shared) ?? false);
+            return passes.Count == 1 && (Multiply(passes[0]) ?? Multiply(shared) ?? false);
         }
 
         // The source of a shader file, or null for built-in and missing shaders.

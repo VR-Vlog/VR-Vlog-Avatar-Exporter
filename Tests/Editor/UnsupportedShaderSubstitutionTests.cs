@@ -137,6 +137,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("SubShader { Pass { Blend SrcAlpha OneMinusSrcAlpha } }", false)]
         [TestCase("SubShader { Pass { Blend DstColor SrcColor } }", false)]
         [TestCase("SubShader { Pass { Blend Zero SrcColor } Pass { Blend One One } }", false)]
+        [TestCase("SubShader { Blend Zero SrcColor Pass { } Pass { } }", false)]
         [TestCase("Category { Blend Zero SrcColor SubShader { Blend One One Pass { } } }", false)]
         [TestCase("SubShader { Pass { Blend Off } }", false)]
         [TestCase("SubShader { Pass { } }", false)]
