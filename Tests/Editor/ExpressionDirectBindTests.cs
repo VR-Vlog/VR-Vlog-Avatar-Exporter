@@ -298,6 +298,57 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(expression.Animation.Channels.Single().Points.Any(point => point.Target != null), Is.True);
         }
 
+        [TestCase(0f)]
+        [TestCase(.25f)]
+        [TestCase(.5f)]
+        [TestCase(1f)]
+        public void AnAnimationFromTheRestVisemeToAnotherFollowsTheAuthoredPose(float time)
+        {
+            using var scene = new Scene();
+            var source = Visemes(scene);
+            var entry = Entry("Open", ("Front", "Other", 0));
+            ExpressionAnimationData.Curve Line(float from, float to)
+            {
+                var curve = new ExpressionAnimationData.Curve(); var slope = to - from;
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = from, InTangent = slope, OutTangent = slope });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = to, InTangent = slope, OutTangent = slope });
+                return curve;
+            }
+            entry.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "vrc.v_sil", Curve = Line(100, 0) });
+            entry.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "vrc.v_aa", Curve = Line(0, 100) });
+            entry.Duration = 1;
+            var expression = scene.Bake(entry).Single();
+            var copy = scene.Copy("Front"); var mesh = copy.sharedMesh;
+            Assert.That(expression.DirectPoints, Is.Empty);
+            var actual = mesh.vertices; var delta = new Vector3[mesh.vertexCount];
+            void Add(string target, float weight)
+            {
+                if (target == null || weight == 0) return;
+                mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(target), 0, delta, null, null);
+                for (var vertex = 0; vertex < actual.Length; vertex++) actual[vertex] += delta[vertex] * weight;
+            }
+            foreach (var channel in expression.Animation.Channels)
+            {
+                channel.Weights(time, out var left, out var right, out var blend);
+                Add(channel.Points[left].Target, (float)(1 - blend));
+                Add(channel.Points[right].Target, (float)blend);
+            }
+            AssertVertices(Pose(source, new[] { 100 * (1 - time), 100 * time, 0f }), actual, "Open at " + time);
+        }
+
+        [Test]
+        public void EveryVisemeWithARestIsExportedWithoutTheOthersAndEndsAtTheAuthoredPose()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene, silRest: 60);
+            foreach (var skin in scene.Avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Concat(scene.Avatar.Skins))
+                skin.SetBlendShapeWeight(1, 30);
+            var expression = scene.Bake(Entry("Open", ("Front", "vrc.v_sil", 10), ("Front", "vrc.v_aa", 90))).Single();
+            var copy = scene.Copy("Front");
+            Assert.That(expression.Direct, Is.Empty);
+            AssertVertices(Pose(mesh, new[] { 10f, 90f, 0f }), Exported(copy, expression), "Open");
+        }
+
         [Test]
         public void EntriesWhoseEveryWeightIsZeroStayRegisteredThroughTheZeroMarker()
         {
