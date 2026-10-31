@@ -329,5 +329,62 @@ namespace VRVlog.LilToonExporter.Tests
             source.EnableKeyword("_ALPHABLEND_ON");
             Assert.That(Substitute(source).shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
         }
+
+        const string Clips = "fixed4 _Color;\nfixed4 frag() : SV_Target { fixed4 c = _Color; clip(c.a - 0.5); return c; }";
+        const string Draws = "fixed4 _Color;\nfixed4 frag() : SV_Target { return _Color; }";
+        const string ColorClips = "Shader \"X\" { SubShader { Pass { CGPROGRAM\n" + Clips + "\nENDCG } } }";
+        const string ColorDraws = "Shader \"X\" { SubShader { Pass { CGPROGRAM\n" + Draws + "\nENDCG } } }";
+
+        // A shader that clips in a color pass and says so only by a Cutout
+        // VRChat fallback.
+        [TestCase("ToonCutout", ColorClips, true)]
+        [TestCase("ToonCutoutDoubleSided", ColorClips, true)]
+        [TestCase("cutout", "Shader \"X\" { SubShader { Pass { CGPROGRAM\nvoid frag() { discard; }\nENDCG } } }", true)]
+        [TestCase("ToonCutout", "Shader \"X\" { SubShader { CGPROGRAM\n#pragma surface surf Lambert\nvoid surf() { clip(-1); }\nENDCG } }", true)]
+        [TestCase("ToonCutout", ColorDraws, false)]
+        [TestCase("ToonCutout", "Shader \"X\" { SubShader { Pass { CGPROGRAM\n// clip(c.a - 0.5);\n" + Draws + "\nENDCG } } }", false)]
+        [TestCase("ToonCutout", "Shader \"X\" { SubShader { Pass { CGPROGRAM\n" + Draws + "\nENDCG }\nPass { Tags { \"LightMode\"=\"ShadowCaster\" } CGPROGRAM\n" + Clips + "\nENDCG } } }", false)]
+        [TestCase("ToonCutout", "Shader \"X\" { SubShader { Pass { CGPROGRAM\n" + Draws + "\nENDCG } }\nSubShader { Pass { CGPROGRAM\n" + Clips + "\nENDCG } } }", false)]
+        [TestCase("ToonCutout", null, false)]
+        [TestCase("Toon", ColorClips, false)]
+        [TestCase("ToonTransparent", ColorClips, false)]
+        [TestCase("NotCutout", ColorClips, false)]
+        [TestCase("toonstandardCutout", ColorClips, false)]
+        [TestCase("", ColorClips, false)]
+        public void AVRChatFallbackClipsOnlyWithACutoutAndAColorPassClip(string fallback, string shaderText, bool expected) =>
+            Assert.That(UnsupportedShaderSubstitution.FallbackClips(fallback, shaderText), Is.EqualTo(expected));
+
+        // The tag is read from the shader file's own Tags, and the queue of a
+        // blended material still decides Transparent.
+        [Test]
+        public void AShaderFileWithACutoutFallbackAndAClipBecomesCutout()
+        {
+            const string path = "Assets/VRVlogTestsFallbackTag.shader";
+            string ShaderFile(string name, string tag, string fragment) =>
+                "Shader \"Hidden/VRVlogTests/AlphaFamily/" + name + "\"\n{\nProperties\n{\n_MainTex (\"Main\", 2D) = \"white\" {}\n_Color (\"Color\", Color) = (1,1,1,1)\n}\n" +
+                "SubShader\n{\nTags { \"RenderType\"=\"Opaque\" " + tag + " }\nPass\n{\nCGPROGRAM\n#pragma vertex vert\n#pragma fragment frag\n#include \"UnityCG.cginc\"\n" +
+                "float4 vert(float4 v : POSITION) : SV_POSITION { return UnityObjectToClipPos(v); }\n" + fragment + "\nENDCG\n}\n}\n}";
+            Material Load(string text)
+            {
+                System.IO.File.WriteAllText(path, text);
+                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+                var shader = AssetDatabase.LoadAssetAtPath<Shader>(path);
+                Assume.That(shader, Is.Not.Null);
+                return Own(new Material(shader) { name = "Tagged" });
+            }
+            try
+            {
+                var source = Load(ShaderFile("TaggedClips", "\"VRCFallback\"=\"ToonCutout\"", Clips));
+                var output = Substitute(source);
+                Assert.That(output.shader.name, Is.EqualTo("Hidden/lilToonCutout"));
+                Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.5f));
+                source.renderQueue = 3000;
+                Assert.That(Substitute(source).shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
+
+                Assert.That(Substitute(Load(ShaderFile("TaggedDraws", "\"VRCFallback\"=\"ToonCutout\"", Draws))).shader.name, Is.EqualTo("lilToon"));
+                Assert.That(Substitute(Load(ShaderFile("UntaggedClips", "", Clips))).shader.name, Is.EqualTo("lilToon"));
+            }
+            finally { AssetDatabase.DeleteAsset(path); }
+        }
     }
 }
