@@ -8,10 +8,16 @@ namespace VRVlog.LilToonExporter.LanTransfer
 {
     internal static class CloudTransferProtocol
     {
+#if VRVLOG_CLOUD_TRANSFER_PREVIEW
+        internal const string ServiceUrl = "https://vrvlog-transfer-preview.mouri0077.workers.dev";
+#else
         internal const string ServiceUrl = "https://vrvlog-transfer.mouri0077.workers.dev";
+#endif
         internal const long MaximumSize = 256L * 1024 * 1024;
         internal const int PartSize = 8 * 1024 * 1024;
         internal const int LifetimeMinutes = 3;
+        internal const int UploadLifetimeSeconds = 15 * 60;
+        internal const int UploadPartTimeoutSeconds = 270;
 
         // Cloud names are display metadata only. Keep the service's 256 UTF-16
         // unit bound while removing path separators without changing VRM bytes.
