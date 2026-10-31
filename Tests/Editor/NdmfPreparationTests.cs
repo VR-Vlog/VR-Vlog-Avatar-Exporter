@@ -524,16 +524,61 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ComponentFromAPackageExportingAPluginStartsTheBuild()
         {
-            var package = UnityEditor.PackageManager.PackageInfo
-                .FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
+            var editorOnly = InstalledType("VRC.SDKBase.IEditorOnly");
+            if (editorOnly == null)
+            {
+                // Without the VRChat SDK the package alone decides.
+                var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
+                if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
+                source.AddComponent<GimmickSettingsProbe>();
+                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+                Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
+                NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+                Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
+                return;
+            }
+            // A script Unity can attach on its own: a non-abstract, non-generic class in its own file that
+            // needs no other component (some need an abstract one and cannot be added).
+            var tool = UnityEditor.MonoImporter.GetAllRuntimeMonoScripts().Select(script => script.GetClass())
+                .Where(type => type != null && typeof(MonoBehaviour).IsAssignableFrom(type) && !type.IsAbstract && !type.IsGenericType &&
+                    !type.IsDefined(typeof(RequireComponent), true) &&
+                    editorOnly.IsAssignableFrom(type) && UnityEditor.PackageManager.PackageInfo.FindForAssembly(type.Assembly) != null)
+                .OrderBy(type => type.FullName, StringComparer.Ordinal).FirstOrDefault();
+            if (tool == null) Assert.Ignore("No packaged editor-only component is installed.");
+            var toolPackage = UnityEditor.PackageManager.PackageInfo.FindForAssembly(tool.Assembly).name;
+            var holder = new GameObject("tool");
+            holder.transform.SetParent(source.transform, false);
+            Assert.IsNotNull(holder.AddComponent(tool), tool.FullName);
+            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+            Assert.IsFalse(NdmfExportPreparation.HasPluginToolComponent(source));
+            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { toolPackage };
+            Assert.IsTrue(NdmfExportPreparation.HasPluginToolComponent(source));
+        }
+
+        [Test]
+        public void RuntimeComponentFromAPluginPackageDoesNotStartTheBuildWithTheVrchatSdk()
+        {
+            if (InstalledType("VRC.SDKBase.IEditorOnly") == null) Assert.Ignore("Install the VRChat SDK to test its editor-only marker.");
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
             if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
             source.AddComponent<GimmickSettingsProbe>();
-
-            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
-            Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
-
             NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
-            Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
+            Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
+        }
+
+        [Test]
+        public void PluginPackagesComeFromExportsPluginAndSkipTheExporter()
+        {
+            var plugins = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(assembly => assembly.GetName().Name == "VRVlog.LilToonExporter.Tests.NdmfPlugin");
+            if (plugins == null) Assert.Ignore("Install NDMF to compile the test plugins.");
+            var package = UnityEditor.PackageManager.PackageInfo.FindForAssembly(plugins)?.name;
+            if (package == null) Assert.Ignore("The test plugins must be installed as a package.");
+            var assemblies = new[] { plugins, typeof(GimmickSettingsProbe).Assembly };
+            CollectionAssert.AreEquivalent(new[] { package }, NdmfExportPreparation.PluginPackages(assemblies, null));
+            CollectionAssert.IsEmpty(NdmfExportPreparation.PluginPackages(assemblies, package));
+            Assert.AreEqual(package, UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(NdmfExportPreparation).Assembly)?.name);
+            CollectionAssert.DoesNotContain(NdmfExportPreparation.PluginPackages(AppDomain.CurrentDomain.GetAssemblies(), package), package);
         }
 
         [Test]
