@@ -228,6 +228,88 @@ namespace VRVlog.LilToonExporter
             return packages;
         }
 
+        // VRCFury builds from the VRChat SDK's preprocess callbacks instead of
+        // NDMF. An upload runs it after NDMF's Transforming phase and before
+        // Optimizing (callback order -10000), so the export runs the same hook
+        // on its copy at that point, or alone when nothing needs NDMF.
+        internal const string VrcFuryCompatibilityMessage =
+            "このバージョンのVRCFuryは書き出しに対応していません\nALCOMでVRCFuryを更新";
+        internal const string VrcFuryFailureMessage =
+            "VRCFuryの処理に失敗しました\nVRCFuryのエラー表示で原因を確認";
+        internal const string VrcFuryNoDescriptorWarning =
+            "VRC Avatar Descriptorが無いためVRCFuryの設定を適用せずに書き出しました";
+        internal const string VrcFuryApplied = "VRCFuryの設定を一時コピーに適用しました";
+        internal static Func<GameObject, bool> VrcFuryOverride;
+
+        // The hook is called directly, so VRCFury's own refusal to build its
+        // test copy again (a patch on the VRChat SDK callbacks) does not run.
+        internal static bool HasVrcFuryComponent(GameObject avatar) => avatar != null &&
+            !avatar.GetComponents<Component>().Any(component => component != null && component.GetType().FullName == "VF.Model.VRCFuryTest") &&
+            avatar.GetComponentsInChildren<Component>(true).Any(component => component != null && IsVrcFuryComponent(component.GetType()));
+
+        private static bool IsVrcFuryComponent(Type type)
+        {
+            // VRCFury itself skips avatars whose only component is its debug info,
+            // and its test copy is an avatar it has already built.
+            if (type.FullName == "VF.Model.VRCFuryDebugInfo" || type.FullName == "VF.Model.VRCFuryTest") return false;
+            for (var current = type; current != null; current = current.BaseType)
+                if (current.FullName == "VF.Component.VRCFuryComponent") return true;
+            return false;
+        }
+
+        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
+        {
+            if (!HasVrcFuryComponent(clone)) return;
+            if (!clone.GetComponents<Component>().Any(component => component != null &&
+                component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
+            {
+                warnings?.Add(VrcFuryNoDescriptorWarning);
+                return;
+            }
+            SkipVrcFuryWriteDefaultsQuestion(clone, FindType("VF.Model.VRCFury"), FindType("VF.Model.Feature.FixWriteDefaults"));
+            var existing = new HashSet<Object>(Dependencies(clone));
+            try
+            {
+                bool succeeded;
+                if (VrcFuryOverride != null) succeeded = VrcFuryOverride(clone);
+                else
+                {
+                    var hook = FindType("VF.Hooks.VrcPreuploadHook");
+                    var run = hook?.GetMethod("OnPreprocessAvatar", BindingFlags.Public | BindingFlags.Instance, null,
+                        new[] { typeof(GameObject) }, null);
+                    if (run == null || run.ReturnType != typeof(bool) || hook.GetConstructor(
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null) == null)
+                        throw new InvalidOperationException(VrcFuryCompatibilityMessage);
+                    var instance = Activator.CreateInstance(hook, true);
+                    succeeded = (bool)Invoke(() => run.Invoke(instance, new object[] { clone }));
+                }
+                if (!succeeded) throw new InvalidOperationException(VrcFuryFailureMessage);
+            }
+            finally { CaptureGenerated(clone, existing); }
+            warnings?.Add(VrcFuryApplied);
+        }
+
+        // VRCFury asks on every build whether to fix a mixed Write Defaults
+        // setup, and the answer changes the FX the expressions come from. It
+        // saves the answer on the avatar it finds by a "(Clone)" name, which the
+        // export's copy does not have, so the copy would ask on every export.
+        // Unless the avatar already has a Fix Write Defaults setting, the copy
+        // gets the one "Skip and stop asking" saves, and the FX stays as it is.
+        internal static void SkipVrcFuryWriteDefaultsQuestion(GameObject clone, Type component, Type feature)
+        {
+            var content = component?.GetField("content", BindingFlags.Public | BindingFlags.Instance);
+            var features = component?.GetMethod("GetAllFeatures", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            var mode = feature?.GetField("mode", BindingFlags.Public | BindingFlags.Instance);
+            if (content == null || features == null || mode == null || !content.FieldType.IsAssignableFrom(feature) ||
+                !mode.FieldType.IsEnum || !Enum.IsDefined(mode.FieldType, "Disabled")) return;
+            foreach (var existing in clone.GetComponentsInChildren<Component>(true).Where(component.IsInstanceOfType))
+                if (features.Invoke(existing, null) is System.Collections.IEnumerable list && list.Cast<object>().Any(feature.IsInstanceOfType))
+                    return;
+            var setting = Activator.CreateInstance(feature, true);
+            mode.SetValue(setting, Enum.Parse(mode.FieldType, "Disabled"));
+            content.SetValue(clone.AddComponent(component), setting);
+        }
+
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)
             ? copy : original;
 
@@ -481,7 +563,7 @@ namespace VRVlog.LilToonExporter
             if (!NeedsProcessing(clone))
             {
                 var lease = new NdmfExportPreparation(); lease.CaptureShapes(clone);
-                try { afterTransforming?.Invoke(lease); return lease; }
+                try { lease.ApplyVrcFury(clone, warnings); afterTransforming?.Invoke(lease); return lease; }
                 catch { lease.Dispose(); throw; }
             }
             ValidateSource(clone, deferUnresolvedTargets: true);
@@ -555,6 +637,7 @@ namespace VRVlog.LilToonExporter
                         }
                         if (IsSuccessful(bridge, context))
                         {
+                            lease.ApplyVrcFury(clone, warnings);
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);

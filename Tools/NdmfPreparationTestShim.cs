@@ -248,6 +248,7 @@ namespace NUnit.Framework
         public static void AreEqual(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().SequenceEqual(b.Cast<object>()));
         public static void AreEquivalent(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().OrderBy(x => x?.ToString()).SequenceEqual(b.Cast<object>().OrderBy(x => x?.ToString())));
         public static void IsEmpty(IEnumerable a) => Assert.IsTrue(!a.Cast<object>().Any());
+        public static void Contains(IEnumerable a,object value) => Assert.IsTrue(a.Cast<object>().Contains(value));
         public static void DoesNotContain(IEnumerable a,object value) => Assert.IsTrue(!a.Cast<object>().Contains(value));
     }
 }

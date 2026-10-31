@@ -45,6 +45,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             FakeProcessor.GeneratingAction = null;
             NdmfExportPreparation.PluginPackagesOverride = null;
+            NdmfExportPreparation.VrcFuryOverride = null;
             Object.DestroyImmediate(source);
             Object.DestroyImmediate(clone);
             if (original != null) Object.DestroyImmediate(original);
@@ -579,6 +580,105 @@ namespace VRVlog.LilToonExporter.Tests
             CollectionAssert.IsEmpty(NdmfExportPreparation.PluginPackages(assemblies, package));
             Assert.AreEqual(package, UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(NdmfExportPreparation).Assembly)?.name);
             CollectionAssert.DoesNotContain(NdmfExportPreparation.PluginPackages(AppDomain.CurrentDomain.GetAssemblies(), package), package);
+        }
+
+        [Test]
+        public void VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf()
+        {
+            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            foreach (var root in new[] { source, clone })
+            {
+                root.AddComponent(descriptor);
+                root.AddComponent<VF.Component.VRCFuryComponent>();
+            }
+            var order = new List<string>();
+            NdmfExportPreparation.VrcFuryOverride = root => { Assert.AreSame(clone, root); order.Add("VRCFury"); return true; };
+            var warnings = new List<string>();
+            Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(clone));
+            using (NdmfExportPreparation.Prepare(source, clone, warnings, afterTransforming: lease => order.Add("callback"))) { }
+            CollectionAssert.AreEqual(new[] { "VRCFury", "callback" }, order);
+            Assert.AreEqual(0, FakeProcessor.Calls);
+            CollectionAssert.Contains(warnings, NdmfExportPreparation.VrcFuryApplied);
+            Assert.IsTrue(original != null);
+        }
+
+        [Test]
+        public void VrcFuryRunsAfterTransformingAndBeforeTheExportCallback()
+        {
+            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            clone.AddComponent(descriptor);
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            var order = new List<string>();
+            FakeProcessor.GeneratingAction = root => order.Add("Generating");
+            FakeProcessor.Action = root => order.Add("Transforming");
+            FakeProcessor.OptimizationAction = root => order.Add("Optimizing");
+            NdmfExportPreparation.VrcFuryOverride = root => { order.Add("VRCFury"); return true; };
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => order.Add("callback"))) { }
+            CollectionAssert.AreEqual(new[] { "Generating", "Transforming", "VRCFury", "callback", "Optimizing" }, order);
+        }
+
+        [Test]
+        public void FailedVrcFuryBuildFailsThePreparation()
+        {
+            var descriptor = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (descriptor == null) Assert.Ignore("Install the VRChat SDK to test VRCFury's avatar requirement.");
+            clone.AddComponent(descriptor);
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            NdmfExportPreparation.VrcFuryOverride = root => false;
+            var error = Assert.Throws<InvalidOperationException>(() => NdmfExportPreparation.Prepare(source, clone).Dispose());
+            Assert.AreEqual(NdmfExportPreparation.VrcFuryFailureMessage, error.Message);
+            Assert.IsTrue(original != null);
+        }
+
+        [Test]
+        public void VrcFuryIsNotAppliedWithoutAnAvatarDescriptor()
+        {
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            var calls = 0;
+            NdmfExportPreparation.VrcFuryOverride = root => { calls++; return true; };
+            var warnings = new List<string>();
+            using (NdmfExportPreparation.Prepare(source, clone, warnings)) { }
+            Assert.AreEqual(0, calls);
+            CollectionAssert.Contains(warnings, NdmfExportPreparation.VrcFuryNoDescriptorWarning);
+        }
+
+        [Test]
+        public void VrcFuryTestCopyIsNotBuiltAgain()
+        {
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            Assert.IsTrue(NdmfExportPreparation.HasVrcFuryComponent(clone));
+            clone.AddComponent<VF.Model.VRCFuryTest>();
+            Assert.IsFalse(NdmfExportPreparation.HasVrcFuryComponent(clone));
+        }
+
+        [Test]
+        public void VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting()
+        {
+            var component = typeof(VrVlogExporterTests.VrcFuryFixtures.FeatureComponent);
+            var feature = typeof(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults);
+            NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(clone, component, feature);
+            var added = clone.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true);
+            Assert.AreEqual(1, added.Length);
+            var setting = added[0].content as VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults;
+            Assert.IsNotNull(setting, "The copy gets a Fix Write Defaults setting.");
+            Assert.AreEqual(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Disabled, setting.mode);
+
+            // The avatar's own answer stays, and no second setting is added.
+            setting.mode = VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Auto;
+            NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(clone, component, feature);
+            Assert.AreEqual(1, clone.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true).Length);
+            Assert.AreEqual(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Auto, setting.mode);
+
+            // A VRCFury without this setting leaves the copy as it is.
+            var other = new GameObject("Other");
+            try
+            {
+                NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(other, component, null);
+                Assert.AreEqual(0, other.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true).Length);
+            }
+            finally { Object.DestroyImmediate(other); }
         }
 
         [Test]
