@@ -233,12 +233,12 @@ namespace VRVlog.LilToonExporter
         // Optimizing (callback order -10000), so the export runs the same hook
         // on its copy at that point, or alone when nothing needs NDMF.
         internal const string VrcFuryCompatibilityMessage =
-            "VRCFury のコンポーネントがありますが、このバージョンの VRCFury の処理を呼び出せません。ALCOM で VRCFury を更新してください。";
+            "このバージョンのVRCFuryは書き出しから呼び出せません\nALCOMでVRCFuryを更新";
         internal const string VrcFuryFailureMessage =
-            "VRCFury の処理に失敗しました。VRCFury のエラー表示で原因を確認してください。";
+            "VRCFuryの処理に失敗しました\nVRCFuryのエラー表示で原因を確認";
         internal const string VrcFuryNoDescriptorWarning =
-            "VRC Avatar Descriptor の無いオブジェクトなので、VRCFury の設定を適用せずに書き出しました。";
-        internal const string VrcFuryApplied = "VRCFury の設定を一時コピーに適用しました。";
+            "VRC Avatar Descriptorが無いためVRCFuryの設定を適用せずに書き出しました";
+        internal const string VrcFuryApplied = "VRCFuryの設定を一時コピーに適用しました";
         internal static Func<GameObject, bool> VrcFuryOverride;
 
         internal static bool HasVrcFuryComponent(GameObject avatar) => avatar != null &&
