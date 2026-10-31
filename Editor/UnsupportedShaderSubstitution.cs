@@ -323,9 +323,29 @@ namespace VRVlog.LilToonExporter
             if (Contains(name, "Clipping") || Contains(name, "AlphaTest")) return Mode.Cutout;
             var queue = values.Queue;
             if (queue > 2500 && (!values.TryFloat("_DstBlend", out var destination) || destination != 0)) return Mode.Transparent;
+            if (FallbackClips(source.shader == null ? "" : source.GetTag("VRCFallback", false, ""), ShaderText(source))) return Mode.Cutout;
             if (queue >= 2450 && queue <= 2500 && Cutoffs.Any(cutoff => values.TryFloat(cutoff, out _))) return Mode.Cutout;
             return Mode.Opaque;
         }
+
+        // Whether a shader that says nothing else about its alpha clips like
+        // the Cutout VRChat draws it as when it is blocked: its VRCFallback tag
+        // asks for a Cutout and a color pass of its first SubShader clips or
+        // discards. The tag alone does not show that the shader cuts anything,
+        // and a clip only in a shadow or depth pass leaves the color whole.
+        // Transparent or Fade in the tag is not taken: a blended copy of an
+        // opaque material would show what is behind it.
+        internal static bool FallbackClips(string fallback, string shaderText)
+        {
+            if (shaderText == null || !FallbackCutout.IsMatch(fallback ?? "")) return false;
+            if (!ColorPasses(shaderText, out var shared, out var passes, out var surface, out _)) return false;
+            if (passes == null || surface) return Discards.IsMatch(shared);
+            return passes.Any(pass => Discards.IsMatch(pass));
+        }
+
+        // VRChat's fallback value: an optional shader type, Cutout, and an
+        // optional DoubleSided.
+        static readonly Regex FallbackCutout = new Regex(@"^(Unlit|VertexLit|Toon|Particle|Sprite|Matcap|MobileToon)?Cutout(DoubleSided)?$", RegexOptions.IgnoreCase);
 
         // Whether a blended source writes depth. A declared _ZWrite holds the
         // authored value; otherwise the ZWrite command in the shader file

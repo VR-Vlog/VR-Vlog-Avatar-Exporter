@@ -351,7 +351,20 @@ namespace VRVlog.LilToonExporter
                 .Any(key => key.value != 0 || key.inTangent != 0 || key.outTangent != 0))) return null;
             for (var i = 0; i < Baseline.Rows.Count; i++)
                 if (!Baseline.Rows[i].Weights.SequenceEqual(pose.Rows[i].Weights)) return null;
+            // The export writes the bones and visibility a face moves away from the prepared copy.
+            if (MovesBonesOrVisibility(clip)) return null;
             return ExporterLocalization.T(NoFaceChange);
+        }
+
+        bool MovesBonesOrVisibility(AnimationClip clip)
+        {
+            if (!AnimationUtility.GetCurveBindings(clip).Any(BoneOrShown)) return false;
+            var root = ClipRoot(clip);
+            var target = string.IsNullOrEmpty(root) ? Copy?.transform : Copy?.transform.Find(root);
+            // Without the copy's pose a bone curve may move, so the face stays.
+            if (target == null) return true;
+            try { return ExpressionTransformCurves.Read(target.gameObject, clip).Tracks.Count > 0; }
+            catch (InvalidOperationException) { return true; } // The export reports the clip.
         }
 
         // Read only the explicitly authored morph curves. No Animator graph,
@@ -362,7 +375,9 @@ namespace VRVlog.LilToonExporter
             return BuildClipPoseUnchecked(clip, time, name);
         }
 
-        Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name)
+        // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
+        // bones or shows objects stays unsupported there, as before (the preset would lose them).
+        Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
             if (!Finite(time) || time < 0 || time > clip.length)
@@ -371,14 +386,18 @@ namespace VRVlog.LilToonExporter
                 throw new InvalidOperationException(ExporterLocalization.T("Animation Eventを含みます。この実験版ではイベント付きの表情は収録できません。"));
             var bindings = AnimationUtility.GetCurveBindings(clip);
             // A clip a hand gesture enters is a face in VRChat even when it also turns a bone (an eye
-            // highlight) or the body. The export reads only its BlendShapes, so the board leaves those
-            // curves out too. Shown objects, materials and parameters still make it unsupported.
+            // highlight) or the body. Any face may move bones and show or hide objects: the export writes
+            // them beside the BlendShapes and the board shows the BlendShapes alone. Materials and
+            // parameters still make it unsupported.
             var gesture = gestureClips.Contains(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && !(gesture && IgnoredBesideFace(binding)))
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (presetFace || !BoneOrShown(binding)) &&
+                    !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
-                throw new InvalidOperationException(ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ") +
+                throw new InvalidOperationException((presetFace
+                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ")
+                    : ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ")) +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
             if (bindings.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("このクリップにはBlendShapeの表情がありません。全身ポーズはポーズ欄へ追加してください。"));
             var root = ClipRoot(clip);
@@ -414,6 +433,9 @@ namespace VRVlog.LilToonExporter
             ValidatePose(pose);
             return pose;
         }
+
+        static bool BoneOrShown(EditorCurveBinding binding) => !binding.isPPtrCurve &&
+            (binding.type == typeof(Transform) || binding.type == typeof(GameObject) && binding.propertyName == "m_IsActive");
 
         static bool IgnoredBesideFace(EditorCurveBinding binding) => !binding.isPPtrCurve &&
             (binding.type == typeof(Transform) || PoseSampling.IsHumanoidChannel(binding) || NeutralShapePlan.IsInertDynamicsBinding(binding));

@@ -45,6 +45,11 @@ namespace VRVlog.LilToonExporter
             internal double Duration = 0;
             internal bool Loop = false;
             internal readonly List<AnimatedMorph> Animation = new List<AnimatedMorph>();
+            // Bone and visibility curves on the prepared copy, with their own
+            // clock: the clip's when they move, 0 when they only hold a value.
+            internal readonly List<VrmMenuExpressions.TransformTrack> Transforms = new List<VrmMenuExpressions.TransformTrack>();
+            internal double TransformDuration = 0;
+            internal bool TransformLoop = false;
             internal readonly Dictionary<string, float> Parameters = new Dictionary<string, float>(StringComparer.Ordinal);
             internal readonly List<MorphValue> Values = new List<MorphValue>();
             // A sampled menu cannot supply a weight for a morph which does not

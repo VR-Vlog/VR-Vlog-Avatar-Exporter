@@ -312,10 +312,14 @@ namespace VRVlog.LilToonExporter
             if (messages != null && !messages.Contains(text)) messages.Add(text);
         }
 
-        internal static bool NeedsProjection(GameObject avatar, IEnumerable<AnimationClip> clips, Func<string, bool> excludedPath = null)
+        // Handled curves are written by another reader (bones and visibility)
+        // and need no projection.
+        internal static bool NeedsProjection(GameObject avatar, IEnumerable<AnimationClip> clips, Func<string, bool> excludedPath = null,
+            ICollection<EditorCurveBinding> handled = null)
             => clips.Where(clip => clip != null).Distinct().Any(clip =>
                 AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true) ||
                 AnimationUtility.GetCurveBindings(clip).Any(binding => excludedPath?.Invoke(binding.path) != true &&
+                    handled?.Contains(binding) != true &&
                     binding.type != typeof(Animator) && !PoseSampling.IsBlendShape(binding) &&
                     !SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding)));
 

@@ -1,4 +1,4 @@
-> Stable **1.4.2** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
+> Stable **1.4.3** is the current release. Open the expression board or send an avatar to the app with **VR Vlog → アプリに転送（かんたん）...** / **アプリに転送（通常）...**; the QR is scanned with the phone's camera. Select it in ALCOM without enabling **Show pre-release packages**. Uploads start only when you press the button. Previously published ZIPs remain unchanged.
 
 # VR Vlog lilToon VRM Exporter
 
@@ -59,7 +59,7 @@ Before each export the exporter compares the lilToon shaders the avatar uses wit
 
 1. Open the [installation page](https://vrvlog.fun/exporter/) and select **VCC / ALCOMに追加** (add to VCC / ALCOM).
 2. Open your Unity project's package manager in VCC / ALCOM.
-3. Install **VR Vlog lilToon VRM Exporter 1.4.2** from the stable versions. **Show pre-release packages** is not needed.
+3. Install **VR Vlog lilToon VRM Exporter 1.4.3** from the stable versions. **Show pre-release packages** is not needed.
 
 If the button does not open your package manager, add this repository URL manually:
 
@@ -83,7 +83,7 @@ Stable 1.0.0 and later include QR transfer through **アプリに転送**, as di
 
 ## Quick start
 
-The steps below describe stable 1.4.2. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
+The steps below describe stable 1.4.3. Previously published ZIPs are unchanged. The UI follows the editor locale; the labels below match the Japanese guide.
 
 1. Open your avatar in Unity. Enable the avatar, its parents and the outfit you want to export.
 2. Select the avatar's root object in the Hierarchy and choose **VR Vlog → アプリに転送（通常）...** (also in the Hierarchy right-click menu, and for a prefab in the Project right-click menu). To only save a VRM file, press **VRMを保存** on the board's third page.

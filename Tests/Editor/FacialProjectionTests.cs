@@ -222,11 +222,19 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
-        public void FaceRendererDisappearanceRemainsUnsupported()
+        public void FaceRendererDisappearanceIsAVisibilityTrack()
         {
             var motion = Clip("Hidden face", 75, true);
             AnimationUtility.SetEditorCurve(motion, EditorCurveBinding.FloatCurve("Body", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
-            Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadClip(avatar, motion, new VrChatExpressionMenu.Entry()));
+            var entry = new VrChatExpressionMenu.Entry();
+            VrChatGestureExpressions.ReadClip(avatar, motion, entry);
+            // Hiding the face is written to the expression's transforms, not
+            // projected onto the face's morphs.
+            var track = entry.Transforms.Single();
+            Assert.That(track.Path, Is.EqualTo("Body"));
+            Assert.That(track.Property, Is.EqualTo(VRVlog.Expressions.ExpressionTransformAnimation.Active));
+            Assert.That(track.Curves.Single().Evaluate(.5), Is.EqualTo(0));
+            Assert.That(entry.Values, Is.Not.Empty);
         }
 
         [Test]

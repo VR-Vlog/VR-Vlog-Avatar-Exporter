@@ -163,10 +163,10 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static List<VrChatExpressionMenu.MorphValue> ReadPose(GameObject avatar, AnimationClip clip, Func<string, bool> excludedPath = null,
-            VrChatExpressionMenu.Entry entry = null, VrChatExpressionMenu.Source metadata = null)
+            VrChatExpressionMenu.Entry entry = null, VrChatExpressionMenu.Source metadata = null, ExpressionTransformCurves.Reading transforms = null)
         {
             SelectedExpressionAppearance.ValidateClipData(clip, excludedPath);
-            var projection = FacialProjectionScope.NeedsProjection(avatar, new[] { clip }, excludedPath) ? FacialProjectionScope.For(avatar, metadata) : null;
+            var projection = FacialProjectionScope.NeedsProjection(avatar, new[] { clip }, excludedPath, transforms?.Handled) ? FacialProjectionScope.For(avatar, metadata) : null;
             var plan = projection == null ? null : NeutralShapePlan.CreateProjection(avatar, projection.Morphs, new[] { clip }, excludedPath);
             if (AnimationUtility.GetObjectReferenceCurveBindings(clip).Any(b => excludedPath?.Invoke(b.path) != true && plan?.AllowsEvaluationBinding(clip, b) != true))
                 throw new InvalidOperationException("マテリアル・オブジェクトの差し替えを含む表情アニメーションは未対応です。");
@@ -179,6 +179,8 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
                 if (excludedPath?.Invoke(binding.path) == true) continue;
+                // Bone and visibility curves the transforms reader took or left out.
+                if (transforms?.Handled.Contains(binding) == true) continue;
                 if (!PoseSampling.IsBlendShape(binding))
                 {
                     if (SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding) || NeutralShapePlan.IsInertDynamicsBinding(binding)) continue;
@@ -204,7 +206,8 @@ namespace VRVlog.LilToonExporter
                 // prepared mesh is available. Preparation may create that morph.
                 result.Add(new VrChatExpressionMenu.MorphValue { Path = binding.path, Shape = shape, Weight = weight });
             }
-            if (result.Count == 0) throw new InvalidOperationException("顔のBlendShapeを含まないアニメーションです。");
+            // A face that only moves bones or visibility has no BlendShape values.
+            if (result.Count == 0 && !(transforms?.Tracks.Count > 0)) throw new InvalidOperationException("顔のBlendShapeを含まないアニメーションです。");
             return result;
         }
 
@@ -213,7 +216,8 @@ namespace VRVlog.LilToonExporter
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry,
             Func<string, bool> excludedPath = null, VrChatExpressionMenu.Source metadata = null)
         {
-            var values = ReadPose(avatar, clip, excludedPath, entry, metadata);
+            var transforms = ExpressionTransformCurves.Read(avatar, clip, excludedPath);
+            var values = ReadPose(avatar, clip, excludedPath, entry, metadata, transforms);
             var animated = new List<VrChatExpressionMenu.AnimatedMorph>();
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
             {
@@ -227,12 +231,20 @@ namespace VRVlog.LilToonExporter
                     Path = binding.path, Shape = binding.propertyName.Substring("blendShape.".Length), Curve = curve
                 });
             }
-            if (animated.Count > 0 && (clip.length <= 0 || clip.length > 600))
+            // Moving bones or visibility share the clip's clock with the shapes;
+            // held ones alone are a still face.
+            var timed = animated.Count > 0 || transforms.Moving;
+            if (timed && (clip.length <= 0 || clip.length > 600))
                 throw new InvalidOperationException("表情アニメーションの長さは0秒より長く600秒以下である必要があります: " + clip.name);
             entry.Values.AddRange(values);
             entry.Animation.AddRange(animated);
             entry.Duration = animated.Count > 0 ? clip.length : 0;
             entry.Loop = animated.Count > 0 && clip.isLooping;
+            entry.Transforms.AddRange(transforms.Tracks);
+            entry.TransformDuration = timed ? clip.length : 0;
+            entry.TransformLoop = timed && clip.isLooping;
+            foreach (var message in transforms.Messages())
+                if (!entry.Messages.Contains(message)) entry.Messages.Add(message);
         }
 
         internal static ExpressionAnimationData.Curve ReadCurve(AnimationCurve curve)

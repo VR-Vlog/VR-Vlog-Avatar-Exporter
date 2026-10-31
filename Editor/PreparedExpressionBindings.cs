@@ -329,7 +329,8 @@ namespace VRVlog.LilToonExporter
                     entry.Messages.Add("元モデルにも出力モデルにもないBlendShape参照を省略しました: " +
                                        string.Join(", ", missing.OrderBy(v => v.Path, StringComparer.Ordinal).ThenBy(v => v.Shape, StringComparer.Ordinal).Select(v => v.Path + "/" + v.Shape)));
                 if (entry.Animation.Count == 0) { entry.Duration = 0; entry.Loop = false; }
-                if (entry.Values.Count == 0) entry.Error = "参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。";
+                // A face that also moves bones or visibility keeps them.
+                if (entry.Values.Count == 0 && entry.Transforms.Count == 0) entry.Error = "参照を解決した結果、有効な顔のBlendShapeがないため、この表情を省略しました。";
             }
         }
 
@@ -341,7 +342,7 @@ namespace VRVlog.LilToonExporter
             {
                 var count = entry.Values.RemoveAll(v => Excluded(v.Path)) + entry.Animation.RemoveAll(v => Excluded(v.Path)) + entry.Unevaluated.RemoveAll(v => Excluded(v.Path));
                 if (count == 0) continue;
-                if (entry.Values.Count == 0 && entry.Animation.Count == 0 && entry.Unevaluated.Count == 0)
+                if (entry.Values.Count == 0 && entry.Animation.Count == 0 && entry.Unevaluated.Count == 0 && entry.Transforms.Count == 0)
                     entry.Error = "除外した補助Rendererだけを変更する表情のため省略しました。";
                 else warnings?.Add(entry.Name + ": 補助Rendererの表情だけを省略し、残る表情を保持しました。");
             }
