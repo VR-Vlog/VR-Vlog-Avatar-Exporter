@@ -864,6 +864,19 @@ BEHAVIOR_CASES = {
         'TheExportShrinksOnlyWhenTheOptionIsOn': 4,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
+    # 自動で軽量化する: textures of switched-off lilToon features are left out.
+    'LilToonInactiveSlotsTests': {
+        'ASlotIsSampledOnlyWhileItsSwitchIsOn': 29,
+        'AMissingSwitchCountsAsSampled': 1,
+        'DissolveSlotsFollowTheDissolveMode': 3,
+        'OutlineSlotsNeedAnOutlinePassThatIsDrawn': 4,
+        'OnlyTheOptionLeavesOutTexturesOfSwitchedOffSlots': 2,
+        'ATextureASampledSlotUsesIsKept': 1,
+        'ASwitchedOffNormalSlotGetsTheDefaultNormalTexture': 1,
+        'OffWritesTheSameExtensionAsBefore': 1,
+        'TheExportListsTheLineOnlyWhenTheOptionIsOn': 2,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
 }
 INTEGRATION_CASES = {
     # The integration project must install the official MeshDeleterWithTexture
