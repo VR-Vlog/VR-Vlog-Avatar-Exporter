@@ -175,7 +175,58 @@ namespace VRVlog.LilToonExporter
         }
 #endif
 
-        internal static bool NeedsProcessing(GameObject avatar) => avatar != null && RelevantAuthoring(avatar).Count != 0;
+        internal static bool NeedsProcessing(GameObject avatar) => avatar != null &&
+            (RelevantAuthoring(avatar).Count != 0 || HasPluginToolComponent(avatar));
+
+        // Tools that build through NDMF without MA's or AAO's tag classes
+        // (TexTransTool, lilycalInventory, texture compressors) still have
+        // their plugins run by a VRChat build. A component from a package that
+        // exports an NDMF plugin starts the export build too. With the VRChat
+        // SDK installed, such tools mark their settings IEditorOnly so the
+        // upload strips them; requiring it keeps a package's runtime
+        // components from starting the build.
+        internal static ISet<string> PluginPackagesOverride;
+        private static HashSet<string> pluginPackages;
+        private static readonly Dictionary<Assembly, string> packageOfAssembly = new Dictionary<Assembly, string>();
+
+        internal static bool HasPluginToolComponent(GameObject avatar)
+        {
+            var packages = PluginPackagesOverride ?? PluginPackages();
+            if (packages.Count == 0) return false;
+            var editorOnly = FindType("VRC.SDKBase.IEditorOnly");
+            return avatar.GetComponentsInChildren<Component>(true).Any(component => component != null &&
+                !IsCopyAvatarRoot(avatar, component) && (editorOnly == null || editorOnly.IsInstanceOfType(component)) &&
+                PackageOf(component.GetType().Assembly) is string package && packages.Contains(package));
+        }
+
+        private static string PackageOf(Assembly assembly)
+        {
+            if (!packageOfAssembly.TryGetValue(assembly, out var package))
+                packageOfAssembly[assembly] = package = PackageInfo.FindForAssembly(assembly)?.name;
+            return package;
+        }
+
+        // Script changes and package installs reload the domain, which clears
+        // this cache together with the assemblies it was read from.
+        private static HashSet<string> PluginPackages() => pluginPackages ?? (pluginPackages =
+            PluginPackages(AppDomain.CurrentDomain.GetAssemblies(), PackageOf(typeof(NdmfExportPreparation).Assembly)));
+
+        // excluded: the exporter's own package, whose test plugins must not
+        // turn its vendored VRM components into build triggers.
+        internal static HashSet<string> PluginPackages(IEnumerable<Assembly> assemblies, string excluded)
+        {
+            var packages = new HashSet<string>();
+            foreach (var assembly in assemblies)
+            {
+                IList<CustomAttributeData> attributes;
+                try { attributes = assembly.GetCustomAttributesData(); }
+                catch (Exception) { continue; }
+                if (attributes.Any(attribute => attribute.AttributeType.FullName == "nadena.dev.ndmf.ExportsPlugin") &&
+                    PackageOf(assembly) is string package && package != excluded)
+                    packages.Add(package);
+            }
+            return packages;
+        }
 
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)
             ? copy : original;
