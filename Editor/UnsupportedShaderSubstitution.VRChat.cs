@@ -129,7 +129,7 @@ namespace VRVlog.LilToonExporter
             // Both shaders mark _Metallic [Gamma], so the value is copied.
             Set(material, "_Metallic", Mathf.Clamp01(values.Float("_Metallic", 1)));
             Set(material, "_Smoothness", Mathf.Clamp01(values.Float("_Glossiness", 1)));
-            Set(material, "_Reflectance", .04f);
+            Set(material, "_Reflectance", Mathf.LinearToGammaSpace(.04f));
             Set(material, "_SpecularToon", 0);
             Set(material, "_ApplySpecular", values.Keyword("_SPECULARHIGHLIGHTS_OFF") ? 0 : 1);
             Set(material, "_ApplyReflection", values.Keyword("_GLOSSYREFLECTIONS_OFF") ? 0 : 1);
@@ -258,12 +258,25 @@ namespace VRVlog.LilToonExporter
                 var c = Color.Lerp(row[j], row[j + 1], x - j);
                 brightness[i] = Mathf.Min(1, (c.r + c.g + c.b) / 3 + boost);
             }
-            if (!FitShadowEdge(brightness, material)) { Set(material, "_UseShadow", 0); return; }
-            Set(material, "_ShadowStrength", Mathf.Clamp01(1 - brightness[0]));
+            if (FitShadowEdge(brightness, material))
+            {
+                Set(material, "_ShadowStrength", Mathf.Clamp01(1 - brightness[0]));
+                return;
+            }
+            // Both ends match: the ramp darkens every angle by about its mean,
+            // so the whole surface becomes shadow at that strength.
+            var mean = 0f;
+            foreach (var b in brightness) mean += b;
+            mean /= brightness.Length;
+            if (mean > 1 - 1e-3f) { Set(material, "_UseShadow", 0); return; }
+            Set(material, "_ShadowBorder", 1);
+            Set(material, "_ShadowBlur", .001f);
+            Set(material, "_ShadowStrength", 1 - mean);
         }
 
         // f0 = 0.16 × reflectance² for dielectrics and the albedo for metals,
-        // as lilToon's _Reflectance and _Metallic mix them. Reflection probes
+        // as lilToon's _Reflectance and _Metallic mix them (both [Gamma] in
+        // lilToon, so the linear values are stored in gamma). Reflection probes
         // are used; the gloss map scales smoothness and reflectance alike.
         static void VrcToonSpecular(SourceValues values, Material material, List<Texture2D> textures, List<string> effects)
         {
@@ -275,7 +288,7 @@ namespace VRVlog.LilToonExporter
             Set(material, "_Metallic", Mathf.LinearToGammaSpace(Mathf.Clamp01(values.Float("_MetallicStrength", 0))));
             Set(material, "_Smoothness", Mathf.Clamp01(values.Float("_GlossStrength", .5f)));
             var reflectance = Mathf.Clamp01(values.Float("_Reflectance", .5f));
-            Set(material, "_Reflectance", .16f * reflectance * reflectance);
+            Set(material, "_Reflectance", Mathf.LinearToGammaSpace(.16f * reflectance * reflectance));
             CopyMask(values, material, "_MetallicMap", "_MetallicMapChannel", "", "_MetallicGlossMap", "", textures, effects, "Metallic Map");
             CopyMask(values, material, "_GlossMap", "_GlossMapChannel", "", "_SmoothnessTex", "", textures, effects, "Gloss Map");
             if (values.Float("_SpecularSharpness", 0) > 0) Drop(effects, "Specular Sharpness");
@@ -361,11 +374,43 @@ namespace VRVlog.LilToonExporter
             Set(material, "_OutlineEnableLighting", 0);
             var color = values.TryVector("_OutlineColor", out var authored) && Finite(authored) ? (Color)authored : Color.black;
             var fromAlbedo = Mathf.Clamp01(values.Float("_OutlineFromAlbedo", 0));
-            if (fromAlbedo >= .5f)
-                SetTexture(material, "_OutlineTex", material.GetTexture("_MainTex"), material.GetTextureScale("_MainTex"), material.GetTextureOffset("_MainTex"));
-            var outline = Color.Lerp(color, material.GetColor("_Color"), fromAlbedo);
+            var main = material.GetTexture("_MainTex");
+            var mainScale = material.GetTextureScale("_MainTex");
+            var mainOffset = material.GetTextureOffset("_MainTex");
+            var tint = material.GetColor("_Color");
+            var outline = Color.Lerp(color, tint, fromAlbedo);
+            if (main != null && fromAlbedo > 1e-3f)
+            {
+                // lilToon multiplies the outline color by the image, so a mix
+                // other than all albedo is baked into an outline image.
+                var image = fromAlbedo > 1 - 1e-3f ? main : OutlineImage(main, color, tint, fromAlbedo, textures);
+                if (image != null)
+                {
+                    SetTexture(material, "_OutlineTex", image, mainScale, mainOffset);
+                    if (image != main) outline = Color.white;
+                }
+            }
             material.SetColor("_OutlineColor", new Color(outline.r, outline.g, outline.b, 1));
             CopyMask(values, material, "_OutlineMask", "_OutlineMaskChannel", "", "_OutlineWidthMask", "", textures, effects, "Outline Mask");
+        }
+
+        // lerp(outline color, image × tint, amount) per pixel of the main image,
+        // laid out like it. Null when the image cannot be read.
+        static Texture2D OutlineImage(Texture main, Color color, Color tint, float amount, List<Texture2D> textures)
+        {
+            if (textures == null) return null;
+            var size = Mathf.Min(Mathf.Max(4, main.width, main.height), 2048);
+            var pixels = Sampled(main, size, size);
+            if (pixels == null) return null;
+            var line = color.linear;
+            var linearTint = tint.linear;
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var mixed = Color.Lerp(line, pixels[i] * linearTint, amount);
+                var gamma = new Color(Mathf.Clamp01(mixed.r), Mathf.Clamp01(mixed.g), Mathf.Clamp01(mixed.b)).gamma;
+                pixels[i] = new Color(gamma.r, gamma.g, gamma.b, 1);
+            }
+            return NewImage(main, "__VRVlog_Outline", size, pixels, textures);
         }
 
         // The source turns the hue in radians; a whole turn changes nothing.
@@ -415,6 +460,19 @@ namespace VRVlog.LilToonExporter
             foreach (var texture in new[] { main, hueMask, colorMask, bakeEmission ? emissionMap : null })
                 if (texture != null) size = Mathf.Max(size, texture.width, texture.height);
             size = Mathf.Min(size, 2048);
+            // When every image involved has the same tiling and offset, the
+            // result is baked in image space and keeps them, so meshes whose UVs
+            // leave 0 to 1 repeat it as before. Otherwise it is baked over the
+            // mesh's 0 to 1 UV square.
+            var involved = new List<(Texture texture, Vector2 scale, Vector2 offset)>
+            {
+                (main, mainScale, mainOffset), (hueMask, hueScale, hueOffset), (colorMask, maskScale, maskOffset),
+            };
+            if (bakeEmission && Get(material, "_UseEmission") > .5f) involved.Add((emissionMap, emissionScale, emissionOffset));
+            var present = involved.FindAll(entry => entry.texture != null);
+            var shared = present.TrueForAll(entry => entry.scale == present[0].scale && entry.offset == present[0].offset);
+            var bakedScale = shared && present.Count > 0 ? present[0].scale : Vector2.one;
+            var bakedOffset = shared && present.Count > 0 ? present[0].offset : Vector2.zero;
 
             Color[] Read(Texture texture, Vector2 scale, Vector2 offset, Color fallback)
             {
@@ -424,7 +482,7 @@ namespace VRVlog.LilToonExporter
                     for (var i = 0; i < flat.Length; i++) flat[i] = fallback;
                     return flat;
                 }
-                return Sampled(texture, size, size, scale, offset);
+                return shared ? Sampled(texture, size, size) : Sampled(texture, size, size, scale, offset);
             }
             var hueValues = Read(hueMask, hueScale, hueOffset, Color.white);
             var maskValues = Read(colorMask, maskScale, maskOffset, Color.clear);
@@ -463,7 +521,7 @@ namespace VRVlog.LilToonExporter
                 }
                 else
                 {
-                    SetTexture(material, "_MainTex", image, Vector2.one, Vector2.zero);
+                    SetTexture(material, "_MainTex", image, bakedScale, bakedOffset);
                     material.SetColor("_Color", Color.white);
                 }
             }
@@ -513,7 +571,7 @@ namespace VRVlog.LilToonExporter
                 }
                 Set(material, "_UseEmission", 1);
                 Set(material, "_EmissionMap_UVMode", 0);
-                SetTexture(material, "_EmissionMap", image, Vector2.one, Vector2.zero);
+                SetTexture(material, "_EmissionMap", image, bakedScale, bakedOffset);
                 var intensity = new Color(scale, scale, scale).gamma;
                 material.SetColor("_EmissionColor", new Color(intensity.r, intensity.g, intensity.b, 1));
             }
@@ -542,7 +600,7 @@ namespace VRVlog.LilToonExporter
             return albedo;
         }
 
-        // An sRGB image in the mesh's UV space, owned by textures.
+        // An sRGB image owned by textures, with the wrap and filter of origin.
         static Texture2D NewImage(Texture origin, string suffix, int size, Color[] pixels, List<Texture2D> textures)
         {
             if (textures == null) return null;

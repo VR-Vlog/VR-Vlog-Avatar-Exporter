@@ -22,7 +22,7 @@ VRChat SDK（3.10）には 19 個のシェーダーが入っている。これ�
 - ブレンドは lilToon の半透明の premultiplied 出力に合わせる。
   - 加算: `_SrcBlend`／`_DstBlend` を One／One にし、ライトごとの加算パスは Zero／One で何も足さない。
   - 乗算: `2026-10-31-multiply-shader-to-liltoon-multiply.md` の設定を使う。
-- 色相とカラーマスクは lilToon に同じ式が無いので、結果を新しい主画像（と発光画像）へ焼き込み、`_Color` を白にする。
+- 色相とカラーマスクは lilToon に同じ式が無いので、結果を新しい主画像（と発光画像）へ焼き込み、`_Color` を白にする。焼き込みに使う画像のタイリングとオフセットがすべて同じなら画像の空間で焼いてその値を残し、UV が 0〜1 を越えるメッシュでも元と同じ周期で繰り返す。違うときはメッシュの UV の 0〜1 の範囲で焼く。焼いた画像は最大 2048 px にする。
 - 写せない効果は、材質名とその効果名を警告「元のシェーダーの効果のうち公式lilToonに無いものは書き出していません」に出す。表で写した材質は、新しい警告「VRChatの公式シェーダーの設定を公式lilToonの同じ役割の項目へ写しました」に並べる。文言は、他のトゥーンシェーダー用の既存の警告と同じ形にそろえた。
 - アプリ（VR Vlog）は lilToon の値をそのまま読むので、アプリ側の変更はいらない。かんたん転送も同じ置き換えを通るので、通常の書き出しと中身は変わらない。
 
@@ -58,13 +58,13 @@ VRChat SDK（3.10）には 19 個のシェーダーが入っている。これ�
 |---|---|---|---|
 | Toon Standard | `_Ramp`・`_ShadowBoost`・`_ShadowAlbedo` | `_ShadowColor`（`_ShadowAlbedo`）・`_ShadowMainStrength` 1・`_ShadowStrength`・境界とぼかしをランプの明るさに合わせる | ランプの色は灰色として読む（lilToon の影は 1 色） |
 | | `_LimitBrightness`・`_MinBrightness` | `_LightMaxLimit`（1 か 10）・`_LightMinLimit` | |
-| | `USE_SPECULAR`・`_MetallicStrength`・`_GlossStrength`・`_Reflectance`・`_MetallicMap`・`_GlossMap` | `_UseReflection`・`_Metallic`（ガンマへ変換）・`_Smoothness`・`_Reflectance`（0.16 × r²）・`_MetallicGlossMap`・`_SmoothnessTex` | `_SpecularSharpness` は lilToon に同じ役割の項目が無い |
+| | `USE_SPECULAR`・`_MetallicStrength`・`_GlossStrength`・`_Reflectance`・`_MetallicMap`・`_GlossMap` | `_UseReflection`・`_Metallic`（ガンマへ変換）・`_Smoothness`・`_Reflectance`（0.16 × r² をガンマへ変換。lilToon は `[Gamma]`）・`_MetallicGlossMap`・`_SmoothnessTex` | `_SpecularSharpness` は lilToon に同じ役割の項目が無い |
 | | `USE_MATCAP`・`_Matcap`・`_MatcapStrength`・`_MatcapType`・`_MatcapMask` | `_UseMatCap`・`_MatCapTex`・`_MatCapBlend`・`_MatCapBlendMode`（加算 1／乗算 3）・`_MatCapBlendMask`・`_MatCapZRotCancel` 1 | |
 | | `USE_RIMLIGHT`・`_RimColor`・`_RimIntensity`・`_RimRange`・`_RimSharpness`・`_RimAlbedoTint`・`_RimEnvironmental` | `_UseRim`・`_RimColor`（強さを掛ける）・`_RimBorder`（1 − range）・`_RimBlur`（2 × sharpness）・`_RimMainStrength`・`_RimEnableLighting` | |
 | | `USE_DETAIL_MAPS`・`_DetailAlbedoMap`・`_DetailMode`・`_DetailMask`・`_DetailNormalMap`・`_DetailUV` | `_Main2ndTex`（通常／加算／乗算）・`_Main2ndBlendMask`・`_Bump2ndMap`・`_Bump2ndScaleMask`・UV 0／1 | `_DetailMode` の MultiplyX2 と `_DetailHueShift` は lilToon に無い |
 | | `USE_HUE_SHIFT`・`_HueShift`・`_HueShiftMask`・`_EmissionHueShift` | 主画像と発光画像へ焼き込む | 発光画像が UV1 のときはマスクと同じ UV で焼けないので写さない |
 | | `USE_COLOR_MASK`・`_ColorMask`・`_ColorMaskColor1〜4`・`_ColorMaskBlendMode`・`_ColorMaskEmissionStrength1〜4` | 主画像と発光画像へ焼き込む | 同上 |
-| | `_OutlineThickness`・`_OutlineColor`・`_OutlineFromAlbedo`・`_OutlineMask` | `_OutlineWidth`・`_OutlineColor`・`_OutlineTex`・`_OutlineWidthMask`・ライトを受けない | |
+| | `_OutlineThickness`・`_OutlineColor`・`_OutlineFromAlbedo`・`_OutlineMask` | `_OutlineWidth`・`_OutlineColor`・`_OutlineWidthMask`・ライトを受けない。`_OutlineFromAlbedo` が 0 と 1 の間なら、輪郭線の色と主画像を画素ごとに混ぜた画像を `_OutlineTex` に焼き、1 なら主画像をそのまま使う | |
 | | `_VertexColor`・`USE_OCCLUSION_MAP` | なし | 頂点カラーを掛ける項目とオクルージョンが lilToon に無い（警告に出す） |
 | Standard Lite | `_Metallic`・`_Glossiness`・`_MetallicGlossMap` | `_Metallic`・`_Smoothness`・`_MetallicGlossMap`・`_SmoothnessTex`（A を焼き出す） | |
 | | `_SPECULARHIGHLIGHTS_OFF`・`_GLOSSYREFLECTIONS_OFF` | `_ApplySpecular`・`_ApplyReflection` | SDK の既定はどちらもオフ（ToggleOff の 0）なので、新しい材質はハイライトも反射も出ない。キーワードに従う |
@@ -77,15 +77,17 @@ VRChat SDK（3.10）には 19 個のシェーダーが入っている。これ�
 
 ## 確認したこと
 
-- EditMode テスト（`VRChatShaderSubstitutionTests`・23 本）で、SDK の全シェーダー名に表の行があること、表に無い名前が汎用の置き換えのままであること、光の受け方とブレンドの 3 種類ずつ、Toon Standard の各機能（ランプ・スペキュラー・マットキャップ・リム・ディテール・アウトライン・色相とカラーマスクの焼き込み・カラーマスクの発光・頂点カラーとオクルージョンの警告）、Standard Lite・Blinn-Phong・MatCap Lit・Video・投影系の写し方を確かめた。Linear の Unity 2022.3 で、関係するテスト 158 本がすべて通る。
+- EditMode テスト（`VRChatShaderSubstitutionTests`・26 本）で、SDK の全シェーダー名に表の行があること、表に無い名前が汎用の置き換えのままであること、光の受け方とブレンドの 3 種類ずつ、Toon Standard の各機能（ランプ・スペキュラー・マットキャップ・リム・ディテール・アウトライン・色相とカラーマスクの焼き込み・カラーマスクの発光・頂点カラーとオクルージョンの警告）、Standard Lite・Blinn-Phong・MatCap Lit・Video・投影系の写し方を確かめた。Linear の Unity 2022.3 で、関係するテスト 158 本がすべて通る。
 - 球と板に SDK のシェーダーを付けて、元の描画と、書き出して読み込み直し lilToon のプレビューで描いたものを 3 倍の解像度で並べた。比較画像はリポジトリには入れていない。元との平均の差（0〜255）は次のとおり。
 
 | 例 | これまで | 今回 |
 |---|---|---|
 | Toon Standard（ランプ） | 4.8 | 2.8 |
-| Toon Standard（スペキュラー・リム） | 15.3 | 2.7 |
+| Toon Standard（スペキュラー・リム） | 15.3 | 3.0 |
 | Toon Standard（マットキャップ・色相・カラーマスク） | 39.3 | 1.5 |
 | Toon Standard（アウトライン） | 5.1 | 2.8 |
+| Toon Standard（アウトラインの色を主画像と半々に混ぜる） | 5.1 | 2.8 |
+| Toon Standard（明るさが一定のランプ） | 11.9 | 0.5 |
 | Standard Lite | 14.8 | 15.6 |
 | Diffuse／Bumped Diffuse／Bumped Mapped Specular | 19.3〜19.5 | 12.6 |
 | Toon Lit | 5.2 | 5.2 |

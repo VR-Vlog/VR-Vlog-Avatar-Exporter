@@ -48,8 +48,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         Material Substitute(Material source, string shader) => Substitute(source, shader, out _);
 
-        static void AssertColor(Color actual, Color expected, string what) =>
-            Assert.That(Vector4.Distance(actual, expected), Is.LessThan(2e-3f), what + " " + actual.ToString("F4"));
+        static void AssertColor(Color actual, Color expected, string what, float tolerance = 2e-3f) =>
+            Assert.That(Vector4.Distance(actual, expected), Is.LessThan(tolerance), what + " " + actual.ToString("F4"));
 
         [Test] public void EveryShaderOfTheVRChatSdkHasARow()
         {
@@ -278,6 +278,20 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(.5f).Within(.03f));
         }
 
+        [Test] public void ToonStandardFlatRampDarkensEveryAngle()
+        {
+            if (!CanRead) Assert.Ignore("The ramp is read through the GPU.");
+            var source = ToonStandard();
+            source.SetTexture("_Ramp", Image(Color.grey, Color.grey, true));
+            var output = Substitute(source, "VRChat/Mobile/Toon Standard");
+            Assert.That(output.GetFloat("_UseShadow"), Is.EqualTo(1f));
+            Assert.That(output.GetFloat("_ShadowBorder"), Is.EqualTo(1f));
+            Assert.That(output.GetFloat("_ShadowStrength"), Is.EqualTo(.5f).Within(.01f));
+            var white = ToonStandard();
+            white.SetTexture("_Ramp", Image(Color.white, Color.white, true));
+            Assert.That(Substitute(white, "VRChat/Mobile/Toon Standard").GetFloat("_UseShadow"), Is.EqualTo(0f));
+        }
+
         [Test] public void ToonStandardSpecularUsesTheSameReflectanceAndMetallic()
         {
             var source = ToonStandard();
@@ -290,7 +304,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(output.GetFloat("_ApplyReflection"), Is.EqualTo(1f));
             Assert.That(output.GetFloat("_Metallic"), Is.EqualTo(Mathf.LinearToGammaSpace(.5f)).Within(1e-5));
             Assert.That(output.GetFloat("_Smoothness"), Is.EqualTo(.7f).Within(1e-6));
-            Assert.That(output.GetFloat("_Reflectance"), Is.EqualTo(.04f).Within(1e-6));
+            Assert.That(output.GetFloat("_Reflectance"), Is.EqualTo(Mathf.LinearToGammaSpace(.04f)).Within(1e-5));
             Assert.That(dropped, Does.Contain("Specular Sharpness"));
         }
 
@@ -361,6 +375,31 @@ namespace VRVlog.LilToonExporter.Tests
             AssertColor(output.GetColor("_OutlineColor"), Color.blue, "_OutlineColor");
         }
 
+        [Test] public void ToonStandardOutlineMixedWithTheAlbedoIsBakedPerPixel()
+        {
+            if (!CanRead) Assert.Ignore("Baking reads the images through the GPU.");
+            var main = Image(Color.red, Color.green);
+            var source = ToonStandard();
+            source.SetTexture("_MainTex", main); source.SetTextureScale("_MainTex", new Vector2(2, 1));
+            source.SetColor("_OutlineColor", Color.blue); source.SetFloat("_OutlineFromAlbedo", .25f);
+            var output = Substitute(source, "VRChat/Mobile/Toon Standard (Outline)");
+            var baked = (Texture2D)output.GetTexture("_OutlineTex");
+            Assert.That(baked, Is.Not.SameAs(main));
+            AssertColor(output.GetColor("_OutlineColor"), Color.white, "_OutlineColor");
+            Assert.That(output.GetTextureScale("_OutlineTex"), Is.EqualTo(new Vector2(2, 1)));
+            var left = baked.GetPixel(0, 0).linear;
+            AssertColor(new Color(left.r, left.g, left.b, 1), new Color(.25f, 0, .75f, 1), "left", 8e-3f);
+            var right = baked.GetPixel(baked.width - 1, 0).linear;
+            AssertColor(new Color(right.r, right.g, right.b, 1), new Color(0, .25f, .75f, 1), "right", 8e-3f);
+
+            var all = ToonStandard();
+            all.SetTexture("_MainTex", main); all.SetColor("_Color", Color.grey);
+            all.SetFloat("_OutlineFromAlbedo", 1);
+            var whole = Substitute(all, "VRChat/Mobile/Toon Standard (Outline)");
+            Assert.That(whole.GetTexture("_OutlineTex"), Is.SameAs(main));
+            AssertColor(whole.GetColor("_OutlineColor"), Color.grey, "_OutlineColor");
+        }
+
         [Test] public void ToonStandardHueShiftAndColorMaskAreBakedIntoTheMainImage()
         {
             if (!CanRead) Assert.Ignore("Baking reads the images through the GPU.");
@@ -381,6 +420,23 @@ namespace VRVlog.LilToonExporter.Tests
             AssertColor(new Color(right.r, right.g, right.b, 1), new Color(0, 1, 0, 1), "hue");
             var left = baked.GetPixel(0, 0).linear;
             AssertColor(new Color(left.r, left.g, left.b, 1), new Color(0, 0, .59f, 1), "color mask");
+        }
+
+        [Test] public void BakingKeepsTheTilingTheImagesShare()
+        {
+            if (!CanRead) Assert.Ignore("Baking reads the images through the GPU.");
+            foreach (var (maskScale, expected) in new[] { (new Vector2(.5f, 1), new Vector2(.5f, 1)), (Vector2.one, Vector2.one) })
+            {
+                var source = ToonStandard();
+                source.EnableKeyword("USE_COLOR_MASK");
+                source.SetTexture("_MainTex", Image(Color.red, Color.red)); source.SetTextureScale("_MainTex", new Vector2(.5f, 1));
+                source.SetTexture("_ColorMask", Image(new Color(1, 0, 0, 0), new Color(0, 0, 0, 0), true));
+                source.SetTextureScale("_ColorMask", maskScale);
+                source.SetColor("_ColorMaskColor1", Color.blue);
+                var output = Substitute(source, "VRChat/Mobile/Toon Standard");
+                Assert.That(output.GetTexture("_MainTex"), Is.Not.SameAs(source.GetTexture("_MainTex")));
+                Assert.That(output.GetTextureScale("_MainTex"), Is.EqualTo(expected), "mask scale " + maskScale);
+            }
         }
 
         [Test] public void ToonStandardColorMaskEmissionGlowsInTheMaskColor()
