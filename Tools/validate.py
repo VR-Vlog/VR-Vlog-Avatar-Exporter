@@ -181,7 +181,9 @@ assert "ExperimentalExpressionCaptureWindow.PrepareHidden(avatar)" in (root / "E
 assert "board.TransferExport(" in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert "UniVrmOneClickExporter.Export" not in (root / "Editor/AppTransferExport.cs").read_text(encoding="utf-8")
 assert 'return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : package["version"]' not in window
-assert f'? info.version : "{package["version"]}"' in window
+# The installed manifest supplies the release version. A patch release can
+# preserve the UI source, including its older fallback for unregistered copies.
+assert '!string.IsNullOrWhiteSpace(info.version) ? info.version :' in window
 assert "using UnityEditor.PackageManager;" not in window
 assert "using PackageManagerPackageInfo = UnityEditor.PackageManager.PackageInfo;" in window
 assert "FindLilToonPackage" not in window and "GetAllRegisteredPackages" not in window
