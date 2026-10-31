@@ -10,6 +10,14 @@ namespace VF.Component
     }
 }
 
+namespace VF.Model
+{
+    // Same full name as the marker VRCFury leaves on its test copy.
+    public class VRCFuryTest : VF.Component.VRCFuryComponent
+    {
+    }
+}
+
 namespace VrVlogExporterTests.VrcFuryFixtures
 {
     // Same members as VRCFury's feature component and its Fix Write Defaults

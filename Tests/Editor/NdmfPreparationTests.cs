@@ -645,6 +645,15 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void VrcFuryTestCopyIsNotBuiltAgain()
+        {
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            Assert.IsTrue(NdmfExportPreparation.HasVrcFuryComponent(clone));
+            clone.AddComponent<VF.Model.VRCFuryTest>();
+            Assert.IsFalse(NdmfExportPreparation.HasVrcFuryComponent(clone));
+        }
+
+        [Test]
         public void VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting()
         {
             var component = typeof(VrVlogExporterTests.VrcFuryFixtures.FeatureComponent);

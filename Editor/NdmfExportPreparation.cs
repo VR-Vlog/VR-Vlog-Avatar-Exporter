@@ -233,7 +233,7 @@ namespace VRVlog.LilToonExporter
         // Optimizing (callback order -10000), so the export runs the same hook
         // on its copy at that point, or alone when nothing needs NDMF.
         internal const string VrcFuryCompatibilityMessage =
-            "このバージョンのVRCFuryは書き出しから呼び出せません\nALCOMでVRCFuryを更新";
+            "このバージョンのVRCFuryは書き出しに対応していません\nALCOMでVRCFuryを更新";
         internal const string VrcFuryFailureMessage =
             "VRCFuryの処理に失敗しました\nVRCFuryのエラー表示で原因を確認";
         internal const string VrcFuryNoDescriptorWarning =
@@ -241,7 +241,10 @@ namespace VRVlog.LilToonExporter
         internal const string VrcFuryApplied = "VRCFuryの設定を一時コピーに適用しました";
         internal static Func<GameObject, bool> VrcFuryOverride;
 
+        // The hook is called directly, so VRCFury's own refusal to build its
+        // test copy again (a patch on the VRChat SDK callbacks) does not run.
         internal static bool HasVrcFuryComponent(GameObject avatar) => avatar != null &&
+            !avatar.GetComponents<Component>().Any(component => component != null && component.GetType().FullName == "VF.Model.VRCFuryTest") &&
             avatar.GetComponentsInChildren<Component>(true).Any(component => component != null && IsVrcFuryComponent(component.GetType()));
 
         private static bool IsVrcFuryComponent(Type type)
