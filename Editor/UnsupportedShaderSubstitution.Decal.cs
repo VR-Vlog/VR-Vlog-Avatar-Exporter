@@ -82,8 +82,10 @@ namespace VRVlog.LilToonExporter
             // Placement by another UV set, handedness, view parallax or time, a
             // flipped half (whose meaning differs between versions), colors
             // changed by hue, adjustment, theme or video, and alpha taken from
-            // the faces, global masks or the decal itself are not drawn.
-            if (Mathf.RoundToInt(values.Float("_DecalTexture" + s + "UV", 0)) != 0 || Mathf.RoundToInt(values.Float("_DecalMirroredUVMode" + s, 0)) != 0 ||
+            // the faces, global masks or the decal itself are not drawn. Older
+            // versions, without the alpha intensity, number their blend modes
+            // differently and are not drawn either.
+            if (!values.TryFloat("_DecalAlphaIntensity" + s, out _) || Mathf.RoundToInt(values.Float("_DecalTexture" + s + "UV", 0)) != 0 || Mathf.RoundToInt(values.Float("_DecalMirroredUVMode" + s, 0)) != 0 ||
                 (symmetry != 0 && symmetry != 1) || values.Float(n + "Depth", 0) != 0 || values.Float("_DecalRotationSpeed" + s, 0) != 0 ||
                 Moving("_DecalTexture" + s + "Pan") || Array.IndexOf(ToonDecalBlends, blend) < 0 ||
                 values.Float("_DecalHueShiftEnabled" + s, 0) > .5f || values.Float("_DecalColorAdjustEnabled" + s, 0) > .5f ||
@@ -112,11 +114,15 @@ namespace VRVlog.LilToonExporter
             var position = values.TryVector("_DecalPosition" + s, out var p) && Finite(p) ? new Vector2(p.x, p.y) : new Vector2(.5f, .5f);
             var size = values.TryVector("_DecalScale" + s, out var sc) && Finite(sc) ? new Vector2(sc.x, sc.y) : Vector2.one;
             var aspect = Mathf.RoundToInt(values.Float(n + "AspectRatioMode", 0));
-            if (aspect != 0 && decal.Texture != null && decal.Texture.width > 0 && decal.Texture.height > 0)
+            // Shrink to Fit narrows the shorter side of the image, Grow to Fit
+            // widens the longer one; other modes leave the scale as it is.
+            if ((aspect == 1 || aspect == 2) && decal.Texture != null && decal.Texture.width > 0 && decal.Texture.height > 0)
             {
                 float w = decal.Texture.width, h = decal.Texture.height;
-                var shrink = w > h ? new Vector2(1, h / w) : new Vector2(w / h, 1);
-                size = Vector2.Scale(size, aspect == 1 ? shrink : new Vector2(1 / shrink.x, 1 / shrink.y));
+                var fit = aspect == 1
+                    ? (w > h ? new Vector2(1, h / w) : new Vector2(w / h, 1))
+                    : (w > h ? new Vector2(w / h, 1) : new Vector2(1, h / w));
+                size = Vector2.Scale(size, fit);
             }
             var side = values.TryVector("_DecalSideOffset" + s, out var so) && Finite(so) ? so : Vector4.zero;
             decal.Size = size + new Vector2(side.x + side.y, side.z + side.w);
@@ -163,7 +169,7 @@ namespace VRVlog.LilToonExporter
             Set(material, "_Main" + layer + "EnableLighting", 1);
             if (decal.Mask != null)
                 CopyMask(values, material, "_DecalMask", "_Decal" + decal.Index + "MaskChannel", "", "_Main" + layer + "BlendMask", "_UseMain" + layer + "Tex",
-                    textures, effects, decal.Label + " Mask");
+                    textures, effects, decal.Label + " Mask", decal.Index);
         }
 
         static Vector2 Rotate(Vector2 v, float angle)

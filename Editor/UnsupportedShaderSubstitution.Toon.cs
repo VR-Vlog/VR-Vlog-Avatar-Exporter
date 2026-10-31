@@ -420,10 +420,10 @@ namespace VRVlog.LilToonExporter
         // done the effect is turned off and reported: unmasked, it would cover
         // the whole material.
         static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
-            string toggle, List<Texture2D> textures, List<string> effects, string label)
+            string toggle, List<Texture2D> textures, List<string> effects, string label, int defaultChannel = 0)
         {
             if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return;
-            var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, 0)), 0, 3);
+            var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, defaultChannel)), 0, 3);
             var inverted = values.Float(invert, 0) >= .5f;
             Texture copy = null;
             if (index == 0 && !inverted)

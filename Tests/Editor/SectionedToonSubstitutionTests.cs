@@ -395,6 +395,24 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A 2:1 image placed at half size: Shrink to Fit halves its height,
+        // Grow to Fit doubles its width.
+        [TestCase(0, 2f, 2f)]
+        [TestCase(1, 2f, 4f)]
+        [TestCase(2, 1f, 2f)]
+        public void TheAspectRatioModeFitsTheImagesSides(int mode, float scaleX, float scaleY)
+        {
+            var image = Own(new Texture2D(4, 2, TextureFormat.RGBA32, false) { name = "wide" });
+            var source = Probe(); Decal(source, 0, Color.white);
+            source.SetTexture("_DecalTexture", image);
+            source.SetVector("_DecalScale", new Vector4(.5f, .5f, 1, 0));
+            source.SetInteger("_Decal0AspectRatioMode", mode);
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(dropped, Is.Empty);
+            Assert.That(Vector2.Distance(output.GetTextureScale("_Main2ndTex"), new Vector2(scaleX, scaleY)), Is.LessThan(1e-5f),
+                output.GetTextureScale("_Main2ndTex").ToString("F3"));
+        }
+
         [Test] public void TheLastTwoDrawableDecalsBecomeLayersAndTheFirstIsBakedUnderThem()
         {
             if (NoGraphics) Assert.Ignore("Baking needs a graphics device.");
