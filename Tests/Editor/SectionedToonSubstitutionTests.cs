@@ -406,7 +406,7 @@ namespace VRVlog.LilToonExporter.Tests
             var source = Probe(); Decal(source, 0, Color.white);
             source.SetTexture("_DecalTexture", image);
             source.SetVector("_DecalScale", new Vector4(.5f, .5f, 1, 0));
-            source.SetInteger("_Decal0AspectRatioMode", mode);
+            source.SetFloat("_Decal0AspectRatioMode", mode);
             var output = Substitute(source, out _, out var dropped);
             Assert.That(dropped, Is.Empty);
             Assert.That(Vector2.Distance(output.GetTextureScale("_Main2ndTex"), new Vector2(scaleX, scaleY)), Is.LessThan(1e-5f),
