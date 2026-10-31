@@ -176,32 +176,87 @@ namespace VRVlog.LilToonExporter
             return Math.Min(Math.Abs(scale.x), Math.Abs(scale.y));
         }
 
+        // A renderer whose measured size is more than this many times larger or
+        // smaller than its expected size is not trusted: its textures keep their
+        // size, so a wrong measurement costs memory, never looks.
+        internal const double MaximumBoundsRatio = 2;
+
+        // The diagonal a renderer is expected to have in the world. A skinned mesh
+        // has its vertices placed by their bones alone, without the baking and
+        // the blend shapes, because many avatars widen a skinned mesh's bounds on
+        // purpose. A mesh renderer, and a skinned mesh whose bones place no
+        // vertex, has its bounds.
+        static double ExpectedSize(Renderer renderer, Mesh mesh)
+        {
+            if (renderer is SkinnedMeshRenderer skin)
+            {
+                var bindposes = mesh.bindposes;
+                var bones = skin.bones;
+                var vertices = mesh.vertices;
+                var weights = mesh.boneWeights;
+                var skinning = new Matrix4x4?[bindposes.Length];
+                for (var i = 0; i < skinning.Length; i++)
+                    if (i < bones.Length && bones[i] != null) skinning[i] = bones[i].localToWorldMatrix * bindposes[i];
+                Bounds? skinned = null;
+                for (var v = 0; v < vertices.Length && weights.Length == vertices.Length; v++)
+                {
+                    var point = Vector3.zero;
+                    var total = 0f;
+                    void Add(int bone, float weight)
+                    {
+                        if (weight <= 0 || bone < 0 || bone >= skinning.Length || !(skinning[bone] is Matrix4x4 matrix)) return;
+                        point += matrix.MultiplyPoint3x4(vertices[v]) * weight;
+                        total += weight;
+                    }
+                    var w = weights[v];
+                    Add(w.boneIndex0, w.weight0); Add(w.boneIndex1, w.weight1); Add(w.boneIndex2, w.weight2); Add(w.boneIndex3, w.weight3);
+                    if (total <= 0) continue;
+                    point /= total;
+                    if (skinned is Bounds bounds) { bounds.Encapsulate(point); skinned = bounds; }
+                    else skinned = new Bounds(point, Vector3.zero);
+                }
+                if (skinned is Bounds found) return found.size.magnitude;
+            }
+            return renderer.bounds.size.magnitude;
+        }
+
         // The UV0 per world ratio of each submesh in the pose being exported; NaN
-        // for a submesh without measurable triangles.
+        // for a submesh without measurable triangles, and for every submesh when
+        // the measured size disagrees with the expected size.
         static double[] SubmeshRatios(Renderer renderer, Mesh mesh)
         {
             var ratios = new double[mesh.subMeshCount];
+            for (var submesh = 0; submesh < ratios.Length; submesh++) ratios[submesh] = double.NaN;
             Vector3[] vertices;
             var baked = renderer is SkinnedMeshRenderer ? new Mesh() : null;
             try
             {
-                // Baked without the renderer's scale, so the whole transform applies once.
-                if (renderer is SkinnedMeshRenderer skin) { skin.BakeMesh(baked, false); vertices = baked.vertices; }
+                // Baked with the renderer's scale, in the renderer's own space like
+                // a MeshFilter's mesh, so the whole transform applies once. Without
+                // it Unity leaves the renderer's scale out of the vertices.
+                if (renderer is SkinnedMeshRenderer skin) { skin.BakeMesh(baked, true); vertices = baked.vertices; }
                 else vertices = mesh.vertices;
             }
             finally { if (baked != null) UnityEngine.Object.DestroyImmediate(baked); }
+            if (vertices.Length == 0) return ratios;
             var matrix = renderer.transform.localToWorldMatrix;
+            var world = new Vector3[vertices.Length];
+            for (var i = 0; i < world.Length; i++) world[i] = matrix.MultiplyPoint3x4(vertices[i]);
+            var measured = new Bounds(world[0], Vector3.zero);
+            foreach (var point in world) measured.Encapsulate(point);
+            var size = (double)measured.size.magnitude;
+            var expected = ExpectedSize(renderer, mesh);
+            if (!(size * MaximumBoundsRatio >= expected && expected * MaximumBoundsRatio >= size)) return ratios;
             var uvs = mesh.uv;
             for (var submesh = 0; submesh < ratios.Length; submesh++)
             {
-                ratios[submesh] = double.NaN;
-                if (uvs.Length != vertices.Length || mesh.GetTopology(submesh) != MeshTopology.Triangles) continue;
+                if (uvs.Length != world.Length || mesh.GetTopology(submesh) != MeshTopology.Triangles) continue;
                 var triangles = mesh.GetTriangles(submesh);
                 var samples = new List<(double, double)>(triangles.Length / 3);
                 for (var t = 0; t + 2 < triangles.Length; t += 3)
                 {
                     int a = triangles[t], b = triangles[t + 1], c = triangles[t + 2];
-                    var p0 = matrix.MultiplyVector(vertices[a]); var p1 = matrix.MultiplyVector(vertices[b]); var p2 = matrix.MultiplyVector(vertices[c]);
+                    var p0 = world[a]; var p1 = world[b]; var p2 = world[c];
                     if (!(Ratio(uvs[a], uvs[b], uvs[c], p0, p1, p2) is double ratio)) continue;
                     samples.Add((ratio, Vector3.Cross(p1 - p0, p2 - p0).magnitude * .5));
                 }

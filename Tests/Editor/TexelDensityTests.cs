@@ -38,6 +38,145 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(texture); }
         }
 
+        // A skinned quad drawn as 1m × 1m has the density of the unscaled 1m
+        // quad, whatever scale its renderer, the renderer's parent or its bone
+        // carries (a mesh in centimetres under a renderer scaled 0.01 was
+        // measured 100 times too dense and shrunk to the smallest size).
+        [TestCase(1f, 1f, 1f, 1f, 1f)]
+        [TestCase(.01f, .01f, .01f, 1f, 1f)]
+        [TestCase(1f, 1f, 1f, .01f, 1f)]
+        [TestCase(1f, 1f, 1f, 1f, .01f)]
+        [TestCase(.02f, .005f, 1f, 1f, 1f)]
+        [TestCase(.01f, .01f, .01f, 1f, 2f)]
+        public void ASkinnedQuadOfOneSquareMetreHasTheUnscaledDensity(float x, float y, float z, float parent, float bone)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Skinned quad density" };
+            using var fixture = new SkinnedQuadFixture(new Vector3(x, y, z), parent, bone);
+            try
+            {
+                fixture.Material.SetTexture("_MainTex", texture);
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.True);
+                Assert.That(plan.Density(texture), Is.EqualTo(1024d).Within(.01).Percent);
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        // The same on a MeshRenderer, scaled itself or through its parent.
+        [TestCase(.01f, .01f, 1f)]
+        [TestCase(.02f, .005f, 1f)]
+        [TestCase(1f, 1f, .01f)]
+        public void AMeshRendererQuadOfOneSquareMetreHasTheUnscaledDensity(float x, float y, float parent)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Scaled quad density" };
+            using var fixture = new QuadFixture(width: 1 / (x * parent), height: 1 / (y * parent));
+            var holder = new GameObject("Holder");
+            try
+            {
+                holder.transform.SetPositionAndRotation(new Vector3(.3f, .5f, -.2f), Quaternion.Euler(20, 30, 40));
+                holder.transform.localScale = Vector3.one * parent;
+                fixture.Root.transform.SetParent(holder.transform, false);
+                fixture.Root.transform.localScale = new Vector3(x, y, 1);
+                fixture.Material.SetTexture("_MainTex", texture);
+                var plan = TexelDensity.Measure(holder);
+                Assert.That(plan.Measured(texture), Is.True);
+                Assert.That(plan.Density(texture), Is.EqualTo(1024d).Within(.01).Percent);
+            }
+            finally
+            {
+                Object.DestroyImmediate(holder);
+                Object.DestroyImmediate(texture);
+            }
+        }
+
+        // On a mesh renderer, a measured size more than twice or less than half
+        // the size of its bounds is not trusted: the textures keep their size, so
+        // a wrong measurement costs memory, never looks. Tiled 4 times, the quad
+        // has 4096 texels per metre and would be written at 512.
+        [TestCase(1.5f, true)]
+        [TestCase(.6f, true)]
+        [TestCase(3f, false)]
+        [TestCase(.3f, false)]
+        public void AMeasurementFarFromTheRendererBoundsKeepsTheSize(float factor, bool measured)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Bounds rail" };
+            using var fixture = new QuadFixture();
+            try
+            {
+                fixture.Material.SetTexture("_MainTex", texture);
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(4, 4));
+                var bounds = fixture.Mesh.bounds;
+                bounds.size *= factor;
+                fixture.Mesh.bounds = bounds;
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.EqualTo(measured));
+                Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(measured ? 512 : 1024));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        // On a skinned mesh the size to trust is where the bones alone place the
+        // vertices, not the bounds, which many avatars widen on purpose. A blend
+        // shape that scales the quad stands in for a wrong measurement: within
+        // twice or half the bones' size the quad shrinks as measured (4096 texels
+        // per metre over the size squared), beyond it the textures keep their
+        // size. Bounds three times too large or small change nothing.
+        [TestCase(1.5f, 1f, 512)]
+        [TestCase(.6f, 1f, 256)]
+        [TestCase(3f, 1f, 1024)]
+        [TestCase(.3f, 1f, 1024)]
+        [TestCase(1f, 3f, 512)]
+        [TestCase(1f, .3f, 512)]
+        public void ASkinnedMeasurementFarFromItsBonesKeepsTheSize(float shape, float bounds, int expected)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Bone rail" };
+            using var fixture = new SkinnedQuadFixture(Vector3.one * .01f, shape: shape);
+            try
+            {
+                fixture.Material.SetTexture("_MainTex", texture);
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(4, 4));
+                fixture.Skin.localBounds = fixture.DrawnBounds(bounds);
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.EqualTo(expected != 1024));
+                Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(expected));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        // Pins how Unity bakes a skinned mesh under a scaled renderer. With the
+        // scale, the vertices are in the renderer's own space and its whole
+        // transform gives where they are drawn. Without it they are already
+        // drawn size, in a frame with the renderer's position and rotation only,
+        // so the whole transform scales them a second time. A scaled bone is in
+        // the skinning either way.
+        [TestCase(1f, 1f, 1f, 1f, 1f)]
+        [TestCase(.01f, .01f, .01f, 1f, 1f)]
+        [TestCase(1f, 1f, 1f, .01f, 1f)]
+        [TestCase(1f, 1f, 1f, 1f, .01f)]
+        [TestCase(.02f, .005f, 1f, 1f, 1f)]
+        [TestCase(.01f, .01f, .01f, 1f, 2f)]
+        public void BakeMeshWithTheScaleIsInTheRenderersOwnSpace(float x, float y, float z, float parent, float bone)
+        {
+            using var fixture = new SkinnedQuadFixture(new Vector3(x, y, z), parent, bone);
+            var drawn = fixture.Drawn();
+            var baked = new Mesh();
+            try
+            {
+                var transform = fixture.Skin.transform;
+                var whole = transform.localToWorldMatrix;
+                var rigid = Matrix4x4.TRS(transform.position, transform.rotation, Vector3.one);
+                double Error(Matrix4x4 matrix) => baked.vertices.Select((v, i) => (double)(matrix.MultiplyPoint3x4(v) - drawn[i]).magnitude).Max();
+                var scaled = x * parent != 1 || y * parent != 1 || z * parent != 1;
+                fixture.Skin.BakeMesh(baked, true);
+                Assert.That(Error(whole), Is.LessThan(1e-4));
+                if (scaled) Assert.That(Error(rigid), Is.GreaterThan(.5));
+                fixture.Skin.BakeMesh(baked, false);
+                Assert.That(Error(rigid), Is.LessThan(1e-4));
+                if (scaled) Assert.That(Error(whole), Is.GreaterThan(.5));
+            }
+            finally { Object.DestroyImmediate(baked); }
+        }
+
         [Test]
         public void OneTriangleHasTheExactDensityAndADegenerateOneHasNone()
         {
@@ -324,21 +463,92 @@ namespace VRVlog.LilToonExporter.Tests
         {
             internal readonly GameObject Root = new GameObject("Texel density quad");
             internal readonly Material Material;
-            readonly Mesh mesh;
+            internal readonly Mesh Mesh;
 
-            internal QuadFixture(bool uv = true)
+            internal QuadFixture(bool uv = true, float width = 1, float height = 1)
             {
                 var shader = Shader.Find("lilToon");
                 Assert.That(shader, Is.Not.Null);
                 Material = new Material(shader);
-                mesh = new Mesh
+                Mesh = new Mesh
                 {
-                    vertices = new[] { Vector3.zero, Vector3.right, Vector3.up, new Vector3(1, 1, 0) },
+                    vertices = new[] { Vector3.zero, new Vector3(width, 0, 0), new Vector3(0, height, 0), new Vector3(width, height, 0) },
                     triangles = new[] { 0, 2, 1, 1, 2, 3 },
                 };
-                if (uv) mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one };
-                Root.AddComponent<MeshFilter>().sharedMesh = mesh;
+                if (uv) Mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one };
+                Root.AddComponent<MeshFilter>().sharedMesh = Mesh;
                 Root.AddComponent<MeshRenderer>().sharedMaterial = Material;
+            }
+
+            public void Dispose()
+            {
+                if (Root != null) Object.DestroyImmediate(Root);
+                Object.DestroyImmediate(Material);
+                Object.DestroyImmediate(Mesh);
+            }
+        }
+
+        // A skinned quad drawn as 1m × 1m with a lilToon material, UV 0..1. The
+        // mesh units shrink by every scale on the way, like a mesh in centimetres
+        // under a renderer scaled 0.01; the renderer may also sit under a scaled
+        // parent, and the bone may be scaled after binding. A blend shape at full
+        // weight may scale the quad by shape. The avatar is moved and turned so
+        // no frame is the world by chance.
+        sealed class SkinnedQuadFixture : IDisposable
+        {
+            internal readonly GameObject Root = new GameObject("Skinned texel density quad");
+            internal readonly Material Material;
+            internal readonly SkinnedMeshRenderer Skin;
+            readonly Transform bone;
+            readonly Mesh mesh;
+
+            internal SkinnedQuadFixture(Vector3 rendererScale, float parentScale = 1, float boneScale = 1, float shape = 1)
+            {
+                var shader = Shader.Find("lilToon");
+                Assert.That(shader, Is.Not.Null);
+                Material = new Material(shader);
+                Root.transform.SetPositionAndRotation(new Vector3(.3f, .5f, -.2f), Quaternion.Euler(20, 30, 40));
+                bone = new GameObject("Bone").transform;
+                bone.SetParent(Root.transform, false);
+                var holder = new GameObject("Holder").transform;
+                holder.SetParent(Root.transform, false);
+                holder.localScale = Vector3.one * parentScale;
+                var body = new GameObject("Body");
+                body.transform.SetParent(holder, false);
+                body.transform.localScale = rendererScale;
+                var x = 1 / (rendererScale.x * parentScale * boneScale);
+                var y = 1 / (rendererScale.y * parentScale * boneScale);
+                mesh = new Mesh
+                {
+                    vertices = new[] { Vector3.zero, new Vector3(x, 0, 0), new Vector3(0, y, 0), new Vector3(x, y, 0) },
+                    triangles = new[] { 0, 2, 1, 1, 2, 3 },
+                    uv = new[] { Vector2.zero, Vector2.right, Vector2.up, Vector2.one },
+                    boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, 4).ToArray(),
+                    bindposes = new[] { bone.worldToLocalMatrix * body.transform.localToWorldMatrix },
+                };
+                if (shape != 1) mesh.AddBlendShapeFrame("Scale", 100, mesh.vertices.Select(v => v * (shape - 1)).ToArray(), null, null);
+                Skin = body.AddComponent<SkinnedMeshRenderer>();
+                Skin.sharedMesh = mesh;
+                Skin.bones = new[] { bone };
+                Skin.rootBone = bone;
+                Skin.sharedMaterial = Material;
+                if (shape != 1) Skin.SetBlendShapeWeight(0, 100);
+                bone.localScale = Vector3.one * boneScale;
+                // The bounds an importer stores: the drawn quad in the root bone's space.
+                Skin.localBounds = DrawnBounds(1);
+            }
+
+            // Where skinning draws each vertex.
+            internal Vector3[] Drawn() => mesh.vertices.Select(v => bone.localToWorldMatrix.MultiplyPoint3x4(mesh.bindposes[0].MultiplyPoint3x4(v))).ToArray();
+
+            // The drawn quad in the root bone's space, its size times factor.
+            internal Bounds DrawnBounds(float factor)
+            {
+                var drawn = Drawn().Select(bone.InverseTransformPoint).ToArray();
+                var bounds = new Bounds(drawn[0], Vector3.zero);
+                foreach (var point in drawn) bounds.Encapsulate(point);
+                bounds.size *= factor;
+                return bounds;
             }
 
             public void Dispose()
