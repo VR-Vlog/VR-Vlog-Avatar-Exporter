@@ -849,6 +849,11 @@ BEHAVIOR_CASES = {
     # 自動で軽量化する: texture sizes from texel density; off measures nothing.
     'TexelDensityTests': {
         'AQuadHasTheExactDensity': 5,
+        'ASkinnedQuadOfOneSquareMetreHasTheUnscaledDensity': 6,
+        'AMeshRendererQuadOfOneSquareMetreHasTheUnscaledDensity': 3,
+        'AMeasurementFarFromTheRendererBoundsKeepsTheSize': 4,
+        'ASkinnedMeasurementFarFromItsBonesKeepsTheSize': 6,
+        'BakeMeshWithTheScaleIsInTheRenderersOwnSpace': 6,
         'OneTriangleHasTheExactDensityAndADegenerateOneHasNone': 1,
         'TheDensityOfASubmeshIsTheAreaWeightedNinetiethPercentile': 1,
         'HalvingStopsAtTheTargetAndTheSmallestSize': 7,
