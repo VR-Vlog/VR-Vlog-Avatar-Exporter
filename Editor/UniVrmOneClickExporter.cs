@@ -685,17 +685,18 @@ namespace VRVlog.LilToonExporter
                         RecordSettledMenuExpressions(menu, recoveryReport);
                     });
                     guard.Watch(ExportStage.BlinkCapture, () => blink.Bake(clone, temporaryMeshes));
+                    VrChatVisemeExport.Captured visemes = null;
                     guard.Watch(ExportStage.Expressions, () =>
                     {
                         // Lip Sync as the descriptor names it on the prepared copy,
                         // or as captured when the caller removed the descriptor.
-                        var lipSync = capturedVisemes ?? VrChatVisemeExport.Read(clone);
+                        visemes = capturedVisemes ?? VrChatVisemeExport.Read(clone);
                         AvatarBaseShape.Preserve(clone, clone, temporaryMeshes, warnings,
-                            visemeRenderer: lipSync?.Renderer, visemeShapes: lipSync?.Exclusive);
+                            visemeRenderer: visemes?.Renderer, visemeShapes: visemes?.Exclusive);
                         authoredEndpoints.Bake(temporaryMeshes);
                     });
                     expressions = guard.Step(ExportStage.Expressions,
-                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings), () => new List<VrmMenuExpressions.Expression>());
+                        () => VrChatExpressionBaker.Bake(null, clone, menu, temporaryMeshes, warnings, preparedMenuBindings, visemes?.Renderer, visemes?.Exclusive), () => new List<VrmMenuExpressions.Expression>());
                     guard.Watch(ExportStage.Expressions, () => RecordExpressionsEndingNeutral(expressions, recoveryReport));
                     // Generated absolute endpoints now define the protected
                     // routes for both automatic and explicitly authored tracking.
