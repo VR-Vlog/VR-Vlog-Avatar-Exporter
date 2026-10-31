@@ -26,7 +26,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string PrivacyConsentPreference = "VRVlog.CloudTransfer.PrivacyConsent.v2." + (CloudTransferProtocol.IsPreview ? "preview" : "production");
         internal const string PrivacyConsentLabel = "プライバシーポリシーと転送期限の説明に同意する";
         internal static string TransferDisclosure => ExporterLocalization.T(CloudTransferProtocol.IsPreview
-            ? "検証用Cloudflareへ暗号化して一時保存します\nアップロードは作成から最大15分\n受取は公開確定から最大3分で作成から最長18分\nQR表示時の残り時間は3分より短い場合があります\n再試行で期限は延びません\n完了・取消通知または期限でアクセス停止と削除を開始します\n削除に失敗した場合は再試行します"
+            ? "検証用Cloudflareへ暗号化して一時保存します\n従来経路の受取期限はアップロードを含め作成から3分\n対応経路はアップロード最大15分と公開確定から受取最大3分\n対応経路も作成から最長18分\nQR表示時は残り時間を確認\n再試行で期限は延びません\n完了・取消通知または期限でアクセス停止と削除を開始します\n削除に失敗した場合は再試行します"
             : "暗号化してクラウドに一時保存します\n従来の受取期限はアップロードを含め作成から3分\n対応する検証版はアップロード最大15分と公開確定から受取最大3分\n再試行で延長せず作成から最長18分\nQR表示時は残り時間を確認\n完了・取消通知または期限でアクセス停止と削除を開始します\n削除に失敗した場合は再試行します");
         internal static bool PrivacyConsentAccepted
         {

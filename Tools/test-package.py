@@ -81,6 +81,7 @@ class PackageTests(unittest.TestCase):
         preview = self.root / "preview.zip"
         package.build(self.root, preview, qr_preview=True)
         with zipfile.ZipFile(preview) as archive:
+            preview_time = archive.getinfo(protocol).date_time
             self.assertTrue(archive.read(protocol).startswith(b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW\n"))
             self.assertEqual(json.loads(archive.read("package.json"))["version"], "0.11.12-qr-preview.1")
         self.assertEqual((self.root / protocol).read_text(), "// fixed service selection\n")
@@ -88,6 +89,7 @@ class PackageTests(unittest.TestCase):
         package.build(self.root, release)
         with zipfile.ZipFile(release) as archive:
             self.assertFalse(archive.read(protocol).startswith(b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW"))
+            self.assertNotEqual(archive.getinfo(protocol).date_time, preview_time)
             self.assertEqual(json.loads(archive.read("package.json"))["version"], "0.11.12-beta.1")
 
     def git(self, *args):

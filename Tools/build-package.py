@@ -5,7 +5,7 @@ import json
 import re
 import subprocess
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -183,6 +183,10 @@ def build(root, output, *, qr_preview=False):
     if not any(name.startswith("Editor/") and name.endswith(".cs") for name in names):
         raise ValueError("Package has no Editor source")
     date_time = entry_time(root)
+    if qr_preview:
+        # ZIP timestamps have two-second resolution. Keep the two variants
+        # distinct even at the same HEAD so Unity recompiles in both directions.
+        date_time = (datetime(*date_time, tzinfo=timezone.utc) + timedelta(seconds=2)).timetuple()[:6]
     output.parent.mkdir(parents=True, exist_ok=True)
     # Stored entries avoid platform/zlib-dependent DEFLATE bytes. Pin the
     # creator OS too: Python otherwise emits different Windows/Unix headers.
