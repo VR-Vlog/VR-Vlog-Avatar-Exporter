@@ -520,7 +520,7 @@ namespace VRVlog.LilToonExporter
                 // Omission consent follows source identity before plugins clone
                 // materials. All actual baking waits for the final appearance.
                 if (exporterVersion == null) LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);
-                var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone);
+                var requiresPreparation = NdmfExportPreparation.NeedsProcessing(clone) || NdmfExportPreparation.HasVrcFuryComponent(clone);
                 if (requiresPreparation)
                     SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure);
                 var unifiedPreparation = trackingProfile == null ? new UnifiedExpressionPreparation(clone,

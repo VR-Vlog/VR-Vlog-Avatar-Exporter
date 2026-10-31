@@ -228,6 +228,62 @@ namespace VRVlog.LilToonExporter
             return packages;
         }
 
+        // VRCFury builds from the VRChat SDK's preprocess callbacks instead of
+        // NDMF. An upload runs it after NDMF's Transforming phase and before
+        // Optimizing (callback order -10000), so the export runs the same hook
+        // on its copy at that point, or alone when nothing needs NDMF.
+        internal const string VrcFuryCompatibilityMessage =
+            "VRCFury のコンポーネントがありますが、このバージョンの VRCFury の処理を呼び出せません。ALCOM で VRCFury を更新してください。";
+        internal const string VrcFuryFailureMessage =
+            "VRCFury の処理に失敗しました。VRCFury のエラー表示で原因を確認してください。";
+        internal const string VrcFuryNoDescriptorWarning =
+            "VRC Avatar Descriptor の無いオブジェクトなので、VRCFury の設定を適用せずに書き出しました。";
+        internal const string VrcFuryApplied = "VRCFury の設定を一時コピーに適用しました。";
+        internal static Func<GameObject, bool> VrcFuryOverride;
+
+        internal static bool HasVrcFuryComponent(GameObject avatar) => avatar != null &&
+            avatar.GetComponentsInChildren<Component>(true).Any(component => component != null && IsVrcFuryComponent(component.GetType()));
+
+        private static bool IsVrcFuryComponent(Type type)
+        {
+            // VRCFury itself skips avatars whose only component is its debug info.
+            if (type.FullName == "VF.Model.VRCFuryDebugInfo") return false;
+            for (var current = type; current != null; current = current.BaseType)
+                if (current.FullName == "VF.Component.VRCFuryComponent") return true;
+            return false;
+        }
+
+        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
+        {
+            if (!HasVrcFuryComponent(clone)) return;
+            if (!clone.GetComponents<Component>().Any(component => component != null &&
+                component.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
+            {
+                warnings?.Add(VrcFuryNoDescriptorWarning);
+                return;
+            }
+            var existing = new HashSet<Object>(Dependencies(clone));
+            try
+            {
+                bool succeeded;
+                if (VrcFuryOverride != null) succeeded = VrcFuryOverride(clone);
+                else
+                {
+                    var hook = FindType("VF.Hooks.VrcPreuploadHook");
+                    var run = hook?.GetMethod("OnPreprocessAvatar", BindingFlags.Public | BindingFlags.Instance, null,
+                        new[] { typeof(GameObject) }, null);
+                    if (run == null || run.ReturnType != typeof(bool) || hook.GetConstructor(
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null) == null)
+                        throw new InvalidOperationException(VrcFuryCompatibilityMessage);
+                    var instance = Activator.CreateInstance(hook, true);
+                    succeeded = (bool)Invoke(() => run.Invoke(instance, new object[] { clone }));
+                }
+                if (!succeeded) throw new InvalidOperationException(VrcFuryFailureMessage);
+            }
+            finally { CaptureGenerated(clone, existing); }
+            warnings?.Add(VrcFuryApplied);
+        }
+
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)
             ? copy : original;
 
@@ -481,7 +537,7 @@ namespace VRVlog.LilToonExporter
             if (!NeedsProcessing(clone))
             {
                 var lease = new NdmfExportPreparation(); lease.CaptureShapes(clone);
-                try { afterTransforming?.Invoke(lease); return lease; }
+                try { lease.ApplyVrcFury(clone, warnings); afterTransforming?.Invoke(lease); return lease; }
                 catch { lease.Dispose(); throw; }
             }
             ValidateSource(clone, deferUnresolvedTargets: true);
@@ -555,6 +611,7 @@ namespace VRVlog.LilToonExporter
                         }
                         if (IsSuccessful(bridge, context))
                         {
+                            lease.ApplyVrcFury(clone, warnings);
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
