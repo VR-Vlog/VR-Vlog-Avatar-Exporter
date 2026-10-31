@@ -40,12 +40,15 @@ namespace VRVlog.LilToonExporter
         ICollection<string> warnings;
         bool suppressSharedTextureEmission, suppressHdrTextureEmission;
         LilToonInactiveTextureProof inactiveTextures;
+        // 自動で軽量化する: smaller maximums for textures with detail to spare. Null when off.
+        TexelDensity.Plan lightweight;
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
-        internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null)
+        internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
+            TexelDensity.Plan lightweight=null)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource)};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
             {
@@ -96,7 +99,9 @@ namespace VRVlog.LilToonExporter
                Array.IndexOf(required, "_OutlineWidthMask") >= 0 && material.HasProperty("_OutlineWidthMask") && material.HasProperty("_OutlineDeleteMesh")
                 ? (material.GetTexture("_OutlineWidthMask"), material.GetFloat("_OutlineDeleteMesh")) : (null, 0f);
 
-        int MaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
+        int MaximumSize(Texture source, bool normal) => Lightened(source, ExistingMaximumSize(source, normal));
+        int ExistingMaximumSize(Texture source, bool normal) => MaximumSize(!normal && deleteMeshMasks.Contains(source));
+        int Lightened(Texture source, int maximum) => lightweight == null || deleteMeshMasks.Contains(source) ? maximum : lightweight.Maximum(source, maximum);
 
         // Null when the installed shader cannot give every 2.3.4 runtime
         // property of this shader.
@@ -232,7 +237,9 @@ namespace VRVlog.LilToonExporter
             var chunks = new List<object>();
             var maximum = MaximumSize(source, normal);
             var (width, height, count, faces) = Layout(source, maximum);
-            var resized = width != source.width || height != source.height;
+            // 自動で軽量化する lists its textures in one line, not one note each.
+            var unlightened = Layout(source, ExistingMaximumSize(source, normal));
+            var resized = unlightened.width != source.width || unlightened.height != source.height;
             // Gamma rendering can expose an UNorm GPU view of sRGB pixels.
             // Preserve the stored pixel encoding, independent of this Editor's
             // sampling mode, so a Linear-space consumer decodes it correctly.

@@ -539,7 +539,8 @@ namespace VRVlog.LilToonExporter
         internal byte[] Export(string avatarName, string author, IReadOnlyList<(string Name, AnimationClip Clip, float Time)> listFaces,
             ICollection<string> warnings = null, BlinkExportOptions blinkOptions = null,
             AvatarLicenseOptions licenseOptions = null, ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null,
-            PoseExportOptions recordedPoses = null, IEnumerable<PresetAssignment> presets = null, bool sourceChecked = false)
+            PoseExportOptions recordedPoses = null, IEnumerable<PresetAssignment> presets = null, bool sourceChecked = false,
+            bool autoLightweight = false)
         {
             if (listFaces == null) throw new ArgumentNullException(nameof(listFaces));
             // The export hashes the source again, even inside a batch, unless
@@ -598,7 +599,7 @@ namespace VRVlog.LilToonExporter
                     inferEmotionPresets: false, inferNeutralAndGazePresets: true, keepEmptyPresets: keepEmpty,
                     excludedObjects: manualExcluded, gimmickOptions: GimmickOptions,
                     listFaces: listFaces.Select(face => (face.Name, AvatarRelativeClip(face.Clip, face.Time, authored), face.Time)).ToList(),
-                    listFaceSources: listFaces.Select(face => face.Clip).ToList());
+                    listFaceSources: listFaces.Select(face => face.Clip).ToList(), autoLightweight: autoLightweight);
                 UniVrmOneClickExporter.ValidateOutputHasMesh(authoredVrm);
                 return authoredVrm;
             }

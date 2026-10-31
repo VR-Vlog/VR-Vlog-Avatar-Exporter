@@ -198,7 +198,7 @@ assert one_click.index("NdmfExportPreparation.Prepare(source, clone,") < one_cli
 assert one_click.count("SkinnedMeshFallbackWeights.Preserve(clone, temporaryMeshes, warnings, fixedRootJoints, guard.ContinueOnFailure)") == 2
 assert "new ExportAttachmentSession(source, clone, fixedRootJoints: fixedRootJoints)" in one_click
 assert one_click.index("Vrm10AppearanceExporter.Export(") < one_click.index("ExportSkinRoots.Repair(exported,")
-assert "new MobileTextureSerializer(warnings)" in one_click
+assert "new MobileTextureSerializer(warnings, lightweight == null ? null : new Func<Texture, int, int>(lightweight.Maximum))" in one_click
 assert "NdmfExportPreparation.InstantiateOwnedCopy(source)" in one_click
 assert "ReplaceLilToonMaterials(clone" in one_click
 assert "DestroyImmediate(clone)" in one_click
@@ -338,7 +338,7 @@ assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);' in one_click
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
-assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
+assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window

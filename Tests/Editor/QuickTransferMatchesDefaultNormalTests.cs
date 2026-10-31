@@ -203,6 +203,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in other.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
             var window = OpenNormal(other.Source);
             Board.GetField("automaticBlink", Flags).SetValue(window, false);
+            Board.GetField("autoLightweight", Flags).SetValue(window, true);
             ((AvatarLicenseOptions)Board.GetField("licenseOptions", Flags).GetValue(window)).CopyrightInformation = "Other avatar";
             Board.GetField("status", Flags).SetValue(window, "Other avatar");
             Assert.That(OpenNormal(fixture.Source), Is.SameAs(window));
@@ -214,6 +215,35 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(hidden); }
             var (quick, normal) = (ExportQuick(fixture.Source), ExportNormal(fixture.Source, window));
             AssertSame(quick, normal);
+        }
+
+        // 自動で軽量化する saved on for the avatar: both boards start from it, and
+        // both make the same texture smaller. The fixture's triangle has 5 UV
+        // units per metre, so a 512px main texture has 2560 texels per metre
+        // and is written at 256px.
+        [Test]
+        public void TheSavedLightweightChoiceMatches()
+        {
+            using var fixture = new AppTransferQuickExportTests.SavedFixture();
+            var texture = new Texture2D(512, 512, TextureFormat.RGBA32, true) { name = "Lightened main" };
+            try
+            {
+                var pixels = new Color32[512 * 512];
+                for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color32((byte)(i % 251), (byte)(i / 512 % 253), 128, 255);
+                texture.SetPixels32(pixels); texture.Apply(true, false);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.SetTexture("_MainTex", texture);
+                var settings = new ExportSettings { AutoLightweight = true };
+                ExportSettingsStore.Save(fixture.Source, settings);
+                var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+                try { Assert.That(Defaults(hidden), Has.Member("autoLightweight True")); }
+                finally { Object.DestroyImmediate(hidden); }
+
+                var (quick, normal) = ExportBoth(fixture.Source);
+                AssertSame(quick, normal);
+                var line = TexelDensity.Plan.Line(1, TexelDensity.Bytes(512, 512) - TexelDensity.Bytes(256, 256));
+                Assert.That(Warnings(quick), Has.Some.Contains(line), "The texture is made smaller and the result line says so.");
+            }
+            finally { Object.DestroyImmediate(texture); }
         }
 
         sealed class CountingLimitDialog : IPoseLimitDialog
@@ -362,6 +392,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 "page " + window.Page,
                 "automaticBlink " + Board.GetField("automaticBlink", Flags).GetValue(window),
+                "autoLightweight " + Board.GetField("autoLightweight", Flags).GetValue(window),
                 "status " + (Board.GetField("status", Flags).GetValue(window) ?? "(none)"),
                 "license " + JsonUtility.ToJson(Board.GetField("licenseOptions", Flags).GetValue(window)),
                 "blink " + (blink == null ? "(automatic)" : blink.Mode.ToString()),

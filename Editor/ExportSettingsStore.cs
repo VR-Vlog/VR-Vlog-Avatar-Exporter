@@ -55,6 +55,8 @@ namespace VRVlog.LilToonExporter
             public List<string> ExcludedPoses = new List<string>();
             public List<PoseName> PoseNames = new List<PoseName>();
             public AvatarLicenseOptions License = new AvatarLicenseOptions();
+            // Missing in entries saved before the option: off, as before.
+            public bool AutoLightweight;
             // The name of the last successful "アプリに転送". It is not part of
             // ExportSettings, so it never changes the settings' signature.
             public string TransferName;
@@ -242,7 +244,8 @@ namespace VRVlog.LilToonExporter
                     .Select(pose => new Pose { Clip = Id(pose.Clip), Time = pose.Time, Name = pose.Name, Category = pose.Category }).ToList(),
                 ExcludedPoses = poses.Excluded.OrderBy(item => item, StringComparer.Ordinal).ToList(),
                 PoseNames = poses.Names.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => new PoseName { Key = item.Key, Value = item.Value }).ToList(),
-                License = (settings.License ?? new AvatarLicenseOptions()).Copy()
+                License = (settings.License ?? new AvatarLicenseOptions()).Copy(),
+                AutoLightweight = settings.AutoLightweight
             };
         }
 
@@ -281,7 +284,7 @@ namespace VRVlog.LilToonExporter
                 return bindings;
             }
 
-            var settings = new ExportSettings { AutoExcludeGimmicks = entry.AutoExcludeGimmicks };
+            var settings = new ExportSettings { AutoExcludeGimmicks = entry.AutoExcludeGimmicks, AutoLightweight = entry.AutoLightweight };
             settings.ExcludedObjects.AddRange((entry.Excluded ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
             settings.IncludedGimmicks.AddRange((entry.Included ?? new List<string>()).Select(Inside<GameObject>).Where(item => item != null && item != avatar).Distinct());
             settings.IncludedGimmickComponents.AddRange((entry.IncludedComponents ?? new List<string>()).Select(Inside<Component>).Where(item => item != null).Distinct());
