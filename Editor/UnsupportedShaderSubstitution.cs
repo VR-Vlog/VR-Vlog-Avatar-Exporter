@@ -27,6 +27,7 @@ namespace VRVlog.LilToonExporter
         internal const string Failed = "公式lilToonで近似できなかった材質は元のまま書き出しました: ";
         internal const string ColorAdjustmentSkipped = "元のシェーダーの色調補正のうち公式lilToonで再現できないもの（色相・彩度・ガンマ・グラデーション・マスク付きの補正）は反映していません: ";
         internal const string ToonMapped = "他のトゥーンシェーダーの設定を公式lilToonの同じ役割の項目へ写しました（影・マットキャップ・リム・アウトライン・発光・ステンシルを含む）: ";
+        internal const string VRChatMapped = "VRChatの公式シェーダーの設定を公式lilToonの同じ役割の項目へ写しました: ";
         internal const string DroppedEffects = "元のシェーダーの効果のうち公式lilToonに無いものは書き出していません: ";
 
         const string Opaque = "lilToon";
@@ -35,6 +36,10 @@ namespace VRVlog.LilToonExporter
         const string MissingShader = "Hidden/InternalErrorShader";
 
         enum Mode { Opaque, Cutout, Transparent }
+
+        // Which mapping built the substitute: the generic one, the section by
+        // section one of a toon shader, or the row of a VRChat SDK shader.
+        internal enum Route { Generic, Toon, VRChat }
 
         internal static bool NeedsSubstitute(Material material) =>
             material != null && (material.shader == null || !LilToon234Catalogue.Shaders.ContainsKey(material.shader.name) &&
@@ -55,6 +60,7 @@ namespace VRVlog.LilToonExporter
             var failed = new List<string>();
             var colorSkipped = new List<string>();
             var mapped = new List<string>();
+            var vrchat = new List<string>();
             var dropped = new List<string>();
             foreach (var renderer in ExportRendererSelection.Enumerate(copy))
             {
@@ -81,16 +87,16 @@ namespace VRVlog.LilToonExporter
                         else
                         {
                             var skipped = false;
-                            var toon = false;
+                            var route = Route.Generic;
                             IReadOnlyList<string> effects = Array.Empty<string>();
-                            try { substitute = Create(source, out skipped, out toon, out effects, textures); }
+                            try { substitute = Create(source, source.shader == null ? null : source.shader.name, out skipped, out route, out effects, textures); }
                             catch (Exception) { substitute = null; }
                             if (substitute == null) { if (!failed.Contains(source.name)) failed.Add(source.name); }
                             else
                             {
                                 created.Add(substitute);
                                 track?.Invoke(substitute, source);
-                                var list = toon ? mapped : substituted;
+                                var list = route == Route.Toon ? mapped : route == Route.VRChat ? vrchat : substituted;
                                 if (!list.Contains(source.name)) list.Add(source.name);
                                 var line = source.name + " (" + string.Join(", ", effects) + ")";
                                 if (effects.Count > 0 && !dropped.Contains(line)) dropped.Add(line);
@@ -109,6 +115,7 @@ namespace VRVlog.LilToonExporter
             if (warnings == null) return;
             if (substituted.Count > 0) warnings.Add(ExporterLocalization.T(Warning) + string.Join(", ", substituted));
             if (mapped.Count > 0) warnings.Add(ExporterLocalization.T(ToonMapped) + string.Join(", ", mapped));
+            if (vrchat.Count > 0) warnings.Add(ExporterLocalization.T(VRChatMapped) + string.Join(", ", vrchat));
             if (dropped.Count > 0) warnings.Add(ExporterLocalization.T(DroppedEffects) + string.Join(", ", dropped));
             if (colorSkipped.Count > 0) warnings.Add(ExporterLocalization.T(ColorAdjustmentSkipped) + string.Join(", ", colorSkipped));
             if (kept.Count > 0) warnings.Add(ExporterLocalization.T(KeptForExpressions) + string.Join(", ", kept));
@@ -143,11 +150,26 @@ namespace VRVlog.LilToonExporter
         internal static Material Create(Material source, out bool colorSkipped, out bool toon, out IReadOnlyList<string> dropped,
             List<Texture2D> textures = null)
         {
+            var material = Create(source, source.shader == null ? null : source.shader.name, out colorSkipped, out var route, out dropped, textures);
+            toon = route != Route.Generic;
+            return material;
+        }
+
+        // shaderName picks the row of a VRChat SDK shader (tests name the row
+        // for a stand-in shader with the same properties).
+        internal static Material Create(Material source, string shaderName, out bool colorSkipped, out Route route,
+            out IReadOnlyList<string> dropped, List<Texture2D> textures = null)
+        {
             var values = new SourceValues(source);
-            colorSkipped = false; toon = false; dropped = Array.Empty<string>();
+            colorSkipped = false; route = Route.Generic; dropped = Array.Empty<string>();
             if (LooksLikeLilToon(source) || values.SavedLilToon(source)) return FromDerived(source, values);
+            if (shaderName != null && VRChatShaders.TryGetValue(shaderName, out var row))
+            {
+                route = Route.VRChat;
+                return FromVRChat(source, values, row, textures, out colorSkipped, out dropped);
+            }
             if (!IsSectionedToon(source, values)) return FromGeneric(source, values, false, textures, out colorSkipped);
-            toon = true;
+            route = Route.Toon;
             return FromSectionedToon(source, values, textures, out colorSkipped, out dropped);
         }
 
@@ -226,10 +248,11 @@ namespace VRVlog.LilToonExporter
         static readonly string[] ShadeColors = { "_ShadeColor", "_1st_ShadeColor", "_ShadowColor" };
         static readonly string[] ShadeTextures = { "_ShadeTexture", "_1st_ShadeMap", "_ShadowColorTex" };
 
-        static Material FromGeneric(Material source, SourceValues values, bool outline, List<Texture2D> textures, out bool colorSkipped)
+        static Material FromGeneric(Material source, SourceValues values, bool outline, List<Texture2D> textures, out bool colorSkipped,
+            Mode? forced = null)
         {
             colorSkipped = false;
-            var mode = GenericMode(source, values);
+            var mode = forced ?? GenericMode(source, values);
             var material = New(source, mode, outline);
             if (material == null) return null;
 
