@@ -310,6 +310,9 @@ namespace VRVlog.LilToonExporter
                 }
                 built.Add((expression, binds, animation));
             }
+            // Every face lost its bones and visibility to the export: the file
+            // stays as it is without the extension.
+            if (built.Count == 0) return bytes;
             // Faces that write the same binds (same morphs, exactly the same
             // weights) and the same motion are one face to the app, whatever
             // their clip, label or source: the same clip under two menu items,
@@ -333,10 +336,14 @@ namespace VRVlog.LilToonExporter
                 // The name carries no source prefix; the extension lists the
                 // source. Recorded and authored custom faces keep their names.
                 var name = UniqueName(expression.Name, custom.ContainsKey);
+                // A face with no binds moves only bones or visibility. It
+                // leaves blink, mouth and gaze to tracking, so an app that
+                // ignores transforms shows the face unchanged.
+                var hold = binds.Count > 0 ? "block" : "none";
                 custom.Add(name, new Dictionary<string, object>
                 {
                     ["morphTargetBinds"] = binds, ["isBinary"] = true,
-                    ["overrideBlink"] = "block", ["overrideMouth"] = "block", ["overrideLookAt"] = "block"
+                    ["overrideBlink"] = hold, ["overrideMouth"] = hold, ["overrideLookAt"] = hold
                 });
                 document.Expressions.Add(new ExpressionSource { Expression = name, Source = expression.Source });
                 expression.RegisteredName = name;

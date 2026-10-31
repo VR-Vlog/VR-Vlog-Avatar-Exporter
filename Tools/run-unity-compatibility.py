@@ -778,9 +778,11 @@ BEHAVIOR_CASES = {
     'ExpressionBoneAnimationExportTests': {
         'RestValuedCurvesAreDropped': 6,
         'ABoneThatLeavesThePoseBetweenKeysIsKept': 1,
+        'SmallMovesUnderAScaledParentAreKept': 1,
         'HumanoidBonesAreDroppedWithAWarning': 1,
         'BonesAndVisibilityAreWrittenInGltfSpace': 1,
         'TransformsReadBackAsTheClipPose': 1,
+        'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
     },
     'FacialProjectionTests': {

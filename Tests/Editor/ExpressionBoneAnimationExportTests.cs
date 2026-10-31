@@ -88,6 +88,24 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); }
         }
 
+        // Position compares in metres of the avatar: under a 100x parent a
+        // centimetre is 0.0001 of the bone's own units.
+        [Test]
+        public void SmallMovesUnderAScaledParentAreKept()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            fixture.Source.transform.Find("Independent hair").localScale = Vector3.one * 100;
+            var y = fixture.Source.transform.Find(Joint).localPosition.y;
+            var clip = Clip("Nudge", (Bone(Joint, "m_LocalPosition.y"), AnimationCurve.Linear(0, y, 1, y + .0001f)), Held(Shape, 80));
+            try
+            {
+                var entry = new VrChatExpressionMenu.Entry();
+                VrChatGestureExpressions.ReadClip(fixture.Source, clip, entry);
+                Assert.That(entry.Transforms.Single().Property, Is.EqualTo(ExpressionTransformAnimation.Translation));
+            }
+            finally { Object.DestroyImmediate(clip); }
+        }
+
         [Test]
         public void HumanoidBonesAreDroppedWithAWarning()
         {
@@ -244,6 +262,13 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(pose.Tracks.Single().Curves[2].Keys.Single().Value, Is.EqualTo(-20).Within(1e-4));
             Assert.That((List<object>)((Dictionary<string, object>)custom["Prop"])["morphTargetBinds"], Is.Empty);
             Assert.That(((List<object>)((Dictionary<string, object>)custom["Still"])["morphTargetBinds"]).Count, Is.EqualTo(1));
+            // A face without binds leaves blink, mouth and gaze to tracking.
+            foreach (var key in new[] { "overrideBlink", "overrideMouth", "overrideLookAt" })
+            {
+                Assert.That(((Dictionary<string, object>)custom["Prop"])[key], Is.EqualTo("none"), key);
+                Assert.That(((Dictionary<string, object>)custom["Nod"])[key], Is.EqualTo("block"), key);
+                Assert.That(((Dictionary<string, object>)custom["Still"])[key], Is.EqualTo("block"), key);
+            }
 
             Assert.That(warnings, Does.Contain("Nod: " + ExporterLocalization.T(ExpressionTransformCurves.HumanoidWarning) + "Hips/Spine/Chest/Neck"), detail);
             Assert.That(warnings, Does.Contain("Nod: " + ExporterLocalization.T(ExpressionTransformCurves.UnmappedWarning) + "Marker"), detail);
@@ -302,6 +327,20 @@ namespace VRVlog.LilToonExporter.Tests
                 }
             }
             finally { Object.DestroyImmediate(pose); }
+        }
+
+        // A face whose only change the export leaves out writes nothing, and
+        // the export goes on without the extension.
+        [Test]
+        public void AFaceThatLosesEveryTrackLeavesTheFileAlone()
+        {
+            using var scene = new Scene();
+            var shown = scene.Add(Clip("Shown", Held(Shown("Hidden prop"), 1)));
+            var warnings = new List<string>();
+            var bytes = scene.Export(warnings, shown);
+            var extensions = (Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
+            Assert.That(extensions.ContainsKey(ExpressionAnimationData.Extension), Is.False, string.Join("\n", warnings));
+            Assert.That(warnings, Does.Contain("Shown: " + ExporterLocalization.T(ExpressionTransformCurves.HiddenShownWarning) + "Hidden prop"));
         }
 
         // Rest-valued bone and visibility curves change nothing in the file.

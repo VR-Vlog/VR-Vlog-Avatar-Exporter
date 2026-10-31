@@ -15,7 +15,8 @@ namespace VRVlog.LilToonExporter
     {
         // A component that stays this close to the prepared pose, keys and
         // Bezier handles alike, does not move: authored rest poses carry float
-        // noise. Position and scale in their own units, Euler angles in degrees.
+        // noise. Position in metres of the avatar (a bone under a 100x armature
+        // compares 0.000005 of its own units), scale as is, Euler angles in degrees.
         internal const double PositionTolerance = 0.0005;
         internal const double AngleTolerance = 0.05;
         // Each quaternion component this close to the prepared one (or to its
@@ -161,7 +162,8 @@ namespace VRVlog.LilToonExporter
                     curves[c] = curves[c] == null ? Constant(rest[c]) : still ? Constant(curves[c].Keys[0].Value) : curves[c];
                 return true;
             }
-            var tolerance = property == ExpressionTransformAnimation.Euler ? AngleTolerance : PositionTolerance;
+            var tolerance = property == ExpressionTransformAnimation.Euler ? AngleTolerance
+                : property == ExpressionTransformAnimation.Translation ? PositionTolerance / ParentScale(target) : PositionTolerance;
             if (property == ExpressionTransformAnimation.Euler && curves.All(curve => curve == null || Width(curve) <= tolerance))
             {
                 // Held angles can spell the prepared rotation another way.
@@ -179,6 +181,16 @@ namespace VRVlog.LilToonExporter
                 if (Width(curves[c]) <= tolerance) curves[c] = Constant(curves[c].Keys[0].Value);
             }
             return moves;
+        }
+
+        // How far one local unit of the target's position reaches in the
+        // avatar: the largest axis of the parent's scale.
+        static double ParentScale(Transform target)
+        {
+            if (target.parent == null) return 1;
+            var scale = target.parent.lossyScale;
+            var largest = Math.Max(Math.Abs(scale.x), Math.Max(Math.Abs(scale.y), Math.Abs(scale.z)));
+            return largest > 0 ? largest : 1;
         }
 
         static bool Within(ExpressionAnimationData.Curve curve, double value, double tolerance)
