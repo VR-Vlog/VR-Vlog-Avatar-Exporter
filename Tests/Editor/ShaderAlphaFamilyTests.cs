@@ -329,5 +329,20 @@ namespace VRVlog.LilToonExporter.Tests
             source.EnableKeyword("_ALPHABLEND_ON");
             Assert.That(Substitute(source).shader.name, Is.EqualTo("Hidden/lilToonTransparent"));
         }
+
+        // A shader that clips in its fragment code and says so only by its
+        // VRChat fallback keeps the holes its main image's alpha cuts.
+        [TestCase("ToonCutout", "Hidden/lilToonCutout")]
+        [TestCase("Cutout", "Hidden/lilToonCutout")]
+        [TestCase("Toon", "lilToon")]
+        [TestCase("Transparent", "lilToon")]
+        public void TheVRChatFallbackTagDecidesACutout(string fallback, string expected)
+        {
+            var source = Probe("Tagged", "_MainTex (\"Main\", 2D) = \"white\" {}\n_Color (\"Color\", Color) = (1,1,1,1)");
+            source.SetOverrideTag("VRCFallback", fallback);
+            var output = Substitute(source);
+            Assert.That(output.shader.name, Is.EqualTo(expected));
+            if (expected == "Hidden/lilToonCutout") Assert.That(output.GetFloat("_Cutoff"), Is.EqualTo(.5f));
+        }
     }
 }

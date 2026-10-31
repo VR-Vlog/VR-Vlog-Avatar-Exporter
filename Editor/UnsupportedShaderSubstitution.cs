@@ -321,6 +321,11 @@ namespace VRVlog.LilToonExporter
             if (Contains(name, "Cutout")) return Mode.Cutout;
             if (Contains(name, "TransClipping") || Contains(name, "Transparent") || Contains(name, "Fade")) return Mode.Transparent;
             if (Contains(name, "Clipping") || Contains(name, "AlphaTest")) return Mode.Cutout;
+            // VRChat draws a blocked shader by its VRCFallback tag; a Cutout
+            // there means the shader clips by the main image's alpha even when
+            // no property or name says so. Transparent is not taken from it: a
+            // blended copy of an opaque material would show what is behind it.
+            if (source.shader != null && Contains(source.GetTag("VRCFallback", true, ""), "Cutout")) return Mode.Cutout;
             var queue = values.Queue;
             if (queue > 2500 && (!values.TryFloat("_DstBlend", out var destination) || destination != 0)) return Mode.Transparent;
             if (queue >= 2450 && queue <= 2500 && Cutoffs.Any(cutoff => values.TryFloat(cutoff, out _))) return Mode.Cutout;
