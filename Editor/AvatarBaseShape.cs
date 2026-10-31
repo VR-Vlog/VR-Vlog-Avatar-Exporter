@@ -75,10 +75,7 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                var exclusive = new HashSet<int>(Enumerable.Range(0, mesh.blendShapeCount).Where(shape => IsVisemeChannel(mesh.GetBlendShapeName(shape))));
-                if (visemeShapes != null && visemeRenderer != null && visemeRenderer == skin)
-                    exclusive.UnionWith(visemeShapes.Select(mesh.GetBlendShapeIndex).Where(shape => shape >= 0));
-                var kept = Rebase(mesh, baked, weights, exclusive);
+                var kept = Rebase(mesh, baked, weights, ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes));
                 copy.sharedMesh = baked;
                 for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
                 warnings?.Add($"{skin.name}: 調整済みBlendShapeを基本の顔・体形として保存しました。表情はこの形から変化します。");
@@ -86,6 +83,28 @@ namespace VRVlog.LilToonExporter
                     warnings?.Add(string.Format(ExporterLocalization.T("{0}: フレームの構成に対応できないBlendShapeは調整した値を書き出さずに、元の形のまま書き出しました: {1}"),
                         skin.name, string.Join(", ", kept.ConvertAll(mesh.GetBlendShapeName))));
             }
+        }
+
+        // The shapes of one renderer that VRChat shows one at a time.
+        internal static HashSet<int> ExclusiveShapes(SkinnedMeshRenderer skin, Mesh mesh, SkinnedMeshRenderer visemeRenderer, IEnumerable<string> visemeShapes)
+        {
+            var exclusive = new HashSet<int>(Enumerable.Range(0, mesh.blendShapeCount).Where(shape => IsVisemeChannel(mesh.GetBlendShapeName(shape))));
+            if (visemeShapes != null && visemeRenderer != null && visemeRenderer == skin)
+                exclusive.UnionWith(visemeShapes.Select(mesh.GetBlendShapeIndex).Where(shape => shape >= 0));
+            return exclusive;
+        }
+
+        // The exclusive shapes whose exported frame Rebase also took another
+        // shape's rest from, so it no longer holds Evaluate(F) - Evaluate(rest).
+        internal static HashSet<int> ShapesWithoutOtherRests(Mesh source, float[] weights, ICollection<int> exclusive)
+        {
+            var resting = new List<int>();
+            foreach (var shape in exclusive)
+            {
+                try { if (!IsZero(Evaluate(source, shape, weights[shape]))) resting.Add(shape); }
+                catch (InvalidOperationException) { }
+            }
+            return new HashSet<int>(exclusive.Where(shape => resting.Any(other => other != shape)));
         }
 
         // Predict the endpoint that Rebase exports, without mutating source
