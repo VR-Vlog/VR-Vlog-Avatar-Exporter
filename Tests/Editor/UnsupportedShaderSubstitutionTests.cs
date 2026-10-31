@@ -8,6 +8,7 @@ using UnityEngine;
 using VRVlog.LilToon;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
 using Object = UnityEngine.Object;
+using BlendMode = UnityEngine.Rendering.BlendMode;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -118,6 +119,54 @@ namespace VRVlog.LilToonExporter.Tests
         public void TheFirstSubShaderDecidesWhetherColorPassesWriteDepth(string shaderLab, bool expected)
         {
             Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, name => name == "_ZWriteOn" ? 1 : 0), Is.EqualTo(expected));
+        }
+
+        [TestCase("Category { ZWrite Off SubShader { Pass { } } }", false)]
+        [TestCase("Category { ZWrite Off SubShader { ZWrite On Pass { } } }", true)]
+        [TestCase("Category { ZWrite Off } SubShader { Pass { } }", true)]
+        public void ACategoryAroundTheSubShaderGivesItsCommands(string shaderLab, bool expected)
+        {
+            Assert.That(UnsupportedShaderSubstitution.ShaderWritesDepth(shaderLab, _ => 0), Is.EqualTo(expected));
+        }
+
+        [TestCase("Category { Blend Zero SrcColor SubShader { Pass { SetTexture [_MainTex] { combine texture } } } }", true)]
+        [TestCase("SubShader { Pass { Blend DstColor Zero } }", true)]
+        [TestCase("SubShader { Blend Zero SrcColor Pass { } Pass { Tags { \"LightMode\"=\"ShadowCaster\" } } }", true)]
+        [TestCase("SubShader { Pass { Blend [_Src] [_Dst] } }", true)]
+        [TestCase("SubShader { Pass { blend zero srccolor } }", true)]
+        [TestCase("SubShader { Pass { Blend SrcAlpha OneMinusSrcAlpha } }", false)]
+        [TestCase("SubShader { Pass { Blend DstColor SrcColor } }", false)]
+        [TestCase("SubShader { Pass { Blend Zero SrcColor } Pass { Blend One One } }", false)]
+        [TestCase("SubShader { Blend Zero SrcColor Pass { } Pass { } }", false)]
+        [TestCase("Category { Blend Zero SrcColor SubShader { Blend One One Pass { } } }", false)]
+        [TestCase("SubShader { Pass { Blend Off } }", false)]
+        [TestCase("SubShader { Pass { } }", false)]
+        [TestCase("SubShader { Blend Zero SrcColor CGPROGRAM #pragma surface surf Lambert\n ENDCG }", false)]
+        public void TheBlendCommandTellsAMultiplyShader(string shaderLab, bool expected)
+        {
+            // _Src = Zero (0), _Dst = SrcColor (3).
+            Assert.That(UnsupportedShaderSubstitution.ShaderMultiplies(shaderLab, (name, fallback) => name == "_Src" ? 0 : name == "_Dst" ? 3 : fallback),
+                Is.EqualTo(expected));
+        }
+
+        [Test] public void AMultiplyShaderBecomesALilToonMultiply()
+        {
+            foreach (var shader in new[] { "Hidden/VRVlogTests/MultiplyProbe", "Legacy Shaders/Particles/Multiply" })
+            {
+                var source = Own(new Material(Shader.Find(shader)) { name = "Multiply" });
+                var material = Substitute(source);
+                Assert.That(material.shader.name, Is.EqualTo("Hidden/lilToonTransparent"), shader);
+                Assert.That(material.GetFloat("_SrcBlend"), Is.EqualTo((float)BlendMode.DstColor), shader);
+                Assert.That(material.GetFloat("_DstBlend"), Is.EqualTo((float)BlendMode.OneMinusSrcAlpha), shader);
+                Assert.That(material.GetFloat("_SrcBlendFA"), Is.EqualTo((float)BlendMode.Zero), shader);
+                Assert.That(material.GetFloat("_DstBlendFA"), Is.EqualTo((float)BlendMode.One), shader);
+                Assert.That(material.GetFloat("_AsUnlit"), Is.EqualTo(1f), shader);
+                Assert.That(material.GetFloat("_ZWrite"), Is.EqualTo(0f), shader);
+            }
+            // An alpha-blended source keeps lilToon's own blend.
+            var blended = Substitute(Own(new Material(Shader.Find("Hidden/VRVlogTests/DepthWriteProbe")) { name = "Blended" }));
+            Assert.That(blended.GetFloat("_SrcBlend"), Is.EqualTo((float)BlendMode.One));
+            Assert.That(blended.GetFloat("_DstBlend"), Is.EqualTo((float)BlendMode.OneMinusSrcAlpha));
         }
 
         [Test] public void AStencilWriterStaysWithoutColorAndDepth()
