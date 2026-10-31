@@ -319,8 +319,10 @@ namespace VRVlog.LilToonExporter.Tests
             var mixed = Clip("Explicit selected transform", ("Face size", 80));
             AnimationUtility.SetEditorCurve(mixed, EditorCurveBinding.FloatCurve("Influencing bone", typeof(Transform), "localEulerAnglesRaw.z"),
                 AnimationCurve.Constant(0, 1, 40));
-            Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadClip(avatar, mixed, new VrChatExpressionMenu.Entry()),
-                "Only independent evaluation support is allowed; authored mixed selected clips remain unsupported.");
+            // A bone the selected clip itself moves is the expression's own transform track.
+            var authored = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, mixed, authored);
+            Assert.That(authored.Transforms.Single().Path, Is.EqualTo("Influencing bone"));
+            Assert.That(authored.Transforms.Single().Property, Is.EqualTo(VRVlog.Expressions.ExpressionTransformAnimation.Euler));
         }
 
         [Test]

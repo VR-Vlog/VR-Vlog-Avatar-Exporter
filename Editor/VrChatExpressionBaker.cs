@@ -259,7 +259,12 @@ namespace VRVlog.LilToonExporter
             foreach (var plan in plans)
             {
                 var entry = plan.Entry;
-                var expression = new VrmMenuExpressions.Expression { Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source, Clip = entry.Clip };
+                var expression = new VrmMenuExpressions.Expression
+                {
+                    Name = entry.VrmName(), InferenceName = entry.Name, Source = entry.Source, Clip = entry.Clip,
+                    TransformDuration = entry.TransformDuration, TransformLoop = entry.TransformLoop
+                };
+                expression.Transforms.AddRange(entry.Transforms);
                 // The source shapes and end weights, before any of them is
                 // baked into a menu target, for emotion inference.
                 foreach (var group in plan.Poses)
@@ -418,7 +423,7 @@ namespace VRVlog.LilToonExporter
                         }
                     }
                 }
-                if (expression.Targets.Count > 0 || expression.Direct.Count > 0 || expression.FinalPoints().Any()) result.Add(expression);
+                if (expression.Targets.Count > 0 || expression.Direct.Count > 0 || expression.FinalPoints().Any() || expression.Transforms.Count > 0) result.Add(expression);
             }
             if (result.Count > 0) warnings?.Add(string.Format(ExporterLocalization.T(BakedFormat), result.Count));
             else warnings?.Add(ExporterLocalization.T(NoneBakedWarning));

@@ -76,6 +76,7 @@ namespace VRVlog.LilToonExporter
                 {
                     entry.Values.Clear(); entry.Animation.Clear(); entry.Messages.Clear();
                     entry.Duration = 0; entry.Loop = false; entry.UsesFacialProjection = false;
+                    entry.Transforms.Clear(); entry.TransformDuration = 0; entry.TransformLoop = false;
                     foreach (var binding in AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape))
                     {
                         if (excludedPath?.Invoke(binding.path) == true) continue;

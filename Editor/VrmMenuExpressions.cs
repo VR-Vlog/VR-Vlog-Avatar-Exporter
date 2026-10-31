@@ -42,6 +42,11 @@ namespace VRVlog.LilToonExporter
             // The animation ends on the neutral face; the VRM expression only
             // holds a zero marker that keeps it selectable.
             internal bool EndsNeutral = false;
+            // Bone and visibility curves the face plays, with the clock they
+            // share with Animation. The exporter sets each Node after export.
+            internal readonly List<TransformTrack> Transforms = new List<TransformTrack>();
+            internal double TransformDuration = 0;
+            internal bool TransformLoop = false;
 
             // The animation's shape at time = duration: per channel the two
             // points Channel.Weights picks, at 1 - blend and blend. Points that
@@ -58,6 +63,35 @@ namespace VRVlog.LilToonExporter
             }
 
             bool Moves(ExpressionAnimationData.Point point) => point.Target != null || point.Morph != null || DirectPoints.ContainsKey(point);
+        }
+
+        // One property of one object in Unity's local space (one curve per
+        // component, x y z (w)). Add writes it in glTF's: UniVRM mirrors X.
+        internal sealed class TransformTrack
+        {
+            // The GameObject on the export copy, and its path for warnings.
+            internal UnityEngine.Object Target = null;
+            internal string Path = null;
+            internal string Property = null;
+            internal readonly List<ExpressionAnimationData.Curve> Curves = new List<ExpressionAnimationData.Curve>();
+            internal int Node = -1;
+        }
+
+        // Position (-x, y, z), euler (x, -y, -z), quaternion (x, -y, -z, w).
+        static bool Mirrored(string property, int component) =>
+            property == ExpressionTransformAnimation.Translation ? component == 0 :
+            (property == ExpressionTransformAnimation.Euler || property == ExpressionTransformAnimation.Rotation) && (component == 1 || component == 2);
+
+        static ExpressionAnimationData.Curve Negated(ExpressionAnimationData.Curve curve)
+        {
+            var result = new ExpressionAnimationData.Curve { PreWrap = curve.PreWrap, PostWrap = curve.PostWrap };
+            foreach (var key in curve.Keys)
+                result.Keys.Add(new ExpressionAnimationData.Key
+                {
+                    Time = key.Time, Value = -key.Value, InTangent = -key.InTangent, OutTangent = -key.OutTangent,
+                    InWeight = key.InWeight, OutWeight = key.OutWeight
+                });
+            return result;
         }
 
         // Resolves a direct reference through the optimizer route captured
@@ -160,6 +194,7 @@ namespace VRVlog.LilToonExporter
             var meshes = (List<object>)glb.Json["meshes"];
             var document = new ExpressionAnimationDocument();
             var built = new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)>();
+            var transformsOf = new Dictionary<Expression, ExpressionTransformAnimation>();
             foreach (var expression in expressions)
             {
                 expression.RegisteredName = null;
@@ -248,7 +283,31 @@ namespace VRVlog.LilToonExporter
                         animation = null;
                     }
                 }
-                if (binds.Count == 0) throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
+                ExpressionTransformAnimation transforms = null;
+                if (expression.Transforms.Count > 0)
+                {
+                    // One clock with the BlendShape program when there is one.
+                    transforms = new ExpressionTransformAnimation
+                    {
+                        Duration = animation?.Duration ?? expression.TransformDuration, Loop = animation?.Loop ?? expression.TransformLoop
+                    };
+                    foreach (var track in expression.Transforms)
+                    {
+                        if (track.Node < 0 || track.Node >= nodes.Count)
+                            throw new InvalidOperationException("表情のボーンの出力先がありません: " + expression.Name + " / " + track.Path);
+                        var copy = new ExpressionTransformAnimation.Track { Node = track.Node, Property = track.Property };
+                        copy.Curves.AddRange(track.Curves.Select((curve, component) => Mirrored(track.Property, component) ? Negated(curve) : curve));
+                        transforms.Tracks.Add(copy);
+                    }
+                    transformsOf.Add(expression, transforms);
+                }
+                if (binds.Count == 0 && transforms == null)
+                {
+                    // A face that only moved bones or visibility, all of which
+                    // the export left out, has nothing to write.
+                    if (expression.Targets.Count == 0 && expression.Direct.Count == 0 && expression.Animation == null) continue;
+                    throw new InvalidOperationException("表情の出力先がありません: " + expression.Name);
+                }
                 built.Add((expression, binds, animation));
             }
             // Faces that write the same binds (same morphs, exactly the same
@@ -258,11 +317,13 @@ namespace VRVlog.LilToonExporter
             // The group is written once, where its first face is, under the
             // name of the face whose label emotion inference reads (an
             // emotion first, then neutral), else the first; the others stay
-            // unregistered with MergedInto set to that name.
+            // unregistered with MergedInto set to that name. A face that moves
+            // bones or visibility is always its own.
             var groups = new List<List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)>>();
             foreach (var item in built)
             {
-                var group = groups.FirstOrDefault(g => SameBinds(g[0].Binds, item.Binds) && SameAnimation(g[0].Animation, item.Animation));
+                var group = transformsOf.ContainsKey(item.Expression) ? null : groups.FirstOrDefault(g => !transformsOf.ContainsKey(g[0].Expression) &&
+                    SameBinds(g[0].Binds, item.Binds) && SameAnimation(g[0].Animation, item.Animation));
                 if (group != null) group.Add(item);
                 else groups.Add(new List<(Expression Expression, List<object> Binds, ExpressionAnimationData Animation)> { item });
             }
@@ -285,6 +346,11 @@ namespace VRVlog.LilToonExporter
                     animation.Expression = name; // Includes any duplicate-name suffix.
                     if (expression.Animation != null) expression.Animation.Expression = name;
                     document.Animations.Add(animation);
+                }
+                if (transformsOf.TryGetValue(expression, out var transforms))
+                {
+                    transforms.Expression = name;
+                    document.Transforms.Add(transforms);
                 }
             }
             var extensions = (Dictionary<string, object>)glb.Json["extensions"];
