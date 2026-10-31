@@ -156,7 +156,10 @@ namespace VRVlog.Expressions
                     { ["expression"] = e.Expression, ["source"] = e.Source }).ToList(),
                 ["animations"] = WriteAnimations(document.Animations, WriteMorph)
             };
-            ReadDocument(result); // The exporter and runtime enforce the same contract.
+            // Omitted when empty, so avatars without bone or visibility keys
+            // keep the bytes they had before transforms existed.
+            if (document.Transforms.Count > 0) result["transforms"] = WriteTransforms(document.Transforms);
+            ReadTransforms(result, ReadDocument(result)); // The exporter and runtime enforce the same contract.
             return result;
         }
 
@@ -164,14 +167,31 @@ namespace VRVlog.Expressions
             animations.Select(a => (object)new Dictionary<string, object>
             {
                 ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
-                ["channels"] = a.Channels.Select(c => (object)new Dictionary<string, object>
+                ["channels"] = a.Channels.Select(c =>
                 {
-                    ["preWrap"] = c.Curve.PreWrap, ["postWrap"] = c.Curve.PostWrap,
-                    ["keys"] = c.Curve.Keys.Select(k => (object)new List<object>
-                        { k.Time, k.Value, k.InTangent.HasValue ? (object)k.InTangent.Value : null,
-                            k.OutTangent.HasValue ? (object)k.OutTangent.Value : null, k.InWeight, k.OutWeight }).ToList(),
-                    ["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
-                        { ["value"] = p.Value, ["target"] = target(p) }).ToList()
+                    var channel = WriteCurve(c.Curve);
+                    channel["points"] = c.Points.Select(p => (object)new Dictionary<string, object>
+                        { ["value"] = p.Value, ["target"] = target(p) }).ToList();
+                    return (object)channel;
+                }).ToList()
+            }).ToList();
+
+        static Dictionary<string, object> WriteCurve(Curve curve) => new Dictionary<string, object>
+        {
+            ["preWrap"] = curve.PreWrap, ["postWrap"] = curve.PostWrap,
+            ["keys"] = curve.Keys.Select(k => (object)new List<object>
+                { k.Time, k.Value, k.InTangent.HasValue ? (object)k.InTangent.Value : null,
+                    k.OutTangent.HasValue ? (object)k.OutTangent.Value : null, k.InWeight, k.OutWeight }).ToList()
+        };
+
+        static List<object> WriteTransforms(IEnumerable<ExpressionTransformAnimation> transforms) =>
+            transforms.Select(a => (object)new Dictionary<string, object>
+            {
+                ["expression"] = a.Expression, ["duration"] = a.Duration, ["loop"] = a.Loop,
+                ["tracks"] = a.Tracks.Select(t => (object)new Dictionary<string, object>
+                {
+                    ["node"] = (long)t.Node, ["property"] = t.Property,
+                    ["curves"] = t.Curves.Select(c => (object)WriteCurve(c)).ToList()
                 }).ToList()
             }).ToList();
 
@@ -247,17 +267,7 @@ namespace VRVlog.Expressions
                 {
                     if (++channelCount > 1024) Bad();
                     var c = Obj(rawChannel);
-                    var channel = new Channel { Curve = new Curve { PreWrap = Text(c["preWrap"]), PostWrap = Text(c["postWrap"]) } };
-                    foreach (var rawKey in Arr(c["keys"]))
-                    {
-                        if (++keyCount > 16384) Bad();
-                        var k = Arr(rawKey);
-                        if (k.Count != 6) Bad();
-                        channel.Curve.Keys.Add(new Key { Time = Number(k[0]), Value = Number(k[1]),
-                            InTangent = k[2] == null ? (double?)null : Number(k[2]), OutTangent = k[3] == null ? (double?)null : Number(k[3]),
-                            InWeight = Number(k[4]), OutWeight = Number(k[5]) });
-                    }
-                    channel.Curve.Validate();
+                    var channel = new Channel { Curve = ReadCurve(c, ref keyCount) };
                     foreach (var rawPoint in Arr(c["points"]))
                     {
                         if (++pointCount > 4096) Bad();
@@ -295,6 +305,77 @@ namespace VRVlog.Expressions
             return result;
         }
 
+        static Curve ReadCurve(Dictionary<string, object> c, ref int keyCount)
+        {
+            var curve = new Curve { PreWrap = Text(c["preWrap"]), PostWrap = Text(c["postWrap"]) };
+            foreach (var rawKey in Arr(c["keys"]))
+            {
+                if (++keyCount > 16384) Bad();
+                var k = Arr(rawKey);
+                if (k.Count != 6) Bad();
+                curve.Keys.Add(new Key { Time = Number(k[0]), Value = Number(k[1]),
+                    InTangent = k[2] == null ? (double?)null : Number(k[2]), OutTangent = k[3] == null ? (double?)null : Number(k[3]),
+                    InWeight = Number(k[4]), OutWeight = Number(k[5]) });
+            }
+            curve.Validate();
+            return curve;
+        }
+
+        // Reads the optional "transforms" of a schema 2 document that
+        // ReadDocument already accepted. ReadDocument does not look at this
+        // key, so readers older than it and readers that skip it keep loading
+        // the BlendShape part. A caller that plays transforms catches the
+        // exception here and keeps the document.
+        public static List<ExpressionTransformAnimation> ReadTransforms(object value, ExpressionAnimationDocument document)
+        {
+            var root = Obj(value);
+            var result = new List<ExpressionTransformAnimation>();
+            if (!root.TryGetValue("transforms", out var rawTransforms)) return result;
+            if (document == null || document.SchemaVersion != 2) Bad();
+            var array = Arr(rawTransforms);
+            if (array.Count == 0 || array.Count > 512) Bad();
+            var listed = new HashSet<string>(document.Expressions.Select(e => e.Expression), StringComparer.Ordinal);
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            var trackCount = 0; var keyCount = 0;
+            foreach (var raw in array)
+            {
+                var obj = Obj(raw);
+                var animation = new ExpressionTransformAnimation { Expression = Text(obj["expression"]), Duration = Number(obj["duration"]) };
+                if (!(obj["loop"] is bool)) Bad();
+                animation.Loop = (bool)obj["loop"];
+                if (!listed.Contains(animation.Expression) || !names.Add(animation.Expression) ||
+                    animation.Duration < 0 || animation.Duration > 600 || animation.Duration == 0 && animation.Loop) Bad();
+                // One expression has one clock: the BlendShape animation of
+                // the same expression has the same length and looping.
+                var blendShapes = document.Animations.FirstOrDefault(a => a.Expression == animation.Expression);
+                if (blendShapes != null && (blendShapes.Duration != animation.Duration || blendShapes.Loop != animation.Loop)) Bad();
+                var owners = new HashSet<(int, string)>();
+                foreach (var rawTrack in Arr(obj["tracks"]))
+                {
+                    if (++trackCount > 1024) Bad();
+                    var t = Obj(rawTrack);
+                    var track = new ExpressionTransformAnimation.Track { Node = NonNegative(t["node"]), Property = Text(t["property"]) };
+                    var components = ExpressionTransformAnimation.Components(track.Property);
+                    // euler and rotation both write the node's rotation.
+                    var owner = track.Property == ExpressionTransformAnimation.Euler ? ExpressionTransformAnimation.Rotation : track.Property;
+                    if (components == 0 || !owners.Add((track.Node, owner))) Bad();
+                    var curves = Arr(t["curves"]);
+                    if (curves.Count != components) Bad();
+                    foreach (var rawCurve in curves)
+                    {
+                        var curve = ReadCurve(Obj(rawCurve), ref keyCount);
+                        curve.Range(out var minimum, out var maximum);
+                        if (track.Property == ExpressionTransformAnimation.Active && (minimum < 0 || maximum > 1)) Bad();
+                        track.Curves.Add(curve);
+                    }
+                    animation.Tracks.Add(track);
+                }
+                if (animation.Tracks.Count == 0) Bad();
+                result.Add(animation);
+            }
+            return result;
+        }
+
         static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
         static Dictionary<string, object> Obj(object value) => value as Dictionary<string, object> ?? throw new InvalidOperationException("Invalid expression animation object.");
         static List<object> Arr(object value) => value as List<object> ?? throw new InvalidOperationException("Invalid expression animation array.");
@@ -322,6 +403,48 @@ namespace VRVlog.Expressions
         public int SchemaVersion = 2;
         public readonly List<ExpressionSource> Expressions = new List<ExpressionSource>();
         public readonly List<ExpressionAnimationData> Animations = new List<ExpressionAnimationData>();
+        // Written under "transforms" and read only by ExpressionAnimationData.ReadTransforms.
+        public readonly List<ExpressionTransformAnimation> Transforms = new List<ExpressionTransformAnimation>();
+    }
+
+    // Bone and visibility keys of one custom expression. Values are in the
+    // local space of the glTF node: translation in meters, euler in degrees
+    // applied like Unity's Quaternion.Euler (Z, then X, then Y), rotation as
+    // an (x, y, z, w) quaternion normalized after evaluation, scale, and
+    // active (shown at 0.5 or more). The player blends from the node's pose
+    // at load time with the expression's weight and restores it on release.
+    public sealed class ExpressionTransformAnimation
+    {
+        public const string Translation = "translation", Euler = "euler", Rotation = "rotation", Scale = "scale", Active = "active";
+        public string Expression;
+        // Zero holds the pose at time 0 and does not loop.
+        public double Duration;
+        public bool Loop;
+        public readonly List<Track> Tracks = new List<Track>();
+
+        public sealed class Track
+        {
+            public int Node;
+            public string Property;
+            // One curve per component in the order x, y, z (w).
+            public readonly List<ExpressionAnimationData.Curve> Curves = new List<ExpressionAnimationData.Curve>();
+
+            public void Evaluate(double time, double[] values)
+            {
+                for (var i = 0; i < Curves.Count; i++) values[i] = Curves[i].Evaluate(time);
+            }
+        }
+
+        public double TimeAt(double elapsed)
+        {
+            if (Duration <= 0) return 0;
+            elapsed = Math.Max(0, elapsed);
+            return Loop ? elapsed % Duration : Math.Min(elapsed, Duration);
+        }
+
+        public static int Components(string property) =>
+            property == Translation || property == Euler || property == Scale ? 3 :
+            property == Rotation ? 4 : property == Active ? 1 : 0;
     }
 
     // Where a custom expression came from. Expression names carry no source

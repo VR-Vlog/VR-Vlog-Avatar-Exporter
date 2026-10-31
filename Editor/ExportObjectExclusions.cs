@@ -83,7 +83,7 @@ namespace VRVlog.LilToonExporter
                 removed += entry.Animation.RemoveAll(value => Excluded(value.Path));
                 removed += entry.Unevaluated.RemoveAll(value => Excluded(value.Path));
                 if (removed == 0) continue;
-                if (entry.Values.Count == 0 && entry.Animation.Count == 0 && entry.Unevaluated.Count == 0)
+                if (entry.Values.Count == 0 && entry.Animation.Count == 0 && entry.Unevaluated.Count == 0 && entry.Transforms.Count == 0)
                     entry.Error = "除外したオブジェクトのみを変更する表情のため省略しました。";
                 else warnings?.Add(entry.Name + ": 除外したオブジェクトの表情だけを省略しました。");
             }

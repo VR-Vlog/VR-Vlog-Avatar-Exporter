@@ -275,12 +275,12 @@ namespace VRVlog.LilToonExporter.Tests
             var face = new AnimationClip { name = "Face only" }; var bone = new AnimationClip { name = "Face and bone" };
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
-            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            var unsupported = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r");
             try
             {
                 AnimationUtility.SetEditorCurve(face, binding, AnimationCurve.Constant(0, 1, 60));
                 AnimationUtility.SetEditorCurve(bone, binding, AnimationCurve.Constant(0, 1, 60));
-                AnimationUtility.SetEditorCurve(bone, unsupported, AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(bone, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 type.GetField("source", flags).SetValue(window, fixture.Source); type.GetMethod("Prepare", flags).Invoke(window, null);
                 var session = (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(window);
                 var reason = session.ClipError(bone, bone.length);
@@ -335,7 +335,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "Later with bone" };
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
-            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            var unsupported = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r");
             try
             {
                 AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
@@ -347,7 +347,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(board.PlaceOf(clip).Kind, Is.EqualTo(ExpressionBoard.PlaceKind.Other));
                 Assert.That(window.BlocksExport, Is.False);
 
-                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 var reason = session.ClipError(clip, clip.length);
                 Assert.That(reason, Is.Not.Null);
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
@@ -385,7 +385,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "Later with bone" };
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
-            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            var unsupported = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r");
             try
             {
                 AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 60));
@@ -394,7 +394,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var board = (ExpressionBoard)type.GetField("board", flags).GetValue(window);
                 type.GetMethod("MoveTo", flags).Invoke(window, new object[] { clip, ExpressionBoard.Place.Slot(ExpressionPreset.happy) });
 
-                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
                 // The slot the user chose keeps the file and names its reason.
                 Assert.That(board.PlaceOf(clip), Is.EqualTo(ExpressionBoard.Place.Slot(ExpressionPreset.happy)));
@@ -411,7 +411,7 @@ namespace VRVlog.LilToonExporter.Tests
             var kept = new AnimationClip { name = "Kept" }; var removed = new AnimationClip { name = "Removed" };
             var type = typeof(ExperimentalExpressionCaptureWindow); var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
-            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            var unsupported = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r");
             try
             {
                 AnimationUtility.SetEditorCurve(kept, binding, AnimationCurve.Constant(0, 1, 30));
@@ -427,7 +427,7 @@ namespace VRVlog.LilToonExporter.Tests
 
                 // Removed from the faces not exported, as the × there does.
                 type.GetMethod("MoveTo", flags).Invoke(window, new object[] { removed, ExpressionBoard.Place.Excluded });
-                AnimationUtility.SetEditorCurve(removed, unsupported, AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(removed, unsupported, AnimationCurve.Constant(0, 1, .3f));
                 type.GetMethod("RefreshCandidateValidation", flags).Invoke(window, null);
                 type.GetMethod("RemoveAddedClip", flags).Invoke(window, new object[] { removed });
 
@@ -637,11 +637,11 @@ namespace VRVlog.LilToonExporter.Tests
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic; var type = typeof(ExperimentalExpressionCaptureWindow);
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
-            var unsupported = EditorCurveBinding.FloatCurve("", typeof(Transform), "m_LocalPosition.x");
+            var unsupported = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r");
             try
             {
                 AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 75));
-                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, 0)); AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
+                AnimationUtility.SetEditorCurve(clip, unsupported, AnimationCurve.Constant(0, 1, .3f)); AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
                 AnimationUtility.SetEditorCurve(retained, binding, AnimationCurve.Constant(0, 1, 50));
                 var state = machine.AddState("Face"); state.motion = clip; machine.defaultState = state;
                 controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
@@ -829,6 +829,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(75f, 0f, "plain", true)]
         [TestCase(0f, 0f, "gesture", true)]
         [TestCase(0f, 0f, "unreadable", true)]
+        [TestCase(0f, 0f, "bone", true)]
+        [TestCase(0f, 0f, "rest bone", false)]
         public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, bool usable)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
@@ -837,6 +839,10 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, clipWeight));
+                // A clip that moves a bone away from the prepared pose is a face the export writes; one that holds it there is not.
+                if (kind == "bone" || kind == "rest bone")
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Independent hair/Head", typeof(Transform), kind == "bone" ? "localEulerAnglesRaw.y" : "m_LocalPosition.y"),
+                        AnimationCurve.Constant(0, 1, kind == "bone" ? 20 : fixture.Source.transform.Find("Independent hair/Head").localPosition.y));
                 var state = machine.AddState("Switch"); state.motion = clip; machine.defaultState = state;
                 if (kind == "gesture")
                 {
@@ -860,13 +866,15 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
 
-        // A face a gesture enters may also turn a bone, such as an eye highlight. It is still a face on the
-        // board, read from its BlendShapes alone. The same curve in a clip no gesture enters, or a shown
-        // object beside a gesture face, keeps the clip unsupported. A hand pose that only holds the face
-        // shapes at rest is not a face.
+        // A face may also turn a bone, such as an eye highlight, or show an object. It is still a face on the
+        // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
+        // bone and the shown object beside it. A material swap keeps the clip unsupported. A hand pose that
+        // only holds the face shapes at rest is not a face.
         [TestCase("transform", true, 80f, "usable")]
-        [TestCase("transform", false, 80f, "unsupported")]
-        [TestCase("active", true, 80f, "unsupported")]
+        [TestCase("transform", false, 80f, "usable")]
+        [TestCase("active", true, 80f, "usable")]
+        [TestCase("active", false, 80f, "usable")]
+        [TestCase("material", true, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
@@ -876,7 +884,9 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-                AnimationUtility.SetEditorCurve(clip, extra == "transform"
+                if (extra == "material")
+                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), AnimationCurve.Constant(0, 1, 0.5f));
+                else AnimationUtility.SetEditorCurve(clip, extra == "transform"
                     ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
                     : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
@@ -897,7 +907,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
-                else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                else Assert.That(error, Does.EndWith("material._Color.r"));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
@@ -2456,7 +2466,7 @@ namespace VRVlog.LilToonExporter.Tests
             finally { foreach (var clip in clips) Object.DestroyImmediate(clip); }
         }
 
-        [TestCase("bone")]
+        // A bone curve is no error here: the export writes it beside the face.
         [TestCase("material")]
         [TestCase("display")]
         [TestCase("reference")]
@@ -2472,7 +2482,6 @@ namespace VRVlog.LilToonExporter.Tests
             var binding = EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail");
             AnimationUtility.SetEditorCurve(valid, binding, AnimationCurve.Constant(0, 1, 80));
             AnimationUtility.SetEditorCurve(invalid, binding, AnimationCurve.Constant(0, 1, 65));
-            if (mode == "bone") AnimationUtility.SetEditorCurve(invalid, EditorCurveBinding.FloatCurve("Head", typeof(Transform), "localEulerAnglesRaw.x"), AnimationCurve.Constant(0, 1, 15));
             if (mode == "material") AnimationUtility.SetEditorCurve(invalid, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), AnimationCurve.Constant(0, 1, .3f));
             if (mode == "display") AnimationUtility.SetEditorCurve(invalid, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
             if (mode == "reference") AnimationUtility.SetObjectReferenceCurve(invalid, EditorCurveBinding.PPtrCurve("Front", typeof(SkinnedMeshRenderer), "m_Materials.Array.data[0]"), new[] { new ObjectReferenceKeyframe { time = 0, value = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>().sharedMaterial } });

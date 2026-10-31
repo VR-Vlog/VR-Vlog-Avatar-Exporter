@@ -95,7 +95,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(new[] { avatar, (Object)skin, material, mesh, clip }.Select(EditorJsonUtility.ToJson), Is.EqualTo(before));
         }
 
-        [TestCase("activation")]
         [TestCase("enabled")]
         [TestCase("color")]
         [TestCase("vector")]
@@ -104,6 +103,20 @@ namespace VRVlog.LilToonExporter.Tests
             var binding = Appearance(kind, 0);
             Assert.That(SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding), Is.False);
             Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadClip(avatar, clip, new VrChatExpressionMenu.Entry()));
+        }
+
+        // Hiding an object is the face's visibility track, not an appearance change.
+        [Test]
+        public void HidingAnObjectIsAVisibilityTrack()
+        {
+            var binding = Appearance("activation", 0);
+            Assert.That(SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding), Is.False);
+            var entry = new VrChatExpressionMenu.Entry();
+            VrChatGestureExpressions.ReadClip(avatar, clip, entry);
+            var track = entry.Transforms.Single();
+            Assert.That(track.Path, Is.EqualTo("Dummy"));
+            Assert.That(track.Property, Is.EqualTo(VRVlog.Expressions.ExpressionTransformAnimation.Active));
+            Assert.That(track.Curves.Single().Evaluate(.5), Is.EqualTo(0));
         }
 
         [TestCase("color")]
