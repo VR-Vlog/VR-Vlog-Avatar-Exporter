@@ -83,9 +83,10 @@ namespace VRVlog.LilToonExporter
             // flipped half (whose meaning differs between versions), colors
             // changed by hue, adjustment, theme or video, and alpha taken from
             // the faces, global masks or the decal itself are not drawn. Older
-            // versions, without the alpha intensity, number their blend modes
-            // differently and are not drawn either.
-            if (!values.TryFloat("_DecalAlphaIntensity" + s, out _) || Mathf.RoundToInt(values.Float("_DecalTexture" + s + "UV", 0)) != 0 || Mathf.RoundToInt(values.Float("_DecalMirroredUVMode" + s, 0)) != 0 ||
+            // versions, without the alpha override, number their blend modes
+            // differently and are not drawn either. Versions without the alpha
+            // intensity draw as if it were 1.
+            if (!values.TryFloat("_DecalOverrideAlpha" + s, out _) || Mathf.RoundToInt(values.Float("_DecalTexture" + s + "UV", 0)) != 0 || Mathf.RoundToInt(values.Float("_DecalMirroredUVMode" + s, 0)) != 0 ||
                 (symmetry != 0 && symmetry != 1) || values.Float(n + "Depth", 0) != 0 || values.Float("_DecalRotationSpeed" + s, 0) != 0 ||
                 Moving("_DecalTexture" + s + "Pan") || Array.IndexOf(ToonDecalBlends, blend) < 0 ||
                 values.Float("_DecalHueShiftEnabled" + s, 0) > .5f || values.Float("_DecalColorAdjustEnabled" + s, 0) > .5f ||

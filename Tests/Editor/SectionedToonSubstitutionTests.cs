@@ -362,6 +362,28 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(dropped, Is.Empty);
         }
 
+        // A version without the alpha intensity mixes the decal's alpha the
+        // same way with the intensity left at 1; one without the alpha override
+        // numbers its blend modes differently, so its decals are not drawn.
+        [TestCase("SectionedToonProbeWithoutAlphaIntensity", true)]
+        [TestCase("SectionedToonProbeOldDecals", false)]
+        public void TheDecalsOfAnEarlierVersionAreDrawnOnlyWhenItsBlendModesMatch(string probe, bool drawn)
+        {
+            var source = Own(new Material(Shader.Find("Hidden/VRVlogTests/" + probe)) { name = "Toon" });
+            Decal(source, 0, new Color(.2f, .3f, .4f, .9f), 8);
+            source.SetTexture("_DecalTexture", Solid(Color.black));
+            var output = Substitute(source, out _, out var dropped);
+            Assert.That(output.GetFloat("_UseMain2ndTex"), Is.EqualTo(drawn ? 1f : 0f));
+            if (!drawn)
+            {
+                Assert.That(dropped, Is.EquivalentTo(new[] { "Decal 0" }));
+                return;
+            }
+            Assert.That(dropped, Is.Empty);
+            AssertColor(output, "_Color2nd", new Color(.2f, .3f, .4f, .9f));
+            Assert.That(output.GetFloat("_Main2ndTexBlendMode"), Is.EqualTo(1f));
+        }
+
         // The source samples at (R(θ)(uv - c) / size + 0.5) × st.xy + st.zw;
         // the layer must sample the same point of the image at every UV.
         [TestCase(true)]

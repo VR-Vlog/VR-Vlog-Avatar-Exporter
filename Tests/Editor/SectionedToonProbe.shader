@@ -112,6 +112,7 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _DecalBlendType ("DecalBlendType", Range(0, 1)) = 0
         _DecalBlendAlpha ("DecalBlendAlpha", Range(0, 1)) = 1
         _DecalAlphaIntensity ("DecalAlphaIntensity", Range(0, 10)) = 1
+        _DecalOverrideAlpha ("DecalOverrideAlpha", Float) = 0
         _Decal0MaskChannel ("Decal 0 Mask Channel", Int) = 0
         _Decal0AspectRatioMode ("Decal 0 Aspect Ratio Mode", Int) = 0
         _DecalEnabled1 ("DecalEnabled1", Float) = 0
@@ -131,6 +132,7 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _DecalBlendType1 ("DecalBlendType1", Range(0, 1)) = 0
         _DecalBlendAlpha1 ("DecalBlendAlpha1", Range(0, 1)) = 1
         _DecalAlphaIntensity1 ("DecalAlphaIntensity1", Range(0, 10)) = 1
+        _DecalOverrideAlpha1 ("DecalOverrideAlpha1", Float) = 0
         _Decal1MaskChannel ("Decal 1 Mask Channel", Int) = 1
         _Decal1AspectRatioMode ("Decal 1 Aspect Ratio Mode", Int) = 0
         _DecalEnabled2 ("DecalEnabled2", Float) = 0
@@ -150,6 +152,7 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _DecalBlendType2 ("DecalBlendType2", Range(0, 1)) = 0
         _DecalBlendAlpha2 ("DecalBlendAlpha2", Range(0, 1)) = 1
         _DecalAlphaIntensity2 ("DecalAlphaIntensity2", Range(0, 10)) = 1
+        _DecalOverrideAlpha2 ("DecalOverrideAlpha2", Float) = 0
         _Decal2MaskChannel ("Decal 2 Mask Channel", Int) = 2
         _Decal2AspectRatioMode ("Decal 2 Aspect Ratio Mode", Int) = 0
         _DecalEnabled3 ("DecalEnabled3", Float) = 0
@@ -169,6 +172,7 @@ Shader "Hidden/VRVlogTests/SectionedToonProbe"
         _DecalBlendType3 ("DecalBlendType3", Range(0, 1)) = 0
         _DecalBlendAlpha3 ("DecalBlendAlpha3", Range(0, 1)) = 1
         _DecalAlphaIntensity3 ("DecalAlphaIntensity3", Range(0, 10)) = 1
+        _DecalOverrideAlpha3 ("DecalOverrideAlpha3", Float) = 0
         _Decal3MaskChannel ("Decal 3 Mask Channel", Int) = 3
         _Decal3AspectRatioMode ("Decal 3 Aspect Ratio Mode", Int) = 0
         // Sections official lilToon does not have.
