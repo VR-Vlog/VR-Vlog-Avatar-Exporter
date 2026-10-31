@@ -61,7 +61,7 @@ namespace VRVlog.LilToonExporter
         internal static string PackageVersion()
         {
             var info = PackageManagerPackageInfo.FindForAssembly(typeof(LilToonExporterWindow).Assembly);
-            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.4.0";
+            return info != null && !string.IsNullOrWhiteSpace(info.version) ? info.version : "1.4.1";
         }
 
         // The same step as the expression board's third page: returns the panel as a VisualElement, given
