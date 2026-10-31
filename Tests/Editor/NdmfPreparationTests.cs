@@ -44,6 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void TearDown()
         {
             FakeProcessor.GeneratingAction = null;
+            NdmfExportPreparation.PluginPackagesOverride = null;
             Object.DestroyImmediate(source);
             Object.DestroyImmediate(clone);
             if (original != null) Object.DestroyImmediate(original);
@@ -518,6 +519,21 @@ namespace VRVlog.LilToonExporter.Tests
             using (NdmfExportPreparation.Prepare(source, clone)) { }
             Assert.AreEqual(0, FakeProcessor.Calls);
             Assert.IsTrue(original != null);
+        }
+
+        [Test]
+        public void ComponentFromAPackageExportingAPluginStartsTheBuild()
+        {
+            var package = UnityEditor.PackageManager.PackageInfo
+                .FindForAssembly(typeof(GimmickSettingsProbe).Assembly)?.name;
+            if (package == null) Assert.Ignore("The fixtures must be installed as a package.");
+            source.AddComponent<GimmickSettingsProbe>();
+
+            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string>();
+            Assert.IsFalse(NdmfExportPreparation.NeedsProcessing(source));
+
+            NdmfExportPreparation.PluginPackagesOverride = new HashSet<string> { package };
+            Assert.IsTrue(NdmfExportPreparation.NeedsProcessing(source));
         }
 
         [Test]

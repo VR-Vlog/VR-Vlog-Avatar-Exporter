@@ -175,7 +175,52 @@ namespace VRVlog.LilToonExporter
         }
 #endif
 
-        internal static bool NeedsProcessing(GameObject avatar) => avatar != null && RelevantAuthoring(avatar).Count != 0;
+        internal static bool NeedsProcessing(GameObject avatar) => avatar != null &&
+            (RelevantAuthoring(avatar).Count != 0 || HasPluginToolComponent(avatar));
+
+        // Tools that build through NDMF without MA's or AAO's tag classes
+        // (TexTransTool, lilycalInventory, texture compressors) mark their
+        // components only with the VRChat SDK's IEditorOnly. A VRChat build
+        // still runs their plugins, so a component from a package that
+        // exports an NDMF plugin starts the export build too.
+        internal static ISet<string> PluginPackagesOverride;
+        private static HashSet<string> pluginPackages;
+        private static readonly Dictionary<Assembly, string> packageOfAssembly = new Dictionary<Assembly, string>();
+
+        private static bool HasPluginToolComponent(GameObject avatar)
+        {
+            var packages = PluginPackagesOverride ?? PluginPackages();
+            if (packages.Count == 0) return false;
+            return avatar.GetComponentsInChildren<Component>(true).Any(component => component != null &&
+                !IsCopyAvatarRoot(avatar, component) && PackageOf(component.GetType().Assembly) is string package &&
+                packages.Contains(package));
+        }
+
+        private static string PackageOf(Assembly assembly)
+        {
+            if (!packageOfAssembly.TryGetValue(assembly, out var package))
+                packageOfAssembly[assembly] = package = PackageInfo.FindForAssembly(assembly)?.name;
+            return package;
+        }
+
+        private static HashSet<string> PluginPackages()
+        {
+            if (pluginPackages != null) return pluginPackages;
+            var packages = new HashSet<string>();
+            // The exporter's own test plugins must not turn its vendored VRM
+            // components into build triggers.
+            var exporter = PackageOf(typeof(NdmfExportPreparation).Assembly);
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                IList<CustomAttributeData> attributes;
+                try { attributes = assembly.GetCustomAttributesData(); }
+                catch (Exception) { continue; }
+                if (attributes.Any(attribute => attribute.AttributeType.FullName == "nadena.dev.ndmf.ExportsPlugin") &&
+                    PackageOf(assembly) is string package && package != exporter)
+                    packages.Add(package);
+            }
+            return pluginPackages = packages;
+        }
 
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)
             ? copy : original;
