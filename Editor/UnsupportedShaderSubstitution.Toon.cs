@@ -348,23 +348,34 @@ namespace VRVlog.LilToonExporter
                 var c = Shaded(i / (float)Steps);
                 brightness[i] = (c.r + c.g + c.b) / 3;
             }
+            if (!FitShadowEdge(brightness, material)) return false;
+            var shadow = Shaded(0).gamma;
+            material.SetColor("_ShadowColor", new Color(shadow.r, shadow.g, shadow.b, 1));
+            return true;
+        }
+
+        // brightness holds evenly spaced samples over N·L × 0.5 + 0.5 from 0
+        // to 1. lilToon's single edge is placed where the brightness is halfway
+        // between the dark and the lit end, with the blur from its 10% and 90%
+        // points. Returns false when the samples do not change.
+        static bool FitShadowEdge(float[] brightness, Material material)
+        {
+            var steps = brightness.Length - 1;
             var dark = brightness[0];
-            var lit = brightness[Steps];
+            var lit = brightness[steps];
             if (Mathf.Abs(lit - dark) < 1e-3f) return false;
             float Crossing(float level)
             {
                 var target = dark + (lit - dark) * level;
-                for (var i = 1; i <= Steps; i++)
+                for (var i = 1; i <= steps; i++)
                 {
                     var a = brightness[i - 1] - target;
                     var b = brightness[i] - target;
-                    if (a == 0) return (i - 1) / (float)Steps;
-                    if (a * b <= 0) return (i - 1 + a / (a - b)) / Steps;
+                    if (a == 0) return (i - 1) / (float)steps;
+                    if (a * b <= 0) return (i - 1 + a / (a - b)) / steps;
                 }
                 return 1;
             }
-            var shadow = Shaded(0).gamma;
-            material.SetColor("_ShadowColor", new Color(shadow.r, shadow.g, shadow.b, 1));
             Set(material, "_ShadowBorder", Crossing(.5f));
             Set(material, "_ShadowBlur", Mathf.Clamp((Crossing(.9f) - Crossing(.1f)) / .8f, .001f, 1));
             return true;
@@ -386,13 +397,17 @@ namespace VRVlog.LilToonExporter
 
         // The pixels as a shader samples them, at the given size. Null when they
         // cannot be read (no graphics device).
-        static Color[] Sampled(Texture texture, int width, int height)
+        static Color[] Sampled(Texture texture, int width, int height) => Sampled(texture, width, height, Vector2.one, Vector2.zero);
+
+        // The same through the image's tiling and offset: the pixels are laid
+        // out in the mesh's UV space.
+        static Color[] Sampled(Texture texture, int width, int height, Vector2 scale, Vector2 offset)
         {
             if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return null;
             try
             {
                 return GpuReadback.LinearPixels(width, height, RenderTextureFormat.ARGBFloat, TextureFormat.RGBAFloat,
-                    target => Graphics.Blit(texture, target));
+                    target => Graphics.Blit(texture, target, scale, offset));
             }
             catch (Exception) { return null; }
         }
