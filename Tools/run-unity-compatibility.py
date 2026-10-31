@@ -842,8 +842,27 @@ BEHAVIOR_CASES = {
         'APlainAvatarMatches': 1,
         'AFailingStageMatches': 1,
         'ABoardReusedForAnotherAvatarStartsFromTheSameDefaults': 1,
+        'TheSavedLightweightChoiceMatches': 1,
         'PosesOverTheAppLimitMatch': 1,
         'APrefabAssetMatchesTheSameAvatarInTheSceneAndStaysUnchanged': 1,
+    },
+    # 自動で軽量化する: texture sizes from texel density; off measures nothing.
+    'TexelDensityTests': {
+        'AQuadHasTheExactDensity': 5,
+        'OneTriangleHasTheExactDensityAndADegenerateOneHasNone': 1,
+        'TheDensityOfASubmeshIsTheAreaWeightedNinetiethPercentile': 1,
+        'HalvingStopsAtTheTargetAndTheSmallestSize': 7,
+        'SavedBytesCountEveryMipLevel': 1,
+        'ASlotWithoutTheSurfaceUvNeverShrinks': 4,
+        'ASlotOnAnotherUvNeverShrinks': 2,
+        'AStaleTilingOfASlotWithoutScaleOffsetIsIgnored': 2,
+        'AnMsdfTextureNeverShrinks': 3,
+        'AnHdrTextureNeverShrinks': 2,
+        'ATextureSharedWithANeverShrinkSlotDoesNotShrink': 1,
+        'AMeshWithoutUvHasNoMeasurableUser': 1,
+        'TheResultLineCountsEachSmallerTextureOnce': 1,
+        'TheExportShrinksOnlyWhenTheOptionIsOn': 4,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
 }
 INTEGRATION_CASES = {

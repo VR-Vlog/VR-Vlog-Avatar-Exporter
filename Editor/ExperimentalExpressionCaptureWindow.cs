@@ -41,6 +41,8 @@ namespace VRVlog.LilToonExporter
         Vector3 center;
         float distance = 1, yaw, zoom = 1;
         bool automaticBlink = true;
+        // 自動で軽量化する: off on a new board and for another avatar; the avatar's saved choice applies on preparing.
+        bool autoLightweight;
         BlinkExportOptions configuredBlink;
         BlinkConfigurationWindow blinkConfiguration;
         readonly System.Collections.Generic.Dictionary<AnimationClip, string> clipErrors = new System.Collections.Generic.Dictionary<AnimationClip, string>();
@@ -698,6 +700,8 @@ namespace VRVlog.LilToonExporter
                                 DrawAddRow();
                                 EditorGUILayout.Space(12);
                                 DrawBlink();
+                                EditorGUILayout.Space(8);
+                                DrawLightweight();
                                 EditorGUILayout.Space(12);
                                 DrawPoseInputs();
                             }
@@ -814,6 +818,7 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
+                autoLightweight = stored.AutoLightweight;
                 session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
                 // And the poses, as the export window writes them.
                 var storedPoses = stored.Poses ?? new PoseExportOptions();
@@ -2244,6 +2249,28 @@ namespace VRVlog.LilToonExporter
             GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
         }
 
+        internal const string AutoLightweightLabel = "自動で軽量化する";
+        internal const string AutoLightweightNote = "見た目の変化を抑えてテクスチャを小さくします";
+
+        // Saved at once for the avatar, like the gimmick choices, so the next
+        // board and the quick transfer start from it.
+        void DrawLightweight()
+        {
+            var label = ExporterLocalization.T(AutoLightweightLabel);
+            var width = Mathf.Max(0, position.width - 32);
+            var on = EditorGUILayout.ToggleLeft(new GUIContent(Fit(label, EditorStyles.label, width), label), autoLightweight);
+            if (on != autoLightweight)
+            {
+                autoLightweight = on;
+                var settings = ExportSettingsStore.Load(source);
+                settings.AutoLightweight = on;
+                ExportSettingsStore.Save(source, settings);
+            }
+            var note = ExporterLocalization.T(AutoLightweightNote);
+            var noteRect = GUILayoutUtility.GetRect(100, EditorGUIUtility.singleLineHeight, GUILayout.ExpandWidth(true));
+            GUI.Label(noteRect, new GUIContent(Fit(note, dimMini, noteRect.width), note), dimMini);
+        }
+
         void ShowFace(string name) { previewName = name; previewClip = null; Repaint(); }
 
         // Without exclusions or added files nothing is recorded and the
@@ -2563,6 +2590,7 @@ namespace VRVlog.LilToonExporter
             var target = session;
             ExportAuthor.Remember(target.Source, targetAuthor);
             var blink = ExportBlinkOptions();
+            var lightweight = autoLightweight;
             var poses = target.PoseOptions.Copy();
             var presets = target.Presets.Values.Select(value => value.Copy()).ToArray();
             // The list-only export: the faces of the list, read like gesture
@@ -2642,7 +2670,7 @@ namespace VRVlog.LilToonExporter
                 var checkedNow = sourceChecked; sourceChecked = false;
                 var exported = ExportOnTheAvatarAsItIs(target, checkedNow, warnings, (from, sourceIsChecked) =>
                     from.Export(name, targetAuthor, listFaces, warnings, blink?.Copy(), license.Copy(), options, report,
-                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked));
+                        poses, presets.Select(value => value.Copy()).ToArray(), sourceIsChecked, lightweight));
                 savedReport = report?.Fallbacks;
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
@@ -2807,6 +2835,7 @@ namespace VRVlog.LilToonExporter
             Cleanup();
             // Another avatar starts from blink on, as a new board does; its saved blink applies on preparing.
             automaticBlink = true;
+            autoLightweight = false;
             licenseOptions = new AvatarLicenseOptions();
             status = null;
             page = ExpressionsPage;
