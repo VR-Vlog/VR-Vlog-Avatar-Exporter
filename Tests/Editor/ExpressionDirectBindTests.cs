@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using VRVlog.Expressions;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEngine;
@@ -194,6 +195,158 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(expression.Direct.Single().Shape, Is.EqualTo("Raise"));
             AssertDirect(expression, copy, "Raise", .5f);
             AssertVertices(scene.Expected(entry, "Front"), Exported(copy, expression), "Front");
+        }
+
+        // sil, aa and a shape outside the viseme group, with the given rests.
+        static Mesh Visemes(Scene scene,string sil = "vrc.v_sil", string aa = "vrc.v_aa", float silRest = 100)
+        {
+            var mesh = scene.Avatar.Mesh; var count = mesh.vertexCount; mesh.ClearBlendShapes();
+            Vector3[] Ramp(Vector3 value) => Enumerable.Range(1, count).Select(index => value * index).ToArray();
+            mesh.AddBlendShapeFrame(sil, 100, Ramp(new Vector3(.03f, 0, 0)), Ramp(new Vector3(0, .1f, 0)), null);
+            mesh.AddBlendShapeFrame(aa, 100, Ramp(new Vector3(0, .02f, 0)), Ramp(new Vector3(.1f, 0, 0)), null);
+            mesh.AddBlendShapeFrame("Other", 100, Ramp(new Vector3(0, 0, .01f)), null, null);
+            foreach (var skin in scene.Avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Concat(scene.Avatar.Skins))
+            {
+                skin.SetBlendShapeWeight(0, silRest); skin.SetBlendShapeWeight(1, 0); skin.SetBlendShapeWeight(2, 0);
+            }
+            return mesh;
+        }
+
+        [Test]
+        public void AMenuVisemeThatResetsTheRestVisemeEndsAtTheAuthoredPose()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene);
+            var expression = scene.Bake(Entry("Open", ("Front", "vrc.v_sil", 0), ("Front", "vrc.v_aa", 100))).Single();
+            var copy = scene.Copy("Front");
+            Assert.That(expression.Direct, Is.Empty, "The exported viseme already has the rest viseme taken off.");
+            AssertVertices(Pose(mesh, new[] { 0f, 100f, 0f }), Exported(copy, expression), "Open");
+        }
+
+        [Test]
+        public void AMenuVisemeOverTheRestVisemeKeepsBothAsAuthored()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene);
+            var expression = scene.Bake(Entry("Half", ("Front", "vrc.v_aa", 50))).Single();
+            AssertVertices(Pose(mesh, new[] { 100f, 50f, 0f }), Exported(scene.Copy("Front"), expression), "Half");
+        }
+
+        [Test]
+        public void ADescriptorVisemeNamedOutsideTheConventionEndsAtTheAuthoredPose()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene, "Mouth_rest", "Mouth_open");
+            var slots = new[] { "Mouth_rest", "Mouth_open" };
+            AvatarBaseShape.Preserve(scene.Avatar.Source, scene.Avatar.Copy, scene.Owned, null,
+                visemeRenderer: scene.Avatar.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>(), visemeShapes: slots);
+            var copy = scene.Copy("Front");
+            var menu = new VrChatExpressionMenu.Source();
+            menu.Entries.Add(Entry("Open", ("Front", "Mouth_rest", 0), ("Front", "Mouth_open", 100)));
+            var expression = VrChatExpressionBaker.Bake(scene.Avatar.Source, scene.Avatar.Copy, menu, scene.Owned, null, null, copy, slots).Single();
+            Assert.That(expression.Direct, Is.Empty);
+            AssertVertices(Pose(mesh, new[] { 0f, 100f, 0f }), Exported(copy, expression), "Open");
+        }
+
+        [Test]
+        public void ShapesOutsideTheVisemeGroupStayDirectBesideTheRestViseme()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene);
+            var expression = scene.Bake(Entry("Closed", ("Front", "vrc.v_sil", 0), ("Front", "Other", 100))).Single();
+            var copy = scene.Copy("Front");
+            AssertDirect(expression, copy, "Other", 1);
+            AssertVertices(Pose(mesh, new[] { 0f, 0f, 100f }), Exported(copy, expression), "Closed");
+        }
+
+        [Test]
+        public void VisemesWithoutARestStayDirect()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene, silRest: 0);
+            var expression = scene.Bake(Entry("Open", ("Front", "vrc.v_sil", 0), ("Front", "vrc.v_aa", 100))).Single();
+            var copy = scene.Copy("Front");
+            Assert.That(expression.Targets, Is.Empty);
+            AssertDirect(expression, copy, "vrc.v_aa", 1);
+            AssertVertices(Pose(mesh, new[] { 0f, 100f, 0f }), Exported(copy, expression), "Open");
+        }
+
+        [Test]
+        public void TheOnlyVisemeAtRestStaysDirectAgainstItsOwnRest()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene, silRest: 40);
+            var expression = scene.Bake(Entry("Raise", ("Front", "vrc.v_sil", 70))).Single();
+            var copy = scene.Copy("Front");
+            AssertDirect(expression, copy, "vrc.v_sil", (70f - 40) / (100 - 40));
+            AssertVertices(Pose(mesh, new[] { 70f, 0f, 0f }), Exported(copy, expression), "Raise");
+        }
+
+        [Test]
+        public void AnAnimatedVisemeOverTheRestVisemeIsNotADirectPoint()
+        {
+            using var scene = new Scene();
+            Visemes(scene);
+            var entry = Entry("Talk", ("Front", "vrc.v_aa", 0));
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 0, InTangent = 100, OutTangent = 100 });
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = 100, InTangent = 100, OutTangent = 100 });
+            entry.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "vrc.v_aa", Curve = curve });
+            entry.Duration = 1;
+            var expression = scene.Bake(entry).Single();
+            Assert.That(expression.DirectPoints, Is.Empty);
+            Assert.That(expression.Animation.Channels.Single().Points.Any(point => point.Target != null), Is.True);
+        }
+
+        [TestCase(0f)]
+        [TestCase(.25f)]
+        [TestCase(.5f)]
+        [TestCase(1f)]
+        public void AnAnimationFromTheRestVisemeToAnotherFollowsTheAuthoredPose(float time)
+        {
+            using var scene = new Scene();
+            var source = Visemes(scene);
+            var entry = Entry("Open", ("Front", "Other", 0));
+            ExpressionAnimationData.Curve Line(float from, float to)
+            {
+                var curve = new ExpressionAnimationData.Curve(); var slope = to - from;
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = from, InTangent = slope, OutTangent = slope });
+                curve.Keys.Add(new ExpressionAnimationData.Key { Time = 1, Value = to, InTangent = slope, OutTangent = slope });
+                return curve;
+            }
+            entry.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "vrc.v_sil", Curve = Line(100, 0) });
+            entry.Animation.Add(new VrChatExpressionMenu.AnimatedMorph { Path = "Front", Shape = "vrc.v_aa", Curve = Line(0, 100) });
+            entry.Duration = 1;
+            var expression = scene.Bake(entry).Single();
+            var copy = scene.Copy("Front"); var mesh = copy.sharedMesh;
+            Assert.That(expression.DirectPoints, Is.Empty);
+            var actual = mesh.vertices; var delta = new Vector3[mesh.vertexCount];
+            void Add(string target, float weight)
+            {
+                if (target == null || weight == 0) return;
+                mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(target), 0, delta, null, null);
+                for (var vertex = 0; vertex < actual.Length; vertex++) actual[vertex] += delta[vertex] * weight;
+            }
+            foreach (var channel in expression.Animation.Channels)
+            {
+                channel.Weights(time, out var left, out var right, out var blend);
+                Add(channel.Points[left].Target, (float)(1 - blend));
+                Add(channel.Points[right].Target, (float)blend);
+            }
+            AssertVertices(Pose(source, new[] { 100 * (1 - time), 100 * time, 0f }), actual, "Open at " + time);
+        }
+
+        [Test]
+        public void EveryVisemeWithARestIsExportedWithoutTheOthersAndEndsAtTheAuthoredPose()
+        {
+            using var scene = new Scene();
+            var mesh = Visemes(scene, silRest: 60);
+            foreach (var skin in scene.Avatar.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Concat(scene.Avatar.Skins))
+                skin.SetBlendShapeWeight(1, 30);
+            var expression = scene.Bake(Entry("Open", ("Front", "vrc.v_sil", 10), ("Front", "vrc.v_aa", 90))).Single();
+            var copy = scene.Copy("Front");
+            Assert.That(expression.Direct, Is.Empty);
+            AssertVertices(Pose(mesh, new[] { 10f, 90f, 0f }), Exported(copy, expression), "Open");
         }
 
         [Test]
