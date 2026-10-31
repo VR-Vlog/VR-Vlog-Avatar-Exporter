@@ -613,6 +613,7 @@ BEHAVIOR_CASES = {
         'SupportedUnifiedRouteWithoutBilateralEyeRigSurvivesBothExportModes': 8,
         'UeEvidencePairsOnlyCompatibleLegacySidesAcrossRenderers': 2,
         'UnifiedExpressionFailuresHaveLocalizedActionsAndPreserveTargetNames': 4,
+        'WholeFaceToggleNamesAloneDoNotEstablishUnifiedExpressions': 3,
     },
     'MaSceneReferencePreparationTests': {
         'InstalledMaResolvesStaleDirectTargetAndMergesOnlyTheOwnedAvatar': 2,
