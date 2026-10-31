@@ -501,6 +501,97 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [Test]
+        public void DeleteMeshMaskSetDoesNotDependOnReferenceOrder()
+        {
+            var references = new (string mask, float deleteMesh)[] { ("shared", 0), ("shared", 1), ("plain", 0), ("deleted", 1), (null, 1) };
+            Assert.That(LilToonFullSnapshot.DeleteMeshMasks(references), Is.EquivalentTo(new[] { "shared", "deleted" }));
+            Assert.That(LilToonFullSnapshot.DeleteMeshMasks(references.Reverse()), Is.EquivalentTo(new[] { "shared", "deleted" }));
+            Assert.That(LilToonFullSnapshot.MaximumSize(true), Is.EqualTo(LilToonMobileProfile.MaximumTextureSize));
+            Assert.That(LilToonFullSnapshot.MaximumSize(false), Is.EqualTo(LilToonMobileProfile.DefaultMaximumTextureSize));
+        }
+
+        [TestCase(true, 2048, 2048)]
+        [TestCase(true, 4096, 2048)]
+        [TestCase(false, 2048, 1024)]
+        public void DeleteMeshOutlineMaskKeepsItsEditorSizeUpToTheMobileMaximum(bool deleteMesh, int size, int expected)
+        {
+            var mask = new Texture2D(size, size, TextureFormat.RGBA32, false, true) { name = "Outline width mask " + size };
+            using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
+            try
+            {
+                mask.Apply(false, true);
+                fixture.Material.SetTexture("_OutlineWidthMask", mask);
+                fixture.Material.SetFloat("_OutlineDeleteMesh", deleteMesh ? 1 : 0);
+                var warnings = new List<string>();
+                var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar, warnings: warnings);
+                var record = Texture(snapshot, mask.name);
+                Assert.That(F.Int(record, "width"), Is.EqualTo(expected));
+                Assert.That(F.Int(record, "height"), Is.EqualTo(expected));
+                Assert.That(F.Int(record, "mips"), Is.EqualTo(1));
+                Assert.That(Pixels(snapshot, record, 0, 0).LongLength, Is.EqualTo(4L * expected * expected));
+                Assert.That(warnings.Any(w => w.Contains(mask.name)), Is.EqualTo(expected != size), "The resize note appears only for an actual resize.");
+                Assert.That(mask.width, Is.EqualTo(size));
+            }
+            finally { Object.DestroyImmediate(mask); }
+        }
+
+        [Test]
+        public void DeleteMeshOutlineMaskKeepsEveryExactZeroTexel()
+        {
+            // Delete Mesh tests the per-vertex width for exactly 0. An
+            // unresampled copy keeps both the zero set and its complement.
+            Color32 Width(int i) => ((i % 2048) / 3 + i / 2048) % 2 == 0 ? new Color32(0, 0, 0, 255) : new Color32(255, 0, 0, 255);
+            var mask = Image(2048, 2048, true, Width);
+            using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
+            try
+            {
+                mask.name = "Outline width zero set";
+                mask.filterMode = FilterMode.Bilinear;
+                fixture.Material.SetTexture("_OutlineWidthMask", mask);
+                fixture.Material.SetFloat("_OutlineDeleteMesh", 1);
+                var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar);
+                var record = Texture(snapshot, mask.name);
+                Assert.That(F.Int(record, "width"), Is.EqualTo(2048));
+                var bytes = Pixels(snapshot, record, 0, 0);
+                var moved = Enumerable.Range(0, bytes.Length / 4).Count(pixel => (Width(pixel).r == 0) != (bytes[pixel * 4] == 0));
+                Assert.That(moved, Is.EqualTo(0), "Texels whose zero test differs from the Editor mask.");
+            }
+            finally { Object.DestroyImmediate(mask); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SharedOutlineMaskIsStoredAtTheDeleteMeshSizeInEitherMaterialOrder(bool deleteMeshFirst)
+        {
+            var mask = new Texture2D(2048, 2048, TextureFormat.RGBA32, false, true) { name = "Shared outline width mask" };
+            using var fixture = new SurfaceFixture("Hidden/lilToonOutline");
+            var other = new Material(fixture.Material.shader);
+            var mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };
+            try
+            {
+                mask.Apply(false, true);
+                var child = new GameObject("Second outline surface");
+                child.transform.SetParent(fixture.Avatar.transform, false);
+                child.AddComponent<MeshFilter>().sharedMesh = mesh;
+                child.AddComponent<MeshRenderer>().sharedMaterial = other;
+                foreach (var material in new[] { fixture.Material, other })
+                    material.SetTexture("_OutlineWidthMask", mask);
+                fixture.Material.SetFloat("_OutlineDeleteMesh", deleteMeshFirst ? 1 : 0);
+                other.SetFloat("_OutlineDeleteMesh", deleteMeshFirst ? 0 : 1);
+                var snapshot = LilToonFullSnapshot.Capture(fixture.Avatar);
+                var record = Texture(snapshot, mask.name);
+                Assert.That(F.Int(record, "width"), Is.EqualTo(2048));
+                Assert.That(F.Int(record, "height"), Is.EqualTo(2048));
+            }
+            finally
+            {
+                Object.DestroyImmediate(other);
+                Object.DestroyImmediate(mesh);
+                Object.DestroyImmediate(mask);
+            }
+        }
+
         static Color32 CubeColor(int face, int sourceMip) => new Color32((byte)(31 + face * 27), (byte)(17 + sourceMip * 13), 181, 203);
 
         static Texture2D Image(int width, int height, bool linear, Func<int, Color32> color)
@@ -548,9 +639,9 @@ namespace VRVlog.LilToonExporter.Tests
             internal readonly Material Material;
             readonly Mesh mesh;
 
-            internal SurfaceFixture()
+            internal SurfaceFixture(string shaderName = "lilToon")
             {
-                var shader = Shader.Find("lilToon");
+                var shader = Shader.Find(shaderName);
                 Assert.That(shader, Is.Not.Null);
                 Material = new Material(shader);
                 mesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up }, triangles = new[] { 0, 1, 2 } };

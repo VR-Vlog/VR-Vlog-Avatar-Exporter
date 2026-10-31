@@ -180,11 +180,25 @@ namespace VRVlog.LilToonExporter
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings)
             => Bake(source, clone, menu, meshes, warnings, null);
 
+        // visemeRenderer and visemeShapes are what AvatarBaseShape.Preserve received.
         internal static List<VrmMenuExpressions.Expression> Bake(GameObject source, GameObject clone,
             VrChatExpressionMenu.Source menu, ICollection<Mesh> meshes, ICollection<string> warnings,
-            PreparedExpressionBindings prepared)
+            PreparedExpressionBindings prepared, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
         {
             var result = new List<VrmMenuExpressions.Expression>();
+            // A viseme exported without the other visemes' rests is not the
+            // linear shape the direct binds assume. Its pose stays baked, or the
+            // expression would take those rests off a second time.
+            var withoutOtherRests = new Dictionary<SkinnedMeshRenderer, HashSet<int>>();
+            HashSet<int> WithoutOtherRests(SkinnedMeshRenderer skin, Mesh mesh, float[] rest)
+            {
+                if (!withoutOtherRests.TryGetValue(skin, out var shapes))
+                {
+                    shapes = AvatarBaseShape.ShapesWithoutOtherRests(mesh, rest, AvatarBaseShape.ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes));
+                    withoutOtherRests.Add(skin, shapes);
+                }
+                return shapes;
+            }
             if (prepared == null) new PreparedExpressionBindings(clone, menu, source).Capture(menu);
             var plans = Prepare(source, clone, menu, prepared);
             foreach (var message in menu.Messages) warnings?.Add(message);
@@ -302,7 +316,8 @@ namespace VRVlog.LilToonExporter
                     {
                         var index = originalMesh.GetBlendShapeIndex(value.Shape);
                         if (index < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + value.Shape);
-                        var weight = DirectWeight(originalMesh, copy.sharedMesh, index, rest[index], value.Weight, clampToSourceRange);
+                        var weight = WithoutOtherRests(copy, originalMesh, rest).Contains(index) ? null :
+                            DirectWeight(originalMesh, copy.sharedMesh, index, rest[index], value.Weight, clampToSourceRange);
                         if (weight == null) { residual.Add(value); pose[index] = value.Weight; continue; }
                         if (weight.Value == 0f) continue;
                         expression.Direct.Add((copy, value.Shape, weight.Value));
@@ -340,7 +355,8 @@ namespace VRVlog.LilToonExporter
                         if (animated.Curve.Evaluate(entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
                         var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         expression.Animation.Channels.Add(channel);
-                        if (DirectAnimation(original, copy, shape, animated.Rest[shape], minimum, maximum, clampToSourceRange, out var from, out var to))
+                        if (!WithoutOtherRests(animated.Renderer, original, animated.Rest).Contains(shape) &&
+                            DirectAnimation(original, copy, shape, animated.Rest[shape], minimum, maximum, clampToSourceRange, out var from, out var to))
                         {
                             var full = new ExpressionAnimationData.Point { Value = to };
                             channel.Points.Add(new ExpressionAnimationData.Point { Value = from });
