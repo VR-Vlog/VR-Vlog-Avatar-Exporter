@@ -854,6 +854,111 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [TestCase(false, "network")][TestCase(true, "network")]
+        [TestCase(false, "timeout")][TestCase(true, "503")]
+        [TestCase(false, "lost-response")][TestCase(true, "lost-response")]
+        public async Task TransientUploadFailureReplaysOnlyTheSameOperation(bool publish, string failure)
+        {
+            using (var fixture = new Fixture(29))
+            {
+                var transport = new InterruptedTransport(fixture.Transport, publish, failure, false);
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                {
+                    await session.UploadAsync();
+                    Assert.That(session.State, Is.EqualTo(CloudTransferState.Ready));
+                    Assert.That(transport.Attempts, Is.EqualTo(2));
+                    Assert.That(fixture.Transport.Created, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.Parts.Count, Is.EqualTo(1));
+                    Assert.That(session.Transferred, Is.EqualTo(session.UploadSize));
+                    Assert.That(DecryptUploaded(fixture.Transport, session.Qr), Is.EqualTo(fixture.Bytes));
+                    Assert.That(fixture.Transport.AuthenticatedCorrectly, Is.True);
+                }
+            }
+        }
+
+        [TestCase("503", 3)][TestCase("network", 3)][TestCase("403", 1)][TestCase("429", 1)]
+        public async Task FailedUploadBoundsRetriesAndRetainsCleanup(string failure, int attempts)
+        {
+            using (var fixture = new Fixture(29))
+            {
+                var transport = new InterruptedTransport(fixture.Transport, false, failure, true);
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                {
+                    try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                    Assert.That(session.State, Is.EqualTo(CloudTransferState.Failed));
+                    Assert.That(transport.Attempts, Is.EqualTo(attempts));
+                    Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.PublishCalls, Is.EqualTo(0));
+                    Assert.That(session.Qr == null, Is.True);
+                    Assert.That(session.HasEncryptionKey, Is.False);
+                }
+            }
+        }
+
+        [Test]
+        public async Task ExpiryAfterTransientFailurePreventsAnyReplay()
+        {
+            long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var fixture = new Fixture(29))
+            {
+                fixture.Transport.Now = () => current;
+                var transport = new InterruptedTransport(fixture.Transport, false, "network", true);
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, () => current))
+                {
+                    transport.BeforeFailure = () => current = session.ExpiresAt;
+                    try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                    Assert.That(session.State, Is.EqualTo(CloudTransferState.Expired));
+                    Assert.That(transport.Attempts, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+                }
+            }
+        }
+
+        [Test]
+        public async Task CallerCancellationDuringFailurePreventsRetry()
+        {
+            using (var cancellation = new CancellationTokenSource())
+            using (var fixture = new Fixture(29))
+            {
+                var transport = new InterruptedTransport(fixture.Transport, false, "network", true);
+                transport.BeforeFailure = cancellation.Cancel;
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport))
+                {
+                    try { await session.UploadAsync(cancellation.Token); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                    Assert.That(transport.Attempts, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+                    Assert.That(session.Qr == null, Is.True);
+                }
+            }
+        }
+
+        private sealed class InterruptedTransport : ICloudTransferTransport
+        {
+            private readonly ICloudTransferTransport inner;
+            private readonly bool publish, permanent;
+            private readonly string failure;
+            internal int Attempts;
+            internal Action BeforeFailure;
+            internal InterruptedTransport(ICloudTransferTransport inner, bool publish, string failure, bool permanent)
+            { this.inner = inner; this.publish = publish; this.failure = failure; this.permanent = permanent; }
+            public async Task<CloudTransferResponse> SendAsync(string method, string path, string token, byte[] body, string type, CancellationToken cancellation)
+            {
+                if (publish ? path.EndsWith("/publish", StringComparison.Ordinal) : path.Contains("/parts/"))
+                {
+                    Attempts++;
+                    if (permanent || Attempts == 1)
+                    {
+                        BeforeFailure?.Invoke();
+                        if (failure == "lost-response") await inner.SendAsync(method, path, token, body, type, cancellation);
+                        if (failure == "network" || failure == "lost-response") throw new System.Net.Http.HttpRequestException("SECRET");
+                        if (failure == "timeout") throw new OperationCanceledException("SECRET");
+                        return new CloudTransferResponse(int.Parse(failure), "SECRET");
+                    }
+                }
+                return await inner.SendAsync(method, path, token, body, type, cancellation);
+            }
+        }
+
         private sealed class Fixture : IDisposable
         {
             internal readonly string Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vrvlog-cloud-test-" + Guid.NewGuid().ToString("N") + ".vrm");
@@ -917,7 +1022,15 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 cancellation.ThrowIfCancellationRequested();
                 if (path.Contains("/parts/"))
                 {
-                    Assert.That(method, Is.EqualTo("PUT")); Assert.That(path, Is.EqualTo("/v3/transfers/" + id + "/parts/" + (Parts.Count + 1)));
+                    Assert.That(method, Is.EqualTo("PUT"));
+                    var number = int.Parse(path.Substring(path.LastIndexOf('/') + 1));
+                    Assert.That(path, Is.EqualTo("/v3/transfers/" + id + "/parts/" + number));
+                    Assert.That(number >= 1 && number <= Parts.Count + 1, Is.True);
+                    if (number <= Parts.Count)
+                    {
+                        Assert.That(body, Is.EqualTo(Parts[number - 1]));
+                        return new CloudTransferResponse(200, "{}");
+                    }
                     if (Failure == "part-failure") return new CloudTransferResponse(500, "private service failure");
                     BeforePart?.Invoke();
                     Parts.Add((byte[])body.Clone()); return new CloudTransferResponse(200, "{}");

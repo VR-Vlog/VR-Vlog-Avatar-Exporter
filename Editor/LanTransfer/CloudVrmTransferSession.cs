@@ -213,7 +213,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                             }
                             hash.TransformBlock(part, 0, part.Length, null, 0);
                             stage = "暗号化ファイルのアップロード";
-                            await Send("PUT", Path + "/parts/" + partNumber.ToString(CultureInfo.InvariantCulture), uploadToken, part, "application/octet-stream", ct, false).ConfigureAwait(false);
+                            await Send("PUT", Path + "/parts/" + partNumber.ToString(CultureInfo.InvariantCulture), uploadToken, part, "application/octet-stream", ct, false, retry: true).ConfigureAwait(false);
                             lock (gate) transferred += part.Length;
                             remaining -= part.Length; partNumber++;
                         }
@@ -223,7 +223,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     lock (gate) activeReader = null;
                     CheckExpiry();
                     stage = "QRの発行";
-                    var published = await Send("POST", Path + "/publish", uploadToken, Array.Empty<byte>(), "application/octet-stream", ct).ConfigureAwait(false);
+                    var published = await Send("POST", Path + "/publish", uploadToken, Array.Empty<byte>(), "application/octet-stream", ct, retry: true).ConfigureAwait(false);
                     published.Exact("v", "id", "token", "name", "size", "sha256", "expiresAt");
                     if (published.Number("v") != 3 || published.Text("id") != id || published.Text("token") != readToken || published.Text("name") != CloudEncryptedSnapshot.WireName
                         || published.Number("size") != protectedSnapshot.Size || published.Text("sha256") != protectedSnapshot.FileHash || published.Number("expiresAt") != expiresAt) throw CloudTransferProtocol.Invalid();
@@ -292,9 +292,27 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ExpireIfDue();
             if (State == CloudTransferState.Expired) throw new InvalidOperationException(Message);
         }
-        private async Task<CloudTransferProtocol.Fields> Send(string method, string path, string token, byte[] body, string type, CancellationToken ct, bool parse = true, bool diagnose = true)
+        private async Task<CloudTransferProtocol.Fields> Send(string method, string path, string token, byte[] body, string type, CancellationToken ct, bool parse = true, bool diagnose = true, bool retry = false)
         {
-            var response = await transport.SendAsync(method, path, token, body, type, ct).ConfigureAwait(false);
+            CloudTransferResponse response;
+            for (var attempt = 0; ; attempt++)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (retry) CheckExpiry();
+                try
+                {
+                    response = await transport.SendAsync(method, path, token, body, type, ct).ConfigureAwait(false);
+                    if (!retry || attempt >= 2 || !TransientStatus(response.StatusCode)) break;
+                }
+                catch (HttpRequestException) when (retry && attempt < 2 && !ct.IsCancellationRequested) { }
+                catch (OperationCanceledException) when (retry && attempt < 2 && !ct.IsCancellationRequested) { }
+                // Only authenticated part PUT and publish opt in. Their server
+                // routes replay committed results after a lost response. Never
+                // retry create, extend expiry, or exceed the server's 3 attempts.
+                ct.ThrowIfCancellationRequested();
+                CheckExpiry();
+                await Task.Delay(250 * (attempt + 1), ct).ConfigureAwait(false);
+            }
             if (response.StatusCode < 200 || response.StatusCode >= 300)
             {
                 if (!diagnose) throw CloudTransferProtocol.Invalid();
@@ -308,6 +326,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             return parse ? CloudTransferProtocol.Fields.Read(response.Body) : null;
         }
+        private static bool TransientStatus(int status) => status == 408 || status == 500 || status == 502 || status == 503 || status == 504;
+
         // Only controlled text and a status code reach the UI. Exception messages,
         // paths, server bodies, QR contents and credentials never do.
         private sealed class SafeTransferFailure : Exception
