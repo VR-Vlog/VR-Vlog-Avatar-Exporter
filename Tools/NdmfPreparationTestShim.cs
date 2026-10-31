@@ -10,6 +10,8 @@ using System.Reflection;
 namespace UnityEngine
 {
     public static class Debug { public static void LogWarning(object message) { } }
+    [System.AttributeUsage(System.AttributeTargets.Class, AllowMultiple = true, Inherited = true)]
+    public sealed class RequireComponent : System.Attribute { }
     public class Object
     {
         public string name; public HideFlags hideFlags; internal bool destroyed, persistent;
@@ -120,7 +122,8 @@ namespace UnityEditor.Animations
 namespace UnityEditor
 {
     using Object = UnityEngine.Object;
-    public class MonoScript : Object { }
+    public class MonoScript : Object { public System.Type GetClass() => null; }
+    public static class MonoImporter { public static MonoScript[] GetAllRuntimeMonoScripts() => new MonoScript[0]; }
     public static class EditorUtility
     {
         public static void CopySerialized(Object source, Object destination)
@@ -229,7 +232,7 @@ namespace NUnit.Framework
         public static void IsTrue(bool value,string message = null) { Assertions++; if (!value) throw new Exception(message ?? "Expected true"); }
         public static void IsFalse(bool value,string message = null) => IsTrue(!value,message);
         public static void IsNull(object value) => IsTrue(value == null);
-        public static void IsNotNull(object value) => IsTrue(value != null);
+        public static void IsNotNull(object value,string message = null) => IsTrue(value != null,message);
         public static void AreSame(object a,object b,string message = null) => IsTrue(ReferenceEquals(a,b),message);
         public static void AreNotSame(object a,object b,string message = null) => IsTrue(!ReferenceEquals(a,b),message);
         public static void AreEqual(object a,object b,string message = null) => IsTrue(Equals(a,b),message ?? $"Expected {a}; got {b}");
@@ -240,7 +243,14 @@ namespace NUnit.Framework
         public static void Ignore(string reason) => throw new IgnoredException();
     }
     public static class StringAssert { public static void Contains(string part,string value) => Assert.IsTrue(value.Contains(part)); }
-    public static class CollectionAssert { public static void AreEqual(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().SequenceEqual(b.Cast<object>())); }
+    public static class CollectionAssert
+    {
+        public static void AreEqual(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().SequenceEqual(b.Cast<object>()));
+        public static void AreEquivalent(IEnumerable a,IEnumerable b) => Assert.IsTrue(a.Cast<object>().OrderBy(x => x?.ToString()).SequenceEqual(b.Cast<object>().OrderBy(x => x?.ToString())));
+        public static void IsEmpty(IEnumerable a) => Assert.IsTrue(!a.Cast<object>().Any());
+        public static void Contains(IEnumerable a,object value) => Assert.IsTrue(a.Cast<object>().Contains(value));
+        public static void DoesNotContain(IEnumerable a,object value) => Assert.IsTrue(!a.Cast<object>().Contains(value));
+    }
 }
 public static class NdmfPreparationHostTests
 {

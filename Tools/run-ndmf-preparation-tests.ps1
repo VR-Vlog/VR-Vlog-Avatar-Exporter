@@ -8,6 +8,8 @@ $taskSources = @(
     (Join-Path $taskRepo 'Tests/Editor/NdmfPreparationTests.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetFixture.cs'),
     (Join-Path $taskRepo 'Tests/Fixtures/NdmfSharedAssetHolder.cs'),
+    (Join-Path $taskRepo 'Tests/Fixtures/GimmickSettingsProbe.cs'),
+    (Join-Path $taskRepo 'Tests/Fixtures/VRCFuryComponent.cs'),
     (Join-Path $PSScriptRoot 'NdmfPreparationTestShim.cs')
 )
 Add-Type -Path $taskSources -CompilerOptions '/define:NDMF_PREPARATION_BEHAVIOR_TESTS', '/nowarn:0414,0649'
