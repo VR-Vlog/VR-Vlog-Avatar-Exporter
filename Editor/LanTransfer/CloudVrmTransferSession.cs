@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private string qr, importLink, failureStage;
         private SafeTransferFailure failure;
         private long transferred, expiresAt, uploadSize;
-        private bool started, disposed, extendedUpload;
+        private bool started, disposed, extendedUpload, confirmingPublication;
         private long uploadDeadline;
         internal CloudTransferState State { get { lock (gate) return state; } }
         internal string Qr { get { lock (gate) return qr; } }
@@ -232,11 +232,19 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     lock (gate) activeReader = null;
                     CheckExpiry();
                     stage = "QRの発行";
+                    lock (gate)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        CheckExpiry();
+                        // Only publication started within the upload deadline
+                        // may confirm a durable receipt until the absolute bound.
+                        confirmingPublication = extendedUpload;
+                    }
                     var published = await Send("POST", Path + "/publish", uploadToken, Array.Empty<byte>(), "application/octet-stream", ct, retry: true).ConfigureAwait(false);
                     published.Exact("v", "id", "token", "name", "size", "sha256", "expiresAt");
                     if (published.Number("v") != 3 || published.Text("id") != id || published.Text("token") != readToken || published.Text("name") != CloudEncryptedSnapshot.WireName
                         || published.Number("size") != protectedSnapshot.Size || published.Text("sha256") != protectedSnapshot.FileHash) throw CloudTransferProtocol.Invalid();
-                    CheckExpiry(); // Publication must finish before the upload deadline.
+                    CheckExpiry(); // Never expose a receipt beyond the finite confirmation bound.
                     var receiveExpiry = published.Number("expiresAt");
                     if (extendedUpload)
                     {
@@ -248,7 +256,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     lock (gate)
                     {
                         ct.ThrowIfCancellationRequested();
-                        expiresAt = receiveExpiry;
+                        expiresAt = receiveExpiry; confirmingPublication = false;
                         var key = protectedSnapshot.KeyForQr();
                         qr = CloudTransferProtocol.Qr(id, readToken, source.Name, source.Size, source.FileHash, expiresAt, key);
                         // The link is an additional representation. A name it cannot carry
@@ -298,12 +306,17 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             lock (gate)
             {
-                if (state >= CloudTransferState.Completed || expiresAt == 0 || now() < expiresAt) return false;
+                if (state >= CloudTransferState.Completed || expiresAt == 0 || now() < OperationDeadline) return false;
                 state = CloudTransferState.Expired; qr = null; importLink = null;
                 stop.Cancel(); activeReader?.Dispose(); activeReader = null;
                 encrypted?.Dispose(); encrypted = null;
                 return true;
             }
+        }
+        private long OperationDeadline
+        {
+            get { lock (gate) return confirmingPublication && extendedUpload
+                ? uploadDeadline + CloudTransferProtocol.LifetimeMinutes * 60 : expiresAt; }
         }
         private void CheckExpiry()
         {
@@ -337,7 +350,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 try
                 {
                     var seconds = extendedUpload && method == "PUT" ? CloudTransferProtocol.UploadPartTimeoutSeconds : 90;
-                    var expiry = ExpiresAt;
+                    var expiry = OperationDeadline;
                     if (expiry > 0) seconds = (int)Math.Min(seconds, Math.Max(1, expiry - now()));
                     response = await transport.SendAsync(method, path, token, body, type, ct, seconds).ConfigureAwait(false);
                     if (!retry || attempt >= 2 || !TransientStatus(response.StatusCode)) break;
@@ -351,7 +364,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 CheckExpiry();
                 var wait = TimeSpan.FromSeconds(attempt + 1);
                 if (response?.RetryAfter > wait) wait = response.RetryAfter.Value;
-                var remaining = TimeSpan.FromSeconds(Math.Max(0, ExpiresAt - now()));
+                var remaining = TimeSpan.FromSeconds(Math.Max(0, OperationDeadline - now()));
                 // A server's requested cooldown must not be shortened into a
                 // premature retry or extend the transfer's original lifetime.
                 if (wait >= remaining && response != null) break;

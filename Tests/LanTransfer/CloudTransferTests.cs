@@ -1085,6 +1085,68 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [TestCase(false)][TestCase(true)]
+        public async Task DurablePublicationReplyAfterUploadDeadlineKeepsItsOriginalReceiveWindow(bool loseResponse)
+        {
+            long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), start = current;
+            using (var fixture = new Fixture(29))
+            using (var session = new CloudVrmTransferSession(fixture.Source, loseResponse ? (ICloudTransferTransport)new InterruptedTransport(fixture.Transport, true, "lost-response", false) : fixture.Transport, () => current))
+            {
+                fixture.Transport.ExtendedUploads = true;
+                fixture.Transport.Now = () => current;
+                fixture.Transport.BeforePart = () => current = start + 899;
+                fixture.Transport.AfterPublish = () => { current = start + 901; Assert.That(session.ExpireIfDue(), Is.False); };
+                await session.UploadAsync();
+                Assert.That(session.State, Is.EqualTo(CloudTransferState.Ready));
+                Assert.That(session.ExpiresAt, Is.EqualTo(start + 1079));
+                Assert.That(fixture.Transport.PublishTimeouts.ToArray(), Is.EqualTo(loseResponse ? new[] { 90, 90 } : new[] { 90 }));
+                Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(0));
+            }
+        }
+
+        [Test]
+        public async Task PublicationConfirmationCannotOutliveTheAbsoluteDeadline()
+        {
+            long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), start = current;
+            using (var fixture = new Fixture(29))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, () => current))
+            {
+                fixture.Transport.ExtendedUploads = true;
+                fixture.Transport.Now = () => current;
+                fixture.Transport.BeforePart = () => current = start + 899;
+                fixture.Transport.AfterPublish = () => current = start + 1080;
+                try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                Assert.That(session.State, Is.EqualTo(CloudTransferState.Expired));
+                Assert.That(session.Qr == null, Is.True);
+                Assert.That(session.HasEncryptionKey, Is.False);
+                Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public async Task PendingConfirmationIsRevokedByTheOriginalAbsoluteBound()
+        {
+            long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), start = current;
+            using (var fixture = new Fixture(29))
+            using (var session = new CloudVrmTransferSession(fixture.Source, fixture.Transport, () => current))
+            {
+                fixture.Transport.ExtendedUploads = true;
+                fixture.Transport.Now = () => current;
+                fixture.Transport.PublishRelease = new TaskCompletionSource<bool>();
+                var uploading = session.UploadAsync();
+                await fixture.Transport.PublishObserved.Task;
+                current = start + 900;
+                Assert.That(session.ExpireIfDue(), Is.False);
+                current = start + 1080;
+                Assert.That(session.ExpireIfDue(), Is.True);
+                try { await uploading; Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                Assert.That(session.State, Is.EqualTo(CloudTransferState.Expired));
+                Assert.That(session.Qr == null, Is.True);
+                Assert.That(session.HasEncryptionKey, Is.False);
+                Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+            }
+        }
+
         private sealed class InterruptedTransport : ICloudTransferTransport
         {
             private readonly ICloudTransferTransport inner;
@@ -1139,7 +1201,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             internal string Failure, RemoteState = "ready";
             internal int CancelCalls, Created, PublishCalls;
             internal bool AuthenticatedCorrectly = true;
-            internal Action BeforePublish, BeforePart;
+            internal Action BeforePublish, BeforePart, AfterPublish;
+            internal readonly List<int> PublishTimeouts = new List<int>();
             internal Func<long> Now = () => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             internal int LifetimeSeconds = 180;
             internal int PublicationLifetimeSeconds = 180;
@@ -1149,6 +1212,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             internal readonly List<string> CreateRequests = new List<string>();
             internal readonly List<int> PartTimeouts = new List<int>();
             internal TaskCompletionSource<bool> CreateRelease;
+            internal TaskCompletionSource<bool> PublishRelease;
+            internal readonly TaskCompletionSource<bool> PublishObserved = new TaskCompletionSource<bool>();
             internal readonly TaskCompletionSource<bool> CreateObserved = new TaskCompletionSource<bool>();
             internal TaskCompletionSource<bool> StatusRelease;
             internal bool StatusCancellationObserved;
@@ -1201,9 +1266,14 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 }
                 if (path.EndsWith("/publish", StringComparison.Ordinal))
                 {
+                    PublishTimeouts.Add(timeoutSeconds);
                     PublishCalls++;
+                    PublishObserved.TrySetResult(true);
+                    if (PublishRelease != null)
+                        using (cancellation.Register(() => PublishRelease.TrySetCanceled())) await PublishRelease.Task;
                     BeforePublish?.Invoke();
                     if (CreatePath == "/v3/uploads" && PublishCalls == 1) expiry = Now() + PublicationLifetimeSeconds;
+                    AfterPublish?.Invoke();
                     var hash = Failure == "publish-mismatch" ? new string('f', 64) : wireHash;
                     using (var digest = SHA256.Create()) Assert.That(LanTransferProtocol.Hex(digest.ComputeHash(Parts.SelectMany(part => part).ToArray())), Is.EqualTo(wireHash));
                     return new CloudTransferResponse(200, "{\"v\":" + (Failure == "legacy-publish" ? 2 : 3) + ",\"id\":\"" + id + "\",\"token\":\"" + ReadToken + "\",\"name\":\"encrypted-avatar.bin\",\"size\":" + wireSize + ",\"sha256\":\"" + hash + "\",\"expiresAt\":" + expiry + "}");
