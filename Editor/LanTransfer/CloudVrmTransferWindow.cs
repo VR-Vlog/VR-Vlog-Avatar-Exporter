@@ -23,7 +23,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         [NonSerialized] private float heightBeforeQr, expandedQrHeight;
 
         internal const string PrivacyPolicyUrl = "https://vrvlog.fun/privacy/";
-        internal const string PrivacyConsentPreference = "VRVlog.CloudTransfer.PrivacyConsent.v1";
+        internal const string PrivacyConsentPreference = "VRVlog.CloudTransfer.PrivacyConsent.v2." + (CloudTransferProtocol.IsPreview ? "preview" : "production");
+        internal const string PrivacyConsentLabel = "プライバシーポリシーと転送期限の説明に同意する";
+        internal static string TransferDisclosure => ExporterLocalization.T(CloudTransferProtocol.IsPreview
+            ? "検証用Cloudflareへ暗号化して一時保存します\nアップロードは作成から最大15分\n受取は公開確定から最大3分で作成から最長18分\nQR表示時の残り時間は3分より短い場合があります\n再試行で期限は延びません\n完了・取消通知または期限でアクセス停止と削除を開始します\n削除に失敗した場合は再試行します"
+            : "暗号化してクラウドに一時保存します\n従来の受取期限はアップロードを含め作成から3分\n対応する検証版はアップロード最大15分と公開確定から受取最大3分\n再試行で延長せず作成から最長18分\nQR表示時は残り時間を確認\n完了・取消通知または期限でアクセス停止と削除を開始します\n削除に失敗した場合は再試行します");
         internal static bool PrivacyConsentAccepted
         {
             get => EditorPrefs.GetBool(PrivacyConsentPreference, false);
@@ -225,8 +229,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         EditorGUILayout.Space(12);
                         if (session == null || session.Terminal)
                         {
-                            GUILayout.Label(ExporterLocalization.T("アバターを暗号化してクラウドに一時保存し、スマホのVR Vlogで受け取ります。"), bodyStyle);
-                            GUILayout.Label(ExporterLocalization.T("受取期限は作成から3分。同じWi-Fiは不要です。"), bodyStyle);
+                            GUILayout.Label(TransferDisclosure, bodyStyle);
                             EditorGUILayout.Space(16);
                         }
                         if (session != null) DrawTransferStatus();
@@ -244,7 +247,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         else if (GUILayout.Button(ExporterLocalization.T("転送を中止"), GUILayout.Height(32)))
                         {
                             _ = session.CancelAsync(); ClearQr();
-                            error = "中止通知が届かない場合も、受取期限でクラウドのコピーは削除されます。";
+                            error = "中止通知が届かない場合も期限でアクセス停止と削除を開始します";
                         }
                     }
                     GUILayout.FlexibleSpace();
@@ -268,7 +271,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (GUILayout.Button(ExporterLocalization.T("プライバシーポリシーを開く"), linkStyle))
                 Application.OpenURL(PrivacyPolicyUrl);
             EditorGUILayout.Space(8);
-            var label = ExporterLocalization.T("プライバシーポリシーに同意する");
+            var label = ExporterLocalization.T(PrivacyConsentLabel);
             var height = Mathf.Max(EditorGUIUtility.singleLineHeight, consentStyle.CalcHeight(new GUIContent(label), Mathf.Max(100, position.width - 80)));
             var accepted = EditorGUILayout.ToggleLeft(label, PrivacyConsentAccepted, consentStyle, GUILayout.Height(height));
             if (accepted != PrivacyConsentAccepted) PrivacyConsentAccepted = accepted;

@@ -28,6 +28,18 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             else Assert.Throws<NotSupportedException>(() => CloudTransferAvailability.RequireEnabled());
         }
 
+        [Test]
+        public void TransferOriginIsFixedByTheCompiledPackage()
+        {
+#if VRVLOG_CLOUD_TRANSFER_PREVIEW
+            Assert.That(CloudTransferProtocol.ServiceUrl, Is.EqualTo("https://vrvlog-transfer-preview.mouri0077.workers.dev"));
+            Assert.That(CloudTransferProtocol.IsPreview, Is.True);
+#else
+            Assert.That(CloudTransferProtocol.ServiceUrl, Is.EqualTo("https://vrvlog-transfer.mouri0077.workers.dev"));
+            Assert.That(CloudTransferProtocol.IsPreview, Is.False);
+#endif
+        }
+
         [TestCase("0.11.12", false)]
         [TestCase("0.11.12+beta.1", false)]
         [TestCase("0.11.12-beta.1", true)]
