@@ -375,7 +375,9 @@ namespace VRVlog.LilToonExporter
             return BuildClipPoseUnchecked(clip, time, name);
         }
 
-        Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name)
+        // presetFace: a standard preset carries BlendShapes only, so a clip that also moves
+        // bones or shows objects stays unsupported there, as before (the preset would lose them).
+        Pose BuildClipPoseUnchecked(AnimationClip clip, float time, string name, bool presetFace = false)
         {
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("UnityのProjectからAnimationClipを指定してください。"));
             if (!Finite(time) || time < 0 || time > clip.length)
@@ -388,12 +390,14 @@ namespace VRVlog.LilToonExporter
             // them beside the BlendShapes and the board shows the BlendShapes alone. Materials and
             // parameters still make it unsupported.
             var gesture = gestureClips.Contains(clip);
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && !BoneOrShown(binding) &&
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (presetFace || !BoneOrShown(binding)) &&
                     !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
             if (unsupported.Length > 0)
-                throw new InvalidOperationException(ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ") +
+                throw new InvalidOperationException((presetFace
+                    ? ExporterLocalization.T("顔の変形以外の変更を含みます。材質・ボーン・表示切替は追加対応が必要です: ")
+                    : ExporterLocalization.T("顔の変形・ボーン・表示切替以外の変更を含みます: ")) +
                     unsupported[0].path + " / " + unsupported[0].propertyName);
             if (bindings.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("このクリップにはBlendShapeの表情がありません。全身ポーズはポーズ欄へ追加してください。"));
             var root = ClipRoot(clip);

@@ -903,8 +903,14 @@ namespace VRVlog.LilToonExporter.Tests
                 if (expected == "usable")
                 {
                     Assert.That(error, Is.Null);
-                    // A standard expression made from it takes the BlendShapes too, not the bone angle as a weight.
-                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
+                    // A standard expression carries BlendShapes only. It takes a gesture face beside an eye
+                    // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
+                    // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
+                    var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
+                    var presetUsable = gesture && extra == "transform";
+                    if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
+                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                    Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
                 else Assert.That(error, Does.EndWith("material._Color.r"));
