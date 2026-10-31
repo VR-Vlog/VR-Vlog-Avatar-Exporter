@@ -22,14 +22,15 @@ namespace VRVlog.LilToonExporter.LanTransfer
 
     internal interface ICloudTransferTransport
     {
-        Task<CloudTransferResponse> SendAsync(string method, string path, string token, byte[] body, string contentType, CancellationToken cancellation);
+        Task<CloudTransferResponse> SendAsync(string method, string path, string token, byte[] body, string contentType, CancellationToken cancellation, int timeoutSeconds = 90);
     }
 
     internal sealed class CloudTransferTransport : ICloudTransferTransport
     {
-        private static readonly HttpClient Client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(90) };
-        public async Task<CloudTransferResponse> SendAsync(string method, string path, string token, byte[] body, string contentType, CancellationToken cancellation)
+        private static readonly HttpClient Client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = System.Threading.Timeout.InfiniteTimeSpan };
+        public async Task<CloudTransferResponse> SendAsync(string method, string path, string token, byte[] body, string contentType, CancellationToken cancellation, int timeoutSeconds = 90)
         {
+            if (timeoutSeconds < 1 || timeoutSeconds > CloudTransferProtocol.UploadPartTimeoutSeconds) throw new ArgumentOutOfRangeException(nameof(timeoutSeconds));
             // Every production request goes to the fixed service using the OS
             // certificate trust. Redirects and QR-supplied hosts are forbidden.
             using (var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
@@ -37,7 +38,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             {
                 // ResponseHeadersRead does not extend HttpClient.Timeout to
                 // body reads. Bound the entire exchange, including the body.
-                deadline.CancelAfter(TimeSpan.FromSeconds(90));
+                deadline.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                 if (token != null) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
                 if (body != null)
                 {
@@ -131,7 +132,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private string qr, importLink, failureStage;
         private SafeTransferFailure failure;
         private long transferred, expiresAt, uploadSize;
-        private bool started, disposed;
+        private bool started, disposed, extendedUpload;
+        private long uploadDeadline;
         internal CloudTransferState State { get { lock (gate) return state; } }
         internal string Qr { get { lock (gate) return qr; } }
         // vrvlog://import#... for the phone's own camera. The in-app scanner keeps reading Qr.
@@ -189,7 +191,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         encrypted = protectedSnapshot; uploadSize = protectedSnapshot.Size;
                     }
                     stage = "転送の作成";
-                    var fields = await Send("POST", "/v3/transfers", null, Encoding.UTF8.GetBytes(CloudTransferProtocol.CreateBody(CloudEncryptedSnapshot.WireName, protectedSnapshot.Size, protectedSnapshot.FileHash)), "application/json", ct).ConfigureAwait(false);
+                    extendedUpload = await SupportsExtendedUpload(ct).ConfigureAwait(false);
+                    var fields = await Send("POST", extendedUpload ? "/v3/uploads" : "/v3/transfers", null, Encoding.UTF8.GetBytes(CloudTransferProtocol.CreateBody(CloudEncryptedSnapshot.WireName, protectedSnapshot.Size, protectedSnapshot.FileHash)), "application/json", ct).ConfigureAwait(false);
                     fields.Exact("v", "id", "token", "uploadToken", "expiresAt", "partSize");
                     var newId = fields.Text("id"); var token = fields.Text("token"); var owner = fields.Text("uploadToken"); var expiry = fields.Number("expiresAt");
                     var currentTime = now();
@@ -199,8 +202,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     // lifetime is rejected before any VRM bytes are uploaded.
                     lock (gate) { id = newId; uploadToken = owner; }
                     if (fields.Number("v") != 3 || !CloudTransferProtocol.IsToken(token) || token == owner || fields.Number("partSize") != CloudTransferProtocol.PartSize) throw CloudTransferProtocol.Invalid();
-                    if (expiry <= currentTime || expiry > currentTime + (CloudTransferProtocol.LifetimeMinutes + 1) * 60) throw new SafeTransferFailure("PCの日時が転送サービスと合っていません。OSの日時の自動設定を確認してください。");
-                    lock (gate) { readToken = token; expiresAt = expiry; if (!disposed && state != CloudTransferState.Canceled) state = CloudTransferState.Uploading; }
+                    if (expiry <= currentTime || expiry > currentTime + (extendedUpload ? CloudTransferProtocol.UploadLifetimeSeconds + 60 : (CloudTransferProtocol.LifetimeMinutes + 1) * 60)) throw new SafeTransferFailure("PCの日時が転送サービスと合っていません。OSの日時の自動設定を確認してください。");
+                    lock (gate) { readToken = token; expiresAt = expiry; uploadDeadline = expiry; if (!disposed && state != CloudTransferState.Canceled) state = CloudTransferState.Uploading; }
                     ct.ThrowIfCancellationRequested();
                     stage = "暗号化ファイルの読み取り";
                     using (var reader = protectedSnapshot.OpenRead())
@@ -232,11 +235,20 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     var published = await Send("POST", Path + "/publish", uploadToken, Array.Empty<byte>(), "application/octet-stream", ct, retry: true).ConfigureAwait(false);
                     published.Exact("v", "id", "token", "name", "size", "sha256", "expiresAt");
                     if (published.Number("v") != 3 || published.Text("id") != id || published.Text("token") != readToken || published.Text("name") != CloudEncryptedSnapshot.WireName
-                        || published.Number("size") != protectedSnapshot.Size || published.Text("sha256") != protectedSnapshot.FileHash || published.Number("expiresAt") != expiresAt) throw CloudTransferProtocol.Invalid();
-                    CheckExpiry(); // A successful publication response may arrive after its deadline.
+                        || published.Number("size") != protectedSnapshot.Size || published.Text("sha256") != protectedSnapshot.FileHash) throw CloudTransferProtocol.Invalid();
+                    CheckExpiry(); // Publication must finish before the upload deadline.
+                    var receiveExpiry = published.Number("expiresAt");
+                    if (extendedUpload)
+                    {
+                        var current = now();
+                        if (receiveExpiry <= current || receiveExpiry > current + (CloudTransferProtocol.LifetimeMinutes + 1) * 60
+                            || receiveExpiry > uploadDeadline + CloudTransferProtocol.LifetimeMinutes * 60) throw CloudTransferProtocol.Invalid();
+                    }
+                    else if (receiveExpiry != expiresAt) throw CloudTransferProtocol.Invalid();
                     lock (gate)
                     {
                         ct.ThrowIfCancellationRequested();
+                        expiresAt = receiveExpiry;
                         var key = protectedSnapshot.KeyForQr();
                         qr = CloudTransferProtocol.Qr(id, readToken, source.Name, source.Size, source.FileHash, expiresAt, key);
                         // The link is an additional representation. A name it cannot carry
@@ -298,6 +310,22 @@ namespace VRVlog.LilToonExporter.LanTransfer
             ExpireIfDue();
             if (State == CloudTransferState.Expired) throw new InvalidOperationException(Message);
         }
+        private async Task<bool> SupportsExtendedUpload(CancellationToken ct)
+        {
+            // Read-only capability negotiation precedes the sole create POST.
+            // A missing endpoint is legacy; never replay create on another route.
+            var response = await transport.SendAsync("GET", "/v3/capabilities", null, null, null, ct, 10).ConfigureAwait(false);
+            if (response.StatusCode == 404) return false;
+            if (response.StatusCode != 200) throw new SafeTransferFailure("転送サービスが応答できませんでした（HTTP {0}）。時間を置いて新しいQRを作成してください。", response.StatusCode);
+            var fields = CloudTransferProtocol.Fields.Read(response.Body);
+            fields.Exact("v", "uploadLifetimeSeconds");
+            if (fields.Number("v") != 3) throw CloudTransferProtocol.Invalid();
+            var seconds = fields.Number("uploadLifetimeSeconds");
+            if (seconds == 0) return false;
+            if (seconds != CloudTransferProtocol.UploadLifetimeSeconds) throw CloudTransferProtocol.Invalid();
+            return true;
+        }
+
         private async Task<CloudTransferProtocol.Fields> Send(string method, string path, string token, byte[] body, string type, CancellationToken ct, bool parse = true, bool diagnose = true, bool retry = false)
         {
             CloudTransferResponse response = null;
@@ -308,7 +336,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 response = null;
                 try
                 {
-                    response = await transport.SendAsync(method, path, token, body, type, ct).ConfigureAwait(false);
+                    var seconds = extendedUpload && method == "PUT" ? CloudTransferProtocol.UploadPartTimeoutSeconds : 90;
+                    var expiry = ExpiresAt;
+                    if (expiry > 0) seconds = (int)Math.Min(seconds, Math.Max(1, expiry - now()));
+                    response = await transport.SendAsync(method, path, token, body, type, ct, seconds).ConfigureAwait(false);
                     if (!retry || attempt >= 2 || !TransientStatus(response.StatusCode)) break;
                 }
                 catch (HttpRequestException) when (retry && attempt < 2 && !ct.IsCancellationRequested) { }
