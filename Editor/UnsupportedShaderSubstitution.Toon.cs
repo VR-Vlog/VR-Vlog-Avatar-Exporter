@@ -44,6 +44,7 @@ namespace VRVlog.LilToonExporter
             ToonOutline(values, material, main, color, effects);
             ToonEmission(values, material, textures, effects);
             ToonStencil(values, material, effects);
+            ToonDecals(values, material, textures, effects);
             foreach (var (name, label) in ToonDroppedSections)
                 if (values.Float(name, 0) > .5f) Drop(effects, label);
             dropped = effects;
@@ -55,7 +56,6 @@ namespace VRVlog.LilToonExporter
         {
             ("_UseBump2ndMap", "Detail Normal"), ("_EnableBentNormal", "Bent Normal"), ("_DetailEnabled", "Details"),
             ("_PoiSkinEnabled", "Skin"), ("_BackFaceEnabled", "Backface"), ("_RGBMaskEnabled", "RGB Mask"),
-            ("_DecalEnabled", "Decal 0"), ("_DecalEnabled1", "Decal 1"), ("_DecalEnabled2", "Decal 2"), ("_DecalEnabled3", "Decal 3"),
             ("_EnableAniso", "Anisotropics"), ("_SubsurfaceScattering", "Subsurface Scattering"), ("_MochieBRDF", "Reflections & Specular"),
             ("_GGXAnisotropics", "Anisotropic Specular"), ("_ClearCoatBRDF", "Clear Coat"), ("_StylizedSpecular", "Stylized Specular"),
             ("_EnableEnvironmentalRim", "Environmental Rim"), ("_BacklightEnabled", "Backlight"), ("_LTCGIEnabled", "Area Lights"),
@@ -420,10 +420,10 @@ namespace VRVlog.LilToonExporter
         // done the effect is turned off and reported: unmasked, it would cover
         // the whole material.
         static void CopyMask(SourceValues values, Material material, string name, string channel, string invert, string target,
-            string toggle, List<Texture2D> textures, List<string> effects, string label)
+            string toggle, List<Texture2D> textures, List<string> effects, string label, int defaultChannel = 0)
         {
             if (!values.Texture(name, out var mask, out var scale, out var offset) || !Flat(mask)) return;
-            var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, 0)), 0, 3);
+            var index = Mathf.Clamp(Mathf.RoundToInt(values.Float(channel, defaultChannel)), 0, 3);
             var inverted = values.Float(invert, 0) >= .5f;
             Texture copy = null;
             if (index == 0 && !inverted)
