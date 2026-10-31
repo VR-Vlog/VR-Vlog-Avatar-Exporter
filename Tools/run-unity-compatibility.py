@@ -864,6 +864,18 @@ BEHAVIOR_CASES = {
         'TheExportShrinksOnlyWhenTheOptionIsOn': 4,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
+    'VertexDataLightweightTests': {
+        'TheRecordTellsWhetherTheColoursAreRead': 9,
+        'AnythingNotKnownCountsAsReading': 1,
+        'AMeshLosesItsColoursOnlyWhenNoMaterialReadsThem': 3,
+        'AColourAccessorAnotherMeshUsesStays': 1,
+        'WeightsAddUpToExactly65535': 7,
+        'RandomWeightsRoundTripWithin1Over65535': 1,
+        'WeightsThatDoNotAddUpTo1StayFloat': 1,
+        'AFileWithNothingToChangeOrAnUnknownExtensionIsKept': 1,
+        'TheExportPacksVertexDataOnlyWhenTheOptionIsOn': 3,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
 }
 INTEGRATION_CASES = {
     # The integration project must install the official MeshDeleterWithTexture

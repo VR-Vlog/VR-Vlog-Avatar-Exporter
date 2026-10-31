@@ -968,6 +968,19 @@ namespace VRVlog.LilToonExporter
                 }
                 else if (marked = withoutLilToon || guard.IsOmitted(ExportStage.LilToonSnapshot)) exported = LilToonGlbExtension.MarkWithoutLilToon(exported);
                 if (marked && guard.ContinueOnFailure) RecordStandardOverLimit(exported, warnings, recoveryReport);
+                if (autoLightweight)
+                {
+                    // After the lilToon extension: Apply reads its material
+                    // records. A failure keeps the file as it is.
+                    try
+                    {
+                        var skipped = new List<string>();
+                        exported = VertexDataLightweight.Apply(exported, skipped, out var saved);
+                        foreach (var message in skipped) Debug.LogWarning("VR Vlog: " + message);
+                        if (VertexDataLightweight.ResultLine(saved) is string packed) warnings?.Add(packed);
+                    }
+                    catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
+                }
                 guard.Run(ExportStage.PhysBoneVerify, () => PhysBoneSpringExport.VerifyOutput(exported, springs));
                 exported = guard.Run(ExportStage.PoseOutput, () => poses.Inject(exported, rootScale), () => exported);
                 if (objectToggleData != null) exported = guard.Step(ExportStage.ObjectToggles, () => ObjectToggleCapture.Inject(exported, objectToggleData), () => exported);
