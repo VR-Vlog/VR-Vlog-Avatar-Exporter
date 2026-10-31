@@ -246,8 +246,9 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsVrcFuryComponent(Type type)
         {
-            // VRCFury itself skips avatars whose only component is its debug info.
-            if (type.FullName == "VF.Model.VRCFuryDebugInfo") return false;
+            // VRCFury itself skips avatars whose only component is its debug info,
+            // and its test copy is an avatar it has already built.
+            if (type.FullName == "VF.Model.VRCFuryDebugInfo" || type.FullName == "VF.Model.VRCFuryTest") return false;
             for (var current = type; current != null; current = current.BaseType)
                 if (current.FullName == "VF.Component.VRCFuryComponent") return true;
             return false;
@@ -262,6 +263,7 @@ namespace VRVlog.LilToonExporter
                 warnings?.Add(VrcFuryNoDescriptorWarning);
                 return;
             }
+            SkipVrcFuryWriteDefaultsQuestion(clone, FindType("VF.Model.VRCFury"), FindType("VF.Model.Feature.FixWriteDefaults"));
             var existing = new HashSet<Object>(Dependencies(clone));
             try
             {
@@ -282,6 +284,27 @@ namespace VRVlog.LilToonExporter
             }
             finally { CaptureGenerated(clone, existing); }
             warnings?.Add(VrcFuryApplied);
+        }
+
+        // VRCFury asks on every build whether to fix a mixed Write Defaults
+        // setup, and the answer changes the FX the expressions come from. It
+        // saves the answer on the avatar it finds by a "(Clone)" name, which the
+        // export's copy does not have, so the copy would ask on every export.
+        // Unless the avatar already has a Fix Write Defaults setting, the copy
+        // gets the one "Skip and stop asking" saves, and the FX stays as it is.
+        internal static void SkipVrcFuryWriteDefaultsQuestion(GameObject clone, Type component, Type feature)
+        {
+            var content = component?.GetField("content", BindingFlags.Public | BindingFlags.Instance);
+            var features = component?.GetMethod("GetAllFeatures", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
+            var mode = feature?.GetField("mode", BindingFlags.Public | BindingFlags.Instance);
+            if (content == null || features == null || mode == null || !content.FieldType.IsAssignableFrom(feature) ||
+                !mode.FieldType.IsEnum || !Enum.IsDefined(mode.FieldType, "Disabled")) return;
+            foreach (var existing in clone.GetComponentsInChildren<Component>(true).Where(component.IsInstanceOfType))
+                if (features.Invoke(existing, null) is System.Collections.IEnumerable list && list.Cast<object>().Any(feature.IsInstanceOfType))
+                    return;
+            var setting = Activator.CreateInstance(feature, true);
+            mode.SetValue(setting, Enum.Parse(mode.FieldType, "Disabled"));
+            content.SetValue(clone.AddComponent(component), setting);
         }
 
         internal Object IsolatedCopyOf(Object original) => original != null && isolatedAssets.TryGetValue(original, out var copy)

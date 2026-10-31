@@ -645,6 +645,34 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting()
+        {
+            var component = typeof(VrVlogExporterTests.VrcFuryFixtures.FeatureComponent);
+            var feature = typeof(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults);
+            NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(clone, component, feature);
+            var added = clone.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true);
+            Assert.AreEqual(1, added.Length);
+            var setting = added[0].content as VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults;
+            Assert.IsNotNull(setting, "The copy gets a Fix Write Defaults setting.");
+            Assert.AreEqual(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Disabled, setting.mode);
+
+            // The avatar's own answer stays, and no second setting is added.
+            setting.mode = VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Auto;
+            NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(clone, component, feature);
+            Assert.AreEqual(1, clone.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true).Length);
+            Assert.AreEqual(VrVlogExporterTests.VrcFuryFixtures.FixWriteDefaults.FixWriteDefaultsMode.Auto, setting.mode);
+
+            // A VRCFury without this setting leaves the copy as it is.
+            var other = new GameObject("Other");
+            try
+            {
+                NdmfExportPreparation.SkipVrcFuryWriteDefaultsQuestion(other, component, null);
+                Assert.AreEqual(0, other.GetComponentsInChildren<VrVlogExporterTests.VrcFuryFixtures.FeatureComponent>(true).Length);
+            }
+            finally { Object.DestroyImmediate(other); }
+        }
+
+        [Test]
         public void AuthoredNdmfRootMarkerRetainsItsProcessingSemantics()
         {
             var rootType = InstalledType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");

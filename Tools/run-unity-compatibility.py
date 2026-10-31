@@ -651,6 +651,7 @@ BEHAVIOR_CASES = {
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
+        'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
         'AuthoredNdmfRootMarkerRetainsItsProcessingSemantics': 1,
         'BeforePlatformsRunsFromResolvingWithoutAPlatform': 2,
         'CallbackFreePreparationStopsAfterTransformingAndRetainsOwnedAssetLifetime': 1,
