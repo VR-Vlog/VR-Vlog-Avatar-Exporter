@@ -105,7 +105,7 @@ Required input is the name, the author, consent to the terms (every time) and th
 
 The transfer window goes from export to upload and a QR code in one window. Scan that QR with the phone's own camera; it needs a version of VR Vlog that imports from the OS camera. The quick transfer exports what the normal flow exports from an untouched expression board (see above). The expression board, and so the quick transfer, fill empty neutral from VRChat menu expression names (Japanese names included) or whole-face BlendShape names in English, fill empty gaze presets only from names that move both eyes (such as `lookUp` or the Perfect Sync pair `eyeLookUpLeft` + `eyeLookUpRight`), and list each preset filled from a name, mouth shapes included, as a warning. The VRM look-at still uses the eye bones, so most apps do not drive the gaze presets on their own. See the [cloud transfer guide](Documentation~/CloudTransfer.md#アプリに転送).
 
-Textures retain their aspect ratio and are reduced to fit within 1024 × 1024. Smaller textures are not enlarged. The original avatar and textures remain unchanged.
+Textures retain their aspect ratio and are reduced to fit within 1024 × 1024. Smaller textures are not enlarged. The outline width mask of a lilToon material with **Delete Mesh** on keeps its imported size in the lilToon data, up to 2048 × 2048. The original avatar and textures remain unchanged.
 
 To import on iPhone, save the `.vrm` in Files, enable **lilToon専用表示** in VR Vlog settings, then choose **モデルを変更 → 端末のVRMを選ぶ**. Reload the model after changing the rendering setting.
 
