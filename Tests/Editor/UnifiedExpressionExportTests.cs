@@ -393,6 +393,35 @@ namespace VRVlog.LilToonExporter.Tests
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
         }
 
+        // A toon avatar with drawn mouth-swap shapes uses whole-face words for
+        // manual toggles. They join UE only after other evidence establishes it.
+        [TestCase("")]
+        [TestCase("MouthRaiserUpper")]
+        [TestCase("UE/JawOpen")]
+        public async Task WholeFaceToggleNamesAloneDoNotEstablishUnifiedExpressions(string evidence)
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            Vrm10Instance imported = null;
+            try
+            {
+                foreach (var name in new[] { "Mouth_smile", "Mouth_left", "Mouth_right", "Cheek red" })
+                    fixture.Mesh.AddBlendShapeFrame(name, 100, Enumerable.Repeat(Vector3.up * .01f, fixture.Mesh.vertexCount).ToArray(), null, null);
+                if (evidence.Length > 0)
+                    fixture.Mesh.AddBlendShapeFrame(evidence, 100, Enumerable.Repeat(Vector3.right * .01f, fixture.Mesh.vertexCount).ToArray(), null, null);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(evidence.Length > 0));
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "UE whole-face toggles", "Tests",
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                Assert.That(VrmUnifiedExpressions.HasUsableEvidence(bytes), Is.EqualTo(evidence.Length > 0));
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var names = imported.Vrm.Expression.CustomClips.Select(clip => clip.name).ToArray();
+                if (evidence.Length == 0)
+                    Assert.That(names.Any(name => name.StartsWith(UnifiedExpressionRegistry.Prefix, StringComparison.Ordinal)), Is.False);
+                else Assert.That(names, Is.SupersetOf(new[] { "UE/MouthSmile", "UE/MouthLeft", "UE/MouthRight" }));
+            }
+            finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
+        }
+
         [Test]
         public void PreparationProtectsSharedChannelsOnOtherFaceMeshes()
         {
