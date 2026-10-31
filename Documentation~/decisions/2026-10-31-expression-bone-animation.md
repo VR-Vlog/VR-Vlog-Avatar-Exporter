@@ -1,7 +1,7 @@
 # 表情のボーンと表示の切り替えを、表情の拡張の transforms に書く
 
 - 日付: 2026-10-31
-- 対象: `Editor/ExpressionTransformCurves.cs`・`Editor/VrChatGestureExpressions.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/VrChatExpressionBaker.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/FacialProjectionScope.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/Locales/ExporterLocale_*.json`・`Tests/Editor/ExpressionBoneAnimationExportTests.cs`・`Tests/Editor/ExpressionAnimationDocumentTests.cs`・`Tests/Editor/FacialProjectionTests.cs`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`
+- 対象: `Editor/ExpressionTransformCurves.cs`・`Editor/VrChatGestureExpressions.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/VrChatExpressionBaker.cs`・`Editor/VrChatExpressionSampler.cs`・`Editor/FacialProjectionScope.cs`・`Editor/UniVrmOneClickExporter.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/Locales/ExporterLocale_*.json`・`Tests/Editor/ExpressionBoneAnimationExportTests.cs`・`Tests/Editor/ExpressionAnimationDocumentTests.cs`・`Tests/Editor/FacialProjectionTests.cs`・`Tests/Editor/ExperimentalExpressionCaptureTests.cs`
 - アプリ側の設計: VR Vlog の `Docs/decisions/2026-10-31-expression-bone-animation.md`（Epic #2760）
 
 ## 背景
@@ -34,6 +34,8 @@
 
 表情ボード（`ExperimentalExpressionCaptureSession`）の「顔の変形以外の変更を含みます」の案内は、ボーンと表示の切り替えを含めない「顔の変形・ボーン・表示切替以外の変更を含みます」にした。BlendShape を元の値のまま持つだけのクリップを「顔を何も変えないアニメーション」として外す判定は、ボーンか表示を書き出し時の姿勢から動かすクリップを外さないようにした。BlendShape のカーブを 1 本も持たないクリップは、表情ボードでは今までどおり全身ポーズとして扱い、表情にしない。
 
+標準の表情（happy・angry・sad・surprised など）は BlendShape しか持てないので、ボーンか表示の切り替えを含むクリップは今までどおり標準の表情の候補にしない（`BuildClipPoseUnchecked` の `presetFace`）。ジェスチャーの表情の顔の横にある目のハイライトのボーンを無視する従来の扱いはそのまま残す。受け付けると、自動で選ぶ標準の表情のクリップが変わり、古いアプリでも標準の表情の見た目が変わる（アバター A の happy と surprised で起きた）。そうしたクリップはカスタム表情としてボーンと一緒に書き出す。
+
 ## 確かめたこと
 
 - EditMode テスト（`ExpressionBoneAnimationExportTests`）で、浮動小数の誤差を含む書き出し時と同じ値のカーブ（オイラー角・360 度回った角度・符号を反転した四元数・位置・拡大・表示）が捨てられること、キーの間だけ姿勢から外れるボーンが残ること、Humanoid のボーンが警告付きで捨てられることを確かめた。
@@ -50,7 +52,7 @@
 
 | | A 変更前 | A 変更後 | B 変更前 | B 変更後 |
 | --- | --- | --- | --- | --- |
-| 拡張の `expressions` | 13 | 47 | 15 | 26 |
+| 拡張の `expressions` | 13 | 49 | 15 | 26 |
 | 拡張の `animations` | 0 | 11 | 10 | 10 |
 | 拡張の `transforms` | なし | 12 | なし | 9 |
 | 書き出さなかった表情 | 39 | 3 | 17 | 6 |
@@ -58,6 +60,7 @@
 - A の `transforms` は、オイラー角・位置・拡大のトラックを持つ表情が 11、表示の切り替えだけの表情が 1。B は揺れ物のジョイントの回転を動かす表情が 6、表示の切り替えの表情が 3。
 - 残った書き出さなかった表情は、Humanoid のルートの移動（`RootT`）を持つ全身のアニメーション（A 3・B 3）と、元から 0 の BlendShape を 0 にするだけのクリップ（B 2）など。どれも変更前から書き出していなかったもの。
 - B では、書き出さない PhysBone 用のオブジェクトを動かす 2 つの表情で、そのボーンを捨てる警告が出た。
+- 標準の表情に焼き込むモーフ（`__VRVlog_Endpoint_*`）は、A・B とも変更前と同じ名前・同じ値になった。A の `expressions` の 49 には、ボーンを持つために標準の表情の候補から外れた 2 つのクリップのカスタム表情が入る。
 - `extensionsRequired` は両方とも無いまま。`VRVLOG_requiredAppVersions` の既存のキーの値は変わらない。A は変更前に書き出せるジェスチャーの表情が無かったので、既存の `VRVLOG_expression_gestures`（1.0.8）が新しく入った。
 - 同じ版の 1 回目と 2 回目の比較（`compare-exports.py --runs`）は両方の版で一致した。A は 2 回の出力が同じバイト列になった。B は変更前から 2 回の出力のバイト列が違う（比較で除く値だけが違う）。
 
