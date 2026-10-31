@@ -22,7 +22,6 @@
                 <ui:HelpBox name="exporter-problem" message-type="Warning" class="box" />
                 <ui:Button name="diagnostics" class="diagnostics" />
                 <ui:HelpBox name="playing" message-type="Info" class="box" />
-                <ui:Label name="transfer-disclosure" class="t section" />
                 <ui:VisualElement name="form-fields">
                     <ui:VisualElement name="avatar-row" class="row">
                         <ui:Label name="avatar-label" class="t label-col" />

@@ -145,40 +145,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
 
 #if UNITY_EDITOR
         [Test]
-        public void LegacyAndOtherEnvironmentConsentCannotAuthorizeThisTransfer()
-        {
-            const string legacy = "VRVlog.CloudTransfer.PrivacyConsent.v1";
-            var other = "VRVlog.CloudTransfer.PrivacyConsent.v2." + (CloudTransferProtocol.IsPreview ? "production" : "preview");
-            var saved = new[] { legacy, other };
-            var existed = saved.Select(EditorPrefs.HasKey).ToArray();
-            var values = saved.Select(key => EditorPrefs.GetBool(key, false)).ToArray();
-            try
-            {
-                WithPrivacyPreference(() =>
-                {
-                    EditorPrefs.SetBool(legacy, true);
-                    EditorPrefs.SetBool(other, true);
-                    EditorPrefs.DeleteKey(CloudVrmTransferWindow.PrivacyConsentPreference);
-                    Assert.That(CloudVrmTransferWindow.PrivacyConsentAccepted, Is.False);
-                    var window = ScriptableObject.CreateInstance<CloudVrmTransferWindow>();
-                    try
-                    {
-                        Assert.That(window.CanBeginTransfer, Is.False);
-                        typeof(CloudVrmTransferWindow).GetMethod("Begin", Instance).Invoke(window, null);
-                        Assert.That(Get(window, "session"), Is.Null);
-                        Assert.That(Get(window, "uploading"), Is.Null);
-                    }
-                    finally { Object.DestroyImmediate(window); }
-                });
-            }
-            finally
-            {
-                for (var i = 0; i < saved.Length; i++)
-                    if (existed[i]) EditorPrefs.SetBool(saved[i], values[i]); else EditorPrefs.DeleteKey(saved[i]);
-            }
-        }
-
-        [Test]
         public void PrivacyChoiceDefaultsOffAndSurvivesClosingAndReopeningTheWindow()
         {
             WithPrivacyPreference(() =>

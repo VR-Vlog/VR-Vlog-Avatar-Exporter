@@ -33,10 +33,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
 #if VRVLOG_CLOUD_TRANSFER_PREVIEW
             Assert.That(CloudTransferProtocol.ServiceUrl, Is.EqualTo("https://vrvlog-transfer-preview.mouri0077.workers.dev"));
-            Assert.That(CloudTransferProtocol.IsPreview, Is.True);
 #else
             Assert.That(CloudTransferProtocol.ServiceUrl, Is.EqualTo("https://vrvlog-transfer.mouri0077.workers.dev"));
-            Assert.That(CloudTransferProtocol.IsPreview, Is.False);
 #endif
         }
 

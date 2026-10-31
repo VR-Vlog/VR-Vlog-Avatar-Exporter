@@ -175,10 +175,6 @@ def build(root, output, *, qr_preview=False):
         # changing the user's project settings or the normal release package.
         protocol = "Editor/LanTransfer/CloudTransferProtocol.cs"
         contents[protocol] = b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW\n" + contents[protocol]
-        preview_manifest = dict(manifest)
-        preview_manifest["version"] = manifest["version"].split("-", 1)[0] + "-qr-preview.1"
-        preview_manifest["displayName"] = manifest["displayName"] + " (QR preview)"
-        contents["package.json"] = (json.dumps(preview_manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     verify_transfer_dependencies(contents, transfer)
     if not any(name.startswith("Editor/") and name.endswith(".cs") for name in names):
         raise ValueError("Package has no Editor source")

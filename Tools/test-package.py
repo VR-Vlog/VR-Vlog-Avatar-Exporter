@@ -83,7 +83,7 @@ class PackageTests(unittest.TestCase):
         with zipfile.ZipFile(preview) as archive:
             preview_time = archive.getinfo(protocol).date_time
             self.assertTrue(archive.read(protocol).startswith(b"#define VRVLOG_CLOUD_TRANSFER_PREVIEW\n"))
-            self.assertEqual(json.loads(archive.read("package.json"))["version"], "0.11.12-qr-preview.1")
+            self.assertEqual(archive.read("package.json"), (self.root / "package.json").read_bytes())
         self.assertEqual((self.root / protocol).read_text(), "// fixed service selection\n")
         release = self.root / "release.zip"
         package.build(self.root, release)

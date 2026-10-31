@@ -111,7 +111,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             qrMark, qrFrame, scanCaption;
         [NonSerialized] private HelpBox disabledBox, problemBox, playingBox, missingShadersBox;
         [NonSerialized] private Button diagnosticsButton, summaryButton, backButton, createButton, messageButton, showQrButton, hideQrButton, regenerateButton, closeButton, saveButton;
-        [NonSerialized] private Label transferDisclosure, heading, subtitle, previewTitle, previewNote, previewHint, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
+        [NonSerialized] private Label heading, subtitle, previewTitle, previewNote, previewHint, avatarLabel, summaryText, nameLabel, nameHint, termsLabel, readTerms, consentText, privacyLink, privacyText,
             reasonLabel, messageTitle, messageBody, uploadTitle, scanLabel, warningText, statusLabel, remainingLabel, lifetimeLabel, leaveNote,
             saveResult, saveOpen;
         [NonSerialized] private ObjectField avatarField;
@@ -862,7 +862,6 @@ namespace VRVlog.LilToonExporter.LanTransfer
             readTerms = root.Q<Label>("read-terms");
             consentToggle = root.Q<Toggle>("consent-toggle");
             consentText = root.Q<Label>("consent-text");
-            transferDisclosure = root.Q<Label>("transfer-disclosure");
             privacyRow = root.Q("privacy");
             privacyLink = root.Q<Label>("privacy-link");
             privacyToggle = root.Q<Toggle>("privacy-toggle");
@@ -1130,8 +1129,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             if (!CloudVrmTransferWindow.PrivacyConsentAccepted) showPrivacy = true;
             Show(privacyRow, showPrivacy);
             privacyLink.text = T("プライバシーポリシーを開く");
-            transferDisclosure.text = CloudVrmTransferWindow.TransferDisclosure;
-            privacyText.text = T(CloudVrmTransferWindow.PrivacyConsentLabel);
+            privacyText.text = T("プライバシーポリシーに同意する");
             privacyToggle.SetValueWithoutNotify(CloudVrmTransferWindow.PrivacyConsentAccepted);
 
             // Only the board's reasons get a line; a missing input turns red instead, so the line is gone otherwise.
