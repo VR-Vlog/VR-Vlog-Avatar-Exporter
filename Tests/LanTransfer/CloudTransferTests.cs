@@ -932,12 +932,73 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        [Test]
+        public async Task BusyResponseHonorsServerCooldownBeforeReplaying()
+        {
+            long current = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            using (var fixture = new Fixture(29))
+            {
+                fixture.Transport.Now = () => current;
+                var waits = new List<TimeSpan>();
+                var transport = new InterruptedTransport(fixture.Transport, false, "503", false);
+                transport.RetryAfter = TimeSpan.FromSeconds(2);
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, () => current,
+                    (duration, token) => { token.ThrowIfCancellationRequested(); waits.Add(duration); current += (long)duration.TotalSeconds; return Task.CompletedTask; }))
+                {
+                    await session.UploadAsync();
+                    Assert.That(session.State, Is.EqualTo(CloudTransferState.Ready));
+                    Assert.That(waits.ToArray(), Is.EqualTo(new[] { TimeSpan.FromSeconds(2) }));
+                    Assert.That(transport.Attempts, Is.EqualTo(2));
+                }
+            }
+        }
+
+        [Test]
+        public async Task CooldownBeyondDeadlineDoesNotRetryEarlyOrExtendReservation()
+        {
+            using (var fixture = new Fixture(29))
+            {
+                var transport = new InterruptedTransport(fixture.Transport, false, "503", true);
+                transport.RetryAfter = TimeSpan.FromHours(1);
+                var waits = 0;
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, null,
+                    (duration, token) => { waits++; return Task.CompletedTask; }))
+                {
+                    try { await session.UploadAsync(); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                    Assert.That(session.State, Is.EqualTo(CloudTransferState.Failed));
+                    Assert.That(waits, Is.EqualTo(0));
+                    Assert.That(transport.Attempts, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+                }
+            }
+        }
+
+        [Test]
+        public async Task CancellationWhileWaitingForCooldownPreventsReplay()
+        {
+            using (var cancellation = new CancellationTokenSource())
+            using (var fixture = new Fixture(29))
+            {
+                var transport = new InterruptedTransport(fixture.Transport, false, "503", false);
+                transport.RetryAfter = TimeSpan.FromSeconds(2);
+                using (var session = new CloudVrmTransferSession(fixture.Source, transport, null,
+                    (duration, token) => { cancellation.Cancel(); return Task.FromCanceled(token); }))
+                {
+                    try { await session.UploadAsync(cancellation.Token); Assert.That(false, Is.True); } catch (InvalidOperationException) { }
+                    Assert.That(transport.Attempts, Is.EqualTo(1));
+                    Assert.That(fixture.Transport.CancelCalls, Is.EqualTo(1));
+                    Assert.That(session.Qr == null, Is.True);
+                }
+            }
+        }
+
         private sealed class InterruptedTransport : ICloudTransferTransport
         {
             private readonly ICloudTransferTransport inner;
             private readonly bool publish, permanent;
             private readonly string failure;
             internal int Attempts;
+            internal TimeSpan? RetryAfter;
             internal Action BeforeFailure;
             internal InterruptedTransport(ICloudTransferTransport inner, bool publish, string failure, bool permanent)
             { this.inner = inner; this.publish = publish; this.failure = failure; this.permanent = permanent; }
@@ -952,7 +1013,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                         if (failure == "lost-response") await inner.SendAsync(method, path, token, body, type, cancellation);
                         if (failure == "network" || failure == "lost-response") throw new System.Net.Http.HttpRequestException("SECRET");
                         if (failure == "timeout") throw new OperationCanceledException("SECRET");
-                        return new CloudTransferResponse(int.Parse(failure), "SECRET");
+                        return new CloudTransferResponse(int.Parse(failure), "SECRET", RetryAfter);
                     }
                 }
                 return await inner.SendAsync(method, path, token, body, type, cancellation);

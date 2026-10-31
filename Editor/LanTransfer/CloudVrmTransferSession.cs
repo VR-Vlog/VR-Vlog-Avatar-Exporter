@@ -15,7 +15,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
     {
         internal int StatusCode { get; }
         internal string Body { get; }
-        internal CloudTransferResponse(int statusCode, string body) { StatusCode = statusCode; Body = body; }
+        internal TimeSpan? RetryAfter { get; }
+        internal CloudTransferResponse(int statusCode, string body, TimeSpan? retryAfter = null)
+        { StatusCode = statusCode; Body = body; RetryAfter = retryAfter; }
     }
 
     internal interface ICloudTransferTransport
@@ -53,7 +55,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         if (output.Length + count > 4096) throw CloudTransferProtocol.Invalid();
                         output.Write(buffer, 0, count);
                     }
-                    return new CloudTransferResponse((int)response.StatusCode, new UTF8Encoding(false, true).GetString(output.ToArray()));
+                    var after = response.Headers.RetryAfter;
+                    var retryAfter = after?.Delta ?? (after?.Date.HasValue == true ? after.Date.Value - DateTimeOffset.UtcNow : (TimeSpan?)null);
+                    return new CloudTransferResponse((int)response.StatusCode, new UTF8Encoding(false, true).GetString(output.ToArray()), retryAfter);
                 }
             }
         }
@@ -118,6 +122,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private readonly CloudVrmTransferSource source;
         private readonly ICloudTransferTransport transport;
         private readonly Func<long> now;
+        private readonly Func<TimeSpan, CancellationToken, Task> delay;
         private readonly CancellationTokenSource stop = new CancellationTokenSource();
         private string id, readToken, uploadToken;
         private FileStream activeReader;
@@ -160,11 +165,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
         }
 
-        internal CloudVrmTransferSession(CloudVrmTransferSource source, ICloudTransferTransport transport = null, Func<long> now = null)
+        internal CloudVrmTransferSession(CloudVrmTransferSource source, ICloudTransferTransport transport = null, Func<long> now = null, Func<TimeSpan, CancellationToken, Task> delay = null)
         {
             this.source = source ?? throw new ArgumentNullException(nameof(source));
             this.transport = transport ?? new CloudTransferTransport();
             this.now = now ?? (() => DateTimeOffset.UtcNow.ToUnixTimeSeconds());
+            this.delay = delay ?? ((duration, token) => Task.Delay(duration, token));
         }
 
         internal async Task UploadAsync(CancellationToken cancellation = default)
@@ -294,11 +300,12 @@ namespace VRVlog.LilToonExporter.LanTransfer
         }
         private async Task<CloudTransferProtocol.Fields> Send(string method, string path, string token, byte[] body, string type, CancellationToken ct, bool parse = true, bool diagnose = true, bool retry = false)
         {
-            CloudTransferResponse response;
+            CloudTransferResponse response = null;
             for (var attempt = 0; ; attempt++)
             {
                 ct.ThrowIfCancellationRequested();
                 if (retry) CheckExpiry();
+                response = null;
                 try
                 {
                     response = await transport.SendAsync(method, path, token, body, type, ct).ConfigureAwait(false);
@@ -311,7 +318,13 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // retry create, extend expiry, or exceed the server's 3 attempts.
                 ct.ThrowIfCancellationRequested();
                 CheckExpiry();
-                await Task.Delay(250 * (attempt + 1), ct).ConfigureAwait(false);
+                var wait = TimeSpan.FromSeconds(attempt + 1);
+                if (response?.RetryAfter > wait) wait = response.RetryAfter.Value;
+                var remaining = TimeSpan.FromSeconds(Math.Max(0, ExpiresAt - now()));
+                // A server's requested cooldown must not be shortened into a
+                // premature retry or extend the transfer's original lifetime.
+                if (wait >= remaining && response != null) break;
+                await delay(wait < remaining ? wait : remaining, ct).ConfigureAwait(false);
             }
             if (response.StatusCode < 200 || response.StatusCode >= 300)
             {
