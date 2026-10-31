@@ -42,9 +42,11 @@ namespace VRVlog.LilToonExporter
             string.IsNullOrEmpty(property) || NeverShrinkSlots.Contains(property) ||
             NeverShrinkPrefixes.Any(prefix => property.StartsWith(prefix, StringComparison.Ordinal));
 
-        // A slot with a lilToon UV mode other than UV0 (0) never shrinks.
+        // A slot with a lilToon UV mode other than UV0 (0) never shrinks, nor
+        // does a 2nd or 3rd main texture drawn as MSDF: halving breaks its edges.
         internal static bool NeverShrinks(Material material, string property) =>
-            NeverShrinks(property) || material.HasProperty(property + "_UVMode") && material.GetFloat(property + "_UVMode") != 0;
+            NeverShrinks(property) || material.HasProperty(property + "_UVMode") && material.GetFloat(property + "_UVMode") != 0 ||
+            (property == "_Main2ndTex" || property == "_Main3rdTex") && material.HasProperty(property + "IsMSDF") && material.GetFloat(property + "IsMSDF") != 0;
 
         // UV0 area per world area of one triangle, as texels per metre per texel
         // of a 1×1 texture; null when the triangle is degenerate.
@@ -163,10 +165,15 @@ namespace VRVlog.LilToonExporter
             return new Plan(densities);
         }
 
+        // The smaller axis, so the halved texture keeps the target density on
+        // both. A slot without scale and offset ignores a stale _ST.
         static double Tiling(Material material, string property)
         {
+            var shader = material.shader;
+            var index = shader.FindPropertyIndex(property);
+            if (index >= 0 && (shader.GetPropertyFlags(index) & UnityEngine.Rendering.ShaderPropertyFlags.NoScaleOffset) != 0) return 1;
             var scale = material.GetTextureScale(property);
-            return Math.Max(Math.Abs(scale.x), Math.Abs(scale.y));
+            return Math.Min(Math.Abs(scale.x), Math.Abs(scale.y));
         }
 
         // The UV0 per world ratio of each submesh in the pose being exported; NaN
@@ -237,7 +244,8 @@ namespace VRVlog.LilToonExporter
             internal static string Line(int count, long bytes) => string.Format(CultureInfo.InvariantCulture, ExporterLocalization.T(ExportNoteText.TexturesLightened),
                 count, Megabytes(bytes));
 
-            internal static string Megabytes(long bytes) => (bytes / (1024.0 * 1024.0)).ToString("0.#", CultureInfo.InvariantCulture);
+            // One decimal place; below 0.1 shows 0.1, never 0.
+            internal static string Megabytes(long bytes) => Math.Max(.1, bytes / (1024.0 * 1024.0)).ToString("0.0", CultureInfo.InvariantCulture);
         }
     }
 }

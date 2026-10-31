@@ -237,7 +237,8 @@ namespace VRVlog.LilToonExporter
             var chunks = new List<object>();
             var maximum = MaximumSize(source, normal);
             var (width, height, count, faces) = Layout(source, maximum);
-            // 自動で軽量化する lists its textures in one line, not one note each.
+            // 自動で軽量化する lists its textures in one line, not one note each;
+            // a note for the default's resizing states the size after it alone.
             var unlightened = Layout(source, ExistingMaximumSize(source, normal));
             var resized = unlightened.width != source.width || unlightened.height != source.height;
             // Gamma rendering can expose an UNorm GPU view of sRGB pixels.
@@ -255,7 +256,7 @@ namespace VRVlog.LilToonExporter
             if (quantizable) format = StoreNormal(Pixels(source, maximum, normal, srgb, hdr, half).ToList(), normalScale, (_, bytes) => Add(bytes));
             else foreach (var bytes in Pixels(source, maximum, normal, srgb, hdr, half)) Add(bytes);
             if (resized && resizedWarnings.Add(source))
-                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, width, height));
+                warnings?.Add(string.Format(ExportNoteText.LilToonTextureResized, source.name, source.width, source.height, unlightened.width, unlightened.height));
             var index = textures.Count;
             textures.Add(new Dictionary<string, object> {
                 {"name", source.name}, {"width", width}, {"height", height}, {"mips", count}, {"faces", faces},

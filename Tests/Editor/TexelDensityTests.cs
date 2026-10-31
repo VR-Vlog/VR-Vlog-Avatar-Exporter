@@ -15,11 +15,14 @@ namespace VRVlog.LilToonExporter.Tests
     public sealed class TexelDensityTests
     {
         // A 1m square showing the whole 1024 texture has 1024 texels per metre;
-        // twice the size halves it and twice the tiling doubles it.
-        [TestCase(1f, 1f, 1024d)]
-        [TestCase(2f, 1f, 512d)]
-        [TestCase(1f, 2f, 2048d)]
-        public void AQuadHasTheExactDensity(float scale, float tiling, double expected)
+        // twice the size halves it and twice the tiling doubles it. Of uneven
+        // tiling only the smaller axis counts, so both axes keep the target.
+        [TestCase(1f, 1f, 1f, 1024d)]
+        [TestCase(2f, 1f, 1f, 512d)]
+        [TestCase(1f, 2f, 2f, 2048d)]
+        [TestCase(1f, 2f, 1f, 1024d)]
+        [TestCase(1f, -4f, 2f, 2048d)]
+        public void AQuadHasTheExactDensity(float scale, float tilingX, float tilingY, double expected)
         {
             var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Quad density" };
             using var fixture = new QuadFixture();
@@ -27,7 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 fixture.Root.transform.localScale = Vector3.one * scale;
                 fixture.Material.SetTexture("_MainTex", texture);
-                fixture.Material.SetTextureScale("_MainTex", new Vector2(tiling, 1));
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(tilingX, tilingY));
                 var plan = TexelDensity.Measure(fixture.Root);
                 Assert.That(plan.Measured(texture), Is.True);
                 Assert.That(plan.Density(texture), Is.EqualTo(expected).Within(1e-6));
@@ -113,6 +116,51 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(texture); }
         }
 
+        // The shader ignores the _ST of a slot without scale and offset, so a
+        // stale tiling there does not count; the main tiling still does.
+        [TestCase(1f, 1024d)]
+        [TestCase(.5f, 512d)]
+        public void AStaleTilingOfASlotWithoutScaleOffsetIsIgnored(float mainTiling, double expected)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Shadow color" };
+            using var fixture = new QuadFixture();
+            try
+            {
+                var shader = fixture.Material.shader;
+                var index = shader.FindPropertyIndex("_ShadowColorTex");
+                Assert.That(index, Is.GreaterThanOrEqualTo(0));
+                Assert.That(shader.GetPropertyFlags(index) & UnityEngine.Rendering.ShaderPropertyFlags.NoScaleOffset, Is.Not.Zero);
+                fixture.Material.SetTexture("_ShadowColorTex", texture);
+                fixture.Material.SetTextureScale("_ShadowColorTex", new Vector2(4, 4));
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(mainTiling, mainTiling));
+                Assert.That(fixture.Material.GetTextureScale("_ShadowColorTex"), Is.EqualTo(new Vector2(4, 4)));
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.True);
+                Assert.That(plan.Density(texture), Is.EqualTo(expected).Within(1e-6));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
+        // Halving an MSDF texture breaks its edges.
+        [TestCase("_Main2ndTex", 0f, true)]
+        [TestCase("_Main2ndTex", 1f, false)]
+        [TestCase("_Main3rdTex", 1f, false)]
+        public void AnMsdfTextureNeverShrinks(string slot, float msdf, bool measured)
+        {
+            var texture = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "MSDF " + slot };
+            using var fixture = new QuadFixture();
+            try
+            {
+                Assert.That(fixture.Material.HasProperty(slot + "IsMSDF"), Is.True, slot);
+                fixture.Material.SetTexture(slot, texture);
+                fixture.Material.SetFloat(slot + "IsMSDF", msdf);
+                var plan = TexelDensity.Measure(fixture.Root);
+                Assert.That(plan.Measured(texture), Is.EqualTo(measured));
+                if (!measured) Assert.That(plan.Maximum(texture, 1024), Is.EqualTo(1024));
+            }
+            finally { Object.DestroyImmediate(texture); }
+        }
+
         [TestCase(TextureFormat.RGBAHalf)]
         [TestCase(TextureFormat.RGBAFloat)]
         public void AnHdrTextureNeverShrinks(TextureFormat format)
@@ -177,27 +225,34 @@ namespace VRVlog.LilToonExporter.Tests
                 var saved = TexelDensity.Bytes(1024, 1024) - TexelDensity.Bytes(256, 256);
                 Assert.That(plan.SavedBytes, Is.EqualTo(saved));
                 Assert.That(plan.ResultLine(), Is.EqualTo(TexelDensity.Plan.Line(1, saved)));
-                Assert.That(TexelDensity.Plan.Megabytes(saved), Is.EqualTo("5"));
+                Assert.That(TexelDensity.Plan.Megabytes(saved), Is.EqualTo("5.0"));
                 Assert.That(TexelDensity.Plan.Megabytes(1024L * 1024 * 3 / 2), Is.EqualTo("1.5"));
+                Assert.That(TexelDensity.Plan.Megabytes(1024L * 1024 * 8), Is.EqualTo("8.0"));
+                Assert.That(TexelDensity.Plan.Megabytes(300L * 1024), Is.EqualTo("0.3"));
+                Assert.That(TexelDensity.Plan.Megabytes(1), Is.EqualTo("0.1"), "Never 0MB.");
                 Assert.That(string.Format(CultureInfo.InvariantCulture, ExportNoteText.TexturesLightened, 1, "5.3"),
-                    Is.EqualTo("テクスチャ1枚を小さくしてメモリを5.3MB減らしました"));
+                    Is.EqualTo("テクスチャ1枚を小さくしてメモリ使用量を5.3MB減らしました"));
             }
             finally { Object.DestroyImmediate(dense); Object.DestroyImmediate(sparse); }
         }
 
         // Off: nothing is measured and the export keeps today's size. On: the
-        // fixture's triangle (5 texels per metre per texel) makes 512 into 256.
-        [TestCase(false)]
-        [TestCase(true)]
-        public void TheExportShrinksOnlyWhenTheOptionIsOn(bool on)
+        // fixture's triangle (5 texels per metre per texel) makes 512 into 256,
+        // and 2048 also into 256. The default's resizing of 2048 to 1024 is noted
+        // per texture with 1024 either way; the smaller size is in the result line only.
+        [TestCase(false, 512)]
+        [TestCase(true, 512)]
+        [TestCase(false, 2048)]
+        [TestCase(true, 2048)]
+        public void TheExportShrinksOnlyWhenTheOptionIsOn(bool on, int source)
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Lightweight material" };
-            var main = new Texture2D(512, 512, TextureFormat.RGBA32, true) { name = "Lightweight main" };
+            var main = new Texture2D(source, source, TextureFormat.RGBA32, true) { name = "Lightweight main" };
             var decoded = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             try
             {
-                main.SetPixels32(Enumerable.Repeat(new Color32(90, 140, 200, 255), 512 * 512).ToArray());
+                main.SetPixels32(Enumerable.Repeat(new Color32(90, 140, 200, 255), source * source).ToArray());
                 main.Apply(true, false);
                 material.SetTexture("_MainTex", main);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
@@ -207,7 +262,8 @@ namespace VRVlog.LilToonExporter.Tests
                     exporterVersion: "tests", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     autoLightweight: on);
                 Assert.That(TexelDensity.Measurements - measurements, Is.EqualTo(on ? 1 : 0));
-                var size = on ? 256 : 512;
+                var capped = Math.Min(source, 1024);
+                var size = on ? 256 : capped;
                 var glb = GlbDocument.Read(bytes);
                 var record = F.List(F.Root(glb.Json), "textures").Select(F.Object).Single(t => F.Text(t, "name") == main.name);
                 Assert.That(F.Int(record, "width"), Is.EqualTo(size));
@@ -221,10 +277,18 @@ namespace VRVlog.LilToonExporter.Tests
                     return decoded.width;
                 }).ToArray();
                 Assert.That(widths, Does.Contain(size), "The MToon image of the main texture follows the same size.");
-                Assert.That(widths, Has.No.Member(on ? 512 : 256));
-                var line = TexelDensity.Plan.Line(1, TexelDensity.Bytes(512, 512) - TexelDensity.Bytes(256, 256));
+                Assert.That(widths, Has.No.Member(on ? capped : 256));
+                var line = TexelDensity.Plan.Line(1, TexelDensity.Bytes(capped, capped) - TexelDensity.Bytes(256, 256));
                 Assert.That(warnings.Count(w => w == line), Is.EqualTo(on ? 1 : 0));
-                Assert.That(main.width, Is.EqualTo(512), "The source texture is not changed.");
+                var notes = source > capped
+                    ? new[]
+                    {
+                        string.Format(ExportNoteText.LilToonTextureResized, main.name, source, source, capped, capped),
+                        string.Format(ExportNoteText.OutputTextureResized, main.name, source, source, capped, capped),
+                    }
+                    : Array.Empty<string>();
+                Assert.That(warnings.Where(w => w.Contains(main.name)), Is.EquivalentTo(notes));
+                Assert.That(main.width, Is.EqualTo(source), "The source texture is not changed.");
                 Assert.That(material.GetTexture("_MainTex"), Is.SameAs(main));
             }
             finally

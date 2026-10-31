@@ -12,7 +12,7 @@ namespace VRVlog.LilToonExporter
         // Called after UniVRM unpacked normal maps/combined PBR channels and
         // converted texture color space. Never reinterpret packed Unity normals.
         // maximum below the default is 自動で軽量化する's smaller size; only the
-        // default's resizing is noted per image.
+        // default's resizing is noted per image, with the size after it alone.
         internal static byte[] EncodeConverted(Texture2D source, bool srgb, ICollection<string> warnings = null,
             int maximum = LilToonMobileProfile.DefaultMaximumTextureSize)
         {
@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter
                 var png = RequirePng(PngWriter.Encode(destination), source.name);
                 var capped = TextureResizePolicy.Size(source.width, source.height);
                 if (capped.Item1 != source.width || capped.Item2 != source.height)
-                    Warn(warnings, source.name, source.width, source.height, size.Item1, size.Item2);
+                    Warn(warnings, source.name, source.width, source.height, capped.Item1, capped.Item2);
                 return png;
             }
             finally { UnityEngine.Object.DestroyImmediate(destination); }
