@@ -257,7 +257,11 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
+        // An upload saves NDMF's build output before VRCFury runs; serialize
+        // does the same here. VRCFury reads each controller's state behaviours
+        // from the saved asset, so a controller NDMF wrote back would reach it
+        // without them (an outfit's parameter drivers, for example).
+        private void ApplyVrcFury(GameObject clone, ICollection<string> warnings, Action serialize = null)
         {
             if (!HasVrcFuryComponent(clone)) return;
             if (!clone.GetComponents<Component>().Any(component => component != null &&
@@ -267,6 +271,7 @@ namespace VRVlog.LilToonExporter
                 return;
             }
             SkipVrcFuryWriteDefaultsQuestion(clone, FindType("VF.Model.VRCFury"), FindType("VF.Model.Feature.FixWriteDefaults"));
+            serialize?.Invoke();
             var existing = new HashSet<Object>(Dependencies(clone));
             try
             {
@@ -637,7 +642,7 @@ namespace VRVlog.LilToonExporter
                         }
                         if (IsSuccessful(bridge, context))
                         {
-                            lease.ApplyVrcFury(clone, warnings);
+                            lease.ApplyVrcFury(clone, warnings, () => Invoke(() => bridge.Serialize.Invoke(context, null)));
                             // Prepared identities must be available while export
                             // evaluates the committed controller, before AAO.
                             lease.CaptureRendererReplacements(clone, context);
@@ -1193,7 +1198,7 @@ namespace VRVlog.LilToonExporter
         internal sealed class Bridge
         {
             internal ConstructorInfo Context, DirectoryScope;
-            internal MethodInfo Process, Finish, PrimaryPlatform;
+            internal MethodInfo Process, Finish, Serialize, PrimaryPlatform;
             internal PropertyInfo Successful, AssetSaver, GenericPlatform;
             internal object First, Generating, Transforming, Optimizing;
 
@@ -1221,6 +1226,7 @@ namespace VRVlog.LilToonExporter
                     DirectoryScope = directory.GetConstructor(new[] { typeof(string) }),
                     Process = processor.GetMethod("ProcessAvatar", staticMembers, null, new[] { context, phase, phase }, null),
                     Finish = context.GetMethod("Finish", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, Type.EmptyTypes, null),
+                    Serialize = context.GetMethod("Serialize", publicInstance, null, Type.EmptyTypes, null),
                     Successful = context.GetProperty("Successful", publicInstance),
                     AssetSaver = context.GetProperty("AssetSaver", publicInstance),
                     PrimaryPlatform = registry?.GetMethod("GetPrimaryPlatformForAvatar", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(GameObject) }, null),
@@ -1231,7 +1237,7 @@ namespace VRVlog.LilToonExporter
                     Optimizing = phase.GetField("Optimizing", staticMembers)?.GetValue(null)
                 };
                 if (result.Context == null || result.DirectoryScope == null || !typeof(IDisposable).IsAssignableFrom(directory) ||
-                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) ||
+                    result.Process?.ReturnType != typeof(void) || result.Finish?.ReturnType != typeof(void) || result.Serialize?.ReturnType != typeof(void) ||
                     result.Successful?.PropertyType != typeof(bool) || result.Successful.GetMethod == null || result.AssetSaver?.GetMethod == null ||
                     (platforms && (result.PrimaryPlatform?.ReturnType != provider || result.GenericPlatform?.PropertyType != provider)) ||
                     !phase.IsInstanceOfType(result.First) || !phase.IsInstanceOfType(result.Generating) || !phase.IsInstanceOfType(result.Transforming) ||

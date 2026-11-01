@@ -44,6 +44,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void TearDown()
         {
             FakeProcessor.GeneratingAction = null;
+            FakeContext.SerializeAction = null;
             NdmfExportPreparation.PluginPackagesOverride = null;
             NdmfExportPreparation.VrcFuryOverride = null;
             Object.DestroyImmediate(source);
@@ -614,9 +615,28 @@ namespace VRVlog.LilToonExporter.Tests
             FakeProcessor.GeneratingAction = root => order.Add("Generating");
             FakeProcessor.Action = root => order.Add("Transforming");
             FakeProcessor.OptimizationAction = root => order.Add("Optimizing");
+            FakeContext.SerializeAction = root => order.Add("Serialize");
             NdmfExportPreparation.VrcFuryOverride = root => { order.Add("VRCFury"); return true; };
             using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => order.Add("callback"))) { }
-            CollectionAssert.AreEqual(new[] { "Generating", "Transforming", "VRCFury", "callback", "Optimizing" }, order);
+            // As in an upload, NDMF's output is saved before VRCFury reads it.
+            CollectionAssert.AreEqual(new[] { "Generating", "Transforming", "Serialize", "VRCFury", "callback", "Optimizing" }, order);
+        }
+
+        [Test]
+        public void NdmfOutputIsSavedEarlyOnlyForVrcFury()
+        {
+            var serialized = 0;
+            var vrcFury = 0;
+            FakeContext.SerializeAction = root => serialized++;
+            NdmfExportPreparation.VrcFuryOverride = root => { vrcFury++; return true; };
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { })) { }
+            Assert.AreEqual(0, serialized);
+            // A VRCFury component without an avatar descriptor is not built,
+            // so nothing is saved for it either.
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { })) { }
+            Assert.AreEqual(0, serialized);
+            Assert.AreEqual(0, vrcFury);
         }
 
         [Test]
@@ -1183,6 +1203,7 @@ namespace VRVlog.LilToonExporter.Tests
             public IDisposable AssetSaver { get; } = new FakeSaver();
             public FakeLegacyContext(GameObject root, string path, bool isClone) { Root = root; Last = this; }
             internal void Finish() => FinishCount++;
+            public void Serialize() { }
         }
         public static class FakeLegacyProcessor
         {
@@ -1222,6 +1243,8 @@ namespace VRVlog.LilToonExporter.Tests
             public readonly FakeSaver Saver = new FakeSaver();
             public bool Finished;
             public int FinishCount;
+            public static Action<GameObject> SerializeAction;
+            public void Serialize() => SerializeAction?.Invoke(Root);
             public bool Successful => Success;
             public IDisposable AssetSaver => Saver;
             public static readonly List<FakeErrorContext> ReportedErrors = new List<FakeErrorContext>();
