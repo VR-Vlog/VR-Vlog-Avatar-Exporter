@@ -4,6 +4,11 @@ The homepage contains the existing tutorial card and chapter buttons, followed
 by installation for ALCOM/VCC and support. The duplicate transfer three-step
 section and the separate written setup guide have been retired.
 
+The hero groups its short heading, explanation and installation action together.
+Desktop uses balanced copy/video columns; mobile stacks that copy/action group
+before the tutorial card. Keep the preview and both chapters visible without
+reintroducing a separate guide, and use the existing first-frame thumbnail.
+
 `guide/index.html` is only a compatibility redirect to the homepage video card
 (`#tutorial`); it has no guide content and is excluded from the sitemap. Internal
 navigation no longer links to it. Keep the fallback link for browsers without

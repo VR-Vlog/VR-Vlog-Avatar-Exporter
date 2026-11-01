@@ -23,11 +23,13 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-header nav{display:flex;gap:23px;align-items:center}
 #exporter-page .vrx-nav-link{border:0;background:transparent;padding:8px 0;text-decoration:none;font-size:12px;white-space:nowrap}
 #exporter-page .vrx-header-cta{padding:9px 17px;min-height:42px;border:1px solid #ff1880;border-radius:6px;background:#ff1880;color:#160912!important;font-size:12px;font-weight:700;white-space:nowrap}
-#exporter-page .vrx-hero{display:grid;grid-template-columns:1.12fr .88fr;gap:24px 42px;align-items:start;padding-block:44px 42px}
-#exporter-page .vrx-hero-copy{grid-column:1;grid-row:1;align-self:end}
-#exporter-page .vrx-hero-actions{grid-column:1;grid-row:2}
-#exporter-page .vrx-tutorial-card{grid-column:2;grid-row:1 / span 2;align-self:center;min-width:0;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
-#exporter-page .vrx-tutorial-card h2{font-size:clamp(20px,2.2vw,27px);line-height:1.5;margin-bottom:16px}
+#exporter-page .vrx-hero{display:grid;grid-template-columns:minmax(0,.95fr) minmax(0,1.05fr);gap:60px;align-items:center;padding-block:48px}
+#exporter-page .vrx-hero-copy{min-width:0}
+#exporter-page .vrx-hero-actions{margin-top:24px}
+#exporter-page .vrx-tutorial-card{min-width:0;padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:14px}
+#exporter-page .vrx-tutorial-meta{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;color:var(--muted);font-size:12px}
+#exporter-page .vrx-tutorial-meta .vrx-small-label{margin-bottom:0!important}
+#exporter-page .vrx-tutorial-card h2{font-size:clamp(18px,1.8vw,22px);line-height:1.5;margin-bottom:14px}
 #exporter-page .vrx-tutorial-preview{position:relative;display:block;width:100%;padding:0;aspect-ratio:16 / 9;overflow:hidden;border:1px solid #596374;border-radius:8px;background:#11151b;cursor:pointer}
 #exporter-page .vrx-site .vrx-tutorial-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #exporter-page .vrx-tutorial-play{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:60px;height:60px;padding-left:4px;border-radius:50%;background:var(--accent);color:var(--on-accent);font:700 25px/1 sans-serif;box-shadow:0 0 0 6px #171a2077}
@@ -37,13 +39,14 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-tutorial-chapters button{flex:1;min-width:0;min-height:44px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:7px 8px;font-size:12px;cursor:pointer}
 #exporter-page .vrx-tutorial-chapters time{font-size:11px;color:var(--muted);white-space:nowrap}
 #exporter-page .vrx-tutorial-chapters button:hover{border-color:var(--accent)}
-#exporter-page h1{font-weight:700;font-size:clamp(30px,4.7vw,var(--heading));line-height:1.4;letter-spacing:-.035em}
+#exporter-page h1{font-weight:700;font-size:clamp(32px,3.8vw,48px);line-height:1.25;letter-spacing:-.02em}
 #exporter-page h1 span{display:block;white-space:nowrap}
-#exporter-page .vrx-lead{font-size:15px;line-height:1.95;color:var(--muted);margin-top:24px;max-width:460px}
+#exporter-page .vrx-hero-brand{color:var(--accent)}
+#exporter-page .vrx-hero-copy .vrx-lead{font-size:16px;line-height:1.85;color:var(--muted);margin-top:20px;max-width:480px}
 #exporter-page .vrx-hero-action{margin-top:0}
 #exporter-page .vrx-primary{display:inline-flex;align-items:center;justify-content:center;gap:12px;min-height:60px;max-width:100%;padding:14px 26px;border:1px solid var(--accent);border-radius:8px;background:var(--accent);color:var(--on-accent)!important;font-weight:700;font-size:17px;letter-spacing:.01em}
 #exporter-page .vrx-primary svg{width:22px;height:22px}
-#exporter-page .vrx-hero-action>p{font-size:11px;line-height:1.8;color:var(--muted);margin-top:13px}
+#exporter-page .vrx-hero-action>p{font-size:13px;line-height:1.8;color:var(--muted);margin-top:12px}
 #exporter-page .vrx-text-button{display:inline-flex;align-items:center;gap:8px;font-size:12px;line-height:1.6;background:none;border:0;padding:8px 0;margin-top:18px;text-decoration:underline;text-underline-offset:4px;text-decoration-color:var(--line)}
 #exporter-page .vrx-text-button svg{width:14px;height:14px}
 #exporter-page .vrx-photo{height:var(--photo-height);overflow:hidden;border-radius:20px 20px 5px 5px;background:#363942}
@@ -125,21 +128,20 @@ body:has(dialog[open]){overflow:hidden}
 @media(max-width:1100px){#exporter-page .vrx-install-package{grid-template-columns:1fr}}
 @media(min-width:1200px){
   #exporter-page .vrx-header{padding-inline:max(40px,calc((100% - 1160px)/2))}
-  #exporter-page .vrx-hero{padding-block:58px 48px;grid-template-columns:1.2fr .8fr}
+  #exporter-page .vrx-hero{padding-block:56px 48px}
   #exporter-page .vrx-photo{height:480px}
-  #exporter-page h1{font-size:56px}
 }
 @media(max-width:850px){
   #exporter-page .vrx-wrap{width:calc(100% - 56px)}
   #exporter-page .vrx-header{padding-inline:28px;gap:15px}
   #exporter-page .vrx-brand>span{display:none}
   #exporter-page .vrx-header nav{gap:18px}
-  #exporter-page .vrx-hero{gap:20px 25px;padding-block:34px}
+  #exporter-page .vrx-hero{gap:32px;padding-block:34px}
   #exporter-page .vrx-tutorial-card{padding:15px}
   #exporter-page .vrx-tutorial-chapters{flex-direction:column;gap:6px}
   #exporter-page .vrx-photo{height:390px}
   #exporter-page .vrx-primary{font-size:15px;padding-inline:18px}
-  #exporter-page .vrx-lead{font-size:13px}
+  #exporter-page .vrx-hero-copy .vrx-lead{font-size:15px}
   #exporter-page .vrx-wide-break{display:none}
   #exporter-page .vrx-install{padding:23px}
   #exporter-page .vrx-install-cards{gap:16px}
@@ -158,15 +160,13 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-brand img{width:128px}
   #exporter-page .vrx-header .vrx-nav-link{display:none}
   #exporter-page .vrx-header-cta{min-height:44px;padding-inline:14px}
-  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:25px;padding-block:28px 30px}
-  #exporter-page .vrx-hero-copy,#exporter-page .vrx-tutorial-card,#exporter-page .vrx-hero-actions{grid-column:1;grid-row:auto}
+  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:24px;padding-block:28px 30px}
   #exporter-page .vrx-tutorial-card{padding:14px}
-  #exporter-page .vrx-tutorial-card h2{font-size:20px;margin-bottom:12px}
-  #exporter-page .vrx-tutorial-card h2 br{display:none}
+  #exporter-page .vrx-tutorial-card h2{font-size:18px;margin-bottom:12px}
   #exporter-page .vrx-tutorial-chapters{flex-direction:row;margin-top:10px}
   #exporter-page .vrx-tutorial-chapters button{font-size:12px;padding-inline:4px}
-  #exporter-page h1{font-size:clamp(27px,8.2vw,43px)}
-  #exporter-page .vrx-lead{margin-top:16px;font-size:14px}
+  #exporter-page h1{font-size:clamp(30px,8.4vw,36px)}
+  #exporter-page .vrx-hero-copy .vrx-lead{margin-top:16px;font-size:15px}
   #exporter-page .vrx-hero-action{margin-top:0}
   #exporter-page .vrx-primary{width:100%;font-size:15px;padding-inline:12px;min-height:58px}
   #exporter-page .vrx-hero-action>p{font-size:12px}
@@ -202,5 +202,5 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-dialog{width:94%;padding-inline:16px;max-height:90dvh}
   #exporter-page .vrx-dialog-body h2{font-size:19px}
 }
-@media(max-width:360px){#exporter-page h1{font-size:25px}#exporter-page .vrx-primary{font-size:14px;gap:8px}}
+@media(max-width:360px){#exporter-page .vrx-primary{font-size:14px;gap:8px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#exporter-page .vrx-primary{transition:none}}
