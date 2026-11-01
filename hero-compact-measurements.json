@@ -1,0 +1,3166 @@
+{
+  "desktop": {
+    "elements": {
+      ".vrx-hero": {
+        "clientWidth": 1160,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 433.828125,
+            "height": 244.53125,
+            "left": 140,
+            "right": 810.796875,
+            "top": 189.296875,
+            "width": 670.796875
+          },
+          {
+            "bottom": 268.296875,
+            "height": 81,
+            "left": 140,
+            "right": 626.375,
+            "top": 187.296875,
+            "width": 486.375
+          },
+          {
+            "bottom": 346.6875,
+            "height": 81,
+            "left": 140,
+            "right": 430.921875,
+            "top": 265.6875,
+            "width": 290.921875
+          },
+          {
+            "bottom": 371.078125,
+            "height": 21,
+            "left": 140,
+            "right": 594.359375,
+            "top": 350.078125,
+            "width": 454.359375
+          },
+          {
+            "bottom": 400.328125,
+            "height": 21,
+            "left": 140,
+            "right": 245.53125,
+            "top": 379.328125,
+            "width": 105.53125
+          },
+          {
+            "bottom": 429.578125,
+            "height": 21,
+            "left": 140,
+            "right": 426.4375,
+            "top": 408.578125,
+            "width": 286.4375
+          },
+          {
+            "bottom": 595.515625,
+            "height": 450.515625,
+            "left": 852.796875,
+            "right": 1300,
+            "top": 145,
+            "width": 447.203125
+          },
+          {
+            "bottom": 185,
+            "height": 17,
+            "left": 873.796875,
+            "right": 989.171875,
+            "top": 168,
+            "width": 115.375
+          },
+          {
+            "bottom": 232.59375,
+            "height": 39,
+            "left": 873.796875,
+            "right": 1058.078125,
+            "top": 193.59375,
+            "width": 184.28125
+          },
+          {
+            "bottom": 273.09375,
+            "height": 39,
+            "left": 873.796875,
+            "right": 1084.40625,
+            "top": 234.09375,
+            "width": 210.609375
+          },
+          {
+            "bottom": 417.046875,
+            "height": 25,
+            "left": 1065.890625,
+            "right": 1090.890625,
+            "top": 392.046875,
+            "width": 25
+          },
+          {
+            "bottom": 505.125,
+            "height": 19,
+            "left": 1024.390625,
+            "right": 1128.390625,
+            "top": 486.125,
+            "width": 104
+          },
+          {
+            "bottom": 560.609375,
+            "height": 17,
+            "left": 929.578125,
+            "right": 980.953125,
+            "top": 543.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 560.609375,
+            "height": 16,
+            "left": 980.953125,
+            "right": 1016.59375,
+            "top": 544.609375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 560.609375,
+            "height": 17,
+            "left": 1136.828125,
+            "right": 1188.203125,
+            "top": 543.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 560.609375,
+            "height": 16,
+            "left": 1188.203125,
+            "right": 1222.546875,
+            "top": 544.609375,
+            "width": 34.34375
+          },
+          {
+            "bottom": 551.21875,
+            "height": 93.390625,
+            "left": 140,
+            "right": 810.796875,
+            "top": 457.828125,
+            "width": 670.796875
+          },
+          {
+            "bottom": 499.828125,
+            "height": 25,
+            "left": 201,
+            "right": 407.046875,
+            "top": 474.828125,
+            "width": 206.046875
+          },
+          {
+            "bottom": 548.421875,
+            "height": 16,
+            "left": 140,
+            "right": 447.46875,
+            "top": 532.421875,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 643.515625,
+          "height": 556.515625,
+          "left": 140,
+          "right": 1300,
+          "top": 87,
+          "width": 1160
+        },
+        "scrollWidth": 1160,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。\n\n使い方動画 / 5分39秒\n\n動画でわかる、\n導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜\nエクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-action": {
+        "clientWidth": 671,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 518.421875,
+            "height": 60.59375,
+            "left": 140,
+            "right": 434.046875,
+            "top": 457.828125,
+            "width": 294.046875
+          },
+          {
+            "bottom": 499.828125,
+            "height": 25,
+            "left": 201,
+            "right": 407.046875,
+            "top": 474.828125,
+            "width": 206.046875
+          },
+          {
+            "bottom": 551.21875,
+            "height": 19.796875,
+            "left": 140,
+            "right": 810.796875,
+            "top": 531.421875,
+            "width": 670.796875
+          },
+          {
+            "bottom": 548.421875,
+            "height": 16,
+            "left": 140,
+            "right": 447.46875,
+            "top": 532.421875,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 551.21875,
+          "height": 93.390625,
+          "left": 140,
+          "right": 810.796875,
+          "top": 457.828125,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-actions": {
+        "clientWidth": 671,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 551.21875,
+            "height": 93.390625,
+            "left": 140,
+            "right": 810.796875,
+            "top": 457.828125,
+            "width": 670.796875
+          },
+          {
+            "bottom": 499.828125,
+            "height": 25,
+            "left": 201,
+            "right": 407.046875,
+            "top": 474.828125,
+            "width": 206.046875
+          },
+          {
+            "bottom": 548.421875,
+            "height": 16,
+            "left": 140,
+            "right": 447.46875,
+            "top": 532.421875,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 551.21875,
+          "height": 93.390625,
+          "left": 140,
+          "right": 810.796875,
+          "top": 457.828125,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-copy": {
+        "clientWidth": 671,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 346.078125,
+            "height": 156.78125,
+            "left": 140,
+            "right": 810.796875,
+            "top": 189.296875,
+            "width": 670.796875
+          },
+          {
+            "bottom": 268.296875,
+            "height": 81,
+            "left": 140,
+            "right": 626.375,
+            "top": 187.296875,
+            "width": 486.375
+          },
+          {
+            "bottom": 346.6875,
+            "height": 81,
+            "left": 140,
+            "right": 430.921875,
+            "top": 265.6875,
+            "width": 290.921875
+          },
+          {
+            "bottom": 433.828125,
+            "height": 87.75,
+            "left": 140,
+            "right": 600,
+            "top": 346.078125,
+            "width": 460
+          },
+          {
+            "bottom": 371.078125,
+            "height": 21,
+            "left": 140,
+            "right": 594.359375,
+            "top": 350.078125,
+            "width": 454.359375
+          },
+          {
+            "bottom": 400.328125,
+            "height": 21,
+            "left": 140,
+            "right": 245.53125,
+            "top": 379.328125,
+            "width": 105.53125
+          },
+          {
+            "bottom": 429.578125,
+            "height": 21,
+            "left": 140,
+            "right": 426.4375,
+            "top": 408.578125,
+            "width": 286.4375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 433.828125,
+          "height": 244.53125,
+          "left": 140,
+          "right": 810.796875,
+          "top": 189.296875,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-lead": {
+        "clientWidth": 460,
+        "font": "15px / 29.25px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "29.25px",
+        "lines": [
+          {
+            "bottom": 371.078125,
+            "height": 21,
+            "left": 140,
+            "right": 594.359375,
+            "top": 350.078125,
+            "width": 454.359375
+          },
+          {
+            "bottom": 400.328125,
+            "height": 21,
+            "left": 140,
+            "right": 245.53125,
+            "top": 379.328125,
+            "width": 105.53125
+          },
+          {
+            "bottom": 400.328125,
+            "height": 21,
+            "left": 245.53125,
+            "right": 245.53125,
+            "top": 379.328125,
+            "width": 0
+          },
+          {
+            "bottom": 429.578125,
+            "height": 21,
+            "left": 140,
+            "right": 426.4375,
+            "top": 408.578125,
+            "width": 286.4375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 433.828125,
+          "height": 87.75,
+          "left": 140,
+          "right": 600,
+          "top": 346.078125,
+          "width": 460
+        },
+        "scrollWidth": 460,
+        "text": "Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-primary": {
+        "clientWidth": 292,
+        "font": "700 17px / 30.6px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "17px",
+        "fontWeight": "700",
+        "letterSpacing": "0.17px",
+        "lineHeight": "30.6px",
+        "lines": [
+          {
+            "bottom": 499.125,
+            "height": 22,
+            "left": 167,
+            "right": 189,
+            "top": 477.125,
+            "width": 22
+          },
+          {
+            "bottom": 499.828125,
+            "height": 25,
+            "left": 201,
+            "right": 407.046875,
+            "top": 474.828125,
+            "width": 206.046875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 518.421875,
+          "height": 60.59375,
+          "left": 140,
+          "right": 434.046875,
+          "top": 457.828125,
+          "width": 294.046875
+        },
+        "scrollWidth": 292,
+        "text": "エクスポーターを導入する",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-card": {
+        "clientWidth": 445,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 187.59375,
+            "height": 21.59375,
+            "left": 873.796875,
+            "right": 1279,
+            "top": 166,
+            "width": 405.203125
+          },
+          {
+            "bottom": 185,
+            "height": 17,
+            "left": 873.796875,
+            "right": 989.171875,
+            "top": 168,
+            "width": 115.375
+          },
+          {
+            "bottom": 274.59375,
+            "height": 81,
+            "left": 873.796875,
+            "right": 1279,
+            "top": 193.59375,
+            "width": 405.203125
+          },
+          {
+            "bottom": 232.59375,
+            "height": 39,
+            "left": 873.796875,
+            "right": 1058.078125,
+            "top": 193.59375,
+            "width": 184.28125
+          },
+          {
+            "bottom": 273.09375,
+            "height": 39,
+            "left": 873.796875,
+            "right": 1084.40625,
+            "top": 234.09375,
+            "width": 210.609375
+          },
+          {
+            "bottom": 518.515625,
+            "height": 227.921875,
+            "left": 873.796875,
+            "right": 1279,
+            "top": 290.59375,
+            "width": 405.203125
+          },
+          {
+            "bottom": 417.046875,
+            "height": 25,
+            "left": 1065.890625,
+            "right": 1090.890625,
+            "top": 392.046875,
+            "width": 25
+          },
+          {
+            "bottom": 505.125,
+            "height": 19,
+            "left": 1024.390625,
+            "right": 1128.390625,
+            "top": 486.125,
+            "width": 104
+          },
+          {
+            "bottom": 574.515625,
+            "height": 44,
+            "left": 873.796875,
+            "right": 1279,
+            "top": 530.515625,
+            "width": 405.203125
+          },
+          {
+            "bottom": 560.609375,
+            "height": 17,
+            "left": 929.578125,
+            "right": 980.953125,
+            "top": 543.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 560.609375,
+            "height": 16,
+            "left": 980.953125,
+            "right": 1016.59375,
+            "top": 544.609375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 560.609375,
+            "height": 17,
+            "left": 1136.828125,
+            "right": 1188.203125,
+            "top": 543.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 560.609375,
+            "height": 16,
+            "left": 1188.203125,
+            "right": 1222.546875,
+            "top": 544.609375,
+            "width": 34.34375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 595.515625,
+          "height": 450.515625,
+          "left": 852.796875,
+          "right": 1300,
+          "top": 145,
+          "width": 447.203125
+        },
+        "scrollWidth": 445,
+        "text": "使い方動画 / 5分39秒\n\n動画でわかる、\n導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-preview": {
+        "clientWidth": 403,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "normal",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 517.515625,
+            "height": 225.921875,
+            "left": 874.796875,
+            "right": 1278,
+            "top": 291.59375,
+            "width": 403.203125
+          },
+          {
+            "bottom": 434.546875,
+            "height": 60,
+            "left": 1046.390625,
+            "right": 1106.390625,
+            "top": 374.546875,
+            "width": 60
+          },
+          {
+            "bottom": 417.046875,
+            "height": 25,
+            "left": 1065.890625,
+            "right": 1090.890625,
+            "top": 392.046875,
+            "width": 25
+          },
+          {
+            "bottom": 509.515625,
+            "height": 27.390625,
+            "left": 1014.390625,
+            "right": 1138.390625,
+            "top": 482.125,
+            "width": 124
+          },
+          {
+            "bottom": 505.125,
+            "height": 19,
+            "left": 1024.390625,
+            "right": 1128.390625,
+            "top": 486.125,
+            "width": 104
+          }
+        ],
+        "overflow": "hidden",
+        "rect": {
+          "bottom": 518.515625,
+          "height": 227.921875,
+          "left": 873.796875,
+          "right": 1279,
+          "top": 290.59375,
+          "width": 405.203125
+        },
+        "scrollWidth": 403,
+        "text": "▶\n使い方動画を見る",
+        "whiteSpace": "normal"
+      },
+      "h1": {
+        "clientWidth": 671,
+        "font": "700 56px / 78.4px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "56px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.96px",
+        "lineHeight": "78.4px",
+        "lines": [
+          {
+            "bottom": 267.6875,
+            "height": 78.390625,
+            "left": 140,
+            "right": 810.796875,
+            "top": 189.296875,
+            "width": 670.796875
+          },
+          {
+            "bottom": 268.296875,
+            "height": 81,
+            "left": 140,
+            "right": 626.375,
+            "top": 187.296875,
+            "width": 486.375
+          },
+          {
+            "bottom": 346.078125,
+            "height": 78.390625,
+            "left": 140,
+            "right": 810.796875,
+            "top": 267.6875,
+            "width": 670.796875
+          },
+          {
+            "bottom": 346.6875,
+            "height": 81,
+            "left": 140,
+            "right": 430.921875,
+            "top": 265.6875,
+            "width": 290.921875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 346.078125,
+          "height": 156.78125,
+          "left": 140,
+          "right": 810.796875,
+          "top": 189.296875,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "自分のアバターを、\nVR Vlogへ。",
+        "whiteSpace": "normal"
+      },
+      "h1 span:nth-child(1)": {
+        "clientWidth": 671,
+        "font": "700 56px / 78.4px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "56px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.96px",
+        "lineHeight": "78.4px",
+        "lines": [
+          {
+            "bottom": 268.296875,
+            "height": 81,
+            "left": 140,
+            "right": 626.375,
+            "top": 187.296875,
+            "width": 486.375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 267.6875,
+          "height": 78.390625,
+          "left": 140,
+          "right": 810.796875,
+          "top": 189.296875,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "自分のアバターを、",
+        "whiteSpace": "nowrap"
+      },
+      "h1 span:nth-child(2)": {
+        "clientWidth": 671,
+        "font": "700 56px / 78.4px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "56px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.96px",
+        "lineHeight": "78.4px",
+        "lines": [
+          {
+            "bottom": 346.6875,
+            "height": 81,
+            "left": 140,
+            "right": 430.921875,
+            "top": 265.6875,
+            "width": 290.921875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 346.078125,
+          "height": 78.390625,
+          "left": 140,
+          "right": 810.796875,
+          "top": 267.6875,
+          "width": 670.796875
+        },
+        "scrollWidth": 671,
+        "text": "VR Vlogへ。",
+        "whiteSpace": "nowrap"
+      }
+    },
+    "fontStatus": "loaded",
+    "fonts": [],
+    "viewport": {
+      "documentClient": 1440,
+      "documentWidth": 1440,
+      "dpr": 1,
+      "height": 1000,
+      "scrollX": 0,
+      "scrollY": 0,
+      "width": 1440
+    },
+    "zenCheck": false
+  },
+  "mobile": {
+    "elements": {
+      ".vrx-hero": {
+        "clientWidth": 350,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 278.421875,
+            "height": 171.421875,
+            "left": 20,
+            "right": 370,
+            "top": 107,
+            "width": 350
+          },
+          {
+            "bottom": 152,
+            "height": 46,
+            "left": 20,
+            "right": 297.75,
+            "top": 106,
+            "width": 277.75
+          },
+          {
+            "bottom": 196.765625,
+            "height": 46,
+            "left": 20,
+            "right": 186.140625,
+            "top": 150.765625,
+            "width": 166.140625
+          },
+          {
+            "bottom": 219.53125,
+            "height": 20,
+            "left": 20,
+            "right": 345.734375,
+            "top": 199.53125,
+            "width": 325.734375
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 20,
+            "right": 217.0625,
+            "top": 226.828125,
+            "width": 197.0625
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 217.0625,
+            "right": 357.8125,
+            "top": 226.828125,
+            "width": 140.75
+          },
+          {
+            "bottom": 274.125,
+            "height": 20,
+            "left": 20,
+            "right": 146.6875,
+            "top": 254.125,
+            "width": 126.6875
+          },
+          {
+            "bottom": 637.015625,
+            "height": 333.59375,
+            "left": 20,
+            "right": 370,
+            "top": 303.421875,
+            "width": 350
+          },
+          {
+            "bottom": 337.421875,
+            "height": 17,
+            "left": 35,
+            "right": 150.375,
+            "top": 320.421875,
+            "width": 115.375
+          },
+          {
+            "bottom": 375.015625,
+            "height": 29,
+            "left": 35,
+            "right": 171.5,
+            "top": 346.015625,
+            "width": 136.5
+          },
+          {
+            "bottom": 375.015625,
+            "height": 29,
+            "left": 171.5,
+            "right": 327.5,
+            "top": 346.015625,
+            "width": 156
+          },
+          {
+            "bottom": 490.515625,
+            "height": 25,
+            "left": 184.5,
+            "right": 209.5,
+            "top": 465.515625,
+            "width": 25
+          },
+          {
+            "bottom": 554.625,
+            "height": 19,
+            "left": 143,
+            "right": 247,
+            "top": 535.625,
+            "width": 104
+          },
+          {
+            "bottom": 608.109375,
+            "height": 17,
+            "left": 69.984375,
+            "right": 121.359375,
+            "top": 591.109375,
+            "width": 51.375
+          },
+          {
+            "bottom": 608.109375,
+            "height": 16,
+            "left": 121.359375,
+            "right": 157,
+            "top": 592.109375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 608.109375,
+            "height": 17,
+            "left": 233.640625,
+            "right": 285.015625,
+            "top": 591.109375,
+            "width": 51.375
+          },
+          {
+            "bottom": 608.109375,
+            "height": 16,
+            "left": 285.015625,
+            "right": 319.359375,
+            "top": 592.109375,
+            "width": 34.34375
+          },
+          {
+            "bottom": 754.609375,
+            "height": 92.59375,
+            "left": 20,
+            "right": 370,
+            "top": 662.015625,
+            "width": 350
+          },
+          {
+            "bottom": 701.515625,
+            "height": 21,
+            "left": 121.09375,
+            "right": 302.90625,
+            "top": 680.515625,
+            "width": 181.8125
+          },
+          {
+            "bottom": 752.015625,
+            "height": 17,
+            "left": 20,
+            "right": 355.1875,
+            "top": 735.015625,
+            "width": 335.1875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 784.609375,
+          "height": 705.609375,
+          "left": 20,
+          "right": 370,
+          "top": 79,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。\n\n使い方動画 / 5分39秒\n\n動画でわかる、導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜\nエクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-action": {
+        "clientWidth": 350,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 720.015625,
+            "height": 58,
+            "left": 20,
+            "right": 370,
+            "top": 662.015625,
+            "width": 350
+          },
+          {
+            "bottom": 701.515625,
+            "height": 21,
+            "left": 121.09375,
+            "right": 302.90625,
+            "top": 680.515625,
+            "width": 181.8125
+          },
+          {
+            "bottom": 754.609375,
+            "height": 21.59375,
+            "left": 20,
+            "right": 370,
+            "top": 733.015625,
+            "width": 350
+          },
+          {
+            "bottom": 752.015625,
+            "height": 17,
+            "left": 20,
+            "right": 355.1875,
+            "top": 735.015625,
+            "width": 335.1875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 754.609375,
+          "height": 92.59375,
+          "left": 20,
+          "right": 370,
+          "top": 662.015625,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-actions": {
+        "clientWidth": 350,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 754.609375,
+            "height": 92.59375,
+            "left": 20,
+            "right": 370,
+            "top": 662.015625,
+            "width": 350
+          },
+          {
+            "bottom": 701.515625,
+            "height": 21,
+            "left": 121.09375,
+            "right": 302.90625,
+            "top": 680.515625,
+            "width": 181.8125
+          },
+          {
+            "bottom": 752.015625,
+            "height": 17,
+            "left": 20,
+            "right": 355.1875,
+            "top": 735.015625,
+            "width": 335.1875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 754.609375,
+          "height": 92.59375,
+          "left": 20,
+          "right": 370,
+          "top": 662.015625,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-copy": {
+        "clientWidth": 350,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 196.53125,
+            "height": 89.53125,
+            "left": 20,
+            "right": 370,
+            "top": 107,
+            "width": 350
+          },
+          {
+            "bottom": 152,
+            "height": 46,
+            "left": 20,
+            "right": 297.75,
+            "top": 106,
+            "width": 277.75
+          },
+          {
+            "bottom": 196.765625,
+            "height": 46,
+            "left": 20,
+            "right": 186.140625,
+            "top": 150.765625,
+            "width": 166.140625
+          },
+          {
+            "bottom": 278.421875,
+            "height": 81.890625,
+            "left": 20,
+            "right": 370,
+            "top": 196.53125,
+            "width": 350
+          },
+          {
+            "bottom": 219.53125,
+            "height": 20,
+            "left": 20,
+            "right": 345.734375,
+            "top": 199.53125,
+            "width": 325.734375
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 20,
+            "right": 217.0625,
+            "top": 226.828125,
+            "width": 197.0625
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 217.0625,
+            "right": 357.8125,
+            "top": 226.828125,
+            "width": 140.75
+          },
+          {
+            "bottom": 274.125,
+            "height": 20,
+            "left": 20,
+            "right": 146.6875,
+            "top": 254.125,
+            "width": 126.6875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 278.421875,
+          "height": 171.421875,
+          "left": 20,
+          "right": 370,
+          "top": 107,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-lead": {
+        "clientWidth": 350,
+        "font": "14px / 27.3px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "14px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27.3px",
+        "lines": [
+          {
+            "bottom": 219.53125,
+            "height": 20,
+            "left": 20,
+            "right": 345.734375,
+            "top": 199.53125,
+            "width": 325.734375
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 20,
+            "right": 217.0625,
+            "top": 226.828125,
+            "width": 197.0625
+          },
+          {
+            "bottom": 246.828125,
+            "height": 20,
+            "left": 217.0625,
+            "right": 357.8125,
+            "top": 226.828125,
+            "width": 140.75
+          },
+          {
+            "bottom": 274.125,
+            "height": 20,
+            "left": 20,
+            "right": 146.6875,
+            "top": 254.125,
+            "width": 126.6875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 278.421875,
+          "height": 81.890625,
+          "left": 20,
+          "right": 370,
+          "top": 196.53125,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-primary": {
+        "clientWidth": 348,
+        "font": "700 15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "700",
+        "letterSpacing": "0.15px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 702.015625,
+            "height": 22,
+            "left": 87.09375,
+            "right": 109.09375,
+            "top": 680.015625,
+            "width": 22
+          },
+          {
+            "bottom": 701.515625,
+            "height": 21,
+            "left": 121.09375,
+            "right": 302.90625,
+            "top": 680.515625,
+            "width": 181.8125
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 720.015625,
+          "height": 58,
+          "left": 20,
+          "right": 370,
+          "top": 662.015625,
+          "width": 350
+        },
+        "scrollWidth": 348,
+        "text": "エクスポーターを導入する",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-card": {
+        "clientWidth": 348,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 340.015625,
+            "height": 21.59375,
+            "left": 35,
+            "right": 355,
+            "top": 318.421875,
+            "width": 320
+          },
+          {
+            "bottom": 337.421875,
+            "height": 17,
+            "left": 35,
+            "right": 150.375,
+            "top": 320.421875,
+            "width": 115.375
+          },
+          {
+            "bottom": 376.015625,
+            "height": 30,
+            "left": 35,
+            "right": 355,
+            "top": 346.015625,
+            "width": 320
+          },
+          {
+            "bottom": 375.015625,
+            "height": 29,
+            "left": 35,
+            "right": 171.5,
+            "top": 346.015625,
+            "width": 136.5
+          },
+          {
+            "bottom": 375.015625,
+            "height": 29,
+            "left": 171.5,
+            "right": 327.5,
+            "top": 346.015625,
+            "width": 156
+          },
+          {
+            "bottom": 568.015625,
+            "height": 180,
+            "left": 35,
+            "right": 355,
+            "top": 388.015625,
+            "width": 320
+          },
+          {
+            "bottom": 490.515625,
+            "height": 25,
+            "left": 184.5,
+            "right": 209.5,
+            "top": 465.515625,
+            "width": 25
+          },
+          {
+            "bottom": 554.625,
+            "height": 19,
+            "left": 143,
+            "right": 247,
+            "top": 535.625,
+            "width": 104
+          },
+          {
+            "bottom": 622.015625,
+            "height": 44,
+            "left": 35,
+            "right": 355,
+            "top": 578.015625,
+            "width": 320
+          },
+          {
+            "bottom": 608.109375,
+            "height": 17,
+            "left": 69.984375,
+            "right": 121.359375,
+            "top": 591.109375,
+            "width": 51.375
+          },
+          {
+            "bottom": 608.109375,
+            "height": 16,
+            "left": 121.359375,
+            "right": 157,
+            "top": 592.109375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 608.109375,
+            "height": 17,
+            "left": 233.640625,
+            "right": 285.015625,
+            "top": 591.109375,
+            "width": 51.375
+          },
+          {
+            "bottom": 608.109375,
+            "height": 16,
+            "left": 285.015625,
+            "right": 319.359375,
+            "top": 592.109375,
+            "width": 34.34375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 637.015625,
+          "height": 333.59375,
+          "left": 20,
+          "right": 370,
+          "top": 303.421875,
+          "width": 350
+        },
+        "scrollWidth": 348,
+        "text": "使い方動画 / 5分39秒\n\n動画でわかる、導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-preview": {
+        "clientWidth": 318,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "normal",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 567.015625,
+            "height": 178,
+            "left": 36,
+            "right": 354,
+            "top": 389.015625,
+            "width": 318
+          },
+          {
+            "bottom": 508.015625,
+            "height": 60,
+            "left": 165,
+            "right": 225,
+            "top": 448.015625,
+            "width": 60
+          },
+          {
+            "bottom": 490.515625,
+            "height": 25,
+            "left": 184.5,
+            "right": 209.5,
+            "top": 465.515625,
+            "width": 25
+          },
+          {
+            "bottom": 559.015625,
+            "height": 27.390625,
+            "left": 133,
+            "right": 257,
+            "top": 531.625,
+            "width": 124
+          },
+          {
+            "bottom": 554.625,
+            "height": 19,
+            "left": 143,
+            "right": 247,
+            "top": 535.625,
+            "width": 104
+          }
+        ],
+        "overflow": "hidden",
+        "rect": {
+          "bottom": 568.015625,
+          "height": 180,
+          "left": 35,
+          "right": 355,
+          "top": 388.015625,
+          "width": 320
+        },
+        "scrollWidth": 318,
+        "text": "▶\n使い方動画を見る",
+        "whiteSpace": "normal"
+      },
+      "h1": {
+        "clientWidth": 350,
+        "font": "700 31.98px / 44.772px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "31.98px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.1193px",
+        "lineHeight": "44.772px",
+        "lines": [
+          {
+            "bottom": 151.765625,
+            "height": 44.765625,
+            "left": 20,
+            "right": 370,
+            "top": 107,
+            "width": 350
+          },
+          {
+            "bottom": 152,
+            "height": 46,
+            "left": 20,
+            "right": 297.75,
+            "top": 106,
+            "width": 277.75
+          },
+          {
+            "bottom": 196.53125,
+            "height": 44.765625,
+            "left": 20,
+            "right": 370,
+            "top": 151.765625,
+            "width": 350
+          },
+          {
+            "bottom": 196.765625,
+            "height": 46,
+            "left": 20,
+            "right": 186.140625,
+            "top": 150.765625,
+            "width": 166.140625
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 196.53125,
+          "height": 89.53125,
+          "left": 20,
+          "right": 370,
+          "top": 107,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "自分のアバターを、\nVR Vlogへ。",
+        "whiteSpace": "normal"
+      },
+      "h1 span:nth-child(1)": {
+        "clientWidth": 350,
+        "font": "700 31.98px / 44.772px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "31.98px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.1193px",
+        "lineHeight": "44.772px",
+        "lines": [
+          {
+            "bottom": 152,
+            "height": 46,
+            "left": 20,
+            "right": 297.75,
+            "top": 106,
+            "width": 277.75
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 151.765625,
+          "height": 44.765625,
+          "left": 20,
+          "right": 370,
+          "top": 107,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "自分のアバターを、",
+        "whiteSpace": "nowrap"
+      },
+      "h1 span:nth-child(2)": {
+        "clientWidth": 350,
+        "font": "700 31.98px / 44.772px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "31.98px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.1193px",
+        "lineHeight": "44.772px",
+        "lines": [
+          {
+            "bottom": 196.765625,
+            "height": 46,
+            "left": 20,
+            "right": 186.140625,
+            "top": 150.765625,
+            "width": 166.140625
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 196.53125,
+          "height": 44.765625,
+          "left": 20,
+          "right": 370,
+          "top": 151.765625,
+          "width": 350
+        },
+        "scrollWidth": 350,
+        "text": "VR Vlogへ。",
+        "whiteSpace": "nowrap"
+      }
+    },
+    "fontStatus": "loaded",
+    "fonts": [],
+    "viewport": {
+      "documentClient": 390,
+      "documentWidth": 390,
+      "dpr": 1,
+      "height": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "width": 390
+    },
+    "zenCheck": false
+  },
+  "width320": {
+    "elements": {
+      ".vrx-hero": {
+        "clientWidth": 280,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 258.890625,
+            "height": 151.890625,
+            "left": 20,
+            "right": 300,
+            "top": 107,
+            "width": 280
+          },
+          {
+            "bottom": 142,
+            "height": 36,
+            "left": 20,
+            "right": 237.125,
+            "top": 106,
+            "width": 217.125
+          },
+          {
+            "bottom": 177,
+            "height": 36,
+            "left": 20,
+            "right": 149.875,
+            "top": 141,
+            "width": 129.875
+          },
+          {
+            "bottom": 200,
+            "height": 20,
+            "left": 20,
+            "right": 289.421875,
+            "top": 180,
+            "width": 269.421875
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 207.296875,
+            "width": 253.359375
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 273.359375,
+            "right": 287.4375,
+            "top": 207.296875,
+            "width": 14.078125
+          },
+          {
+            "bottom": 254.59375,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 234.59375,
+            "width": 253.359375
+          },
+          {
+            "bottom": 608.109375,
+            "height": 324.21875,
+            "left": 20,
+            "right": 300,
+            "top": 283.890625,
+            "width": 280
+          },
+          {
+            "bottom": 317.890625,
+            "height": 17,
+            "left": 35,
+            "right": 150.375,
+            "top": 300.890625,
+            "width": 115.375
+          },
+          {
+            "bottom": 355.484375,
+            "height": 29,
+            "left": 35,
+            "right": 171.5,
+            "top": 326.484375,
+            "width": 136.5
+          },
+          {
+            "bottom": 355.484375,
+            "height": 29,
+            "left": 171.5,
+            "right": 269,
+            "top": 326.484375,
+            "width": 97.5
+          },
+          {
+            "bottom": 385.484375,
+            "height": 29,
+            "left": 35,
+            "right": 93.5,
+            "top": 356.484375,
+            "width": 58.5
+          },
+          {
+            "bottom": 481.296875,
+            "height": 25,
+            "left": 149.5,
+            "right": 174.5,
+            "top": 456.296875,
+            "width": 25
+          },
+          {
+            "bottom": 525.71875,
+            "height": 19,
+            "left": 108,
+            "right": 212,
+            "top": 506.71875,
+            "width": 104
+          },
+          {
+            "bottom": 579.203125,
+            "height": 17,
+            "left": 52.484375,
+            "right": 103.859375,
+            "top": 562.203125,
+            "width": 51.375
+          },
+          {
+            "bottom": 579.203125,
+            "height": 16,
+            "left": 103.859375,
+            "right": 139.5,
+            "top": 563.203125,
+            "width": 35.640625
+          },
+          {
+            "bottom": 579.203125,
+            "height": 17,
+            "left": 181.140625,
+            "right": 232.515625,
+            "top": 562.203125,
+            "width": 51.375
+          },
+          {
+            "bottom": 579.203125,
+            "height": 16,
+            "left": 232.515625,
+            "right": 266.859375,
+            "top": 563.203125,
+            "width": 34.34375
+          },
+          {
+            "bottom": 747.296875,
+            "height": 114.1875,
+            "left": 20,
+            "right": 300,
+            "top": 633.109375,
+            "width": 280
+          },
+          {
+            "bottom": 671.515625,
+            "height": 20,
+            "left": 90.15625,
+            "right": 259.84375,
+            "top": 651.515625,
+            "width": 169.6875
+          },
+          {
+            "bottom": 723.109375,
+            "height": 17,
+            "left": 20,
+            "right": 294.8125,
+            "top": 706.109375,
+            "width": 274.8125
+          },
+          {
+            "bottom": 744.703125,
+            "height": 17,
+            "left": 20,
+            "right": 80.375,
+            "top": 727.703125,
+            "width": 60.375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 777.296875,
+          "height": 698.296875,
+          "left": 20,
+          "right": 300,
+          "top": 79,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。\n\n使い方動画 / 5分39秒\n\n動画でわかる、導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜\nエクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-action": {
+        "clientWidth": 280,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 691.109375,
+            "height": 58,
+            "left": 20,
+            "right": 300,
+            "top": 633.109375,
+            "width": 280
+          },
+          {
+            "bottom": 671.515625,
+            "height": 20,
+            "left": 90.15625,
+            "right": 259.84375,
+            "top": 651.515625,
+            "width": 169.6875
+          },
+          {
+            "bottom": 747.296875,
+            "height": 43.1875,
+            "left": 20,
+            "right": 300,
+            "top": 704.109375,
+            "width": 280
+          },
+          {
+            "bottom": 723.109375,
+            "height": 17,
+            "left": 20,
+            "right": 294.8125,
+            "top": 706.109375,
+            "width": 274.8125
+          },
+          {
+            "bottom": 744.703125,
+            "height": 17,
+            "left": 20,
+            "right": 80.375,
+            "top": 727.703125,
+            "width": 60.375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 747.296875,
+          "height": 114.1875,
+          "left": 20,
+          "right": 300,
+          "top": 633.109375,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-actions": {
+        "clientWidth": 280,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 747.296875,
+            "height": 114.1875,
+            "left": 20,
+            "right": 300,
+            "top": 633.109375,
+            "width": 280
+          },
+          {
+            "bottom": 671.515625,
+            "height": 20,
+            "left": 90.15625,
+            "right": 259.84375,
+            "top": 651.515625,
+            "width": 169.6875
+          },
+          {
+            "bottom": 723.109375,
+            "height": 17,
+            "left": 20,
+            "right": 294.8125,
+            "top": 706.109375,
+            "width": 274.8125
+          },
+          {
+            "bottom": 744.703125,
+            "height": 17,
+            "left": 20,
+            "right": 80.375,
+            "top": 727.703125,
+            "width": 60.375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 747.296875,
+          "height": 114.1875,
+          "left": 20,
+          "right": 300,
+          "top": 633.109375,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-copy": {
+        "clientWidth": 280,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 177,
+            "height": 70,
+            "left": 20,
+            "right": 300,
+            "top": 107,
+            "width": 280
+          },
+          {
+            "bottom": 142,
+            "height": 36,
+            "left": 20,
+            "right": 237.125,
+            "top": 106,
+            "width": 217.125
+          },
+          {
+            "bottom": 177,
+            "height": 36,
+            "left": 20,
+            "right": 149.875,
+            "top": 141,
+            "width": 129.875
+          },
+          {
+            "bottom": 258.890625,
+            "height": 81.890625,
+            "left": 20,
+            "right": 300,
+            "top": 177,
+            "width": 280
+          },
+          {
+            "bottom": 200,
+            "height": 20,
+            "left": 20,
+            "right": 289.421875,
+            "top": 180,
+            "width": 269.421875
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 207.296875,
+            "width": 253.359375
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 273.359375,
+            "right": 287.4375,
+            "top": 207.296875,
+            "width": 14.078125
+          },
+          {
+            "bottom": 254.59375,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 234.59375,
+            "width": 253.359375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 258.890625,
+          "height": 151.890625,
+          "left": 20,
+          "right": 300,
+          "top": 107,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-lead": {
+        "clientWidth": 280,
+        "font": "14px / 27.3px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "14px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27.3px",
+        "lines": [
+          {
+            "bottom": 200,
+            "height": 20,
+            "left": 20,
+            "right": 289.421875,
+            "top": 180,
+            "width": 269.421875
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 207.296875,
+            "width": 253.359375
+          },
+          {
+            "bottom": 227.296875,
+            "height": 20,
+            "left": 273.359375,
+            "right": 287.4375,
+            "top": 207.296875,
+            "width": 14.078125
+          },
+          {
+            "bottom": 254.59375,
+            "height": 20,
+            "left": 20,
+            "right": 273.359375,
+            "top": 234.59375,
+            "width": 253.359375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 258.890625,
+          "height": 81.890625,
+          "left": 20,
+          "right": 300,
+          "top": 177,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。いつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-primary": {
+        "clientWidth": 278,
+        "font": "700 14px / 25.2px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "14px",
+        "fontWeight": "700",
+        "letterSpacing": "0.14px",
+        "lineHeight": "25.2px",
+        "lines": [
+          {
+            "bottom": 673.109375,
+            "height": 22,
+            "left": 60.15625,
+            "right": 82.15625,
+            "top": 651.109375,
+            "width": 22
+          },
+          {
+            "bottom": 671.515625,
+            "height": 20,
+            "left": 90.15625,
+            "right": 259.84375,
+            "top": 651.515625,
+            "width": 169.6875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 691.109375,
+          "height": 58,
+          "left": 20,
+          "right": 300,
+          "top": 633.109375,
+          "width": 280
+        },
+        "scrollWidth": 278,
+        "text": "エクスポーターを導入する",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-card": {
+        "clientWidth": 278,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 320.484375,
+            "height": 21.59375,
+            "left": 35,
+            "right": 285,
+            "top": 298.890625,
+            "width": 250
+          },
+          {
+            "bottom": 317.890625,
+            "height": 17,
+            "left": 35,
+            "right": 150.375,
+            "top": 300.890625,
+            "width": 115.375
+          },
+          {
+            "bottom": 386.484375,
+            "height": 60,
+            "left": 35,
+            "right": 285,
+            "top": 326.484375,
+            "width": 250
+          },
+          {
+            "bottom": 355.484375,
+            "height": 29,
+            "left": 35,
+            "right": 171.5,
+            "top": 326.484375,
+            "width": 136.5
+          },
+          {
+            "bottom": 355.484375,
+            "height": 29,
+            "left": 171.5,
+            "right": 269,
+            "top": 326.484375,
+            "width": 97.5
+          },
+          {
+            "bottom": 385.484375,
+            "height": 29,
+            "left": 35,
+            "right": 93.5,
+            "top": 356.484375,
+            "width": 58.5
+          },
+          {
+            "bottom": 539.109375,
+            "height": 140.625,
+            "left": 35,
+            "right": 285,
+            "top": 398.484375,
+            "width": 250
+          },
+          {
+            "bottom": 481.296875,
+            "height": 25,
+            "left": 149.5,
+            "right": 174.5,
+            "top": 456.296875,
+            "width": 25
+          },
+          {
+            "bottom": 525.71875,
+            "height": 19,
+            "left": 108,
+            "right": 212,
+            "top": 506.71875,
+            "width": 104
+          },
+          {
+            "bottom": 593.109375,
+            "height": 44,
+            "left": 35,
+            "right": 285,
+            "top": 549.109375,
+            "width": 250
+          },
+          {
+            "bottom": 579.203125,
+            "height": 17,
+            "left": 52.484375,
+            "right": 103.859375,
+            "top": 562.203125,
+            "width": 51.375
+          },
+          {
+            "bottom": 579.203125,
+            "height": 16,
+            "left": 103.859375,
+            "right": 139.5,
+            "top": 563.203125,
+            "width": 35.640625
+          },
+          {
+            "bottom": 579.203125,
+            "height": 17,
+            "left": 181.140625,
+            "right": 232.515625,
+            "top": 562.203125,
+            "width": 51.375
+          },
+          {
+            "bottom": 579.203125,
+            "height": 16,
+            "left": 232.515625,
+            "right": 266.859375,
+            "top": 563.203125,
+            "width": 34.34375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 608.109375,
+          "height": 324.21875,
+          "left": 20,
+          "right": 300,
+          "top": 283.890625,
+          "width": 280
+        },
+        "scrollWidth": 278,
+        "text": "使い方動画 / 5分39秒\n\n動画でわかる、導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-preview": {
+        "clientWidth": 248,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "normal",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 538.109375,
+            "height": 138.625,
+            "left": 36,
+            "right": 284,
+            "top": 399.484375,
+            "width": 248
+          },
+          {
+            "bottom": 498.796875,
+            "height": 60,
+            "left": 130,
+            "right": 190,
+            "top": 438.796875,
+            "width": 60
+          },
+          {
+            "bottom": 481.296875,
+            "height": 25,
+            "left": 149.5,
+            "right": 174.5,
+            "top": 456.296875,
+            "width": 25
+          },
+          {
+            "bottom": 530.109375,
+            "height": 27.390625,
+            "left": 98,
+            "right": 222,
+            "top": 502.71875,
+            "width": 124
+          },
+          {
+            "bottom": 525.71875,
+            "height": 19,
+            "left": 108,
+            "right": 212,
+            "top": 506.71875,
+            "width": 104
+          }
+        ],
+        "overflow": "hidden",
+        "rect": {
+          "bottom": 539.109375,
+          "height": 140.625,
+          "left": 35,
+          "right": 285,
+          "top": 398.484375,
+          "width": 250
+        },
+        "scrollWidth": 248,
+        "text": "▶\n使い方動画を見る",
+        "whiteSpace": "normal"
+      },
+      "h1": {
+        "clientWidth": 280,
+        "font": "700 25px / 35px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "25px",
+        "fontWeight": "700",
+        "letterSpacing": "-0.875px",
+        "lineHeight": "35px",
+        "lines": [
+          {
+            "bottom": 142,
+            "height": 35,
+            "left": 20,
+            "right": 300,
+            "top": 107,
+            "width": 280
+          },
+          {
+            "bottom": 142,
+            "height": 36,
+            "left": 20,
+            "right": 237.125,
+            "top": 106,
+            "width": 217.125
+          },
+          {
+            "bottom": 177,
+            "height": 35,
+            "left": 20,
+            "right": 300,
+            "top": 142,
+            "width": 280
+          },
+          {
+            "bottom": 177,
+            "height": 36,
+            "left": 20,
+            "right": 149.875,
+            "top": 141,
+            "width": 129.875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 177,
+          "height": 70,
+          "left": 20,
+          "right": 300,
+          "top": 107,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "自分のアバターを、\nVR Vlogへ。",
+        "whiteSpace": "normal"
+      },
+      "h1 span:nth-child(1)": {
+        "clientWidth": 280,
+        "font": "700 25px / 35px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "25px",
+        "fontWeight": "700",
+        "letterSpacing": "-0.875px",
+        "lineHeight": "35px",
+        "lines": [
+          {
+            "bottom": 142,
+            "height": 36,
+            "left": 20,
+            "right": 237.125,
+            "top": 106,
+            "width": 217.125
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 142,
+          "height": 35,
+          "left": 20,
+          "right": 300,
+          "top": 107,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "自分のアバターを、",
+        "whiteSpace": "nowrap"
+      },
+      "h1 span:nth-child(2)": {
+        "clientWidth": 280,
+        "font": "700 25px / 35px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "25px",
+        "fontWeight": "700",
+        "letterSpacing": "-0.875px",
+        "lineHeight": "35px",
+        "lines": [
+          {
+            "bottom": 177,
+            "height": 36,
+            "left": 20,
+            "right": 149.875,
+            "top": 141,
+            "width": 129.875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 177,
+          "height": 35,
+          "left": 20,
+          "right": 300,
+          "top": 142,
+          "width": 280
+        },
+        "scrollWidth": 280,
+        "text": "VR Vlogへ。",
+        "whiteSpace": "nowrap"
+      }
+    },
+    "fontStatus": "loaded",
+    "fonts": [],
+    "viewport": {
+      "documentClient": 320,
+      "documentWidth": 320,
+      "dpr": 1,
+      "height": 844,
+      "scrollX": 0,
+      "scrollY": 0,
+      "width": 320
+    },
+    "zenCheck": false
+  },
+  "width900": {
+    "elements": {
+      ".vrx-hero": {
+        "clientWidth": 820,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 360.640625,
+            "height": 206.15625,
+            "left": 40,
+            "right": 475.671875,
+            "top": 154.484375,
+            "width": 435.671875
+          },
+          {
+            "bottom": 214.484375,
+            "height": 61,
+            "left": 40,
+            "right": 407.390625,
+            "top": 153.484375,
+            "width": 367.390625
+          },
+          {
+            "bottom": 273.6875,
+            "height": 61,
+            "left": 40,
+            "right": 259.75,
+            "top": 212.6875,
+            "width": 219.75
+          },
+          {
+            "bottom": 297.890625,
+            "height": 21,
+            "left": 40,
+            "right": 464.203125,
+            "top": 276.890625,
+            "width": 424.203125
+          },
+          {
+            "bottom": 327.140625,
+            "height": 21,
+            "left": 40,
+            "right": 175.6875,
+            "top": 306.140625,
+            "width": 135.6875
+          },
+          {
+            "bottom": 356.390625,
+            "height": 21,
+            "left": 40,
+            "right": 326.4375,
+            "top": 335.390625,
+            "width": 286.4375
+          },
+          {
+            "bottom": 501.515625,
+            "height": 370.515625,
+            "left": 517.671875,
+            "right": 860,
+            "top": 131,
+            "width": 342.328125
+          },
+          {
+            "bottom": 171,
+            "height": 17,
+            "left": 538.671875,
+            "right": 654.046875,
+            "top": 154,
+            "width": 115.375
+          },
+          {
+            "bottom": 208.59375,
+            "height": 29,
+            "left": 538.671875,
+            "right": 675.171875,
+            "top": 179.59375,
+            "width": 136.5
+          },
+          {
+            "bottom": 238.59375,
+            "height": 29,
+            "left": 538.671875,
+            "right": 694.671875,
+            "top": 209.59375,
+            "width": 156
+          },
+          {
+            "bottom": 352.546875,
+            "height": 25,
+            "left": 678.328125,
+            "right": 703.328125,
+            "top": 327.546875,
+            "width": 25
+          },
+          {
+            "bottom": 411.125,
+            "height": 19,
+            "left": 636.828125,
+            "right": 740.828125,
+            "top": 392.125,
+            "width": 104
+          },
+          {
+            "bottom": 466.609375,
+            "height": 17,
+            "left": 568.234375,
+            "right": 619.609375,
+            "top": 449.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 466.609375,
+            "height": 16,
+            "left": 619.609375,
+            "right": 655.25,
+            "top": 450.609375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 466.609375,
+            "height": 17,
+            "left": 723.046875,
+            "right": 774.421875,
+            "top": 449.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 466.609375,
+            "height": 16,
+            "left": 774.421875,
+            "right": 808.765625,
+            "top": 450.609375,
+            "width": 34.34375
+          },
+          {
+            "bottom": 478.03125,
+            "height": 93.390625,
+            "left": 40,
+            "right": 475.671875,
+            "top": 384.640625,
+            "width": 435.671875
+          },
+          {
+            "bottom": 426.640625,
+            "height": 25,
+            "left": 101,
+            "right": 307.046875,
+            "top": 401.640625,
+            "width": 206.046875
+          },
+          {
+            "bottom": 475.234375,
+            "height": 16,
+            "left": 40,
+            "right": 347.46875,
+            "top": 459.234375,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 543.515625,
+          "height": 456.515625,
+          "left": 40,
+          "right": 860,
+          "top": 87,
+          "width": 820
+        },
+        "scrollWidth": 820,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。\n\n使い方動画 / 5分39秒\n\n動画でわかる、\n導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜\nエクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-action": {
+        "clientWidth": 436,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 445.234375,
+            "height": 60.59375,
+            "left": 40,
+            "right": 334.046875,
+            "top": 384.640625,
+            "width": 294.046875
+          },
+          {
+            "bottom": 426.640625,
+            "height": 25,
+            "left": 101,
+            "right": 307.046875,
+            "top": 401.640625,
+            "width": 206.046875
+          },
+          {
+            "bottom": 478.03125,
+            "height": 19.796875,
+            "left": 40,
+            "right": 475.671875,
+            "top": 458.234375,
+            "width": 435.671875
+          },
+          {
+            "bottom": 475.234375,
+            "height": 16,
+            "left": 40,
+            "right": 347.46875,
+            "top": 459.234375,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 478.03125,
+          "height": 93.390625,
+          "left": 40,
+          "right": 475.671875,
+          "top": 384.640625,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-actions": {
+        "clientWidth": 436,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 478.03125,
+            "height": 93.390625,
+            "left": 40,
+            "right": 475.671875,
+            "top": 384.640625,
+            "width": 435.671875
+          },
+          {
+            "bottom": 426.640625,
+            "height": 25,
+            "left": 101,
+            "right": 307.046875,
+            "top": 401.640625,
+            "width": 206.046875
+          },
+          {
+            "bottom": 475.234375,
+            "height": 16,
+            "left": 40,
+            "right": 347.46875,
+            "top": 459.234375,
+            "width": 307.46875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 478.03125,
+          "height": 93.390625,
+          "left": 40,
+          "right": 475.671875,
+          "top": 384.640625,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "エクスポーターを導入する\n\n無料のUnity用ツールです。VCC / ALCOMから導入できます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-hero-copy": {
+        "clientWidth": 436,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 272.890625,
+            "height": 118.40625,
+            "left": 40,
+            "right": 475.671875,
+            "top": 154.484375,
+            "width": 435.671875
+          },
+          {
+            "bottom": 214.484375,
+            "height": 61,
+            "left": 40,
+            "right": 407.390625,
+            "top": 153.484375,
+            "width": 367.390625
+          },
+          {
+            "bottom": 273.6875,
+            "height": 61,
+            "left": 40,
+            "right": 259.75,
+            "top": 212.6875,
+            "width": 219.75
+          },
+          {
+            "bottom": 360.640625,
+            "height": 87.75,
+            "left": 40,
+            "right": 475.671875,
+            "top": 272.890625,
+            "width": 435.671875
+          },
+          {
+            "bottom": 297.890625,
+            "height": 21,
+            "left": 40,
+            "right": 464.203125,
+            "top": 276.890625,
+            "width": 424.203125
+          },
+          {
+            "bottom": 327.140625,
+            "height": 21,
+            "left": 40,
+            "right": 175.6875,
+            "top": 306.140625,
+            "width": 135.6875
+          },
+          {
+            "bottom": 356.390625,
+            "height": 21,
+            "left": 40,
+            "right": 326.4375,
+            "top": 335.390625,
+            "width": 286.4375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 360.640625,
+          "height": 206.15625,
+          "left": 40,
+          "right": 475.671875,
+          "top": 154.484375,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "自分のアバターを、\nVR Vlogへ。\n\nUnityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-lead": {
+        "clientWidth": 436,
+        "font": "15px / 29.25px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "29.25px",
+        "lines": [
+          {
+            "bottom": 297.890625,
+            "height": 21,
+            "left": 40,
+            "right": 464.203125,
+            "top": 276.890625,
+            "width": 424.203125
+          },
+          {
+            "bottom": 327.140625,
+            "height": 21,
+            "left": 40,
+            "right": 175.6875,
+            "top": 306.140625,
+            "width": 135.6875
+          },
+          {
+            "bottom": 327.140625,
+            "height": 21,
+            "left": 175.6875,
+            "right": 175.6875,
+            "top": 306.140625,
+            "width": 0
+          },
+          {
+            "bottom": 356.390625,
+            "height": 21,
+            "left": 40,
+            "right": 326.4375,
+            "top": 335.390625,
+            "width": 286.4375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 360.640625,
+          "height": 87.75,
+          "left": 40,
+          "right": 475.671875,
+          "top": 272.890625,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。\nいつものアバターで撮影を始められます。",
+        "whiteSpace": "normal"
+      },
+      ".vrx-primary": {
+        "clientWidth": 292,
+        "font": "700 17px / 30.6px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "17px",
+        "fontWeight": "700",
+        "letterSpacing": "0.17px",
+        "lineHeight": "30.6px",
+        "lines": [
+          {
+            "bottom": 425.9375,
+            "height": 22,
+            "left": 67,
+            "right": 89,
+            "top": 403.9375,
+            "width": 22
+          },
+          {
+            "bottom": 426.640625,
+            "height": 25,
+            "left": 101,
+            "right": 307.046875,
+            "top": 401.640625,
+            "width": 206.046875
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 445.234375,
+          "height": 60.59375,
+          "left": 40,
+          "right": 334.046875,
+          "top": 384.640625,
+          "width": 294.046875
+        },
+        "scrollWidth": 292,
+        "text": "エクスポーターを導入する",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-card": {
+        "clientWidth": 340,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "0.075px",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 173.59375,
+            "height": 21.59375,
+            "left": 538.671875,
+            "right": 839,
+            "top": 152,
+            "width": 300.328125
+          },
+          {
+            "bottom": 171,
+            "height": 17,
+            "left": 538.671875,
+            "right": 654.046875,
+            "top": 154,
+            "width": 115.375
+          },
+          {
+            "bottom": 239.59375,
+            "height": 60,
+            "left": 538.671875,
+            "right": 839,
+            "top": 179.59375,
+            "width": 300.328125
+          },
+          {
+            "bottom": 208.59375,
+            "height": 29,
+            "left": 538.671875,
+            "right": 675.171875,
+            "top": 179.59375,
+            "width": 136.5
+          },
+          {
+            "bottom": 238.59375,
+            "height": 29,
+            "left": 538.671875,
+            "right": 694.671875,
+            "top": 209.59375,
+            "width": 156
+          },
+          {
+            "bottom": 424.515625,
+            "height": 168.921875,
+            "left": 538.671875,
+            "right": 839,
+            "top": 255.59375,
+            "width": 300.328125
+          },
+          {
+            "bottom": 352.546875,
+            "height": 25,
+            "left": 678.328125,
+            "right": 703.328125,
+            "top": 327.546875,
+            "width": 25
+          },
+          {
+            "bottom": 411.125,
+            "height": 19,
+            "left": 636.828125,
+            "right": 740.828125,
+            "top": 392.125,
+            "width": 104
+          },
+          {
+            "bottom": 480.515625,
+            "height": 44,
+            "left": 538.671875,
+            "right": 839,
+            "top": 436.515625,
+            "width": 300.328125
+          },
+          {
+            "bottom": 466.609375,
+            "height": 17,
+            "left": 568.234375,
+            "right": 619.609375,
+            "top": 449.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 466.609375,
+            "height": 16,
+            "left": 619.609375,
+            "right": 655.25,
+            "top": 450.609375,
+            "width": 35.640625
+          },
+          {
+            "bottom": 466.609375,
+            "height": 17,
+            "left": 723.046875,
+            "right": 774.421875,
+            "top": 449.609375,
+            "width": 51.375
+          },
+          {
+            "bottom": 466.609375,
+            "height": 16,
+            "left": 774.421875,
+            "right": 808.765625,
+            "top": 450.609375,
+            "width": 34.34375
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 501.515625,
+          "height": 370.515625,
+          "left": 517.671875,
+          "right": 860,
+          "top": 131,
+          "width": 342.328125
+        },
+        "scrollWidth": 340,
+        "text": "使い方動画 / 5分39秒\n\n動画でわかる、\n導入から転送まで\n▶\n使い方動画を見る\n導入から 00:30〜\n転送から 02:23〜",
+        "whiteSpace": "normal"
+      },
+      ".vrx-tutorial-preview": {
+        "clientWidth": 298,
+        "font": "15px / 27px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "15px",
+        "fontWeight": "400",
+        "letterSpacing": "normal",
+        "lineHeight": "27px",
+        "lines": [
+          {
+            "bottom": 423.515625,
+            "height": 166.921875,
+            "left": 539.671875,
+            "right": 838,
+            "top": 256.59375,
+            "width": 298.328125
+          },
+          {
+            "bottom": 370.046875,
+            "height": 60,
+            "left": 658.828125,
+            "right": 718.828125,
+            "top": 310.046875,
+            "width": 60
+          },
+          {
+            "bottom": 352.546875,
+            "height": 25,
+            "left": 678.328125,
+            "right": 703.328125,
+            "top": 327.546875,
+            "width": 25
+          },
+          {
+            "bottom": 415.515625,
+            "height": 27.390625,
+            "left": 626.828125,
+            "right": 750.828125,
+            "top": 388.125,
+            "width": 124
+          },
+          {
+            "bottom": 411.125,
+            "height": 19,
+            "left": 636.828125,
+            "right": 740.828125,
+            "top": 392.125,
+            "width": 104
+          }
+        ],
+        "overflow": "hidden",
+        "rect": {
+          "bottom": 424.515625,
+          "height": 168.921875,
+          "left": 538.671875,
+          "right": 839,
+          "top": 255.59375,
+          "width": 300.328125
+        },
+        "scrollWidth": 298,
+        "text": "▶\n使い方動画を見る",
+        "whiteSpace": "normal"
+      },
+      "h1": {
+        "clientWidth": 436,
+        "font": "700 42.3px / 59.22px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "42.3px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.4805px",
+        "lineHeight": "59.22px",
+        "lines": [
+          {
+            "bottom": 213.6875,
+            "height": 59.203125,
+            "left": 40,
+            "right": 475.671875,
+            "top": 154.484375,
+            "width": 435.671875
+          },
+          {
+            "bottom": 214.484375,
+            "height": 61,
+            "left": 40,
+            "right": 407.390625,
+            "top": 153.484375,
+            "width": 367.390625
+          },
+          {
+            "bottom": 272.890625,
+            "height": 59.203125,
+            "left": 40,
+            "right": 475.671875,
+            "top": 213.6875,
+            "width": 435.671875
+          },
+          {
+            "bottom": 273.6875,
+            "height": 61,
+            "left": 40,
+            "right": 259.75,
+            "top": 212.6875,
+            "width": 219.75
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 272.890625,
+          "height": 118.40625,
+          "left": 40,
+          "right": 475.671875,
+          "top": 154.484375,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "自分のアバターを、\nVR Vlogへ。",
+        "whiteSpace": "normal"
+      },
+      "h1 span:nth-child(1)": {
+        "clientWidth": 436,
+        "font": "700 42.3px / 59.22px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "42.3px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.4805px",
+        "lineHeight": "59.22px",
+        "lines": [
+          {
+            "bottom": 214.484375,
+            "height": 61,
+            "left": 40,
+            "right": 407.390625,
+            "top": 153.484375,
+            "width": 367.390625
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 213.6875,
+          "height": 59.203125,
+          "left": 40,
+          "right": 475.671875,
+          "top": 154.484375,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "自分のアバターを、",
+        "whiteSpace": "nowrap"
+      },
+      "h1 span:nth-child(2)": {
+        "clientWidth": 436,
+        "font": "700 42.3px / 59.22px \"Zen Kaku Gothic New\", sans-serif",
+        "fontFamily": "\"Zen Kaku Gothic New\", sans-serif",
+        "fontSize": "42.3px",
+        "fontWeight": "700",
+        "letterSpacing": "-1.4805px",
+        "lineHeight": "59.22px",
+        "lines": [
+          {
+            "bottom": 273.6875,
+            "height": 61,
+            "left": 40,
+            "right": 259.75,
+            "top": 212.6875,
+            "width": 219.75
+          }
+        ],
+        "overflow": "visible",
+        "rect": {
+          "bottom": 272.890625,
+          "height": 59.203125,
+          "left": 40,
+          "right": 475.671875,
+          "top": 213.6875,
+          "width": 435.671875
+        },
+        "scrollWidth": 436,
+        "text": "VR Vlogへ。",
+        "whiteSpace": "nowrap"
+      }
+    },
+    "fontStatus": "loaded",
+    "fonts": [],
+    "viewport": {
+      "documentClient": 900,
+      "documentWidth": 900,
+      "dpr": 1,
+      "height": 1000,
+      "scrollX": 0,
+      "scrollY": 0,
+      "width": 900
+    },
+    "zenCheck": false
+  }
+}
