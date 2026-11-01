@@ -849,6 +849,11 @@ BEHAVIOR_CASES = {
     # 自動で軽量化する: texture sizes from texel density; off measures nothing.
     'TexelDensityTests': {
         'AQuadHasTheExactDensity': 5,
+        'ASkinnedQuadOfOneSquareMetreHasTheUnscaledDensity': 6,
+        'AMeshRendererQuadOfOneSquareMetreHasTheUnscaledDensity': 3,
+        'AMeasurementFarFromTheRendererBoundsKeepsTheSize': 4,
+        'ASkinnedMeasurementFarFromItsBonesKeepsTheSize': 6,
+        'BakeMeshWithTheScaleIsInTheRenderersOwnSpace': 6,
         'OneTriangleHasTheExactDensityAndADegenerateOneHasNone': 1,
         'TheDensityOfASubmeshIsTheAreaWeightedNinetiethPercentile': 1,
         'HalvingStopsAtTheTargetAndTheSmallestSize': 7,
@@ -874,6 +879,19 @@ BEHAVIOR_CASES = {
         'WeightsThatDoNotAddUpTo1StayFloat': 1,
         'AFileWithNothingToChangeOrAnUnknownExtensionIsKept': 1,
         'TheExportPacksVertexDataOnlyWhenTheOptionIsOn': 3,
+        'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
+    },
+    # 自動で軽量化する: textures of switched-off lilToon features are left out.
+    'LilToonInactiveSlotsTests': {
+        'ASlotIsSampledOnlyWhileItsSwitchIsOn': 29,
+        'AMissingSwitchCountsAsSampled': 1,
+        'DissolveSlotsFollowTheDissolveMode': 3,
+        'OutlineSlotsNeedAnOutlinePassThatIsDrawn': 4,
+        'OnlyTheOptionLeavesOutTexturesOfSwitchedOffSlots': 2,
+        'ATextureASampledSlotUsesIsKept': 1,
+        'ASwitchedOffNormalSlotGetsTheDefaultNormalTexture': 1,
+        'OffWritesTheSameExtensionAsBefore': 1,
+        'TheExportListsTheLineOnlyWhenTheOptionIsOn': 2,
         'TheTextFollowsTheWordingRulesAndExistsInEveryLocale': 1,
     },
 }

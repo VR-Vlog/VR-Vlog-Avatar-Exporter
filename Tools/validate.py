@@ -338,7 +338,7 @@ assert (root / "Tests/Editor/ExportRecoverySessionTests.cs").is_file()
 assert one_click.index('MaAppearanceSnapshot.Apply(source, clone,') < one_click.index('LilToonMainTextureBaker.ValidateAvatar(clone,') < one_click.index('NdmfExportPreparation.Prepare(source, clone,')
 assert 'LilToonMainTextureBaker.ApplyOmissions(clone, temporaryMaterials, warnings, bakeOptions);' in one_click
 assert 'fullSnapshot.Inject(exported, exporterVersion, lilToonVersion)' in one_click
-assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
+assert one_click.index('LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight)') < one_click.index('LilToonMainTextureBaker.Prepare(clone,')
 assert 'guard.Step(ExportStage.LilToonSnapshot, () => fullSnapshot.Bind(converter, model, storage));' in one_click
 assert 'guard.Watch(ExportStage.BlinkCapture, () => blink.Bind(converter, model, storage));' in one_click
 assert 'excludedExpressions' not in window and 'DrawExpressions' not in window
