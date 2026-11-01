@@ -46,8 +46,12 @@ namespace VRVlog.LilToonExporter
         // The Lip Sync shapes of each renderer are rebased as VRChat shows them,
         // one at a time (see Rebase): the shapes named as visemes, plus
         // visemeShapes, the descriptor's slots, on visemeRenderer.
+        // defaultFace lists the shapes the FX default state sets. Those of them
+        // that shape the mouth are taken off while a Lip Sync shape shows
+        // (see MouthRests).
         internal static void Preserve(GameObject source, GameObject clone, ICollection<Mesh> temporaryMeshes, ICollection<string> warnings,
-            Func<Transform, bool> excluded = null, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null)
+            Func<Transform, bool> excluded = null, SkinnedMeshRenderer visemeRenderer = null, IEnumerable<string> visemeShapes = null,
+            ICollection<(SkinnedMeshRenderer Renderer, string Shape)> defaultFace = null)
         {
             foreach (var renderer in ExportRendererSelection.Enumerate(source))
             {
@@ -75,7 +79,8 @@ namespace VRVlog.LilToonExporter
                 var copy = target.GetComponents<SkinnedMeshRenderer>()[index];
                 var baked = UnityEngine.Object.Instantiate(mesh);
                 temporaryMeshes.Add(baked); // also owned if conversion fails
-                var kept = Rebase(mesh, baked, weights, ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes));
+                var exclusive = ExclusiveShapes(skin, mesh, visemeRenderer, visemeShapes);
+                var kept = Rebase(mesh, baked, weights, exclusive, MouthRests(skin, mesh, weights, exclusive, defaultFace));
                 copy.sharedMesh = baked;
                 for (var i = 0; i < weights.Length; i++) copy.SetBlendShapeWeight(i, 0f);
                 warnings?.Add($"{skin.name}: 調整済みBlendShapeを基本の顔・体形として保存しました。表情はこの形から変化します。");
@@ -96,8 +101,11 @@ namespace VRVlog.LilToonExporter
 
         // The exclusive shapes whose exported frame Rebase also took another
         // shape's rest from, so it no longer holds Evaluate(F) - Evaluate(rest).
-        internal static HashSet<int> ShapesWithoutOtherRests(Mesh source, float[] weights, ICollection<int> exclusive)
+        internal static HashSet<int> ShapesWithoutOtherRests(Mesh source, float[] weights, ICollection<int> exclusive,
+            ICollection<int> mouthRests = null)
         {
+            // Every exclusive shape then also takes the mouth rests off.
+            if (mouthRests != null && mouthRests.Count > 0) return new HashSet<int>(exclusive);
             var resting = new List<int>();
             foreach (var shape in exclusive)
             {
@@ -105,6 +113,73 @@ namespace VRVlog.LilToonExporter
                 catch (InvalidOperationException) { }
             }
             return new HashSet<int>(exclusive.Where(shape => resting.Any(other => other != shape)));
+        }
+
+        // A vertex belongs fully to the mouth when some Lip Sync shape moves it
+        // by at least this share of that shape's largest move, and partly below
+        // it, so the cancel fades out at the edge of the mouth without a step.
+        internal const float MouthFullShare = .2f;
+        // A default shape is a mouth shape when at least this share of its
+        // movement falls on mouth vertices. Eyelids and brows fall below it.
+        internal const float MouthMovementShare = .5f;
+
+        // The defaultFace shapes of skin that a vowel takes off: those the FX
+        // default state holds away from zero and that mostly move the vertices
+        // the Lip Sync shapes move. Shapes are not chosen by name. Lip Sync
+        // shapes themselves and shapes that cannot be evaluated are left out.
+        internal static HashSet<int> MouthRests(SkinnedMeshRenderer skin, Mesh mesh, float[] weights, ICollection<int> exclusive,
+            IEnumerable<(SkinnedMeshRenderer Renderer, string Shape)> defaultFace)
+        {
+            if (defaultFace == null || skin == null) return new HashSet<int>();
+            return MouthRests(mesh, weights, exclusive, defaultFace.Where(face => face.Renderer == skin)
+                .Select(face => mesh.GetBlendShapeIndex(face.Shape)).Where(shape => shape >= 0).ToList());
+        }
+
+        internal static HashSet<int> MouthRests(Mesh mesh, float[] weights, ICollection<int> exclusive, IEnumerable<int> candidates)
+        {
+            var result = new HashSet<int>();
+            if (exclusive == null || exclusive.Count == 0 || candidates == null) return result;
+            var chosen = candidates.Where(shape => shape >= 0 && shape < weights.Length && !exclusive.Contains(shape)).Distinct().ToList();
+            if (chosen.Count == 0) return result;
+            var mouth = MouthVertices(mesh, exclusive);
+            foreach (var shape in chosen)
+            {
+                Deltas rest;
+                try { rest = Evaluate(mesh, shape, weights[shape]); }
+                catch (InvalidOperationException) { continue; }
+                double total = 0d, inMouth = 0d;
+                for (var vertex = 0; vertex < mesh.vertexCount; vertex++)
+                {
+                    if (!Finite(rest.Vertices[vertex])) { total = 0d; break; }
+                    var move = rest.Vertices[vertex].magnitude;
+                    total += move;
+                    inMouth += move * mouth[vertex];
+                }
+                if (total > 0d && inMouth >= total * MouthMovementShare) result.Add(shape);
+            }
+            return result;
+        }
+
+        // How much each vertex belongs to the mouth, from 0 to 1. For each Lip
+        // Sync shape, its move at the vertex is divided by its largest move;
+        // the largest of these ratios, divided by MouthFullShare, is capped at 1.
+        internal static float[] MouthVertices(Mesh mesh, IEnumerable<int> exclusive)
+        {
+            var mouth = new float[mesh.vertexCount];
+            var frame = new Deltas(mesh.vertexCount);
+            foreach (var shape in exclusive)
+            {
+                var last = mesh.GetBlendShapeFrameCount(shape) - 1;
+                if (last < 0) continue;
+                mesh.GetBlendShapeFrameVertices(shape, last, frame.Vertices, frame.Normals, frame.Tangents);
+                var largest = 0f;
+                foreach (var move in frame.Vertices) if (Finite(move)) largest = Math.Max(largest, move.magnitude);
+                if (largest == 0f) continue;
+                for (var vertex = 0; vertex < mesh.vertexCount; vertex++)
+                    if (Finite(frame.Vertices[vertex]))
+                        mouth[vertex] = Math.Max(mouth[vertex], Math.Min(1f, frame.Vertices[vertex].magnitude / (largest * MouthFullShare)));
+            }
+            return mouth;
         }
 
         // Predict the endpoint that Rebase exports, without mutating source
@@ -193,7 +268,12 @@ namespace VRVlog.LilToonExporter
         // exclusive lists shapes VRChat shows one at a time (Lip Sync visemes).
         // Each of them ends where VRChat shows it, with the others of the group
         // at 0, so it also subtracts their rest offsets stored in the base.
-        internal static List<int> Rebase(Mesh source, Mesh target, float[] weights, ICollection<int> exclusive = null)
+        // mouthRests (see MouthRests) are default mouth shapes. Each exclusive
+        // shape also subtracts their rests, weighted by how much each vertex
+        // belongs to the mouth (see MouthVertices), so a vowel at 1 shows the
+        // viseme without the default mouth, and a vowel at w takes off w of it.
+        internal static List<int> Rebase(Mesh source, Mesh target, float[] weights, ICollection<int> exclusive = null,
+            ICollection<int> mouthRests = null)
         {
             if (ReferenceEquals(source, target)) throw new ArgumentException("The source mesh must remain unchanged.");
             if (weights.Length != source.blendShapeCount) throw new ArgumentException("BlendShape weight count mismatch.");
@@ -209,6 +289,26 @@ namespace VRVlog.LilToonExporter
                 try { rest = Evaluate(source, shape, weights[shape]); }
                 catch (InvalidOperationException) { continue; }
                 if (!IsZero(rest)) exclusiveRests.Add(new KeyValuePair<int, Deltas>(shape, rest));
+            }
+            if (exclusive != null && mouthRests != null && mouthRests.Count > 0)
+            {
+                // Only the mouth part of a default mouth shape is taken off: a
+                // smile that also narrows the eyes keeps the eyes while a vowel shows.
+                var mouth = MouthVertices(source, exclusive);
+                foreach (var shape in mouthRests)
+                {
+                    if (exclusive.Contains(shape)) continue;
+                    Deltas rest;
+                    try { rest = Evaluate(source, shape, weights[shape]); }
+                    catch (InvalidOperationException) { continue; }
+                    for (var v = 0; v < mouth.Length; v++)
+                    {
+                        rest.Vertices[v] *= mouth[v];
+                        rest.Normals[v] *= mouth[v];
+                        rest.Tangents[v] *= mouth[v];
+                    }
+                    if (!IsZero(rest)) exclusiveRests.Add(new KeyValuePair<int, Deltas>(shape, rest));
+                }
             }
             target.ClearBlendShapes();
             for (var shape = 0; shape < weights.Length; shape++)
