@@ -15,8 +15,12 @@ The video loads only when requested; closing the dialog pauses it and restores
 focus. Its thumbnail is the unmodified frame at exactly 0.0 seconds. The centered
 SVG close icon has a 44px button. Never embed live QR codes or private names.
 
-Installation switching, repository links and installation image enlargement are
-preserved. The removed transfer step controls and their styling are not used.
+Installation uses two cards: add the exporter in the chosen manager, then install
+it into the avatar project. The ALCOM/VCC selector is above the cards. Backup and
+Unity-close instructions appear before the action, and manual URL instructions
+remain in the fallback accordion. Switching, repository links and installation
+image enlargement are preserved. The removed transfer step controls and their
+styling are not used.
 See `assets/guide/README.md` for the approved installation screenshots.
 
 This is a Website-only publication: package code, manifests, versions, release

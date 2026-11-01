@@ -21,8 +21,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700&amp;display=swap">
-  <link rel="stylesheet" href="styles.css?v=video-only-20261101">
-  <script src="app.js?v=video-only-20261101" defer></script>
+  <link rel="stylesheet" href="styles.css?v=install-cards-20261101">
+  <script src="app.js?v=install-cards-20261101" defer></script>
 
 <link rel="stylesheet" href="guide.css?v=video-controls-20261101"><script src="guide.js?v=video-only-20261101" defer></script><script defer src="https://vrvlog.fun/site-measurement.js" referrerpolicy="no-referrer"></script></head>
 <body>
@@ -55,14 +55,29 @@
 
         </section>
         <section class="vrx-install vrx-wrap" id="install" data-section="install" aria-labelledby="vrx-story-install-title">
-          <div class="vrx-install-heading"><div><p class="vrx-small-label">はじめに</p><h2 id="vrx-story-install-title">エクスポーターを入れる</h2></div><div class="vrx-segment" role="group" aria-label="使っている管理アプリ"><button type="button" data-manager="alcom" aria-pressed="true" >ALCOM</button><button type="button" data-manager="vcc" aria-pressed="false" >VCC</button></div></div>
-          <div class="vrx-install-action"><a class="vrx-primary" data-add-repo href="vcc://vpm/addRepo?url={{ listingInfo.Url }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 5l1-2h4l1 2M12 13v5m-2.5-2.5h5"/></svg><span data-manager-cta>ALCOMに追加</span></a><p>まず配布元を追加し、下の手順でインストールします。</p></div>
-          <button class="watch-inline home-watch" type="button" data-video="30.634" data-title="公式サイトから配布元を登録">▷ 導入を動画で確認 <time>00:30〜</time></button><p class="vrx-manager-download"><a data-manager-download href="https://vrc-get.anatawa12.com/alcom/" target="_blank" rel="noopener noreferrer">ALCOMをまだ入れていない方はこちら</a></p>
-          <div class="vrx-install-layout" data-section="setup">
-            <ol class="vrx-install-list" aria-live="polite"><li><span>配布元を追加</span><p data-manager-copy="add">上の追加ボタンからALCOMを開き、「VPMリポジトリを追加」を押します。</p></li><li><span>プロジェクトにインストール</span><p data-manager-copy="package">プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、「適用」を押します。</p></li><li><span>Unityを開く</span><p>アバターを入れたプロジェクトを開いたら、準備完了です。</p></li></ol>
-            <figure class="vrx-install-preview"><div class="vrx-alcom-thumb" data-manager-shot="alcom"><img src="assets/guide/alcom-install.webp" decoding="async" loading="lazy" alt="ALCOMでエクスポーターを選ぶ画面" width="1042" height="720"></div><div class="vrx-vcc-thumb" data-manager-shot="vcc" hidden><img src="assets/guide/vcc-projects.webp" decoding="async" loading="lazy" alt="VCCでManage Projectを開く画面" width="961" height="593"></div><figcaption data-manager-caption>ALCOMのパッケージ一覧（画面内は変更前の名称）</figcaption><button type="button" data-install-guide class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像で詳しく見る</button></figure>
+          <div class="vrx-install-heading"><p class="vrx-small-label">Unity用ツール・無料</p><h2 id="vrx-story-install-title">エクスポーターを入れる</h2></div>
+          <div class="vrx-manager-controls">
+            <p id="vrx-manager-label">使っている管理アプリ</p>
+            <div class="vrx-segment" role="group" aria-labelledby="vrx-manager-label"><button type="button" data-manager="alcom" aria-pressed="true">ALCOM</button><button type="button" data-manager="vcc" aria-pressed="false">VCC</button></div>
+            <p class="vrx-manager-download"><a data-manager-download href="https://vrc-get.anatawa12.com/alcom/" target="_blank" rel="noopener noreferrer">ALCOMをまだ入れていない方はこちら</a></p>
           </div>
-          <div class="vrx-install-bottom"><p>アバターとlilToonを導入したUnity 2022.3のプロジェクトと、最新のVR Vlogを入れたスマホを用意します。プロジェクトをバックアップし、Unityを閉じてから始めてください。</p><details><summary >管理アプリが開かないとき</summary><p data-manager-fallback>ALCOMの「パッケージ&amp;テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。</p><label for="listing-url">配布元のURL</label><input id="listing-url" aria-label="配布元のURL" value="{{ listingInfo.Url }}" readonly></details></div>
+          <div class="vrx-install-prep" role="note"><strong><span class="vrx-phrase">バックアップして、</span><span class="vrx-phrase">Unityを閉じる</span></strong><p>Unity 2022.3・アバターとlilToonを導入済みのプロジェクトを使います。</p></div>
+          <ol class="vrx-install-cards" role="list" data-section="setup">
+            <li class="vrx-install-card">
+              <h3><span class="vrx-install-number" aria-hidden="true">1</span><span class="vrx-install-title"><span class="vrx-phrase">エクスポーターを</span><span class="vrx-phrase">追加</span></span></h3>
+              <div class="vrx-install-action"><a class="vrx-primary" data-add-repo href="vcc://vpm/addRepo?url={{ listingInfo.Url }}"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 5l1-2h4l1 2M12 13v5m-2.5-2.5h5"/></svg><span data-manager-cta>ALCOMで追加</span></a></div>
+              <p class="vrx-install-confirm" data-manager-copy="add">開いた画面で「VPMリポジトリを追加」を押す</p>
+            </li>
+            <li class="vrx-install-card">
+              <h3><span class="vrx-install-number" aria-hidden="true">2</span><span class="vrx-install-title"><span class="vrx-phrase">アバターの</span><span class="vrx-phrase">プロジェクトに導入</span></span></h3>
+              <div class="vrx-install-package">
+                <div class="vrx-install-copy" aria-live="polite"><p data-manager-copy="project">「管理」を開く</p><p data-manager-copy="package">エクスポーターの最新の正式版を選び、「適用」</p></div>
+                <figure class="vrx-install-preview"><div class="vrx-alcom-thumb" data-manager-shot="alcom"><img src="assets/guide/alcom-install.webp" decoding="async" loading="lazy" alt="ALCOMでエクスポーターを選ぶ画面" width="1042" height="720"></div><div class="vrx-vcc-thumb" data-manager-shot="vcc" hidden><img src="assets/guide/vcc-projects.webp" decoding="async" loading="lazy" alt="VCCでManage Projectを開く画面" width="961" height="593"></div><figcaption data-manager-caption>ALCOMのパッケージ一覧（画面内は変更前の名称）</figcaption><button type="button" data-install-guide class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>操作画面を拡大</button></figure>
+              </div>
+            </li>
+          </ol>
+          <div class="vrx-install-ready"><p>Unityでアバターのプロジェクトを開いたら、準備完了です。</p><p>スマホには最新のVR Vlogをご用意ください。</p></div>
+          <details class="vrx-install-fallback"><summary>管理アプリが開かないとき</summary><p data-manager-fallback>ALCOMの「パッケージ&amp;テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。</p><label for="listing-url">エクスポーターのURL</label><input id="listing-url" aria-label="エクスポーターのURL" value="{{ listingInfo.Url }}" readonly></details>
         </section>
         <section class="vrx-help vrx-wrap"><div><h2>困ったときは</h2><p>作者の<a href="https://x.com/uribou_vrc" target="_blank" rel="noopener noreferrer" >X（@uribou_vrc）</a>へDMでお知らせください。</p></div><div class="vrx-faq"><details><summary >QRコードはどこで読み取れますか？</summary><p>スマホ標準のカメラ、またはVR Vlogアプリのカメラで読み取れます。</p></details><details><summary >表情を詳しく設定するには？</summary><p>Unityで「VR Vlog」→「アプリに転送（通常）」を選びます。</p></details><details><summary >「QRコードを作る」が押せないときは？</summary><p>転送画面の案内を確認し、名前・作者名の入力や、同意が必要な項目へのチェックを済ませてください。</p></details></div></section>
       </main>
