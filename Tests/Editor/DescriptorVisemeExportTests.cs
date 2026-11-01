@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using NUnit.Framework;
+using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using UnityEditor;
+using UnityEditor.Animations;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -203,6 +207,94 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(warnings, Does.Contain(VrmExpressionBindings.UnboundVisemeWarning));
             }
             Assert.That(warnings, Does.Not.Contain(VrmExpressionBindings.UnexportedVisemeMeshWarning));
+        }
+
+        // The FX default state holds a mouth shape and an eye shape. A vowel at
+        // 1 shows the viseme without the default mouth, as the face would with
+        // that shape at 0, and keeps the default eye. The neutral face keeps
+        // both. Vertices 0 and 1 are the mouth, vertex 2 the eye.
+        [Test] public async Task ActualExportTakesTheDefaultMouthOffAVowel()
+        {
+            var type = DescriptorType();
+            using var fixture = ExportAvatar(Array.Empty<string>(), LipNames);
+            var mesh = fixture.Mesh;
+            Vector3[] Moves(Vector3 mouth, Vector3 eye) => new[] { mouth, new Vector3(-mouth.x, mouth.y, mouth.z), eye };
+            mesh.AddBlendShapeFrame("lip_aa", 100, Moves(new Vector3(0, -.02f, 0), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("lip_ee", 100, Moves(new Vector3(-.01f, 0, 0), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("lip_ih", 100, Moves(new Vector3(-.005f, -.005f, 0), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("lip_oh", 100, Moves(new Vector3(.005f, -.015f, 0), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("lip_ou", 100, Moves(new Vector3(.01f, -.005f, .005f), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("MouthDefault", 100, Moves(new Vector3(-.01f, .01f, 0), Vector3.zero), null, null);
+            mesh.AddBlendShapeFrame("EyeDefault", 100, Moves(Vector3.zero, new Vector3(0, -.01f, 0)), null, null);
+            Vector3 Frame(string shape, int vertex)
+            {
+                var moves = new Vector3[mesh.vertexCount];
+                mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(shape), 0, moves, null, null);
+                return moves[vertex];
+            }
+            var folderName = "__DescriptorVisemeExport_" + Guid.NewGuid().ToString("N");
+            AssetDatabase.CreateFolder("Assets", folderName);
+            var folder = "Assets/" + folderName;
+            Vrm10Instance imported = null;
+            try
+            {
+                var clip = new AnimationClip { name = "Idle" };
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.MouthDefault"),
+                    AnimationCurve.Constant(0, 1, 60));
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.EyeDefault"),
+                    AnimationCurve.Constant(0, 1, 40));
+                var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
+                AssetDatabase.AddObjectToAsset(clip, controller);
+                var state = controller.layers[0].stateMachine.AddState("Idle");
+                state.writeDefaultValues = false; state.motion = clip;
+                controller.layers[0].stateMachine.defaultState = state;
+                using (var data = new SerializedObject(fixture.Source.GetComponent(type)))
+                {
+                    data.FindProperty("customizeAnimationLayers").boolValue = true;
+                    var layers = data.FindProperty("baseAnimationLayers");
+                    layers.arraySize = 1;
+                    var layer = layers.GetArrayElementAtIndex(0);
+                    var kind = layer.FindPropertyRelative("type");
+                    kind.enumValueIndex = Array.IndexOf(kind.enumNames, "FX");
+                    layer.FindPropertyRelative("isDefault").boolValue = false;
+                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
+                    data.ApplyModifiedPropertiesWithoutUndo();
+                }
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Vowel default mouth", "Tests", new List<string>(),
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+                var front = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == "Front");
+                Vector3 Shown(int vertex)
+                {
+                    var result = front.sharedMesh.vertices[vertex];
+                    var moves = new Vector3[front.sharedMesh.vertexCount];
+                    for (var shape = 0; shape < front.sharedMesh.blendShapeCount; shape++)
+                    {
+                        var weight = front.GetBlendShapeWeight(shape);
+                        if (weight == 0f) continue;
+                        Assert.That(front.sharedMesh.GetBlendShapeFrameCount(shape), Is.EqualTo(1));
+                        front.sharedMesh.GetBlendShapeFrameVertices(shape, 0, moves, null, null);
+                        result += moves[vertex] * weight / front.sharedMesh.GetBlendShapeFrameWeight(shape, 0);
+                    }
+                    return result;
+                }
+                // Hair detail rests at 35 on the renderer itself and is kept throughout.
+                Vector3 Expected(int vertex, float aa, float mouth) => mesh.vertices[vertex] + Frame("Hair detail", vertex) * .35f +
+                    Frame("EyeDefault", vertex) * .4f + Frame("MouthDefault", vertex) * mouth + Frame("lip_aa", vertex) * aa;
+                foreach (var (aa, mouth) in new[] { (0f, .6f), (1f, 0f), (.8f, .6f * .2f) })
+                {
+                    imported.Runtime.Expression.SetWeight(ExpressionKey.Aa, aa);
+                    imported.Runtime.Process();
+                    for (var vertex = 0; vertex < 3; vertex++)
+                        Assert.That(Vector3.Distance(Expected(vertex, aa, mouth), Shown(vertex)), Is.LessThan(.00001f),
+                            $"aa at {aa}, vertex {vertex}: expected {Expected(vertex, aa, mouth):F5}, shown {Shown(vertex):F5}");
+                }
+            }
+            finally
+            {
+                if (imported != null) Object.DestroyImmediate(imported.gameObject);
+                AssetDatabase.DeleteAsset(folder);
+            }
         }
     }
 }
