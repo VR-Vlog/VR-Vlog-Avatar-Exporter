@@ -315,6 +315,28 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         [Test]
+        public void EmptyMaterialSlotKeepsLilToonOnTheOtherRenderers()
+        {
+            using var fixture=new AttachmentConnectionTests.Fixture();
+            var source=new Material(Shader.Find("lilToon"));
+            try
+            {
+                var skins=fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
+                Assert.That(skins.Length,Is.GreaterThanOrEqualTo(2));
+                foreach(var renderer in skins)renderer.sharedMaterial=source;
+                skins[1].sharedMaterials=new Material[1];
+                var warnings=new List<string>();
+                var bytes=UniVrmOneClickExporter.Export(fixture.Source,"Empty slot","Tests",warnings,exporterVersion:"0.10.0",lilToonVersion:"2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var glb=GlbDocument.Read(bytes);F.Validate(glb.Json,bytes.Length,glb.Binary.Length);
+                var bindings=F.List(F.Root(glb.Json),"bindings").Select(F.Object).ToArray();
+                Assert.That(bindings.Length,Is.EqualTo(skins.Length-1),"Only the renderer with the empty slot is left unbound.");
+                Assert.That(F.List(F.Root(glb.Json),"materials").Count,Is.EqualTo(1));
+                Assert.That(warnings.Any(w=>w.Contains("マテリアルが空のスロット")),Is.False,"A renderer without lilToon has nothing to approximate.");
+            }
+            finally {Object.DestroyImmediate(source);}
+        }
+
+        [Test]
         public void NonHdrSixteenBitMasksKeepTheirComponentPrecision()
         {
             foreach(var format in new[]{UnityEngine.Experimental.Rendering.GraphicsFormat.R16_UNorm,UnityEngine.Experimental.Rendering.GraphicsFormat.R16G16B16A16_UNorm})
