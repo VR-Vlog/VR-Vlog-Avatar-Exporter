@@ -23,6 +23,9 @@ namespace VRVlog.LilToonExporter
         internal string[] LastNotes { get; private set; } = Array.Empty<string>();
         // The name-free diagnostics of the last save or transfer, for the transfer screen.
         internal ExportDiagnostics LastDiagnostics { get; private set; }
+        // Opens the result list of the last transfer, given the heading and a note; null when it has nothing
+        // to show. The transfer screen opens it once the transfer has ended.
+        internal Action<string, string> LastResult { get; private set; }
         bool showPoses;
         readonly System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose> fileRecords =
             new System.Collections.Generic.Dictionary<ExperimentalExpressionCaptureSession.ClipInput, ExperimentalExpressionCaptureSession.Pose>();
@@ -2493,7 +2496,7 @@ namespace VRVlog.LilToonExporter
         // recovery window then saves the same destination and runs saved.
         // interactive only changes what is asked or shown, never the bytes: the
         // quick transfer passes false, so what the export worked around is not
-        // asked about before saving and goes to the Console instead, and a
+        // listed in a window after the transfer and goes to the Console instead, and a
         // board that blocks the export also says why.
         internal string TransferExport(string name, string author, AvatarLicenseOptions license, string destination, Action saved, bool interactive = true)
         {
@@ -2585,6 +2588,9 @@ namespace VRVlog.LilToonExporter
             var listFaces = listed.Concat(slotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
+            // The result list of a transfer, handed over before written runs. A save
+            // from the recovery window has none.
+            Action<string, string> transferResult = null;
             var savedFaces = listFaces.Count;
             var diagnosticsKind = written != null ? interactive ? ExportDiagnostics.DetailedTransfer : ExportDiagnostics.QuickTransfer
                 : savedTo != null ? ExportDiagnostics.TransferSave : ExportDiagnostics.BoardSave;
@@ -2595,7 +2601,7 @@ namespace VRVlog.LilToonExporter
                 LastMissingShaderCount = missingShaders;
                 LastOmittedStageCount = savedReport?.Results.Count(entry => entry.Stage != null) ?? 0;
                 LastNotes = (warnings ?? Enumerable.Empty<string>()).Distinct(StringComparer.Ordinal).ToArray();
-                // Already recorded before the result list for these bytes, except after a retry from the recovery window.
+                // Already recorded for these bytes before they were written, except after a retry from the recovery window.
                 LastDiagnostics = ExportDiagnostics.Record(target.Source, bytes, savedReport, warnings, diagnosticsKind);
                 if (written != null)
                 {
@@ -2603,12 +2609,15 @@ namespace VRVlog.LilToonExporter
                     var details = (warnings ?? Enumerable.Empty<string>()).ToArray();
                     // Nothing asked about what a non-interactive save worked around,
                     // so the whole result list goes there once.
-                    if (!interactive && savedReport != null && savedReport.Count > 0) Debug.LogWarning(ExportResultList.Build(savedReport, details, path).Text());
+                    // The file is the transfer's own copy, so the list names none, as the window does.
+                    if (!interactive && savedReport != null && savedReport.Count > 0) Debug.LogWarning(ExportResultList.Build(savedReport, details).Text());
                     else if (details.Length > 0) Debug.Log(ExporterLocalization.T("VR Vlog 書き出し詳細\n・") + string.Join("\n・", details));
+                    LastResult = transferResult;
+                    transferResult = null;
                     written();
                     return;
                 }
-                // The hidden board of the quick transfer is gone by the time the result list saves.
+                // The hidden board of the quick transfer is gone by the time the recovery window saves.
                 savedTo?.Invoke(path, missingShaders);
                 if (this == null || !ReferenceEquals(session, target)) return;
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
@@ -2647,7 +2656,8 @@ namespace VRVlog.LilToonExporter
                 return exported;
             }, Completed, previewExcludedObjects: target.ExcludedObjects, previewGimmicks: target.GimmickOptions, interactive: interactive,
                 openBlinkSettings: () => { if (this != null && ReferenceEquals(session, target)) ShowBlinkConfiguration(); },
-                diagnosticsKind: diagnosticsKind);
+                diagnosticsKind: diagnosticsKind,
+                resultAfterTransfer: written != null ? open => transferResult = open : (Action<Action<string, string>>)null);
             if (recovery != null)
             {
                 recovery.RetainInput(target.RetainForRecovery());

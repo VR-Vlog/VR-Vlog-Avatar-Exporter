@@ -322,6 +322,44 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // The export's result list opens once the transfer has ended, named by how it ended;
+        // a failure gives its reason too. A QR that expired or was canceled can be made again,
+        // so the list keeps waiting and opens when the new QR has ended.
+        [TestCase("completed", AppTransferText.Completed)]
+        [TestCase("failed", AppTransferText.TransferFailed)]
+        [TestCase("cancelled", null)]
+        [TestCase("expired", null)]
+        public async Task TheResultListOpensOnceTheTransferHasEnded(string remote, string heading)
+        {
+            using (var run = new FlowRun())
+            {
+                var opened = new System.Collections.Generic.List<string>();
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add(title + (string.IsNullOrEmpty(note) ? "" : ":reason")));
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Nothing opens while the phone has not taken the avatar.");
+                run.Transport.RemoteState = remote;
+                await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                run.Tick();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                var failed = heading == AppTransferText.TransferFailed;
+                Assert.That(string.Join("|", opened), Is.EqualTo(heading == null ? "" : heading + (failed ? ":reason" : "")));
+                if (heading == null)
+                {
+                    run.Flow.Regenerate();
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    run.Transport.RemoteState = "completed";
+                    await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                    run.Tick();
+                    run.Flow.TakeEndedResult(text => text)?.Invoke();
+                    Assert.That(string.Join("|", opened), Is.EqualTo(AppTransferText.Completed), "The new QR of the same export opens the list.");
+                }
+                run.Flow.Stop();
+                Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Closing the screen drops the list.");
+            }
+        }
+
         // "VRMを保存" on the QR screen writes the bytes that were sent and says which ones they are.
         [Test]
         public async Task SavingTheSentCopyWritesTheSameBytes()
