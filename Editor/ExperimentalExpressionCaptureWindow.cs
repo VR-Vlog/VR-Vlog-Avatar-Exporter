@@ -303,7 +303,7 @@ namespace VRVlog.LilToonExporter
             EditorApplication.hierarchyChanged -= GimmicksChanged;
             // Closing the board cancels a transfer on its third page, as closing the transfer window does.
             CancelTransferPanel();
-            pending = null; Cleanup(); ReleaseStyles();
+            pending = null; Cleanup(); CloseChildWindows(); ReleaseStyles();
         }
 
         void Advance()
@@ -355,6 +355,8 @@ namespace VRVlog.LilToonExporter
             var current = session.ExcludedObjects.ToArray();
             var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
             if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; }
+            // The open pose window previews the avatar too; it shows the avatar as it is now.
+            if (poseReview != null) poseReview.RequestRebuild();
             RevalidateClips();
         }
 
@@ -581,7 +583,9 @@ namespace VRVlog.LilToonExporter
         }
 
         // A new preview of the same avatar that keeps the added files, the board,
-        // the poses, the blink choice and the object list still being edited. With
+        // the poses, the blink choice and the object list still being edited. The
+        // blink and pose windows stay open: they read the avatar, not the copy, and
+        // the new copy takes the same pose list the pose window edits. With
         // objects that leave no preview, the previous objects are left out again and
         // the reason is returned; null when the preview has the objects asked for.
         string RebuildKeepingAssignments(GameObject[] objects, GameObject[] previous = null)
@@ -589,26 +593,27 @@ namespace VRVlog.LilToonExporter
             var inputs = clipInputs.ToArray(); var excluded = board?.Excluded.ToArray() ?? Array.Empty<AnimationClip>();
             // Names are saved per avatar asset; one in an unsaved scene keeps them only here.
             var names = board?.Names.ToArray() ?? Array.Empty<System.Collections.Generic.KeyValuePair<AnimationClip, string>>();
-            var poses = session.PoseOptions.Copy(); var blink = configuredBlink?.Copy(); var automatic = automaticBlink; var previousSaved = saved;
+            var poses = session.PoseOptions; var blink = configuredBlink?.Copy(); var automatic = automaticBlink; var previousSaved = saved;
             var presets = session.Presets.Values.Select(value => value.Copy()).ToArray();
             var edits = excludedObjectEdits; var editError = excludedObjectError;
             string problem = null;
-            try { PrepareWith(objects); }
-            catch (Exception exception) when (previous != null && !(exception is OperationCanceledException))
+            try
             {
-                problem = exception.Message;
-                PrepareWith(previous);
+                try { PrepareWith(objects, poses); }
+                catch (Exception exception) when (previous != null && !(exception is OperationCanceledException))
+                {
+                    problem = exception.Message;
+                    PrepareWith(previous, poses);
+                }
             }
+            // With no copy left the board shows no avatar, so its windows go too.
+            catch { CloseChildWindows(); throw; }
             excludedObjectEdits = edits; excludedObjectError = editError;
             clipInputs.AddRange(inputs);
             board.Excluded.Clear(); board.Excluded.UnionWith(excluded);
             foreach (var pair in names) board.Names[pair.Key] = pair.Value;
             session.Presets.Clear();
             foreach (var preset in presets) session.SetPreset(ExperimentalExpressionCaptureSession.ParsePreset(preset.Preset), preset);
-            // The poses kept replace the saved ones the preparation read again.
-            session.PoseOptions.Manual.Clear(); session.PoseOptions.Excluded.Clear(); session.PoseOptions.Names.Clear();
-            session.PoseOptions.Manual.AddRange(poses.Manual); session.PoseOptions.Excluded.UnionWith(poses.Excluded);
-            foreach (var pair in poses.Names) session.PoseOptions.Names.Add(pair.Key, pair.Value);
             configuredBlink = blink; automaticBlink = automatic; saved = previousSaved;
             return problem;
         }
@@ -801,7 +806,9 @@ namespace VRVlog.LilToonExporter
             else if (EditorUtility.DisplayCancelableProgressBar(title, step, progress)) throw new OperationCanceledException();
         }
 
-        void PrepareWith(GameObject[] objects)
+        // keptPoses is the pose list of the copy being replaced; without it the
+        // poses saved for the avatar are read.
+        void PrepareWith(GameObject[] objects, PoseExportOptions keptPoses = null)
         {
             Cleanup();
             try
@@ -817,12 +824,15 @@ namespace VRVlog.LilToonExporter
                 var storedBlink = stored.Blink ?? new BlinkExportOptions();
                 if (storedBlink.Mode == BlinkExportMode.Manual) { configuredBlink = storedBlink.Copy(); automaticBlink = true; }
                 else if (storedBlink.Mode == BlinkExportMode.None) automaticBlink = false;
-                session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks());
+                session = ExperimentalExpressionCaptureSession.Create(source, replayInstalledDefaults: false, objects, stored.Gimmicks(), keptPoses);
                 // And the poses, as the export window writes them.
-                var storedPoses = stored.Poses ?? new PoseExportOptions();
-                session.PoseOptions.Manual.AddRange(storedPoses.Manual.Select(pose => pose.Copy()));
-                session.PoseOptions.Excluded.UnionWith(storedPoses.Excluded);
-                foreach (var pair in storedPoses.Names) session.PoseOptions.Names[pair.Key] = pair.Value;
+                if (keptPoses == null)
+                {
+                    var storedPoses = stored.Poses ?? new PoseExportOptions();
+                    session.PoseOptions.Manual.AddRange(storedPoses.Manual.Select(pose => pose.Copy()));
+                    session.PoseOptions.Excluded.UnionWith(storedPoses.Excluded);
+                    foreach (var pair in storedPoses.Names) session.PoseOptions.Names[pair.Key] = pair.Value;
+                }
                 var target = session;
                 board = new ExpressionBoard(target.Presets, target.SetPreset, clips => target.SuggestPresets(clips, ExportBlinkOptions()), target.HasAuthoredPreset);
                 steps.Next("recommend");
@@ -2814,7 +2824,7 @@ namespace VRVlog.LilToonExporter
 
         void ChangeAvatar()
         {
-            Cleanup();
+            Cleanup(); CloseChildWindows();
             // Another avatar starts from blink on, as a new board does; its saved blink applies on preparing.
             automaticBlink = true;
             licenseOptions = new AvatarLicenseOptions();
@@ -2822,14 +2832,24 @@ namespace VRVlog.LilToonExporter
             page = ExpressionsPage;
         }
 
+        // The blink and pose windows belong to the avatar: they close when the
+        // board closes or leaves the avatar, not when it makes its copy again.
+        void CloseChildWindows()
+        {
+            if (blinkConfiguration != null) blinkConfiguration.Close();
+            blinkConfiguration = null;
+            if (poseReview != null) poseReview.Close();
+            poseReview = null;
+        }
+
+        // Drops the copy and what was read from it. The open windows stay (CloseChildWindows).
         void Cleanup()
         {
-            blinkConfiguration?.Close(); blinkConfiguration = null; configuredBlink = null;
+            configuredBlink = null;
             // The utility owns its lights/camera; session owns the avatar and assets.
             if (session?.RetainPreviewForRecovery(preview) == true) preview = null;
             preview?.Cleanup(); preview = null;
             session?.Dispose(); session = null; board = null;
-            poseReview?.Close(); poseReview = null;
             clipErrors.Clear(); candidateRects.Clear(); clipInputs.Clear(); fileRecords.Clear(); recommendations = null; saved = null;
             presetErrors.Clear(); eyeOverlaps.Clear(); presetKey = null; presetSkipped = 0;
             excludedObjectEdits = null; excludedObjectError = null;
