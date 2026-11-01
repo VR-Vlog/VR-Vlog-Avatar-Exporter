@@ -355,8 +355,19 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     run.Flow.TakeEndedResult(text => text)?.Invoke();
                     Assert.That(string.Join("|", opened), Is.EqualTo(AppTransferText.Completed), "The new QR of the same export opens the list.");
                 }
+                // A failure outside the session keeps a list that is waiting, so it opens once.
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add("kept"));
+                run.Flow.Fail("x");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                Assert.That(opened.Last(), Is.EqualTo("kept"));
+                // Closing the screen drops a list that is waiting: the same failure then opens nothing.
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add("dropped"));
                 run.Flow.Stop();
+                run.Flow.Fail("x");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
                 Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Closing the screen drops the list.");
+                Assert.That(opened.Contains("dropped"), Is.False);
             }
         }
 
