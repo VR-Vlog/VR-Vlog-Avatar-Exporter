@@ -22,6 +22,7 @@ VRMの表情は指の形を持てない。ジェスチャーで入るクリッ�
 
 - `ExperimentalExpressionCaptureTests.GestureFacesIgnoreBoneCurvesBesideTheFace` に、指の曲線（ジェスチャーで入る・入らない）と体の筋肉の曲線（ジェスチャーで入らない）のケースを足した。
 - `ExperimentalExpressionCaptureTests.WhileTheExportLeavesBonesOutTheBoardTreatsThemAsBefore` に、ボーンの書き出しが止まっているとき、ジェスチャーで入らないクリップの指の曲線は未対応のままであることを確かめるケースを足した。
+- `VrChatMenuExpressionTests.HumanoidChannelsComeFromUnityVocabulary` に、`IsFingerMuscle` が左右の手の指を両方の書き方で拾い、手首・前腕・体・頭・脚・IKのゴール・ルート・Animator以外のパス・Transformの曲線を拾わないことを足した。
 - 上の表情を持つアバターで、ボーンの書き出しを有効にして表情ボードを開いて何も変えずに書き出し、2つの表情がどちらも一覧とVRMに入ること、VRMの `transforms` に小物の位置が入ることを確かめた。
 
 ## 欠点
