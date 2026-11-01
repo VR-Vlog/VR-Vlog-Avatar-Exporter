@@ -88,9 +88,7 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
-            // Targets moved out of a menu toggle, and the toggled object they leave.
-            var following = new List<(GameObject Moved, GameObject Leader, string Path)>();
-            var switched = toggles?.Targets.Where(t => t != null).Select(t => t.transform).ToArray() ?? Array.Empty<Transform>();
+            var membership = new ToggleMembership(toggles, plans.Select(plan => plan.Target));
             var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
             var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
@@ -107,7 +105,7 @@ namespace VRVlog.LilToonExporter
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, switched, following, paths[order])
+                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, membership, paths[order])
                         : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
@@ -125,7 +123,7 @@ namespace VRVlog.LilToonExporter
                 for (var index = moved.Count - 1; index >= 0; index--) moved[index].Restore();
                 throw;
             }
-            foreach (var (target, leader, path) in following) toggles.Follow(target, leader, path);
+            membership.Apply();
             foreach (var (order, plan, outcome, reason) in decisions.OrderBy(d => d.Order))
             {
                 result.Sources++;
@@ -207,7 +205,7 @@ namespace VRVlog.LilToonExporter
         // pose is the solved one: VRChat and Unity constraints run in the editor.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
             HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved,
-            Transform[] switched, List<(GameObject, GameObject, string)> following, string userPath)
+            ToggleMembership membership, string userPath)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
@@ -226,22 +224,81 @@ namespace VRVlog.LilToonExporter
             // when it writes the file; a moved target would leave them dangling.
             var path = ExportFallbackReport.RelativePath(root, target);
             if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
-            // The menu toggles were turned on for the export, and the app hides
-            // a toggled object by its own node. A target leaving one would stay
-            // visible, so it follows that toggle; a source inside one the target
-            // is not in would start hiding it, and more than one has no single state.
-            var leaving = switched.Where(t => t != target && target.IsChildOf(t) && !source.IsChildOf(t)).ToArray();
-            if (switched.Any(t => source.IsChildOf(t) && !target.IsChildOf(t)) || leaving.Length > 1 || leaving.Length == 1 && switched.Contains(target))
-                return (ExportOutcome.Omitted, OmittedToggle);
+            if (!membership.Allows(target, source, out var leader)) return (ExportOutcome.Omitted, OmittedToggle);
             var before = new Moved(target);
             try { ExportAttachmentSession.ReparentPreservingPose(target, source); }
             catch (InvalidOperationException) { return (ExportOutcome.Omitted, OmittedReparent); }
             moved.Add(before);
-            if (leaving.Length == 1) following.Add((target.gameObject, leaving[0].gameObject, userPath));
+            membership.Moved(target, leader, userPath);
             return (ExportOutcome.Kept, KeptParent);
         }
 
         const float FullWeight = .999f;
+
+        // The menu toggles were turned on for the export, and the app hides a
+        // toggled object by its own node. A target moved out of one would stay
+        // visible, so it follows that toggle. Membership is taken from the
+        // hierarchy before anything moves, and a moved target counts as inside
+        // the toggle it follows, so the order of the moves does not matter.
+        sealed class ToggleMembership
+        {
+            readonly ObjectToggleCapture toggles;
+            readonly Transform[] switched;
+            readonly Dictionary<Transform, Transform[]> original = new Dictionary<Transform, Transform[]>();
+            readonly Dictionary<Transform, Transform> leaders = new Dictionary<Transform, Transform>();
+            readonly List<(Transform Target, Transform Leader, string Path)> following = new List<(Transform, Transform, string)>();
+
+            internal ToggleMembership(ObjectToggleCapture toggles, IEnumerable<Transform> targets)
+            {
+                this.toggles = toggles;
+                switched = toggles?.Targets.Where(t => t != null).Select(t => t.transform).ToArray() ?? Array.Empty<Transform>();
+                foreach (var target in targets)
+                    if (target != null && !original.ContainsKey(target)) original.Add(target, Around(target));
+            }
+
+            // The toggles that show and hide the value now.
+            Transform[] Around(Transform value)
+            {
+                var result = switched.Where(value.IsChildOf).ToList();
+                for (var at = value; at != null; at = at.parent)
+                    if (leaders.TryGetValue(at, out var leader)) result.Add(leader);
+                return result.Distinct().ToArray();
+            }
+
+            // Whether the toggles show and hide the target as before once it is
+            // under the source: it may join a toggle (leader) it would leave,
+            // but not one it was never in, nor two at once, nor a second one.
+            // A target without a mesh shows nothing either way.
+            internal bool Allows(Transform target, Transform source, out Transform leader)
+            {
+                leader = null;
+                if (switched.Length == 0 || !target.GetComponentsInChildren<Renderer>(true).Any(r => r is MeshRenderer || r is SkinnedMeshRenderer))
+                    return true;
+                var before = original[target];
+                var after = Around(source).Concat(switched.Contains(target) ? new[] { target } : Array.Empty<Transform>()).ToArray();
+                if (after.Except(before).Any()) return false;
+                var missing = before.Except(after).ToArray();
+                if (missing.Length == 0) return true;
+                if (missing.Length > 1 || switched.Contains(target) ||
+                    !toggles.HasRoom(following.Select(f => f.Leader.gameObject).Append(missing[0].gameObject).ToArray()))
+                    return false;
+                leader = missing[0];
+                return true;
+            }
+
+            internal void Moved(Transform target, Transform leader, string path)
+            {
+                if (leader == null) return;
+                leaders[target] = leader;
+                following.Add((target, leader, path));
+            }
+
+            // After every move succeeded, so a failure only has to move targets back.
+            internal void Apply()
+            {
+                foreach (var (target, leader, path) in following) toggles.Follow(target.gameObject, leader.gameObject, path);
+            }
+        }
 
         static HashSet<string> BoundPaths(GameObject copy)
         {
