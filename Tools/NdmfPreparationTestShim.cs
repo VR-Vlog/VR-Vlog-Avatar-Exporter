@@ -282,6 +282,10 @@ namespace VRVlog.LilToonExporter.Vendor.UniVRM10
 namespace VRVlog.LilToonExporter
 {
     // Warnings keep their Japanese source text; translation is not tested here.
-    public static class ExporterLocalization { public static string T(string source) => source; }
+    public static class ExporterLocalization
+    {
+        public static string T(string source) => source;
+        public static string Format(string template, params object[] values) => string.Format(T(template), values);
+    }
 }
 #endif
