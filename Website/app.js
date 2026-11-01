@@ -5,16 +5,18 @@
   const managers = {
     alcom: {
       name: 'ALCOM',
-      add: '上の追加ボタンからALCOMを開き、「VPMリポジトリを追加」を押します。',
-      package: 'プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、「適用」を押します。',
+      add: '開いた画面で「VPMリポジトリを追加」を押す',
+      project: '「管理」を開く',
+      package: 'エクスポーターの最新の正式版を選び、「適用」',
       caption: 'ALCOMのパッケージ一覧（画面内は変更前の名称）',
       download: 'https://vrc-get.anatawa12.com/alcom/',
       fallback: 'ALCOMの「パッケージ&テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。',
     },
     vcc: {
       name: 'VCC',
-      add: '上の追加ボタンからVCCを開き、「I Understand, Add Repository」を押します。',
-      package: '「Manage Project」を開き、追加したエクスポーターの「Installed Version」欄から最新の正式版を選びます。',
+      add: '開いた画面で「I Understand, Add Repository」を押す',
+      project: '「Manage Project」を開く',
+      package: 'エクスポーターの「Installed Version」で最新の正式版を選ぶ',
       caption: 'VCCのプロジェクト一覧（実画面）',
       download: 'https://vcc.docs.vrchat.com/',
       fallback: 'VCCの「Settings」→「Packages」→「Add Repository」を開き、次のURLを貼り付けます。「Add」を押し、内容を確認して「I Understand, Add Repository」を押します。',
@@ -30,7 +32,7 @@
     root.querySelectorAll('[data-manager-copy]').forEach(node => { node.textContent = copy[node.dataset.managerCopy]; });
     root.querySelectorAll('[data-manager-shot]').forEach(node => { node.hidden = node.dataset.managerShot !== value; });
     root.querySelector('[data-manager-caption]').textContent = copy.caption;
-    root.querySelector('[data-manager-cta]').textContent = copy.name + 'に追加';
+    root.querySelector('[data-manager-cta]').textContent = copy.name + 'で追加';
     root.querySelector('[data-manager-fallback]').textContent = copy.fallback;
     const download = root.querySelector('[data-manager-download]');
     download.href = copy.download;
