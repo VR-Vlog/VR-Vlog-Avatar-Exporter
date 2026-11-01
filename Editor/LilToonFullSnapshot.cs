@@ -63,7 +63,7 @@ namespace VRVlog.LilToonExporter
                 var slots = renderer.sharedMaterials;
                 if (slots.Any(material => material == null))
                 {
-                    if (slots.Any(material => material != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)))
+                    if (slots.Any(material => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name)))
                         warnings?.Add(renderer.name + ": マテリアルが空のスロットがあるため、この表示物のlilToonは標準VRMのマテリアルで書き出しました。");
                     continue;
                 }
