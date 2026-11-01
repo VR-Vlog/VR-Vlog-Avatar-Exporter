@@ -282,7 +282,7 @@ namespace VRVlog.LilToonExporter
                         // An optimizer merged two animated shapes, or an
                         // animated shape and a fixed one, into one morph; the
                         // app could not move them apart. Keep the VRM
-                        // expression (the last frame) without the motion.
+                        // expression (its face time) without the motion.
                         warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて動かない顔だけを登録しました。");
                         animation = null;
                     }
