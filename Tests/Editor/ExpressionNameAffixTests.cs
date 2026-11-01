@@ -63,17 +63,17 @@ namespace VRVlog.LilToonExporter.Tests
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 0 });
             channel.Points.Add(new ExpressionAnimationData.Point { Value = 100, Target = "A" });
             smile.Animation.Channels.Add(channel);
-            var expressions = new List<VrmMenuExpressions.Expression> { smile, Face("face_sad", "B"), Face("face_other", "B") };
+            var expressions = new List<VrmMenuExpressions.Expression> { smile, Face("face_wave", "B"), Face("face_other", "B") };
             var bytes = VrmMenuExpressions.Add(Output("A", "B"), expressions);
             var json = GlbDocument.Read(bytes).Json;
-            Assert.That(Custom(json).Keys, Is.EquivalentTo(new[] { "smile", "sad" }));
-            Assert.That(VrmMenuExpressions.RegisteredNames(bytes), Is.EquivalentTo(new[] { "smile", "sad" }));
+            Assert.That(Custom(json).Keys, Is.EquivalentTo(new[] { "smile", "wave" }));
+            Assert.That(VrmMenuExpressions.RegisteredNames(bytes), Is.EquivalentTo(new[] { "smile", "wave" }));
             var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)json["extensions"])[ExpressionAnimationData.Extension]);
             Assert.That(document.Animations.Select(animation => animation.Expression), Is.EqualTo(new[] { "smile" }));
-            Assert.That(expressions.Select(e => e.RegisteredName), Is.EqualTo(new[] { "smile", "sad", null }));
-            Assert.That(expressions.Select(e => e.MergedInto), Is.EqualTo(new[] { null, null, "sad" }));
+            Assert.That(expressions.Select(e => e.RegisteredName), Is.EqualTo(new[] { "smile", "wave", null }));
+            Assert.That(expressions.Select(e => e.MergedInto), Is.EqualTo(new[] { null, null, "wave" }));
             Assert.That(VrmMenuExpressions.EmotionCandidates(expressions),
-                Is.EquivalentTo(new Dictionary<string, string> { ["smile"] = "face_smile", ["sad"] = "face_sad" }));
+                Is.EquivalentTo(new Dictionary<string, string> { ["smile"] = "face_smile", ["wave"] = "face_wave" }));
         }
 
         static ExpressionAnimationData.Curve Linear(double duration, double value)
@@ -85,7 +85,7 @@ namespace VRVlog.LilToonExporter.Tests
             return curve;
         }
 
-        // "happy" is a VRM preset; the app would drop the extension.
+        // "happy" and "sad" are VRM presets; the app would drop the extension.
         [Test]
         public void AddKeepsTheNamesWhenAShorterNameIsAPreset()
         {

@@ -1525,11 +1525,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                // Both names end with " face", which the export leaves out (ExpressionNameAffix).
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
-                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Expression, Is.EqualTo("Moving"));
                 Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
                 Assert.That(animation.Loop, Is.True);
                 Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
@@ -1734,10 +1735,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
-                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom[still.name])["morphTargetBinds"], Is.Not.Empty);
+                // Both names end with " face", which the export leaves out (ExpressionNameAffix).
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
+                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom["Still"])["morphTargetBinds"], Is.Not.Empty);
                 var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
-                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Expression, Is.EqualTo("Moving"));
                 Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
