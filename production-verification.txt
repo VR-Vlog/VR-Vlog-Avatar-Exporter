@@ -1,0 +1,7 @@
+本番ブラウザ検証 2026-11-01 / gpt-6.1-terra high
+公開 https://vrvlog.fun/exporter/ 新規Chrome専用タブ。Chrome versionは公式browser APIから取得できず未確認。ローカルはCodex in-app browser、本番はChromeで同一環境ではない。いずれも日本語 dark、DPR 1 scale 1。PC viewport 1440x1000、mobile 390x844。sipsで撮影画像の各寸法を確認。browser screenshotはJPEG bytesだったので指定.pngへロスレス形式変換。
+本番トップ: 撮影イメージを見当たらず、ヒーロー動画カード・5分39秒・導入00:30/転送02:23表示。初期video src空、readyState 0、paused=true。
+先頭: 動画URL https://vrvlog.fun/guide/vrvlog-start-guide.mp4?v=be86956d2337 、3.954582秒再生、readyState 4。閉じる: paused=true、カードへfocus。導入: data-video 30.634、32.239323秒で再生、ESCでpaused=true/導入ボタンへfocus。転送: data-video 143.072、144.625896秒で再生、ESCでpaused=true/転送ボタンへfocus。header: 1.403304秒で再生、閉じるでpaused=true/headerボタンへfocus。音声聴取は未確認。console warn/errorなし。
+導入CTA: https://vrvlog.fun/exporter/#install、install top 23.5px。ガイド https://vrvlog.fun/exporter/guide/ に遷移して表示。ALCOM/VCC切替のpressed表示と文言を確認。両href vcc://vpm/addRepo?url=https://vrvlog.fun/exporter/index.json。vccクリック・外部アプリ起動・インストール・フォーム送信なし。
+https://vrvlog.fun/exporter/publication.json のブラウザDOM: publisher.repository VR-Vlog/VR-Vlog-Avatar-Exporter、source_commit c8e2f4a805127aaf81340c0035be5ac5e75fb39b、run_id 41293873252、digest 995744543759ff0033a2d0cccecd3519b050f9ba1a9a0cb3b3740d98adb802ad。依頼提示値と一致。digestの再計算はしていない。
+本番画像 production-desktop-top.png / production-mobile-top.png。専用タブを閉じviewport reset、操作対象タブ一覧は空。共有タブ・設定・ログイン状態には触れず。

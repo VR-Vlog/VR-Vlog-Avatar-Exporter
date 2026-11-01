@@ -1,0 +1,9 @@
+{
+  "commit": "add5bb065eb6be6ea442682de26677385d1f9693",
+  "http_matches_worktree": {
+    "index.html": "8e46696716bf8fdd1bdcf99986563f3944a3b9862b11e2696650ff7a861eb53f",
+    "styles.css": "fdac9a674792ff81dcf5e7bbd9d053d69720542f746d507e5132fa0f2573e45f",
+    "guide.js": "370f5117f470cc70d1f87317f53f0f8b64afa832ab698f93928c1bc7c1d68164",
+    "app.js": "bb79d691bc1df0fd70ba1deca6cbbec404674fa8f444fb13377384d2652874a0"
+  }
+}
