@@ -183,6 +183,47 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(board); }
         }
 
+        // Making the copy again (a changed object list, an avatar that changed
+        // under the board) keeps the blink and pose windows open, and the pose
+        // window keeps editing the list the new copy exports. Leaving the avatar closes them.
+        [Test]
+        public void ARebuildKeepsTheBlinkAndPoseWindowsOpen()
+        {
+            using var fixture = new SavedFixture();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            var blink = ScriptableObject.CreateInstance<BlinkConfigurationWindow>();
+            var poses = ScriptableObject.CreateInstance<PoseReviewWindow>();
+            try
+            {
+                PoseExportOptions Poses() => ((ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board)).PoseOptions;
+                var edited = Poses();
+                typeof(PoseReviewWindow).GetField("options", flags).SetValue(poses, edited);
+                // Shown, as the board opens them; a window never shown cannot be closed.
+                blink.ShowUtility(); poses.ShowUtility();
+                type.GetField("blinkConfiguration", flags).SetValue(board, blink);
+                type.GetField("poseReview", flags).SetValue(board, poses);
+                type.GetMethod("RebuildKeepingAssignments", flags).Invoke(board, new object[] { Array.Empty<GameObject>(), null });
+                Assert.That(blink != null, Is.True, "The blink window stays open.");
+                Assert.That(poses != null, Is.True, "The pose window stays open.");
+                Assert.That(type.GetField("blinkConfiguration", flags).GetValue(board), Is.SameAs(blink));
+                Assert.That(type.GetField("poseReview", flags).GetValue(board), Is.SameAs(poses));
+                Assert.That(Poses(), Is.SameAs(edited), "The new copy exports the list the pose window edits.");
+                edited.Excluded.Add("SamplePose");
+                Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                type.GetMethod("ChangeAvatar", flags).Invoke(board, null);
+                Assert.That(blink == null, Is.True, "Leaving the avatar closes the blink window.");
+                Assert.That(poses == null, Is.True, "Leaving the avatar closes the pose window.");
+            }
+            finally
+            {
+                if (blink != null) blink.Close();
+                if (poses != null) poses.Close();
+                Object.DestroyImmediate(board);
+            }
+        }
+
         // Out of sight, a blocked board names what to fix; the open board shows it itself.
         [Test]
         public void ABlockedHiddenBoardSaysWhatToFix()
