@@ -212,6 +212,12 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(Poses(), Is.SameAs(edited), "The new copy exports the list the pose window edits.");
                 edited.Excluded.Add("SamplePose");
                 Assert.That(Poses().Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                // Following an avatar that changed under the board, the pose window previews it again.
+                Assert.That(poses.IsBusy, Is.False);
+                type.GetMethod("FollowSource", flags).Invoke(board, new object[] { "test" });
+                Assert.That(blink != null && poses != null, Is.True, "Following the avatar keeps the windows open.");
+                Assert.That(Poses(), Is.SameAs(edited));
+                Assert.That(poses.IsBusy, Is.True, "The pose window previews the avatar as it is now.");
                 type.GetMethod("ChangeAvatar", flags).Invoke(board, null);
                 Assert.That(blink == null, Is.True, "Leaving the avatar closes the blink window.");
                 Assert.That(poses == null, Is.True, "Leaving the avatar closes the pose window.");

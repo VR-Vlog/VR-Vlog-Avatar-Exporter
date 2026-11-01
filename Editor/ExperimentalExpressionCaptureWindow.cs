@@ -355,6 +355,8 @@ namespace VRVlog.LilToonExporter
             var current = session.ExcludedObjects.ToArray();
             var problem = current.Length > 0 ? RebuildKeepingAssignments(current, Array.Empty<GameObject>()) : RebuildKeepingAssignments(current);
             if (problem != null) { excludedObjectEdits = current.ToList(); excludedObjectError = problem; }
+            // The open pose window previews the avatar too; it shows the avatar as it is now.
+            if (poseReview != null) poseReview.RequestRebuild();
             RevalidateClips();
         }
 
