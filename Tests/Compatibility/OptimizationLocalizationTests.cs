@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 
@@ -5,6 +6,18 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class OptimizationLocalizationTests
     {
+        [Test]
+        public void EnglishTranslationsHoldNoJapaneseCharacters()
+        {
+            var guid = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
+            var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+            var text = System.IO.File.ReadAllText(path);
+            var bad = new System.Collections.Generic.List<string>();
+            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, "\"translated\":\"((?:[^\"\\\\]|\\\\.)*)\""))
+                if (System.Text.RegularExpressions.Regex.IsMatch(match.Groups[1].Value, "[぀-ヿ一-鿿]")) bad.Add(match.Groups[1].Value);
+            Assert.That(bad, Is.Empty, "Japanese left in the English translations");
+        }
+
         [TestCase("en")]
         [TestCase("ko")]
         [TestCase("zh-Hans")]
