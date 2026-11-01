@@ -869,12 +869,16 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face may also turn a bone, such as an eye highlight, or show an object. It is still a face on the
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
-        // bone and the shown object beside it. A material swap keeps the clip unsupported. A hand pose that
+        // bone and the shown object beside it. A finger pose beside the face is left out; a body pose keeps a
+        // clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
         // only holds the face shapes at rest is not a face.
         [TestCase("transform", true, 80f, "usable")]
         [TestCase("transform", false, 80f, "usable")]
         [TestCase("active", true, 80f, "usable")]
         [TestCase("active", false, 80f, "usable")]
+        [TestCase("finger", true, 80f, "usable")]
+        [TestCase("finger", false, 80f, "usable")]
+        [TestCase("body", false, 80f, "unsupported")]
         [TestCase("material", true, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
@@ -886,11 +890,8 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-                if (extra == "material")
-                    AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), AnimationCurve.Constant(0, 1, 0.5f));
-                else AnimationUtility.SetEditorCurve(clip, extra == "transform"
-                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
-                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var (binding, value) = CurveBesideTheFace(extra);
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, value));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
                 if (gesture)
                 {
@@ -909,15 +910,29 @@ namespace VRVlog.LilToonExporter.Tests
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
                     // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
-                    var presetUsable = gesture && extra == "transform";
+                    var presetUsable = gesture && (extra == "transform" || extra == "finger");
                     if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
-                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                    else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(binding.propertyName));
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
-                else Assert.That(error, Does.EndWith("material._Color.r"));
+                else Assert.That(error, Does.EndWith(binding.propertyName));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
+        // The curve a face clip carries beside its BlendShape, and the value it holds.
+        static (EditorCurveBinding Binding, float Value) CurveBesideTheFace(string extra)
+        {
+            switch (extra)
+            {
+                case "transform": return (EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x"), -30);
+                case "active": return (EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), 0);
+                case "finger": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"), -0.5f);
+                case "body": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "Spine Front-Back"), 0.3f);
+                case "material": return (EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), 0.5f);
+                default: throw new System.ArgumentOutOfRangeException(nameof(extra), extra, null);
+            }
         }
 
         // While the export leaves bones and visibility out, the board treats them as 1.4.2 did: a gesture
@@ -927,6 +942,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("transform", false, 80f, "unsupported")]
         [TestCase("active", true, 80f, "unsupported")]
         [TestCase("active", false, 80f, "unsupported")]
+        [TestCase("finger", false, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
         public void WhileTheExportLeavesBonesOutTheBoardTreatsThemAsBefore(string extra, bool gesture, float weight, string expected)
         {
@@ -937,9 +953,8 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-                AnimationUtility.SetEditorCurve(clip, extra == "transform"
-                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
-                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var (binding, value) = CurveBesideTheFace(extra);
+                AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, value));
                 var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
                 if (gesture)
                 {
@@ -956,7 +971,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
-                else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
+                else Assert.That(error, Does.EndWith(binding.propertyName));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
