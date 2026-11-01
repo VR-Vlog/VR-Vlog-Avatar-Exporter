@@ -67,6 +67,8 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-install-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;list-style:none;margin:20px 0 0;padding:0}
 #exporter-page .vrx-install-card{min-width:0;padding:22px;border:1px solid var(--line);border-radius:12px;background:#20252d}
 #exporter-page .vrx-install-card h3{display:flex;align-items:flex-start;gap:12px;font-size:19px;line-height:1.6}
+#exporter-page .vrx-install-title{min-width:0}
+#exporter-page .vrx-phrase{display:inline-block}
 #exporter-page .vrx-install-number{display:grid;place-items:center;flex:none;width:36px;height:36px;border:2px solid #596374;border-radius:50%;font:600 23px/1 Barlow,sans-serif;color:var(--muted)}
 #exporter-page .vrx-install-card:first-child .vrx-install-number{border-color:var(--accent);color:var(--accent)}
 #exporter-page .vrx-install-action{margin-top:22px}

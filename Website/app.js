@@ -6,7 +6,7 @@
     alcom: {
       name: 'ALCOM',
       add: '開いた画面で「VPMリポジトリを追加」を押す',
-      project: 'アバターのプロジェクトの「管理」を開く',
+      project: '「管理」を開く',
       package: 'エクスポーターの最新の正式版を選び、「適用」',
       caption: 'ALCOMのパッケージ一覧（画面内は変更前の名称）',
       download: 'https://vrc-get.anatawa12.com/alcom/',
@@ -15,7 +15,7 @@
     vcc: {
       name: 'VCC',
       add: '開いた画面で「I Understand, Add Repository」を押す',
-      project: 'アバターのプロジェクトの「Manage Project」を開く',
+      project: '「Manage Project」を開く',
       package: 'エクスポーターの「Installed Version」で最新の正式版を選ぶ',
       caption: 'VCCのプロジェクト一覧（実画面）',
       download: 'https://vcc.docs.vrchat.com/',
