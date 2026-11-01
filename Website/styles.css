@@ -78,28 +78,7 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page summary{min-height:36px}
 #exporter-page .vrx-install-bottom details p{text-align:left;margin:8px 0}
 #exporter-page input{width:100%;min-width:0;margin-top:8px;padding:9px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:var(--text);font-size:16px;min-height:44px}
-#exporter-page .vrx-transfer{display:grid;grid-template-columns:.94fr 1.06fr;gap:44px;align-items:center;padding-block:54px}
-#exporter-page .vrx-step-selector{display:grid;gap:3px;margin-top:24px}
-#exporter-page .vrx-step-selector button{display:flex;align-items:center;gap:16px;min-width:0;width:100%;padding:14px 13px 14px 0;border:0;border-bottom:1px solid var(--line);background:none;text-align:left}
-#exporter-page .vrx-step-selector button[aria-pressed=true]{background:var(--tint);padding-left:13px;border-bottom-color:transparent;border-radius:8px}
-#exporter-page .vrx-step-number{font:500 28px/1 Barlow,sans-serif;color:var(--accent);flex:none}
-#exporter-page .vrx-step-selector button>span:nth-child(2){min-width:0;flex:1}
-#exporter-page .vrx-step-selector strong{display:block;font-size:15px;font-weight:700}
-#exporter-page .vrx-step-selector small{display:block;font-size:11px;line-height:1.8;color:var(--muted);margin-top:3px}
-#exporter-page .vrx-step-selector svg{width:16px;height:16px;color:var(--muted)}
-#exporter-page .vrx-step-stage{background:var(--panel);border-radius:14px;padding:23px;min-height:425px;display:grid;align-items:center}
-#exporter-page .vrx-step-panel{min-width:0;text-align:center}
-#exporter-page .vrx-step-panel>p{font-size:12px;line-height:1.85;color:var(--muted);margin-top:16px}
-#exporter-page .vrx-menu-scene{position:relative;aspect-ratio:380/200;overflow:hidden;border-radius:5px}
-#exporter-page .vrx-menu-scene img{width:100%;height:auto}
-#exporter-page .vrx-submenu{width:min(100%,265px);margin:14px auto 0;border-radius:5px}
-#exporter-page .vrx-transfer-top{width:min(100%,280px);aspect-ratio:422/300;position:relative;overflow:hidden;border-radius:7px 7px 0 0;margin:auto}
-#exporter-page .vrx-transfer-top img{width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-transfer-bottom{width:min(100%,280px);aspect-ratio:422/130;position:relative;overflow:hidden;border-radius:0 0 7px 7px;margin:9px auto 0}
-#exporter-page .vrx-transfer-bottom img{position:absolute;top:-410%;width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-receive{position:relative;width:min(100%,242px);aspect-ratio:540/650;overflow:hidden;border-radius:7px;margin:auto}
-#exporter-page .vrx-receive img{position:absolute;width:300%;max-width:none;left:0;top:-84.615385%}
-#exporter-page .vrx-help{display:grid;grid-template-columns:.85fr 1.15fr;gap:46px;border-top:1px solid var(--line);padding-block:28px 34px}
+#exporter-page .vrx-help{margin-top:32px;display:grid;grid-template-columns:.85fr 1.15fr;gap:46px;border-top:1px solid var(--line);padding-block:28px 34px}
 #exporter-page .vrx-help h2{font-size:21px}
 #exporter-page .vrx-help>div>p{font-size:12px;color:var(--muted);margin-top:9px}
 #exporter-page .vrx-faq details{border-bottom:1px solid var(--line);font-size:12px}
@@ -131,10 +110,6 @@ body:has(dialog[open]){overflow:hidden}
 #exporter-page .vrx-dialog-body figure+figure{margin-top:30px}
 #exporter-page .vrx-dialog-body img{width:auto;max-width:100%;margin:auto}
 #exporter-page .vrx-dialog-body figcaption{font-size:13px;line-height:1.85;color:var(--muted);margin-top:12px}
-#exporter-page .vrx-dialog-transfer{max-width:422px;margin:auto}
-#exporter-page .vrx-dialog-transfer img{width:100%;clip-path:inset(2px round 8px)}
-#exporter-page .vrx-dialog-receive{position:relative;aspect-ratio:540/650;width:min(100%,360px);overflow:hidden;margin:auto;border-radius:7px}
-#exporter-page .vrx-dialog-receive img{position:absolute;max-width:none;width:300%;left:0;top:-84.615385%}
 
 @media(min-width:1200px){
   #exporter-page .vrx-header{padding-inline:max(40px,calc((100% - 1160px)/2))}
@@ -157,8 +132,6 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-install{padding:23px}
   #exporter-page .vrx-install-layout{gap:24px}
   #exporter-page .vrx-install h2{font-size:21px}
-  #exporter-page .vrx-transfer{gap:25px}
-  #exporter-page .vrx-step-stage{padding:17px}
   #exporter-page .vrx-help{gap:28px}
   #exporter-page .vrx-footer-top{display:block}
   #exporter-page .vrx-footer nav{margin-top:9px}
@@ -200,14 +173,6 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-install-bottom{grid-template-columns:1fr;gap:12px;margin-top:18px;padding-top:16px;font-size:12px}
   #exporter-page .vrx-install-bottom details{text-align:left}
   #exporter-page summary{min-height:44px}
-  #exporter-page .vrx-transfer{grid-template-columns:1fr;padding-block:35px;gap:22px}
-  #exporter-page .vrx-transfer h2{font-size:28px}
-  #exporter-page .vrx-transfer h2 br{display:none}
-  #exporter-page .vrx-step-selector{margin-top:17px}
-  #exporter-page .vrx-step-selector button{padding-block:12px;gap:13px;min-height:77px}
-  #exporter-page .vrx-step-stage{min-height:385px;padding:20px 16px}
-  #exporter-page .vrx-step-panel>p{font-size:13px}
-  #exporter-page .vrx-transfer-top,#exporter-page .vrx-transfer-bottom{max-width:260px}
   #exporter-page .vrx-help{grid-template-columns:1fr;gap:20px;padding-block:25px}
   #exporter-page .vrx-help h2{font-size:21px}
   #exporter-page .vrx-faq details,#exporter-page .vrx-help>div>p{font-size:13px}

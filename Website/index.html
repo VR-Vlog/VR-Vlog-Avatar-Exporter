@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#191b1f">
   <title>VR Vlog Avatar Exporter — 自分のアバターをVR Vlogで使う</title>
-  <meta name="description" content="VR Vlog Avatar Exporterの導入から、QRコードでスマホにアバターを送るまでを画像で案内します。VCC・ALCOMに対応。">
+  <meta name="description" content="VR Vlog Avatar Exporterの導入から、QRコードでスマホにアバターを送るまでを動画で案内します。VCC・ALCOMに対応。">
   <meta property="og:image" content="https://vrvlog.fun/exporter/assets/capture-sunset.webp">
   <link rel="canonical" href="https://vrvlog.fun/exporter/">
   <meta property="og:type" content="website">
   <meta property="og:locale" content="ja_JP">
   <meta property="og:site_name" content="VR Vlog">
   <meta property="og:title" content="自分のアバターをVR Vlogで使う — VR Vlog Avatar Exporter">
-  <meta property="og:description" content="導入からQRコードでの受け取りまで、画像を見ながら進められます。VCC・ALCOMに対応。">
+  <meta property="og:description" content="導入からQRコードでの受け取りまで、動画を見ながら進められます。VCC・ALCOMに対応。">
   <meta property="og:url" content="https://vrvlog.fun/exporter/">
   <meta name="twitter:card" content="summary">
   <link rel="icon" href="assets/favicon-phone.ico" sizes="16x16 32x32 48x48">
@@ -21,22 +21,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700&amp;display=swap">
-  <link rel="stylesheet" href="styles.css?v=tutorial-poster-20261101">
-  <script src="app.js?v=photography-20261023" defer></script>
+  <link rel="stylesheet" href="styles.css?v=video-only-20261101">
+  <script src="app.js?v=video-only-20261101" defer></script>
 
-<link rel="stylesheet" href="guide.css?v=video-controls-20261101"><script src="guide.js?v=20261028" defer></script><script defer src="https://vrvlog.fun/site-measurement.js" referrerpolicy="no-referrer"></script></head>
+<link rel="stylesheet" href="guide.css?v=video-controls-20261101"><script src="guide.js?v=video-only-20261101" defer></script><script defer src="https://vrvlog.fun/site-measurement.js" referrerpolicy="no-referrer"></script></head>
 <body>
   <a class="skip" href="#main">本文へスキップ</a>
 <div id="exporter-page">
 <div class="vrx-site vrx-story" id="vrx-story">
-      <header class="vrx-header"><a href="https://vrvlog.fun/" target="_blank" rel="noopener noreferrer" class="vrx-brand" aria-label="VR Vlog公式サイト"><img src="assets/guide/vr-vlog-official-logo.png" decoding="async" width="1990" height="456" alt="VR Vlog"><span>Avatar Exporter</span></a><nav aria-label="ページ内メニュー"><a class="vrx-nav-link" href="guide/">導入ガイド</a><button type="button" class="vrx-nav-link" data-video="0" data-title="導入から転送まで">使い方動画</button><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter" target="_blank" rel="noopener noreferrer" class="vrx-nav-link">GitHub</a><button type="button" class="vrx-header-cta" data-scroll="install">導入する</button></nav></header>
+      <header class="vrx-header"><a href="https://vrvlog.fun/" target="_blank" rel="noopener noreferrer" class="vrx-brand" aria-label="VR Vlog公式サイト"><img src="assets/guide/vr-vlog-official-logo.png" decoding="async" width="1990" height="456" alt="VR Vlog"><span>Avatar Exporter</span></a><nav aria-label="ページ内メニュー"><button type="button" class="vrx-nav-link" data-video="0" data-title="導入から転送まで">使い方動画</button><a href="https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter" target="_blank" rel="noopener noreferrer" class="vrx-nav-link">GitHub</a><button type="button" class="vrx-header-cta" data-scroll="install">導入する</button></nav></header>
       <main id="main">
         <section class="vrx-hero vrx-wrap">
           <div class="vrx-hero-copy">
             <h1><span>自分のアバターを、</span><span>VR Vlogへ。</span></h1>
             <p class="vrx-lead">Unityで作ったQRコードをスマホのVR Vlogで読み取り、アバターを受け取ります。<br class="vrx-wide-break">いつものアバターで撮影を始められます。</p>
           </div>
-          <section class="vrx-tutorial-card" aria-labelledby="vrx-tutorial-heading">
+          <section class="vrx-tutorial-card" id="tutorial" aria-labelledby="vrx-tutorial-heading">
             <p class="vrx-small-label">使い方動画 / 5分39秒</p>
             <h2 id="vrx-tutorial-heading">動画でわかる、<br>導入から転送まで</h2>
             <button class="vrx-tutorial-preview" type="button" data-video="0" data-title="導入から転送まで" aria-label="使い方動画を最初から再生（5分39秒）">
@@ -63,14 +63,6 @@
             <figure class="vrx-install-preview"><div class="vrx-alcom-thumb" data-manager-shot="alcom"><img src="assets/guide/alcom-install.webp" decoding="async" loading="lazy" alt="ALCOMでエクスポーターを選ぶ画面" width="1042" height="720"></div><div class="vrx-vcc-thumb" data-manager-shot="vcc" hidden><img src="assets/guide/vcc-projects.webp" decoding="async" loading="lazy" alt="VCCでManage Projectを開く画面" width="961" height="593"></div><figcaption data-manager-caption>ALCOMのパッケージ一覧（画面内は変更前の名称）</figcaption><button type="button" data-install-guide class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像で詳しく見る</button></figure>
           </div>
           <div class="vrx-install-bottom"><p>アバターとlilToonを導入したUnity 2022.3のプロジェクトと、最新のVR Vlogを入れたスマホを用意します。プロジェクトをバックアップし、Unityを閉じてから始めてください。</p><details><summary >管理アプリが開かないとき</summary><p data-manager-fallback>ALCOMの「パッケージ&amp;テンプレート」→「VPMリポジトリ」→「VPMリポジトリを追加」を開き、次のURLを貼り付けて「VPMリポジトリを追加」を押します。表示された内容を確認し、もう一度「VPMリポジトリを追加」を押します。</p><label for="listing-url">配布元のURL</label><input id="listing-url" aria-label="配布元のURL" value="{{ listingInfo.Url }}" readonly></details></div>
-        </section>
-        <section class="vrx-transfer vrx-wrap" id="transfer" data-section="transfer" aria-labelledby="vrx-story-transfer-title">
-          <div class="vrx-transfer-copy"><p class="vrx-small-label">インストールできたら</p><h2 id="vrx-story-transfer-title">受け取りまで、<br>3ステップ。</h2><button class="watch-inline home-watch" type="button" data-video="143.072" data-title="Unityで転送する">▷ 転送を動画で確認 <time>02:23〜</time></button><div class="vrx-step-selector" role="group" aria-label="転送の手順"><button type="button" data-step="0" aria-pressed="true" ><span class="vrx-step-number">01</span><span><strong>アバターを選ぶ</strong><small>Unityで「アプリに転送（かんたん）」を開く</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button type="button" data-step="1" aria-pressed="false" ><span class="vrx-step-number">02</span><span><strong>QRコードを作る</strong><small>名前・利用条件を確認して作成する</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button><button type="button" data-step="2" aria-pressed="false" ><span class="vrx-step-number">03</span><span><strong>スマホで受け取る</strong><small>VR VlogのカメラをQRコードに向ける</small></span><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg></button></div></div>
-          <div class="vrx-step-stage" aria-live="polite">
-            <div data-step-panel="0" class="vrx-step-panel"><div class="vrx-menu-scene"><img src="assets/guide/unity-avatar-menu.png" decoding="async" loading="lazy" alt="UnityのHierarchyでアバターを右クリックした画面" width="380" height="200"></div><img class="vrx-submenu" src="assets/guide/unity-transfer-menu.png" decoding="async" loading="lazy" alt="VR Vlogメニューの『アプリに転送（かんたん）』を選ぶ" width="228" height="82"><p>アバターを右クリックし、<br>「VR Vlog」→「アプリに転送（かんたん）」を選びます。</p><button type="button" data-zoom="menu" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像を拡大</button></div>
-            <div data-step-panel="1" class="vrx-step-panel" hidden><div class="vrx-transfer-top"><img src="assets/guide/unity-qr-transfer.png" decoding="async" loading="lazy" alt="アプリに転送の画面上部。名前・作者名・利用条件を確認する" width="422" height="663"></div><div class="vrx-transfer-bottom"><img src="assets/guide/unity-qr-transfer.png" decoding="async" loading="lazy" alt="画面下部の同意欄とQRコードを作るボタン" width="422" height="663"></div><p>名前・作者名と利用条件を確認し、<br>同意が必要な項目にチェックを入れて「QRコードを作る」を押します。</p><button type="button" data-zoom="transfer" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画面全体を拡大</button></div>
-            <div data-step-panel="2" class="vrx-step-panel" hidden><div class="vrx-receive"><img src="assets/guide/phone-receive.webp" decoding="async" loading="lazy" alt="アバターの受け取り確認画面" width="1620" height="1200"></div><p>スマホでVR Vlogアプリを開き、カメラをPCのQRコードに向けます。<br>確認画面で「受け取る」を押したら完了です。</p><button type="button" data-zoom="phone" class="vrx-image-link"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H3v5m13 13h5v-5M3 3l6 6m12 12-6-6"/></svg>画像を拡大</button></div>
-          </div>
         </section>
         <section class="vrx-help vrx-wrap"><div><h2>困ったときは</h2><p>作者の<a href="https://x.com/uribou_vrc" target="_blank" rel="noopener noreferrer" >X（@uribou_vrc）</a>へDMでお知らせください。</p></div><div class="vrx-faq"><details><summary >QRコードはどこで読み取れますか？</summary><p>スマホ標準のカメラ、またはVR Vlogアプリのカメラで読み取れます。</p></details><details><summary >表情を詳しく設定するには？</summary><p>Unityで「VR Vlog」→「アプリに転送（通常）」を選びます。</p></details><details><summary >「QRコードを作る」が押せないときは？</summary><p>転送画面の案内を確認し、名前・作者名の入力や、同意が必要な項目へのチェックを済ませてください。</p></details></div></section>
       </main>

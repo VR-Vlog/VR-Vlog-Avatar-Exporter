@@ -40,20 +40,10 @@
   root.querySelectorAll('[data-scroll]').forEach(button => button.addEventListener('click', () => {
     root.querySelector('[data-section="' + button.dataset.scroll + '"]').scrollIntoView({ block: 'start' });
   }));
-  const stepButtons = [...root.querySelectorAll('[data-step]')];
-  stepButtons.forEach(button => button.addEventListener('click', event => {
-    const step = button.dataset.step;
-    stepButtons.forEach(item => item.setAttribute('aria-pressed', String(item.dataset.step === step)));
-    root.querySelectorAll('[data-step-panel]').forEach(panel => { panel.hidden = panel.dataset.stepPanel !== step; });
-    if (event.detail && window.matchMedia('(max-width:600px)').matches) root.querySelector('.vrx-step-stage').scrollIntoView({ block: 'start' });
-  }));
   const dialog = root.querySelector('dialog');
   const body = root.querySelector('[data-dialog-body]');
   const docs = 'https://vcc.docs.vrchat.com/guides/community-repositories/';
   const shots = {
-    menu: [{ file: 'unity-avatar-menu.png', alt: 'Unityでアバターを右クリックした操作画面', caption: 'UnityのHierarchyでアバターを右クリックします。' }, { file: 'unity-transfer-menu.png', alt: 'アプリに転送メニュー', caption: '「VR Vlog」→「アプリに転送（かんたん）」を選びます。' }],
-    transfer: [{ file: 'unity-qr-transfer.png', alt: 'アプリに転送（かんたん）の画面全体', caption: '名前・作者名と利用条件を確認し、同意が必要な項目にチェックを入れて「QRコードを作る」を押します。', className: 'vrx-dialog-transfer' }],
-    phone: [{ file: 'phone-receive.webp', alt: 'アバターの受け取り確認画面', caption: '受け取り確認画面。「受け取る」を押したら完了です。', className: 'vrx-dialog-receive' }],
     alcom: [{ file: 'alcom-install.webp', alt: 'ALCOMの管理画面とインストールするパッケージの一覧', caption: 'プロジェクトの「管理」で、追加したエクスポーターの「インストール済み」欄から最新の正式版を選び、変更内容を確認して「適用」を押します。画面内のエクスポーター名は変更前のものです。' }],
     vcc: [{ file: 'vcc-add-repository.webp', alt: 'VCCの配布元追加確認画面', caption: '内容を確認して「I Understand, Add Repository」を押します。', source: docs }, { file: 'vcc-projects.webp', alt: '実際のVCCのProjects画面', caption: '「Projects」でアバターを入れたプロジェクトを探し、「Manage Project」を開きます（実画面）。' }, { file: 'vcc-installed-version.webp', alt: 'VCCのInstalled Version選択欄', caption: '追加したエクスポーターの「Installed Version」欄から、最新の正式版を選びます。導入済みの場合も、更新がないか確認してください。', source: docs }],
   };
@@ -90,10 +80,6 @@
     dialog.scrollTop = 0;
   }
   root.querySelector('[data-install-guide]').addEventListener('click', () => openImages(manager, managers[manager].name + 'でインストールする'));
-  root.querySelectorAll('[data-zoom]').forEach(button => button.addEventListener('click', () => {
-    const key = button.dataset.zoom;
-    openImages(key, key === 'phone' ? '受け取り確認画面' : 'Unityの操作画面');
-  }));
   root.querySelector('[data-close]').addEventListener('click', () => dialog.close());
   dialog.addEventListener('click', event => {
     const bounds = dialog.getBoundingClientRect();
