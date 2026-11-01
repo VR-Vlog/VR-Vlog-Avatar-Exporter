@@ -70,11 +70,15 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A skinned outfit whose mesh transform mirrors (FBX imported with a
         // negative scale, so its bindposes mirror too) must come back skinned
-        // to the same world vertices and normals with its front faces out.
-        [TestCase(-1.1f, -.9f, -.8f)]
-        [TestCase(-1f, 1f, 1f)]
-        [TestCase(1f, 1f, -1.2f)]
-        public async Task MirroredSkinnedMeshKeepsWorldVerticesAndFrontFacesThroughVrmRoundTrip(float x, float y, float z)
+        // to the same world vertices and normals with its front faces out,
+        // also when the mesh node is its own root bone or there is none, so
+        // Unity drew the source in the mirrored node space.
+        [TestCase(-1.1f, -.9f, -.8f, "bone")]
+        [TestCase(-1f, 1f, 1f, "bone")]
+        [TestCase(1f, 1f, -1.2f, "bone")]
+        [TestCase(-1f, 1f, 1f, "mesh")]
+        [TestCase(1f, -1f, 1f, "none")]
+        public async Task MirroredSkinnedMeshKeepsWorldVerticesAndFrontFacesThroughVrmRoundTrip(float x, float y, float z, string root)
         {
             var shader = Shader.Find("lilToon");
             if (shader == null) Assert.Ignore("Requires installed lilToon for the full exporter entry point.");
@@ -104,8 +108,8 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in f.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterials = new[] { material };
             var renderer = body.gameObject.AddComponent<SkinnedMeshRenderer>();
             renderer.sharedMesh = mesh; renderer.sharedMaterials = new[] { material };
-            renderer.bones = bones; renderer.rootBone = bones[0];
-            var expected = World(renderer, renderer.rootBone);
+            renderer.bones = bones; renderer.rootBone = root == "bone" ? bones[0] : root == "mesh" ? body : null;
+            var expected = World(renderer, renderer.rootBone != null ? renderer.rootBone : renderer.transform);
             Vrm10Instance imported = null;
             try
             {

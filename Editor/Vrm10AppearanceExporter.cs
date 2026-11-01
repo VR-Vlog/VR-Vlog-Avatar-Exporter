@@ -154,12 +154,21 @@ namespace VRVlog.LilToonExporter
             // its root bone's space. Turn the mesh node's world matrix W into
             // W * F so it no longer mirrors, and give each child F * local so
             // the children stay where they were. The skin ignores the node.
+            // When the root bone is missing or is the mesh node itself, Unity
+            // drew the source in that mirrored space, so its front faces are
+            // the reverse of their winding. The node no longer mirrors in the
+            // VRM (and the exported skeleton becomes a joint ancestor), so
+            // reverse the winding to keep the same faces in front.
             model.Root.CalcWorldMatrix();
             var joints = new HashSet<Node>(model.Skins.SelectMany(s => s.Joints));
             var nodes = model.Root.Traverse().Where(n => n.MeshGroup?.Skin?.InverseMatrices is { } b
                 && unmirrored.Contains(b.Bytes) && n.Matrix.determinant < 0 && !joints.Contains(n)).ToList();
             foreach (var node in nodes)
             {
+                if (node.MeshGroup.Skin.Root == null || node.MeshGroup.Skin.Root == node)
+                    foreach (var mesh in node.MeshGroup.Meshes)
+                        if (done.Add(mesh.IndexBuffer.Bytes))
+                            ReverseWinding(mesh.IndexBuffer);
                 var s = node.LocalScalingWithoutUpdate;
                 node.LocalScalingWithoutUpdate = new Vector3(-s.x, s.y, s.z);
                 foreach (var child in node.Children)
@@ -175,7 +184,21 @@ namespace VRVlog.LilToonExporter
             if (nodes.Count > 0) model.Root.CalcWorldMatrix();
         }
 
-        private static readonly Matrix4x4 MirrorX = Matrix4x4.Scale(new Vector3(-1, 1, 1));
+        private static void ReverseWinding(BufferAccessor indices)
+        {
+            switch (indices.ComponentType)
+            {
+                case AccessorValueType.UNSIGNED_SHORT: Swap(indices.Bytes.Reinterpret<ushort>(1)); break;
+                case AccessorValueType.UNSIGNED_INT: Swap(indices.Bytes.Reinterpret<uint>(1)); break;
+                default: throw new InvalidOperationException("反転したメッシュの三角形の向きを直せない形式のインデックスです: " + indices.ComponentType);
+            }
+            static void Swap<T>(NativeArray<T> values) where T : struct
+            {
+                for (var i = 0; i + 2 < values.Length; i += 3) (values[i + 1], values[i + 2]) = (values[i + 2], values[i + 1]);
+            }
+        }
+
+        private static readonly Matrix4x4 MirrorX =Matrix4x4.Scale(new Vector3(-1, 1, 1));
 
         // The pinned ModelExporter computes useNormal but only copies each
         // morph's POSITION buffer. Fill NORMAL from its exact renderer/node map
