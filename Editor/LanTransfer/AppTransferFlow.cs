@@ -158,9 +158,11 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // The user showed this QR; whether its sound has played.
         private bool revealed, announced;
         // Opens the result list of the export this transfer sends, given the heading and a note
-        // beside it. Kept until the transfer succeeds or fails; a new export, another avatar or
-        // closing drops it. A new QR for the same export keeps it.
+        // beside it. Kept until the transfer succeeds; a new export, another avatar or closing drops
+        // it. A new QR for the same export keeps it, also after a failure has opened the list.
         private Action<string, string> endResult;
+        // The list of this export already shows the failure: another failure leaves it as it is.
+        private bool failureShown;
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
@@ -341,25 +343,28 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return true;
         }
         // The result list waits for the transfer: set after Upload, opened by TakeEndedResult.
-        internal void ShowResultAtEnd(Action<string, string> open) => endResult = open;
+        internal void ShowResultAtEnd(Action<string, string> open) { endResult = open; failureShown = false; }
 
-        // Once, when the transfer has succeeded or failed: opens the result list with that heading.
-        // A failure also gives its reason, so the list does not read as the cause.
-        // A QR that expired or was stopped can be made again, so the list waits for that one.
+        // When the transfer has ended: opens the result list with that heading. A failure also gives
+        // its reason, so the list does not read as the cause. A QR that expired, was stopped or failed
+        // can be made again for the same export, so after a failure the list waits: a later success
+        // opens it again with the success heading, in the same single list window.
         internal Action TakeEndedResult(Func<string, string> translate)
         {
             var open = endResult;
             if (open == null) return null;
-            string heading;
             switch (View)
             {
-                case AppTransferView.Completed: heading = AppTransferText.Completed; break;
-                case AppTransferView.Failed: heading = AppTransferText.TransferFailed; break;
+                case AppTransferView.Completed:
+                    endResult = null;
+                    return () => open(AppTransferText.Completed, null);
+                case AppTransferView.Failed:
+                    if (failureShown) return null;
+                    failureShown = true;
+                    var note = FailureText(translate);
+                    return () => open(AppTransferText.TransferFailed, note);
                 default: return null;
             }
-            endResult = null;
-            var note = View == AppTransferView.Failed ? FailureText(translate) : null;
-            return () => open(heading, note);
         }
 
         internal bool Encrypting => session?.State == CloudTransferState.Preparing;
@@ -426,9 +431,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             // The transfer failed; its result list still opens.
             var open = endResult;
+            var shown = failureShown;
             Stop();
             failure = reason ?? "";
-            endResult = open;
+            endResult = open; failureShown = shown;
         }
 
         // Adopts the exported snapshot: from here this flow deletes it.
@@ -494,7 +500,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             source?.Dispose(); source = null;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
             revealed = announced = false;
-            endResult = null;
+            endResult = null; failureShown = false;
         }
 
         // Observe abandoned task failures without logging transport details.
