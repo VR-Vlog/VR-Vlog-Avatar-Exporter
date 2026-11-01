@@ -20,7 +20,7 @@
 
 ## 成り立たない場合
 
-- SkinnedMeshRenderer のボーンを負の拡大縮小で反転したものは、逆バインド行列が同じ分解を通るので直していない。
+- SkinnedMeshRenderer のボーンを負の拡大縮小で反転したものは、逆バインド行列が同じ分解を通るので直していない。（2026-11-01 に [2026-11-01-negative-scale-skin.md](2026-11-01-negative-scale-skin.md) で直した）
 
 ## 検証
 
