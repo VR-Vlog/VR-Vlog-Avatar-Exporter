@@ -66,9 +66,10 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.DoesNotThrow(() => LilToonGlbExtension.Validate(draft.Bytes));
                 loaded = await Vrm10.LoadBytesAsync(draft.Bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(loaded, Is.Not.Null);
-                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Menu face")), Is.True,
+                // Both listed names end with " face", which the export leaves out (ExpressionNameAffix).
+                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name == "Menu"), Is.True,
                     "Loaded expressions: " + string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
-                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name.Contains("Gesture face")), Is.True,
+                Assert.That(loaded.Vrm.Expression.CustomClips.Any(c => c.name == "Gesture"), Is.True,
                     "A large menu must not drop a listed face. Loaded expressions: " +
                     string.Join(", ", loaded.Vrm.Expression.CustomClips.Select(c => c.name)) + "\n" + string.Join("\n", draft.Warnings));
                 Assert.That(loaded.Vrm.Expression.Happy, Is.Not.Null, "Existing VRM expression settings remain part of the export.");

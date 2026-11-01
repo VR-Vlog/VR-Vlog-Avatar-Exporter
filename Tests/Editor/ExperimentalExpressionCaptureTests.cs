@@ -1377,7 +1377,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
                     : new System.Collections.Generic.Dictionary<string, object>();
-                Assert.That(custom.Keys.Where(key => key.StartsWith("Face ")), Is.EquivalentTo(names.Take(listed)));
+                // Two listed faces are written as "A" and "B": the shared "Face " is left out (ExpressionNameAffix).
+                Assert.That(custom.Keys.Where(key => names.Any(name => name == key || name.EndsWith(" " + key))),
+                    Is.EquivalentTo(ExpressionNameAffix.Trim(names.Take(listed).ToArray())));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
