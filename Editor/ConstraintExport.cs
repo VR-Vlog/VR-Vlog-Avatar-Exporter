@@ -272,7 +272,7 @@ namespace VRVlog.LilToonExporter
             internal bool Allows(Transform target, Transform source, out Transform leader)
             {
                 leader = null;
-                if (switched.Length == 0 || !target.GetComponentsInChildren<Renderer>(true).Any(r => r is MeshRenderer || r is SkinnedMeshRenderer))
+                if (switched.Length == 0 || !target.GetComponentsInChildren<Renderer>(true).Any(Shows))
                     return true;
                 var before = original[target];
                 var after = Around(source).Concat(switched.Contains(target) ? new[] { target } : Array.Empty<Transform>()).ToArray();
@@ -285,6 +285,10 @@ namespace VRVlog.LilToonExporter
                 leader = missing[0];
                 return true;
             }
+
+            static bool Shows(Renderer renderer) =>
+                renderer is SkinnedMeshRenderer skin ? skin.sharedMesh != null :
+                renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null;
 
             internal void Moved(Transform target, Transform leader, string path)
             {

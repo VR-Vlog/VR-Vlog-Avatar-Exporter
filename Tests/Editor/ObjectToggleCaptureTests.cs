@@ -231,6 +231,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var stray = Prop("Stray", clone.transform, socket);
                 var rider = Prop("Rider", clone.transform, room);
                 var empty = Prop("Empty", hat, socket, mesh: false);
+                empty.gameObject.AddComponent<MeshFilter>();
+                empty.gameObject.AddComponent<MeshRenderer>();
 
                 var warnings = new List<string>();
                 var capture = ObjectToggleCapture.Capture(clone, null, warnings);
