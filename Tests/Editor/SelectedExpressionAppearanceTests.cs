@@ -111,6 +111,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var binding = Appearance("activation", 0);
             Assert.That(SelectedExpressionAppearance.IsUnchanged(avatar, clip, binding), Is.False);
+            // While the export leaves visibility out, it is unsupported as before.
+            using (new ExpressionTransformsSwitch(false))
+                Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadClip(avatar, clip, new VrChatExpressionMenu.Entry()));
+            using var on = new ExpressionTransformsSwitch(true);
             var entry = new VrChatExpressionMenu.Entry();
             VrChatGestureExpressions.ReadClip(avatar, clip, entry);
             var track = entry.Transforms.Single();
