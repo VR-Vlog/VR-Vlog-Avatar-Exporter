@@ -17,12 +17,12 @@
 
 ## 決定
 
-- `MeasureBindpose` の 3 回の焼き込みと、`Preserve` の置き換え前後の検証を `BakeMesh(mesh, true)` にした。`useScale: true` はどちらのメッシュもレンダラーの `worldToLocalMatrix` で戻すので、ジョイントの行列 × バインドポーズがレンダラーの `localToWorldMatrix` と一致するバインドポーズが選ばれる。ジョイントがレンダラー自身のとき、また `VR Vlog fallback anchor` のときは単位行列になる。
-- テストの `AssertRenderedGeometry` も `BakeMesh(…, true)` で比べるようにした。
+- `MeasureBindpose` の 3 回の焼き込みと、`Preserve` の置き換え前後の検証を `BakeMesh(mesh, true)` にした。`useScale: true` では、ウェイトのないメッシュもジョイントで変形するメッシュもレンダラーのスケールを含めた同じ空間で返るので、ジョイントの行列 × バインドポーズがレンダラーの `localToWorldMatrix` と一致するバインドポーズが選ばれる。ジョイントがレンダラー自身のとき、また `VR Vlog fallback anchor` のときは単位行列になる。Unity 2022.3 で、一様なスケール、親の非一様なスケールと子の回転が重なる場合（せん断）、1 軸だけ負のスケールの場合に単位行列になることを確かめた。
+- テストの `AssertRenderedGeometry` も `BakeMesh(…, true)` で比べるようにした。既存のテストの部品も非一様なスケール（1.2・0.8・1.1）を持っており、修正前のコードではこの比べ方で 3 つのテストが落ちる。ブレンドシェイプ・法線・接線の一致はこの既存のテストが確かめている。
 - アバターのルートを参照するボーンを出力用のジョイントに置き換える処理（`RemapOmittedRootJoint`）は変えていない。ジョイントはルートの子で位置・回転・スケールが単位なのでルートと同じ行列を持ち、バインドポーズもそのまま使う。置き換えの前後はどちらもジョイントで変形するメッシュなので、`BakeMesh(…, false)` で比べてもスケールの扱いが揃っている。スケールの付いたルートとレンダラーで、置き換えの後もワールドの位置が変わらないことをテストで確かめた。
 
 ## テスト
 
-- `SkinnedMeshFallbackWeightTests.ScaledRendererKeepsItsWorldSize` を足した。0.68 倍の親の下で 100 倍のスケールと回転を持つレンダラー（`self`）、76 倍のスケールのアバターのルートに付いたレンダラー（`rootAnchor`）、ルートを参照するボーンにウェイトを付けたメッシュ（`rootJoint`）の 3 行。`BakeMesh(…, true)` を `localToWorldMatrix` で戻した位置が、`Preserve` の前と後、親を回したあとで元の位置と一致すること、`self` と `rootAnchor` でバインドポーズが単位行列であることを確かめる。
-- 修正前のコードでは `self` と `rootAnchor` が落ちる（バインドポーズの対角が 1/68 と 1/76）。
+- `SkinnedMeshFallbackWeightTests.ScaledRendererKeepsItsWorldSize` を足した。非一様なスケール（0.68・0.6・0.75）の親の下で、x だけ負の 100 倍のスケールと回転を持つレンダラー（`self`）、76 倍のスケールのアバターのルートに付いたレンダラー（`rootAnchor`）、ルートを参照するボーンにウェイトを付けたメッシュ（`rootJoint`）の 3 行。`BakeMesh(…, true)` を `localToWorldMatrix` で戻した位置が、`Preserve` の前と後、アバターのルートを回して部品を動かしたあとで、`localToWorldMatrix` から求めた位置と一致すること、`self` と `rootAnchor` でバインドポーズが単位行列であることを確かめる。
+- 修正前のコードでは `self` と `rootAnchor` が落ちる（バインドポーズの対角の 1 つ目が約 -1/68 と 1/76）。`rootJoint` は修正前のコードでも通り、ルートの置き換えにはスケールの問題が無いことを示す。
 - 3 行は経路が違う（ジョイントがレンダラー自身・ルートの子に作るジョイント・ルートの置き換え）ので、`2026-10-23-minimize-representative-rows.md` の基準でも 1 行ずつ残す。`compatibility_counts` の件数を 14 から 17 にした。

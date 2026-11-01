@@ -300,12 +300,12 @@ namespace VRVlog.LilToonExporter.Tests
                     parent.SetParent(avatar.transform, false);
                     parent.localPosition = new Vector3(0, 1.5f, 0.05f);
                     parent.localRotation = Quaternion.Euler(0, 20, 5);
-                    parent.localScale = Vector3.one * 0.68f;
+                    parent.localScale = new Vector3(0.68f, 0.6f, 0.75f);
                     node = new GameObject("Part").transform;
                     node.SetParent(parent, false);
                     node.localPosition = new Vector3(0.07f, 0.01f, -0.02f);
                     node.localRotation = Quaternion.Euler(-90, 15, 0);
-                    node.localScale = Vector3.one * 100f;
+                    node.localScale = new Vector3(kind == "self" ? -100f : 100f, 100f, 100f);
                 }
                 if (kind == "rootJoint") avatar.transform.localScale = new Vector3(1.3f, 1.3f, 1.3f);
                 var skin = node.gameObject.AddComponent<SkinnedMeshRenderer>();
