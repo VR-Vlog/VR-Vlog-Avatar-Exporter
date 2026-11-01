@@ -1,6 +1,6 @@
 # 韓国語・中国語の崩れた訳を直し、画像縮小の注記をEditorの言語で書く
 
-- 対象: `Editor/Locales/ExporterLocale_*.json`・`Editor/Compatibility/ExportNoteText.cs`・画像縮小の注記を書く4か所（`LilToonFullSnapshot`・`MobileTextureEncoder`・`LilToonMainTextureBaker`・`AlphaMaskBaker`）・`Tests/Compatibility/OptimizationLocalizationTests.cs`・`Tests/LanTransfer/TransferNotesLanguageTests.cs`
+- 対象: `Editor/Locales/ExporterLocale_*.json`・`Editor/Compatibility/ExporterLocalization.cs`・`Editor/ExportAppearanceReport.cs`・画像縮小の注記を書く4か所（`LilToonFullSnapshot`・`MobileTextureEncoder`・`LilToonMainTextureBaker`・`AlphaMaskBaker`）・`Tests/Compatibility/OptimizationLocalizationTests.cs`・`Tests/LanTransfer/TransferNotesLanguageTests.cs`・`Tests/Editor/ExportAppearanceReportLanguageTests.cs`
 
 ## 韓国語・中国語の訳
 
@@ -11,7 +11,7 @@
 ## 画像縮小の注記
 
 - 経緯: 画像縮小の4文（`ExportNoteText.LilToonTextureResized`・`OutputTextureResized`・`MainTextureResized`・`AlphaMaskResized`）は日本語のまま書き出していた。訳の表には昔の連結で使っていた断片（" から "、" へ縮小しました。" など）しか無く、文全体の訳が無かった。英語などのUIでは結果の一覧に日本語の文が出ていた。`TransferNotes` は日本語のテンプレートで読めていたが、訳したテンプレートで読む経路はこの4文では通っていなかった。
-- 決めたこと: lilToonと表情の注記と同じく、Editorの言語で書く。`ExportNoteText.Format(template, …)` が `ExporterLocalization.T(template)` に値を入れ、4か所の書き出しはこれを使う。4文の全文の訳を4言語の表に足し、使われていない断片6件を消した。`ExportNoteText.Format` はCLIのビルド（`VRVLOG_LAN_TRANSFER_CLI`）には入れない。CLIは `ExporterLocalization` を持たず、日本語のテンプレートだけで読む。
-- テスト: `TransferNotesLanguageTests.TextureNotesWrittenInTheEditorLanguageAreReadBack` を4言語で回す。4文が訳されていること、書き出しと同じ `ExportNoteText.Format` で作った文から名前と大きさが読めること、Editorを日本語に戻すと同じ文が読めない（訳したテンプレートで読んだ）ことを確かめる。PR #604 の `TransferNotesReadTheConversionWrittenInTheEditorLanguage` と同じ作りで、別のファイルに置いた（同じファイルに足すと #604 と衝突するため）。
+- 決めたこと: lilToonと表情の注記と同じく、Editorの言語で書く。`ExporterLocalization.Format(template, …)` が `ExporterLocalization.T(template)` に値を入れ、4か所の書き出しはこれを使う。4文の全文の訳を4言語の表に足し、使われていない断片6件を消した。`ExportNoteText` には置かない。`ExportNoteText.cs` はCLIのビルド（`VRVLOG_LAN_TRANSFER_CLI`）と `Tools/run-compatibility-tests.ps1` にも `ExporterLocalization` 無しで入るため。CLIは日本語のテンプレートだけで読む。
+- テスト: `TransferNotesLanguageTests.TextureNotesWrittenInTheEditorLanguageAreReadBack` を4言語で回す。4文が訳されていること、書き出しと同じ `ExporterLocalization.Format` で作った文から名前と大きさが読めること、Editorを日本語に戻すと同じ文が読めない（訳したテンプレートで読んだ）ことを確かめる。PR #604 の `TransferNotesReadTheConversionWrittenInTheEditorLanguage` と同じ作りで、別のファイルに置いた（同じファイルに足すと #604 と衝突するため）。
 - 「見た目の変更」の一覧: `ExportAppearanceReport.Changes` は書き出しの警告から "縮小" などの語を含む文を拾う。縮小の注記をEditorの言語で書くと英語では拾えなくなるので、"縮小" は `ExporterLocalization.T("縮小")` でも探す。このために "縮小" の訳を英語で "Downscaled"、ko で "축소"、zh で「缩小」「縮小」にした（英語は "Close" だった）。"近似" の英訳も "Close" だったので "Approximated" にした。テストでは4文がすべて一覧に入ることも確かめる。
 - 残したもの: PhysBoneの注記（`SpringSentences`）は日本語のまま書く。末尾の文で読み分けているので、Editorの言語で書くには読み取り側も変える必要があり、今回は扱わない。

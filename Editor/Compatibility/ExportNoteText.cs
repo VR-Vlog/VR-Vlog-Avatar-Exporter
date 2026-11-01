@@ -17,13 +17,6 @@ namespace VRVlog.LilToonExporter
         public const string MainTextureResized = "{0}: メインカラーの焼き込み画像をモバイル向けに {1}×{2} へ縮小しました。";
         public const string AlphaMaskResized = "{0}: アルファマスクを含む画像を {1}×{2} へ縮小しました。";
 
-#if !VRVLOG_LAN_TRANSFER_CLI
-        // A note written in the language of the Editor, as the lilToon and expression notes are.
-        // TransferNotes reads it back with the Japanese template or the translated one.
-        public static string Format(string template, params object[] values) =>
-            string.Format(ExporterLocalization.T(template), values);
-#endif
-
         // PhysBone notes, each written as "<PhysBone name>: <sentence>". The first and the last are
         // written for every PhysBone; the others by its settings.
         public const string SpringForces = "揺れの力・減衰・重力はVRM向けの近似です。VRChatと同一の物理演算ではありません。";

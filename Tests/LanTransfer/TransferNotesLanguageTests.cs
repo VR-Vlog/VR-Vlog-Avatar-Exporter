@@ -34,10 +34,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 // As LilToonFullSnapshot, MobileTextureEncoder, LilToonMainTextureBaker and AlphaMaskBaker write them.
                 var lines = new[]
                 {
-                    ExportNoteText.Format(ExportNoteText.LilToonTextureResized, "Body", 4096, 2048, 1024, 512),
-                    ExportNoteText.Format(ExportNoteText.OutputTextureResized, "Hair", 2048, 2048, 1024, 1024),
-                    ExportNoteText.Format(ExportNoteText.MainTextureResized, "Face", 512, 256),
-                    ExportNoteText.Format(ExportNoteText.AlphaMaskResized, "Skirt", 256, 128),
+                    ExporterLocalization.Format(ExportNoteText.LilToonTextureResized, "Body", 4096, 2048, 1024, 512),
+                    ExporterLocalization.Format(ExportNoteText.OutputTextureResized, "Hair", 2048, 2048, 1024, 1024),
+                    ExporterLocalization.Format(ExportNoteText.MainTextureResized, "Face", 512, 256),
+                    ExporterLocalization.Format(ExportNoteText.AlphaMaskResized, "Skirt", 256, 128),
                 };
                 var notes = TransferNotes.Build(lines.Concat(new[] { "除外: 小物 01" }));
                 Assert.That(notes.Textures.Select(texture => (texture.Name, texture.FromWidth, texture.FromHeight, texture.Width, texture.Height)),
