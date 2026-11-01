@@ -1,0 +1,50 @@
+# コンパクトなヒーローUIの実装と本番反映
+
+## 本番最終結果と終了処理
+
+Terraが公開source046b4979ca81e078720026921f88b46c3668797e/run41304095976/digestの保存値一致を確認し、1440/900/390/320/600幅で新ヒーローを撮影。見出し2行とpink/同fontサイズ、本文余白20/16、mobileのCTA→動画順、全幅の動画/章/CTAの初期画面内と横overflowなしを実測。600は章下端837.81でframe下端852.81は画面外、受入と限界を区別。主導入/動画先頭と2章/画像/manager/fallback実URL/FAQ/旧guideを確認。
+導入章のEscape直後paused falseという観測へ対象を絞って追加確認し、0.5秒・1.5秒後ともclosed/paused true/同じcurrentTime33.268770/focus復帰を確認。停止不具合は再現せず、非同期close中の観測と整合するが内部原因の断定はしない。source追加修正・全検証の重複なし。parentもPC/390の本番画像を目視。実スマホ・他font/zoom/テーマ・外部アプリ導入や全配信bytesの独立hash照合は未確認。
+最後の追加確認後、viewportreset、専用tab全close、約1秒後一覧空を読戻し。操作agentをclose。localhost71359と3つのmonitor84588/83305/62491/62830はいずれも終了/EOF（旧84588はcancelledに伴うexit1、他はexit0）。実機予約なし。既存source領域1つを再利用してclean、sourceは同期head6c3eであり本番046bとはcredit文言差だけ。SDK/cache/別checkoutは作っていない。必要な元画像・最小ログと復旧sourceを本人確認まで保持、一時indexは処理終了後に解放する。
+
+## 公開・同期結果
+
+公開run41304095976/job124840845448はmirror verifyを含め3m19sでsuccess、monitor62491 exit0/EOF。公式mirror853cf86304db9e52b1cf5bc53ae704a4fce9b51eのPages41304273599もsuccessを親が読戻し。public receipt保存値のsource046b4979ca81e078720026921f88b46c3668797e/run41304095976/digestda75489b25f0a42cec1b04fbfdbdaab0ccbe4a6ee71fa09d4b3d437bfa28ae44が対象。
+同期PR591の固定head6c3e2f2ab18f32c9f48fdaea571c0658ba343755はschema41304155145/job124841013848が3m41s、listing41304155125もsuccess。head/base/cleanを直前照合しMergeで採用、develop10fd54835053e5a161df4e501e3d673790c88a03を読戻し。monitor62830 exit0/EOF。新公開なし、merge後develop CIを未観測の新成功とは扱わない。
+Terraは同Chromeで公開JSON値と5幅の実画面を確認。320/390/600の本文・CTA→動画・全章の初期画面内表示・横overflowなし、PCの動画幅577.5/コピー522.5、実URL/導入/manager/画像/FAQ/旧guideを確認。Escape直後の一度paused falseという値は遅延close中の可能性があるが、導入章自身で遅延後を未観測。完了前の具体的な未解決仮説として、その章からEscape後0.5/1.5秒だけ追加確認を依頼。JS/CSSは変更せず、全操作を繰り返さない。
+
+## main採用と公開・同期の開始
+
+最終1513ed86652137cd8bc522b6674b7ffad4da64aaのschema41303690673/job124839778633は3m48sでsuccess、listing41303690492もsuccess。monitor83305 exit0/EOF。PR589のhead/base/cleanを直前照合しMergeでmain採用、source046b4979ca81e078720026921f88b46c3668797e。main一致を確認して既存build-listing.ymlを1回dispatch、run41304095976/event workflow_dispatch/head一致を読戻した。公開は実行中で本番到達は未確認、再deployなし。
+同期branchへ最新develop3d282453ef851806603dc77d9dfd9bad50f1801dを統合し6c3e2f2ab18f32c9f48fdaea571c0658ba343755を作成。自身で統合差分を敵対的に再確認し、mainとの差は既存credit文言だけでhero/JS/他HTMLは一致とバイト比較（backmerge-binding.json）。developとの差はWebsite3ファイルのみ、diff --check成功。専用source領域を同期headへ切替し、localhostは終了済み。実際に作成した同期PRは591。最初に番号を推測して590をチャットへ添付した誤りを修正し、590の添付だけ除去、591をattach（590自体は変更していない）。新CIなし、既存の無関係な変更を巻き戻していない。
+
+## 証跡と待機工程
+
+実装前画像はhero-ui-proposal/の原本をそのまま利用し、実装後とcommit別の観測をevidence/site-tutorial-577の328eb4050849247a07cd1bc3d24c15bffbfc7264に保存。push/remote SHAとEpic577の比較本文一致を読戻し。PR589へ最終headと観測をcommentして本文初稿からの更新を明示（editedイベントでCIを重複起動しない）。最初のcommentはtoolcatalog更新で実行前にreject、metadata再取得後に再送して成功した。
+localhost71359はCtrl-C後exit0/EOF、旧CI monitor84588も既存concurrencyによるcancelledを確認してexit1/EOF。最終Validate41303690673/job124839778633とlisting41303690492が対象。sourceはcleanで1513ed8に固定、再編集・再起動なし。
+
+## ローカル最終結果
+
+Terraが1513ed86652137cd8bc522b6674b7ffad4da64aaの320/390/600幅を追加確認。320の本文14px・2行で孤立行解消、390は15px・2行、600x844の両章下端837.81pxで画面内に6.19pxの余裕。動画カードの枠下端は画面外だが、動画本体と全章controlは表示される。3幅とも横overflowなし。latestのsourcebindingとlocal-final-verification.md/measurementsを保存、親も320/600画像を目視。重大未解決指摘なし。
+PC/900の画像と操作一式は3528012での結果。1513の変更は600以下だけのCSSなので、その実行を最新headの新実行と扱わず明記して再利用する。新しいviewport写真のためだけに全操作を繰り返さない。本番では公開sourceを固定し改めて実画面を確認する。
+操作担当はviewport reset、公開後用の専用tab1つを引継ぎ保持。localhost server71359はローカル確認終了後に停止してsource領域の切替え前にEOFを確認する。
+
+## 狭幅の追加調整とレビュー
+
+Terraは初稿3528012のPC/390/320/900と600近辺を実確認。主見出し/色/本文余白/CTA順序/動画幅は採用案どおり、動画/章/停止/focus・導入リンク・管理アプリ切替・画像gallery・旧guideの回帰なし。320本文の「す。」単独行と600x844の章下端約1.8px超過を検出。親も画像で確認した。
+1513ed86652137cd8bc522b6674b7ffad4da64aaでCSS2行のみ調整し編集終了。360以下の本文14px、600以下heroの上paddingを4px/gapを4px短くした。自分で最新diffを敵対的再確認し、media scopeに限定、説明/ボタン/動画の順序・既存の操作/素材/他viewportへの非影響を照合。diff --check成功。最終5配信ファイルをバイト照合しlocal-final-source-binding.jsonへ別名保存、初稿証跡は維持する。
+このソース変更により必須CIは最終headで改めて必要。旧headの結果を新headへ流用しない。Terraは変更した320/390/600の表示のみ追加確認し、イベント操作一式の古い実行を付け替えたり重複実行しない。
+
+2026-11-01。本人は比較後の選択肢「この案で実装・本番反映」を明示選択。見出し「アバターを、VR Vlogへ。」へ短縮し、動画の拡大、短い説明とCTAの一体化、スマホは説明→導入CTA→動画の順を実装・公開する。今回承認済みなので再確認を求めない。
+
+対象VR-Vlog/VR-Vlog-Avatar-ExporterのWebsiteのみ、既存Epic577。sourceはexporter-site-source1領域を再利用。現行mainからhotfix、既存必須CI→main採用→既存build-listing.ymlで公開とreceipt/本番照合→develop同期。新CI・版/タグ/Release・パッケージ・動画本体・素材・共有設定は変更しない。public/exporterは生成同期先で直接編集しない。
+
+saved: hero-ui-implementation/、owner本タスク、最終画像・source binding・最小観測・review・公開receipt・管理結果。原本と復旧sourceは本人確認まで保持、各10MiB未満・合計30MiB上限、終了時実測。変更前はhero-ui-proposal/の4画像とsource59e/run41301819552の観測を再利用し、同タスクの撮影をむやみに繰り返さない。scratchは専用localhost serverログと一時evidence git indexだけ、process終了/EOF/利用終了後に不要分整理。SDK/Unity/cache/checkoutの複製なし。
+
+親Sol/highが実装・自身の敵対的セルフレビュー。最終必須一式は既存PR CIのみ、ローカルで重複しない。操作・検証は新規Terra/highに委任し、PC1440x1000/390x844/320/900幅・日本語darkの専用Chromeで配置と動画/CTA/導入切替の回帰を確認。ユーザーambienttabに触らず、最終close/reset。実機導入・外部scheme起動なし。モックアップは実装証拠とせず実画面で比較する。
+
+## 実装と自身のセルフレビュー
+
+base59e25075d1cecb69804e7e845c7fa0d9ec6ab70d、実装3528012775cccc24ccbae67c1e42c8412069479b、hotfix/compact-hero。Website3ファイルのみ。hero-copyに既存CTAを移しDOM順を説明→CTA→動画に統一、2行の短いh1とpinkの2行目、本文短縮、動画カード幅を広げtitleを短縮。JS・poster・video/字幕/章値・導入2カード・fallbackは変更なし。CSSキー更新。
+最新diffと直接影響するDOM/CSSを自分で敵対的にレビュー。反例: 移動でCTAが消える/二重になる、HTML閉じタグ不足、旧gridのrow指定が残る、nowrap見出しの幅不足、主動画が初期画面外、短縮で動画チャプター/ariaラベルが壊れる、CSS優先順位で見出しと説明の間隔が適用されない、導入カードへfont変更が波及する。
+対処: heroの2childとCTA1つのnestingをHTMLParserで確認。旧copy/actionのgrid配置を除きminmax(0,fr)とmin-width0、スマホ1列にする。既存h1限定font48px上限/スマホ30-36で6字を収め、動画見出しを短くした。selector #exporter-page .vrx-site p のmargin0が旧.vrx-leadの余白指定を上書きする問題をsourceで発見し、全mediaのselectorを.vrx-hero-copy .vrx-leadへ揃えて必要な余白を優先させた。実フォント取得の原因は未確定で修正済みとは主張しない。
+HTML nesting/CTA位置/ID一意/aria/相対assetとdiff --check成功、重大未解決指摘なし。試した最初の構築scriptは重複判定の誤りで編集前に停止し、 source未変更で補正。最終3ファイルはレビューした差分と一致。動作/配置の実確認はTerraへ渡し、既存CIをローカルで重複実行しない。

@@ -1,0 +1,1277 @@
+{
+  "desktop": {
+    "dpr": 1,
+    "fonts": "loaded",
+    "lang": "ja",
+    "nodes": [
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "48px",
+            "lineHeight": "60px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 342.3125,
+              "height": 120,
+              "left": 140,
+              "right": 662.5,
+              "top": 222.3125,
+              "width": 522.5,
+              "x": 140,
+              "y": 222.3125
+            },
+            "text": "アバターを、VR Vlogへ。"
+          }
+        ],
+        "selector": "h1"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "48px",
+            "lineHeight": "60px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 282.3125,
+              "height": 60,
+              "left": 140,
+              "right": 662.5,
+              "top": 222.3125,
+              "width": 522.5,
+              "x": 140,
+              "y": 222.3125
+            },
+            "text": "アバターを、"
+          }
+        ],
+        "selector": "h1 span:first-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(255, 24, 128)",
+            "font": "48px",
+            "lineHeight": "60px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 342.3125,
+              "height": 60,
+              "left": 140,
+              "right": 662.5,
+              "top": 282.3125,
+              "width": 522.5,
+              "x": 140,
+              "y": 282.3125
+            },
+            "text": "VR Vlogへ。"
+          }
+        ],
+        "selector": "h1 span:last-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(171, 182, 200)",
+            "font": "16px",
+            "lineHeight": "29.6px",
+            "marginTop": "20px",
+            "rect": {
+              "bottom": 421.5,
+              "height": 59.1875,
+              "left": 140,
+              "right": 620,
+              "top": 362.3125,
+              "width": 480,
+              "x": 140,
+              "y": 362.3125
+            },
+            "text": "Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。"
+          }
+        ],
+        "selector": ".vrx-lead"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 541.484375,
+              "height": 319.171875,
+              "left": 140,
+              "right": 662.5,
+              "top": 222.3125,
+              "width": 522.5,
+              "x": 140,
+              "y": 222.3125
+            },
+            "text": "アバターを、VR Vlogへ。\n            Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。\n          \n            エクスポーターを導入するUnity用・無料 / ALCOM・VCC対応"
+          }
+        ],
+        "selector": ".vrx-hero-copy"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(22, 9, 18)",
+            "font": "17px",
+            "lineHeight": "30.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 506.09375,
+              "height": 60.59375,
+              "left": 140,
+              "right": 434.046875,
+              "top": 445.5,
+              "width": 294.046875,
+              "x": 140,
+              "y": 445.5
+            },
+            "text": "エクスポーターを導入する"
+          }
+        ],
+        "selector": ".vrx-hero-copy .vrx-primary"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 620.8125,
+              "height": 477.8125,
+              "left": 722.5,
+              "right": 1300,
+              "top": 143,
+              "width": 577.5,
+              "x": 722.5,
+              "y": 143
+            },
+            "text": "使い方動画5分39秒\n            導入から転送まで\n            \n              \n              ▶使い方動画を見る\n            \n            \n              導入から 00:30〜\n              転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-card"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "22px",
+            "lineHeight": "33px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 228.59375,
+              "height": 33,
+              "left": 743.5,
+              "right": 1279,
+              "top": 195.59375,
+              "width": 535.5,
+              "x": 743.5,
+              "y": 195.59375
+            },
+            "text": "導入から転送まで"
+          }
+        ],
+        "selector": "#vrx-tutorial-heading"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 543.8125,
+              "height": 301.21875,
+              "left": 743.5,
+              "right": 1279,
+              "top": 242.59375,
+              "width": 535.5,
+              "x": 743.5,
+              "y": 242.59375
+            },
+            "text": "▶使い方動画を見る"
+          }
+        ],
+        "selector": ".vrx-tutorial-preview"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 599.8125,
+              "height": 44,
+              "left": 743.5,
+              "right": 1007.25,
+              "top": 555.8125,
+              "width": 263.75,
+              "x": 743.5,
+              "y": 555.8125
+            },
+            "text": "導入から 00:30〜"
+          },
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 599.8125,
+              "height": 44,
+              "left": 1015.25,
+              "right": 1279,
+              "top": 555.8125,
+              "width": 263.75,
+              "x": 1015.25,
+              "y": 555.8125
+            },
+            "text": "転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-chapters button"
+      }
+    ],
+    "poster": "assets/guide/tutorial-first-frame.png",
+    "video": {
+      "preload": "none",
+      "src": null
+    },
+    "viewport": {
+      "height": 1000,
+      "scrollTop": 0,
+      "scrollWidth": 1440,
+      "width": 1440
+    }
+  },
+  "width900": {
+    "dpr": 1,
+    "fonts": "loaded",
+    "lang": "ja",
+    "nodes": [
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "34.2px",
+            "lineHeight": "42.75px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 263.859375,
+              "height": 85.5,
+              "left": 40,
+              "right": 401,
+              "top": 178.359375,
+              "width": 361,
+              "x": 40,
+              "y": 178.359375
+            },
+            "text": "アバターを、VR Vlogへ。"
+          }
+        ],
+        "selector": "h1"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "34.2px",
+            "lineHeight": "42.75px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 221.109375,
+              "height": 42.75,
+              "left": 40,
+              "right": 401,
+              "top": 178.359375,
+              "width": 361,
+              "x": 40,
+              "y": 178.359375
+            },
+            "text": "アバターを、"
+          }
+        ],
+        "selector": "h1 span:first-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(255, 24, 128)",
+            "font": "34.2px",
+            "lineHeight": "42.75px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 263.859375,
+              "height": 42.75,
+              "left": 40,
+              "right": 401,
+              "top": 221.109375,
+              "width": 361,
+              "x": 40,
+              "y": 221.109375
+            },
+            "text": "VR Vlogへ。"
+          }
+        ],
+        "selector": "h1 span:last-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(171, 182, 200)",
+            "font": "16px",
+            "lineHeight": "29.6px",
+            "marginTop": "20px",
+            "rect": {
+              "bottom": 343.046875,
+              "height": 59.1875,
+              "left": 40,
+              "right": 401,
+              "top": 283.859375,
+              "width": 361,
+              "x": 40,
+              "y": 283.859375
+            },
+            "text": "Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。"
+          }
+        ],
+        "selector": ".vrx-lead"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 463.03125,
+              "height": 284.671875,
+              "left": 40,
+              "right": 401,
+              "top": 178.359375,
+              "width": 361,
+              "x": 40,
+              "y": 178.359375
+            },
+            "text": "アバターを、VR Vlogへ。\n            Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。\n          \n            エクスポーターを導入するUnity用・無料 / ALCOM・VCC対応"
+          }
+        ],
+        "selector": ".vrx-hero-copy"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(22, 9, 18)",
+            "font": "17px",
+            "lineHeight": "30.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 427.640625,
+              "height": 60.59375,
+              "left": 40,
+              "right": 334.046875,
+              "top": 367.046875,
+              "width": 294.046875,
+              "x": 40,
+              "y": 367.046875
+            },
+            "text": "エクスポーターを導入する"
+          }
+        ],
+        "selector": ".vrx-hero-copy .vrx-primary"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 506.390625,
+              "height": 371.390625,
+              "left": 461,
+              "right": 859.984375,
+              "top": 135,
+              "width": 398.984375,
+              "x": 461,
+              "y": 135
+            },
+            "text": "使い方動画5分39秒\n            導入から転送まで\n            \n              \n              ▶使い方動画を見る\n            \n            \n              導入から 00:30〜\n              転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-card"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "18px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 214.59375,
+              "height": 27,
+              "left": 482,
+              "right": 838.984375,
+              "top": 187.59375,
+              "width": 356.984375,
+              "x": 482,
+              "y": 187.59375
+            },
+            "text": "導入から転送まで"
+          }
+        ],
+        "selector": "#vrx-tutorial-heading"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 429.390625,
+              "height": 200.796875,
+              "left": 482,
+              "right": 838.984375,
+              "top": 228.59375,
+              "width": 356.984375,
+              "x": 482,
+              "y": 228.59375
+            },
+            "text": "▶使い方動画を見る"
+          }
+        ],
+        "selector": ".vrx-tutorial-preview"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 485.390625,
+              "height": 44,
+              "left": 482,
+              "right": 656.484375,
+              "top": 441.390625,
+              "width": 174.484375,
+              "x": 482,
+              "y": 441.390625
+            },
+            "text": "導入から 00:30〜"
+          },
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 485.390625,
+              "height": 44,
+              "left": 664.484375,
+              "right": 838.984375,
+              "top": 441.390625,
+              "width": 174.5,
+              "x": 664.484375,
+              "y": 441.390625
+            },
+            "text": "転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-chapters button"
+      }
+    ],
+    "poster": "assets/guide/tutorial-first-frame.png",
+    "video": {
+      "preload": "none",
+      "src": null
+    },
+    "viewport": {
+      "height": 1000,
+      "scrollTop": 0,
+      "scrollWidth": 900,
+      "width": 900
+    }
+  },
+  "mobile": {
+    "dpr": 1,
+    "fonts": "loaded",
+    "lang": "ja",
+    "nodes": [
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "32.76px",
+            "lineHeight": "40.95px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 184.90625,
+              "height": 81.90625,
+              "left": 20,
+              "right": 370,
+              "top": 103,
+              "width": 350,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。"
+          }
+        ],
+        "selector": "h1"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "32.76px",
+            "lineHeight": "40.95px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 143.953125,
+              "height": 40.953125,
+              "left": 20,
+              "right": 370,
+              "top": 103,
+              "width": 350,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、"
+          }
+        ],
+        "selector": "h1 span:first-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(255, 24, 128)",
+            "font": "32.76px",
+            "lineHeight": "40.95px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 184.90625,
+              "height": 40.953125,
+              "left": 20,
+              "right": 370,
+              "top": 143.953125,
+              "width": 350,
+              "x": 20,
+              "y": 143.953125
+            },
+            "text": "VR Vlogへ。"
+          }
+        ],
+        "selector": "h1 span:last-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(171, 182, 200)",
+            "font": "15px",
+            "lineHeight": "27.75px",
+            "marginTop": "16px",
+            "rect": {
+              "bottom": 256.40625,
+              "height": 55.5,
+              "left": 20,
+              "right": 370,
+              "top": 200.90625,
+              "width": 350,
+              "x": 20,
+              "y": 200.90625
+            },
+            "text": "Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。"
+          }
+        ],
+        "selector": ".vrx-lead"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 372,
+              "height": 269,
+              "left": 20,
+              "right": 370,
+              "top": 103,
+              "width": 350,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。\n            Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。\n          \n            エクスポーターを導入するUnity用・無料 / ALCOM・VCC対応"
+          }
+        ],
+        "selector": ".vrx-hero-copy"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(22, 9, 18)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 338.40625,
+              "height": 58,
+              "left": 20,
+              "right": 370,
+              "top": 280.40625,
+              "width": 350,
+              "x": 20,
+              "y": 280.40625
+            },
+            "text": "エクスポーターを導入する"
+          }
+        ],
+        "selector": ".vrx-hero-copy .vrx-primary"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 726.59375,
+              "height": 334.59375,
+              "left": 20,
+              "right": 370,
+              "top": 392,
+              "width": 350,
+              "x": 20,
+              "y": 392
+            },
+            "text": "使い方動画5分39秒\n            導入から転送まで\n            \n              \n              ▶使い方動画を見る\n            \n            \n              導入から 00:30〜\n              転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-card"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "18px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 465.59375,
+              "height": 27,
+              "left": 35,
+              "right": 355,
+              "top": 438.59375,
+              "width": 320,
+              "x": 35,
+              "y": 438.59375
+            },
+            "text": "導入から転送まで"
+          }
+        ],
+        "selector": "#vrx-tutorial-heading"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 657.59375,
+              "height": 180,
+              "left": 35,
+              "right": 355,
+              "top": 477.59375,
+              "width": 320,
+              "x": 35,
+              "y": 477.59375
+            },
+            "text": "▶使い方動画を見る"
+          }
+        ],
+        "selector": ".vrx-tutorial-preview"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 711.59375,
+              "height": 44,
+              "left": 35,
+              "right": 192,
+              "top": 667.59375,
+              "width": 157,
+              "x": 35,
+              "y": 667.59375
+            },
+            "text": "導入から 00:30〜"
+          },
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 711.59375,
+              "height": 44,
+              "left": 198,
+              "right": 355,
+              "top": 667.59375,
+              "width": 157,
+              "x": 198,
+              "y": 667.59375
+            },
+            "text": "転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-chapters button"
+      }
+    ],
+    "poster": "assets/guide/tutorial-first-frame.png",
+    "video": {
+      "preload": "none",
+      "src": null
+    },
+    "viewport": {
+      "height": 844,
+      "scrollTop": 0,
+      "scrollWidth": 390,
+      "width": 390
+    }
+  },
+  "width320": {
+    "dpr": 1,
+    "fonts": "loaded",
+    "lang": "ja",
+    "nodes": [
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "30px",
+            "lineHeight": "37.5px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 178,
+              "height": 75,
+              "left": 20,
+              "right": 300,
+              "top": 103,
+              "width": 280,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。"
+          }
+        ],
+        "selector": "h1"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "30px",
+            "lineHeight": "37.5px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 140.5,
+              "height": 37.5,
+              "left": 20,
+              "right": 300,
+              "top": 103,
+              "width": 280,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、"
+          }
+        ],
+        "selector": "h1 span:first-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(255, 24, 128)",
+            "font": "30px",
+            "lineHeight": "37.5px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 178,
+              "height": 37.5,
+              "left": 20,
+              "right": 300,
+              "top": 140.5,
+              "width": 280,
+              "x": 20,
+              "y": 140.5
+            },
+            "text": "VR Vlogへ。"
+          }
+        ],
+        "selector": "h1 span:last-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(171, 182, 200)",
+            "font": "14px",
+            "lineHeight": "25.9px",
+            "marginTop": "16px",
+            "rect": {
+              "bottom": 245.78125,
+              "height": 51.78125,
+              "left": 20,
+              "right": 300,
+              "top": 194,
+              "width": 280,
+              "x": 20,
+              "y": 194
+            },
+            "text": "Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。"
+          }
+        ],
+        "selector": ".vrx-lead"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 361.375,
+              "height": 258.375,
+              "left": 20,
+              "right": 300,
+              "top": 103,
+              "width": 280,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。\n            Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。\n          \n            エクスポーターを導入するUnity用・無料 / ALCOM・VCC対応"
+          }
+        ],
+        "selector": ".vrx-hero-copy"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(22, 9, 18)",
+            "font": "14px",
+            "lineHeight": "25.2px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 327.78125,
+              "height": 58,
+              "left": 20,
+              "right": 300,
+              "top": 269.78125,
+              "width": 280,
+              "x": 20,
+              "y": 269.78125
+            },
+            "text": "エクスポーターを導入する"
+          }
+        ],
+        "selector": ".vrx-hero-copy .vrx-primary"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 676.59375,
+              "height": 295.21875,
+              "left": 20,
+              "right": 300,
+              "top": 381.375,
+              "width": 280,
+              "x": 20,
+              "y": 381.375
+            },
+            "text": "使い方動画5分39秒\n            導入から転送まで\n            \n              \n              ▶使い方動画を見る\n            \n            \n              導入から 00:30〜\n              転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-card"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "18px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 454.96875,
+              "height": 27,
+              "left": 35,
+              "right": 285,
+              "top": 427.96875,
+              "width": 250,
+              "x": 35,
+              "y": 427.96875
+            },
+            "text": "導入から転送まで"
+          }
+        ],
+        "selector": "#vrx-tutorial-heading"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 607.59375,
+              "height": 140.625,
+              "left": 35,
+              "right": 285,
+              "top": 466.96875,
+              "width": 250,
+              "x": 35,
+              "y": 466.96875
+            },
+            "text": "▶使い方動画を見る"
+          }
+        ],
+        "selector": ".vrx-tutorial-preview"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 661.59375,
+              "height": 44,
+              "left": 35,
+              "right": 157,
+              "top": 617.59375,
+              "width": 122,
+              "x": 35,
+              "y": 617.59375
+            },
+            "text": "導入から 00:30〜"
+          },
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 661.59375,
+              "height": 44,
+              "left": 163,
+              "right": 285,
+              "top": 617.59375,
+              "width": 122,
+              "x": 163,
+              "y": 617.59375
+            },
+            "text": "転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-chapters button"
+      }
+    ],
+    "poster": "assets/guide/tutorial-first-frame.png",
+    "video": {
+      "preload": "none",
+      "src": null
+    },
+    "viewport": {
+      "height": 844,
+      "scrollTop": 0,
+      "scrollWidth": 320,
+      "width": 320
+    }
+  },
+  "width600": {
+    "dpr": 1,
+    "fonts": "loaded",
+    "lang": "ja",
+    "nodes": [
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "36px",
+            "lineHeight": "45px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 193,
+              "height": 90,
+              "left": 20,
+              "right": 580,
+              "top": 103,
+              "width": 560,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。"
+          }
+        ],
+        "selector": "h1"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "36px",
+            "lineHeight": "45px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 148,
+              "height": 45,
+              "left": 20,
+              "right": 580,
+              "top": 103,
+              "width": 560,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、"
+          }
+        ],
+        "selector": "h1 span:first-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(255, 24, 128)",
+            "font": "36px",
+            "lineHeight": "45px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 193,
+              "height": 45,
+              "left": 20,
+              "right": 580,
+              "top": 148,
+              "width": 560,
+              "x": 20,
+              "y": 148
+            },
+            "text": "VR Vlogへ。"
+          }
+        ],
+        "selector": "h1 span:last-child"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(171, 182, 200)",
+            "font": "15px",
+            "lineHeight": "27.75px",
+            "marginTop": "16px",
+            "rect": {
+              "bottom": 264.5,
+              "height": 55.5,
+              "left": 20,
+              "right": 500,
+              "top": 209,
+              "width": 480,
+              "x": 20,
+              "y": 209
+            },
+            "text": "Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。"
+          }
+        ],
+        "selector": ".vrx-lead"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 380.09375,
+              "height": 277.09375,
+              "left": 20,
+              "right": 580,
+              "top": 103,
+              "width": 560,
+              "x": 20,
+              "y": 103
+            },
+            "text": "アバターを、VR Vlogへ。\n            Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。\n          \n            エクスポーターを導入するUnity用・無料 / ALCOM・VCC対応"
+          }
+        ],
+        "selector": ".vrx-hero-copy"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(22, 9, 18)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 346.5,
+              "height": 58,
+              "left": 20,
+              "right": 580,
+              "top": 288.5,
+              "width": 560,
+              "x": 20,
+              "y": 288.5
+            },
+            "text": "エクスポーターを導入する"
+          }
+        ],
+        "selector": ".vrx-hero-copy .vrx-primary"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 852.8125,
+              "height": 452.71875,
+              "left": 20,
+              "right": 580,
+              "top": 400.09375,
+              "width": 560,
+              "x": 20,
+              "y": 400.09375
+            },
+            "text": "使い方動画5分39秒\n            導入から転送まで\n            \n              \n              ▶使い方動画を見る\n            \n            \n              導入から 00:30〜\n              転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-card"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "18px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 473.6875,
+              "height": 27,
+              "left": 35,
+              "right": 565,
+              "top": 446.6875,
+              "width": 530,
+              "x": 35,
+              "y": 446.6875
+            },
+            "text": "導入から転送まで"
+          }
+        ],
+        "selector": "#vrx-tutorial-heading"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "15px",
+            "lineHeight": "27px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 783.8125,
+              "height": 298.125,
+              "left": 35,
+              "right": 565,
+              "top": 485.6875,
+              "width": 530,
+              "x": 35,
+              "y": 485.6875
+            },
+            "text": "▶使い方動画を見る"
+          }
+        ],
+        "selector": ".vrx-tutorial-preview"
+      },
+      {
+        "elements": [
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 837.8125,
+              "height": 44,
+              "left": 35,
+              "right": 297,
+              "top": 793.8125,
+              "width": 262,
+              "x": 35,
+              "y": 793.8125
+            },
+            "text": "導入から 00:30〜"
+          },
+          {
+            "color": "rgb(241, 244, 250)",
+            "font": "12px",
+            "lineHeight": "21.6px",
+            "marginTop": "0px",
+            "rect": {
+              "bottom": 837.8125,
+              "height": 44,
+              "left": 303,
+              "right": 565,
+              "top": 793.8125,
+              "width": 262,
+              "x": 303,
+              "y": 793.8125
+            },
+            "text": "転送から 02:23〜"
+          }
+        ],
+        "selector": ".vrx-tutorial-chapters button"
+      }
+    ],
+    "poster": "assets/guide/tutorial-first-frame.png",
+    "video": {
+      "preload": "none",
+      "src": null
+    },
+    "viewport": {
+      "height": 844,
+      "scrollTop": 0,
+      "scrollWidth": 600,
+      "width": 600
+    }
+  }
+}
