@@ -4,7 +4,7 @@
 smartphone receipt. The homepage highlights the existing tutorial with a video
 card and chapter buttons instead of a photography hero. On narrow screens, the
 card follows the introductory copy and precedes the installation CTA. Its preview
-reuses the Unity transfer and smartphone receipt screenshots; no video is fetched
+uses the unmodified first video frame; no video is fetched
 until requested. The installation and image instructions remain available, with
 small video buttons opening the matching point without navigating away.
 
@@ -21,3 +21,8 @@ This is a Website-only publication: package code, manifests, versions, release
 tags, and archives are unchanged. Publish with the existing Build VPM Listing
 workflow after merging the reviewed Website-only change into main, then back-merge
 main into develop. The workflow generates the official-domain mirror and receipt.
+
+The hero omits the two redundant text shortcuts below the install CTA. The
+video card keeps its chapter buttons and the page retains its full instructions.
+Both tutorial dialogs use a centered SVG close icon in a 44px button, independent
+of the Japanese font metrics and inherited line height.
