@@ -21,4 +21,6 @@
 ## テスト
 
 - `AppTransferQuickExportTests.ARebuildKeepsTheBlinkAndPoseWindowsOpen` を足した。まばたきとポーズのウィンドウを表示した状態で作り直し、両方のウィンドウが開いたままであること、新しいコピーのポーズの一覧がポーズのウィンドウが書き換えるものと同じであること、アバターを変えると両方閉じることを確かめる。修正前の develop では「まばたきのウィンドウが閉じる」で落ちる。
+- `AppTransferQuickExportTests.AFailedRebuildKeepsThePosesAndClosesTheWindowsOnlyWithoutACopy` を足した。メッシュをすべて外して作り直すと、前のオブジェクトに戻したときはウィンドウが開いたままで、ポーズの一覧（除外・名前）がそのまま残り、保存されたポーズを読み直さないことを確かめる。戻す先が無く作り直しに失敗したときは、ボードにコピーが残らず、両方のウィンドウが閉じることを確かめる。
+- 回復ウィンドウに残す古い session も同じ一覧を持つが、書き出しは始める前に一覧を複製して渡す（`TransferExport` の `target.PoseOptions.Copy()`）ので、回復の書き出しは始めたときのポーズで行われる。session の作成・破棄は一覧を書き換えない（書き換えるのは `LoadSettings` だけで、ボードからは呼ばない）。
 - 既存の `TheHiddenBoardUsesTheSavedPosesOnce`（作り直しで保存されたポーズが二重に入らない）はそのまま通る。

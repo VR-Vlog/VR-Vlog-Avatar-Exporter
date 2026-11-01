@@ -224,6 +224,52 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A rebuild whose objects leave no preview falls back to the previous
+        // objects and keeps the windows and the poses as they were; one with
+        // nothing to fall back to leaves no avatar on the board and closes them.
+        [Test]
+        public void AFailedRebuildKeepsThePosesAndClosesTheWindowsOnlyWithoutACopy()
+        {
+            using var fixture = new SavedFixture();
+            var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            var type = typeof(ExperimentalExpressionCaptureWindow);
+            var board = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);
+            var blink = ScriptableObject.CreateInstance<BlinkConfigurationWindow>();
+            var poses = ScriptableObject.CreateInstance<PoseReviewWindow>();
+            try
+            {
+                ExperimentalExpressionCaptureSession Session() => (ExperimentalExpressionCaptureSession)type.GetField("session", flags).GetValue(board);
+                var edited = Session().PoseOptions;
+                edited.Excluded.Add("SamplePose"); edited.Names["SamplePose"] = "Sample";
+                typeof(PoseReviewWindow).GetField("options", flags).SetValue(poses, edited);
+                blink.ShowUtility(); poses.ShowUtility();
+                type.GetField("blinkConfiguration", flags).SetValue(board, blink);
+                type.GetField("poseReview", flags).SetValue(board, poses);
+                // Leaving out every mesh leaves nothing to preview.
+                var meshes = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin => skin.gameObject).ToArray();
+                var rebuild = type.GetMethod("RebuildKeepingAssignments", flags);
+                var problem = (string)rebuild.Invoke(board, new object[] { meshes, Array.Empty<GameObject>() });
+                Assert.That(problem, Is.Not.Null, "The objects asked for leave no preview.");
+                Assert.That(Session(), Is.Not.Null);
+                Assert.That(blink != null && poses != null, Is.True, "With the previous objects back, the windows stay open.");
+                Assert.That(Session().PoseOptions, Is.SameAs(edited));
+                Assert.That(edited.Excluded, Is.EquivalentTo(new[] { "SamplePose" }));
+                Assert.That(edited.Names, Is.EquivalentTo(new Dictionary<string, string> { ["SamplePose"] = "Sample" }));
+                Assert.That(edited.Manual, Is.Empty, "The saved poses are not read again.");
+                var failure = Assert.Throws<System.Reflection.TargetInvocationException>(() => rebuild.Invoke(board, new object[] { meshes, null }));
+                Assert.That(failure.InnerException, Is.Not.Null);
+                Assert.That(Session(), Is.Null);
+                Assert.That(blink == null, Is.True, "Without a copy the blink window closes.");
+                Assert.That(poses == null, Is.True, "Without a copy the pose window closes.");
+            }
+            finally
+            {
+                if (blink != null) blink.Close();
+                if (poses != null) poses.Close();
+                Object.DestroyImmediate(board);
+            }
+        }
+
         // Out of sight, a blocked board names what to fix; the open board shows it itself.
         [Test]
         public void ABlockedHiddenBoardSaysWhatToFix()
