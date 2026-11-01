@@ -359,8 +359,10 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 run.Flow.ShowResultAtEnd((title, note) => opened.Add("kept"));
                 run.Flow.Fail("x");
                 Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                var before = opened.Count;
                 run.Flow.TakeEndedResult(text => text)?.Invoke();
-                Assert.That(opened.Last(), Is.EqualTo("kept"));
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                Assert.That(opened.Skip(before), Is.EqualTo(new[] { "kept" }));
                 // Closing the screen drops a list that is waiting: the same failure then opens nothing.
                 run.Flow.ShowResultAtEnd((title, note) => opened.Add("dropped"));
                 run.Flow.Stop();
@@ -652,6 +654,46 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
                     window.Close();
                     UnityEngine.Object.DestroyImmediate(avatar);
+                }
+            }
+        }
+
+        // The screen's own polling opens the result list once the phone has taken the avatar, and
+        // only once; while it waits, nothing opens. The exporter hands the list over through its binding.
+        [Test]
+        public async Task TheScreenOpensTheResultListWhenTheTransferHasEnded()
+        {
+            Assert.That(AppTransferPanel.ExportEntry.Resolve()?.LastResult, Is.Not.Null, "The transfer screen reaches the exporter's result list.");
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            var sound = AppTransferWindow.QrReadySound;
+            using (var run = new FlowRun())
+            {
+                var panel = PanelWith(run.Flow, detailed: true);
+                var opened = new System.Collections.Generic.List<string>();
+                try
+                {
+                    AppTransferWindow.QrReadySound = false;
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    run.Flow.ShowResultAtEnd((title, note) => opened.Add(title));
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Call(panel, "Poll");
+                    Assert.That(opened, Is.Empty, "Nothing opens while the phone has not taken the avatar.");
+                    run.Transport.RemoteState = "completed";
+                    await run.Until(() => run.Flow.View == AppTransferView.Completed);
+                    Assert.That(opened, Is.Empty, "The flow alone opens nothing; the screen does.");
+                    Call(panel, "Poll");
+                    Call(panel, "Poll");
+                    Assert.That(opened, Is.EqualTo(new[] { AppTransferText.Completed }));
+                }
+                finally
+                {
+                    AppTransferWindow.QrReadySound = sound;
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
                 }
             }
         }

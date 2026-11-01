@@ -171,7 +171,7 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = LilToonGlbExtension.MarkWithoutLilToon(MaterialBindingFixture.Build(fixture.Material.name));
             var calls = 0; var blinkSettings = 0;
             var order = new List<string>();
-            dialog.Shown = () => order.Add(File.Exists(destination) ? "list after file" : "list before file");
+            dialog.Shown = () => order.Add(File.Exists(destination) && File.ReadAllBytes(destination).SequenceEqual(bytes) ? "list after file" : "list before file");
             try
             {
                 Directory.CreateDirectory(directory);
