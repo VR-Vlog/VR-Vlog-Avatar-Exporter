@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
+using Unity.Collections;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.VrmLib;
 
@@ -38,6 +39,7 @@ namespace VRVlog.LilToonExporter
                             new BufferAccessor(arrays, buffer, AccessorValueType.FLOAT, AccessorVectorType.VEC2, uv.Length));
                         warnings?.Add("未設定のUV0を(0, 0)として保存しました: " + group.Name);
                     }
+            UnmirrorSkins(model);
             ConvertCoordinateKeepingZeroScale(model);
             using var exporter = new Vrm10Exporter(settings, materialExporter, textureSerializer);
             exporter.Export(avatar, model, converter, new ExportArgs { removeMorphNormal = settings.ExportOnlyBlendShapePosition }, vrmMeta);
@@ -100,6 +102,80 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool NearZero(float value) => Mathf.Abs(value) < 1e-6f;
+
+        // A skinned mesh whose transform mirrors (an FBX imported with a
+        // negative scale) has mirrored bindposes. UniVRM converts inverse bind
+        // matrices with the same positive-scale split as nodes, both when
+        // exporting and when loading, and drops the mirror: the mesh came out
+        // upside down and inside out. Move the mirror into the mesh instead.
+        // With F = diag(-1, 1, 1), bindpose * v = (bindpose * F) * (F * v), so
+        // negating x of the mesh-local positions and normals (morph targets
+        // too) and right-multiplying each bindpose by F leaves every skinned
+        // world vertex, normal and triangle as it was, and the bindposes become
+        // a rotation and a positive scale that any loader converts exactly.
+        // A skin whose bindposes mirror only for some bones has no single F
+        // that fixes it and is left as it was.
+        internal static void UnmirrorSkins(Model model)
+        {
+            // Buffers can be shared, so each one is mirrored once.
+            var done = new HashSet<NativeArray<byte>>();
+            var unmirrored = new HashSet<NativeArray<byte>>();
+            void Mirror(BufferAccessor buffer)
+            {
+                if (buffer == null || !done.Add(buffer.Bytes)) return;
+                var values = buffer.GetSpan<Vector3>();
+                for (var i = 0; i < values.Length; i++) values[i] = new Vector3(-values[i].x, values[i].y, values[i].z);
+            }
+            foreach (var group in model.MeshGroups)
+            {
+                var binds = group.Skin?.InverseMatrices;
+                if (binds == null) continue;
+                if (!unmirrored.Contains(binds.Bytes))
+                {
+                    var poses = binds.GetSpan<Matrix4x4>();
+                    if (poses.Length == 0 || Enumerable.Range(0, poses.Length).Any(i => !(poses[i].determinant < 0))) continue;
+                    for (var i = 0; i < poses.Length; i++) poses[i] = poses[i] * MirrorX;
+                    unmirrored.Add(binds.Bytes);
+                }
+                foreach (var mesh in group.Meshes)
+                {
+                    Mirror(mesh.VertexBuffer.Positions);
+                    Mirror(mesh.VertexBuffer.Normals);
+                    foreach (var morph in mesh.MorphTargets)
+                    {
+                        Mirror(morph.VertexBuffer.Positions);
+                        Mirror(morph.VertexBuffer.Normals);
+                    }
+                }
+            }
+            if (unmirrored.Count == 0) return;
+            // glTF and three.js choose the front side of a skinned primitive by
+            // the determinant of its node, while Unity draws a skinned mesh in
+            // its root bone's space. Turn the mesh node's world matrix W into
+            // W * F so it no longer mirrors, and give each child F * local so
+            // the children stay where they were. The skin ignores the node.
+            model.Root.CalcWorldMatrix();
+            var joints = new HashSet<Node>(model.Skins.SelectMany(s => s.Joints));
+            var nodes = model.Root.Traverse().Where(n => n.MeshGroup?.Skin?.InverseMatrices is { } b
+                && unmirrored.Contains(b.Bytes) && n.Matrix.determinant < 0 && !joints.Contains(n)).ToList();
+            foreach (var node in nodes)
+            {
+                var s = node.LocalScalingWithoutUpdate;
+                node.LocalScalingWithoutUpdate = new Vector3(-s.x, s.y, s.z);
+                foreach (var child in node.Children)
+                {
+                    var t = child.LocalTranslationWithoutUpdate;
+                    var r = child.LocalRotationWithoutUpdate;
+                    var c = child.LocalScalingWithoutUpdate;
+                    child.LocalTranslationWithoutUpdate = new Vector3(-t.x, t.y, t.z);
+                    child.LocalRotationWithoutUpdate = new Quaternion(r.x, -r.y, -r.z, r.w);
+                    child.LocalScalingWithoutUpdate = new Vector3(-c.x, c.y, c.z);
+                }
+            }
+            if (nodes.Count > 0) model.Root.CalcWorldMatrix();
+        }
+
+        private static readonly Matrix4x4 MirrorX = Matrix4x4.Scale(new Vector3(-1, 1, 1));
 
         // The pinned ModelExporter computes useNormal but only copies each
         // morph's POSITION buffer. Fill NORMAL from its exact renderer/node map
