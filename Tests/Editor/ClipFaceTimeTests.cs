@@ -134,5 +134,17 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ClipFaceTime.Value(curve, time, 3), Is.EqualTo(curve.Keys[1].Value), time.ToString());
             Assert.That(ClipFaceTime.Value(curve, .5, 3), Is.EqualTo(curve.Evaluate(.5)));
         }
+
+        [Test]
+        public void AKeyWithAZeroWeightHoldsLikeAFlatOne()
+        {
+            // Sloped tangents with zero weights put both handles on the keys,
+            // so the curve stays at 100 from 0.125 s to 0.875 s.
+            var left = new Keyframe(.125f, 100, 0, 1) { weightedMode = WeightedMode.Out, outWeight = 0 };
+            var right = new Keyframe(.875f, 100, 1, 0) { weightedMode = WeightedMode.In, inWeight = 0 };
+            var curve = Curve(WrapMode.ClampForever, Flat(0, 0), left, right, Flat(1, 0));
+            Assert.That(curve.Evaluate(.5), Is.EqualTo(100).Within(1e-9));
+            Assert.That(ClipFaceTime.Of(new[] { (curve, 0.0) }, 1), Is.EqualTo(.5).Within(1e-9));
+        }
     }
 }

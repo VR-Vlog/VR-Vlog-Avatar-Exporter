@@ -1,7 +1,7 @@
 # 動く表情の固定の顔は、顔を保っている区間の中ほどで読む
 
 - 日付: 2026-11-01
-- 対象: `Editor/ClipFaceTime.cs`・`Editor/VrChatExpressionBaker.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/VrChatGestureExpressions.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureSession.Thumbnails.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`・`Schema/VRVLOG_expression_animations.2.schema.json`・`Documentation~/ExperimentalExpressionCapture.md`・`Tests/Editor/ClipFaceTimeTests.cs`・`Tests/Editor/ExpressionPresetTests.cs`・`Tests/Editor/ExpressionAnimationV2WriterTests.cs`
+- 対象: `Editor/ClipFaceTime.cs`・`Editor/ClipFaceTime.Curves.cs`・`Editor/VrChatExpressionBaker.cs`・`Editor/VrmMenuExpressions.cs`・`Editor/VrChatGestureExpressions.cs`・`Editor/ExperimentalExpressionCaptureSession.Presets.cs`・`Editor/ExperimentalExpressionCaptureSession.Thumbnails.cs`・`Editor/ExperimentalExpressionCaptureSession.Clips.cs`・`Editor/ExperimentalExpressionCaptureWindow.cs`・`Schema/VRVLOG_expression_animations.2.schema.json`・`Documentation~/ExperimentalExpressionCapture.md`・`Tests/Editor/ClipFaceTimeTests.cs`・`Tests/Editor/ExpressionPresetTests.cs`・`Tests/Editor/ExpressionAnimationV2WriterTests.cs`
 
 ## 背景
 
@@ -14,7 +14,7 @@
 クリップやカーブから固定の顔を読む時刻（顔の時刻）を `ClipFaceTime.Of` の 1 か所で決める。VRM の表情の焼き込み（`VrChatExpressionBaker`・`Expression.FinalPoints`）、プリセットの焼き込み、ボードの既定の時刻、サムネイル、クリップの検査はすべてこれを使う。決め方は次のとおり。
 
 - 値が変わるシェイプキーのカーブだけを見る。値が変わらないクリップ（1 フレームのクリップを含む）は、どの時刻で読んでも同じなので最後のフレームのまま読む。書き出す VRM は変更前と同じになる。
-- カーブが止まっている区間は、同じ値で接線が平らなキーの間、ステップのキーの後、最初のキーより前と最後のキーより後（clamp のとき）、それらが繰り返す区間（loop・pingPong のとき）とする。カーブは `ExpressionAnimationData.Curve.Evaluate` と同じ読み方で見る。
+- カーブが止まっている区間は、同じ値で接線が平らな（傾きか重みが 0 の）キーの間、ステップのキーの後、最初のキーより前と最後のキーより後（clamp のとき）、それらが繰り返す区間（loop・pingPong のとき）とする。繰り返しが 1 万回を超えるカーブ（1 ミリ秒に満たない周期など）は繰り返しを数えず、ほかのカーブで決まらなければ最後のフレームで読む。カーブは `ExpressionAnimationData.Curve.Evaluate` と同じ読み方で見る。
 - 長さの半分以上止まっているカーブを「保つカーブ」とする。ずっと動き続けるきらめきのカーブは、止まっている時間が半分に満たないので時刻の決定には使わず、決まった時刻の値で焼く。
 - 保つカーブがすべて同じ値で止まっている区間を「保つ区間」とし、「区間の長さ × 保つカーブの元の顔の重みからの差の和」が最も大きい区間を選ぶ。同じなら長いほう、さらに同じなら先のほうを選ぶ。元の顔の重みは、焼き込みではアバターのメッシュの重み、表情ボードでは基準の顔の重みを使い、ボードは書き出しで省くメッシュのカーブを見ない（アバターが無いときは 0）。無表情で待つ区間は差が 0 なので選ばれない。まばたきのように短く値が上がる区間は、短いぶん長く保つ顔に負ける。
 - 選んだ区間の中ほどの時刻で読む。保つカーブが無いとき、元の顔から離れた保つ区間が無いときは最後のフレームで読む。
@@ -41,7 +41,7 @@ schema 2 の description は「VRM の表情は 0 から duration のどこか 1
 ## 確かめたこと
 
 - `ClipFaceTimeTests`: 0 から始まり途中で保つクリップは区間の中ほど、ループは保つ区間の中ほど、無表情で長く待つクリップは顔を作る区間、ステップのキーは保つ値の区間、値が変わらないクリップと 1 フレームのクリップは最後のフレーム、保つ区間の無いランプは最後のフレームを返す。
-- `ClipFaceTimeTests`（続き）: 顔を保つ間のまばたきより保つ顔を選ぶ、元の顔の重みが 100 のとき 20 に下げた区間を選ぶ、元の顔の重みでしか保たないクリップは最後のフレーム、loop と pingPong の繰り返しの中で保つ区間を数える、止まっている区間の値はキーの値そのもの。
+- `ClipFaceTimeTests`（続き）: 顔を保つ間のまばたきより保つ顔を選ぶ、元の顔の重みが 100 のとき 20 に下げた区間を選ぶ、元の顔の重みでしか保たないクリップは最後のフレーム、loop と pingPong の繰り返しの中で保つ区間を数える、止まっている区間の値はキーの値そのもの、重みが 0 の接線のキーの間も止まっている区間に数える。カーブの読み方は `ClipFaceTime.Curves.cs` に分け、Unity を使わない動作テスト（`Tools/run-behavior-tests.ps1`）でもコンパイルする。
 - `ExpressionPresetTests.PresetFromAMovingClipBakesTheFaceItHolds`: プリセットに当てた動くクリップが保つ顔で焼かれる。ボードの時刻はアバターの有無で同じ。
 - `ExpressionAnimationV2WriterTests.VrmExpressionOfAMovingFaceIsTheFaceItHolds`: 0→80 で保ち 40 で終わるカーブの VRM の表情が 80 の形になり、書き出した VRM をアニメーションつきで再生した形は元のアバターの同じ時刻の形と一致する。
 - 書き出しの before/after は PR に書く。

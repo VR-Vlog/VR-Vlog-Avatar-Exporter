@@ -50,7 +50,7 @@ namespace VRVlog.LilToonExporter
 
             // The time of Animation that the VRM expression shows (ClipFaceTime);
             // unset, the end of the animation.
-            internal double? FaceTime;
+            internal double? FaceTime { get; set; }
 
             // The animation's shape at FaceTime: per channel the two points
             // Channel.Weights picks, at 1 - blend and blend. Points that move
