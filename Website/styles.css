@@ -160,7 +160,7 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-brand img{width:128px}
   #exporter-page .vrx-header .vrx-nav-link{display:none}
   #exporter-page .vrx-header-cta{min-height:44px;padding-inline:14px}
-  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:24px;padding-block:28px 30px}
+  #exporter-page .vrx-hero{grid-template-columns:1fr;gap:20px;padding-block:24px 30px}
   #exporter-page .vrx-tutorial-card{padding:14px}
   #exporter-page .vrx-tutorial-card h2{font-size:18px;margin-bottom:12px}
   #exporter-page .vrx-tutorial-chapters{flex-direction:row;margin-top:10px}
@@ -202,5 +202,5 @@ body:has(dialog[open]){overflow:hidden}
   #exporter-page .vrx-dialog{width:94%;padding-inline:16px;max-height:90dvh}
   #exporter-page .vrx-dialog-body h2{font-size:19px}
 }
-@media(max-width:360px){#exporter-page .vrx-primary{font-size:14px;gap:8px}}
+@media(max-width:360px){#exporter-page .vrx-hero-copy .vrx-lead{font-size:14px}#exporter-page .vrx-primary{font-size:14px;gap:8px}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}#exporter-page .vrx-primary{transition:none}}
