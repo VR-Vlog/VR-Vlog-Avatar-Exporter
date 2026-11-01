@@ -26,6 +26,15 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
+    'ExpressionNameAffixTests': {
+        'ASharedPrefixOrSuffixIsLeftOutByWholeWords': 10,
+        'NamesStayWhenNothingCanBeLeftOut': 8,
+        'NamesStayWhenAShorterNameIsAlreadyTaken': 1,
+        'TheLongerValidPartGoesWhenBothCannot': 1,
+        'AddWritesTheShorterNamesEverywhere': 1,
+        'AddKeepsTheNamesWhenAShorterNameIsAPreset': 1,
+        'AddKeepsASingleName': 1,
+    },
     'ExportDiagnosticsTests': {
         'TheTextHasNoNameOrPath': 1,
         'TheTextHasTheVersionsAndTheExportType': 1,
