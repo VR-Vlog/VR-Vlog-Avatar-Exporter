@@ -1,0 +1,10 @@
+{
+  "main_source": "59e25075d1cecb69804e7e845c7fa0d9ec6ab70d",
+  "integration_head": "f8537309cae53670242bd06b2c8e750f21aa105b",
+  "develop_parent": "ced67a58a52f9c7a95cbb05a260002b98baa26e0",
+  "main_delta_paths": [
+    "Website/index.html"
+  ],
+  "only_existing_credit_difference": true,
+  "all_installation_code_identical": true
+}

@@ -1,0 +1,9 @@
+{
+  "source_commit": "59e25075d1cecb69804e7e845c7fa0d9ec6ab70d",
+  "workflow": "build-listing.yml",
+  "ref": "main",
+  "dispatch_started_at": "2026-11-01T11:25:28.722284+00:00",
+  "state": "submitted",
+  "exit_code": 0,
+  "output": "https://github.com/VR-Vlog/VR-Vlog-Avatar-Exporter/actions/runs/41301819552\n"
+}

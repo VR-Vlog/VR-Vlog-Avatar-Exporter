@@ -1,0 +1,21 @@
+{
+  "source_commit": "59e25075d1cecb69804e7e845c7fa0d9ec6ab70d",
+  "implementation_head": "f9fa63e6160c36cf0d2b362d089c82c0bbc45a51",
+  "source_schema_run": 41301508893,
+  "source_listing_run": 41301508921,
+  "publication_run": 41301819552,
+  "publication_job": 124834174976,
+  "publication_conclusion": "success",
+  "official_mirror_commit": "61323768278ea22c982883f04d12da743ec79a35",
+  "official_pages_run": 41301941367,
+  "official_pages_conclusion": "success",
+  "public_receipt_digest": "5251f840f79a00b6468c9117806c3c7af40ca96e58c5918838e6991c46675ce7",
+  "browser_receipt_values_match": true,
+  "independent_whole_publication_digest_recalculated": false,
+  "browser_report": "production-verification.md",
+  "browser_owned_tabs_closed": true,
+  "local_server_session": 23665,
+  "local_server_exit_code": 0,
+  "local_server_output_eof": true,
+  "physical_mobile_or_external_manager_install_performed": false
+}

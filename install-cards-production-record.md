@@ -1,0 +1,50 @@
+# 導入カードUIの実装・公開
+
+## develop同期結果
+
+PR588の固定統合head f8537309cae53670242bd06b2c8e750f21aa105bに対するschema41301873725/job124834328699は3m52sでsuccess、listing41301873834もsuccess。head/base/cleanを直前照合しmerge方式でdevelopへ採用、3d282453ef851806603dc77d9dfd9bad50f1801dをGitHubから読戻し。monitor63798もexit0/全出力EOF。必須PR CIの成功であり、merge後のdevelop pushによる自動CIを新しい成功として扱わない。再公開なし。
+
+## 本番検証
+
+公開41301819552/job124834174976はmirror verifyを含め2m30sでsuccess、monitor36162もexit0/EOF。公式mirror61323768278ea22c982883f04d12da743ec79a35のPages41301941367もsuccessを親が読戻し。公式commitのpublication.jsonのsource59e25075d1cecb69804e7e845c7fa0d9ec6ab70d/run41301819552/digest5251f840f79a00b6468c9117806c3c7af40ca96e58c5918838e6991c46675ce7を保存。
+Terra/highが20:29JST頃に同じChrome専用tabで公開publication.jsonと保存値を照合し、PC1440x1000/390x844/320幅の新UIを確認。本人指定の2見出し・CTA、管理アプリ/画像/本文/download/fallback、URLschemeとURL欄の本番実値、画像拡大close/ESCfocus、動画先頭/2章の再生・pause/focus、旧guide移動・FAQ展開を確認。consoleerror取得は空。全配信bytesのdigest再計算・外部アプリ/実機導入・他ブラウザ等は未確認で成功扱いしない。詳細production-verification.md。
+親も本番PC/320画像を目視し、語句保持・注意/CTA順序・2カードとボタン文言を確認。前後のPCsection上端に約18px差があり、全ページ高さは前2408px/後2478px（390幅）へ変化。読みやすさのためのカード・余白による高さ差で、短縮を受入条件にしていない。
+操作担当はviewport resetと所有tab全close後、1.2秒後のtab一覧が空を確認して終了。agentをclose。今回端末予約なし、localhost停止済み、sourcecheckoutは同期head f853でclean、本番source59eと混同しない。不要な新cache/SDK/別checkoutは生成していない。必要な元画像・最小ログ・復旧sourceは本人確認まで保持。
+
+## 採用・公開・同期
+
+最終実装f9fa63e6160c36cf0d2b362d089c82c0bbc45a51のschema41301508893/job124833201508が3m37sでsuccess、listing41301508921もsuccess。PR587のhead/base/cleanを直前確認しmerge方式で採用、main source59e25075d1cecb69804e7e845c7fa0d9ec6ab70d。既存build-listing.ymlをmain一致確認後に1回dispatch、run41301819552/event workflow_dispatch/head一致を読戻し。状態は実行中、成功や本番到達は未確定。
+main由来の同期branchへ既存developをAPI統合。出力jqの.files nullによるCLI errorをmutation未実行と扱わず、Git ref/parentsでf8537309cae53670242bd06b2c8e750f21aa105bの作成を確認して再mergeしなかった。部分cloneの不足blobは正規Git取得で補い、共有設定変更なし。
+自身で統合diffと直接影響を再レビューし、mainとの差は既存developのdialog credit文言のみ、HTMLの他部分とapp.js/styles.css/GUIDEはバイト一致と確認（backmerge-binding.json）。develop親ced67a58a52f9c7a95cbb05a260002b98baa26e0との差はWebsite4ファイルだけ、diff --check成功。PR588を作成してattach、必須CI待ち。コード/配置の新しい懸念がない既存文言だけの差分に対し、ブラウザ一式を再実行せず本番sourceと統合headを混同しない。
+
+## ローカル検証終了
+
+実装画像とcommit別ログをevidence/site-tutorial-577のba3c412d0531ef3536a4f214d581ed9fe7f2fea0へ保存、pushとremote SHA、Epic577の本文一致を読戻し。計約8.2MB（JPEG原本・旧案も含む）、各画像10MiB未満。sourceはclean。
+今回localhost server23665はCtrl-CでKeyboard interrupt終了、exit0/全出力EOFを確認。通常root favicon.icoへのブラウザ自動要求のみ404で、HTML指定のfavicon-phone.icoやUI/assetsは200。server再起動なし。Terraの専用Chromeタブは次の本番確認へ引継ぎ、実機予約なし。操作に使うタブは専有し、親は画像ファイルの閲覧だけ行う。
+
+## 最終表示の調整
+
+320幅の追加観測を受け、f9fa63e6160c36cf0d2b362d089c82c0bbc45a51でstage1見出しと事前注意にも語句inline-blockを適用。文字列は同じ。自分で最新HTML2行差分を再レビューし、文字/aria/順序と320幅で語句が収まる設計を確認、diff --check成功。編集終了。配信5ファイルをバイト照合しlocal-approved-source-binding.jsonへ保存。旧headのbinding/画像は保護し操作結果を付け替えない。
+
+旧Validate41301296259/41301414246は新しい同PRの実行でcancelled（既存concurrency）。成功ではない。monitor52280はexit1/EOF、10525もAPI timeoutでexit1/EOF。最終必須CIは41301508893/listing41301508921。ブラウザの追加確認は改行・本文・切替・overflowに絞り、未変更の動画一式は重複しない。Terraが最終headのPC/390/320を確認し孤立文字が解消、横overflowなし、DOM文字列は本人指定どおりと報告。local-verification.mdの各commit別の実行範囲を正とする。
+
+2026-11-01。同タスクの案Aに対し、本人は見出しを「エクスポーターを追加」「アバターのプロジェクトに導入」、ボタンを「ALCOMで追加」／「VCCで追加」に訂正し、「その文言で実装して、本番にも反映して」と承認。2カード構成・アプリ選択の上部集約・事前条件・対処折りたたみを実装し、既存経路で公開する。
+
+対象VR-Vlog/VR-Vlog-Avatar-Exporter Websiteのみ。既存Epic577、既存source領域exporter-site-sourceを再利用。main由来hotfixからPR、既存必須CI後に採用、既存build-listing.ymlでWebsiteのみ公開しsource/run/receipt/本番を照合、developへ同期。新CI・版/タグ・Release・SDK・Unity・共有設定は変更しない。public/exporterは生成同期先で直接編集しない。
+
+saved: install-ui-implementation/、owner本タスク、source binding・前後画像・最小ログ・公開receipt・review・管理結果。各10MiB未満、合計30MiB上限、本人確認まで保持。scratchは今回専用localhost serverログと証跡indexのみ、sourceは復旧用に保持。新cacheなし。既存cache/SDK/別checkoutのコピーなし。不要scratchは停止/EOF/利用終了確認後に限り整理。
+
+親Sol/high: 実装・原因分析・自身の敵対的セルフレビュー。最終schema/listing一式は既存PR CIのみ、ローカル重複なし。軽い構文/差分/HTML整合を親が確認。Terra/high新規コンテキスト: 編集前本番撮影、その後同じ専用Chromeでローカル・本番PC1440x1000/390x844/320幅、ALCOM/VCC、導入CTA・画像dialog・fallback・動画/章/close/ESC/focus・overflowを確認。外部アプリ実起動・実機導入なし。ユーザーambienttabを操作せず今回専用tabを終了する。
+
+共通完了contextは初回UI案input1566380639534448701:824:v0を返す。既存immutable completion.jsonとcanonical repository scope不整合を保護、管理完了を偽造・設定で回避しない。
+
+## 実装と自身の敵対的セルフレビュー
+
+base main f544368a4e7bac51163c59acec6bf7e713e81bd7。hotfix/install-cards-ui、Website4ファイルのみ。実装前にTerraが同revision/runをpublication.jsonで読戻し、PC/390幅のALCOM/VCCを撮影。既存sourceを再利用しコピーなし。
+
+最新未コミットdiffとapp.js/guide.css/残存DOM参照を自身でレビュー。反例：カード移動で管理アプリのquerySelectorが欠落し全JS停止、ALCOMの適用をVCCへ表示、defaultHTMLと切替後の文言が不一致、URL templateを壊す、captionの旧画像注釈喪失、850-1100幅の2列内で本文が狭すぎる、先に押せてバックアップ指示を見落とす、動画と画像dialog/導入anchorを壊す、存在しない導入成功状態を表示する。
+対処：3つのdata-manager-copyキーと2managerのキーを一致、見出しは選択に依らず本人訂正の2つ、CTAはmanager名＋で追加。URL template/画像素材とcaption/画像dialog/動画codeはそのまま。注意をCTA前へ移動。1100幅以下はカード2の本文と画像を縦配置し、600以下は2カードも縦配置。準備完了は従来の条件文を保持し外部アプリ導入を判定しない。重複の導入動画リンクだけ除きトップ動画/章/headerを保持。JS/CSS cacheキー更新。
+最初の2回のapply_patchは文脈一致/ハンク順序の誤りで未適用・source無変更を確認して補正した。Node通常PATHなしを成功扱いせず、配備済みworkspace runtimeを用いて構文確認。diff --check、HTMLの一意ID/aria/scroll/相対asset/外部link保護、2カード/managerキー確認が成功。新しい実装形状だけのテスト追加なし。既存必須一式はPR CIに任せ重複せず、実ブラウザの配置・操作はTerraで別途確認。
+
+初稿commit2df7d93eaa5f1f2e9247e3ac38fbb51fec2d0eb1をPR587へ提出し本チャットへattach。localhostのHTML/JS/CSS5ファイルをバイト照合しlocal-source-binding.jsonへ保存。sandboxのbind拒否はexit1で停止、権限付きの配備済みPythonでlocalhost限定serverを起動（session23665）。新buildなし。
+Terra取得画像を自身で確認し、PC本文「開く」の末尾と390幅見出し「導入」の最後1字の孤立を発見。92ca1ae6b907d6d3d5ef77bb941c03ef18fd33faで重複するproject説明を短縮、見出しを「アバターの」「プロジェクトに導入」のinline-block語句へ分割（見出し文字列は同一）。自身で最新3ファイルの6追加4削除を再レビューし、manager初期/切替の一致・ariaの文字列維持・320幅で最長語句が収まること・他挙動の非変更を確認。Node構文/diff成功。最終source bindingは別名へ保存し初稿証跡を保護。編集終了。CI再実行はソース差分のため、旧headの成功を新headへ付け替えない。Terraも既検証の挙動を重複せず変更した表示・文言・折返し・overflowだけ追加確認する。
