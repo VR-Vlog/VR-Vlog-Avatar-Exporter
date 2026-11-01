@@ -869,8 +869,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         // A face may also turn a bone, such as an eye highlight, or show an object. It is still a face on the
         // board, read from its BlendShapes alone, whether a gesture enters it or not; the export writes the
-        // bone and the shown object beside it. A finger pose beside the face is left out; a body pose keeps a
-        // clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
+        // bone and the shown object beside it. A finger pose beside the face is left out; a body pose, an IK goal
+        // or the root keeps a clip no gesture enters unsupported. A material swap keeps the clip unsupported. A hand pose that
         // only holds the face shapes at rest is not a face.
         [TestCase("transform", true, 80f, "usable")]
         [TestCase("transform", false, 80f, "usable")]
@@ -878,9 +878,13 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("active", false, 80f, "usable")]
         [TestCase("finger", true, 80f, "usable")]
         [TestCase("finger", false, 80f, "usable")]
+        [TestCase("body", true, 80f, "usable")]
         [TestCase("body", false, 80f, "unsupported")]
+        [TestCase("ik", false, 80f, "unsupported")]
+        [TestCase("root", false, 80f, "unsupported")]
         [TestCase("material", true, 80f, "unsupported")]
         [TestCase("transform", true, 0f, "noface")]
+        [TestCase("finger", false, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
             using var on = new ExpressionTransformsSwitch(true);
@@ -910,7 +914,7 @@ namespace VRVlog.LilToonExporter.Tests
                     // highlight bone, not the angle as a weight; a bone outside a gesture face or a shown object
                     // keeps the clip out of it, as before, so the automatic choice of each preset is unchanged.
                     var preset = ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip);
-                    var presetUsable = gesture && (extra == "transform" || extra == "finger");
+                    var presetUsable = gesture && (extra == "transform" || extra == "finger" || extra == "body");
                     if (presetUsable) Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, preset));
                     else Assert.That(session.PresetError(ExpressionPreset.happy, preset), Does.EndWith(binding.propertyName));
                     Assert.That(session.SuggestPresets(new[] { clip }).ContainsKey(ExpressionPreset.happy), Is.EqualTo(presetUsable));
@@ -930,6 +934,8 @@ namespace VRVlog.LilToonExporter.Tests
                 case "active": return (EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), 0);
                 case "finger": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHand.Index.1 Stretched"), -0.5f);
                 case "body": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "Spine Front-Back"), 0.3f);
+                case "ik": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "LeftHandT.x"), 0.2f);
+                case "root": return (EditorCurveBinding.FloatCurve("", typeof(Animator), "RootT.x"), 0.2f);
                 case "material": return (EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "material._Color.r"), 0.5f);
                 default: throw new System.ArgumentOutOfRangeException(nameof(extra), extra, null);
             }
