@@ -6,15 +6,20 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class OptimizationLocalizationTests
     {
+        [System.Serializable]
+        sealed class LocaleEntry { public string source; public string translated; }
+
+        [System.Serializable]
+        sealed class LocaleTable { public LocaleEntry[] entries; }
+
         [Test]
         public void EnglishTranslationsHoldNoJapaneseCharacters()
         {
             var guid = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
-            var text = System.IO.File.ReadAllText(path);
-            var bad = new System.Collections.Generic.List<string>();
-            foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(text, "\"translated\":\"((?:[^\"\\\\]|\\\\.)*)\""))
-                if (System.Text.RegularExpressions.Regex.IsMatch(match.Groups[1].Value, "[぀-ヿ一-鿿]")) bad.Add(match.Groups[1].Value);
+            var table = UnityEngine.JsonUtility.FromJson<LocaleTable>(System.IO.File.ReadAllText(UnityEditor.AssetDatabase.GUIDToAssetPath(guid)));
+            Assert.That(table.entries.Length, Is.GreaterThan(1000), "the English table was not read");
+            var japanese = new System.Text.RegularExpressions.Regex(@"[　-〿぀-ヿ一-鿿＀-￯]");
+            var bad = table.entries.Where(entry => japanese.IsMatch(entry.translated)).Select(entry => entry.translated).ToList();
             Assert.That(bad, Is.Empty, "Japanese left in the English translations");
         }
 
