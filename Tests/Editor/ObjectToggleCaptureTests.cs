@@ -188,6 +188,60 @@ namespace VRVlog.LilToonExporter.Tests
             finally { Object.DestroyImmediate(clone); }
         }
 
+        // A parent-constrained prop inside a toggled object moves under its
+        // source, out of the object the app hides: it joins that toggle so it
+        // still hides with it (#596). One whose source sits inside a toggle it
+        // is not in would start hiding with that toggle, so it keeps the pose.
+        [Test]
+        public void APropMovedOutOfAToggleStillHidesWithIt()
+        {
+            using var avatar = new ToggleAvatar();
+            var clone = Object.Instantiate(avatar.Source);
+            try
+            {
+                var anchor = new GameObject("Anchor").transform;
+                anchor.SetParent(clone.transform, false);
+                anchor.localPosition = new Vector3(0, 1, 0);
+                Transform Prop(string name, Transform parent, Transform source)
+                {
+                    var prop = new GameObject(name).transform;
+                    prop.SetParent(parent, false);
+                    var constraint = prop.gameObject.AddComponent<UnityEngine.Animations.ParentConstraint>();
+                    constraint.AddSource(new UnityEngine.Animations.ConstraintSource { sourceTransform = source, weight = 1 });
+                    constraint.constraintActive = true;
+                    return prop;
+                }
+                var hat = clone.transform.Find("Hat");
+                var room = Prop("Room", hat, anchor);
+                var socket = new GameObject("Socket").transform;
+                socket.SetParent(clone.transform.Find("Glasses"), false);
+                var lamp = Prop("Lamp", hat, socket);
+                var stray = Prop("Stray", clone.transform, socket);
+
+                var warnings = new List<string>();
+                var capture = ObjectToggleCapture.Capture(clone, null, warnings);
+                Assert.That(capture, Is.Not.Null, string.Join("\n", warnings));
+                var fallbacks = new ExportFallbackReport();
+                ConstraintExport.Convert(avatar.Source, clone, warnings, fallbacks, capture);
+
+                Assert.That(room.parent, Is.SameAs(anchor), "The prop follows its source.");
+                Assert.That(lamp.parent, Is.SameAs(hat), "Its source is inside another toggle.");
+                Assert.That(stray.parent, Is.SameAs(clone.transform), "Its source is inside a toggle it is not in.");
+                Assert.That(fallbacks.Results.Where(entry => entry.Reason == ConstraintExport.OmittedToggle).Select(entry => entry.Path),
+                    Is.EquivalentTo(new[] { "Hat/Lamp", "Stray" }));
+
+                var nodes = clone.GetComponentsInChildren<Transform>(true).Select(transform => transform.gameObject).ToList();
+                string Name(int node) => nodes[node].name;
+                var data = capture.Resolve(nodes.IndexOf, warnings);
+                var group = data.GroupFor("Hat");
+                Assert.That(group.Targets.Select(Name), Is.EqualTo(new[] { "Hat", "Room" }));
+                Assert.That(States(group), Is.EqualTo(new[] { "0:FF", "1:TT" }));
+                Assert.That(data.GroupFor("Glasses").Targets.Select(Name), Is.EqualTo(new[] { "Glasses" }));
+                Assert.DoesNotThrow(() => ObjectToggleData.Write(data));
+            }
+            finally { Object.DestroyImmediate(clone); }
+        }
+
         // Only the parameters a layer that can switch objects reads are
         // played; any other leaves every object as its default does.
         [Test]

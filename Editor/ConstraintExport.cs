@@ -37,11 +37,12 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
+        internal const string OmittedToggle = "ソースの子に移すとメニューの表示切り替えが元と変わるため、今の姿勢のまま書き出しました";
         internal static readonly string[] Reasons =
         {
             KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
             OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedOff, OmittedReparent, OmittedBound
+            OmittedOff, OmittedReparent, OmittedBound, OmittedToggle
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -67,7 +68,8 @@ namespace VRVlog.LilToonExporter
             internal readonly List<(Transform Transform, float Weight)> Sources = new List<(Transform, float)>();
         }
 
-        internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null)
+        internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null,
+            ObjectToggleCapture toggles = null)
         {
             if (source == null || copy == null || source == copy || copy.transform.IsChildOf(source.transform) ||
                 source.transform.IsChildOf(copy.transform) || EditorUtility.IsPersistent(copy))
@@ -86,6 +88,9 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
+            // Targets moved out of a menu toggle, and the toggled object they leave.
+            var following = new List<(GameObject Moved, GameObject Leader, string Path)>();
+            var switched = toggles?.Targets.Where(t => t != null).Select(t => t.transform).ToArray() ?? Array.Empty<Transform>();
             var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
             var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
@@ -102,7 +107,7 @@ namespace VRVlog.LilToonExporter
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
+                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, switched, following, paths[order])
                         : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
@@ -120,6 +125,7 @@ namespace VRVlog.LilToonExporter
                 for (var index = moved.Count - 1; index >= 0; index--) moved[index].Restore();
                 throw;
             }
+            foreach (var (target, leader, path) in following) toggles.Follow(target, leader, path);
             foreach (var (order, plan, outcome, reason) in decisions.OrderBy(d => d.Order))
             {
                 result.Sources++;
@@ -200,7 +206,8 @@ namespace VRVlog.LilToonExporter
         // stays at the same offset (VRM has no parent constraint). The current
         // pose is the solved one: VRChat and Unity constraints run in the editor.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
-            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved)
+            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved,
+            Transform[] switched, List<(GameObject, GameObject, string)> following, string userPath)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
@@ -219,10 +226,18 @@ namespace VRVlog.LilToonExporter
             // when it writes the file; a moved target would leave them dangling.
             var path = ExportFallbackReport.RelativePath(root, target);
             if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
+            // The menu toggles were turned on for the export, and the app hides
+            // a toggled object by its own node. A target leaving one would stay
+            // visible, so it follows that toggle; a source inside one the target
+            // is not in would start hiding it, and more than one has no single state.
+            var leaving = switched.Where(t => t != target && target.IsChildOf(t) && !source.IsChildOf(t)).ToArray();
+            if (switched.Any(t => source.IsChildOf(t) && !target.IsChildOf(t)) || leaving.Length > 1 || leaving.Length == 1 && switched.Contains(target))
+                return (ExportOutcome.Omitted, OmittedToggle);
             var before = new Moved(target);
             try { ExportAttachmentSession.ReparentPreservingPose(target, source); }
             catch (InvalidOperationException) { return (ExportOutcome.Omitted, OmittedReparent); }
             moved.Add(before);
+            if (leaving.Length == 1) following.Add((target.gameObject, leaving[0].gameObject, userPath));
             return (ExportOutcome.Kept, KeptParent);
         }
 

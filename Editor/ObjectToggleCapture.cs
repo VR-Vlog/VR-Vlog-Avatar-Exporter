@@ -164,6 +164,25 @@ namespace VRVlog.LilToonExporter
             return result;
         }
 
+        // The objects the toggles show and hide.
+        internal IEnumerable<GameObject> Targets => groups.SelectMany(group => group.Targets);
+
+        // A later step moved `moved` out from under `leader`, a target: it
+        // takes the leader's state in every value, so the toggle still shows
+        // and hides it. `path` names it in the user's avatar for warnings.
+        internal void Follow(GameObject moved, GameObject leader, string path)
+        {
+            var group = groups.First(candidate => candidate.Targets.Contains(leader));
+            var column = group.Targets.IndexOf(leader);
+            group.Targets.Add(moved);
+            group.Paths.Add(path);
+            for (var i = 0; i < group.States.Count; i++)
+            {
+                var (value, active) = group.States[i];
+                group.States[i] = (value, active.Append(active[column]).ToArray());
+            }
+        }
+
         // Maps the targets to output nodes. A target the build passes or the
         // export removed is left out with a warning; an item that no longer
         // changes any kept target is left out, and so is a group left without
