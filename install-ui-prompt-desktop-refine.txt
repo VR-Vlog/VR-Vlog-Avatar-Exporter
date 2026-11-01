@@ -1,0 +1,4 @@
+Use case: precise-object-edit, UI mockup. Edit this proposed desktop installation UI, keep its entire composition, Japanese text, controls, two cards, thumbnail, help/footer, dark colors and size unchanged except exactly TWO small changes:
+1. In the notice strip ABOVE the two numbered cards, replace "始める前に、Unityを閉じてください" with exact text "バックアップして、Unityを閉じる". Keep the exclamation icon and right-side prerequisites "Unity 2022.3 ・ アバターとlilToonを導入済み".
+2. Change the selected ALCOM tab from vivid pink to pale pink #ffd0e2 with dark readable text, to reserve vivid pink only for the primary action button and number1 accent. Keep inactive VCC unchanged.
+This is still a DESIGN MOCKUP, no real execution. No extra text or elements. Preserve all other content and style.

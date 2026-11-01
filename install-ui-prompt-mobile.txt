@@ -1,0 +1,16 @@
+Use case: ui-mockup. Asset type: mobile responsive variation of a Japanese website installation panel, PROPOSED DESIGN MOCKUP ONLY.
+Input image1 is the proposed desktop design: follow its style, labels and two-action structure. Input image2 is the actual current mobile browser screenshot: reference actual narrow-screen margins, Japanese dark theme, content and scroll position.
+Create one flat mobile UI screen, no phone bezel or browser chrome, no collage. Design for a 390 CSSpx wide by844 CSSpx tall portrait viewport, about20px outer margins and16px internal padding. Export at a proportional high raster resolution. Larger readable Japanese sans serif text. Preserve charcoal background, softly rounded dark panel, white text and vivid pink CTA from image1. No photos/characters/new guide article.
+Panel begins 24px from top. Exact hierarchy, keep all within one portrait screen with calm but efficient vertical spacing:
+Tiny "Unity用ツール・無料"
+Bold22px "エクスポーターを入れる".
+Small label "使っている管理アプリ", then fullwidth two tabs "ALCOM" selected and "VCC" unselected. Selected tab should have pale lightpink background/darktext so primary CTA remains dominant. Then muted small link "ALCOMをまだ入れていない方 ↗".
+Compact notice ABOVE CTA, exact main line "バックアップして、Unityを閉じる". Below in smaller type "Unity 2022.3 ・ アバターとlilToonを導入済み". Notice not huge alert.
+TWO vertically stacked compact cards:
+1 circle in pink outline, title "配布元を追加".
+Big fullwidth vividpink primary button "ALCOMを開いて追加". Below small muted line "開いた画面で「VPMリポジトリを追加」".
+2 circle neutral outline, title "プロジェクトに入れる".
+Two clear short instructional lines "「管理」で最新の正式版を選ぶ" and "「適用」を押す". Small modest existing package list thumbnail aligned on right if room, use from reference accurately; otherwise omit image and keep link "操作画面を拡大 ↗" beneath. Do NOT fabricate a new application screenshot.
+Calm text at bottom "Unityで開いたら、準備完了です。"
+One collapsed accordion row "管理アプリが開かないとき" with chevron.
+No header video, no duplicated tutorial text or guide page. No pretend progress/completion checkmarks. This is the idleALCOM-selected proposed state only. Numbers mean actionorder not appverified completion. Mobile layout must be comfortably readable with no horizontal scroll and exact2cards. Prioritize coherent fully visible section. No code implementation or real browser evidence claims.

@@ -1,0 +1,16 @@
+Use case: ui-mockup. Asset type: a concrete proposed redesign of a Japanese website installation section; DESIGN MOCKUP ONLY.
+Input image 1: actual current desktop browser screenshot, reference for background, brand colors and current functionality, not proof of new implementation.
+Create a polished flat screen UI mockup, desktop canvas exactly 1440 x 1000, no device frame, no perspective. Retain same Japanese dark site design, charcoal #181a1e, installation panel #23282f, subtly rounded edges, white headings, soft grey copy, vivid pink #ff087d only for main CTA and active details. Keep installation area aligned x140 to1300, top42. Current help/footer below may move up slightly to match shorter panel, same style. Do not add photographs, characters, illustrations or long guide. Aim less text, larger readable font, explicit order and clear grouping.
+
+Redesign the installation panel with this precise content and hierarchy:
+At x172 top75 a tiny label "Unity用ツール・無料", then large left aligned title "エクスポーターを入れる".
+Under heading left a label "使っている管理アプリ", then a clear large segmented selector: "ALCOM" active, "VCC" inactive, anchored beside its label or just beneath. Put a subdued link next to it "ALCOMをまだ入れていない方 ↗".
+Before any actionable CTA, put a compact low-contrast notice strip "始める前に、Unityを閉じてください" and small prerequisite text "Unity 2022.3 ・ アバターとlilToonを導入済み".
+Then TWO equal-width cards side by side, readable and balanced (not a long article):
+LEFT card outlined softly, a pink outlined circle 1 and title "配布元を追加". One short sentence "ALCOMに配布元を登録します。". Big full-width bright pink primary button with plain small plus icon, exact label "ALCOMを開いて追加". Below in smaller muted type "開いた画面で「VPMリポジトリを追加」".
+RIGHT card outlined softly, neutral circle 2 and title "プロジェクトに入れる". Two short lines: "プロジェクトの「管理」を開く" / "最新の正式版を選び、「適用」". Use a small crop of the existing ALCOM package-list screenshot from the reference as a discreet thumbnail, placed at right or below these two lines, much smaller than current; do not invent realistic screenshots. Link under it "操作画面を拡大 ↗". No fake checkmarks, progress states or completed status.
+Under both cards a calm short line "Unityでプロジェクトを開いたら、準備完了です。".
+At bottom of panel one closed accordion row "管理アプリが開かないとき" with chevron. No visible URL field or repeated guide.
+No second video block or text guide; main video above page not in this screenshot.
+Maintain familiar visual continuity with reference, font modern Japanese sans serif, heading28px, card headings20px, body16px. Do not shrink labels into tiny unreadable dense copy. Do not change task into tutorial3steps afterinstallation.
+This is the proposed ALCOM-selected state; VCC same layout swaps corresponding labels after implementation. Output a single clean desktop screenshot-style mockup image.

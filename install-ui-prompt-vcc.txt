@@ -1,0 +1,9 @@
+Use case: ui-mockup. Make the VCC-selected STATE of image1, an unimplemented proposed Japanese desktop installation section. Image2 is the real current VCC-selected browser screenshot; use its exact manager terminology and existing tiny VCC screenshot as reference only. Same framing/layout/canvas as image1, all two numbered cards and footer preserved.
+Change only:
+- selected tab is now VCC (pale pink background, dark text), ALCOM inactive dark.
+- download link reads "VCCをまだ入れていない方 ↗".
+- card1 helper "VCCに配布元を登録します。", primary button "VCCを開いて追加".
+- card1 button caption in muted font: "開いた画面で「I Understand, Add Repository」".
+- card2 copy "「Manage Project」を開く" and "「Installed Version」で最新の正式版を選ぶ". Do not mention「適用」for VCC, because that is ALCOM-only.
+- card2 thumbnail use existing VCC projects snippet from image2, no imaginary new app interface; small and discreet, keep link「操作画面を拡大 ↗」.
+Keep backup/Unity-close notice ABOVE CTA exactly, no completed/progress checkmarks. Keep heading「エクスポーターを入れる」, Unity2022.3/lilToon prerequisites, completion sentence, troubleshooting accordion. Design mockup only.
