@@ -273,6 +273,8 @@ BEHAVIOR_CASES = {
         'OptionalUnboundOrUnexportedMorphCannotPoisonIndependentFaceReconstruction': 7,
         'AppearanceSupportThatDisablesTheRendererKeepsPreparedNeutralAndActivation': 2,
         'IndependentTransformSupportCapturesNativeMorphScalarsAndKeepsPreparedPose': 3,
+        'NaNTransformScaleOnChildBoneStillCapturesFxRest': 2,
+        'NaNBlendShapeCurveStillFailsFxRest': 2,
         'IndependentTransformSupportKeepsNativeScalarAcrossOverlappingMorphFrames': 3,
         'IndependentTransformOnSixthSkinInfluenceKeepsNativeScalarAndPreparedBone': 1,
         'IndependentTransformSupportStillRejectsUnknownPropertyComponents': 2,
@@ -369,6 +371,7 @@ BEHAVIOR_CASES = {
         'MaterialColorAnimationMatchesActualRenderedPixels': 4,
         'ColorCanonicalizationDoesNotRelaxOtherPropertyDomains': 4,
         'HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns': 4,
+        'NonFiniteTransformCurveIsNeitherHeldNorMoving': 2,
     },
     'VrChatMenuExpressionTests': {
         'CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges': 2,

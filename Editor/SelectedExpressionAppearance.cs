@@ -24,12 +24,15 @@ namespace VRVlog.LilToonExporter
             if (prepared.GetComponentsInChildren<Transform>(true).Any(transform =>
                 AnimationUtility.CalculateTransformPath(transform, prepared.transform) == binding.path)) return false;
             if (AnimationUtility.GetAnimatedObject(prepared, binding) != null) return false;
+            // Only the neutral probe asks, and it never reads a Transform value.
             VrChatExpressionSampler.ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(clip, binding),
-                clip.name + " / " + binding.path + " / " + binding.propertyName);
+                clip.name + " / " + binding.path + " / " + binding.propertyName, values: false);
             return true;
         }
 
-        internal static void ValidateClipData(AnimationClip clip, Func<string, bool> excludedPath = null)
+        // probe: the neutral probe reads morph weights and Animator parameters
+        // only; other curves there need valid key times, not finite values.
+        internal static void ValidateClipData(AnimationClip clip, Func<string, bool> excludedPath = null, bool probe = false)
         {
             if (clip == null) throw new ArgumentNullException(nameof(clip));
             if (AnimationUtility.GetAnimationEvents(clip).Length != 0)
@@ -37,7 +40,8 @@ namespace VRVlog.LilToonExporter
             foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 if (excludedPath?.Invoke(binding.path) != true)
                     VrChatExpressionSampler.ValidateNativeParameterCurve(AnimationUtility.GetEditorCurve(clip, binding),
-                        clip.name + " / " + binding.path + " / " + binding.propertyName);
+                        clip.name + " / " + binding.path + " / " + binding.propertyName,
+                        values: !probe || NeutralShapePlan.ChecksCurveValues(binding));
         }
 
         internal static bool IsUnchanged(GameObject avatar, AnimationClip clip, EditorCurveBinding binding)
@@ -76,6 +80,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // A constant Transform curve on target equal to its prepared pose.
+        // A non-finite value or active NaN tangent is never the prepared pose.
         // Axes the clip omits keep the prepared value. Rotations compare as
         // poses, so raw Euler wrap and q/-q are the same pose. The caller
         // resolves binding.path to target once per hierarchy.
@@ -90,8 +95,9 @@ namespace VRVlog.LilToonExporter
             float Axis(string axis, float current)
             {
                 var component = EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis);
-                if (AnimationUtility.GetEditorCurve(clip, component) == null) return current;
-                if (ConstantValue(clip, component, out var value) && Finite(value)) return value;
+                var curve = AnimationUtility.GetEditorCurve(clip, component);
+                if (curve == null) return current;
+                if (VrChatExpressionSampler.IsValidNativeCurve(curve) && ConstantValue(clip, component, out var value) && Finite(value)) return value;
                 valid = false; return current;
             }
             switch (property)
@@ -122,7 +128,9 @@ namespace VRVlog.LilToonExporter
             return new[] { "x", "y", "z", "w" }.Any(axis =>
             {
                 var curve = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis));
-                return curve != null && !VrChatExpressionSampler.IsConstant(curve);
+                // NaN never equals itself, so IsConstant alone would call such
+                // a curve moving. Invalid data is not motion of the channel.
+                return curve != null && VrChatExpressionSampler.IsValidNativeCurve(curve) && !VrChatExpressionSampler.IsConstant(curve);
             });
         }
 
