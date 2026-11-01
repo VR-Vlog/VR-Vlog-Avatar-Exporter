@@ -161,7 +161,7 @@ namespace VRVlog.LilToonExporter
                 try
                 {
                     skin.BakeMesh(before, true);
-                    replacement =UnityEngine.Object.Instantiate(source);
+                    replacement = UnityEngine.Object.Instantiate(source);
                     replacement.name = source.name + " (explicit fallback joint)";
                     replacement.bindposes = newBindposes;
                     using (var nativeCounts = new NativeArray<byte>(counts, Allocator.Temp))
