@@ -311,6 +311,58 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        // A vertex some Lip Sync shape moves by a fifth of that shape's largest
+        // move or more is fully the mouth. Below that, the default mouth is
+        // taken off less and less, so the edge of the mouth has no step.
+        [Test] public void PreserveFadesTheMouthCancelOutAtTheEdgeOfTheMouth()
+        {
+            var mesh = new Mesh { name = "Mouth edge" };
+            var temporary = new List<Mesh>();
+            try
+            {
+                mesh.vertices = new[] { new Vector3(0, 0, 0), new Vector3(1, 0, 0), new Vector3(2, 0, 0), new Vector3(3, 0, 0), new Vector3(4, 0, 0) };
+                mesh.triangles = new[] { 0, 1, 2, 2, 3, 4 };
+                mesh.normals = Enumerable.Repeat(Vector3.back, 5).ToArray();
+                mesh.tangents = Enumerable.Repeat(new Vector4(1, 0, 0, 1), 5).ToArray();
+                void Add(string name, params Vector3[] moves) => mesh.AddBlendShapeFrame(name, 100, moves, new Vector3[5], new Vector3[5]);
+                Add("vrc.v_aa", Vector3.down, Vector3.down * .2f, Vector3.down * .1f, Vector3.down * .01f, Vector3.zero);
+                Add("vrc.v_ou", Vector3.zero, Vector3.zero, Vector3.zero, Vector3.back * .05f, Vector3.back * .5f);
+                Add("MouthSmile", Vector3.up, Vector3.up, Vector3.up, Vector3.up, Vector3.up);
+                var exclusive = new HashSet<int> { 0, 1 };
+                var mouth = new[] { 1f, 1f, .5f, .5f, 1f };
+                CollectionAssert.AreEqual(mouth, AvatarBaseShape.MouthVertices(mesh, exclusive).Select(value => Mathf.Round(value * 1000f) / 1000f));
+                var weights = new[] { 0f, 0f, 50f };
+                var baked = PreserveFace(mesh, weights, temporary, _ => default, "MouthSmile").Baked;
+                for (var v = 0; v < 5; v++)
+                {
+                    AssertNear(Shown(mesh, v, ("MouthSmile", .5f)), baked.vertices[v], $"The base keeps the default smile at vertex {v}.");
+                    AssertNear(Shown(mesh, v, ("MouthSmile", .5f * (1f - mouth[v])), ("vrc.v_aa", 1f)), Shown(baked, v, ("vrc.v_aa", 1f)),
+                        $"aa at 1 takes the smile off as much as vertex {v} belongs to the mouth.");
+                }
+            }
+            finally
+            {
+                foreach (var item in temporary) Object.DestroyImmediate(item);
+                Object.DestroyImmediate(mesh);
+            }
+        }
+
+        // An expression that shows a Lip Sync shape cannot bind it once the
+        // shape also takes the default mouth off, so all of them are baked.
+        [Test] public void ShapesWithoutOtherRestsHoldsEveryVisemeWithADefaultMouth()
+        {
+            var mesh = MouthAndEyesMesh();
+            try
+            {
+                var weights = new[] { 0f, 0f, 60f, 40f, 0f, 0f };
+                var exclusive = new HashSet<int> { 0, 1 };
+                Assert.That(AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive), Is.Empty);
+                Assert.That(AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive, new HashSet<int>()), Is.Empty);
+                CollectionAssert.AreEquivalent(exclusive, AvatarBaseShape.ShapesWithoutOtherRests(mesh, weights, exclusive, new HashSet<int> { 2 }));
+            }
+            finally { Object.DestroyImmediate(mesh); }
+        }
+
         // The shapes blink closes the eyes with keep their default even when
         // they move the mouth as much as the eyes.
         [Test] public void DefaultFaceLeavesOutTheBlinkShapes()

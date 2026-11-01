@@ -115,9 +115,10 @@ namespace VRVlog.LilToonExporter
             return new HashSet<int>(exclusive.Where(shape => resting.Any(other => other != shape)));
         }
 
-        // A vertex belongs to the mouth when some Lip Sync shape moves it by
-        // more than this share of that shape's largest move.
-        internal const float MouthVertexShare = .01f;
+        // A vertex belongs fully to the mouth when some Lip Sync shape moves it
+        // by at least this share of that shape's largest move, and partly below
+        // it, so the cancel fades out at the edge of the mouth without a step.
+        internal const float MouthFullShare = .2f;
         // A default shape is a mouth shape when at least this share of its
         // movement falls on mouth vertices. Eyelids and brows fall below it.
         internal const float MouthMovementShare = .5f;
@@ -152,18 +153,19 @@ namespace VRVlog.LilToonExporter
                     if (!Finite(rest.Vertices[vertex])) { total = 0d; break; }
                     var move = rest.Vertices[vertex].magnitude;
                     total += move;
-                    if (mouth[vertex]) inMouth += move;
+                    inMouth += move * mouth[vertex];
                 }
                 if (total > 0d && inMouth >= total * MouthMovementShare) result.Add(shape);
             }
             return result;
         }
 
-        // The vertices some Lip Sync shape moves by more than MouthVertexShare
-        // of that shape's largest move.
-        internal static bool[] MouthVertices(Mesh mesh, IEnumerable<int> exclusive)
+        // How much each vertex belongs to the mouth, from 0 to 1. For each Lip
+        // Sync shape, its move at the vertex is divided by its largest move;
+        // the largest of these ratios, divided by MouthFullShare, is capped at 1.
+        internal static float[] MouthVertices(Mesh mesh, IEnumerable<int> exclusive)
         {
-            var mouth = new bool[mesh.vertexCount];
+            var mouth = new float[mesh.vertexCount];
             var frame = new Deltas(mesh.vertexCount);
             foreach (var shape in exclusive)
             {
@@ -174,7 +176,8 @@ namespace VRVlog.LilToonExporter
                 foreach (var move in frame.Vertices) if (Finite(move)) largest = Math.Max(largest, move.magnitude);
                 if (largest == 0f) continue;
                 for (var vertex = 0; vertex < mesh.vertexCount; vertex++)
-                    mouth[vertex] |= Finite(frame.Vertices[vertex]) && frame.Vertices[vertex].magnitude > largest * MouthVertexShare;
+                    if (Finite(frame.Vertices[vertex]))
+                        mouth[vertex] = Math.Max(mouth[vertex], Math.Min(1f, frame.Vertices[vertex].magnitude / (largest * MouthFullShare)));
             }
             return mouth;
         }
@@ -266,9 +269,9 @@ namespace VRVlog.LilToonExporter
         // Each of them ends where VRChat shows it, with the others of the group
         // at 0, so it also subtracts their rest offsets stored in the base.
         // mouthRests (see MouthRests) are default mouth shapes. Each exclusive
-        // shape also subtracts their rests on the mouth vertices (see
-        // MouthVertices), so a vowel at 1 shows the viseme without the default
-        // mouth, and a vowel at w takes off w of it.
+        // shape also subtracts their rests, weighted by how much each vertex
+        // belongs to the mouth (see MouthVertices), so a vowel at 1 shows the
+        // viseme without the default mouth, and a vowel at w takes off w of it.
         internal static List<int> Rebase(Mesh source, Mesh target, float[] weights, ICollection<int> exclusive = null,
             ICollection<int> mouthRests = null)
         {
@@ -300,10 +303,9 @@ namespace VRVlog.LilToonExporter
                     catch (InvalidOperationException) { continue; }
                     for (var v = 0; v < mouth.Length; v++)
                     {
-                        if (mouth[v]) continue;
-                        rest.Vertices[v] = Vector3.zero;
-                        rest.Normals[v] = Vector3.zero;
-                        rest.Tangents[v] = Vector3.zero;
+                        rest.Vertices[v] *= mouth[v];
+                        rest.Normals[v] *= mouth[v];
+                        rest.Tangents[v] *= mouth[v];
                     }
                     if (!IsZero(rest)) exclusiveRests.Add(new KeyValuePair<int, Deltas>(shape, rest));
                 }
