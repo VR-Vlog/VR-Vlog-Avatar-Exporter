@@ -519,7 +519,7 @@ namespace VRVlog.LilToonExporter
                 .Select(item => item.Clip).Concat(clipInputs.Select(input => input.Clip)))) clipErrors[pair.Key] = pair.Value;
             foreach (var input in clipInputs)
             {
-                input.Time = DefaultTime(input.Clip);
+                input.Time = DefaultTime(session, input.Clip);
                 // Only a deleted .anim leaves a null clip here; added files are never null.
                 input.Error = input.Clip == null ? ExporterLocalization.T(DeletedClipReason) : clipErrors[input.Clip];
             }
@@ -2001,9 +2001,9 @@ namespace VRVlog.LilToonExporter
         }
 
         void PreviewBoardClip(AnimationClip clip) => Queue(() => {
-            RefreshCandidateValidation(); var currentReason = session.ClipError(clip, DefaultTime(clip));
+            RefreshCandidateValidation(); var currentReason = session.ClipError(clip, DefaultTime(session, clip));
             if (currentReason != null) throw new InvalidOperationException(currentReason);
-            session.PreviewClip(clip, DefaultTime(clip)); ShowFace(board.NameOf(clip)); previewClip = clip;
+            session.PreviewClip(clip, DefaultTime(session, clip)); ShowFace(board.NameOf(clip)); previewClip = clip;
         });
 
         void MoveTo(AnimationClip clip, Place target)
@@ -2257,9 +2257,9 @@ namespace VRVlog.LilToonExporter
 
         void RecordClips(System.Collections.Generic.List<AnimationClip> exported)
         {
-            foreach (var input in clipInputs) input.Time = DefaultTime(input.Clip);
+            foreach (var input in clipInputs) input.Time = DefaultTime(session, input.Clip);
             var inputs = exported.Select(clip => clipInputs.FirstOrDefault(input => input.Clip == clip) is var added && added != null
-                ? added : new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Time = DefaultTime(clip) }).ToArray();
+                ? added : new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Time = DefaultTime(session, clip) }).ToArray();
             foreach (var input in inputs) input.Name = board != null ? board.NameOf(input.Clip) : input.Clip.name;
             var poses = session.ReplaceClipRecords(inputs, fileRecords.Values);
             fileRecords.Clear();
@@ -2268,11 +2268,13 @@ namespace VRVlog.LilToonExporter
         }
 
         Rect ScreenRect(Rect rect) => new Rect(GUIUtility.GUIToScreenPoint(rect.position) - position.position, rect.size);
-        internal static float DefaultTime(AnimationClip clip) => clip == null ? 0 : clip.length;
+        // Without a session (no avatar) every rest weight is 0.
+        internal static float DefaultTime(ExperimentalExpressionCaptureSession session, AnimationClip clip) =>
+            session != null ? session.FaceTime(clip) : ClipFaceTime.Of(clip);
 
         void PreviewClipInput(ExperimentalExpressionCaptureSession.ClipInput input)
         {
-            input.Time = DefaultTime(input.Clip);
+            input.Time = DefaultTime(session, input.Clip);
             input.Error = session.ClipError(input.Clip, input.Time);
             if (input.Error != null) throw new InvalidOperationException(input.Error);
             session.PreviewClip(input.Clip, input.Time);
@@ -2304,7 +2306,7 @@ namespace VRVlog.LilToonExporter
         // Error is the reason the export cannot use the file; such a file is not added.
         ExperimentalExpressionCaptureSession.ClipInput Checked(AnimationClip clip)
         {
-            var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = DefaultTime(clip) };
+            var input = new ExperimentalExpressionCaptureSession.ClipInput { Clip = clip, Name = clip.name, Time = DefaultTime(session, clip) };
             input.Error = session.ClipError(clip, input.Time);
             return input;
         }
@@ -2582,7 +2584,7 @@ namespace VRVlog.LilToonExporter
                     (session.IsGestureClip(clip) || VrChatGestureExpressions.HasChangingMorph(clip, null) && !session.HeldAtOneFrame(clip)) &&
                     !VrmMenuExpressions.Reserved(board.NameOf(clip)) && listedNames.Add(board.NameOf(clip)))
                 .ToList();
-            var listFaces = listed.Concat(slotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(clip))).ToList();
+            var listFaces = listed.Concat(slotFaces).Select(clip => (board.NameOf(clip), clip, DefaultTime(session, clip))).ToList();
             // Report of the attempt that produced the bytes being saved.
             ExportFallbackReport savedReport = null;
             var savedFaces = listFaces.Count;

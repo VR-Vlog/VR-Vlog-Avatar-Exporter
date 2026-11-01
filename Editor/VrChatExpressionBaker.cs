@@ -290,13 +290,20 @@ namespace VRVlog.LilToonExporter
                         var index = group.Mesh.GetBlendShapeIndex(value.Shape);
                         if (index >= 0 && value.Weight != group.Rest[index]) expression.Shapes.Add((value.Shape, value.Weight));
                     }
+                // A moving face is still where it holds its face (ClipFaceTime);
+                // the VRM expression is the animation at that time.
+                var faceTime = ClipFaceTime.Of(plan.Animation.Select(animated =>
+                {
+                    var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
+                    return (animated.Curve, index >= 0 ? (double)animated.Rest[index] : 0);
+                }), entry.Duration) ?? entry.Duration;
                 foreach (var animated in plan.Animation)
                 {
                     var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
-                    var end = animated.Curve.Evaluate(entry.Duration);
-                    if (index >= 0 && end != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)end));
+                    var face = ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration);
+                    if (index >= 0 && face != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)face));
                 }
-                // Binds that change the face at time = duration; a zero marker does not.
+                // Binds that change the face at the face time; a zero marker does not.
                 var moved = 0;
                 foreach (var group in plan.Poses)
                 {
@@ -346,6 +353,7 @@ namespace VRVlog.LilToonExporter
                 if (plan.Animation.Count > 0)
                 {
                     expression.Animation = new ExpressionAnimationData { Duration = entry.Duration, Loop = entry.Loop };
+                    expression.FaceTime = faceTime;
                     var usedTargets = new HashSet<string>(StringComparer.Ordinal);
                     var endsAwayFromRest = false;
                     foreach (var animated in plan.Animation)
@@ -355,7 +363,7 @@ namespace VRVlog.LilToonExporter
                         var shape = original.GetBlendShapeIndex(animated.Shape);
                         if (shape < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + animated.Shape);
                         animated.Curve.Range(out var minimum, out var maximum);
-                        if (animated.Curve.Evaluate(entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
+                        if (ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
                         var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         expression.Animation.Channels.Add(channel);
                         if (!WithoutOtherRests(animated.Renderer, original, animated.Rest).Contains(shape) &&
@@ -418,10 +426,11 @@ namespace VRVlog.LilToonExporter
                             channel.Points.Add(new ExpressionAnimationData.Point { Value = weight, Target = target });
                         }
                     }
-                    // Every channel ending at rest is the neutral face even
-                    // when its final points are two binds that cancel out.
+                    // Every channel at rest at the face time is the neutral face
+                    // even when its points there are two binds that cancel out.
                     if (endsAwayFromRest) moved += expression.FinalPoints().Count();
-                    // The loop ends on the neutral face. Keep the expression
+                    // The face time shows the neutral face (a loop that ends
+                    // on it without a hold). Keep the expression
                     // selectable with the shared zero marker unless those
                     // binds already do.
                     if (moved == 0)
