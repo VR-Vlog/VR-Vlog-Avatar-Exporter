@@ -161,8 +161,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // beside it. Kept until the transfer succeeds; a new export, another avatar or closing drops
         // it. A new QR for the same export keeps it, also after a failure has opened the list.
         private Action<string, string> endResult;
-        // The list of this export already shows the failure: another failure leaves it as it is.
-        private bool failureShown;
+        // The reason the list of this export shows. Another failure with the same reason leaves the
+        // list as it is; a different one opens it again, so it never gives a stale cause.
+        private string shownFailure;
         // Null unless something failed outside the session; empty when there is no reason to add.
         private string failure;
 
@@ -343,7 +344,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             return true;
         }
         // The result list waits for the transfer: set after Upload, opened by TakeEndedResult.
-        internal void ShowResultAtEnd(Action<string, string> open) { endResult = open; failureShown = false; }
+        internal void ShowResultAtEnd(Action<string, string> open) { endResult = open; shownFailure = null; }
 
         // When the transfer has ended: opens the result list with that heading. A failure also gives
         // its reason, so the list does not read as the cause. A QR that expired, was stopped or failed
@@ -359,9 +360,9 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     endResult = null;
                     return () => open(AppTransferText.Completed, null);
                 case AppTransferView.Failed:
-                    if (failureShown) return null;
-                    failureShown = true;
                     var note = FailureText(translate);
+                    if (note == shownFailure) return null;
+                    shownFailure = note;
                     return () => open(AppTransferText.TransferFailed, note);
                 default: return null;
             }
@@ -431,10 +432,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         {
             // The transfer failed; its result list still opens.
             var open = endResult;
-            var shown = failureShown;
+            var shown = shownFailure;
             Stop();
             failure = reason ?? "";
-            endResult = open; failureShown = shown;
+            endResult = open; shownFailure = shown;
         }
 
         // Adopts the exported snapshot: from here this flow deletes it.
@@ -500,7 +501,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             source?.Dispose(); source = null;
             exporting = false; failure = null; StatusUnknown = false; ExportDidFail = false; shownRemaining = 0;
             revealed = announced = false;
-            endResult = null; failureShown = false;
+            endResult = null; shownFailure = null;
         }
 
         // Observe abandoned task failures without logging transport details.

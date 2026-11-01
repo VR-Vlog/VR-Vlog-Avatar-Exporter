@@ -373,18 +373,20 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
-        // A failure opens the list; a new QR of the same export that fails again leaves it as it is,
-        // and one that succeeds opens it again with the success heading. One export, one list window.
+        // A failure opens the list. A new QR of the same export that fails for the same reason leaves it
+        // as it is, one that fails for another reason opens it again with that reason, and one that
+        // succeeds opens it again with the success heading. One export, one list window.
         [TestCase("completed", AppTransferText.TransferFailed + ":reason|" + AppTransferText.Completed)]
         [TestCase("failed", AppTransferText.TransferFailed + ":reason")]
+        [TestCase("quota", AppTransferText.TransferFailed + ":reason|" + AppTransferText.TransferFailed + ":reason")]
         public async Task ASuccessAfterAFailureChangesTheListHeading(string again, string expected)
         {
             using (var run = new FlowRun())
             {
                 var opened = new System.Collections.Generic.List<string>();
-                string reason = null;
+                var notes = new System.Collections.Generic.List<string>();
                 run.Flow.Upload(run.Path, "fixture.vrm");
-                run.Flow.ShowResultAtEnd((title, note) => { opened.Add(title + (string.IsNullOrEmpty(note) ? "" : ":reason")); reason = reason ?? note; });
+                run.Flow.ShowResultAtEnd((title, note) => { opened.Add(title + (string.IsNullOrEmpty(note) ? "" : ":reason")); notes.Add(note); });
                 await run.Until(() => run.Flow.View == AppTransferView.Waiting);
                 run.Transport.RemoteState = "failed";
                 await run.Until(() => run.Flow.View == AppTransferView.Failed);
@@ -393,18 +395,28 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 run.Flow.TakeEndedResult(text => text)?.Invoke();
                 Assert.That(string.Join("|", opened), Is.EqualTo(AppTransferText.TransferFailed + ":reason"));
                 // The list gives the reason the transfer screen shows, as a state line and what to do, without 「。」 or 「ください」.
-                Assert.That(reason, Is.EqualTo(run.Flow.FailureText(text => text)));
-                Assert.That(reason, Is.EqualTo("転送サービスでエラーが発生しました\n新しいQRを作る"));
+                Assert.That(notes[0], Is.EqualTo(run.Flow.FailureText(text => text)));
+                Assert.That(notes[0], Is.EqualTo("転送サービスでエラーが発生しました\n新しいQRを作る"));
                 Assert.That(run.Flow.CanRegenerate, Is.True, "A failed QR can be made again from the same export.");
                 run.Transport.RemoteState = "ready";
+                if (again == "quota") run.Failure = again;
                 run.Flow.Regenerate();
-                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
-                Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Nothing opens while the new QR waits.");
-                run.Transport.RemoteState = again;
-                await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                if (again != "quota")
+                {
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Nothing opens while the new QR waits.");
+                    run.Transport.RemoteState = again;
+                }
+                await run.Until(() => run.Flow.View == AppTransferView.Failed || run.Flow.View == AppTransferView.Completed);
                 run.Tick();
                 for (var i = 0; i < 3; i++) run.Flow.TakeEndedResult(text => text)?.Invoke();
                 Assert.That(string.Join("|", opened), Is.EqualTo(expected));
+                // Opened again for another reason, the list gives the reason the screen shows now.
+                if (again == "quota")
+                {
+                    Assert.That(notes[1], Is.EqualTo(run.Flow.FailureText(text => text)));
+                    Assert.That(notes[1].Contains("HTTP 429"), Is.True, notes[1]);
+                }
                 // A success ends the wait: nothing more opens for this export.
                 if (again == "completed") Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True);
             }
