@@ -160,8 +160,8 @@ namespace VRVlog.LilToonExporter
                 var completed = false;
                 try
                 {
-                    skin.BakeMesh(before, false);
-                    replacement = UnityEngine.Object.Instantiate(source);
+                    skin.BakeMesh(before, true);
+                    replacement =UnityEngine.Object.Instantiate(source);
                     replacement.name = source.name + " (explicit fallback joint)";
                     replacement.bindposes = newBindposes;
                     using (var nativeCounts = new NativeArray<byte>(counts, Allocator.Temp))
@@ -170,7 +170,7 @@ namespace VRVlog.LilToonExporter
                     skin.bones = newBones;
                     skin.sharedMesh = replacement;
                     RestoreBlendWeights(skin, blendWeights);
-                    skin.BakeMesh(after, false);
+                    skin.BakeMesh(after, true);
                     RequireSameGeometry(skin, before, after);
                     if (rootJoint != null) fixedRootJoints?.Add(rootJoint.transform);
                     ownedMeshes.Add(replacement);
@@ -198,6 +198,10 @@ namespace VRVlog.LilToonExporter
             }
         }
 
+        // Bake with the renderer's scale (useScale: true). Unity draws an
+        // unweighted mesh with the renderer's full localToWorld, but a skinned
+        // one only with joint x bindpose; without the scale the measured
+        // bindpose would cancel it and the exported part would shrink.
         private static Matrix4x4 MeasureBindpose(SkinnedMeshRenderer skin, Mesh source, Transform[] bones,
             Transform[] newBones, Matrix4x4[] bindposes)
         {
@@ -219,7 +223,7 @@ namespace VRVlog.LilToonExporter
                     probe.AddBlendShapeFrame("calibration", 100f, new Vector3[4], new Vector3[4], new Vector3[4]);
                 skin.sharedMesh = probe;
                 if (probe.blendShapeCount > 0) skin.SetBlendShapeWeight(0, 0f);
-                skin.BakeMesh(zeroPose, false);
+                skin.BakeMesh(zeroPose, true);
 
                 var probeBinds = new Matrix4x4[newBones.Length];
                 Array.Copy(bindposes, probeBinds, bindposes.Length);
@@ -230,7 +234,7 @@ namespace VRVlog.LilToonExporter
                     probeWeights[i] = new BoneWeight { boneIndex0 = bones.Length, weight0 = 1f };
                 probe.boneWeights = probeWeights;
                 skin.bones = newBones;
-                skin.BakeMesh(identityPose, false);
+                skin.BakeMesh(identityPose, true);
                 var implicitTransform = Basis(skin, zeroPose);
                 var explicitTransform = Basis(skin, identityPose);
                 RequireInvertible(skin, implicitTransform);
@@ -239,7 +243,7 @@ namespace VRVlog.LilToonExporter
                 RequireInvertible(skin, bindpose);
                 probeBinds[bones.Length] = bindpose;
                 probe.bindposes = probeBinds;
-                skin.BakeMesh(explicitPose, false);
+                skin.BakeMesh(explicitPose, true);
                 RequireSameGeometry(skin, zeroPose, explicitPose);
                 return bindpose;
             }

@@ -1,0 +1,28 @@
+# ウェイトのない部品のジョイントのバインドポーズを、レンダラーのスケール込みで求める
+
+- 日付: 2026-11-01
+- 対象: `Editor/SkinnedMeshFallbackWeights.cs`（`Preserve`・`MeasureBindpose`）・`Tests/Editor/SkinnedMeshFallbackWeightTests.cs`・`Tools/run-unity-compatibility.py`・`Tools/test-compatibility-tooling.py`
+- Issue: #567
+
+## 背景
+
+ボーンウェイトを 1 つも持たない SkinnedMeshRenderer の部品で、Transform のスケールが 1 でないと、書き出した VRM で部品がスケールの分だけ縮んでいた。FBX の 100 倍と親の 0.68 倍が掛かった部品では、幅が約 16cm から約 2mm になった。
+
+## 原因
+
+- `Preserve` は、ウェイトのないメッシュにレンダラー自身（レンダラーがアバターのルートのときはルートの子の `VR Vlog fallback anchor`）へ追従するジョイントを足し、そのバインドポーズを `MeasureBindpose` で求めている。
+- `MeasureBindpose` は、ウェイトのない検証用メッシュと、ジョイントに結び付けた検証用メッシュを `BakeMesh(mesh, false)` で焼いて比べていた。Unity はウェイトのないメッシュをこのとき元の頂点のまま返し、ジョイントで変形するメッシュはレンダラーの位置と回転だけを外した空間（スケールは残る）で返す。そのため、スケールの逆数のバインドポーズが選ばれていた（スケール 76 の部品で対角が 0.0131）。
+- Unity の描画では、ウェイトのないメッシュはレンダラーの `localToWorldMatrix`（スケール込み）で、ジョイントで変形するメッシュはジョイントの行列 × バインドポーズだけで置かれる。書き出したメッシュはジョイントで変形するので、バインドポーズのスケールの逆数がそのまま残って縮んでいた。
+- `Preserve` の `RequireSameGeometry` も `BakeMesh(…, false)` 同士を比べていたので、この差を見逃していた。既存のテストの `AssertRenderedGeometry` も同じ比べ方で、スケールが 1 でないレンダラーで縮む結果を正しいとしていた。
+
+## 決定
+
+- `MeasureBindpose` の 3 回の焼き込みと、`Preserve` の置き換え前後の検証を `BakeMesh(mesh, true)` にした。`useScale: true` はどちらのメッシュもレンダラーの `worldToLocalMatrix` で戻すので、ジョイントの行列 × バインドポーズがレンダラーの `localToWorldMatrix` と一致するバインドポーズが選ばれる。ジョイントがレンダラー自身のとき、また `VR Vlog fallback anchor` のときは単位行列になる。
+- テストの `AssertRenderedGeometry` も `BakeMesh(…, true)` で比べるようにした。
+- アバターのルートを参照するボーンを出力用のジョイントに置き換える処理（`RemapOmittedRootJoint`）は変えていない。ジョイントはルートの子で位置・回転・スケールが単位なのでルートと同じ行列を持ち、バインドポーズもそのまま使う。置き換えの前後はどちらもジョイントで変形するメッシュなので、`BakeMesh(…, false)` で比べてもスケールの扱いが揃っている。スケールの付いたルートとレンダラーで、置き換えの後もワールドの位置が変わらないことをテストで確かめた。
+
+## テスト
+
+- `SkinnedMeshFallbackWeightTests.ScaledRendererKeepsItsWorldSize` を足した。0.68 倍の親の下で 100 倍のスケールと回転を持つレンダラー（`self`）、76 倍のスケールのアバターのルートに付いたレンダラー（`rootAnchor`）、ルートを参照するボーンにウェイトを付けたメッシュ（`rootJoint`）の 3 行。`BakeMesh(…, true)` を `localToWorldMatrix` で戻した位置が、`Preserve` の前と後、親を回したあとで元の位置と一致すること、`self` と `rootAnchor` でバインドポーズが単位行列であることを確かめる。
+- 修正前のコードでは `self` と `rootAnchor` が落ちる（バインドポーズの対角が 1/68 と 1/76）。
+- 3 行は経路が違う（ジョイントがレンダラー自身・ルートの子に作るジョイント・ルートの置き換え）ので、`2026-10-23-minimize-representative-rows.md` の基準でも 1 行ずつ残す。`compatibility_counts` の件数を 14 から 17 にした。
