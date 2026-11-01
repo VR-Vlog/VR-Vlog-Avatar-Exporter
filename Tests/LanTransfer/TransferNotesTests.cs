@@ -134,6 +134,47 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
         {
             Assert.That(ConversionText.SpringLabels.Length, Is.EqualTo(ExportNoteText.SpringSentences.Length));
         }
+
+        // The lilToon and expression notes are written in the language of the Editor, and are read
+        // back from that language as from Japanese. The lines are made the way the export makes them.
+        [TestCase("en", "unknown")][TestCase("en", "1.0.0")]
+        [TestCase("ko", "unknown")][TestCase("ko", "1.0.0")]
+        [TestCase("zh-Hans", "unknown")][TestCase("zh-Hans", "1.0.0")]
+        [TestCase("zh-Hant", "unknown")][TestCase("zh-Hant", "1.0.0")]
+        public void TransferNotesReadTheConversionWrittenInTheEditorLanguage(string locale, string installed)
+        {
+            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
+            var localeField = typeof(ExporterLocalization).GetField("_locale", flags);
+            var messagesField = typeof(ExporterLocalization).GetField("_messages", flags);
+            var previousLocale = localeField.GetValue(null); var previousMessages = messagesField.GetValue(null);
+            try
+            {
+                localeField.SetValue(null, locale); messagesField.SetValue(null, null);
+                // As DependencyPolicy writes the lilToon note and VrChatExpressionBaker the expression notes.
+                var rendered = Compatibility.DependencyPolicy.LilToonWarning(installed, ExporterLocalization.T);
+                var added = string.Format(ExporterLocalization.T(ExportNoteText.ExpressionsAdded), 13);
+                var none = ExporterLocalization.T(ExportNoteText.ExpressionsNone);
+                // Each line is the translated one, so only the translated template can match it.
+                Assert.That(rendered, Is.Not.EqualTo(string.Format(ExportNoteText.LilToonRendered,
+                    Compatibility.DependencyPolicy.DisplayLilToon(installed, text => text), Compatibility.DependencyPolicy.LilToonVersion)));
+                Assert.That(added, Is.Not.EqualTo(string.Format(ExportNoteText.ExpressionsAdded, 13)));
+                Assert.That(none, Is.Not.EqualTo(ExportNoteText.ExpressionsNone));
+
+                var notes = TransferNotes.Build(new[] { rendered, added, "除外: 小物 01" });
+                Assert.That(notes.LilToonInstalled, Is.EqualTo(Compatibility.DependencyPolicy.DisplayLilToon(installed, ExporterLocalization.T)));
+                Assert.That(notes.LilToonDrawn, Is.EqualTo(Compatibility.DependencyPolicy.LilToonVersion));
+                Assert.That(notes.Expressions, Is.EqualTo(13));
+                Assert.That(notes.HasConversion, Is.True);
+                // The translated lines are not left as lines of their own.
+                Assert.That(notes.Records.Select(group => group.Kind), Is.EqualTo(new[] { "除外" }));
+                Assert.That(notes.NoteCount, Is.EqualTo(0));
+
+                var noExpressions = TransferNotes.Build(new[] { none });
+                Assert.That(noExpressions.Expressions, Is.EqualTo(0));
+                Assert.That(noExpressions.Records.Count, Is.EqualTo(0));
+            }
+            finally { localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
+        }
 #endif
     }
 }
