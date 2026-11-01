@@ -91,8 +91,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         // On a mesh renderer, a measured size more than twice or less than half
         // the size of its bounds is not trusted: the textures keep their size, so
-        // a wrong measurement costs memory, never looks. Tiled 4 times, the quad
-        // has 4096 texels per metre and would be written at 512.
+        // a wrong measurement costs memory, never looks. Tiled 8 times, the quad
+        // has 8192 texels per metre and would be written at 512.
         [TestCase(1.5f, true)]
         [TestCase(.6f, true)]
         [TestCase(3f, false)]
@@ -104,7 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 fixture.Material.SetTexture("_MainTex", texture);
-                fixture.Material.SetTextureScale("_MainTex", new Vector2(4, 4));
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(8, 8));
                 var bounds = fixture.Mesh.bounds;
                 bounds.size *= factor;
                 fixture.Mesh.bounds = bounds;
@@ -118,7 +118,7 @@ namespace VRVlog.LilToonExporter.Tests
         // On a skinned mesh the size to trust is where the bones alone place the
         // vertices, not the bounds, which many avatars widen on purpose. A blend
         // shape that scales the quad stands in for a wrong measurement: within
-        // twice or half the bones' size the quad shrinks as measured (4096 texels
+        // twice or half the bones' size the quad shrinks as measured (8192 texels
         // per metre over the size squared), beyond it the textures keep their
         // size. Bounds three times too large or small change nothing.
         [TestCase(1.5f, 1f, 512)]
@@ -134,7 +134,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 fixture.Material.SetTexture("_MainTex", texture);
-                fixture.Material.SetTextureScale("_MainTex", new Vector2(4, 4));
+                fixture.Material.SetTextureScale("_MainTex", new Vector2(8, 8));
                 fixture.Skin.localBounds = fixture.DrawnBounds(bounds);
                 var plan = TexelDensity.Measure(fixture.Root);
                 Assert.That(plan.Measured(texture), Is.EqualTo(expected != 1024));
@@ -198,10 +198,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         // Halving starts from the size already written and stops when the half
         // would fall below the target or the smallest size.
-        [TestCase(4800d, 1024, 1024, 256)]
-        [TestCase(2400d, 1024, 1024, 512)]
-        [TestCase(2399d, 1024, 1024, 1024)]
-        [TestCase(4800d, 4096, 1024, 1024)]
+        [TestCase(9600d, 1024, 1024, 256)]
+        [TestCase(4800d, 1024, 1024, 512)]
+        [TestCase(4799d, 1024, 1024, 1024)]
+        [TestCase(9600d, 4096, 1024, 1024)]
         [TestCase(1e9, 1024, 1024, 32)]
         [TestCase(1e9, 48, 48, 48)]
         [TestCase(double.NaN, 1024, 1024, 1024)]
@@ -355,7 +355,7 @@ namespace VRVlog.LilToonExporter.Tests
             var sparse = new Texture2D(1024, 1024, TextureFormat.RGBA32, false) { name = "Sparse" };
             try
             {
-                var plan = new TexelDensity.Plan(new Dictionary<Texture, double> { [dense] = 4800, [sparse] = 600 });
+                var plan = new TexelDensity.Plan(new Dictionary<Texture, double> { [dense] = 9600, [sparse] = 1200 });
                 Assert.That(plan.ResultLine(), Is.Null);
                 Assert.That(plan.Maximum(dense, 1024), Is.EqualTo(256));
                 Assert.That(plan.Maximum(dense, 1024), Is.EqualTo(256));
@@ -376,9 +376,10 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Off: nothing is measured and the export keeps today's size. On: the
-        // fixture's triangle (5 texels per metre per texel) makes 512 into 256,
-        // and 2048 also into 256. The default's resizing of 2048 to 1024 is noted
-        // per texture with 1024 either way; the smaller size is in the result line only.
+        // fixture's triangle (5 texels per metre per texel) with the main texture
+        // tiled twice makes 512 into 256, and 2048 also into 256. The default's
+        // resizing of 2048 to 1024 is noted per texture with 1024 either way; the
+        // smaller size is in the result line only.
         [TestCase(false, 512)]
         [TestCase(true, 512)]
         [TestCase(false, 2048)]
@@ -394,6 +395,7 @@ namespace VRVlog.LilToonExporter.Tests
                 main.SetPixels32(Enumerable.Repeat(new Color32(90, 140, 200, 255), source * source).ToArray());
                 main.Apply(true, false);
                 material.SetTexture("_MainTex", main);
+                material.SetTextureScale("_MainTex", new Vector2(2, 2));
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
                 var measurements = TexelDensity.Measurements;
                 var warnings = new List<string>();

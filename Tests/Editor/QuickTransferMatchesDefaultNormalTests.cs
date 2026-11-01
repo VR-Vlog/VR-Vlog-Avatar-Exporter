@@ -219,8 +219,8 @@ namespace VRVlog.LilToonExporter.Tests
 
         // 自動で軽量化する saved on for the avatar: both boards start from it, and
         // both make the same texture smaller. The fixture's triangle has 5 UV
-        // units per metre, so a 512px main texture has 2560 texels per metre
-        // and is written at 256px.
+        // units per metre; tiled twice, a 512px main texture has 5120 texels per
+        // metre and is written at 256px.
         [Test]
         public void TheSavedLightweightChoiceMatches()
         {
@@ -231,7 +231,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var pixels = new Color32[512 * 512];
                 for (var i = 0; i < pixels.Length; i++) pixels[i] = new Color32((byte)(i % 251), (byte)(i / 512 % 253), 128, 255);
                 texture.SetPixels32(pixels); texture.Apply(true, false);
-                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.SetTexture("_MainTex", texture);
+                foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) { skin.sharedMaterial.SetTexture("_MainTex", texture); skin.sharedMaterial.SetTextureScale("_MainTex", new Vector2(2, 2)); }
                 var settings = new ExportSettings { AutoLightweight = true };
                 ExportSettingsStore.Save(fixture.Source, settings);
                 var hidden = ExperimentalExpressionCaptureWindow.PrepareHidden(fixture.Source);

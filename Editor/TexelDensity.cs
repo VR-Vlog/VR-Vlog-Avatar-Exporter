@@ -12,9 +12,10 @@ namespace VRVlog.LilToonExporter
     internal static class TexelDensity
     {
         // Texels per metre the app needs. A whole body of about 1.6m filling a
-        // 1920px tall screen shows 1920 / 1.6 = 1200 pixels per metre; texels
-        // beyond that are never on screen, so halving such a texture keeps its look.
-        internal const double TargetTexelsPerMetre = 1200;
+        // 1920px tall screen shows 1920 / 1.6 = 1200 pixels per metre. The app
+        // also frames the face close up, where 1200 softens fine lines, so the
+        // target is twice that; halving a texture denser than it keeps its look.
+        internal const double TargetTexelsPerMetre = 2400;
         // The smallest long side a texture is reduced to.
         internal const int MinimumSize = 32;
         // Triangles below these areas (square metres, UV units) have no meaningful density.
