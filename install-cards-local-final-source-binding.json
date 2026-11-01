@@ -1,0 +1,32 @@
+{
+  "source_commit": "92ca1ae6b907d6d3d5ef77bb941c03ef18fd33fa",
+  "files": [
+    {
+      "file": "index.html",
+      "sha256": "6155b471cd1cd41cf31f3dcd5a27667df774f4d4ea15c03e4ebe82074fec9be7",
+      "bytes": 13555
+    },
+    {
+      "file": "app.js",
+      "sha256": "4978129de68dc8e43020011c53389db5d31b93d62a5c68c79ac0f59126279fb8",
+      "bytes": 5786
+    },
+    {
+      "file": "styles.css",
+      "sha256": "61c745c356230b8dd76a772a49662d68b1ed534e0265d82d1981145110dd26ae",
+      "bytes": 18029
+    },
+    {
+      "file": "guide.js",
+      "sha256": "cf165f738b1a6a581d19a52311f301a5d5d1e0dac890b83021c0678b4342f31b",
+      "bytes": 992
+    },
+    {
+      "file": "guide.css",
+      "sha256": "01c9b33f4b5130303b6d8b16013aa6f804e1040d3d80fc5bd2bc9ac51f324bd1",
+      "bytes": 10926
+    }
+  ],
+  "url": "http://127.0.0.1:8797/",
+  "all_match_source": true
+}
