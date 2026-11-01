@@ -233,16 +233,17 @@ namespace VRVlog.LilToonExporter
 
         // Removes the accessors that only the removed targets used, then the
         // bufferViews that only those accessors used, renumbers what follows
-        // and packs the binary chunk again.
-        static void RemoveAccessors(GlbDocument glb, HashSet<int> candidates)
+        // and packs the binary chunk again. extraViews adds bufferViews to remove
+        // when nothing uses them (VertexDataLightweight's replaced weights).
+        internal static void RemoveAccessors(GlbDocument glb, HashSet<int> candidates, IEnumerable<int> extraViews = null)
         {
             var json = glb.Json;
             var accessors = List(json, "accessors");
             var used = new HashSet<int>();
             ForEachAccessorReference(json, (owner, key) => { used.Add((int)Index(owner[key])); });
             var gone = candidates.Where(index => !used.Contains(index)).ToList();
-            if (gone.Count == 0) return;
-            var candidateViews = new HashSet<int>();
+            var candidateViews = new HashSet<int>(extraViews ?? Enumerable.Empty<int>());
+            if (gone.Count == 0 && candidateViews.Count == 0) return;
             foreach (var index in gone) foreach (var view in AccessorViews(accessors[index] as Dictionary<string, object>)) candidateViews.Add(view);
             var accessorMap = Renumber(accessors.Count, gone);
             json["accessors"] = accessors.Where((item, index) => accessorMap[index] >= 0).ToList();
@@ -297,7 +298,7 @@ namespace VRVlog.LilToonExporter
 
         // The binary chunk is the only buffer and every view lies inside it,
         // so the views can be moved without touching anything else.
-        static bool StorageIsPlain(GlbDocument glb)
+        internal static bool StorageIsPlain(GlbDocument glb)
         {
             if (!(List(glb.Json, "buffers") is List<object> buffers) || buffers.Count != 1 || !(buffers[0] is Dictionary<string, object> buffer) || buffer.ContainsKey("uri"))
                 return false;
@@ -316,7 +317,7 @@ namespace VRVlog.LilToonExporter
             return valid;
         }
 
-        static void ForEachAccessorReference(Dictionary<string, object> json, Action<Dictionary<string, object>, string> visit)
+        internal static void ForEachAccessorReference(Dictionary<string, object> json, Action<Dictionary<string, object>, string> visit)
         {
             foreach (var mesh in Objects(List(json, "meshes")))
                 foreach (var primitive in Objects(List(mesh, "primitives")))
@@ -339,7 +340,7 @@ namespace VRVlog.LilToonExporter
 
         // Every "bufferView" key outside the bufferViews list: accessors,
         // sparse indices and values, and images.
-        static void ForEachViewReference(object value, Action<Dictionary<string, object>, string> visit)
+        internal static void ForEachViewReference(object value, Action<Dictionary<string, object>, string> visit)
         {
             if (value is List<object> list) foreach (var item in list) ForEachViewReference(item, visit);
             else if (value is Dictionary<string, object> obj)
@@ -359,17 +360,18 @@ namespace VRVlog.LilToonExporter
                 if (part != null && part.TryGetValue("bufferView", out var raw) && Index(raw) is int sparseIndex) yield return sparseIndex;
         }
 
-        static void CollectUnknownExtensions(object value, ISet<string> unknown)
+        internal static void CollectUnknownExtensions(object value, ISet<string> unknown, IReadOnlyCollection<string> known = null)
         {
-            if (value is List<object> list) { foreach (var item in list) CollectUnknownExtensions(item, unknown); return; }
+            known = known ?? KnownExtensions;
+            if (value is List<object> list) { foreach (var item in list) CollectUnknownExtensions(item, unknown, known); return; }
             if (!(value is Dictionary<string, object> obj)) return;
             foreach (var pair in obj)
             {
                 if (pair.Key == "extensions" && pair.Value is Dictionary<string, object> extensions)
-                    foreach (var name in extensions.Keys) if (!KnownExtensions.Contains(name)) unknown.Add(name);
+                    foreach (var name in extensions.Keys) if (!known.Contains(name)) unknown.Add(name);
                 if ((pair.Key == "extensionsUsed" || pair.Key == "extensionsRequired") && pair.Value is List<object> names)
-                    foreach (var name in names) if (!(name is string text) || !KnownExtensions.Contains(text)) unknown.Add(name as string ?? "?");
-                CollectUnknownExtensions(pair.Value, unknown);
+                    foreach (var name in names) if (!(name is string text) || !known.Contains(text)) unknown.Add(name as string ?? "?");
+                CollectUnknownExtensions(pair.Value, unknown, known);
             }
         }
 
