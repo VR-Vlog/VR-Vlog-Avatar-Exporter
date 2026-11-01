@@ -1,0 +1,11 @@
+2026-11-01 Asia/Tokyo 本番編集前の観察（Terra/high、操作専用）
+環境: Codex in-app browser（公式browser runtime 26.1023.50603）。ブラウザエンジン・バージョン未取得。viewport指定 PC 1440x1000 / mobile 390x844、各画像のピクセル寸法は指定と一致。DPRおよびvisualViewport.scaleは独立した読戻し手段がなく未確認。日本語（html lang=ja）、画面はダーク。実機ではなくPC内のブラウザ。
+URL: https://vrvlog.fun/exporter/ 、guide: https://vrvlog.fun/exporter/guide/ 。本番と source c8e2f4a805127aaf81340c0035be5ac5e75fb39b の一致は未照合。
+手順: トップを開き撮影→「使い方動画を最初から再生」をクリック→撮影・矩形測定→「動画を閉じる」。両サイズで実施。ガイドでは「この手順を動画で見る 00:30」をクリックし同様に測定。期待: ×文字が38x38のボタン中央に見える。実際: Rangeの文字矩形中心はボタン中心より下に5.5 CSS px。水平は同じ。Rangeは文字行ボックスであり可視インクの厳密な中心ではない。
+PC: ボタン矩形 x=1139 y=190.921875 w=38 h=38、ボタン中心 (1158,209.921875)、文字矩形 x=1149.796875 y=202.921875 w=16.40625 h=25、文字中心 (1158,215.421875)。
+mobile: ボタン矩形 x=319 y=278.875 w=38 h=38、ボタン中心 (338,297.875)、文字矩形 x=329.796875 y=290.875 w=16.40625 h=25、文字中心 (338,303.375)。font 25px / 45px Yu Gothic, Meiryo, sans-serif、padding 1px 6px。guideでも同じ画面サイズの矩形と文字中心を確認。
+トップには「はじめての方へ：導入・転送の手順を見る →」「最新版をお使いの方は、転送手順へ」、動画・章ボタンと導入CTAが存在。変更後の除去と維持は未検証。
+動画URL https://vrvlog.fun/guide/vrvlog-start-guide.mp4?v=be86956d2337 を開き、再生を止めてシークバー先頭へ戻し currentTime=0 paused=true readyState=4 をDOM読戻し。video-zero.png はそのブラウザ表示。冒頭は「持っているアバターを、VR Vlogへ」、大きなVR VLOGロゴ、「いつものアバターで動画を撮影できます。」「ALCOM / VCC → Unity → スマホ」、右にアバター画面。
+既存 https://vrvlog.fun/guide/poster.jpg の実ブラウザ表示 existing-poster-browser.png は「アバター導入ガイド」「ALCOM / VCC」「アプリに転送（かんたん）」の表紙。アバターの絵柄は似るがレイアウト・文言が明確に異なり、動画0秒と見た目は一致しない。
+画像はブラウザのJPEGスクリーンショットをPNGに変換したもの。画像のリビジョンは公開ページの観察であり、変更後案や修正の検証ではない。自分の専用タブを閉じ、viewport overrideはreset。ALCOM/VCC、ログイン、送信は操作なし。
+保存: この作業の記録として15MiB以内・本人確認まで保持。JPEG中間物はPNG変換後に今回作成分のみ整理。

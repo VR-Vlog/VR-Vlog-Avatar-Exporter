@@ -1,0 +1,10 @@
+{
+  "commit": "a519b1b913ce714d5ccfd55928591f3eecc3741f",
+  "http_matches_source": {
+    "index.html": "9b7f4b4306521ac4476fe554510de2d6c06fd4338e44e368d1b7db505f6c4dd0",
+    "guide/index.html": "e66f512d1f1617bd639d4689d79f5adb80b565f299df947ec4eaf40d3a3a22c2",
+    "styles.css": "7af4a6ba0aef67c825fa672c4b4e386114f929c31914928ac22d49b7178cfd35",
+    "guide.css": "01c9b33f4b5130303b6d8b16013aa6f804e1040d3d80fc5bd2bc9ac51f324bd1",
+    "assets/guide/tutorial-first-frame.png": "d0dcd4e8241192e9641a83d54fde987e5d998d690bc340e8670e2a0073f4ec17"
+  }
+}

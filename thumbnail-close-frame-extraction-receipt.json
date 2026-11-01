@@ -1,0 +1,28 @@
+{
+  "video_blob": "4df4b1a38ec92b5a98601e161c8f56e029b69ca8",
+  "video_bytes": 11833830,
+  "requested_seconds": 0,
+  "actual_seconds": 0.0,
+  "tolerance_before": 0,
+  "tolerance_after": 0,
+  "width": 1920,
+  "height": 1080,
+  "image_bytes": 597144,
+  "image_sha256": "d0dcd4e8241192e9641a83d54fde987e5d998d690bc340e8670e2a0073f4ec17",
+  "method": "macOS AVFoundation; unmodified decoded video frame",
+  "removed_cache_bytes": 82210132,
+  "removed_scratch": [
+    {
+      "file": "source-video.mp4",
+      "bytes": 11833830
+    },
+    {
+      "file": "extract-first-frame.js",
+      "bytes": 1137
+    },
+    {
+      "file": "existing-guide-poster.jpg",
+      "bytes": 243127
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+2026-11-01 ローカル画面確認 Terra/high
+対象: http://127.0.0.1:8731/ と /guide/。source HEAD a519b1b913ce714d5ccfd55928591f3eecc3741f をgit rev-parseで確認。サーバーとsourceのバイト対応は親提供の local-source-binding.json による（当方は未再照合）。公開後確認ではない。
+環境: 前回beforeはCodex in-app browser、今回afterはChrome extensionの新規専用タブ。ブラウザ違いあり。前回と同じ公式browser runtime 26.1023.50603、viewport 1440x1000 / 390x844 / 320x844。日本語・ダーク表示。Chrome詳細バージョン、DPR、visualViewport.scaleは未取得。PNGは公式browserのJPEGスクリーンショットを変換。モバイルトップは最初の撮影が画像読込前だったので、再度新規タブでnaturalWidth=1920を確認して撮り直し。
+トップ: 動画サムネイル画像 assets/guide/tutorial-first-frame.png はcomplete=true、1920x1080。見た目は先に撮影した動画0秒と同じ構図・文言。先頭再生、導入から00:30、転送から02:23、エクスポーターを導入するCTAあり。旧「はじめての方へ：導入・転送の手順を見る →」「最新版をお使いの方は、転送手順へ」なし。
+PC modal: ボタン x=1133 y=187.921875 w=44 h=44 中心(1155,209.921875)。SVG 20x20中心(1155,209.921875)、中心差(0,0) CSS px。grid、padding 0。mobile modal: ボタン x=313 y=275.875 w=44 h=44 中心(335,297.875)、SVG 20x20中心同じ。guideもPC/mobile同じ座標・中心差0。SVGのため文字フォントによる前回の行ボックス下方5.5pxずれなし。
+動作: 先頭クリック後 currentTime=0.089709 paused=false readyState=4。閉じるクリックでpaused=true、呼出元「最初から再生」へfocus復帰。導入章 data-video=30.634 後 currentTime=30.804747 paused=false、ESC後 paused=true・章ボタンfocus復帰。転送章 data-video=143.072 後 currentTime=143.23092 paused=false、クリック閉じ後 paused=true・同章ボタンfocus復帰。時刻は再生中の観測値であり指定値を経過したもの。guide 00:30でESCとクリックの各操作でpaused=true・元ボタンfocus復帰。
+320幅: トップとguideとも documentElement clientWidth=scrollWidth=320。guide動画modal左16幅288、文書幅320。スマホ写真の元画像1620x1200、表示は画像726x537.765625が242x291.28125の枠にクリップ（320幅・390幅とも同じ測定）、目視で受取画面が枠内に表示。写真の外側に画像本体があるため、文書幅の確認と枠内での意図された切り抜きを区別。
+初期状態: video src空、readyState=0 を確認。実際の未ロード中の閉じる操作および動画エラーを意図的に作るテストは未実施。ネットワークmock・コード編集なし。文章手順は通常ページに存在することをDOMで確認、エラー状態でのアクセス維持は未検証。
+操作したChrome専用タブを閉じ、viewport overrideをreset。既存タブの操作なし。画像・ログを保存、作業中JPEGはPNG保存後に削除。ALCOM/VCC起動・ログイン・送信なし。
