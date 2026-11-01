@@ -130,6 +130,14 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Animator), "GestureLeft")), Is.False);
             Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("Armature", typeof(Animator), "RootT.x")), Is.False);
             Assert.That(PoseSampling.IsHumanoidChannel(EditorCurveBinding.FloatCurve("", typeof(Transform), "RootT.x")), Is.False);
+            // Finger muscles of either hand in either spelling; the wrist, the arm, the body, IK goals and the
+            // root are not fingers, and neither is a finger name off the Animator root.
+            foreach (var finger in new[] { "LeftHand.Index.1 Stretched", "Left Index 1 Stretched", "RightHand.Thumb.Spread", "Right Little 3 Stretched" })
+                Assert.That(PoseSampling.IsFingerMuscle(EditorCurveBinding.FloatCurve("", typeof(Animator), finger)), Is.True, finger);
+            foreach (var other in new[] { "Left Hand Down-Up", "Right Forearm Stretch", "Spine Front-Back", "Head Nod Down-Up", "Left Upper Leg Front-Back", "LeftHandT.x", "RightHandQ.w", "RootT.x" })
+                Assert.That(PoseSampling.IsFingerMuscle(EditorCurveBinding.FloatCurve("", typeof(Animator), other)), Is.False, other);
+            Assert.That(PoseSampling.IsFingerMuscle(EditorCurveBinding.FloatCurve("Armature", typeof(Animator), "LeftHand.Index.1 Stretched")), Is.False);
+            Assert.That(PoseSampling.IsFingerMuscle(EditorCurveBinding.FloatCurve("", typeof(Transform), "LeftHand.Index.1 Stretched")), Is.False);
         }
 
         [Test]
