@@ -390,10 +390,13 @@ namespace VRVlog.LilToonExporter
             // A clip a hand gesture enters is a face in VRChat even when it also turns a bone (an eye
             // highlight) or the body. Any face may move bones and show or hide objects: the export writes
             // them beside the BlendShapes and the board shows the BlendShapes alone. Materials and
-            // parameters still make it unsupported.
+            // parameters still make it unsupported. A hand pose beside such a face (fingers holding something
+            // the face moves) is left out like the Humanoid bones a face turns: a VRM expression cannot carry
+            // it. A body pose still keeps a clip no gesture enters out.
             var gesture = gestureClips.Contains(clip);
             var blendShapesOnly = presetFace || !ExpressionTransformCurves.Enabled;
-            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) && (blendShapesOnly || !BoneOrShown(binding)) &&
+            var unsupported = bindings.Where(binding => !PoseSampling.IsBlendShape(binding) &&
+                    (blendShapesOnly || !BoneOrShown(binding) && !PoseSampling.IsFingerMuscle(binding)) &&
                     !(gesture && IgnoredBesideFace(binding)))
                 .Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip)).ToArray();
             bindings = bindings.Where(PoseSampling.IsBlendShape).ToArray();
