@@ -16,6 +16,12 @@ namespace VRVlog.LilToonExporter.Tests
     {
         const string Joint = "Independent hair/Head";
 
+        // The export is off until the app plays the transforms; these tests
+        // check what it writes once it is on.
+        ExpressionTransformsSwitch transforms;
+        [SetUp] public void TurnTransformsOn() => transforms = new ExpressionTransformsSwitch(true);
+        [TearDown] public void RestoreTransforms() => transforms?.Dispose();
+
         static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType(name)).FirstOrDefault(t => t != null);
         static EditorCurveBinding Bone(string path, string property) => EditorCurveBinding.FloatCurve(path, typeof(Transform), property);
         static EditorCurveBinding Shown(string path) => EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive");
@@ -343,6 +349,25 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(warnings, Does.Contain("Shown: " + ExporterLocalization.T(ExpressionTransformCurves.HiddenShownWarning) + "Hidden prop"));
         }
 
+        // While the export is off, no face writes bones or visibility, as in
+        // 1.4.2: a face with BlendShapes keeps them, one without is left out.
+        [Test]
+        public void WhileOffNoFaceWritesBonesOrVisibility()
+        {
+            using var off = new ExpressionTransformsSwitch(false);
+            using var scene = new Scene();
+            var nod = scene.Add(Clip("Nod", Held(Shape, 80), Held(Bone(Joint, "localEulerAnglesRaw.y"), 30), Held(Shown("Back"), 0)));
+            var turn = scene.Add(Clip("Turn", Held(Bone(Joint, "localEulerAnglesRaw.z"), 20)));
+            var still = scene.Add(Clip("Still", Held(Shape, 60)));
+            Assert.That(ExpressionTransformCurves.Read(scene.Fixture.Source, nod).Tracks, Is.Empty);
+            var warnings = new List<string>();
+            var bytes = scene.Export(warnings, nod, turn, still);
+            var extension = Extension(bytes);
+            Assert.That(extension.ContainsKey("transforms"), Is.False);
+            Assert.That(ExpressionAnimationData.ReadDocument(extension).Expressions.Select(e => e.Expression),
+                Is.EquivalentTo(new[] { "Nod", "Still" }), string.Join("\n", warnings));
+        }
+
         // Rest-valued bone and visibility curves change nothing in the file.
         [Test]
         public void FacesWithoutBonesOrVisibilityWriteNoTransforms()
@@ -361,5 +386,14 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(ExpressionAnimationData.ReadDocument(Extension(plain)).Animations.Single().Expression, Is.EqualTo("Wave"));
             Assert.That(withRest, Is.EqualTo(plain));
         }
+    }
+
+    // Turns the export of the expression transforms on or off for one test
+    // and puts the previous state back.
+    internal sealed class ExpressionTransformsSwitch : IDisposable
+    {
+        readonly bool previous = ExpressionTransformCurves.Enabled;
+        internal ExpressionTransformsSwitch(bool enabled) => ExpressionTransformCurves.Enabled = enabled;
+        public void Dispose() => ExpressionTransformCurves.Enabled = previous;
     }
 }

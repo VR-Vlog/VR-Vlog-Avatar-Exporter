@@ -26,6 +26,15 @@ BEHAVIOR_CASES = {
         'FailedReplacementOfDirectoryCleansOnlyItsOwnTemporaryFile': 1,
         'HeaderFailureTextAndSharedDiagnosticNameThePackageVersion': 1,
     },
+    'ExpressionNameAffixTests': {
+        'ASharedPrefixOrSuffixIsLeftOutByWholeWords': 10,
+        'NamesStayWhenNothingCanBeLeftOut': 9,
+        'NamesStayWhenAShorterNameIsAlreadyTaken': 1,
+        'TheLongerValidPartGoesWhenBothCannot': 1,
+        'AddWritesTheShorterNamesEverywhere': 1,
+        'AddKeepsTheNamesWhenAShorterNameIsAPreset': 1,
+        'AddKeepsASingleName': 1,
+    },
     'ExportDiagnosticsTests': {
         'TheTextHasNoNameOrPath': 1,
         'TheTextHasTheVersionsAndTheExportType': 1,
@@ -797,6 +806,7 @@ BEHAVIOR_CASES = {
         'TransformsReadBackAsTheClipPose': 1,
         'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
+        'WhileOffNoFaceWritesBonesOrVisibility': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
@@ -922,7 +932,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def required_regressions(profile):

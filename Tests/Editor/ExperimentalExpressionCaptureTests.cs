@@ -833,6 +833,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(0f, 0f, "rest bone", false)]
         public void ControllerClipsThatChangeNoFaceAreUnsupported(float clipWeight, float restWeight, string kind, bool usable)
         {
+            using var on = new ExpressionTransformsSwitch(true);
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, restWeight);
             var clip = new AnimationClip { name = "Lip sync switch" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
@@ -878,6 +879,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("transform", true, 0f, "noface")]
         public void GestureFacesIgnoreBoneCurvesBesideTheFace(string extra, bool gesture, float weight, string expected)
         {
+            using var on = new ExpressionTransformsSwitch(true);
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, 0);
             var clip = new AnimationClip { name = "Smile" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
@@ -914,6 +916,47 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
                 else Assert.That(error, Does.EndWith("material._Color.r"));
+            }
+            finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
+        }
+
+        // While the export leaves bones and visibility out, the board treats them as 1.4.2 did: a gesture
+        // face beside a bone is a face of its BlendShapes, a bone outside a gesture face or a shown object
+        // keeps the clip unsupported, and a clip that only moves a bone changes no face.
+        [TestCase("transform", true, 80f, "usable")]
+        [TestCase("transform", false, 80f, "unsupported")]
+        [TestCase("active", true, 80f, "unsupported")]
+        [TestCase("active", false, 80f, "unsupported")]
+        [TestCase("transform", true, 0f, "noface")]
+        public void WhileTheExportLeavesBonesOutTheBoardTreatsThemAsBefore(string extra, bool gesture, float weight, string expected)
+        {
+            using var off = new ExpressionTransformsSwitch(false);
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.SetBlendShapeWeight(0, 0);
+            var clip = new AnimationClip { name = "Smile" }; var controller = new AnimatorController(); var machine = new AnimatorStateMachine();
+            try
+            {
+                AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
+                AnimationUtility.SetEditorCurve(clip, extra == "transform"
+                    ? EditorCurveBinding.FloatCurve("", typeof(Transform), "localEulerAnglesRaw.x")
+                    : EditorCurveBinding.FloatCurve("Front", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, extra == "transform" ? -30 : 0));
+                var state = machine.AddState("Smile"); state.motion = clip; machine.defaultState = state;
+                if (gesture)
+                {
+                    controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
+                    machine.AddAnyStateTransition(state).AddCondition(AnimatorConditionMode.Equals, 3, "GestureLeft");
+                }
+                controller.layers = new[] { new AnimatorControllerLayer { name = "Face", defaultWeight = 1, stateMachine = machine } };
+                fixture.Source.GetComponent<Animator>().runtimeAnimatorController = controller;
+                using var session = new ExperimentalExpressionCaptureSession(fixture.Source, false);
+                var error = session.ClipErrors(new[] { clip })[clip];
+                if (expected == "usable")
+                {
+                    Assert.That(error, Is.Null);
+                    Assert.DoesNotThrow(() => session.BuildPresetPose(ExpressionPreset.happy, ExperimentalExpressionCaptureSession.PresetAssignment.ForClip(ExpressionPreset.happy, clip)));
+                }
+                else if (expected == "noface") Assert.That(error, Is.EqualTo(ExporterLocalization.T(ExperimentalExpressionCaptureSession.NoFaceChange)));
+                else Assert.That(error, Does.EndWith(extra == "transform" ? "localEulerAnglesRaw.x" : "m_IsActive"));
             }
             finally { Object.DestroyImmediate(clip); Object.DestroyImmediate(controller); Object.DestroyImmediate(machine); }
         }
@@ -1377,7 +1420,9 @@ namespace VRVlog.LilToonExporter.Tests
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = expressions.TryGetValue("custom", out var value) ? (System.Collections.Generic.Dictionary<string, object>)value
                     : new System.Collections.Generic.Dictionary<string, object>();
-                Assert.That(custom.Keys.Where(key => key.StartsWith("Face ")), Is.EquivalentTo(names.Take(listed)));
+                // Two listed faces are written as "A" and "B": the shared "Face " is left out (ExpressionNameAffix).
+                Assert.That(custom.Keys.Where(key => names.Any(name => name == key || name.EndsWith(" " + key))),
+                    Is.EquivalentTo(ExpressionNameAffix.Trim(names.Take(listed).ToArray())));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
                 var status = (string)type.GetField("status", flags).GetValue(window);
@@ -1525,11 +1570,12 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
+                // Both names end with " face", which the export leaves out (ExpressionNameAffix).
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(2));
                 var document = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]);
                 var animation = document.Animations.Single();
-                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Expression, Is.EqualTo("Moving"));
                 Assert.That(animation.Duration, Is.EqualTo(2).Within(1e-6));
                 Assert.That(animation.Loop, Is.True);
                 Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
@@ -1734,10 +1780,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var extensions = (System.Collections.Generic.Dictionary<string, object>)GlbDocument.Read(bytes).Json["extensions"];
                 var expressions = (System.Collections.Generic.Dictionary<string, object>)((System.Collections.Generic.Dictionary<string, object>)extensions["VRMC_vrm"])["expressions"];
                 var custom = (System.Collections.Generic.Dictionary<string, object>)expressions["custom"];
-                Assert.That(custom.Keys, Is.SupersetOf(new[] { still.name, moving.name }));
-                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom[still.name])["morphTargetBinds"], Is.Not.Empty);
+                // Both names end with " face", which the export leaves out (ExpressionNameAffix).
+                Assert.That(custom.Keys, Is.SupersetOf(new[] { "Still", "Moving" }));
+                Assert.That((System.Collections.IList)((System.Collections.Generic.Dictionary<string, object>)custom["Still"])["morphTargetBinds"], Is.Not.Empty);
                 var animation = VRVlog.Expressions.ExpressionAnimationData.ReadDocument(extensions[VRVlog.Expressions.ExpressionAnimationData.Extension]).Animations.Single();
-                Assert.That(animation.Expression, Is.EqualTo(moving.name));
+                Assert.That(animation.Expression, Is.EqualTo("Moving"));
                 Assert.That(animation.Channels.Single().Curve.Keys.Select(key => key.Value), Is.EqualTo(new[] { 0.0, 80.0 }));
             }
             finally { Object.DestroyImmediate(window); Object.DestroyImmediate(still); Object.DestroyImmediate(moving); if (File.Exists(path)) File.Delete(path); }
