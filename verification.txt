@@ -1,0 +1,7 @@
+ローカル検証 2026-11-01 / Terra high / Codex in-app browser（バージョン未確認）
+対象 http://127.0.0.1:8731/。指定source commit add5bb065eb6be6ea442682de26677385d1f9693（サーバ配信との同一性は未確認）。日本語、dark、devicePixelRatio 1。
+1440x1000: カード・5分39秒・導入00:30/転送02:23表示。撮影イメージなし（画面とDOMの掲載画像を確認）。初期video currentSrc空、readyState 0。
+動画カード: 先頭0秒からロード後再生、6.408秒 paused=false readyState=4。閉じるでpaused=true、元カードにフォーカス。導入: 開始指定30.634、確認32.312秒再生、ESC後paused=true・導入ボタンへフォーカス。転送: 開始指定143.072、確認144.798秒再生、ESC後paused=true・転送ボタンへフォーカス。header動画: 1.175秒再生、閉じる後paused=true・headerボタンへフォーカス。映像再生を確認、音声の聴取は未確認。console warn/errorなし。
+導入CTA: #installへURL変更、導入欄あり。guide/に遷移しガイド表示。ALCOM/VCC切替で表示・手順・画像が変化、hrefは両方vcc://vpm/addRepo?url={{ listingInfo.Url }}。未置換のローカルsource、vccをクリックせず。転送step 02/03の押下・表示切替を確認。
+390x844: 当初mobile-390-top.pngは390x271で不正。再撮影mobile-390-top-final.pngは390x844、inner/visual viewport 390x844、visual scale 1、devicePixelRatio 1、日本語dark。待機後に撮影。320x844/850x1000はDOMのdocument scrollWidthが各320/850で横スクロールなし、内部画像の矩形がviewport外に出るものあり。以前の320・850スクリーンショットは撮影サイズ未検証につき比較資料としない。
+本番revision・本番差異・実インストール・外部アプリ起動・音声聴取は未確認。専用タブ終了、viewport reset済み、タブ一覧空。
