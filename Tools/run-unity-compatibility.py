@@ -797,6 +797,7 @@ BEHAVIOR_CASES = {
         'TransformsReadBackAsTheClipPose': 1,
         'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
+        'WhileOffNoFaceWritesBonesOrVisibility': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
