@@ -1,0 +1,15 @@
+ローカル操作検証 2026-11-01 JST
+server http://127.0.0.1:8731/ （親提供、PID未照合）。workspace exporter-site-source のHEAD: 64cb7f3442b8caa61cd870f7f1ecbfe692b6f4ec。配信内容とHEADの完全一致は別途未照合。
+Chrome extension 同一browser ID 1、専用新規タブ。日本語 dark 表示。1440x1000・390x844 を指定、320x844を追加確認。Chrome version/DPR/zoom 未確認。390幅はPC Chromeで実機ではない。
+1 トップ: 期待 通常の動画・導入とFAQ、転送3ステップ・別ガイド入口なし。実際 表示/DOMで一致、全体画像保存。
+2 初期video: 期待 動画未ロード。実際 DOM videoにsrc属性なし、data-srcとpreload=none。ネットワーク転送の未発生は未確認。
+3 動画先頭: 押下後1.72秒でpaused=false readyState=4。ヘッダーも0.48秒時に再生中。章: 00:30押下後31.25秒、02:23押下後143.65秒で再生中。指定30.634/143.072への厳密なseek値は測定できず、進行後の値。closeとESCはpaused=true、押下元にfocus復帰。閉じるbutton 44x44、SVG20x20で中心差0px。
+4 ALCOM/VCC切替: pressed表示、手順・画像・リンク文言切替。双方hrefは vcc://vpm/addRepo?url={{ listingInfo.Url }} と未展開。リンクはクリックせず外部アプリ未起動。ローカルサーバの描画条件によるかは未検証。
+5 画像拡大: ALCOMダイアログ表示、画像を閉じると起動元にfocus復帰。
+6 #install: CTA押下で/#install、インストール直後FAQが続く画像を保存。FAQのQR質問を開くと回答表示。問い合わせリンクの外部遷移は未実行。
+7 /guide/ および /guide/index.html#transfer: ともに /#tutorialへ遷移、カードが見える。観測中ループなし。最初のケースで戻ると直前/#installに戻った。その他履歴全体は未確認。
+8 /sitemap.xml: exporterトップのみのlocを表示、guideなし。
+9 320幅: document clientWidth=320、scrollWidth=320、body scrollWidth=320。個別要素のクリップは未評価。
+10 専用タブclose、viewport override resetはいずれも成功。既存タブ変更なし。
+未確認: JS無効/meta停止、厳密な章開始値、通信レベルの初期動画未ロード、未展開hrefの配信環境への影響、本番変更後、実スマホ。コード変更なし。
+保存画像は本タスク成果、本人確認まで保持。

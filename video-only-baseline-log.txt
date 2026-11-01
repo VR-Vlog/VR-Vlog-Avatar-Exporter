@@ -1,0 +1,12 @@
+取得時刻: 2026-11-01 19:49 JST 前後
+対象: https://vrvlog.fun/exporter/ および https://vrvlog.fun/exporter/guide/
+owner: 本タスク。保存: 本人確認まで。saved合計上限20MiB、各画像10MiB未満。
+ブラウザ: 同PCのChrome、公式browser-client extension、専用新規タブ。Chromeバージョン・エンジン詳細・DPR・ブラウザズーム倍率は取得できず未確認。画面上はdark、日本語（HTML lang=ja）。ログイン状態未確認、ログイン操作なし。
+viewport指定: desktop 1440x1000、mobile 390x844。画像ピクセル寸法はviewportと一致するが等倍やDPRの証明ではない。スマホ幅はデスクトップChromeのレスポンシブ表示で実機ではない。
+手順・期待・結果:
+1. トップを開く: 動画・導入・転送と全体構成が見えること。表示確認、desktop/mobileのtop/fullを保存。
+2. #transferへ移動: 転送3ステップが見えること。スクロール終了後desktop/mobileを保存。初期選択は01。
+3. /exporter/guide/を開く: 導入ガイドが見えること。desktop/mobileのfullを保存。準備、配布元、導入、Unity転送、スマホ受信、ヘルプを確認。
+4. 作業専用タブを閉じ、viewport overrideをreset: 両操作が正常終了。既存タブ操作なし。
+未確認: 本番source revision（以前の59a9851eba8f903595dc9b69b5bbcf98e509135eとの一致未照合）、動画再生動作、ALCOM/VCC、実機、ズーム・DPR・Chromeバージョン、認証状態。コード変更なし。
+再現: Chrome専用新規タブでviewportを設定しURLに移動、読み込み・スクロール終了後に公式screenshotで保存。
