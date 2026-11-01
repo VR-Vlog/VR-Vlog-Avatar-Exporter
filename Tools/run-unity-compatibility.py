@@ -273,6 +273,8 @@ BEHAVIOR_CASES = {
         'OptionalUnboundOrUnexportedMorphCannotPoisonIndependentFaceReconstruction': 7,
         'AppearanceSupportThatDisablesTheRendererKeepsPreparedNeutralAndActivation': 2,
         'IndependentTransformSupportCapturesNativeMorphScalarsAndKeepsPreparedPose': 3,
+        'NaNTransformScaleOnChildBoneStillCapturesFxRest': 2,
+        'NaNBlendShapeCurveStillFailsFxRest': 2,
         'IndependentTransformSupportKeepsNativeScalarAcrossOverlappingMorphFrames': 3,
         'IndependentTransformOnSixthSkinInfluenceKeepsNativeScalarAndPreparedBone': 1,
         'IndependentTransformSupportStillRejectsUnknownPropertyComponents': 2,
@@ -369,6 +371,7 @@ BEHAVIOR_CASES = {
         'MaterialColorAnimationMatchesActualRenderedPixels': 4,
         'ColorCanonicalizationDoesNotRelaxOtherPropertyDomains': 4,
         'HeldRotationMatchesThePreparedPoseAcrossSignAndFullTurns': 4,
+        'NonFiniteTransformCurveIsNeitherHeldNorMoving': 2,
     },
     'VrChatMenuExpressionTests': {
         'CanonicalAnimationKnotsReuseAuthoredEndpointsAcrossCurveRanges': 2,
@@ -794,6 +797,7 @@ BEHAVIOR_CASES = {
         'TransformsReadBackAsTheClipPose': 1,
         'AFaceThatLosesEveryTrackLeavesTheFileAlone': 1,
         'FacesWithoutBonesOrVisibilityWriteNoTransforms': 1,
+        'WhileOffNoFaceWritesBonesOrVisibility': 1,
     },
     'FacialProjectionTests': {
         'EnclosedDisconnectedHeadSurfaceIsFacialAtEveryMeshScale': 2,
@@ -919,7 +923,7 @@ def compatibility_counts():
     # The exporter writes with its bundled UniVRM, so every project runs the
     # round trip whatever UniVRM (if any) the project itself has installed.
     return {'DependencyEnvironmentTests': 1, 'DependencyStartupTests': 1, 'DependencyRoundTripTests': 2,
-            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 14, 'LilToonStructureCheckTests': 11}
+            'RendererSelectionTests': 4, 'SkinnedMeshFallbackWeightTests': 17, 'LilToonStructureCheckTests': 11}
 
 
 def required_regressions(profile):

@@ -226,6 +226,10 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var motion = Clip("Hidden face", 75, true);
             AnimationUtility.SetEditorCurve(motion, EditorCurveBinding.FloatCurve("Body", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
+            // While the export leaves visibility out, the face stays unsupported as before.
+            using (new ExpressionTransformsSwitch(false))
+                Assert.Throws<InvalidOperationException>(() => VrChatGestureExpressions.ReadClip(avatar, motion, new VrChatExpressionMenu.Entry()));
+            using var on = new ExpressionTransformsSwitch(true);
             var entry = new VrChatExpressionMenu.Entry();
             VrChatGestureExpressions.ReadClip(avatar, motion, entry);
             // Hiding the face is written to the expression's transforms, not
