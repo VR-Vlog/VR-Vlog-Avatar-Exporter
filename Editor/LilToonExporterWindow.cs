@@ -23,11 +23,15 @@ namespace VRVlog.LilToonExporter
         // A fresh export has no old diagnosis or preview to invalidate. The
         // exporter works on its own copy; only an actual export failure starts
         // a guarded recovery session. Successful normal exports save directly.
+        // The result list opens once the file is written. A transfer passes
+        // resultAfterTransfer: it gets the opener (null when there is nothing to
+        // show) before completed runs, and opens it when the transfer has ended.
         internal static ExportRecoverySession ExportAndSaveNormally(GameObject source, string destination,
             Func<ExportRecoveryOptions, ExportRecoveryReport, ICollection<string>, byte[]> create,
             Action<byte[], IEnumerable<string>> completed = null,
             IEnumerable<GameObject> previewExcludedObjects = null, ExportGimmickOptions previewGimmicks = null,
-            bool interactive = false, Action openBlinkSettings = null, string diagnosticsKind = null)
+            bool interactive = false, Action openBlinkSettings = null, string diagnosticsKind = null,
+            Action<Action<string, string>> resultAfterTransfer = null)
         {
             if (create == null) throw new ArgumentNullException(nameof(create));
             var warnings = new List<string>();
@@ -46,15 +50,21 @@ namespace VRVlog.LilToonExporter
                 return ExportRecoverySession.FromFailedExport(source, destination, create, exception, report,
                     previewExcludedObjects, previewGimmicks);
             }
-            // The result list can copy the diagnostics before anything is saved.
+            // The result list copies the diagnostics of these bytes.
             ExportDiagnostics.Record(source, bytes, report.Fallbacks, warnings, diagnosticsKind);
-            // The export already worked around what it could not set up. Show the
-            // result list once, before anything is written, and save from there.
-            ExportFallbackConfirmation.Confirm(report.Fallbacks, warnings, destination, source, interactive, () =>
+            // The export already worked around what it could not set up. The list of
+            // it opens after the work is done; a failed write throws before it.
+            var openResult = ExportFallbackConfirmation.ResultOpener(report.Fallbacks, warnings,
+                resultAfterTransfer != null ? null : destination, source, interactive, openBlinkSettings);
+            ExportOutputWriter.Write(destination, bytes);
+            if (resultAfterTransfer != null)
             {
-                ExportOutputWriter.Write(destination, bytes);
+                resultAfterTransfer(openResult);
                 completed?.Invoke(bytes, warnings);
-            }, openBlinkSettings);
+                return null;
+            }
+            completed?.Invoke(bytes, warnings);
+            openResult?.Invoke(ExportResultWindow.SavedTitle, null);
             return null;
         }
 

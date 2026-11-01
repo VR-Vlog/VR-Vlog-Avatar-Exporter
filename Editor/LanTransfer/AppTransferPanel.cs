@@ -355,6 +355,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             }
             flow.Tick(time);
             SyncQr();
+            flow.TakeEndedResult(T)?.Invoke();
             var view = flow.View;
             if (view == polledView && time < nextRepaint) return;
             polledView = view;
@@ -496,14 +497,14 @@ namespace VRVlog.LilToonExporter.LanTransfer
             var name = string.IsNullOrWhiteSpace(avatarName) ? avatar.name.Trim() : avatarName.Trim();
             if (name.Length == 0) name = "avatar";
             var source = avatar;
-            // Taken now: the result list or the recovery window can write the file much later.
+            // Taken now: the recovery window can write the file much later.
             var key = SaveKey(name);
             string failure;
             try
             {
                 failure = Exporter.SaveCopy(avatar, name, detailed, (path, missing) =>
                 {
-                    // Also later, when the result list or recovery window saves; by then the panel may
+                    // Also later, when the recovery window saves; by then the panel may
                     // show another avatar, whose row must not claim this file.
                     if (avatar != source) return;
                     SavedCopy(path, missing, ExportedNotes(), Written(AppTransferFlow.FileHashOf(path), key, source));
@@ -707,6 +708,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
                 // One export feeds one upload: a second save of the same attempt is ignored.
                 exportAttempt++;
                 flow.Upload(path, wireName);
+                // What the export worked around is listed once the transfer has succeeded or failed (Poll).
+                flow.ShowResultAtEnd(Exporter?.LastResult?.Invoke());
                 // The stamp is taken now, as the file is written; the upload hashed the snapshot already.
                 sentWritten = complete ? Written(flow.SnapshotHash, key, target) : null;
                 Refresh();
@@ -1279,6 +1282,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             internal Func<string[]> LastNotes;
             internal Func<Func<string>> LastDiagnostics;
             internal Func<Func<string>> LastNamedDiagnostics;
+            internal Func<Action<string, string>> LastResult;
             internal Func<GameObject, string, bool, Action<string, int>, string> SaveCopy;
             internal Func<GameObject, string> SaveFileName;
             internal Func<string> TermsKey;
@@ -1315,6 +1319,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                         LastNotes = (Func<string[]>)Delegate.CreateDelegate(typeof(Func<string[]>), target, "LastNotes"),
                         LastDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastDiagnostics"),
                         LastNamedDiagnostics = (Func<Func<string>>)Delegate.CreateDelegate(typeof(Func<Func<string>>), target, "LastNamedDiagnostics"),
+                        LastResult = (Func<Action<string, string>>)Delegate.CreateDelegate(typeof(Func<Action<string, string>>), target, "LastResult"),
                         SaveCopy = (Func<GameObject, string, bool, Action<string, int>, string>)Delegate.CreateDelegate(
                             typeof(Func<GameObject, string, bool, Action<string, int>, string>), target, "SaveCopy"),
                         SaveFileName = (Func<GameObject, string>)Delegate.CreateDelegate(typeof(Func<GameObject, string>), target, "SaveFileName"),
