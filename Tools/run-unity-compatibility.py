@@ -28,7 +28,7 @@ BEHAVIOR_CASES = {
     },
     'ExpressionNameAffixTests': {
         'ASharedPrefixOrSuffixIsLeftOutByWholeWords': 10,
-        'NamesStayWhenNothingCanBeLeftOut': 8,
+        'NamesStayWhenNothingCanBeLeftOut': 9,
         'NamesStayWhenAShorterNameIsAlreadyTaken': 1,
         'TheLongerValidPartGoesWhenBothCannot': 1,
         'AddWritesTheShorterNamesEverywhere': 1,

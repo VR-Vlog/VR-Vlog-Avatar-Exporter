@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using VRVlog.Expressions;
 
 namespace VRVlog.LilToonExporter.Tests
 {
@@ -27,6 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("face_|face_sad")]
         [TestCase("face|face_sad")]
         [TestCase("smile_1|smile_2")]
+        [TestCase("face_１|face_２")]
         [TestCase("faceSmile|faceSad")]
         [TestCase("_smile|_sad")]
         [TestCase("smile|sad")]
@@ -48,21 +50,39 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // Add writes the shorter names everywhere the file names a face: the
-        // custom expressions, the expression animation extension and the names
-        // the exporter hands on (gestures, emotion presets, merged faces).
+        // custom expressions and the expression animation extension (its list
+        // and its animations), and hands the same names on through
+        // RegisteredName and MergedInto (gestures, the result list) and the
+        // emotion candidates, which still read the original names.
         [Test]
         public void AddWritesTheShorterNamesEverywhere()
         {
-            var expressions = new List<VrmMenuExpressions.Expression>
-            {
-                Face("face_smile", "A"), Face("face_sad", "B"), Face("face_other", "A")
-            };
-            var json = GlbDocument.Read(VrmMenuExpressions.Add(Output("A", "B"), expressions)).Json;
+            var smile = new VrmMenuExpressions.Expression { Name = "face_smile",
+                Animation = new ExpressionAnimationData { Duration = 1, Loop = false } };
+            var channel = new ExpressionAnimationData.Channel { Curve = Linear(1, 100) };
+            channel.Points.Add(new ExpressionAnimationData.Point { Value = 0 });
+            channel.Points.Add(new ExpressionAnimationData.Point { Value = 100, Target = "A" });
+            smile.Animation.Channels.Add(channel);
+            var expressions = new List<VrmMenuExpressions.Expression> { smile, Face("face_sad", "B"), Face("face_other", "B") };
+            var bytes = VrmMenuExpressions.Add(Output("A", "B"), expressions);
+            var json = GlbDocument.Read(bytes).Json;
             Assert.That(Custom(json).Keys, Is.EquivalentTo(new[] { "smile", "sad" }));
-            Assert.That(VrmMenuExpressions.RegisteredNames(GlbDocument.Create(json, Array.Empty<byte>()).Write()),
-                Is.EquivalentTo(new[] { "smile", "sad" }));
+            Assert.That(VrmMenuExpressions.RegisteredNames(bytes), Is.EquivalentTo(new[] { "smile", "sad" }));
+            var document = ExpressionAnimationData.ReadDocument(((Dictionary<string, object>)json["extensions"])[ExpressionAnimationData.Extension]);
+            Assert.That(document.Animations.Select(animation => animation.Expression), Is.EqualTo(new[] { "smile" }));
             Assert.That(expressions.Select(e => e.RegisteredName), Is.EqualTo(new[] { "smile", "sad", null }));
-            Assert.That(expressions.Select(e => e.MergedInto), Is.EqualTo(new[] { null, null, "smile" }));
+            Assert.That(expressions.Select(e => e.MergedInto), Is.EqualTo(new[] { null, null, "sad" }));
+            Assert.That(VrmMenuExpressions.EmotionCandidates(expressions),
+                Is.EquivalentTo(new Dictionary<string, string> { ["smile"] = "face_smile", ["sad"] = "face_sad" }));
+        }
+
+        static ExpressionAnimationData.Curve Linear(double duration, double value)
+        {
+            var slope = value / duration;
+            var curve = new ExpressionAnimationData.Curve();
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = 0, Value = 0, InTangent = slope, OutTangent = slope });
+            curve.Keys.Add(new ExpressionAnimationData.Key { Time = duration, Value = value, InTangent = slope, OutTangent = slope });
+            return curve;
         }
 
         // "happy" is a VRM preset; the app would drop the extension.

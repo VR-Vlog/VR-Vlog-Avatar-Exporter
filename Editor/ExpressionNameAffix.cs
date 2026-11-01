@@ -15,7 +15,8 @@ namespace VRVlog.LilToonExporter
         // The names to write, in order. Two or more distinct names are
         // needed. Of the shared prefixes and suffixes that leave every name
         // valid, the pair that removes the most is taken (the longer prefix
-        // on a tie). A name is not valid when it would be empty, digits only,
+        // on a tie). A name is not valid when it would be empty, digits only
+        // (any script's digits, e.g. full-width),
         // separators only, the same as another result whose original was
         // different, or reserved (taken by the caller: a preset, a face
         // tracking name or a name already in the file).
@@ -32,7 +33,7 @@ namespace VRVlog.LilToonExporter
                 {
                     if (prefix + suffix <= removed || prefix + suffix >= shortest) continue;
                     var result = names.Select(name => name.Substring(prefix, name.Length - prefix - suffix)).ToArray();
-                    if (result.Any(name => name.All(IsSeparator) || name.All(c => c >= '0' && c <= '9'))) continue;
+                    if (result.Any(name => name.All(IsSeparator) || name.All(char.IsDigit))) continue;
                     if (result.Distinct(StringComparer.Ordinal).Count() != distinct) continue;
                     if (reserved != null && result.Any(reserved)) continue;
                     best = result;
