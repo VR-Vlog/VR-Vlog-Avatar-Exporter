@@ -12,15 +12,23 @@ namespace VRVlog.LilToonExporter.Tests
         [System.Serializable]
         sealed class LocaleTable { public LocaleEntry[] entries; }
 
-        [Test]
-        public void EnglishTranslationsHoldNoJapaneseCharacters()
+        // Characters that do not belong in each table. English has no CJK characters or full-width
+        // punctuation at all. Korean has no kana or kanji. Chinese has no kana; the kanji, 「」 and the
+        // middle dot ・ are its own, so only kana other than ・ and half-width kana are left.
+        [TestCase("en", @"[　-〿぀-ヿ一-鿿＀-￯]")]
+        [TestCase("ko", @"[぀-ヿ一-鿿ｦ-ﾟ]")]
+        [TestCase("zh-Hans", @"[぀-ヺー-ヿｦ-ﾟ]")]
+        [TestCase("zh-Hant", @"[぀-ヺー-ヿｦ-ﾟ]")]
+        public void TranslationsHoldNoJapaneseCharacters(string locale, string japanese)
         {
-            var guid = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_en t:TextAsset").Single();
-            var table = UnityEngine.JsonUtility.FromJson<LocaleTable>(System.IO.File.ReadAllText(UnityEditor.AssetDatabase.GUIDToAssetPath(guid)));
-            Assert.That(table.entries.Length, Is.GreaterThan(1000), "the English table was not read");
-            var japanese = new System.Text.RegularExpressions.Regex(@"[　-〿぀-ヿ一-鿿＀-￯]");
-            var bad = table.entries.Where(entry => japanese.IsMatch(entry.translated)).Select(entry => entry.translated).ToList();
-            Assert.That(bad, Is.Empty, "Japanese left in the English translations");
+            var path = UnityEditor.AssetDatabase.FindAssets("ExporterLocale_" + locale + " t:TextAsset")
+                .Select(UnityEditor.AssetDatabase.GUIDToAssetPath)
+                .Single(found => found.EndsWith("/Editor/Locales/ExporterLocale_" + locale + ".json", System.StringComparison.Ordinal));
+            var table = UnityEngine.JsonUtility.FromJson<LocaleTable>(System.IO.File.ReadAllText(path));
+            Assert.That(table.entries.Length, Is.GreaterThan(1000), locale + ": the table was not read");
+            var pattern = new System.Text.RegularExpressions.Regex(japanese);
+            var bad = table.entries.Where(entry => pattern.IsMatch(entry.translated)).Select(entry => entry.translated).ToList();
+            Assert.That(bad, Is.Empty, locale + ": Japanese left in the translations");
         }
 
         [TestCase("en")]
