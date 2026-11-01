@@ -11,5 +11,5 @@
 
 - `TransferNotesReadTheConversionWrittenInTheEditorLanguage` を `#if !VRVLOG_LAN_TRANSFER_CLI` の中に足し、en・ko・zh-Hans・zh-Hantの4言語で回す。
 - 注記の文はエクスポートと同じ作り方で作る。lilToonの注記は `DependencyPolicy.LilToonWarning(version, ExporterLocalization.T)` を呼ぶ。表情の注記は `VrChatExpressionBaker` と同じく、`T` に通したテンプレートへ数を入れる。lilToonの版が読めない場合（`unknown`）は版の表示も訳されるので、`unknown` と `1.0.0` の2通りを回す。
-- 作った文が日本語の文と違うことを先に確かめる。訳が無く日本語のまま書き出されると、テストは日本語の照合で通ってしまい、訳した側の経路を確かめたことにならないため。
+- 同じ文を、Editorの言語を日本語に戻して読み直し、何も読み取られないことを確かめる。日本語のテンプレートで読める文だと、テストは日本語の照合で通ってしまい、訳した側の経路を確かめたことにならないため。完成した文が日本語の文と違うかを比べるだけでは足りない。`{0}` は何にでも一致するので、版の表示だけが訳された文は日本語のテンプレートでも読めてしまう。
 - PhysBoneと画像の縮小の注記は日本語のまま書き出されるので、このテストの対象にしない。

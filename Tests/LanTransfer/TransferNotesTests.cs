@@ -154,12 +154,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 var rendered = Compatibility.DependencyPolicy.LilToonWarning(installed, ExporterLocalization.T);
                 var added = string.Format(ExporterLocalization.T(ExportNoteText.ExpressionsAdded), 13);
                 var none = ExporterLocalization.T(ExportNoteText.ExpressionsNone);
-                // Each line is the translated one, so only the translated template can match it.
-                Assert.That(rendered, Is.Not.EqualTo(string.Format(ExportNoteText.LilToonRendered,
-                    Compatibility.DependencyPolicy.DisplayLilToon(installed, text => text), Compatibility.DependencyPolicy.LilToonVersion)));
-                Assert.That(added, Is.Not.EqualTo(string.Format(ExportNoteText.ExpressionsAdded, 13)));
-                Assert.That(none, Is.Not.EqualTo(ExportNoteText.ExpressionsNone));
-
                 var notes = TransferNotes.Build(new[] { rendered, added, "除外: 小物 01" });
                 Assert.That(notes.LilToonInstalled, Is.EqualTo(Compatibility.DependencyPolicy.DisplayLilToon(installed, ExporterLocalization.T)));
                 Assert.That(notes.LilToonDrawn, Is.EqualTo(Compatibility.DependencyPolicy.LilToonVersion));
@@ -172,6 +166,13 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 var noExpressions = TransferNotes.Build(new[] { none });
                 Assert.That(noExpressions.Expressions, Is.EqualTo(0));
                 Assert.That(noExpressions.Records.Count, Is.EqualTo(0));
+
+                // With the Editor in Japanese, T leaves the templates as they are, so only the Japanese
+                // template is tried: none of the lines is read, and the reads above used the translated one.
+                localeField.SetValue(null, "ja");
+                var japaneseOnly = TransferNotes.Build(new[] { rendered, added, none });
+                Assert.That(japaneseOnly.LilToonDrawn == null && japaneseOnly.Expressions == null, Is.True);
+                Assert.That(japaneseOnly.HasConversion, Is.False);
             }
             finally { localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
