@@ -33,6 +33,8 @@ namespace VRVlog.LilToonExporter
         // The notes of the last saved export, as LastNotes of the board.
         private string[] lastNotes = Array.Empty<string>();
         private ExportDiagnostics lastDiagnostics;
+        // Opens the result list of the last transfer export, given the heading and a note, or null.
+        private Action<string, string> lastResult;
 
         // The author is the avatar's remembered one, else what this window
         // already holds. The license is the avatar's remembered settings; an
@@ -62,6 +64,11 @@ namespace VRVlog.LilToonExporter
 
         // The same text with the names and paths left in, for a private message, or null.
         public Func<string> LastNamedDiagnostics() => lastDiagnostics == null ? null : (Func<string>)lastDiagnostics.NamedText;
+
+        // Opens the result list of the export last handed to a transfer by Export or ExportDetailed,
+        // given the heading and a note beside it; null when there is nothing to show. The transfer
+        // screen opens it once the transfer has ended.
+        public Action<string, string> LastResult() => lastResult;
 
         // The name of the avatar's last successful transfer, or null.
         public string RememberedName(GameObject avatar) => ExportSettingsStore.LoadTransferName(avatar);
@@ -148,7 +155,7 @@ namespace VRVlog.LilToonExporter
         // Writes what "通常" writes for this avatar when nothing on the expression
         // board is touched: a board is prepared out of sight, as opening "通常"
         // prepares it, and exports with the name, author and license of this
-        // window. Only the result list is not asked about before saving.
+        // window. Only the result list is not shown; it goes to the Console.
         // Returns null when it saved (saved has run) or the user canceled, and the
         // reason when it failed. After a failure the recovery window is open;
         // saving from there writes the same destination and then runs saved.
@@ -161,6 +168,7 @@ namespace VRVlog.LilToonExporter
             lastMissingShaderCount = 0;
             lastOmittedStageCount = 0;
             lastNotes = Array.Empty<string>();
+            lastResult = null;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             ExperimentalExpressionCaptureWindow board;
@@ -182,6 +190,7 @@ namespace VRVlog.LilToonExporter
             lastMissingShaderCount = 0;
             lastOmittedStageCount = 0;
             lastNotes = Array.Empty<string>();
+            lastResult = null;
             var targetAuthor = author;
             var targetSettings = RememberTerms(avatar, targetAuthor);
             return ExportFrom(board, avatar, name, targetAuthor, targetSettings, destination, saved, true);
@@ -278,6 +287,7 @@ namespace VRVlog.LilToonExporter
                 lastOmittedStageCount = board.LastOmittedStageCount;
                 lastNotes = board.LastNotes;
                 lastDiagnostics = board.LastDiagnostics;
+                lastResult = board.LastResult;
                 ExportSettingsStore.SaveTransferName(avatar, name);
                 saved();
             }, interactive);
