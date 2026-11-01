@@ -1,0 +1,11 @@
+本番操作確認 2026-11-01 19:59 JST前後
+対象 https://vrvlog.fun/exporter/ 、同Chrome extension ID 1専用新規tab。日本語・dark表示、PC 1440x1000／PC Chrome上のレスポンシブ390x844。version、DPR、zoom未確認、スマホ実機ではない。
+公開 publication.json をブラウザDOMで読取: publisher.source_commit=f544368a4e7bac51163c59acec6bf7e713e81bd7、run_id=41299621193、digest=01f756800c0b0bf74c7150a10b9cf12b09e17c97d34c57f24f431249e65d7ef6。配信全ファイルbytesの再計算はしていない。checkout HEADを本番証拠に使用していない。
+到達: 最初のトップ表示は旧版で導入ガイドリンクと3stepあり。再読み込み後は対象画面。旧 /exporter/guide/ も最初旧本文を表示し、再読み込み後 /exporter/#tutorialに遷移。キャッシュか伝播か原因未確定。旧版を他の閲覧者が受け取らないことは未確認。再配備なし。
+トップ・PC/mobile full: ガイド入口と転送3stepなし、動画・2章・導入CTA・FAQあり。インストール欄後にFAQ。
+動画: 初期video要素にsrc属性なし、data-src/preload=none。ネットワーク通信未測定。先頭0.54秒、導入章31.67秒、転送章143.78秒、header0.81秒でpaused=false。動画close及びESCでpaused=true、起動元focus復帰。厳密な章seek値未測定。
+ALCOM/VCC双方切替表示、hrefは双方 vcc://vpm/addRepo?url=https://vrvlog.fun/exporter/index.json。クリック・外部アプリ起動なし。ALCOM画像拡大後closeで起動元focus。CTAで /#install、FAQのQR項目を開き回答確認。
+旧 /exporter/guide/ は再読み込み後 /exporter/#tutorialでカード表示。 /exporter/guide/index.html#transfer は /exporter/#tutorialに遷移、カードtop=24px。観測中redirectloopなし。最初の旧表示からbackでは /#install に戻ったが、新redirect経路の履歴は今回未確認。
+/exporter/sitemap.xmlのlocはexporterトップのみ、guideなし。
+専用タブcloseとviewport reset正常終了。実機操作・予約なし。コード変更・デプロイなし。
+未確認: JS無効/meta停止、実機、全配信bytes、通信レベルの動画未ロード、ブラウザversion/DPR/zoom、新redirect経路の戻る履歴、全閲覧者への伝播。画像は本人確認まで保持。
