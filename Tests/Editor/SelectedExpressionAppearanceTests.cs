@@ -625,5 +625,23 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(SelectedExpressionAppearance.IsUnchangedTransform(dummy.transform, clip,
                 EditorCurveBinding.FloatCurve("Dummy", typeof(Transform), property)), Is.EqualTo(unchanged));
         }
+
+        // A NaN scale hides the bone's vertices. It is not the prepared pose
+        // and not motion of the channel, and asking must not throw.
+        [TestCase("value")]
+        [TestCase("tangent")]
+        public void NonFiniteTransformCurveIsNeitherHeldNorMoving(string kind)
+        {
+            var scale = dummy.transform.localScale;
+            foreach (var (axis, value) in new[] { ("x", scale.x), ("y", scale.y), ("z", scale.z) })
+                Curve("Dummy", typeof(Transform), "m_LocalScale." + axis, kind == "value"
+                    ? NeutralShapeSamplerTests.NaNCurve()
+                    : new AnimationCurve(new Keyframe(0, value, 0, float.NaN), new Keyframe(1, value, 0, 0)));
+            var binding = EditorCurveBinding.FloatCurve("Dummy", typeof(Transform), "m_LocalScale.x");
+            var stored = AnimationUtility.GetEditorCurve(clip, binding).keys[0];
+            Assert.That(kind == "value" ? float.IsNaN(stored.value) : float.IsNaN(stored.outTangent), Is.True, "The fixture must keep its NaN.");
+            Assert.That(SelectedExpressionAppearance.IsUnchangedTransform(dummy.transform, clip, binding), Is.False);
+            Assert.That(SelectedExpressionAppearance.IsMovingTransform(clip, binding), Is.False);
+        }
     }
 }
