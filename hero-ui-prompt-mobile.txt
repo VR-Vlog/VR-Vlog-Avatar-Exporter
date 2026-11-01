@@ -1,0 +1,13 @@
+Use case: ui-mockup. Mobile responsive DESIGN MOCKUP for Japanese Exporter website, NOT a real browser screenshot.
+Input image1 is the refined desktop proposal: follow its compact typography, exact text, larger simple video panel and restrained dark/pink style. Input image2 is actual current mobile screenshot: preserve native header logo/button, narrow margins and page setting.
+Produce one flat portrait UI screenshot designed for390CSSpx by844CSSpx, high-resolution proportional output, no phone bezel or collage. Topscroll0, Japanese/dark, bodyflat #191b1f, white text, #ff1880 pink. No added photos or hero artwork. Keep recognizable existing logo and the SAME video first-frame thumbnail unchanged in content; do not invent or change characters or a scene.
+
+Mobile structure:
+1. Existing header: VR VLOG logo at left, small pink「導入する」at right, height68.
+2. Hero copy below with20px side margins. Compact TWO-LINE headline, firstline exact「アバターを、」white, secondline exact「VR Vlogへ。」pink. Same perceived glyph size on both lines, about34CSSpx, lineheight1.25, natural character spacing, font700 clean sans-serif. Avoid giant text, inconsistent Latin/Japanese sizes or awkward isolated punctuation.
+3. Readable14-15CSSpx muted description below, exact「Unityのアバターを、QRコードでスマホへ。VR Vlogでいつものアバターを使えます。」; use sensible wraps in 2-3short lines, not a long article.
+4. Fullwidth pink primary CTA immediately after this description, minheight56, darktext「エクスポーターを導入する」with existing small icon. Small muted12CSSpx line under it「Unity用・無料 / ALCOM・VCC対応」. Keep heading, copy, CTA as one coherent group.
+5. Then video panel on SAME FIRST VIEW with20-24px gap, width350. A small header row「使い方動画」left and「5分39秒」right, simple18CSSpx title「導入から転送まで」on ONE line. NO「動画でわかる、」and no long two-line competing heading. Preview16:9 reuses actual same firstframe image, central pink play circle and「使い方動画を見る」darklabel. Two separate chapter buttons below, minheight44, text「導入から 00:30〜」and「転送から 02:23〜」, readable, no clipping.
+6. The existing installation panel can begin near bottom around760-800px if there is room, same title「エクスポーターを入れる」and existing darkpanel; do not invent new installation changes.
+
+Key difference from current screen: CTA is grouped with explanatory copy BEFORE the video on mobile, while the video remains discoverable within the firstscreen. Space efficiently, no extreme big gaps. No new secondary guide links, no loadprogress or dummy completion. Maintain fonts/contrast and one-thumb tap targets. All important hero controls fit width and preserve word groups for320CSSpx too, though this mockup is390; do not claim an implementation test. Output ONE coherent portrait mockup.

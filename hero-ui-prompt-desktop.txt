@@ -1,0 +1,20 @@
+Use case: ui-mockup. This is a proposed DESIGN MOCKUP of the top of an existing Japanese Exporter website. Input image1 is the ACTUAL current desktop browser screen, reference and edit target. Preserve established dark/pink VR Vlog identity, actual logo, actual first-frame video poster, existing installation section below, same page language. Do not invent photography, avatars, illustrations, device frames, hero shooting images or new features.
+Output a flat desktop screenshot-style mockup designed for 1440x1000, same aspect and viewport framing as reference, page scroll top0. Redesign ONLY the hero between header and installation section. Header and installation section must stay visually faithful to the reference, though installation top can shift modestly with hero height.
+
+Goal: remove the visually unbalanced huge first headline line, inconsistent Japanese/Latin proportions, detached copy and button, and undersized video. Make a clean restrained professional product page, few words, deliberate spacing, no shiny gradients or ornamental effects.
+Hero inner width1160, x140..1300. Use balanced two columns: left520 wide, right580 wide, gap60. Video remains fully visible on the first screen. Let main headline start around y185. Right card top~140. Main headline and video heading should have a sensible aligned visual start.
+LEFT column is ONE cohesive vertical block, not two separately stretched grid rows.
+Headline EXACTLY two lines, no extra words:
+"アバターを、"
+"VR Vlogへ。"
+Use a well-proportioned modern Japanese sans serif, both lines same visual size about50px, weight700, line-height1.25, clean natural letter spacing, no compressed lettering. First line white #f3f4f7, entire second line pink #ff1880. The two short lines should have reasonably balanced lengths. No giant font.
+Below, a readable16px muted paragraph, exact sentences:
+"Unityのアバターを、QRコードでスマホへ。"
+"VR Vlogでいつものアバターを使えます。"
+Then24px gap, a single primary pink button about300x58px, dark text with existing small package/plus icon, exact label "エクスポーターを導入する".
+Below it small subdued13px text "Unity用・無料 / ALCOM・VCC対応".
+Spacing should make heading, description, action clearly one group.
+
+RIGHT video panel: increase prominence by being wider, but keep understated border and corner radius12px, charcoal panel. Small header row left "使い方動画", right "5分39秒". One short20px heading "導入から転送まで". Do NOT use another large two-line headline competing with the main title. Large16:9 video preview uses the SAME existing first-frame image from reference, prominent central pink play circle, bottom dark label "使い方動画を見る". Keep two distinct chapter buttons underneath: "導入から 00:30〜" and "転送から 02:23〜". Do not alter video imagery content or depict a different scene. Do not add redundant external guide links.
+Keep enough clear vertical separation before installation section; no overlap, no horizontal overflow. No additional CTA/buttons/metadata, no dummy progress or false completed states.
+This is a visual proposal only, not proof of implementation or working responsive behavior. Output one clean faithful desktop mockup.

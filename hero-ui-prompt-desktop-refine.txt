@@ -1,0 +1,11 @@
+Use case: precise-object-edit, proposed website UI mockup.
+Refine this mockup, keeping the right video card, header, existing installation section, logo, poster, overall two-column layout and all exact labels unchanged.
+The main LEFT headline in the current mockup is STILL MUCH TOO BIG. Correct it decisively:
+- Scale BOTH headline lines down to exactly about60% of their current visible size. Do not preserve the current giant headline. On a1505px-wide output the actual glyph height should be approximately48-52pixels per line, not75-95pixels. Both lines MUST have equal visual cap/glyph height.
+- Text remains EXACTLY firstline "アバターを、" white and secondline "VR Vlogへ。" pink. Use flat solid colors, NO bevel, shadow, shine, gradient or glossy texture on letters.
+- Tight natural Japanese sans typography, two short balanced lines, approximately1.25 lineheight. Align their left edges at the same currentx150. Headline should occupy no more than330px wide and about125px tall. Left column width520 stays, title deliberately does not fill its entirewidth.
+- Keep the cohesive left text+CTA group visually centered with the video, but close spacing: description about20px below heading, button24px below description, microcopy12px below button. Do not leave the prior giant emptyheadline box.
+- Description should be modest readable16-17px at1440CSS width, NOT a second huge title. Exacttwo sentences unchanged.
+- Main button around310x58CSSpx, not400pxwide. Label remains "エクスポーターを導入する", existing small icon, darktext.
+- Whole page background should be FLAT charcoal #191b1f, no gradients or glowing haze.
+The goal is QUIET, COMPACT typography and a prominent tutorial video. Do not enlarge anything else, add decoration, change title wording, or invent photos. Designmockup only.
