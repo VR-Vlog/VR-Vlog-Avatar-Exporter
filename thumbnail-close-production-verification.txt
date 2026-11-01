@@ -1,0 +1,9 @@
+2026-11-01 本番画面検証 Terra/high
+Chrome公式extension・専用タブ、browser runtime 26.1023.50603。viewport override PC 1440x1000 / mobile 390x844、日本語・ダーク。モバイル documentElement clientWidth=scrollWidth=390。DPR・visualViewport.scale・Chrome詳細バージョンは公式read-only DOMで取得不可、未確認。baselineはin-app、localと本番はChrome。実機ではない。
+初回 https://vrvlog.fun/exporter/ は旧トップで、https://vrvlog.fun/exporter/publication.json は source 3395963152ece1d7d233cfc4d582dc6682dd28f8 / run 41294985723 / digest 0986bb2930f56147dbbf02839ba679e913de39ed4b324054a7821f62246b01dc を返した。旧表示をproduction-observed-old-desktop.pngに保存。再deployせず25秒後にpublicationをreloadし更新を確認。
+更新後 browser DOM のpublication.json: source_commit 59a9851eba8f903595dc9b69b5bbcf98e509135e、run_id 41297342369、digest 800bab5000efda6f2527edae35dbaf26d6534478ddf781f0c742ecfd17a0d6a3、files[assets/guide/tutorial-first-frame.png] d0dcd4e8241192e9641a83d54fde987e5d998d690bc340e8670e2a0073f4ec17。提示値と一致。JSONの値の読戻しであり配信bytesのdigest再計算ではない。mirror liveverify最終結果は当方未確認。
+更新後トップ: tutorial-first-frame.pngはcomplete=true natural 1920x1080、動画0秒の構図。重複の2文言なし。先頭動画、導入00:30、転送02:23、エクスポーター導入CTAあり。初期video currentSrc空、readyState=0、paused=true、time=0。
+PC動画modal ボタン [x=1133,y=187.921875,w=44,h=44] center (1155,209.921875)、SVG [1145,199.921875,20,20] center同じ。mobile ボタン [313,275.875,44,44] center (335,297.875)、SVG center同じ。guide PC/mobileもそれぞれ同値。中心差0 CSS px。
+先頭クリックは一時readyState=0後、readyState=4・paused=false・time=1.175067、クリック閉鎖後paused=true・先頭ボタンへfocus。導入 data-video=30.634、観測time=30.802124・paused=false、ESC後paused=true・導入章へfocus。転送 data-video=143.072、観測time=143.24663・paused=false、クリック閉鎖後paused=true・転送章へfocus。実測時刻は再生開始後の値。
+guide 00:30 modalはESC・クリックそれぞれpaused=true、呼出元の章ボタンfocus復帰。撮影PNGはbrowser JPEGの変換画像。指定画像4枚とguide PC/mobile 2枚を保存。
+自分のChromeタブ3件を閉じviewport overrideをreset。既存ユーザータブ・外部アプリ・ログイン・送信は操作せず。生成JPEG中間物はPNG変換後に削除。表示の確認であり、全端末・エラー時・実機受入・必須CIやmirror liveverify完了を意味しない。
