@@ -344,7 +344,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 ExportFallbackConfirmation.IsBatchMode = () => false;
-                Assert.That(ExportFallbackConfirmation.NeedsAnswer(report.Fallbacks, interactive: true), Is.True);
+                Assert.That(ExportFallbackConfirmation.ShowsResult(report.Fallbacks, interactive: true), Is.True);
             }
             finally { ExportFallbackConfirmation.IsBatchMode = batch; }
             var row = ExportResultList.Build(report.Fallbacks, null).Rows.Single();

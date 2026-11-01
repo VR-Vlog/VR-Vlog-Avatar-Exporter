@@ -264,7 +264,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // An animated expression whose loop ends neutral shows no change in
-        // apps that only read the VRM expression. Ask before saving.
+        // apps that only read the VRM expression. Listed after saving.
         internal static void RecordExpressionsEndingNeutral(IEnumerable<VrmMenuExpressions.Expression> expressions, ExportRecoveryReport report)
         {
             foreach (var expression in expressions ?? Enumerable.Empty<VrmMenuExpressions.Expression>())

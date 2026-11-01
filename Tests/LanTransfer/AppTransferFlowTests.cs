@@ -322,6 +322,106 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
         }
 
+        // The export's result list opens once the transfer has ended, named by how it ended;
+        // a failure gives its reason too. A QR that expired or was canceled can be made again,
+        // so the list keeps waiting and opens when the new QR has ended.
+        [TestCase("completed", AppTransferText.Completed)]
+        [TestCase("failed", AppTransferText.TransferFailed)]
+        [TestCase("cancelled", null)]
+        [TestCase("expired", null)]
+        public async Task TheResultListOpensOnceTheTransferHasEnded(string remote, string heading)
+        {
+            using (var run = new FlowRun())
+            {
+                var opened = new System.Collections.Generic.List<string>();
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add(title + (string.IsNullOrEmpty(note) ? "" : ":reason")));
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Nothing opens while the phone has not taken the avatar.");
+                run.Transport.RemoteState = remote;
+                await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                run.Tick();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                var failed = heading == AppTransferText.TransferFailed;
+                Assert.That(string.Join("|", opened), Is.EqualTo(heading == null ? "" : heading + (failed ? ":reason" : "")));
+                if (heading == null)
+                {
+                    run.Flow.Regenerate();
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    run.Transport.RemoteState = "completed";
+                    await run.Until(() => run.Flow.View != AppTransferView.Waiting);
+                    run.Tick();
+                    run.Flow.TakeEndedResult(text => text)?.Invoke();
+                    Assert.That(string.Join("|", opened), Is.EqualTo(AppTransferText.Completed), "The new QR of the same export opens the list.");
+                }
+                // A failure outside the session keeps a list that is waiting, so it opens once.
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add("kept"));
+                run.Flow.Fail("x");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                var before = opened.Count;
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                Assert.That(opened.Skip(before), Is.EqualTo(new[] { "kept" }));
+                // Closing the screen drops a list that is waiting: the same failure then opens nothing.
+                run.Flow.ShowResultAtEnd((title, note) => opened.Add("dropped"));
+                run.Flow.Stop();
+                run.Flow.Fail("x");
+                Assert.That(run.Flow.View, Is.EqualTo(AppTransferView.Failed));
+                Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Closing the screen drops the list.");
+                Assert.That(opened.Contains("dropped"), Is.False);
+            }
+        }
+
+        // A failure opens the list. A new QR of the same export that fails for the same reason leaves it
+        // as it is, one that fails for another reason opens it again with that reason, and one that
+        // succeeds opens it again with the success heading. One export, one list window.
+        [TestCase("completed", AppTransferText.TransferFailed + ":reason|" + AppTransferText.Completed)]
+        [TestCase("failed", AppTransferText.TransferFailed + ":reason")]
+        [TestCase("quota", AppTransferText.TransferFailed + ":reason|" + AppTransferText.TransferFailed + ":reason")]
+        public async Task ASuccessAfterAFailureChangesTheListHeading(string again, string expected)
+        {
+            using (var run = new FlowRun())
+            {
+                var opened = new System.Collections.Generic.List<string>();
+                var notes = new System.Collections.Generic.List<string>();
+                run.Flow.Upload(run.Path, "fixture.vrm");
+                run.Flow.ShowResultAtEnd((title, note) => { opened.Add(title + (string.IsNullOrEmpty(note) ? "" : ":reason")); notes.Add(note); });
+                await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                run.Transport.RemoteState = "failed";
+                await run.Until(() => run.Flow.View == AppTransferView.Failed);
+                run.Tick();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                run.Flow.TakeEndedResult(text => text)?.Invoke();
+                Assert.That(string.Join("|", opened), Is.EqualTo(AppTransferText.TransferFailed + ":reason"));
+                // The list gives the reason the transfer screen shows, as a state line and what to do, without 「。」 or 「ください」.
+                Assert.That(notes[0], Is.EqualTo(run.Flow.FailureText(text => text)));
+                Assert.That(notes[0], Is.EqualTo("転送サービスでエラーが発生しました\n新しいQRを作る"));
+                Assert.That(run.Flow.CanRegenerate, Is.True, "A failed QR can be made again from the same export.");
+                run.Transport.RemoteState = "ready";
+                if (again == "quota") run.Failure = again;
+                run.Flow.Regenerate();
+                if (again != "quota")
+                {
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True, "Nothing opens while the new QR waits.");
+                    run.Transport.RemoteState = again;
+                }
+                await run.Until(() => run.Flow.View == AppTransferView.Failed || run.Flow.View == AppTransferView.Completed);
+                run.Tick();
+                for (var i = 0; i < 3; i++) run.Flow.TakeEndedResult(text => text)?.Invoke();
+                Assert.That(string.Join("|", opened), Is.EqualTo(expected));
+                // Opened again for another reason, the list gives the reason the screen shows now.
+                if (again == "quota")
+                {
+                    Assert.That(notes[1], Is.EqualTo(run.Flow.FailureText(text => text)));
+                    Assert.That(notes[1].Contains("HTTP 429"), Is.True, notes[1]);
+                }
+                // A success ends the wait: nothing more opens for this export.
+                if (again == "completed") Assert.That(run.Flow.TakeEndedResult(text => text) == null, Is.True);
+            }
+        }
+
         // "VRMを保存" on the QR screen writes the bytes that were sent and says which ones they are.
         [Test]
         public async Task SavingTheSentCopyWritesTheSameBytes()
@@ -603,6 +703,46 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     typeof(AppTransferPanel).GetField("flow", field).SetValue(panel, null);
                     window.Close();
                     UnityEngine.Object.DestroyImmediate(avatar);
+                }
+            }
+        }
+
+        // The screen's own polling opens the result list once the phone has taken the avatar, and
+        // only once; while it waits, nothing opens. The exporter hands the list over through its binding.
+        [Test]
+        public async Task TheScreenOpensTheResultListWhenTheTransferHasEnded()
+        {
+            Assert.That(AppTransferPanel.ExportEntry.Resolve()?.LastResult, Is.Not.Null, "The transfer screen reaches the exporter's result list.");
+            const string privacyKey = CloudVrmTransferWindow.PrivacyConsentPreference;
+            var hadPrivacy = UnityEditor.EditorPrefs.HasKey(privacyKey);
+            var privacy = UnityEditor.EditorPrefs.GetBool(privacyKey, false);
+            var sound = AppTransferWindow.QrReadySound;
+            using (var run = new FlowRun())
+            {
+                var panel = PanelWith(run.Flow, detailed: true);
+                var opened = new System.Collections.Generic.List<string>();
+                try
+                {
+                    AppTransferWindow.QrReadySound = false;
+                    CloudVrmTransferWindow.PrivacyConsentAccepted = true;
+                    panel.Build(new UnityEngine.UIElements.VisualElement());
+                    run.Flow.Upload(run.Path, "fixture.vrm");
+                    run.Flow.ShowResultAtEnd((title, note) => opened.Add(title));
+                    await run.Until(() => run.Flow.View == AppTransferView.Waiting);
+                    Call(panel, "Poll");
+                    Assert.That(opened, Is.Empty, "Nothing opens while the phone has not taken the avatar.");
+                    run.Transport.RemoteState = "completed";
+                    await run.Until(() => run.Flow.View == AppTransferView.Completed);
+                    Assert.That(opened, Is.Empty, "The flow alone opens nothing; the screen does.");
+                    Call(panel, "Poll");
+                    Call(panel, "Poll");
+                    Assert.That(opened, Is.EqualTo(new[] { AppTransferText.Completed }));
+                }
+                finally
+                {
+                    AppTransferWindow.QrReadySound = sound;
+                    if (hadPrivacy) UnityEditor.EditorPrefs.SetBool(privacyKey, privacy);
+                    else UnityEditor.EditorPrefs.DeleteKey(privacyKey);
                 }
             }
         }
