@@ -48,15 +48,19 @@ namespace VRVlog.LilToonExporter
             internal double TransformDuration = 0;
             internal bool TransformLoop = false;
 
-            // The animation's shape at time = duration: per channel the two
-            // points Channel.Weights picks, at 1 - blend and blend. Points that
-            // move nothing and zero weights are left out.
+            // The time of Animation that the VRM expression shows (ClipFaceTime);
+            // unset, the end of the animation.
+            internal double? FaceTime;
+
+            // The animation's shape at FaceTime: per channel the two points
+            // Channel.Weights picks, at 1 - blend and blend. Points that move
+            // nothing and zero weights are left out.
             internal IEnumerable<(ExpressionAnimationData.Point Point, float Weight)> FinalPoints()
             {
                 if (Animation == null) yield break;
                 foreach (var channel in Animation.Channels)
                 {
-                    channel.Weights(Animation.Duration, out var left, out var right, out var blend);
+                    channel.Weights(FaceTime ?? Animation.Duration, out var left, out var right, out var blend);
                     if (1f - blend != 0f && Moves(channel.Points[left])) yield return (channel.Points[left], 1f - blend);
                     if (blend != 0f && Moves(channel.Points[right])) yield return (channel.Points[right], blend);
                 }
@@ -179,7 +183,7 @@ namespace VRVlog.LilToonExporter
 
         // Register only actual menu entries. Each one binds its composite
         // targets at full weight, the original shapes it moves linearly at
-        // their own weight, and its animation's shape at time = duration;
+        // their own weight, and its animation's shape at FaceTime;
         // raw shapes do not become selectable expressions. The animation
         // extension (schema 2) lists every registered expression with its
         // source and refers to morphs by node and morph target index.
@@ -279,7 +283,7 @@ namespace VRVlog.LilToonExporter
                         // animated shape and a fixed one, into one morph; the
                         // app could not move them apart. Keep the VRM
                         // expression (the last frame) without the motion.
-                        warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて最後のフレームの顔だけを登録しました。");
+                        warnings?.Add(expression.Name + ": 表情のアニメーションが動かす変形が書き出し時にまとめられたため、アニメーションを省いて動かない顔だけを登録しました。");
                         animation = null;
                     }
                 }

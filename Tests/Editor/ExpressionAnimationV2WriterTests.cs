@@ -15,7 +15,7 @@ namespace VRVlog.LilToonExporter.Tests
     // Schema 2 of the expression animation extension: animated channels move
     // the original shape directly when its single frame covers the curve,
     // other channels are baked relative to rest, and the VRM expression holds
-    // the animation's last frame. Expected poses evaluate the authored source
+    // the face the animation holds (ClipFaceTime). Expected poses evaluate the authored source
     // frames independently of the exporter.
     public sealed class ExpressionAnimationV2WriterTests
     {
@@ -222,6 +222,33 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 AssertVertices(scene.Expected(entry, "Front", 1), Played(imported, json, document, "Raise", "Front", 0, withoutAnimation: true),
                     "The VRM expression is the last frame.");
+            }
+            finally { Object.DestroyImmediate(imported.gameObject); }
+        }
+
+        // A moving face that holds in the middle and leaves the hold before
+        // the end: the VRM expression is the held face (ClipFaceTime), and
+        // the animation still plays the source at every time.
+        [Test]
+        public async Task VrmExpressionOfAMovingFaceIsTheFaceItHolds()
+        {
+            using var scene = new Scene(raise: 20);
+            var entry = Entry("Hold", 4, true, new (string, string, float)[0], ("Front", "Raise", Curve((0, 20), (1, 80), (3, 80), (4, 40))));
+            var expression = scene.Bake(entry).Single();
+            Assert.That(expression.FaceTime, Is.EqualTo(2).Within(Tolerance));
+            Assert.That(expression.EndsNeutral, Is.False);
+            Assert.That(expression.FinalPoints().Single().Weight, Is.EqualTo(60f / 80f).Within(Tolerance), "The held 80, not the last 40.");
+
+            var bytes = scene.Export(new[] { expression });
+            var json = GlbDocument.Read(bytes).Json;
+            var document = ExpressionAnimationData.ReadDocument(Extension(bytes));
+            var imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
+            try
+            {
+                AssertVertices(scene.Expected(entry, "Front", 2), Played(imported, json, document, "Hold", "Front", 0, withoutAnimation: true),
+                    "The VRM expression is the held face.");
+                foreach (var time in new[] { 0, .5, 2, 3.5, 4 })
+                    AssertVertices(scene.Expected(entry, "Front", time), Played(imported, json, document, "Hold", "Front", time), "Played at " + time);
             }
             finally { Object.DestroyImmediate(imported.gameObject); }
         }
