@@ -37,11 +37,12 @@ namespace VRVlog.LilToonExporter
         internal const string OmittedOff = "オフになっているため、今の姿勢のまま書き出しました。アニメーションでオンにしてもVRMでは動きません";
         internal const string OmittedReparent = "ソースの子に移すと動きが変わる設定（一部の軸だけ・強さが1未満・ローカル空間・人型のボーンを含む・別のコンストレイントから参照される・拡大縮小で形が崩れる）のため、今の姿勢のまま書き出しました";
         internal const string OmittedBound = "VRMの表情か一人称の設定がこの中のメッシュを使っていて、ソースの子に移すとその設定が外れるため、今の姿勢のまま書き出しました";
+        internal const string OmittedToggle = "ソースの子に移すとメニューの表示切り替えが元と変わるため、今の姿勢のまま書き出しました";
         internal static readonly string[] Reasons =
         {
             KeptRotation, KeptParent, ApproximatedRotation, ApproximatedRoll, ApproximatedAim,
             OmittedKind, OmittedSetting, OmittedParent, OmittedRest, OmittedOutside, OmittedDuplicate, OmittedCycle,
-            OmittedOff, OmittedReparent, OmittedBound
+            OmittedOff, OmittedReparent, OmittedBound, OmittedToggle
         };
 
         // A VRM rotation constraint applies the source's local change in the
@@ -67,7 +68,8 @@ namespace VRVlog.LilToonExporter
             internal readonly List<(Transform Transform, float Weight)> Sources = new List<(Transform, float)>();
         }
 
-        internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null)
+        internal static Result Convert(GameObject source, GameObject copy, ICollection<string> warnings, ExportFallbackReport fallbacks = null,
+            ObjectToggleCapture toggles = null)
         {
             if (source == null || copy == null || source == copy || copy.transform.IsChildOf(source.transform) ||
                 source.transform.IsChildOf(copy.transform) || EditorUtility.IsPersistent(copy))
@@ -86,6 +88,7 @@ namespace VRVlog.LilToonExporter
                     AddEdge(edges, constraint.ConstraintTarget, constraint.ConstraintSource);
             var added = new List<Component>();
             var moved = new List<Moved>();
+            var membership = new ToggleMembership(toggles, plans.Select(plan => plan.Target));
             var humanoid = plans.Any(p => p.Kind == Kind.Parent || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
             var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
@@ -102,7 +105,7 @@ namespace VRVlog.LilToonExporter
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved)
+                        : plan.Kind == Kind.Parent ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, membership, paths[order])
                         : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     if (outcome != ExportOutcome.Omitted)
                     {
@@ -120,6 +123,7 @@ namespace VRVlog.LilToonExporter
                 for (var index = moved.Count - 1; index >= 0; index--) moved[index].Restore();
                 throw;
             }
+            membership.Apply();
             foreach (var (order, plan, outcome, reason) in decisions.OrderBy(d => d.Order))
             {
                 result.Sources++;
@@ -200,7 +204,8 @@ namespace VRVlog.LilToonExporter
         // stays at the same offset (VRM has no parent constraint). The current
         // pose is the solved one: VRChat and Unity constraints run in the editor.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
-            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved)
+            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved,
+            ToggleMembership membership, string userPath)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
@@ -219,14 +224,85 @@ namespace VRVlog.LilToonExporter
             // when it writes the file; a moved target would leave them dangling.
             var path = ExportFallbackReport.RelativePath(root, target);
             if (bound.Any(p => p == path || p.StartsWith(path + "/", StringComparison.Ordinal))) return (ExportOutcome.Omitted, OmittedBound);
+            if (!membership.Allows(target, source, out var leader)) return (ExportOutcome.Omitted, OmittedToggle);
             var before = new Moved(target);
             try { ExportAttachmentSession.ReparentPreservingPose(target, source); }
             catch (InvalidOperationException) { return (ExportOutcome.Omitted, OmittedReparent); }
             moved.Add(before);
+            membership.Moved(target, leader, userPath);
             return (ExportOutcome.Kept, KeptParent);
         }
 
         const float FullWeight = .999f;
+
+        // The menu toggles were turned on for the export, and the app hides a
+        // toggled object by its own node. A target moved out of one would stay
+        // visible, so it follows that toggle. Membership is taken from the
+        // hierarchy before anything moves, and a moved target counts as inside
+        // the toggle it follows, so the order of the moves does not matter.
+        sealed class ToggleMembership
+        {
+            readonly ObjectToggleCapture toggles;
+            readonly Transform[] switched;
+            readonly Dictionary<Transform, Transform[]> original = new Dictionary<Transform, Transform[]>();
+            readonly Dictionary<Transform, Transform> leaders = new Dictionary<Transform, Transform>();
+            readonly List<(Transform Target, Transform Leader, string Path)> following = new List<(Transform, Transform, string)>();
+
+            internal ToggleMembership(ObjectToggleCapture toggles, IEnumerable<Transform> targets)
+            {
+                this.toggles = toggles;
+                switched = toggles?.Targets.Where(t => t != null).Select(t => t.transform).ToArray() ?? Array.Empty<Transform>();
+                foreach (var target in targets)
+                    if (target != null && !original.ContainsKey(target)) original.Add(target, Around(target));
+            }
+
+            // The toggles that show and hide the value now.
+            Transform[] Around(Transform value)
+            {
+                var result = switched.Where(value.IsChildOf).ToList();
+                for (var at = value; at != null; at = at.parent)
+                    if (leaders.TryGetValue(at, out var leader)) result.Add(leader);
+                return result.Distinct().ToArray();
+            }
+
+            // Whether the toggles show and hide the target as before once it is
+            // under the source: it may join a toggle (leader) it would leave,
+            // but not one it was never in, nor two at once, nor a second one.
+            // A target without a mesh shows nothing either way.
+            internal bool Allows(Transform target, Transform source, out Transform leader)
+            {
+                leader = null;
+                if (switched.Length == 0 || !target.GetComponentsInChildren<Renderer>(true).Any(Shows))
+                    return true;
+                var before = original[target];
+                var after = Around(source).Concat(switched.Contains(target) ? new[] { target } : Array.Empty<Transform>()).ToArray();
+                if (after.Except(before).Any()) return false;
+                var missing = before.Except(after).ToArray();
+                if (missing.Length == 0) return true;
+                if (missing.Length > 1 || switched.Contains(target) ||
+                    !toggles.HasRoom(following.Select(f => f.Leader.gameObject).Append(missing[0].gameObject).ToArray()))
+                    return false;
+                leader = missing[0];
+                return true;
+            }
+
+            static bool Shows(Renderer renderer) =>
+                renderer is SkinnedMeshRenderer skin ? skin.sharedMesh != null :
+                renderer is MeshRenderer && renderer.TryGetComponent<MeshFilter>(out var filter) && filter.sharedMesh != null;
+
+            internal void Moved(Transform target, Transform leader, string path)
+            {
+                if (leader == null) return;
+                leaders[target] = leader;
+                following.Add((target, leader, path));
+            }
+
+            // After every move succeeded, so a failure only has to move targets back.
+            internal void Apply()
+            {
+                foreach (var (target, leader, path) in following) toggles.Follow(target.gameObject, leader.gameObject, path);
+            }
+        }
 
         static HashSet<string> BoundPaths(GameObject copy)
         {

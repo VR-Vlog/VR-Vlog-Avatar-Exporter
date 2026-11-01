@@ -814,7 +814,7 @@ namespace VRVlog.LilToonExporter
                 var springs = guard.Step(ExportStage.PhysBone, () => PhysBoneSpringExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
                 recoveryReport.Stage = "コンストレイント変換";
                 recoveryReport.Phase = ExportPhase.Skeleton;
-                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks), () => null);
+                guard.Step(ExportStage.Constraints, () => ConstraintExport.Convert(source, clone, warnings, recoveryReport.Fallbacks, objectToggles), () => null);
                 recoveryReport.Stage = "材質保存";
                 recoveryReport.Phase = ExportPhase.Materials;
                 // MToon's outline width does not follow the renderer scale that lilToon's
