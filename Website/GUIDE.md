@@ -1,8 +1,12 @@
 # Avatar setup guide
 
 `guide/index.html` explains setup with ALCOM and VCC, Unity easy transfer, and
-smartphone receipt. The homepage keeps its installation and image instructions;
-small video buttons open the matching point without navigating away.
+smartphone receipt. The homepage highlights the existing tutorial with a video
+card and chapter buttons instead of a photography hero. On narrow screens, the
+card follows the introductory copy and precedes the installation CTA. Its preview
+reuses the Unity transfer and smartphone receipt screenshots; no video is fetched
+until requested. The installation and image instructions remain available, with
+small video buttons opening the matching point without navigating away.
 
 The video and five subtitle tracks reference the same published, owner-approved
 October 28 tutorial at `https://vrvlog.fun/guide/`. Preserve its reduced audio level.
