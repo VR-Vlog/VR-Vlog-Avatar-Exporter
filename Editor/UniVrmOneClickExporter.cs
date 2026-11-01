@@ -767,7 +767,7 @@ namespace VRVlog.LilToonExporter
                     try { lightweight = TexelDensity.Measure(clone); }
                     catch (Exception error) when (!(error is OperationCanceledException)) { Debug.LogException(error); }
                 var fullSnapshot = exporterVersion != null ? guard.Step(ExportStage.LilToonSnapshot,
-                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight), () => null) : null;
+                    () => LilToonFullSnapshot.Capture(clone,suppressSharedTextureEmission,suppressHdrTextureEmission, warnings, animationSource: source, lightweight: lightweight, omitInactiveSlots: autoLightweight), () => null) : null;
                 var fallbackWarnings=fullSnapshot==null?warnings:new List<string>();
                 // Another lilToon version may lack a 2.3.4 property a material
                 // needs. Such a material keeps the MToon approximation written
@@ -958,6 +958,7 @@ namespace VRVlog.LilToonExporter
                     {
                         exported = injected;
                         foreach(var warning in fallbackWarnings)warnings?.Add("標準VRM表示の近似: "+warning);
+                        if (fullSnapshot.InactiveSlotsLine() is string inactive) warnings?.Add(inactive);
                     }
                     else
                     {

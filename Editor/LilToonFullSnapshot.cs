@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEditor;
@@ -42,13 +43,17 @@ namespace VRVlog.LilToonExporter
         LilToonInactiveTextureProof inactiveTextures;
         // 自動で軽量化する: smaller maximums for textures with detail to spare. Null when off.
         TexelDensity.Plan lightweight;
+        // 自動で軽量化する: write a slot whose feature is switched off as
+        // unassigned. The references left out, by texture key; false when off.
+        bool omitInactiveSlots;
+        readonly HashSet<(Texture, bool)> inactiveReferences = new HashSet<(Texture, bool)>();
         readonly string sourceColorSpace = QualitySettings.activeColorSpace == ColorSpace.Linear ? "linear" : "gamma";
 
         internal static LilToonFullSnapshot Capture(GameObject avatar, bool suppressSharedTextureEmission=false, bool suppressHdrTextureEmission=false, ICollection<string> warnings=null, GameObject animationSource=null,
-            TexelDensity.Plan lightweight=null)
+            TexelDensity.Plan lightweight=null, bool omitInactiveSlots=false)
         {
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
-                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight};
+                inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource), lightweight=lightweight, omitInactiveSlots=omitInactiveSlots};
             var selected = new List<(Renderer renderer, Material[] materials)>();
             foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
             {
@@ -149,6 +154,13 @@ namespace VRVlog.LilToonExporter
                         texture = null;
                         warnings?.Add(source.name + ": 無効なlilToonレイヤーで使われない動的画像の参照を省略しました: " + name);
                     }
+                    // 自動で軽量化する: the shader never samples this slot. A
+                    // texture another slot samples is still written once.
+                    if (texture != null && omitInactiveSlots && !LilToonInactiveSlots.Sampled(source, name))
+                    {
+                        inactiveReferences.Add((texture, normal));
+                        texture = null;
+                    }
                     // Unassigned normal slots use Unity's encoded bump default.
                     // Export that default too, so the canonical decoder never
                     // interprets an app-platform-specific bump texture as RG.
@@ -210,6 +222,21 @@ namespace VRVlog.LilToonExporter
             if(LilToon234Catalogue.Shaders[shader.name].StartsWith("ltsmulti",StringComparison.Ordinal))clipping=source.GetFloat("_UseClippingCanceller")!=0;
             var keywords=source.shaderKeywords.Where(k=>!(suppressEmission && k=="_EMISSION") && !(suppressEmission2nd && k=="GEOM_TYPE_BRANCH")).Cast<object>().ToList();
             return new Dictionary<string, object> { {"sourceShader", shader.name}, {"name", source.name}, {"renderQueue", source.renderQueue}, {"values", values}, {"textures", textureProperties}, {"passes", passes}, {"keywords", keywords}, {"clippingCanceller",clipping} };
+        }
+
+        // The line of the result list for the textures only switched-off slots
+        // referenced, with the memory they would have used; null when none.
+        internal string InactiveSlotsLine()
+        {
+            var omitted = inactiveReferences.Where(key => !textureIds.ContainsKey(key)).ToList();
+            return omitted.Count == 0 ? null : string.Format(CultureInfo.InvariantCulture, ExporterLocalization.T(ExportNoteText.InactiveTexturesOmitted),
+                omitted.Count, TexelDensity.Plan.Megabytes(omitted.Sum(key => UnwrittenBytes(key.Item1, key.Item2))));
+        }
+
+        long UnwrittenBytes(Texture source, bool normal)
+        {
+            var size = TextureResizePolicy.Size(source.width, source.height, ExistingMaximumSize(source, normal));
+            return TexelDensity.Bytes(size.Item1, size.Item2) * (source is Cubemap ? 6 : 1);
         }
 
         int Texture(Texture source, bool normal, float normalScale)
