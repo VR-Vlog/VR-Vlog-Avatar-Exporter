@@ -194,7 +194,7 @@ namespace VRVlog.LilToonExporter.Tests
             else if (kind == "vrm") driver.gameObject.AddComponent<Vrm10RotationConstraint>().Source = f.Hand;
             else
             {
-                var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<PositionConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
+                var constraint = kind == "left out" ? (IConstraint)driver.gameObject.AddComponent<ScaleConstraint>() : driver.gameObject.AddComponent<RotationConstraint>();
                 constraint.AddSource(new ConstraintSource { sourceTransform = f.Hand, weight = 1 });
                 constraint.locked = true; constraint.constraintActive = true;
             }
@@ -330,6 +330,55 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(prop.parent, Is.EqualTo(f.A));
             Assert.That(prop.GetComponent<Vrm10AimConstraint>().Source, Is.EqualTo(f.B));
             Assert.That(f.Report.Results.Select(r => r.Reason), Is.EquivalentTo(new[] { ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedPosition }));
+        }
+
+        // Only one constraint moves the target: VRChat constraints can point
+        // two at one object, and the second keeps the first parent.
+        [Test]
+        public void ASecondPositionConstraintOnAnAimedPropKeepsTheFirstParent()
+        {
+            var type = AppDomain.CurrentDomain.GetAssemblies()
+                .Select(a => a.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCPositionConstraint")).FirstOrDefault(t => t != null);
+            if (type == null) Assert.Ignore("Real VRChat SDK integration test; Unity constraints are covered without it.");
+            using var f = new Fixture();
+            var prop = f.Other;
+            prop.position = f.A.position + new Vector3(0, -.2f, 0);
+            prop.rotation = Quaternion.LookRotation(f.B.position - prop.position);
+            f.Constraint<AimConstraint>(prop, 1, f.B).aimVector = Vector3.forward;
+            var second = Fixture.Child(f.Copy.transform, "Second", Vector3.down);
+            foreach (var (holder, source) in new[] { (prop, f.A), (Fixture.Child(f.Copy.transform, "Holder", Vector3.zero), second) })
+            {
+                var component = holder.gameObject.AddComponent(type);
+                using var settings = new SerializedObject(component);
+                settings.FindProperty("IsActive").boolValue = true;
+                settings.FindProperty("Locked").boolValue = true;
+                settings.FindProperty("TargetTransform").objectReferenceValue = prop;
+                settings.FindProperty("Sources.totalLength").intValue = 1;
+                settings.FindProperty("Sources.source0.SourceTransform").objectReferenceValue = source;
+                settings.FindProperty("Sources.source0.Weight").floatValue = 1;
+                settings.ApplyModifiedPropertiesWithoutUndo();
+            }
+            f.Convert();
+            Assert.That(prop.parent, Is.EqualTo(f.A));
+            Assert.That(f.Report.Results.Select(r => r.Reason), Is.EquivalentTo(new[]
+                { ConstraintExport.ApproximatedAim, ConstraintExport.ApproximatedPosition, ConstraintExport.OmittedDuplicate }));
+        }
+
+        // A constraint on the source reads a point inside the target: once the
+        // target follows the source, that point would move with its reader.
+        [TestCase("position")][TestCase("parent")]
+        public void AFollowThatWouldMoveTheSourcesOwnAimTargetKeepsThePose(string kind)
+        {
+            using var f = new Fixture();
+            var prop = f.Other;
+            var inside = Fixture.Child(prop, "Inside", new Vector3(0, -.3f, 0));
+            f.A.rotation = Quaternion.LookRotation(inside.position - f.A.position);
+            f.Constraint<AimConstraint>(f.A, 1, inside).aimVector = Vector3.forward;
+            if (kind == "position") f.Constraint<PositionConstraint>(prop, 1, f.A);
+            else f.Constraint<ParentConstraint>(prop, 1, f.A);
+            f.Convert();
+            Assert.That(prop.parent.name, Is.EqualTo("Other parent"));
+            Assert.That(f.Report.Results.Single(r => r.Path.EndsWith("Other", StringComparison.Ordinal)).Reason, Is.EqualTo(ConstraintExport.OmittedCycle));
         }
 
         [TestCase("translation axis")][TestCase("weight")][TestCase("source weight")][TestCase("rotation")][TestCase("rotation source")]

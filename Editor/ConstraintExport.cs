@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter
         internal const string KeptParent = "ソースの子に移し、ソースと一緒に動くようにしました";
         internal const string ApproximatedRotation = "VRMの回転コンストレイントで近似しました。基準の向きか強さが元と違うため、大きく動いたときの向きが元と少し異なります";
         internal const string ApproximatedRoll = "1軸だけの回転をVRMのロールコンストレイントで近似しました";
-        internal const string ApproximatedPosition = "ソースの子に移し、ソースと一緒に動くようにしました。ソースが回ると一緒に回るため、向きと位置が元と少し異なる場合があります";
+        internal const string ApproximatedPosition = "ソースの子に移し、ソースと一緒に動くようにしました。ソースが回ると一緒に回るため、向きと位置が元と異なる場合があります";
         internal const string ApproximatedAim = "VRMのエイムコンストレイントで近似しました。向ける軸は保ちますが、ねじれが元と異なる場合があります";
         internal const string OmittedKind = "VRMに同じ働きのコンストレイントがないため、今の姿勢のまま書き出しました";
         internal const string OmittedSetting = "VRMで表せない設定（複数のソース・自分自身がソース・2軸だけの回転・ワールドに固定・軸以外の向き）のため、今の姿勢のまま書き出しました";
@@ -92,6 +92,7 @@ namespace VRVlog.LilToonExporter
             var humanoid = plans.Any(p => Follows(p) || p.Kind == Kind.Rotation) ? HumanoidBones(copy) : new HashSet<Transform>();
             // Targets this pass aims; one may still follow a position constraint.
             var aimed = new HashSet<Transform>();
+            var followed = new HashSet<Transform>();
             var (driven, turning) = Turning(copy, humanoid, plans, taken);
             var bound = BoundPaths(copy);
             var decisions = new List<(int Order, Plan Plan, ExportOutcome Outcome, string Reason)>();
@@ -107,7 +108,7 @@ namespace VRVlog.LilToonExporter
                     // Weightless constraints, or ones without a source or target, have nothing to move.
                     if (!(plan.Weight > 0) || sources.Length == 0 || plan.Target == null) continue;
                     var (outcome, reason) = !plan.On ? (ExportOutcome.Omitted, OmittedOff)
-                        : Follows(plan) ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, aimed)
+                        : Follows(plan) ? Reparent(plan, sources, copy.transform, humanoid, bound, taken, edges, moved, aimed, followed)
                         : Apply(plan, sources, copy.transform, driven, turning, taken, edges, added);
                     // As a child, a position-constrained target also turns with the source.
                     if (plan.Kind == Kind.Position && outcome == ExportOutcome.Kept) (outcome, reason) = (ExportOutcome.Approximated, ApproximatedPosition);
@@ -115,6 +116,7 @@ namespace VRVlog.LilToonExporter
                     {
                         taken.Add(plan.Target);
                         if (plan.Kind == Kind.Aim || plan.Kind == Kind.LookAt) aimed.Add(plan.Target);
+                        if (Follows(plan)) followed.Add(plan.Target);
                         // The rotation may have moved its source up to the bone that turns.
                         if (!Follows(plan)) AddEdge(edges, plan.Target, ((IVrm10Constraint)added.Last()).ConstraintSource);
                     }
@@ -210,7 +212,8 @@ namespace VRVlog.LilToonExporter
         // A position constraint moves the same way; an aim this pass wrote on
         // the same object still turns it, as VRM aims by the world direction.
         static (ExportOutcome, string) Reparent(Plan plan, (Transform Transform, float Weight)[] sources, Transform root, HashSet<Transform> humanoid,
-            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved, HashSet<Transform> aimed)
+            HashSet<string> bound, HashSet<Transform> taken, Dictionary<Transform, List<Transform>> edges, List<Moved> moved, HashSet<Transform> aimed,
+            HashSet<Transform> followed)
         {
             if (sources.Length != 1 || plan.FreezeToWorld) return (ExportOutcome.Omitted, OmittedSetting);
             var target = plan.Target;
@@ -218,13 +221,17 @@ namespace VRVlog.LilToonExporter
             // A source inside the target would follow itself.
             if (source.IsChildOf(target)) return (ExportOutcome.Omitted, OmittedSetting);
             if (!Inside(root, target) || !Inside(root, source)) return (ExportOutcome.Omitted, OmittedOutside);
-            var aiming = plan.Kind == Kind.Position && aimed.Contains(target);
+            var aiming = plan.Kind == Kind.Position && aimed.Contains(target) && !followed.Contains(target);
             if (taken.Contains(target) && !aiming) return (ExportOutcome.Omitted, OmittedDuplicate);
             // Moving a humanoid bone would change the skeleton, and VRM
             // constraints read the local rotation of their ends.
             if (!(plan.X && plan.Y && plan.Z && plan.Positions) || plan.LocalSpace || plan.Weight * Mathf.Min(1, sources[0].Weight) < FullWeight ||
                 humanoid.Any(bone => bone.IsChildOf(target)) || edges.ContainsKey(target) && !aiming || edges.Values.Any(ends => ends.Contains(target)))
                 return (ExportOutcome.Omitted, OmittedReparent);
+            // A constraint reading something inside the target would, once the
+            // target follows it, read a point that moves with itself.
+            if (edges.Any(edge => edge.Value.Any(end => end.IsChildOf(target)) && (source.IsChildOf(edge.Key) || Reaches(edges, source, edge.Key))))
+                return (ExportOutcome.Omitted, OmittedCycle);
             if (target.parent == source) return (ExportOutcome.Kept, KeptParent);
             // UniVRM finds expression and first-person renderers by these paths
             // when it writes the file; a moved target would leave them dangling.
