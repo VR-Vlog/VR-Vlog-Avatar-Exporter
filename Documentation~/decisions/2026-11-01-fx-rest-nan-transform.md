@@ -24,7 +24,7 @@ Modular Avatar の Mesh Cutter はビルド時に `NaNimatedBuffer…/NaNimatedB
 - `NeutralAdditionalDataPreflight` は FX 以外の Playable のクリップを調べる。今回の経路ではない。
 - `VrChatExpressionSampler` のシェイプキーだけのクリップと、評価中に Animator とシェイプキーの曲線を調べる箇所は、値を読む曲線だけを調べている。
 - `ValidateClipData` の `ExpressionTransformCurves`・`VrChatGestureExpressions` からの呼び出しは、Transform の値を書き出すので値まで調べる。
-- `HarmlessAppearance` の最後の分岐（表情の評価で、マテリアルなどが準備済みの値と同じクリップ）は、そのクリップを表情として書き出すので値まで調べる。
+- `HarmlessAppearance` の最後の分岐（表情の評価で、マテリアルなどが準備済みの値と同じクリップ）は値まで調べるままにした。この分岐もプローブの中でシェイプキーだけを読むので値を調べなくてよいが、今回の経路（通常時の顔・体形）ではなく、NaN の大きさを持つクリップがここに来ても従来どおり失敗するだけで悪くはならない。
 
 ## 成り立たない場合
 

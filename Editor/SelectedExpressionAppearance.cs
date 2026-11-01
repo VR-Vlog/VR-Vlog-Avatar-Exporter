@@ -13,7 +13,7 @@ namespace VRVlog.LilToonExporter
     internal static class SelectedExpressionAppearance
     {
         // Native sampling runs after authoring/build passes on the committed
-        // hierarchy. A finite Transform curve whose target is actually absent
+        // hierarchy. A Transform curve whose target is actually absent
         // cannot affect that graph, regardless of layer weight or blending.
         // This does not authorize a direct authoring clip before preparation,
         // nor an Animator parameter output without a root Animator component.
