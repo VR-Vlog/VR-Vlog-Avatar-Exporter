@@ -649,6 +649,7 @@ BEHAVIOR_CASES = {
         'PluginPackagesComeFromExportsPluginAndSkipTheExporter': 1,
         'VrcFuryRunsOnTheCopyWhenNothingNeedsNdmf': 1,
         'VrcFuryRunsAfterTransformingAndBeforeTheExportCallback': 1,
+        'NdmfOutputIsSavedEarlyOnlyForVrcFury': 1,
         'FailedVrcFuryBuildFailsThePreparation': 1,
         'VrcFuryIsNotAppliedWithoutAnAvatarDescriptor': 1,
         'VrcFuryWriteDefaultsQuestionIsSkippedOnlyWithoutASetting': 1,
