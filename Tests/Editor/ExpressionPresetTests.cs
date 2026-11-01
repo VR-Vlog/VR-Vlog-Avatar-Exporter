@@ -197,8 +197,9 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                Assert.That(ExperimentalExpressionCaptureWindow.DefaultTime(clip), Is.EqualTo(2).Within(1e-5), "The board shows the same frame.");
+                Assert.That(ExperimentalExpressionCaptureWindow.DefaultTime(null, clip), Is.EqualTo(2).Within(1e-5), "The board shows the same frame.");
                 using var session = new Session(fixture.Source, replayInstalledDefaults: false);
+                Assert.That(session.FaceTime(clip), Is.EqualTo(2).Within(1e-5), "The board reads the same frame with the avatar's rest weights.");
                 session.SetPreset(ExpressionPreset.sad, Session.PresetAssignment.ForClip(ExpressionPreset.sad, clip));
                 Assert.That(session.PresetError(ExpressionPreset.sad, session.Presets[ExpressionPreset.sad]), Is.Null);
                 var bytes = session.Export("Test", "Tests", NoFaces, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });

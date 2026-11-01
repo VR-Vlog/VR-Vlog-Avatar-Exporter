@@ -76,7 +76,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         // The board's list: each clip at its face time, as DefaultTime reads it.
         static (string, AnimationClip, float)[] Listed(params AnimationClip[] clips) =>
-            clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip))).ToArray();
+            clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(null, clip))).ToArray();
 
         // A face on the fixture's front mesh, for the board's list.
         static AnimationClip FaceClip(string name, float weight)
@@ -2437,7 +2437,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source);
                 var original = ExportSourceFingerprint.Compute(fixture.Source);
-                var listed = new[] { ("Smile", clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip)) };
+                var listed = new[] { ("Smile", clip, ExperimentalExpressionCaptureWindow.DefaultTime(session, clip)) };
                 var bytes = session.Export("Existing menu", "Tests", listed, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 var model = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 try
@@ -2950,7 +2950,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(board.Rename(clip, "笑顔 2"), Is.True);
                 Assert.That(board.UsesRecordRoute, Is.True);
                 using var session = new ExperimentalExpressionCaptureSession(fixture.Source, replayInstalledDefaults: false);
-                var listed = new[] { (board.NameOf(clip), clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip)) };
+                var listed = new[] { (board.NameOf(clip), clip, ExperimentalExpressionCaptureWindow.DefaultTime(session, clip)) };
                 var bytes = session.Export("Test", "Tests", listed, new System.Collections.Generic.List<string>(), new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var names = imported.Vrm.Expression.CustomClips.Select(item => item.name).ToArray();

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
@@ -16,30 +17,41 @@ namespace VRVlog.LilToonExporter
     //   least half of the duration. A curve that keeps moving, such as a
     //   sparkle, is not one of them and takes its value at the chosen time.
     // - A hold is a stretch in which every holding curve stands still with
-    //   the same values. The hold whose holding curves sum to the largest
-    //   weight wins; then the longer one, then the earlier one.
-    // - The face is the middle of that hold. Without a hold, the last frame.
+    //   the same values. Each hold scores its length times how far its
+    //   values are from the rest weights; a short blink or a long wait at
+    //   rest does not outscore a face held for long. The highest score wins;
+    //   then the longer hold, then the earlier one.
+    // - The face is the middle of that hold. Without a hold away from rest,
+    //   the last frame.
     internal static class ClipFaceTime
     {
-        internal static float Of(AnimationClip clip)
+        // A clip with every rest at 0, for the board without an avatar.
+        internal static float Of(AnimationClip clip) => Of(clip, _ => 0);
+
+        // rest gives the rest weight of a BlendShape binding, or null for a
+        // binding the face does not use.
+        internal static float Of(AnimationClip clip, Func<EditorCurveBinding, double?> rest)
         {
             if (clip == null) return 0;
             var length = clip.length;
             if (!(length > 0) || float.IsInfinity(length)) return length;
-            var curves = AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape)
-                .Select(binding => AnimationUtility.GetEditorCurve(clip, binding))
-                .Where(curve => curve != null && curve.length > 0)
-                .Select(VrChatGestureExpressions.ConvertCurve);
+            var curves = new List<(ExpressionAnimationData.Curve, double)>();
+            foreach (var binding in AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape))
+            {
+                var weight = rest(binding);
+                var curve = weight == null ? null : AnimationUtility.GetEditorCurve(clip, binding);
+                if (curve != null && curve.length > 0) curves.Add((VrChatGestureExpressions.ConvertCurve(curve), weight.Value));
+            }
             var time = Of(curves, length);
             return time == null ? length : (float)time.Value;
         }
 
-        // Null when no curve changes or no hold exists; the caller keeps the last frame.
-        internal static double? Of(IEnumerable<ExpressionAnimationData.Curve> curves, double duration)
+        // Null when no curve changes or no hold is away from rest; the caller keeps the last frame.
+        internal static double? Of(IEnumerable<(ExpressionAnimationData.Curve Curve, double RestWeight)> curves, double duration)
         {
             if (!(duration > 0) || double.IsInfinity(duration)) return null;
-            var changing = curves.Where(Changes).ToArray();
-            var still = changing.Select(curve => Still(curve, duration)).ToArray();
+            var changing = curves.Where(curve => Changes(curve.Curve)).ToArray();
+            var still = changing.Select(curve => Still(curve.Curve, duration)).ToArray();
             var holding = Enumerable.Range(0, changing.Length)
                 .Where(index => still[index].Sum(span => span.End - span.Start) >= duration / 2).ToArray();
             if (holding.Length == 0) return null;
@@ -47,24 +59,30 @@ namespace VRVlog.LilToonExporter
             foreach (var index in holding)
                 foreach (var span in still[index]) { cuts.Add(span.Start); cuts.Add(span.End); }
             var times = cuts.ToArray();
-            (double Start, double End, double Weight)? best = null;
+            (double Start, double End, double Score)? best = null;
             double runStart = 0, runEnd = 0;
             double[] runValues = null;
             void Close()
             {
                 if (runValues == null) return;
-                var weight = runValues.Sum();
-                if (best == null || weight > best.Value.Weight ||
-                    weight == best.Value.Weight && runEnd - runStart > best.Value.End - best.Value.Start)
-                    best = (runStart, runEnd, weight);
+                var score = (runEnd - runStart) * holding.Select((curve, index) => Math.Abs(runValues[index] - changing[curve].RestWeight)).Sum();
+                if (score > 0 && (best == null || score > best.Value.Score ||
+                    score == best.Value.Score && runEnd - runStart > best.Value.End - best.Value.Start))
+                    best = (runStart, runEnd, score);
                 runValues = null;
             }
             for (var index = 0; index < times.Length - 1; index++)
             {
                 var from = times[index]; var to = times[index + 1];
-                if (!holding.All(curve => still[curve].Any(span => span.Start <= from && to <= span.End))) { Close(); continue; }
-                var middle = (from + to) / 2;
-                var values = holding.Select(curve => changing[curve].Evaluate(middle)).ToArray();
+                var values = new double[holding.Length];
+                var held = true;
+                for (var curve = 0; curve < holding.Length && held; curve++)
+                {
+                    var span = still[holding[curve]].FirstOrDefault(candidate => candidate.Start <= from && to <= candidate.End);
+                    held = span.End > span.Start;
+                    values[curve] = span.Value;
+                }
+                if (!held) { Close(); continue; }
                 // A held stretch that changes value (a stepped key) starts a new hold.
                 if (runValues != null && !values.SequenceEqual(runValues)) Close();
                 if (runValues == null) { runStart = from; runValues = values; }
@@ -72,6 +90,17 @@ namespace VRVlog.LilToonExporter
             }
             Close();
             return best == null ? (double?)null : (best.Value.Start + best.Value.End) / 2;
+        }
+
+        // The value of a curve at a time ClipFaceTime chose: the key value
+        // where the curve stands still, which Curve.Evaluate may miss by a
+        // rounding error between two flat keys; elsewhere Curve.Evaluate.
+        internal static double Value(ExpressionAnimationData.Curve curve, double time, double duration)
+        {
+            if (curve.Keys.Count > 0 && time >= 0 && time <= duration)
+                foreach (var span in Still(curve, duration))
+                    if (span.Start < time && time < span.End) return span.Value;
+            return curve.Evaluate(time);
         }
 
         // The gesture reader animates the same curves (VrChatGestureExpressions.ReadClip).
@@ -84,25 +113,45 @@ namespace VRVlog.LilToonExporter
 
         // The stretches of [0, duration] in which the curve keeps one value, as
         // ExpressionAnimationData.Curve.Evaluate reads it: between two keys of
-        // the same value with flat tangents, after a stepped key, and before
-        // the first or after the last key when the curve clamps there.
-        static List<(double Start, double End)> Still(ExpressionAnimationData.Curve curve, double duration)
+        // the same value with flat tangents, after a stepped key, before the
+        // first and after the last key when the curve clamps there, and the
+        // repeats of the keyed stretches when it loops or ping-pongs there.
+        static List<(double Start, double End, double Value)> Still(ExpressionAnimationData.Curve curve, double duration)
         {
             var keys = curve.Keys;
-            var spans = new List<(double Start, double End)>();
-            void Add(double from, double to)
-            {
-                from = System.Math.Max(0, System.Math.Min(duration, from)); to = System.Math.Max(0, System.Math.Min(duration, to));
-                if (to > from) spans.Add((from, to));
-            }
-            if (curve.PreWrap == "clamp") Add(0, keys[0].Time);
+            var spans = new List<(double Start, double End, double Value)>();
+            var first = keys[0].Time; var last = keys[keys.Count - 1].Time;
+            var keyed = new List<(double Start, double End, double Value)>();
             for (var index = 0; index < keys.Count - 1; index++)
             {
                 var left = keys[index]; var right = keys[index + 1];
                 var stepped = !left.OutTangent.HasValue || !right.InTangent.HasValue;
-                if (stepped || left.Value == right.Value && left.OutTangent == 0 && right.InTangent == 0) Add(left.Time, right.Time);
+                if (right.Time > left.Time && (stepped || left.Value == right.Value && left.OutTangent == 0 && right.InTangent == 0))
+                    keyed.Add((left.Time, right.Time, left.Value));
             }
-            if (curve.PostWrap == "clamp") Add(keys[keys.Count - 1].Time, duration);
+            void Add(double from, double to, double value, double lower, double upper)
+            {
+                from = Math.Max(lower, from); to = Math.Min(upper, to);
+                if (to > from) spans.Add((from, to, value));
+            }
+            void Outside(string wrap, double lower, double upper, double value)
+            {
+                if (!(upper > lower)) return;
+                if (wrap == "clamp") { Add(lower, upper, value, lower, upper); return; }
+                // Curve.Evaluate maps a time outside the keys to
+                // first + phase, with phase folded back for ping-pong.
+                var length = last - first;
+                var period = wrap == "pingPong" ? length * 2 : length;
+                if (!(length > 0) || (upper - lower) / period > 10000) return;
+                var cycle = new List<(double Start, double End, double Value)>(keyed);
+                if (wrap == "pingPong")
+                    cycle.AddRange(keyed.Select(span => (first + period - (span.End - first), first + period - (span.Start - first), span.Value)));
+                for (var turn = Math.Floor((lower - first) / period); first + turn * period < upper; turn++)
+                    foreach (var span in cycle) Add(span.Start + turn * period, span.End + turn * period, span.Value, lower, upper);
+            }
+            Outside(curve.PreWrap, 0, Math.Min(first, duration), keys[0].Value);
+            foreach (var span in keyed) Add(span.Start, span.End, span.Value, 0, duration);
+            Outside(curve.PostWrap, Math.Max(last, 0), duration, keys[keys.Count - 1].Value);
             return spans;
         }
     }

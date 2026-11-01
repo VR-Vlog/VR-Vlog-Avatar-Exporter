@@ -54,13 +54,21 @@ namespace VRVlog.LilToonExporter
 
             // The animation's shape at FaceTime: per channel the two points
             // Channel.Weights picks, at 1 - blend and blend. Points that move
-            // nothing and zero weights are left out.
+            // nothing and zero weights are left out. The value is read as
+            // ClipFaceTime.Value does, so a held value is its key value.
             internal IEnumerable<(ExpressionAnimationData.Point Point, float Weight)> FinalPoints()
             {
                 if (Animation == null) yield break;
                 foreach (var channel in Animation.Channels)
                 {
-                    channel.Weights(FaceTime ?? Animation.Duration, out var left, out var right, out var blend);
+                    var value = FaceTime == null ? channel.Curve.Evaluate(Animation.Duration)
+                        : ClipFaceTime.Value(channel.Curve, FaceTime.Value, Animation.Duration);
+                    // As Channel.Weights, from the value.
+                    var right = 1;
+                    while (right < channel.Points.Count - 1 && value > channel.Points[right].Value) right++;
+                    var left = right - 1;
+                    var blend = (float)Math.Max(0, Math.Min(1,
+                        (value - channel.Points[left].Value) / (channel.Points[right].Value - channel.Points[left].Value)));
                     if (1f - blend != 0f && Moves(channel.Points[left])) yield return (channel.Points[left], 1f - blend);
                     if (blend != 0f && Moves(channel.Points[right])) yield return (channel.Points[right], blend);
                 }

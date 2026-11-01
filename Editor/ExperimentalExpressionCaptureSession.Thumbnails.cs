@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
         }
 
         // The face of a file at its face time (ClipFaceTime), as the board previews it.
-        internal Pose ThumbnailFace(AnimationClip clip) => BuildClipPoseUnchecked(clip, ClipFaceTime.Of(clip), "プレビュー");
+        internal Pose ThumbnailFace(AnimationClip clip) => BuildClipPoseUnchecked(clip, FaceTime(clip), "プレビュー");
 
         // The neutral face with one BlendShape at 100, as a shape assignment exports it.
         internal Pose ThumbnailFace(string path, string shape)

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using VRVlog.Expressions;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -24,6 +25,9 @@ namespace VRVlog.LilToonExporter.Tests
             try { return ClipFaceTime.Of(clip); }
             finally { Object.DestroyImmediate(clip); }
         }
+
+        static ExpressionAnimationData.Curve Curve(WrapMode wrap, params Keyframe[] keys) =>
+            VrChatGestureExpressions.ConvertCurve(new AnimationCurve(keys) { preWrapMode = wrap, postWrapMode = wrap });
 
         [Test]
         public void AFaceThatStartsAtRestIsReadInTheMiddleOfItsHold()
@@ -80,6 +84,55 @@ namespace VRVlog.LilToonExporter.Tests
             var ramp = Clip(("Smile", new[] { new Keyframe(0, 0, 0, 50), new Keyframe(2, 100, 50, 0) }));
             var length = ramp.length;
             Assert.That(TimeOf(ramp), Is.EqualTo(length));
+        }
+
+        [Test]
+        public void ABlinkWithinTheHoldDoesNotOutscoreTheHeldFace()
+        {
+            // The closed eye adds 100 for 0.1 s; the face holds 80 for 3 s and 4.7 s.
+            var time = TimeOf(Clip(
+                ("Sad", new[] { Flat(0, 0), Flat(1, 80), Flat(9, 80), Flat(10, 0) }),
+                ("Close", new[] { Flat(0, 0), Flat(4, 0), Flat(4.1f, 100), Flat(4.2f, 100), Flat(4.3f, 0), Flat(10, 0) })));
+            Assert.That(time, Is.EqualTo(6.65f).Within(1e-4));
+        }
+
+        [Test]
+        public void TheHoldIsMeasuredFromTheRestWeight()
+        {
+            // At rest the shape is 100; the face lowers it to 20 over 3–7 s.
+            var curve = Curve(WrapMode.ClampForever, Flat(0, 100), Flat(2, 100), Flat(3, 20), Flat(7, 20), Flat(8, 100), Flat(10, 100));
+            Assert.That(ClipFaceTime.Of(new[] { (curve, 100.0) }, 10), Is.EqualTo(5).Within(1e-9));
+            // Measured from 0 instead, the rest stretches would win.
+            Assert.That(ClipFaceTime.Of(new[] { (curve, 0.0) }, 10), Is.EqualTo(1).Within(1e-9));
+        }
+
+        [Test]
+        public void HoldsThatOnlyRestKeepTheLastFrame()
+        {
+            var time = TimeOf(Clip(("Close", new[] { Flat(0, 0), Flat(4, 0), Flat(4.1f, 100), Flat(4.2f, 0), Flat(10, 0) })));
+            Assert.That(time, Is.EqualTo(10).Within(1e-5));
+        }
+
+        [Test]
+        public void ALoopingOrPingPongCurveHoldsInEveryRepeat()
+        {
+            // Keys only for 0–4 s of a 12 s face: the loop holds over 1–3, 5–7 and 9–11 s.
+            var loop = Curve(WrapMode.Loop, Flat(0, 0), Flat(1, 100), Flat(3, 100), Flat(4, 0));
+            Assert.That(ClipFaceTime.Of(new[] { (loop, 0.0) }, 12), Is.EqualTo(2).Within(1e-9));
+            // Ping-pong turns back at 2 s: 100 over 0–1 s, then 3–5 s.
+            var pingPong = Curve(WrapMode.PingPong, Flat(0, 100), Flat(1, 100), Flat(2, 0));
+            Assert.That(ClipFaceTime.Of(new[] { (pingPong, 0.0) }, 6), Is.EqualTo(4).Within(1e-9));
+            var looped = Curve(WrapMode.Loop, Flat(0, 100), Flat(1, 100), Flat(2, 0));
+            Assert.That(ClipFaceTime.Of(new[] { (looped, 0.0) }, 6), Is.EqualTo(.5).Within(1e-9));
+        }
+
+        [Test]
+        public void AHeldValueIsItsKeyValue()
+        {
+            var curve = Curve(WrapMode.ClampForever, Flat(0, 0), Flat(1, 75.3f), Flat(2, 75.3f), Flat(3, 0));
+            for (var time = 1.01; time < 2; time += .01)
+                Assert.That(ClipFaceTime.Value(curve, time, 3), Is.EqualTo(curve.Keys[1].Value), time.ToString());
+            Assert.That(ClipFaceTime.Value(curve, .5, 3), Is.EqualTo(curve.Evaluate(.5)));
         }
     }
 }

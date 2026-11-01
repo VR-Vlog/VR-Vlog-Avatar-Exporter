@@ -292,11 +292,15 @@ namespace VRVlog.LilToonExporter
                     }
                 // A moving face is still where it holds its face (ClipFaceTime);
                 // the VRM expression is the animation at that time.
-                var faceTime = ClipFaceTime.Of(plan.Animation.Select(animated => animated.Curve), entry.Duration) ?? entry.Duration;
+                var faceTime = ClipFaceTime.Of(plan.Animation.Select(animated =>
+                {
+                    var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
+                    return (animated.Curve, index >= 0 ? (double)animated.Rest[index] : 0);
+                }), entry.Duration) ?? entry.Duration;
                 foreach (var animated in plan.Animation)
                 {
                     var index = animated.Mesh.GetBlendShapeIndex(animated.Shape);
-                    var face = animated.Curve.Evaluate(faceTime);
+                    var face = ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration);
                     if (index >= 0 && face != animated.Rest[index]) expression.Shapes.Add((animated.Shape, (float)face));
                 }
                 // Binds that change the face at the face time; a zero marker does not.
@@ -359,7 +363,7 @@ namespace VRVlog.LilToonExporter
                         var shape = original.GetBlendShapeIndex(animated.Shape);
                         if (shape < 0) throw new InvalidOperationException("表情の元BlendShapeが見つかりません: " + animated.Shape);
                         animated.Curve.Range(out var minimum, out var maximum);
-                        if (animated.Curve.Evaluate(faceTime) != animated.Rest[shape]) endsAwayFromRest = true;
+                        if (ClipFaceTime.Value(animated.Curve, faceTime, entry.Duration) != animated.Rest[shape]) endsAwayFromRest = true;
                         var channel = new ExpressionAnimationData.Channel { Curve = animated.Curve };
                         expression.Animation.Channels.Add(channel);
                         if (!WithoutOtherRests(animated.Renderer, original, animated.Rest).Contains(shape) &&
