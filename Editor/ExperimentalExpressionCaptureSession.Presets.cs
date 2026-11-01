@@ -190,12 +190,13 @@ namespace VRVlog.LilToonExporter
             if (assignment.IsShape) return new List<(string, string, float)> { (assignment.Path ?? "", assignment.Shape, 100f) };
             var clip = assignment.ResolveClip();
             if (clip == null) throw new InvalidOperationException(ExporterLocalization.T("表情の元クリップが見つかりません。もう一度選んでください。"));
-            BuildClipPoseUnchecked(clip, clip.length, "プレビュー", presetFace: true); // The same file checks as the added faces.
+            var time = ClipFaceTime.Of(clip);
+            BuildClipPoseUnchecked(clip, time, "プレビュー", presetFace: true); // The same file checks as the added faces.
             var root = ClipRoot(clip);
             return AnimationUtility.GetCurveBindings(clip).Where(PoseSampling.IsBlendShape).Select(binding => (
                 string.IsNullOrEmpty(root) ? binding.path : string.IsNullOrEmpty(binding.path) ? root : root + "/" + binding.path,
                 binding.propertyName.Substring("blendShape.".Length),
-                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(clip.length)))
+                AnimationUtility.GetEditorCurve(clip, binding).Evaluate(time)))
                 .Where(morph => !skippedPaths.Contains(morph.Item1)) // As the recorded face drops them.
                 .Where(morph => ShapeOnEitherMesh(morph.Item1, morph.Item2)).ToList();
         }
@@ -264,7 +265,7 @@ namespace VRVlog.LilToonExporter
                     pose = ClonePose(Baseline); pose.Name = PresetLabel(preset);
                     Set(pose, channel.Path, assignment.Shape, 100f);
                 }
-                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), assignment.ResolveClip().length, PresetLabel(preset), presetFace: true);
+                else pose = BuildClipPoseUnchecked(assignment.ResolveClip(), ClipFaceTime.Of(assignment.ResolveClip()), PresetLabel(preset), presetFace: true);
                 ValidatePose(pose);
                 if (!HasGeometryChange(pose)) throw new InvalidOperationException(ExporterLocalization.T("基準の顔と形状が同じです。"));
                 return pose;

@@ -330,7 +330,7 @@ namespace VRVlog.LilToonExporter
             var result = new Dictionary<AnimationClip, string>();
             foreach (var clip in clips.Where(clip => clip != null).Distinct())
             {
-                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, clip.length, "プレビュー"))); }
+                try { result.Add(clip, NoFaceError(clip, BuildClipPoseUnchecked(clip, ClipFaceTime.Of(clip), "プレビュー"))); }
                 catch (InvalidOperationException error) { result.Add(clip, error.Message); }
             }
             return result;

@@ -2268,7 +2268,7 @@ namespace VRVlog.LilToonExporter
         }
 
         Rect ScreenRect(Rect rect) => new Rect(GUIUtility.GUIToScreenPoint(rect.position) - position.position, rect.size);
-        internal static float DefaultTime(AnimationClip clip) => clip == null ? 0 : clip.length;
+        internal static float DefaultTime(AnimationClip clip) => ClipFaceTime.Of(clip);
 
         void PreviewClipInput(ExperimentalExpressionCaptureSession.ClipInput input)
         {

@@ -74,7 +74,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        // The board's list: each clip at its last frame, as DefaultTime reads it.
+        // The board's list: each clip at its face time, as DefaultTime reads it.
         static (string, AnimationClip, float)[] Listed(params AnimationClip[] clips) =>
             clips.Select(clip => (clip.name, clip, ExperimentalExpressionCaptureWindow.DefaultTime(clip))).ToArray();
 
