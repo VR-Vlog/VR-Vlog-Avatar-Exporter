@@ -626,9 +626,17 @@ namespace VRVlog.LilToonExporter.Tests
         public void NdmfOutputIsSavedEarlyOnlyForVrcFury()
         {
             var serialized = 0;
+            var vrcFury = 0;
             FakeContext.SerializeAction = root => serialized++;
+            NdmfExportPreparation.VrcFuryOverride = root => { vrcFury++; return true; };
             using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { })) { }
             Assert.AreEqual(0, serialized);
+            // A VRCFury component without an avatar descriptor is not built,
+            // so nothing is saved for it either.
+            clone.AddComponent<VF.Component.VRCFuryComponent>();
+            using (NdmfExportPreparation.ProcessClone(source, clone, Resolve(), afterTransforming: lease => { })) { }
+            Assert.AreEqual(0, serialized);
+            Assert.AreEqual(0, vrcFury);
         }
 
         [Test]
