@@ -539,8 +539,7 @@ namespace VRVlog.LilToonExporter
         internal static bool TryDescriptor(GameObject source, Func<Transform, bool> excluded, out BlinkShapeBinding binding)
         {
             binding = null;
-            var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (!(VrChatExpressionMenu.Member(descriptor, "enableEyeLook") is bool enabled) || !enabled) return false;
             var settings = VrChatExpressionMenu.Member(descriptor, "customEyeLookSettings");
             // The public SDK enum is Blendshapes. Never use LookingUp/Down slots.
