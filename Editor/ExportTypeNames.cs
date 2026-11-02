@@ -12,6 +12,8 @@ namespace VRVlog.LilToonExporter
         internal const string MaAvatarTag = MaNamespace + "AvatarTagComponent";
         internal const string AaoAvatarTag = "Anatawa12.AvatarOptimizer.AvatarTagComponent";
         internal const string NdmfObjectRegistry = "nadena.dev.ndmf.IObjectRegistry";
+        internal const string FaceEmoMenuRepository = "Suzuryg.FaceEmo.Components.Data.MenuRepositoryComponent",
+            FaceEmoLauncher = "Suzuryg.FaceEmo.Components.FaceEmoLauncherComponent";
 
         // type, then its base types up to object.
         internal static IEnumerable<Type> SelfAndBaseTypes(Type type)

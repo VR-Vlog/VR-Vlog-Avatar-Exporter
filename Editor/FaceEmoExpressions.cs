@@ -528,10 +528,10 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool IsRepository(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.Data.MenuRepositoryComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoMenuRepository;
 
         private static bool IsLauncher(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.FaceEmoLauncherComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoLauncher;
 
         internal static bool TargetsAvatar(GameObject avatar, object settings)
         {
