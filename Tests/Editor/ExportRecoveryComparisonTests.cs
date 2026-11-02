@@ -108,20 +108,28 @@ namespace VRVlog.LilToonExporter.Tests
                 Set(window, "session", session);
                 await window.PrepareAsync();
                 Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                var first = Get<Vrm10Instance>(window, "imported");
+                var firstResources = LoadedResources(first);
+
+                // Loading again releases the first load.
+                await window.PrepareAsync();
+                Assert.That(window.HasVrmPreview, Is.True, Get<string>(window, "error"));
+                Assert.That(first == null, Is.True);
+                Assert.That(Alive(firstResources), Is.Empty);
                 var loaded = Get<Vrm10Instance>(window, "imported");
-                var resources = loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources
-                    .Select(value => (Name: value.Item2.GetType().Name + " " + value.Item2.name, Value: value.Item2)).ToArray();
-                Assert.That(resources.Select(value => value.Value).OfType<VRM10Object>(), Is.Not.Empty);
+                var resources = LoadedResources(loaded);
+                Assert.That(resources.OfType<VRM10Object>(), Is.Not.Empty);
 
                 EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-                Assert.That(resources.Where(value => value.Value == null).Select(value => value.Name), Is.Empty);
+                Assert.That(resources.Where(value => value == null).Count(), Is.Zero, "objects destroyed by opening a scene");
                 Assert.That(loaded.Vrm != null && loaded.GetComponent<Animator>().avatar != null, Is.True);
                 Assert.That(window.HasVrmPreview, Is.True);
 
-                // DontSave keeps them only until the window releases the load.
+                // DontSave keeps them only until the window closes.
                 Object.DestroyImmediate(window); window = null;
-                Assert.That(resources.Where(value => value.Value != null).Select(value => value.Name), Is.Empty);
+                Assert.That(loaded == null, Is.True);
+                Assert.That(Alive(resources), Is.Empty);
             }
             finally
             {
@@ -130,6 +138,9 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        static Object[] LoadedResources(Vrm10Instance loaded) =>
+            loaded.GetComponent<RuntimeGltfInstance>().RuntimeResources.Select(value => value.Item2).ToArray();
+        static string[] Alive(Object[] objects) => objects.Where(value => value != null).Select(value => value.GetType().Name + " " + value.name).ToArray();
         static Vector3[] Corners(Bounds bounds) => (from x in new[] { -1f, 1f }
             from y in new[] { -1f, 1f }
             from z in new[] { -1f, 1f }

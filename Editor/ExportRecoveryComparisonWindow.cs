@@ -18,6 +18,7 @@ namespace VRVlog.LilToonExporter
         private PreviewRenderUtility vrmRender;
         private IDisposable lilToonPreview;
         private Vrm10Instance imported;
+        private Object[] importedResources = new Object[0];
         private CancellationTokenSource loading;
         private Vector3 vrmCenter;
         private float vrmDistance = 3, yaw;
@@ -87,14 +88,15 @@ namespace VRVlog.LilToonExporter
                     throw new InvalidOperationException(ExporterLocalization.T("VRMの再読み込み結果を取得できませんでした。"));
                 if (token.IsCancellationRequested || this == null || revision != previewRevision || session.CheckForChanges())
                 {
-                    DestroyLoaded(loaded);
+                    DestroyLoaded(loaded.gameObject, LoadedResources(loaded));
                     return;
                 }
                 imported = loaded;
+                importedResources = LoadedResources(loaded);
                 // Opening a scene destroys the editor objects no scene keeps, such as the
                 // loaded avatar, VRM settings and expressions. The window keeps them until
-                // DestroyLoaded.
-                foreach (var resource in LoadedResources(loaded)) resource.hideFlags |= HideFlags.DontSave;
+                // ReleasePreview.
+                foreach (var resource in importedResources) resource.hideFlags |= HideFlags.DontSave;
                 // Restore the saved lilToon payload onto the reloaded VRM.
                 // Never substitute a copy of the source avatar for the output.
                 lilToonPreview = ExportVrmLilToonPreview.Apply(attempt.Bytes, imported.gameObject);
@@ -339,12 +341,10 @@ namespace VRVlog.LilToonExporter
 
         private void ReleasePreview()
         {
-            lilToonPreview?.Dispose(); lilToonPreview = null;
-            // Before vrmRender.Cleanup, which destroys the added GameObject and
-            // with it the list of resources to release.
-            if (imported != null) DestroyLoaded(imported);
-            imported = null;
             vrmRender?.Cleanup(); vrmRender = null;
+            lilToonPreview?.Dispose(); lilToonPreview = null;
+            DestroyLoaded(imported != null ? imported.gameObject : null, importedResources);
+            imported = null; importedResources = new Object[0];
         }
 
         private static Object[] LoadedResources(Vrm10Instance loaded) =>
@@ -352,10 +352,9 @@ namespace VRVlog.LilToonExporter
                 .Where(value => value != null && !EditorUtility.IsPersistent(value)).ToArray();
 
         // RuntimeGltfInstance destroys them in OnDestroy, which Unity does not call in Edit mode.
-        private static void DestroyLoaded(Vrm10Instance loaded)
+        private static void DestroyLoaded(GameObject root, Object[] resources)
         {
-            var resources = LoadedResources(loaded);
-            Object.DestroyImmediate(loaded.gameObject);
+            if (root != null) Object.DestroyImmediate(root);
             foreach (var resource in resources) if (resource != null) Object.DestroyImmediate(resource);
         }
     }
