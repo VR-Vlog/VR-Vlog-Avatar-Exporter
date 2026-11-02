@@ -262,6 +262,22 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(required[LipSyncData.Extension], Is.EqualTo("1.0.9"));
         }
 
+        [Test]
+        public void InjectingAgainReplacesTheExtensionAndListsItOnce()
+        {
+            var bytes = GlbDocument.Create(new Dictionary<string, object>
+            {
+                ["asset"] = new Dictionary<string, object> { ["version"] = "2.0" }
+            }, Array.Empty<byte>()).Write();
+            bytes = LipSyncCapture.Inject(bytes, new LipSyncData { DominantViseme = true, TransitionSeconds = .05f });
+            bytes = LipSyncCapture.Inject(bytes, new LipSyncData { DominantViseme = false, TransitionSeconds = .1f });
+            var json = GlbDocument.Read(bytes).Json;
+            Assert.That((List<object>)json["extensionsUsed"], Is.EqualTo(new object[] { LipSyncData.Extension }));
+            var written = LipSyncData.Read(((Dictionary<string, object>)json["extensions"])[LipSyncData.Extension]);
+            Assert.That(written.DominantViseme, Is.False);
+            Assert.That(written.TransitionSeconds, Is.EqualTo(.1f).Within(1e-6f));
+        }
+
         private static void Any(AnimatorStateMachine machine, AnimatorState state, bool fixedDuration, float duration, int value,
             string parameter = LipSyncCapture.VisemeParameter)
         {
