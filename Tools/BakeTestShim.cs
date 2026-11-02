@@ -327,6 +327,5 @@ namespace VRVlog.LilToonExporter
                 UnityEngine.GpuForbidden.Fail("AlphaMaskBaker");
         }
     }
-    internal static class LilToonMobileProfile { internal const int MaximumTextureSize = 2048; internal const int DefaultMaximumTextureSize = 1024; }
 }
 #endif
