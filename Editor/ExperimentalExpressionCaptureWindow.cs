@@ -838,18 +838,8 @@ namespace VRVlog.LilToonExporter
                 if (renderers.Length == 0) throw new InvalidOperationException(ExporterLocalization.T("表示するメッシュがありません。"));
                 var bounds = renderers[0].bounds;
                 foreach (var renderer in renderers.Skip(1)) bounds.Encapsulate(renderer.bounds);
-                var animator = session.Copy.GetComponent<Animator>();
-                var head = animator != null && animator.avatar != null && animator.avatar.isHuman
-                    ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
-                center = head != null ? head.position + Vector3.up * bounds.size.y * .065f : bounds.center;
-                distance = head != null ? Mathf.Max(.35f, bounds.size.y * .65f) : Mathf.Max(.5f, bounds.size.magnitude * 1.2f);
-                preview.camera.fieldOfView = 30;
-                preview.camera.nearClipPlane = .01f; preview.camera.farClipPlane = 100;
-                preview.camera.clearFlags = CameraClearFlags.SolidColor;
-                preview.camera.backgroundColor = new Color(.18f, .18f, .2f);
-                preview.lights[0].intensity = 1;
-                preview.lights[0].transform.rotation = Quaternion.Euler(30, 150, 0);
-                preview.lights[1].intensity = .5f; preview.ambientColor = Color.gray;
+                PreviewRendering.FrameHead(session.Copy, bounds, out center, out distance);
+                PreviewRendering.Apply(preview);
                 yaw = 0; zoom = 1;
                 previewName = ExporterLocalization.T("基準の顔");
                 status = null;
