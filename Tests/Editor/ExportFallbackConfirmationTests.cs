@@ -305,7 +305,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = plain;
                 var report = new ExportRecoveryReport();
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Fallback report", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
                 // An unsupported shader is now approximated by official lilToon
@@ -370,7 +370,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var report = new ExportRecoveryReport();
                 // A warning the caller already has stays once, after the summary.
                 var warnings = new List<string> { "Earlier" };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 // The export is not blocked; the VRM is still written.
                 Assert.That(bytes, Is.Not.Empty);
@@ -426,7 +426,7 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     var report = new ExportRecoveryReport();
                     warnings = new List<string>();
-                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                    var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                         exporterVersion: "0.11.15", lilToonVersion: "2.3.4", excludedObjects: excluded, recoveryReport: report);
                     Assert.That(bytes, Is.Not.Empty);
                     Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(report.Fallbacks.MissingShaderCount));
@@ -458,7 +458,7 @@ namespace VRVlog.LilToonExporter.Tests
                 fixture.Source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>().sharedMaterial = second;
                 var report = new ExportRecoveryReport();
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Missing shader", "Tests", warnings: warnings,
                     exporterVersion: "0.11.15", lilToonVersion: "2.3.4", recoveryReport: report);
                 Assert.That(bytes, Is.Not.Empty);
                 Assert.That(ExportResultList.MissingShaders(report.Fallbacks), Is.EqualTo(2));

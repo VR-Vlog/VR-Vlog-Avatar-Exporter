@@ -122,7 +122,7 @@ namespace VRVlog.LilToonExporter.Tests
                     try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
                     finally { Object.DestroyImmediate(baked); }
                 }
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Independent influencing bone neutral", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Independent influencing bone neutral", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null);
@@ -176,7 +176,7 @@ namespace VRVlog.LilToonExporter.Tests
                 expected = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source,
-                    "Manual blink with retained wardrobe neutral", "Tests", warnings, blinkOptions: options);
+                    "Manual blink with retained wardrobe neutral", "Tests", exporterVersion: null, warnings: warnings, blinkOptions: options);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.Blink, Is.Not.Null);
                 Assert.That(imported.GetComponentsInChildren<Renderer>(true).Any(renderer => renderer.name == "Cap"), Is.False,
@@ -244,7 +244,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var behaviour in expected.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source,
-                    "Stripped marker with retained wardrobe neutral", "Tests", warnings, excludedObjects: new[] { markerObject },
+                    "Stripped marker with retained wardrobe neutral", "Tests", exporterVersion: null, warnings: warnings, excludedObjects: new[] { markerObject },
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(VrmTrackingExpressions.Names.All(name => imported.Vrm.Expression.CustomClips.Any(clip => clip.name == name)), Is.True,
@@ -338,7 +338,7 @@ namespace VRVlog.LilToonExporter.Tests
                     Assert.That(plain.Disabled && plain.UnresolvedAutomatic, Is.True,
                         "The static face has no remaining closure range; export must evaluate its FX defaults first.");
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX neutral automatic blink", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX neutral automatic blink", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "prepared-neutral-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null);
                 Assert.That(warnings.Any(warning => warning.StartsWith(ExporterLocalization.T(BlinkExportSession.UnresolvedAutomaticWarning), StringComparison.Ordinal)), Is.False,

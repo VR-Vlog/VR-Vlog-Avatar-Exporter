@@ -186,7 +186,7 @@ namespace VRVlog.LilToonExporter.Tests
                     route.Removed = true;
                 };
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Stage guard", "Tests", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Stage guard", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report,
                     authorCopyExpressions: (clone, _) =>
@@ -344,7 +344,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(GameObject source, ExportRecoveryReport report, ICollection<string> warnings) =>
-            UniVrmOneClickExporter.Export(source, "Stage guard", "Tests", warnings,
+            UniVrmOneClickExporter.Export(source, "Stage guard", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
     }

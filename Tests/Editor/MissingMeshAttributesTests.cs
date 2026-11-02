@@ -389,7 +389,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (skinned) fixture.Targets.Single().GetComponent<SkinnedMeshRenderer>().SetBlendShapeWeight(0, 35);
             var before = fixture.Snapshot();
             var warnings = new List<string>();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Root, "Missing mesh attributes", "Tests", warnings,
+            var bytes = UniVrmOneClickExporter.Export(fixture.Root, "Missing mesh attributes", "Tests", warnings: warnings,
                 exporterVersion: fullLilToon ? "mesh-attribute-regression" : null,
                 lilToonVersion: fullLilToon ? "2.3.4" : null,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, keepEmptyPresets: Fixture.KeepNeutralEmpty);

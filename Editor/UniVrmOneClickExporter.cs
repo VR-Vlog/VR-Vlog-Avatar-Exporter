@@ -129,8 +129,8 @@ namespace VRVlog.LilToonExporter
             if (moved.Length > 0) throw new InvalidOperationException(MovedHumanBones + string.Join(", ", moved));
         }
 
-        public static byte[] Export(GameObject source, string avatarName, string author, ICollection<string> warnings = null, bool suppressSharedTextureEmission = false,
-            string exporterVersion = null, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
+        public static byte[] Export(GameObject source, string avatarName, string author, string exporterVersion, ICollection<string> warnings = null,
+            bool suppressSharedTextureEmission = false, string lilToonVersion = null, bool suppressHdrTextureEmission = false,
             IEnumerable<GameObject> excludedObjects = null, ExportGimmickOptions gimmickOptions = null, BlinkExportOptions blinkOptions = null, PoseExportOptions poseOptions = null,
             ExportRecoveryOptions recoveryOptions = null, ExportRecoveryReport recoveryReport = null, AvatarLicenseOptions licenseOptions = null, bool disableAudioLink = false,
             GameObject recoverySource = null, Func<Material, Material> recoveryMaterialSource = null, Action<GameObject, ICollection<string>> authorCopyExpressions = null,

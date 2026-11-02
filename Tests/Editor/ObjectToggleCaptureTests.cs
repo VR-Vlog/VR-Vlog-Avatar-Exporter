@@ -377,7 +377,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         static byte[] Export(GameObject source, ICollection<string> warnings, ExportRecoveryReport report) =>
-            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings,
+            UniVrmOneClickExporter.Export(source, "Object toggles", "Tests", warnings: warnings,
                 exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                 gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);

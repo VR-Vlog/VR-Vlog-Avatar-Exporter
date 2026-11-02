@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
             var blink = ProjectBlink(true, weight);
             var settings = ProjectSettings(blink);
             Attach(fixture.Source, settings);
-            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Project UniVRM", "Tests"));
+            var glb = GlbDocument.Read(UniVrmOneClickExporter.Export(fixture.Source, "Project UniVRM", "Tests", exporterVersion: null));
             var extension = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
             var presets = (Dictionary<string, object>)((Dictionary<string, object>)extension["expressions"])["preset"];
             var exported = (Dictionary<string, object>)presets["blink"];

@@ -441,7 +441,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(avatar, "Projected face", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(avatar, "Projected face", "Tests", warnings: warnings,
                     exporterVersion: "face-projection-regression", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: new[] { ("Gesture", (AnimationClip)selected.motion, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.GreaterThan(0), string.Join("\n", warnings));

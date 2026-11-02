@@ -416,7 +416,7 @@ namespace VRVlog.LilToonExporter.Tests
             try
             {
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Box regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Box regression", "Tests", warnings: warnings,
                     exporterVersion: fullLilToon ? "box-regression" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));

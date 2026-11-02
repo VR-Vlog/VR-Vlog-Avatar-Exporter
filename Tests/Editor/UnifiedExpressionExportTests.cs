@@ -129,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }).ToArray();
                 fixture.Source.AddComponent<VrmTrackingMarker>().profile = profile;
                 var nativePoses = NativePoses(fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(), 0, 60);
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Explicit ARKit", "Tests", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Explicit ARKit", "Tests", exporterVersion: null, blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported.Vrm.Expression.CustomClips.Count, Is.EqualTo(52));
                 Assert.That(imported.Vrm.Expression.CustomClips.Any(clip => clip.name.StartsWith("UE/", StringComparison.Ordinal)), Is.False);
@@ -242,7 +242,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // then opt out of blink for this authored-preservation probe.
                 var noBlink = authoredWeight == 0 && !otherMeshUncovered;
                 if (noBlink) AssertExportsWithoutBlink(fixture.Source, "Authored UE coverage");
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored UE coverage", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Authored UE coverage", "Tests", exporterVersion: null,
                     blinkOptions: noBlink ? new BlinkExportOptions { Mode = BlinkExportMode.None } : null);
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 var retained = imported.Vrm.Expression.CustomClips.Single(value => value.name == clip.name);
@@ -410,7 +410,7 @@ namespace VRVlog.LilToonExporter.Tests
                     fixture.Mesh.AddBlendShapeFrame(evidence, 100, Enumerable.Repeat(Vector3.right * .01f, fixture.Mesh.vertexCount).ToArray(), null, null);
                 foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
                 Assert.That(UnifiedExpressionPreparation.HasUsableEvidence(fixture.Source), Is.EqualTo(evidence.Length > 0));
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "UE whole-face toggles", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "UE whole-face toggles", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(VrmUnifiedExpressions.HasUsableEvidence(bytes), Is.EqualTo(evidence.Length > 0));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
@@ -1330,7 +1330,7 @@ namespace VRVlog.LilToonExporter.Tests
             bool suppressSharedTextureEmission = false, bool suppressHdrTextureEmission = false)
         {
             var warnings = new List<string>();
-            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(source, avatarName, "Tests", warnings,
+            Assert.DoesNotThrow(() => UniVrmOneClickExporter.Export(source, avatarName, "Tests", warnings: warnings,
                 suppressSharedTextureEmission: suppressSharedTextureEmission, suppressHdrTextureEmission: suppressHdrTextureEmission,
                 exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null));
             Assert.That(warnings, Has.Member(ExporterLocalization.T(BlinkExportSession.MissingAutomaticWarning)));

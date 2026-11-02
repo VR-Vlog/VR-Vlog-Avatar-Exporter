@@ -658,7 +658,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }
@@ -695,7 +695,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }
@@ -740,7 +740,7 @@ namespace VRVlog.LilToonExporter.Tests
             byte[] bytes;
             try
             {
-                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", new List<string>(),
+                bytes = UniVrmOneClickExporter.Export(fixture.Source, "Constraint", "Tests", warnings: new List<string>(),
                     exporterVersion: "0.11.8", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
             }

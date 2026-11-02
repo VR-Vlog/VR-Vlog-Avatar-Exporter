@@ -260,7 +260,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var reference = replaceType.GetField("targetObject").GetValue(replace);
                 reference.GetType().GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { original.gameObject });
 
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Installed MA replacement neutral", "Tests",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Installed MA replacement neutral", "Tests", exporterVersion: null,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 imported.Runtime.Process();

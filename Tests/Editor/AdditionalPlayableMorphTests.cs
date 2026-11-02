@@ -343,7 +343,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 reference = Object.Instantiate(fixture.Source);
                 foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Additional playable regression", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Additional playable regression", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null); Assert.That(imported.Vrm.Expression.CustomClips.Any(value => value.name == endpoint.name), Is.True);

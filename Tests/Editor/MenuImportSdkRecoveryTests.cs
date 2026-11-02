@@ -51,7 +51,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Directory.CreateDirectory(directory); var existing = new byte[] { 61, 62, 63 }; File.WriteAllBytes(destination, existing);
                 var faces = new[] { ("Menu face", menus.FaceClip("Menu face", 75), 0f), ("Gesture face", menus.FaceClip("Gesture face", 85), 0f) };
                 var session = new ExportRecoverySession(f.Source, destination, (options, report, warnings) =>
-                    UniVrmOneClickExporter.Export(f.Source, "Menu recovery integration", "Tests", warnings,
+                    UniVrmOneClickExporter.Export(f.Source, "Menu recovery integration", "Tests", warnings: warnings,
                         exporterVersion: "menu-recovery-test", lilToonVersion: "2.3.4",
                         gimmickOptions: new ExportGimmickOptions { AutoExclude = false },
                         blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, poseOptions: poseOptions,

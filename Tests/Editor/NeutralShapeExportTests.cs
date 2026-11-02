@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 SetFx(fixture.Source, descriptorType, folder, clip);
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX default constant shape", "Tests", warnings,
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX default constant shape", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 imported.Runtime.Process();
@@ -183,7 +183,7 @@ namespace VRVlog.LilToonExporter.Tests
                     throw new InvalidOperationException("injected " + stage);
                 };
                 var report = new ExportRecoveryReport { ContinueOnStageFailure = true };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX rest left out", "Tests", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "FX rest left out", "Tests", exporterVersion: null, warnings: new List<string>(),
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, recoveryReport: report);
                 Assert.That(fired, Is.EqualTo(1));
                 Assert.That(report.Succeeded, Is.True);

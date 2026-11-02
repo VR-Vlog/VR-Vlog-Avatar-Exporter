@@ -143,7 +143,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 // The export made again keeps one copy of each warning.
                 var warnings = new List<string> { "Earlier" };
-                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
+                var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MatCap limit", "Tests", warnings: warnings, exporterVersion: "0.10.0", lilToonVersion: "2.3.4",
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(warnings, Is.Unique);
                 Assert.That(warnings, Does.Contain("Earlier"));

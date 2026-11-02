@@ -687,7 +687,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = plain;
             var report = new ExportRecoveryReport();
             var warnings = new List<string>();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings,
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Substituted", "Tests", warnings: warnings,
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);
@@ -711,7 +711,7 @@ namespace VRVlog.LilToonExporter.Tests
             skins[0].sharedMaterial = official;
             foreach (var skin in skins.Skip(1)) skin.sharedMaterial = screen;
             var report = new ExportRecoveryReport();
-            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", new List<string>(),
+            var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Screen", "Tests", warnings: new List<string>(),
                 exporterVersion: "tests", lilToonVersion: "2.3.4", recoveryReport: report,
                 blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
             var glb = GlbDocument.Read(bytes);

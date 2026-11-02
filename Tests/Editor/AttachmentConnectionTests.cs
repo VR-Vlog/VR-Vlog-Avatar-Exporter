@@ -415,7 +415,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // Use the same complete entry point as the window: no target
                 // selection callback, preview, or manual Attach call.
                 f.Mesh.colors = Enumerable.Range(0, f.Mesh.vertexCount).Select(i => new Color(.25f + i*.1f,.6f,.7f,.8f - i*.1f)).ToArray();
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Automatic MA hair", "Test", warnings,
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Automatic MA hair", "Test", warnings: warnings,
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(sourceHair.parent, Is.SameAs(f.Source.transform));
                 Assert.That(f.Source.GetComponentsInChildren<Transform>(true).Select(t => t.localToWorldMatrix), Is.EqualTo(sourceBefore));
@@ -480,7 +480,7 @@ namespace VRVlog.LilToonExporter.Tests
                 front.bones = new[] { outside, head };
                 front.rootBone = outside;
                 var warnings = new List<string>();
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Outside bones", "Test", warnings,
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Outside bones", "Test", warnings: warnings,
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(bytes, Is.Not.Empty);
                 var prefix = ExporterLocalization.T(UniVrmOneClickExporter.OutsideBonesDropped);

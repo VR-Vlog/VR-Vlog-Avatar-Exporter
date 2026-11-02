@@ -48,7 +48,7 @@ namespace VRVlog.LilToonExporter.Tests
             Vrm10Instance imported = null;
             try
             {
-                var bytes = UniVrmOneClickExporter.Export(f.Source, "Mirrored prop", "Test", new List<string>(),
+                var bytes = UniVrmOneClickExporter.Export(f.Source, "Mirrored prop", "Test", warnings: new List<string>(),
                     exporterVersion: "0.9.0", lilToonVersion: "2.3.4", blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
                 Assert.That(f.Source.GetComponentsInChildren<Transform>(true).Select(t => t.localToWorldMatrix), Is.EqualTo(sourceBefore),
                     "The source avatar is not changed.");

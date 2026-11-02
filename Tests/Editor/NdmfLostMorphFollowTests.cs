@@ -119,7 +119,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var blink = new BlinkExportOptions { Mode = BlinkExportMode.Manual };
                 blink.Both.Add(new BlinkShapeBinding { Renderer = Front, Shape = "Face blink", Weight = 100 });
-                return UniVrmOneClickExporter.Export(Fixture.Source, "NDMF lost morph", "Tests", warnings,
+                return UniVrmOneClickExporter.Export(Fixture.Source, "NDMF lost morph", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: blink, recoveryReport: report, descriptorVisemes: visemes);
             }
 

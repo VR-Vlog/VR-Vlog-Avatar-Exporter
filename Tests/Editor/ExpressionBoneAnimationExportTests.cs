@@ -181,7 +181,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal AnimationClip Add(AnimationClip clip) { AssetDatabase.AddObjectToAsset(clip, Controller); return clip; }
 
             internal byte[] Export(List<string> warnings, params AnimationClip[] faces) =>
-                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", warnings,
+                UniVrmOneClickExporter.Export(Fixture.Source, "Expression bones", "Tests", exporterVersion: null, warnings: warnings,
                     blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None },
                     listFaces: faces.Select(face => (face.name, face, 0f)).ToList());
 
