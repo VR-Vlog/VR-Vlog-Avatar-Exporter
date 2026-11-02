@@ -45,5 +45,5 @@ NDMF が `DontSave` のオブジェクトを保存するときに Unity が内�
 ## 確かめたこと
 
 - `NdmfSharedObjectTests` を実物の NDMF と Modular Avatar で回した。取り出しの呼び出しを外すと、1 回目の書き出しのあとでコピーのマテリアルが消えて落ちる。入れると 2 回続けて書き出しても全部残り、一時フォルダーも残らない。
-- `NdmfPreparationTests` に、ビルドの前からあるものは残り、ビルド中に作ったものは消えることを、NDMF の経路と NDMF を通らない経路の 2 本で足した。CI で必ず回るよう、`NdmfSharedObjectTests` は `INTEGRATION_CASES` に、この 2 本は `BEHAVIOR_CASES` に載せ、Unity を使わない検査（`Tools/run-ndmf-preparation-tests.ps1`）のシムにも必要な API を足した。
+- `NdmfPreparationTests` に、ビルドの前からあるものは残り、ビルド中に作ったものは消えることを、NDMF の経路と NDMF を通らない経路の 2 本で足した。Unity の回帰プロファイル（`Tools/run-unity-compatibility.py`）で必ず回るよう、`NdmfSharedObjectTests` は `INTEGRATION_CASES` に、この 2 本は `BEHAVIOR_CASES` に載せた。PR の CI で回る Unity を使わない検査（`Tools/run-ndmf-preparation-tests.ps1`）のシムにも必要な API を足した。
 - 実物のアバターを修正前（1.5.2）と修正後で 2 回ずつ書き出した。glTF の bin は完全に一致し、JSON の違いは毎回ランダムに付く画像名の GUID 1 か所だけだった。控えを取る時間は、読み込み済み 6262 個で 6 ms だった。
