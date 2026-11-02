@@ -142,11 +142,11 @@ namespace VRVlog.LilToonExporter
             foreach (var component in avatar.GetComponentsInChildren<Component>(true))
             {
                 if (component == null) continue;
-                var name = component.GetType().Name;
+                var type = component.GetType().FullName;
                 var parameter = Member(component, "parameter") as string;
                 if (string.IsNullOrEmpty(parameter)) continue;
-                if (name == "VRCContactReceiver") result.ExternalParameters.Add(parameter);
-                if (name == "VRCPhysBone")
+                if (type == ExportGimmickRules.ContactReceiver) result.ExternalParameters.Add(parameter);
+                if (type == PhysBoneSpringExport.PhysBoneType)
                     foreach (var suffix in new[] { "_IsGrabbed", "_IsPosed", "_Angle", "_Stretch", "_Squish" })
                         result.ExternalParameters.Add(parameter + suffix);
             }

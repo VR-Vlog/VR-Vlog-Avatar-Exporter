@@ -15,7 +15,6 @@ namespace VRVlog.LilToonExporter
     {
         static readonly string[] BodyTrackingParts = { "trackingLeftHand", "trackingRightHand", "trackingHip", "trackingLeftFoot", "trackingRightFoot", "trackingLeftFingers", "trackingRightFingers" };
         internal const string NotBodyPoseMessage = "体の姿勢を変えないメニューです。";
-        static bool TrackingControl(StateMachineBehaviour b) => b != null && b.GetType().Name == "VRCAnimatorTrackingControl";
         internal static object Member(object value, string name) => VrChatExpressionMenu.Member(value, name);
         internal static IEnumerable<object> Items(object value) => value is IEnumerable e ? e.Cast<object>() : Enumerable.Empty<object>();
         internal static List<PoseCandidate> Read(GameObject avatar, VrChatMenuImportPolicy menuPolicy = null)
@@ -92,19 +91,19 @@ namespace VRVlog.LilToonExporter
                             // affect clips in other (even bodyless) layers.
                             // Do not replace externally tracked limbs with a
                             // snapshot of the animation they would override.
-                            foreach (var b in behaviours.Where(TrackingControl))
+                            foreach (var b in behaviours.Where(VrChatParameterDriver.IsTracking))
                                 foreach (var part in BodyTrackingParts)
                                 {
                                     var mode = Member(b, part)?.ToString();
                                     if (mode != "Animation")
                                         throw new InvalidOperationException("体・手足・指のTracking Controlが外部入力・履歴に依存します（Animation指定が必要）: " + part);
                                 }
-                            var controls = behaviours.Any(b => b == null || !Tracking(b) || TrackingControl(b));
+                            var controls = behaviours.Any(b => b == null || !Tracking(b) || VrChatParameterDriver.IsTracking(b));
                             var writesDefaults = controllerHasBody && all.Any(s => s.writeDefaultValues);
                             if (!hasBody && !controls && !writesDefaults) continue;
                             if (layer.syncedLayerIndex >= 0) throw new InvalidOperationException("同期Animatorレイヤーは未対応です。");
                             foreach (var b in behaviours)
-                                if (b == null || !Tracking(b) && b.GetType().Name != "VRCPlayableLayerControl")
+                                if (b == null || !Tracking(b) && !VrChatSdkTypes.Is(b, VrChatSdkTypes.PlayableLayerControl))
                                     throw new InvalidOperationException("外部操作・パラメーター変更を伴うBehaviourは未対応です: " + (b == null ? "missing" : b.GetType().Name));
                             var state = Resolve(layer.stateMachine, entry.Parameters, menu.ExternalParameters, parameters: ExpressionDependencies.UniqueParameters(controller));
                             if (state == null) continue;
@@ -115,7 +114,7 @@ namespace VRVlog.LilToonExporter
                                     throw new InvalidOperationException("Button解除後にAnimator状態が変わるため、静止姿勢の持続を確定できません。");
                                 row.Note = "Button解除後も同じ静止状態が維持される登録です。";
                             }
-                            if (state.behaviours.Concat(AncestorBehaviours(layer.stateMachine, state)).Any(TrackingControl))
+                            if (state.behaviours.Concat(AncestorBehaviours(layer.stateMachine, state)).Any(VrChatParameterDriver.IsTracking))
                                 animatedTracking.Add((type, i == 0 ? 1 : layer.defaultWeight));
                             if (Behaviours(layer.stateMachine).Any(b => !Tracking(b)))
                                 throw new InvalidOperationException("StateMachine Behaviourによる重み変更は未対応です。");
@@ -268,12 +267,12 @@ namespace VRVlog.LilToonExporter
             catch (Exception) { return false; }
         }
         // SDK controls that only carry data and never write parameters.
-        static bool KnownControl(StateMachineBehaviour b)
+        static readonly string[] KnownControls =
         {
-            var name = b.GetType().Name;
-            return name == "VRCAnimatorTrackingControl" || name == "VRCAnimatorLocomotionControl" || name == "VRCPlayableLayerControl" ||
-                name == "VRCAnimatorLayerControl" || name == "VRCAnimatorTemporaryPoseSpace" || name == "VRCAnimatorPlayAudio";
-        }
+            VrChatSdkTypes.TrackingControl, VrChatSdkTypes.LocomotionControl, VrChatSdkTypes.PlayableLayerControl,
+            VrChatSdkTypes.AnimatorLayerControl, VrChatSdkTypes.TemporaryPoseSpace, VrChatSdkTypes.PlayAudio
+        };
+        static bool KnownControl(StateMachineBehaviour b) => KnownControls.Any(name => VrChatSdkTypes.Is(b, name));
         // Every parameter that can steer the graph: transition conditions
         // (any-state, state, entry, sub-state-machine), state parameters and
         // blend tree parameters. Wider than transitions alone on purpose; muted
@@ -415,7 +414,7 @@ namespace VRVlog.LilToonExporter
             }
             return false;
         }
-        static bool Tracking(StateMachineBehaviour b) => b != null && (b.GetType().Name == "VRCAnimatorTrackingControl" || b.GetType().Name == "VRCAnimatorLocomotionControl");
+        static bool Tracking(StateMachineBehaviour b) => VrChatParameterDriver.IsTracking(b) || VrChatSdkTypes.Is(b, VrChatSdkTypes.LocomotionControl);
         internal static bool HasBody(AnimationClip clip, bool skipMuscles = false, ISet<string> bodyPaths = null) => clip != null && AnimationUtility.GetCurveBindings(clip).Any(b =>
             !skipMuscles && b.type == typeof(Animator) && b.path == "" && PoseSampling.IsBodyMuscle(b.propertyName) ||
             b.type == typeof(Transform) && bodyPaths?.Contains(b.path) == true &&

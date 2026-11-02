@@ -41,46 +41,28 @@ namespace VRVlog.LilToonExporter
             "EyeHeightAsPercent", "IsAnimatorEnabled", "PreviewMode"
         }, StringComparer.Ordinal);
 
-        internal static bool IsDriver(StateMachineBehaviour value) => value != null &&
-            (value.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver" ||
-             value.GetType().FullName == "VRC.SDKBase.VRC_AvatarParameterDriver");
+        internal static bool IsDriver(StateMachineBehaviour value) => VrChatSdkTypes.Is(value, VrChatSdkTypes.ParameterDriver);
 
-        internal static bool IsTracking(StateMachineBehaviour value) => value != null &&
-            (value.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAnimatorTrackingControl" ||
-             value.GetType().FullName == "VRC.SDKBase.VRC_AnimatorTrackingControl");
+        internal static bool IsTracking(StateMachineBehaviour value) => VrChatSdkTypes.Is(value, VrChatSdkTypes.TrackingControl);
 
         // Known SDK controls are data only. The body targets cannot change the
         // sampled FX morphs; FX commands require a separate neutral-gate proof.
-        private static bool ReadPlayableControl(StateMachineBehaviour value, out string target, out float weight, out float duration)
+        // A malformed playable control is not a known one.
+        private static SdkLayerWeightControl PlayableControl(StateMachineBehaviour value)
         {
-            target = null; weight = duration = 0;
-            if (value == null || (value.GetType().FullName != "VRC.SDK3.Avatars.Components.VRCPlayableLayerControl" &&
-                value.GetType().FullName != "VRC.SDKBase.VRC_PlayableLayerControl")) return false;
-            using (var data = new SerializedObject(value))
-            {
-                var layer = data.FindProperty("layer");
-                var goal = data.FindProperty("goalWeight");
-                var blend = data.FindProperty("blendDuration");
-                if (layer == null || layer.propertyType != SerializedPropertyType.Enum ||
-                    goal == null || goal.propertyType != SerializedPropertyType.Float ||
-                    blend == null || blend.propertyType != SerializedPropertyType.Float) return false;
-                var index = layer.enumValueIndex;
-                if (index < 0 || index >= layer.enumNames.Length) return false;
-                target = layer.enumNames[index]; weight = goal.floatValue; duration = blend.floatValue;
-                return (target == "Action" || target == "Gesture" || target == "Additive" || target == "FX") &&
-                    !float.IsNaN(weight) && !float.IsInfinity(weight) && weight >= 0 && weight <= 1 &&
-                    !float.IsNaN(duration) && !float.IsInfinity(duration) && duration >= 0;
-            }
+            if (!VrChatSdkTypes.Is(value, VrChatSdkTypes.PlayableLayerControl)) return null;
+            SdkLayerWeightControl.TryRead(value, null, 0, out var control);
+            return control;
         }
 
         internal static bool IsNonFxPlayableControl(StateMachineBehaviour value) =>
-            ReadPlayableControl(value, out var target, out _, out _) && target != "FX";
+            PlayableControl(value) is SdkLayerWeightControl control && control.Playable != "FX";
 
         internal static bool ReadInstantFxControl(StateMachineBehaviour value, string location, out Program program)
         {
             program = null;
-            if (!ReadPlayableControl(value, out var target, out var weight, out var duration) || target != "FX" || duration != 0) return false;
-            program = new Program { Location = location, FxControl = true, FxWeight = weight };
+            if (!(PlayableControl(value) is SdkLayerWeightControl control) || control.Playable != "FX" || control.BlendDuration != 0) return false;
+            program = new Program { Location = location, FxControl = true, FxWeight = control.GoalWeight };
             return true;
         }
 
@@ -88,8 +70,7 @@ namespace VRVlog.LilToonExporter
         // or its parameters. Keep the separate body-pose restrictions intact.
         internal static bool IsLocomotionControl(StateMachineBehaviour value)
         {
-            if (value == null || (value.GetType().FullName != "VRC.SDK3.Avatars.Components.VRCAnimatorLocomotionControl" &&
-                value.GetType().FullName != "VRC.SDKBase.VRC_AnimatorLocomotionControl")) return false;
+            if (!VrChatSdkTypes.Is(value, VrChatSdkTypes.LocomotionControl)) return false;
             using (var data = new SerializedObject(value))
             {
                 var disabled = data.FindProperty("disableLocomotion");
@@ -100,8 +81,7 @@ namespace VRVlog.LilToonExporter
         // facial graph. Do not invoke the SDK timing callbacks/runtime delegates.
         internal static bool IsTemporaryPoseSpace(StateMachineBehaviour value)
         {
-            if (value == null || (value.GetType().FullName != "VRC.SDK3.Avatars.Components.VRCAnimatorTemporaryPoseSpace" &&
-                value.GetType().FullName != "VRC.SDKBase.VRC_AnimatorTemporaryPoseSpace")) return false;
+            if (!VrChatSdkTypes.Is(value, VrChatSdkTypes.TemporaryPoseSpace)) return false;
             using (var data = new SerializedObject(value))
             {
                 var enter = data.FindProperty("enterPoseSpace");
@@ -188,22 +168,32 @@ namespace VRVlog.LilToonExporter
             return false;
         }
 
-        internal static void ValidateTargets(Program program, IDictionary<string, AnimatorControllerParameterType> types,
-            ISet<string> needed)
+        // The operations whose destinations are needed, with their labels. A
+        // program that could not be read stops before any of them.
+        private static IEnumerable<(Operation Operation, string Label)> Needed(Program program, ISet<string> needed)
         {
             if (program.Error != null) throw new InvalidOperationException(program.Location + " / Parameter Driver: " + program.Error);
             for (var index = 0; index < program.Operations.Count; index++)
             {
                 var operation = program.Operations[index];
-                if (!needed.Contains(operation.Destination)) continue;
-                var label = program.Location + " / Parameter Driver " + (index + 1) + " (" + operation.Kind + " → " + operation.Destination + ")";
+                if (needed.Contains(operation.Destination))
+                    yield return (operation, program.Location + " / Parameter Driver " + (index + 1) + " (" + operation.Kind + " → " + operation.Destination + ")");
+            }
+        }
+
+        private static bool Writable(IDictionary<string, AnimatorControllerParameterType> types, string name, out AnimatorControllerParameterType type) =>
+            types.TryGetValue(name, out type) && type != AnimatorControllerParameterType.Trigger;
+
+        internal static void ValidateTargets(Program program, IDictionary<string, AnimatorControllerParameterType> types,
+            ISet<string> needed)
+        {
+            foreach (var (operation, label) in Needed(program, needed))
+            {
                 if (!operation.UnresolvedRandom && operation.Error != null)
                     throw new InvalidOperationException(label + ": " + operation.Error);
-                if (BuiltIn.Contains(operation.Destination) || !types.TryGetValue(operation.Destination, out var type) ||
-                    type == AnimatorControllerParameterType.Trigger)
+                if (BuiltIn.Contains(operation.Destination) || !Writable(types, operation.Destination, out var type))
                     throw new InvalidOperationException(label + ": Parameter Driver の書き込み先の型が不正です。");
-                if (operation.Kind == "Copy" && (string.IsNullOrEmpty(operation.Source) || !types.TryGetValue(operation.Source, out var sourceType) ||
-                    sourceType == AnimatorControllerParameterType.Trigger))
+                if (operation.Kind == "Copy" && (string.IsNullOrEmpty(operation.Source) || !Writable(types, operation.Source, out _)))
                     throw new InvalidOperationException(label + ": Parameter Driver Copy の参照先の型が不正です。");
                 if (operation.Kind == "Add" && type == AnimatorControllerParameterType.Bool)
                     throw new InvalidOperationException(label + ": Bool への Add は未対応です。");
@@ -215,18 +205,14 @@ namespace VRVlog.LilToonExporter
             ISet<string> suppliedInputs = null)
         {
             if (program.LocalOnly && !isLocal) return;
-            if (program.Error != null) throw new InvalidOperationException(program.Location + " / Parameter Driver: " + program.Error);
-            for (var index = 0; index < program.Operations.Count; index++)
+            // Known SDK operations whose destinations cannot reach this
+            // expression need not be approximated (including Random).
+            foreach (var (op, label) in Needed(program, needed))
             {
-                var op = program.Operations[index];
-                // Known SDK operations whose destinations cannot reach this
-                // expression need not be approximated (including Random).
-                if (!needed.Contains(op.Destination)) continue;
-                var label = program.Location + " / Parameter Driver " + (index + 1) + " (" + op.Kind + " → " + op.Destination + ")";
                 try
                 {
                     if (BuiltIn.Contains(op.Destination)) throw new InvalidOperationException("VRChat組み込みパラメーターへの書き込みはできません。");
-                    if (!types.TryGetValue(op.Destination, out var type) || type == AnimatorControllerParameterType.Trigger)
+                    if (!Writable(types, op.Destination, out var type))
                         throw new InvalidOperationException("書き込み先の型を解決できません。");
                     if (op.UnresolvedRandom) throw new RandomCapability(op.Error);
                     if (op.Error != null) throw new InvalidOperationException(op.Error);
@@ -235,7 +221,7 @@ namespace VRVlog.LilToonExporter
                     {
                         if (BuiltIn.Contains(op.Source) && suppliedInputs?.Contains(op.Source) != true)
                             throw new InvalidOperationException("VRChat組み込みパラメーターをCopy元として再現できません。");
-                        if (!types.TryGetValue(op.Source, out var sourceType) || sourceType == AnimatorControllerParameterType.Trigger)
+                        if (!Writable(types, op.Source, out _))
                             throw new InvalidOperationException("Copy元の型を解決できません: " + op.Source);
                         value = read(op.Source);
                         if (op.ConvertRange)
