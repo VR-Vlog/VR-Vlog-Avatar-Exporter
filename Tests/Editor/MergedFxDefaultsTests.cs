@@ -9,8 +9,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -88,23 +86,14 @@ namespace VRVlog.LilToonExporter.Tests
         // original controller, independently of its equivalence proof.
         (Dictionary<string, float> Weights, bool InTransition) NativeRelayPose(int selected)
         {
-            var copy = Object.Instantiate(avatar);
-            var graph = PlayableGraph.Create("Constant relay reference"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
-            {
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var index = 0; index < controller.layers.Length; index++) playable.SetLayerWeight(index, index == 0 ? 1 : controller.layers[index].defaultWeight);
-                var output = AnimationPlayableOutput.Create(graph, "Face", animator); output.SetSourcePlayable(playable);
-                playable.SetInteger("Menu", 0); graph.Play();
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                playable.SetInteger("Menu", selected);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                var renderer = copy.GetComponentInChildren<SkinnedMeshRenderer>();
-                return (Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, renderer.GetBlendShapeWeight), playable.IsInTransition(1));
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            using var native = new NativeFxPlayback(avatar, controller, defaultWeights: true);
+            var playable = native.Playable;
+            playable.SetInteger("Menu", 0); native.Graph.Play();
+            native.Run(120);
+            playable.SetInteger("Menu", selected);
+            native.Run(120);
+            var renderer = native.Copy.GetComponentInChildren<SkinnedMeshRenderer>();
+            return (Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, renderer.GetBlendShapeWeight), playable.IsInTransition(1));
         }
 
         [TestCase(0, false)]
@@ -648,40 +637,30 @@ namespace VRVlog.LilToonExporter.Tests
         static (Dictionary<string, float> Weights, Vector3[] Vertices) NativePose(GameObject source, AnimatorController fx,
             string path, IDictionary<string, int> parameters, IDictionary<string, float> fixedInputs = null, ISet<int> disabledLayers = null)
         {
-            var copy = Object.Instantiate(source);
-            var graph = PlayableGraph.Create("Weighted FX regression reference");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
-            {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true;
-                animator.runtimeAnimatorController = null; animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                var playable = AnimatorControllerPlayable.Create(graph, fx);
-                for (var index = 0; index < fx.layers.Length; index++)
-                    playable.SetLayerWeight(index, disabledLayers?.Contains(index) == true ? 0 : index == 0 ? 1 : fx.layers[index].defaultWeight);
-                var output = AnimationPlayableOutput.Create(graph, "Face", animator); output.SetSourcePlayable(playable);
-                if (fixedInputs != null)
-                    foreach (var input in fixedInputs)
-                        switch (fx.parameters.Single(parameter => parameter.name == input.Key).type)
-                        {
-                            case AnimatorControllerParameterType.Bool: playable.SetBool(input.Key, input.Value != 0); break;
-                            case AnimatorControllerParameterType.Int: playable.SetInteger(input.Key, (int)input.Value); break;
-                            case AnimatorControllerParameterType.Float: playable.SetFloat(input.Key, input.Value); break;
-                            case AnimatorControllerParameterType.Trigger:
-                                if (input.Value != 0) playable.SetTrigger(input.Key); else playable.ResetTrigger(input.Key);
-                                break;
-                            default: throw new InvalidOperationException("The native reference requires a supported input type.");
-                        }
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                foreach (var parameter in parameters) playable.SetInteger(parameter.Key, parameter.Value);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                var renderer = copy.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
-                var weights = Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
-                    .ToDictionary(renderer.sharedMesh.GetBlendShapeName, renderer.GetBlendShapeWeight);
-                return (weights, WorldVertices(renderer));
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            using var native = new NativeFxPlayback(source, fx, isolate: true);
+            var playable = native.Playable;
+            for (var index = 0; index < fx.layers.Length; index++)
+                playable.SetLayerWeight(index, disabledLayers?.Contains(index) == true ? 0 : index == 0 ? 1 : fx.layers[index].defaultWeight);
+            if (fixedInputs != null)
+                foreach (var input in fixedInputs)
+                    switch (fx.parameters.Single(parameter => parameter.name == input.Key).type)
+                    {
+                        case AnimatorControllerParameterType.Bool: playable.SetBool(input.Key, input.Value != 0); break;
+                        case AnimatorControllerParameterType.Int: playable.SetInteger(input.Key, (int)input.Value); break;
+                        case AnimatorControllerParameterType.Float: playable.SetFloat(input.Key, input.Value); break;
+                        case AnimatorControllerParameterType.Trigger:
+                            if (input.Value != 0) playable.SetTrigger(input.Key); else playable.ResetTrigger(input.Key);
+                            break;
+                        default: throw new InvalidOperationException("The native reference requires a supported input type.");
+                    }
+            native.Start();
+            native.Run(120);
+            foreach (var parameter in parameters) playable.SetInteger(parameter.Key, parameter.Value);
+            native.Run(120);
+            var renderer = native.Skin(path);
+            var weights = Enumerable.Range(0, renderer.sharedMesh.blendShapeCount)
+                .ToDictionary(renderer.sharedMesh.GetBlendShapeName, renderer.GetBlendShapeWeight);
+            return (weights, WorldVertices(renderer));
         }
 
         // Registered FaceEmo clips are a WD-Off base below the authored

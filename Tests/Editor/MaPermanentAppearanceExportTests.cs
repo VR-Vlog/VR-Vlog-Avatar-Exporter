@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -228,29 +226,18 @@ namespace VRVlog.LilToonExporter.Tests
 
         static Dictionary<string, Vector3[]> NativePose(GameObject source, AnimatorController controller, int selected, float blink)
         {
-            var copy = Object.Instantiate(source); var graph = PlayableGraph.Create("MA permanent appearance independent native oracle");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
+            using var native = new NativeFxPlayback(source, controller, isolate: true, defaultWeights: true);
+            native.Playable.SetInteger("Menu", 0); native.Start();
+            native.Run(120);
+            native.Playable.SetInteger("Menu", selected);
+            native.Run(120);
+            return new[] { "Front", "Back" }.ToDictionary(path => path, path =>
             {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true; animator.runtimeAnimatorController = null;
-                animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var layer = 0; layer < controller.layers.Length; layer++) playable.SetLayerWeight(layer, layer == 0 ? 1 : controller.layers[layer].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Native appearance", animator).SetSourcePlayable(playable);
-                playable.SetInteger("Menu", 0); graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                playable.SetInteger("Menu", selected);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return new[] { "Front", "Back" }.ToDictionary(path => path, path =>
-                {
-                    var skin = copy.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
-                    Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Pupil hide")), Is.EqualTo(100).Within(.001f));
-                    skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Blink"), blink);
-                    return WorldVertices(skin);
-                });
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+                var skin = native.Skin(path);
+                Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Pupil hide")), Is.EqualTo(100).Within(.001f));
+                skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Blink"), blink);
+                return WorldVertices(skin);
+            });
         }
 
         static Vector3[] WorldVertices(SkinnedMeshRenderer skin)

@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -76,20 +74,9 @@ namespace VRVlog.LilToonExporter.Tests
         // including implicit WD/default streams and fractional/additive weights.
         private float NativeBodyWeight()
         {
-            var clone = Object.Instantiate(avatar);
-            var graph = PlayableGraph.Create("Parameter support reference");
-            try
-            {
-                var animator = clone.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.fireEvents = false;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Native reference", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return clone.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(0);
-            }
-            finally { graph.Destroy(); Object.DestroyImmediate(clone); }
+            using var native = new NativeFxPlayback(avatar, controller);
+            native.Start(); native.Run(120);
+            return native.Copy.GetComponentInChildren<SkinnedMeshRenderer>().GetBlendShapeWeight(0);
         }
 
         [TestCase(false, 1f, AnimatorLayerBlendingMode.Override, false)]

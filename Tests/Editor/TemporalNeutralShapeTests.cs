@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using VRVlog.Expressions;
 using Object = UnityEngine.Object;
 
@@ -254,20 +252,11 @@ namespace VRVlog.LilToonExporter.Tests
 
         private float NativeWeight(string shape, int disabledLayer = -1)
         {
-            var reference = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Independent native temporal reference");
-            try
-            {
-                foreach (var behaviour in reference.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = reference.GetComponent<Animator>(); animator.enabled = true; animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.applyRootMotion = false;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual); var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var index = 0; index < controller.layers.Length; index++)
-                    playable.SetLayerWeight(index, index == disabledLayer ? 0 : index == 0 ? 1 : controller.layers[index].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Native output", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0); for (var index = 0; index < 120; index++) graph.Evaluate(1f / 60);
-                return reference.transform.Find("Body").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(mesh.GetBlendShapeIndex(shape));
-            }
-            finally { graph.Destroy(); Object.DestroyImmediate(reference); }
+            using var native = new NativeFxPlayback(avatar, controller, isolate: true);
+            for (var index = 0; index < controller.layers.Length; index++)
+                native.Playable.SetLayerWeight(index, index == disabledLayer ? 0 : index == 0 ? 1 : controller.layers[index].defaultWeight);
+            native.Start(); native.Run(120);
+            return native.Skin("Body").GetBlendShapeWeight(mesh.GetBlendShapeIndex(shape));
         }
 
         [TestCase(false)]

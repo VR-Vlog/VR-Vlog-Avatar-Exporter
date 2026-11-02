@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -189,29 +187,14 @@ namespace VRVlog.LilToonExporter.Tests
         static float[] NativeOpenWeights(GameObject source, AnimatorController controller)
         {
             var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
-            GameObject copy = null; var graph = default(PlayableGraph);
             try
             {
-                copy = Object.Instantiate(source); copy.hideFlags = HideFlags.HideAndDontSave;
-                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(copy, scene);
-                foreach (var component in copy.GetComponentsInChildren<Behaviour>(true)) component.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.enabled = true; animator.fireEvents = false; animator.applyRootMotion = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph = PlayableGraph.Create("Unmodified world fix FX oracle"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Original FX", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return copy.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin =>
+                using var native = new NativeFxPlayback(source, controller, isolate: true, scene: scene);
+                native.Start(); native.Run(120);
+                return native.Copy.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin =>
                     skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Open"))).ToArray();
             }
-            finally
-            {
-                if (graph.IsValid()) graph.Destroy();
-                if (copy != null) Object.DestroyImmediate(copy);
-                UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
-            }
+            finally { UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene); }
         }
     }
 }

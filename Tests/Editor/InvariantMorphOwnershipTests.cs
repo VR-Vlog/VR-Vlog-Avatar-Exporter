@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -79,21 +77,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Independent witness: run the complete authored graph, rather
             // than the exporter's dependency/probe controller.
-            var clone = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Invariant reset native oracle");
             float expected;
-            try
+            using (var native = new NativeFxPlayback(avatar, controller))
             {
-                var animator = clone.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                expected = clone.transform.Find("Face").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0);
+                native.Start(); native.Run(120);
+                expected = native.Skin("Face").GetBlendShapeWeight(0);
                 Assert.That(expected, Is.EqualTo(75).Within(.01));
             }
-            finally { graph.Destroy(); Object.DestroyImmediate(clone); }
             var before = ExportSourceFingerprint.Compute(avatar); var controllerBefore = EditorJsonUtility.ToJson(controller);
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, faceClip, entry);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 1, false,

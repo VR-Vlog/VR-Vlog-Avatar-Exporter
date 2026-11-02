@@ -509,27 +509,19 @@ namespace VRVlog.LilToonExporter.Tests
 
         private float NativeBodyWithIdempotentWeight(float goal)
         {
-            var clone = Object.Instantiate(avatar); var animator = clone.GetComponent<Animator>();
-            animator.runtimeAnimatorController = null; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.fireEvents = false;
-            var graph = PlayableGraph.Create("Original controller with unchanged layer weight"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
-            {
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Original graph", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60);
-                Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
-                var nativeSkin = clone.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
-                var before = nativeSkin.GetBlendShapeWeight(0);
-                // Apply the documented per-layer primitive to the original
-                // graph, independently of dependency pruning and callbacks.
-                playable.SetLayerWeight(BodyLayer, goal);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60);
-                Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
-                Assert.That(nativeSkin.GetBlendShapeWeight(0), Is.EqualTo(before).Within(.01));
-                return before;
-            }
-            finally { graph.Destroy(); Object.DestroyImmediate(clone); }
+            using var native = new NativeFxPlayback(avatar, controller);
+            var playable = native.Playable;
+            native.Start(); native.Run(120);
+            Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
+            var nativeSkin = native.Skin("Body");
+            var before = nativeSkin.GetBlendShapeWeight(0);
+            // Apply the documented per-layer primitive to the original
+            // graph, independently of dependency pruning and callbacks.
+            playable.SetLayerWeight(BodyLayer, goal);
+            native.Run(120);
+            Assert.That(playable.GetLayerWeight(BodyLayer), Is.EqualTo(goal).Within(.00001));
+            Assert.That(nativeSkin.GetBlendShapeWeight(0), Is.EqualTo(before).Within(.01));
+            return before;
         }
 
         [TestCase(.5f)]

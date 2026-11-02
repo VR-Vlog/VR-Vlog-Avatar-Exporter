@@ -978,28 +978,13 @@ namespace VRVlog.LilToonExporter.Tests
         private float NativeOpeningWeight()
         {
             var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
-            GameObject copy = null;
-            var graph = default(PlayableGraph);
             try
             {
-                copy = Object.Instantiate(avatar); copy.hideFlags = HideFlags.HideAndDontSave;
-                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(copy, scene);
-                foreach (var component in copy.GetComponentsInChildren<Behaviour>(true)) component.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null; animator.enabled = true;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.applyRootMotion = false; animator.fireEvents = false;
-                graph = PlayableGraph.Create("Original additive visual support oracle"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Original full FX", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0f);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return copy.transform.Find("Body").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(0);
+                using var native = new NativeFxPlayback(avatar, controller, isolate: true, scene: scene);
+                native.Start(); native.Run(120);
+                return native.Skin("Body").GetBlendShapeWeight(0);
             }
-            finally
-            {
-                if (graph.IsValid()) graph.Destroy();
-                if (copy != null) Object.DestroyImmediate(copy);
-                UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
-            }
+            finally { UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene); }
         }
 
         [Test]

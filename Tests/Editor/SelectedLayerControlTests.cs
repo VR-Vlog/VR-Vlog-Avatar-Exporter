@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -102,22 +100,10 @@ namespace VRVlog.LilToonExporter.Tests
         // documented final layer weight through Unity's native API instead.
         private float Native(AnimatorController reference, float goal, int target = TargetLayer, float menu = 1, int shapeIndex = 0)
         {
-            var copy = Object.Instantiate(avatar); var graph = PlayableGraph.Create("SDK layer weight native reference");
-            try
-            {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true; animator.runtimeAnimatorController = null;
-                animator.applyRootMotion = false; animator.fireEvents = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, reference);
-                for (var index = 0; index < reference.layers.Length; index++) playable.SetLayerWeight(index, index == 0 ? 1 : reference.layers[index].defaultWeight);
-                playable.SetLayerWeight(target, target == 0 ? 1 : goal); playable.SetInteger("Menu", Mathf.RoundToInt(menu));
-                AnimationPlayableOutput.Create(graph, "Native reference", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 240; frame++) graph.Evaluate(1f / 60);
-                return copy.transform.Find("Body").GetComponent<SkinnedMeshRenderer>().GetBlendShapeWeight(shapeIndex);
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            using var native = new NativeFxPlayback(avatar, reference, isolate: true, defaultWeights: true);
+            native.Playable.SetLayerWeight(target, target == 0 ? 1 : goal); native.Playable.SetInteger("Menu", Mathf.RoundToInt(menu));
+            native.Start(); native.Run(240);
+            return native.Skin("Body").GetBlendShapeWeight(shapeIndex);
         }
 
         [TestCase("native", 0f)] [TestCase("native", .5f)]

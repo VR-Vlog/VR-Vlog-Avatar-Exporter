@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -37,8 +35,7 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             var folder = TempAssetFolder.Create("__IndependentSkinBoneNeutral_");
             Vrm10Instance imported = null;
-            GameObject native = null, expected = null;
-            var graph = PlayableGraph.Create("Independent skin bone native reference");
+            NativeFxPlayback native = null; GameObject expected = null;
             try
             {
                 var sourceSkins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>();
@@ -75,20 +72,12 @@ namespace VRVlog.LilToonExporter.Tests
                 // Play the authored controller without the export sampler's
                 // reconstructed graph. A moving, fully influencing bone must
                 // change pose while the independent native morph scalar holds.
-                native = Object.Instantiate(fixture.Source);
-                foreach (var behaviour in native.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = native.GetComponent<Animator>(); animator.enabled = true;
-                animator.runtimeAnimatorController = null; animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var layer = 0; layer < controller.layers.Length; layer++)
-                    playable.SetLayerWeight(layer, layer == 0 ? 1 : controller.layers[layer].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Native scalar reference", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0); graph.Evaluate(.2f);
-                var nativeSkin = native.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
+                native = new NativeFxPlayback(fixture.Source, controller, isolate: true, defaultWeights: true);
+                native.Start(); native.Graph.Evaluate(.2f);
+                var nativeSkin = native.Skin("Front");
                 var nativeWeight = nativeSkin.GetBlendShapeWeight(0);
                 var nativeRotation = nativeSkin.bones[0].localRotation;
-                graph.Evaluate(.5f);
+                native.Graph.Evaluate(.5f);
                 Assert.That(nativeSkin.GetBlendShapeWeight(0), Is.EqualTo(nativeWeight).Within(.001f));
                 Assert.That(Quaternion.Angle(nativeRotation, nativeSkin.bones[0].localRotation), Is.GreaterThan(.1f));
                 Assert.That(nativeWeight, Is.GreaterThan(40).And.LessThan(100), "Native rest must differ from the serialized35 and remain within the source range.");
@@ -134,9 +123,8 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally
             {
-                if (graph.IsValid()) graph.Destroy();
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
-                Object.DestroyImmediate(native); Object.DestroyImmediate(expected); AssetDatabase.DeleteAsset(folder);
+                native?.Dispose(); Object.DestroyImmediate(expected); AssetDatabase.DeleteAsset(folder);
             }
         }
 

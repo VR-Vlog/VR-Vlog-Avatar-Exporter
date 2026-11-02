@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -65,29 +63,19 @@ namespace VRVlog.LilToonExporter.Tests
 
         private Dictionary<string, float> Native(bool select, bool requireRelay = true)
         {
-            var copy = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Merged neutral reference");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
+            using var native = new NativeFxPlayback(avatar, controller, defaultWeights: true);
+            var playable = native.Playable;
+            playable.SetInteger("Menu", 0); playable.SetFloat("Voice", 0); native.Start();
+            native.Run(120);
+            if (select)
             {
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate; animator.applyRootMotion = false; animator.fireEvents = false;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var layer = 0; layer < controller.layers.Length; layer++)
-                    playable.SetLayerWeight(layer, layer == 0 ? 1 : controller.layers[layer].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable);
-                playable.SetInteger("Menu", 0); playable.SetFloat("Voice", 0); graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                if (select)
-                {
-                    playable.SetInteger("Menu", 1);
-                    for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                }
-                if (requireRelay)
-                    Assert.That(playable.IsInTransition(1), Is.True, "Exercise the equivalent-state proof during a real native transition.");
-                var skin = copy.GetComponentInChildren<SkinnedMeshRenderer>();
-                return Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, skin.GetBlendShapeWeight);
+                playable.SetInteger("Menu", 1);
+                native.Run(120);
             }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
+            if (requireRelay)
+                Assert.That(playable.IsInTransition(1), Is.True, "Exercise the equivalent-state proof during a real native transition.");
+            var skin = native.Copy.GetComponentInChildren<SkinnedMeshRenderer>();
+            return Enumerable.Range(0, mesh.blendShapeCount).ToDictionary(mesh.GetBlendShapeName, skin.GetBlendShapeWeight);
         }
 
         private void SetDescriptorFx()

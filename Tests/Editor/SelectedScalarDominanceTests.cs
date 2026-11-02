@@ -5,8 +5,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -71,18 +69,12 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 // Independent full native graph: the lower mouth keeps moving
                 // while the held upper face and the unrelated rest stay exact.
-                var clone = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Selected dominance native oracle");
-                try
-                {
-                    var animator = clone.GetComponent<Animator>(); animator.runtimeAnimatorController = null; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual); var playable = AnimatorControllerPlayable.Create(graph, controller);
-                    AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable); graph.Play(); graph.Evaluate(0);
-                    for (var frame = 0; frame < 650; frame++) graph.Evaluate(1f / 60f);
-                    var skin = clone.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
-                    Assert.That(playable.GetCurrentAnimatorStateInfo(1).normalizedTime, Is.GreaterThan(.85));
-                    Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(75).Within(.01)); Assert.That(skin.GetBlendShapeWeight(1), Is.EqualTo(12).Within(.01));
-                }
-                finally { graph.Destroy(); Object.DestroyImmediate(clone); }
+                using var native = new NativeFxPlayback(avatar, controller);
+                var playable = native.Playable;
+                native.Start(); native.Run(650);
+                var skin = native.Skin("Body");
+                Assert.That(playable.GetCurrentAnimatorStateInfo(1).normalizedTime, Is.GreaterThan(.85));
+                Assert.That(skin.GetBlendShapeWeight(0), Is.EqualTo(75).Within(.01)); Assert.That(skin.GetBlendShapeWeight(1), Is.EqualTo(12).Within(.01));
             }
             var entry = Hold();
             Assert.That(entry.Values.Single(value => value.Shape == "Face").Weight, Is.EqualTo(callback ? 20 : 75).Within(.01));

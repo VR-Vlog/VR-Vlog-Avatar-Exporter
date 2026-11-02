@@ -6,8 +6,6 @@ using NUnit.Framework;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -236,41 +234,31 @@ namespace VRVlog.LilToonExporter.Tests
             var runtime = VrChatExpressionMenu.Read(prepared).Controller;
             Assert.That(runtime, Is.Not.Null);
             var controller = ExpressionDependencies.Controller(runtime);
-            var probe = Object.Instantiate(prepared);
-            var graph = PlayableGraph.Create("MA Merge Motion independent native reference");
-            try
-            {
-                var animator = probe.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.enabled = true; animator.applyRootMotion = false; animator.fireEvents = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, runtime);
-                AnimationPlayableOutput.Create(graph, "Face", animator).SetSourcePlayable(playable);
-                foreach (var parameter in controller.parameters)
-                    switch (parameter.type)
-                    {
-                        case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, parameter.defaultFloat); break;
-                        case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, parameter.defaultInt); break;
-                        case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, parameter.defaultBool); break;
-                    }
-                graph.Play(); graph.Evaluate(0);
-                var selections = selectedTree ? new[] { 0f, 1f, 0f } : new[] { 1f };
-                var result = new List<Vector3[]>();
-                var skin = probe.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
-                foreach (var selection in selections)
+            using var native = new NativeFxPlayback(prepared, runtime);
+            var playable = native.Playable;
+            foreach (var parameter in controller.parameters)
+                switch (parameter.type)
                 {
-                    if (selectedTree) playable.SetFloat("Menu", selection);
-                    for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                    var expected = selection == 1 ? expectedOn : expectedOff;
-                    Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Smile")), Is.EqualTo(selection == 1 ? 100 : 25).Within(.001f),
-                        "Official MA must evaluate the authored non-menu activation endpoint " + selection);
-                    var vertices = WorldVertices(skin); Assert.That(vertices.Length, Is.EqualTo(expected.Length));
-                    for (var i = 0; i < vertices.Length; i++) Assert.That(Vector3.Distance(vertices[i], expected[i]), Is.LessThan(.0005f));
-                    result.Add(vertices);
+                    case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, parameter.defaultFloat); break;
+                    case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, parameter.defaultInt); break;
+                    case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, parameter.defaultBool); break;
                 }
-                return result.ToArray();
+            native.Start();
+            var selections = selectedTree ? new[] { 0f, 1f, 0f } : new[] { 1f };
+            var result = new List<Vector3[]>();
+            var skin = native.Skin("Front");
+            foreach (var selection in selections)
+            {
+                if (selectedTree) playable.SetFloat("Menu", selection);
+                native.Run(120);
+                var expected = selection == 1 ? expectedOn : expectedOff;
+                Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Smile")), Is.EqualTo(selection == 1 ? 100 : 25).Within(.001f),
+                    "Official MA must evaluate the authored non-menu activation endpoint " + selection);
+                var vertices = WorldVertices(skin); Assert.That(vertices.Length, Is.EqualTo(expected.Length));
+                for (var i = 0; i < vertices.Length; i++) Assert.That(Vector3.Distance(vertices[i], expected[i]), Is.LessThan(.0005f));
+                result.Add(vertices);
             }
-            finally { graph.Destroy(); Object.DestroyImmediate(probe); }
+            return result.ToArray();
         }
 
         // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
