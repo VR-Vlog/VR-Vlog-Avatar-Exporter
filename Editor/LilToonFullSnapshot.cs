@@ -47,18 +47,11 @@ namespace VRVlog.LilToonExporter
             var result = new LilToonFullSnapshot {suppressSharedTextureEmission=suppressSharedTextureEmission, suppressHdrTextureEmission=suppressHdrTextureEmission, warnings=warnings,
                 inactiveTextures=new LilToonInactiveTextureProof(avatar, animationSource)};
             var selected = new List<(Renderer renderer, Material[] materials)>();
-            foreach (var renderer in ExportRendererSelection.Enumerate(avatar))
-            {
-                // UniVRM exports mesh primitives, not particle/trail/line systems.
-                // Their materials must not create bindings to absent glTF meshes.
-                var filter = renderer.GetComponent<MeshFilter>();
-                var mesh = renderer is SkinnedMeshRenderer skin ? skin.sharedMesh : renderer is MeshRenderer && filter != null ? filter.sharedMesh : null;
-                // The pinned ModelExporter omits meshes without vertices or
-                // indices. They cannot have a full binding to an output mesh.
-                // Keep their transforms/bones and every nonempty mesh intact.
-                if(!ExportRendererSelection.HasGeometry(mesh))continue;
+            // Materials of renderers UniVRM does not write as meshes must not
+            // create bindings to absent glTF meshes. Their transforms and bones
+            // stay intact.
+            foreach (var renderer in ExportRendererSelection.ExportedMeshRenderers(avatar))
                 selected.Add((renderer, renderer.sharedMaterials));
-            }
             // Before any material registers a shared texture, so its size does
             // not depend on which material reads it first.
             result.deleteMeshMasks = DeleteMeshMasks(selected.SelectMany(s => s.materials).Select(OutlineMaskReference));

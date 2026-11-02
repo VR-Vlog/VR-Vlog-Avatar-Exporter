@@ -45,6 +45,7 @@ namespace UnityEngine
         public string name;
         public Transform transform;
         public T[] GetComponents<T>() => throw new System.NotSupportedException();
+        public T GetComponent<T>() => throw new System.NotSupportedException();
         public GameObject gameObject = new GameObject();
         public bool enabled = true;
         public Material[] sharedMaterials = System.Array.Empty<Material>();

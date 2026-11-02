@@ -632,8 +632,7 @@ namespace VRVlog.LilToonExporter
             {
                 // A no-op standard binding prevents a viewer's raw-name blink
                 // fallback from driving the original morphs when blinking is off.
-                var renderer = ExportRendererSelection.Enumerate(clone).OfType<SkinnedMeshRenderer>()
-                    .FirstOrDefault(r => ExportRendererSelection.HasGeometry(r.sharedMesh));
+                var renderer = ExportRendererSelection.ExportedMeshRenderers(clone).OfType<SkinnedMeshRenderer>().FirstOrDefault();
                 if (renderer == null) return;
                 var mesh = Object.Instantiate(renderer.sharedMesh); owned.Add(mesh); renderer.sharedMesh = mesh;
                 var name = DeterministicNames.Unique("__VRVlog_BlinkNone_" + DeterministicNames.Hash("BlinkNone", PathOf(renderer)), used);

@@ -131,7 +131,7 @@ namespace VRVlog.LilToonExporter
                         "このレイヤーの模様・文字・透過効果が失われます。", action);
                 }
             }
-            else if (code == "audio-link" && target is Material audio && ContainsMaterial(source, audio) && Official(audio) && Enabled(audio, "_UseAudioLink"))
+            else if (code == "audio-link" && target is Material audio && ContainsMaterial(source, audio) && Official(audio) && MobileMaterialMath.NonZero(audio, "_UseAudioLink"))
                 Add(code, audio, audio.name, "AudioLinkは外部連携のため今回の再現対象外です。", "変換用コピーで、この材質のAudioLinkをOFFにして試せます。",
                     "音に連動した発光・色・動きが失われます。", MaterialAction(audio, ExportRecoveryActionKind.DisableAudioLink));
             else if (code == "material-layer" && target is Material layerMaterial && ContainsMaterial(source, layerMaterial) && Official(layerMaterial) &&
@@ -228,7 +228,6 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static bool Official(Material material) => material != null && material.shader != null && LilToon234Catalogue.Shaders.ContainsKey(material.shader.name);
-        internal static bool Enabled(Material material, string property) => material != null && material.HasProperty(property) && material.GetFloat(property) != 0;
         internal static bool ContainsMaterial(GameObject source, Material material)
         {
             if (source == null || material == null) return false;
