@@ -385,7 +385,6 @@ namespace VRVlog.LilToonExporter
     internal sealed class ExportRecoveryPreview : IDisposable
     {
         internal GameObject Copy { get; private set; }
-        GameObject inactiveHost;
         readonly List<Material> materials = new List<Material>();
         readonly List<Mesh> meshes = new List<Mesh>();
 
@@ -394,48 +393,43 @@ namespace VRVlog.LilToonExporter
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
             var preview = new ExportRecoveryPreview();
+            ExportGimmickSession gimmicks = null;
             try
             {
-                // Instantiate under an inactive parent so ExecuteAlways
-                // Awake/OnEnable cannot run before the shared assets are split.
-                preview.inactiveHost = new GameObject("VRVlog display-copy staging") { hideFlags = HideFlags.HideAndDontSave };
-                preview.inactiveHost.SetActive(false);
-                preview.Copy = Object.Instantiate(source, preview.inactiveHost.transform, false);
-                preview.Copy.name = source.name;
-                var session = new ExportRecoveryCopySession(source, preview.Copy, preview.materials, options);
-                using var gimmicks = new ExportGimmickSession(source, preview.Copy, gimmickOptions ?? new ExportGimmickOptions { AutoExclude = false });
                 using var manual = new ExportObjectExclusions(source, excludedObjects);
                 var findings = gimmickOptions?.AutoExclude == true ? ExportGimmickDetection.Analyze(source, manual.Contains) : new List<ExportGimmickFinding>();
                 using var exclusions = new ExportObjectExclusions(source, (excludedObjects ?? Array.Empty<GameObject>()).Concat(ExportGimmickDetection.AutomaticRoots(findings, gimmickOptions)));
-                MaAppearanceSnapshot.Apply(source, preview.Copy, preview.meshes, exclusions);
-                PoseExportSession.RemoveAplFromCopy(source, preview.Copy);
-                // Disabling a MonoBehaviour alone does not suppress its Awake
-                // when the GameObject is activated. Display-only copies have no
-                // runtime/authoring scripts, while preserving their baked shape.
-                foreach (var script in preview.Copy.GetComponentsInChildren<MonoBehaviour>(true))
-                    if (script != null) Object.DestroyImmediate(script);
-                // Split/redirect material references after script removal too,
-                // so these Editor writes cannot invoke a copied OnValidate.
-                session.Apply();
-                foreach (var behaviour in preview.Copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                foreach (var transform in preview.Copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
-                // Like the export copy, show only the display copy's own root.
-                if (!preview.Copy.activeSelf) preview.Copy.SetActive(true);
-                preview.Copy.transform.SetParent(null, false);
-                Object.DestroyImmediate(preview.inactiveHost);
-                preview.inactiveHost = null;
+                // Instantiate under an inactive parent so ExecuteAlways
+                // Awake/OnEnable cannot run before the shared assets are split.
+                // Like the export copy, only the display copy's own root is shown.
+                preview.Copy = NdmfExportPreparation.InstantiateInactive(source, "VRVlog display-copy staging", HideFlags.HideAndDontSave, default, false, copy =>
+                {
+                    var session = new ExportRecoveryCopySession(source, copy, preview.materials, options);
+                    gimmicks = new ExportGimmickSession(source, copy, gimmickOptions ?? new ExportGimmickOptions { AutoExclude = false });
+                    MaAppearanceSnapshot.Apply(source, copy, preview.meshes, exclusions);
+                    PoseExportSession.RemoveAplFromCopy(source, copy);
+                    // Disabling a MonoBehaviour alone does not suppress its Awake
+                    // when the GameObject is activated. Display-only copies have no
+                    // runtime/authoring scripts, while preserving their baked shape.
+                    foreach (var script in copy.GetComponentsInChildren<MonoBehaviour>(true))
+                        if (script != null) Object.DestroyImmediate(script);
+                    // Split/redirect material references after script removal too,
+                    // so these Editor writes cannot invoke a copied OnValidate.
+                    session.Apply();
+                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
+                    foreach (var transform in copy.GetComponentsInChildren<Transform>(true)) transform.gameObject.hideFlags = HideFlags.HideAndDontSave;
+                });
                 gimmicks.Apply(null, null, null);
                 return preview;
             }
             catch { preview.Dispose(); throw; }
+            finally { gimmicks?.Dispose(); }
         }
 
         public void Dispose()
         {
             if (Copy != null) Object.DestroyImmediate(Copy);
             Copy = null;
-            if (inactiveHost != null) Object.DestroyImmediate(inactiveHost);
-            inactiveHost = null;
             foreach (var material in materials) if (material != null) Object.DestroyImmediate(material);
             foreach (var mesh in meshes) if (mesh != null) Object.DestroyImmediate(mesh);
             materials.Clear(); meshes.Clear();
