@@ -25,17 +25,7 @@ namespace VRVlog.LilToonExporter
         {
             preservedMorphs = new HashSet<EditorCurveBinding>();
             var result = new HashSet<int>();
-            var unknown = new List<string>();
-            var layers = ExpressionDependencies.Inspect(runtime, null,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
-            var others = new List<ExpressionDependencies.Layer>();
-            foreach (var other in source.OtherControllers.Where(value => value != null))
-                others.AddRange(ExpressionDependencies.Inspect(other, null,
-                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
-                    typedConditions: true, fxLayerCount: layers.Length));
-            if (unknown.Count != 0) return result;
-            var types = ExpressionDependencies.UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
-                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+            if (!InspectKnown(runtime, source, out var layers, out var others, out var types)) return result;
             var unitFxCommands = HasOnlyUnchangedUnitFxCommands(runtime, source, layers, others, context, selectedInputs);
             // An empty output plan asks only whether the existing strict rest
             // proof permits omission. It cannot alter the actual scalar plan.
@@ -134,12 +124,44 @@ namespace VRVlog.LilToonExporter
                     }
                     if (source.ExternalParameters.Contains(name) && context?.Values.ContainsKey(name) != true) return false;
                 }
-                var value = Default(values[0]);
-                if (source.Defaults.TryGetValue(name, out var supplied)) value = supplied;
-                if (context?.Values.TryGetValue(name, out supplied) == true) value = supplied;
-                if (!NeutralShapeSnapshot.Finite(value) || type == AnimatorControllerParameterType.Bool && value != 0 && value != 1 ||
-                    type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || value < int.MinValue || (double)value > int.MaxValue)) return false;
+                if (!TryInitialValue(name, Default(values[0]), type, source, context, out _)) return false;
             }
+            return true;
+        }
+
+        // Inspect the FX and the other playable layers once. False when any
+        // callback's effect is unknown: the ordinary sampler retains its
+        // location-rich diagnostic, and no component is suspended on a guess.
+        private static bool InspectKnown(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source,
+            out ExpressionDependencies.Layer[] layers, out List<ExpressionDependencies.Layer> others,
+            out Dictionary<string, AnimatorControllerParameterType> types)
+        {
+            var unknown = new List<string>();
+            layers = ExpressionDependencies.Inspect(runtime, null,
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+            others = new List<ExpressionDependencies.Layer>();
+            foreach (var other in source.OtherControllers.Where(value => value != null))
+                others.AddRange(ExpressionDependencies.Inspect(other, null,
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
+                    typedConditions: true, fxLayerCount: layers.Length));
+            types = null;
+            if (unknown.Count != 0) return false;
+            types = ExpressionDependencies.UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
+                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+            return true;
+        }
+
+        // The value a gate starts at: its declared default, replaced by the
+        // menu's default and then the fixed context. False when that value is
+        // not one the parameter's type can hold.
+        private static bool TryInitialValue(string name, float value, AnimatorControllerParameterType type,
+            VrChatExpressionMenu.Source source, FixedExpressionContext context, out float initial)
+        {
+            if (source.Defaults.TryGetValue(name, out var supplied)) value = supplied;
+            if (context?.Values.TryGetValue(name, out supplied) == true) value = supplied;
+            initial = value;
+            if (!NeutralShapeSnapshot.Finite(value) || type == AnimatorControllerParameterType.Bool && value != 0 && value != 1 ||
+                type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || value < int.MinValue || (double)value > int.MaxValue)) return false;
             return true;
         }
 
@@ -387,12 +409,9 @@ namespace VRVlog.LilToonExporter
                 var declarations = ExpressionDependencies.UniqueParameters(runtime).Where(parameter => parameter.name == name).ToArray();
                 if (declarations.Length != 1 || !types.TryGetValue(name, out var type)) return false;
                 var parameter = declarations[0];
-                var value = type == AnimatorControllerParameterType.Bool ? (parameter.defaultBool ? 1f : 0f) :
+                var declared = type == AnimatorControllerParameterType.Bool ? (parameter.defaultBool ? 1f : 0f) :
                     type == AnimatorControllerParameterType.Int ? parameter.defaultInt : parameter.defaultFloat;
-                if (source.Defaults.TryGetValue(name, out var supplied)) value = supplied;
-                if (context?.Values.TryGetValue(name, out supplied) == true) value = supplied;
-                if (!NeutralShapeSnapshot.Finite(value) || type == AnimatorControllerParameterType.Bool && value != 0 && value != 1 ||
-                    type == AnimatorControllerParameterType.Int && (value != Math.Truncate(value) || value < int.MinValue || (double)value > int.MaxValue)) return false;
+                if (!TryInitialValue(name, declared, type, source, context, out var value)) return false;
                 initial.Add(name, value);
             }
             bool UnchangedSet(VrChatParameterDriver.Operation operation)
@@ -529,19 +548,7 @@ namespace VRVlog.LilToonExporter
             var result = new HashSet<int>();
             if (automatic == null || automatic.Count == 0 || !selectedMorphs.Overlaps(automatic)) return result;
             var controller = ExpressionDependencies.Controller(runtime); var definitions = controller.layers;
-            var unknown = new List<string>();
-            var layers = ExpressionDependencies.Inspect(runtime, null,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
-            var others = new List<ExpressionDependencies.Layer>();
-            foreach (var other in source.OtherControllers.Where(value => value != null))
-                others.AddRange(ExpressionDependencies.Inspect(other, null,
-                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
-                    typedConditions: true, fxLayerCount: definitions.Length));
-            // The ordinary sampler retains its location-rich unknown callback
-            // diagnostic. Never suspend a component when its effect is unknown.
-            if (unknown.Count != 0) return result;
-            var types = ExpressionDependencies.UniqueParameters(controller).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
-                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+            if (!InspectKnown(runtime, source, out var layers, out var others, out var types)) return result;
             var compatible = new HashSet<int>(); var seeds = new HashSet<int>();
             bool ClipOnly(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> visited)
             {
