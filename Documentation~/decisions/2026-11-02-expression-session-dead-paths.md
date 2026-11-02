@@ -1,7 +1,7 @@
 # 表情のセッションから、本番で通らない経路と同じ表の写しを消す
 
 - 日付: 2026-11-02
-- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/VrmTrackingExpressions.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/Locales`・`Tests/Editor`・`Tools/BehaviorTests.cs`
+- 対象: `Editor/ExperimentalExpressionCaptureSession*.cs`・`Editor/ExpressionPresetStore.cs`・`Editor/VrmTrackingExpressions.cs`・`Editor/VrmExpressionBindings.cs`・`Editor/PoseExportSession.cs`・`Editor/Locales`・`Tests/Editor`・`Tools/BehaviorTests.cs`
 
 ## 背景
 
@@ -15,6 +15,7 @@
   - 保存・読み込みの往復だけを確かめていたテストは消し、`LoadPreset` が壊れた割り当てを拒むテストを足した。
 - 書き出した VRM に PerfectSync の 52 表情を後から書き足す `VrmTrackingExpressions.Add` と、それだけが使う補助と、それだけが出す訳文 1 件を消した。書き出しの呼び出しが無くなってから使われていない。追跡の設定の検査（`Validate`・`ValidateMorph`）は書き出しが使うので残した。`TrackingExpressionNames` は Unity の型を持たずに Unity を使わないテストでコンパイルするファイルなので、検査はそこへ移さない。
 - 書き出した GLB の名前から瞬きの表情を推定する `VrmExpressionBindings.AddMissing` の `inferBlink` と、その推定・「瞬きのVRM設定を自動生成できませんでした。」の警告を消した。書き出しは `inferBlink: false` でしか呼ばず、瞬きは Unity 側の `BlinkExportSession` が `BlinkShapeNames.Resolve` で決める。推定を通っていたのは Unity を使わない `Tools/BehaviorTests.cs` だけだったので、名前の優先順位（`vrc.Blink` が `eye_close` より先・同名が複数なら -2・左右の片側だけなら `PartialPair`）はそこで `Resolve` を直に呼んで確かめる。推定だけが出していた訳文 3 件を 4 言語から消した。
+- ポーズの書き出し（`PoseExportSession.Inject`）で、静止ポーズの拡張が 2MiB・動くポーズの拡張が 16MiB を超えたら止める検査と、その訳文 2 件を消した。`HumanoidPoseData.Write` と `HumanoidAnimationData.Write` は、最後に呼ぶ `Read` の `Measure` で上限を超える拡張を先に例外にする。`Measure` は値 1 つに 32 バイト、文字列 1 文字に 6 バイトを数え、`JsonDom.Serialize` が書くバイト数より小さくならないので、この検査は通らない。体の大きさを掛けたあとも `Read` で数え直している。`Measure` を 1 つにまとめる案は採らない。`Humanoid*` の 2 ファイルはアプリと同じソースで、`Tools/run-pose-contract-tests.ps1` はこの 2 ファイルだけをコンパイルする。上限を超える静止ポーズを `Write` が拒むことと、受け入れた拡張が `Measure` 以下のバイト数で書かれることは `PoseLimitPlanTests.WriteRefusesStillPosesOverTheBound` で確かめる。
 
 ## 確かめたこと
 

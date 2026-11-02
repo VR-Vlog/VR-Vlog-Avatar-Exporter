@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
@@ -245,7 +244,6 @@ namespace VRVlog.LilToonExporter
                     foreach (Dictionary<string, object> pose in (List<object>)extension["poses"]) ScaleOffset(pose, rootScale);
                     HumanoidPoseData.Read(extension);
                 }
-                if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidPoseData.MaximumBytes) throw new InvalidOperationException("ポーズ拡張が2MiBを超えました。");
                 HumanoidPoseData.ValidateReferences(poses, document.Json);
                 extensions.Add(HumanoidPoseData.Extension, extension); ((List<object>)raw).Add(HumanoidPoseData.Extension);
             }
@@ -258,8 +256,6 @@ namespace VRVlog.LilToonExporter
                         foreach (Dictionary<string, object> frame in (List<object>)animation["frames"]) ScaleOffset(frame, rootScale);
                     HumanoidAnimationData.Read(extension);
                 }
-                if (Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension)) > HumanoidAnimationData.MaximumBytes)
-                    throw new InvalidOperationException("動くポーズの拡張が16MiBを超えました。不要な項目を除外してください。");
                 HumanoidAnimationData.ValidateReferences(animations, document.Json);
                 extensions.Add(HumanoidAnimationData.Extension, extension); ((List<object>)raw).Add(HumanoidAnimationData.Extension);
             }

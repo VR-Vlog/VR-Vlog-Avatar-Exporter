@@ -92,6 +92,21 @@ namespace VRVlog.LilToonExporter.Tests
                 HumanoidPoseData.Write(still.Select(row => row.Data).ToList()))));
         }
 
+        // Inject adds the still poses without a size check of its own: Write
+        // refuses an extension over the bound, and what it accepts serializes
+        // no longer than its Measure.
+        [Test]
+        public void WriteRefusesStillPosesOverTheBound()
+        {
+            List<HumanoidPoseData> Poses(int count) => Enumerable.Range(0, count)
+                .Select(i => Still("pose" + i, HumanoidPoseData.BoneNames.Length, new string('名', 3000)).Data).ToList();
+            Assert.Throws<InvalidOperationException>(() => HumanoidPoseData.Write(Poses(100)));
+            var extension = HumanoidPoseData.Write(Poses(40));
+            var bytes = System.Text.Encoding.UTF8.GetByteCount(JsonDom.Serialize(extension));
+            Assert.That(bytes, Is.LessThanOrEqualTo(Measured(typeof(HumanoidPoseData), extension)));
+            Assert.That(Measured(typeof(HumanoidPoseData), extension), Is.LessThanOrEqualTo(HumanoidPoseData.MaximumBytes));
+        }
+
         [Test]
         public void MovingPosesTheDefaultKeepsAreWritten()
         {
