@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace VRVlog.LilToonExporter
 {
@@ -57,18 +56,8 @@ namespace VRVlog.LilToonExporter
         internal ExportStageFailure(ExportStage stage, Exception cause) : base(cause.Message, cause) { Stage = stage; }
 
         // NDMF wraps callback failures in its own summary; look through it.
-        internal static ExportStageFailure Find(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error is ExportStageFailure failure) return failure;
-                if (error is AggregateException aggregate)
-                    foreach (var inner in aggregate.InnerExceptions)
-                        if (Find(inner) is ExportStageFailure nested) return nested;
-                error = error.InnerException;
-            }
-            return null;
-        }
+        internal static ExportStageFailure Find(Exception error) =>
+            (ExportStageFailure)ExceptionChain.Find(error, value => value is ExportStageFailure);
     }
 
     // One guard per export call. In strict mode every stage behaves as before:
@@ -144,16 +133,7 @@ namespace VRVlog.LilToonExporter
         bool CanOmit(Exception error) => ContinueOnFailure && !IsCancellation(error);
 
         // A cancellation wrapped by a build tool still cancels the export.
-        internal static bool IsCancellation(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error is OperationCanceledException) return true;
-                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(IsCancellation)) return true;
-                error = error.InnerException;
-            }
-            return false;
-        }
+        internal static bool IsCancellation(Exception error) => ExceptionChain.Any(error, value => value is OperationCanceledException);
 
         void Omit(ExportStage stage, Exception error)
         {

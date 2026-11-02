@@ -1095,14 +1095,7 @@ namespace VRVlog.LilToonExporter
                 mesh.subMeshCount = kept.Length;
                 for (var sub = 0; sub < kept.Length; sub++)
                     mesh.SetIndices(original.GetIndices(kept[sub]), original.GetTopology(kept[sub]), sub, false);
-                if (skin == null) filter.sharedMesh = mesh;
-                else
-                {
-                    var weights = new float[original.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = mesh;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, mesh);
                 renderer.sharedMaterials = materials;
                 warnings?.Add(ExporterLocalization.T(EmptySubmeshesOmitted) +
                     (renderer.transform == clone.transform ? clone.name : UnityEditor.AnimationUtility.CalculateTransformPath(renderer.transform, clone.transform)));
@@ -1123,15 +1116,18 @@ namespace VRVlog.LilToonExporter
                 var copy = UnityEngine.Object.Instantiate(mesh);
                 copy.name = mesh.name;
                 owned.Add(copy);
-                if (skin == null) filter.sharedMesh = copy;
-                else
-                {
-                    var weights = new float[mesh.blendShapeCount];
-                    for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
-                    skin.sharedMesh = copy;
-                    for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
-                }
+                ReplaceMesh(skin, filter, copy);
             }
+        }
+
+        // Puts mesh on the skin, keeping its BlendShape weights, or else on the filter.
+        static void ReplaceMesh(SkinnedMeshRenderer skin, MeshFilter filter, Mesh mesh)
+        {
+            if (skin == null) { filter.sharedMesh = mesh; return; }
+            var weights = new float[skin.sharedMesh.blendShapeCount];
+            for (var i = 0; i < weights.Length; i++) weights[i] = skin.GetBlendShapeWeight(i);
+            skin.sharedMesh = mesh;
+            for (var i = 0; i < weights.Length; i++) skin.SetBlendShapeWeight(i, weights[i]);
         }
 
         // UniVRM 0.131 ModelExporter skips a renderer without vertices or

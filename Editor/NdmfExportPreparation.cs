@@ -754,16 +754,7 @@ namespace VRVlog.LilToonExporter
             return failure;
         }
 
-        internal static bool FailedInOptimizing(Exception error)
-        {
-            for (var depth = 0; error != null && depth < 16; depth++)
-            {
-                if (error.Data.Contains(OptimizingFailureKey)) return true;
-                if (error is AggregateException aggregate && aggregate.InnerExceptions.Any(FailedInOptimizing)) return true;
-                error = error.InnerException;
-            }
-            return false;
-        }
+        internal static bool FailedInOptimizing(Exception error) => ExceptionChain.Any(error, value => value.Data.Contains(OptimizingFailureKey));
 
         private static bool IsSuccessful(Bridge bridge, object context) =>
             Invoke(() => bridge.Successful.GetValue(context)) is bool success && success;
