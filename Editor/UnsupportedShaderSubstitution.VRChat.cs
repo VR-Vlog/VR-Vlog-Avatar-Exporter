@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Rendering;
 using static VRVlog.LilToonExporter.NumericChecks;
 
 namespace VRVlog.LilToonExporter
@@ -408,7 +407,7 @@ namespace VRVlog.LilToonExporter
                 var gamma = new Color(Mathf.Clamp01(mixed.r), Mathf.Clamp01(mixed.g), Mathf.Clamp01(mixed.b)).gamma;
                 pixels[i] = new Color(gamma.r, gamma.g, gamma.b, 1);
             }
-            return NewImage(main, "__VRVlog_Outline", size, pixels, textures);
+            return NewImage(main, "__VRVlog_Outline", size, size, pixels, textures, false);
         }
 
         // The source turns the hue in radians; a whole turn changes nothing.
@@ -511,7 +510,7 @@ namespace VRVlog.LilToonExporter
                         baked[i] = new Color(gamma.r, gamma.g, gamma.b, Mathf.Clamp01(c.a));
                     }
                 }
-                var image = baked == null ? null : NewImage(main, "__VRVlog_Albedo", size, baked, textures);
+                var image = baked == null ? null : NewImage(main, "__VRVlog_Albedo", size, size, baked, textures, false);
                 if (image == null)
                 {
                     if (albedoHue != 0) Drop(effects, "Hue Shift");
@@ -560,7 +559,7 @@ namespace VRVlog.LilToonExporter
                     var g = new Color(baked[i].x / scale, baked[i].y / scale, baked[i].z / scale).gamma;
                     stored[i] = new Color(g.r, g.g, g.b, 1);
                 }
-                var image = NewImage(emissionMap != null ? emissionMap : main, "__VRVlog_Emission", size, stored, textures);
+                var image = NewImage(emissionMap != null ? emissionMap : main, "__VRVlog_Emission", size, size, stored, textures, false);
                 if (image == null)
                 {
                     if (emissionHue != 0) Drop(effects, "Emission Hue Shift");
@@ -596,24 +595,6 @@ namespace VRVlog.LilToonExporter
                 albedo = Vector3.Lerp(albedo, target, Mathf.Clamp01(mask[i] * colors[i].a));
             }
             return albedo;
-        }
-
-        // An sRGB image owned by textures, with the wrap and filter of origin.
-        static Texture2D NewImage(Texture origin, string suffix, int size, Color[] pixels, List<Texture2D> textures)
-        {
-            if (textures == null) return null;
-            var image = new Texture2D(size, size, TextureFormat.RGBA32, false, false)
-            {
-                name = DeterministicNames.Unique((origin != null ? origin.name : "Color") + suffix,
-                    candidate => textures.Exists(texture => texture != null && texture.name == candidate)),
-                wrapModeU = origin != null ? origin.wrapModeU : TextureWrapMode.Repeat,
-                wrapModeV = origin != null ? origin.wrapModeV : TextureWrapMode.Repeat,
-                filterMode = origin != null ? origin.filterMode : FilterMode.Bilinear,
-            };
-            image.SetPixels(pixels);
-            image.Apply(false, false);
-            textures.Add(image);
-            return image;
         }
     }
 }
