@@ -39,8 +39,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var found = LilToonInstallation.FromPackageJson(AssetsJson, json);
             Assert.That(found.Version, Is.EqualTo(DependencyPolicy.LilToonUnknownVersion));
-            Assert.That(DependencyPolicy.LilToonError(found.Version), Is.Null);
-            Assert.That(DependencyPolicy.LilToonWarning(found.Version), Does.Contain("不明"));
+            Assert.That(DependencyPolicy.LilToonError(found.Version, t => t), Is.Null);
+            Assert.That(DependencyPolicy.LilToonWarning(found.Version, t => t), Does.Contain("不明"));
         }
 
         [Test]
