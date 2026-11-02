@@ -664,7 +664,7 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                 var table = File.ReadAllText(System.IO.Path.Combine(root, "Editor/Locales/ExporterLocale_" + locale + ".json"));
                 foreach (var text in texts)
                 {
-                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + LanTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
+                    var entry = Regex.Match(table, Regex.Escape("{\"source\":" + CloudTransferProtocol.JsonString(text) + ",\"translated\":\"") + "((?:[^\"\\\\]|\\\\.)+)\"\\}");
                     Assert.That(entry.Success, Is.True);
                     var translated = entry.Groups[1].Value;
                     Assert.That(Regex.IsMatch(translated, "[ぁ-んァ-ヶ]"), Is.False);

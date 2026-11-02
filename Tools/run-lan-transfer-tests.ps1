@@ -25,7 +25,6 @@ if (-not (Test-Path -LiteralPath $referenceRoot -PathType Container)) {
 }
 $references = @((Get-ChildItem -LiteralPath $referenceRoot -Filter '*.dll').FullName) + $dependencies
 $sources = @(
-    (Join-Path $repoRoot 'Editor/LanTransfer/LanTransferProtocol.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferProtocol.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/CloudTransferAvailability.cs'),
     (Join-Path $repoRoot 'Editor/LanTransfer/TransferTempDirectory.cs'),

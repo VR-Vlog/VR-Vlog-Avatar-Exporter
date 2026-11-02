@@ -287,7 +287,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
                     using (var to = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                     using (var hashing = new CryptoStream(to, sha, CryptoStreamMode.Write))
                         from.CopyTo(hashing);
-                    hash = LanTransferProtocol.Hex(sha.Hash);
+                    hash = CloudTransferProtocol.Hex(sha.Hash);
                 }
                 if (hash != expected) return null;
                 if (File.Exists(destination)) File.Replace(temporary, destination, null);
@@ -303,7 +303,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             try
             {
                 using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (var sha = SHA256.Create()) return LanTransferProtocol.Hex(sha.ComputeHash(file));
+                using (var sha = SHA256.Create()) return CloudTransferProtocol.Hex(sha.ComputeHash(file));
             }
             catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException || exception is ArgumentException
                 || exception is NotSupportedException) { return null; }
