@@ -19,14 +19,9 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, true)]
         public async Task FxDefaultOpeningShapeSurvivesExportWithoutAnExpressionMenu(bool independentBlink, bool resetClosingShape)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -74,18 +69,7 @@ namespace VRVlog.LilToonExporter.Tests
                     blinking.writeDefaultValues = false; blinkMachine.defaultState = blinking;
                 }
                 var descriptor = fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var layers = data.FindProperty("baseAnimationLayers");
-                    layers.arraySize = 1;
-                    var layer = layers.GetArrayElementAtIndex(0);
-                    var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, controller);
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Neutral opening regression", "Tests",
                     exporterVersion: null,
                     lilToonVersion: null,
@@ -111,12 +95,10 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task FxDefaultConstantShapeBesideATimeVaryingCurveIsBakedIntoTheBase()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -159,12 +141,10 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task FailedFxRestStillWritesTheFileWithTheCopysValues()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -204,10 +184,6 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-            .FirstOrDefault(type => type != null);
-
         // "Mouth" moves every vertex up and "Brow" moves it right.
         static SkinnedMeshRenderer[] MouthAndBrow(AttachmentConnectionTests.Fixture fixture, float mouth)
         {
@@ -232,16 +208,7 @@ namespace VRVlog.LilToonExporter.Tests
             state.writeDefaultValues = false; state.motion = clip;
             controller.layers[0].stateMachine.defaultState = state;
             var descriptor = source.AddComponent(descriptorType);
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers");
-            layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, controller);
         }
     }
 }

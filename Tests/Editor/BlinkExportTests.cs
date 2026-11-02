@@ -498,8 +498,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         [Test] public void DescriptorBlinkUsesOnlyTheClosedSlotAndValidatesMissingIndices()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor integration test.");
             var skin = Skin("custom_closed", "custom_up", "custom_down", "Blink");
             var descriptor = root.AddComponent(descriptorType);
             descriptorType.GetField("enableEyeLook").SetValue(descriptor, true);
@@ -681,8 +680,8 @@ namespace VRVlog.LilToonExporter.Tests
             using var fixture = new AttachmentConnectionTests.Fixture();
             if (modularAvatar)
             {
-                var proxyType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy")).FirstOrDefault(t => t != null);
-                var markerType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot")).FirstOrDefault(t => t != null);
+                var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+                var markerType = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot");
                 if (proxyType == null || markerType == null) Assert.Ignore("Requires Modular Avatar and NDMF.");
                 fixture.Source.AddComponent(markerType);
                 var hair = fixture.Source.transform.Find("Independent hair");

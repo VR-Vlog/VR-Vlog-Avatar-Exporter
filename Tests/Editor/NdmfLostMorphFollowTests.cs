@@ -24,21 +24,6 @@ namespace VRVlog.LilToonExporter.Tests
         const string Missing = "Mouth missing";
         const string Stripped = "Mouth stripped";
 
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
-        static void SetFx(Component descriptor, RuntimeAnimatorController controller)
-        {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
-        }
-
         static AnimatorController DefaultController(string asset)
         {
             var controller = AnimatorController.CreateAnimatorControllerAtPath(asset);
@@ -68,8 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
             // gets each non-null one except Missing, which only the descriptor names.
             internal Scene(string mode, Type descriptorType, Type proxyType, string[] visemes = null)
             {
-                var folderName = "__NdmfLostMorph_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", folderName); Folder = "Assets/" + folderName;
+                Folder = TempAssetFolder.Create("__NdmfLostMorph_");
                 var source = Fixture.Source;
                 Front = source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 Back = source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();
@@ -87,7 +71,7 @@ namespace VRVlog.LilToonExporter.Tests
                     skin.sharedMaterial.shader = Shader.Find("lilToon");
                 }
                 var descriptor = source.AddComponent(descriptorType);
-                SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
+                VrcAvatar.SetFx(descriptor, DefaultController(Folder + "/Base.controller"));
                 if (visemes != null)
                 {
                     var lipSync = descriptorType.GetField("lipSync");
@@ -132,7 +116,7 @@ namespace VRVlog.LilToonExporter.Tests
         }
 
         // The test pass stays inert outside these tests.
-        static void Arm(bool armed) => InstalledType(PluginType)?.GetField("Armed")?.SetValue(null, armed);
+        static void Arm(bool armed) => OptionalTools.Find(PluginType)?.GetField("Armed")?.SetValue(null, armed);
 
         [SetUp]
         public void SetUp() => Arm(true);
@@ -142,9 +126,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         static (Type Descriptor, Type Proxy) RequireInstalled()
         {
-            var descriptorType = InstalledType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var proxyType = InstalledType("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
-            if (descriptorType == null || proxyType == null || InstalledType(PluginType) == null)
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var proxyType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarBoneProxy");
+            if (descriptorType == null || proxyType == null || OptionalTools.Find(PluginType) == null)
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF to run their real processing pipeline.");
             return (descriptorType, proxyType);
         }

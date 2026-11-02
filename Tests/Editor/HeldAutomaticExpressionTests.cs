@@ -21,15 +21,13 @@ namespace VRVlog.LilToonExporter.Tests
         AnimationClip faceClip, closeClip;
         StateMachineBehaviour random;
         VrChatExpressionMenu.Source source;
-        static EditorCurveBinding Binding(string shape) => EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape." + shape);
-        static readonly HashSet<EditorCurveBinding> Automatic = new HashSet<EditorCurveBinding> { Binding("Blink") };
-        static readonly HashSet<EditorCurveBinding> Selected = new HashSet<EditorCurveBinding> { Binding("Authored"), Binding("Blink") };
+        static readonly HashSet<EditorCurveBinding> Automatic = new HashSet<EditorCurveBinding> { FxGraph.Binding("Blink") };
+        static readonly HashSet<EditorCurveBinding> Selected = new HashSet<EditorCurveBinding> { FxGraph.Binding("Authored"), FxGraph.Binding("Blink") };
 
         [SetUp]
         public void SetUp()
         {
-            var name = "__HeldAutomatic_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__HeldAutomatic_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Enable", AnimatorControllerParameterType.Bool);
             var parameters = controller.parameters; parameters.Single(parameter => parameter.name == "Enable").defaultBool = true; controller.parameters = parameters;
@@ -39,10 +37,10 @@ namespace VRVlog.LilToonExporter.Tests
             mesh = new Mesh { name = "Independent automatic test" }; mesh.vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }; mesh.triangles = new[] { 0, 1, 2 };
             foreach (var shape in new[] { "Authored", "Blink", "Rest" }) mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .01f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh;
-            State(0, "Permanent underlay", Clip("Permanent", ("Rest", 12)));
-            AddLayer("Selected face"); faceClip = Clip("Authored selected face", ("Authored", 75), ("Blink", 0)); selected = State(1, "Selected", faceClip);
+            State(0, "Permanent underlay", FxGraph.Clip(controller, "Permanent", ("Rest", 12)));
+            AddLayer("Selected face"); faceClip = FxGraph.Clip(controller, "Authored selected face", ("Authored", 75), ("Blink", 0)); selected = State(1, "Selected", faceClip);
             ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Enable", 1));
-            AddLayer("Automatic blink"); condition = State(2, "Condition", Clip("Empty"));
+            AddLayer("Automatic blink"); condition = State(2, "Condition", FxGraph.Clip(controller, "Empty"));
             random = ParameterDriverExpressionTests.Driver(condition, ParameterDriverExpressionTests.Op("Random", "Lottery"));
             using (var data = new SerializedObject(random))
             {
@@ -50,8 +48,8 @@ namespace VRVlog.LilToonExporter.Tests
                 operation.FindPropertyRelative("valueMin").floatValue = 0; operation.FindPropertyRelative("valueMax").floatValue = 4;
                 operation.FindPropertyRelative("chance").floatValue = .5f; data.ApplyModifiedPropertiesWithoutUndo();
             }
-            closeClip = Clip("Blink close and sparse eye resets", ("Authored", 0), ("Blink", 100)); closed = State(2, "Closed", closeClip);
-            var open = State(2, "Open", Clip("Blink open", ("Blink", 0)));
+            closeClip = FxGraph.Clip(controller, "Blink close and sparse eye resets", ("Authored", 0), ("Blink", 100)); closed = State(2, "Closed", closeClip);
+            var open = State(2, "Open", FxGraph.Clip(controller, "Blink open", ("Blink", 0)));
             var enter = condition.AddTransition(closed); enter.hasExitTime = true; enter.exitTime = .1f; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, "Enable"); enter.AddCondition(AnimatorConditionMode.Greater, -1, "Lottery");
             var leave = closed.AddTransition(open); leave.hasExitTime = true; leave.exitTime = .5f; leave.duration = 0;
@@ -65,24 +63,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh); if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        void AddLayer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers; layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-        }
-
-        AnimationClip Clip(string name, params (string Shape, float Weight)[] weights)
-        {
-            var clip = new AnimationClip { name = name }; AssetDatabase.AddObjectToAsset(clip, controller);
-            foreach (var weight in weights) AnimationUtility.SetEditorCurve(clip, Binding(weight.Shape), AnimationCurve.Constant(0, 1, weight.Weight));
-            return clip;
-        }
-
-        AnimatorState State(int index, string name, Motion motion)
-        {
-            var machine = controller.layers[index].stateMachine; var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state; return state;
-        }
+        void AddLayer(string name) => FxGraph.Layer(controller, name);
+        AnimatorState State(int index, string name, Motion motion) => FxGraph.StartState(controller.layers[index].stateMachine, name, motion);
 
         HashSet<int> Find() => HeldAutomaticExpressionLayers.Find(controller, source, Automatic, 1, Selected);
 
@@ -132,16 +114,15 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("unselected permanent morph")]
         public void AutomaticSuspensionRequiresCompleteIsolation(string kind)
         {
-            if (kind == "varied nonautomatic") AnimationUtility.SetEditorCurve(closeClip, Binding("Authored"), AnimationCurve.Linear(0, 0, 1, 50));
-            else if (kind == "sparse nonzero reset") AnimationUtility.SetEditorCurve(closeClip, Binding("Authored"), AnimationCurve.Constant(0, 1, 30));
+            if (kind == "varied nonautomatic") AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Authored"), AnimationCurve.Linear(0, 0, 1, 50));
+            else if (kind == "sparse nonzero reset") AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Authored"), AnimationCurve.Constant(0, 1, 30));
             else if (kind == "appearance") AnimationUtility.SetEditorCurve(closeClip, EditorCurveBinding.FloatCurve("Body", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
             else if (kind == "external destination") source.ExternalParameters.Add("Lottery");
             else if (kind == "additive") { var layers = controller.layers; layers[2].blendingMode = AnimatorLayerBlendingMode.Additive; controller.layers = layers; }
-            else if (kind == "unselected permanent morph") AnimationUtility.SetEditorCurve(closeClip, Binding("Rest"), AnimationCurve.Constant(0, 1, 0));
+            else if (kind == "unselected permanent morph") AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Rest"), AnimationCurve.Constant(0, 1, 0));
             else if (kind == "weight control")
             {
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-                if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+                var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK.");
                 var control = selected.AddStateMachineBehaviour(type);
                 using var data = new SerializedObject(control); var playable = data.FindProperty("playable"); playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
                 data.FindProperty("layer").intValue = 2; data.FindProperty("goalWeight").floatValue = .5f; data.FindProperty("blendDuration").floatValue = 0; data.ApplyModifiedPropertiesWithoutUndo();
@@ -153,7 +134,7 @@ namespace VRVlog.LilToonExporter.Tests
                 else { AddLayer("Coupled face reader"); }
                 var machine = target.layers[kind == "other playable reader" ? 0 : 3].stateMachine;
                 var state = machine.AddState("Reader"); state.motion = faceClip; state.writeDefaultValues = false; machine.defaultState = state;
-                var next = machine.AddState("Other face"); next.motion = Clip("Other face", ("Authored", 20)); next.writeDefaultValues = false;
+                var next = machine.AddState("Other face"); next.motion = FxGraph.Clip(controller, "Other face", ("Authored", 20)); next.writeDefaultValues = false;
                 var transition = state.AddTransition(next); transition.hasExitTime = false; transition.duration = 0; transition.AddCondition(AnimatorConditionMode.Greater, 1, "Lottery");
             }
             Assert.That(Find(), Is.Empty);
@@ -179,9 +160,9 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AParameterOnlyForwardRelayIsIncludedInTheSuspendedComponent()
         {
-            controller.AddParameter("Relay", AnimatorControllerParameterType.Bool); AddLayer("Automatic relay"); var relay = State(3, "Relay", Clip("Empty relay"));
+            controller.AddParameter("Relay", AnimatorControllerParameterType.Bool); AddLayer("Automatic relay"); var relay = State(3, "Relay", FxGraph.Clip(controller, "Empty relay"));
             ParameterDriverExpressionTests.Driver(relay, ParameterDriverExpressionTests.Op("Set", "Relay", 1));
-            var other = State(3, "Other relay", Clip("Other empty relay")); var transition = relay.AddTransition(other); transition.hasExitTime = false; transition.duration = 0;
+            var other = State(3, "Other relay", FxGraph.Clip(controller, "Other empty relay")); var transition = relay.AddTransition(other); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Greater, 1, "Lottery"); Assert.That(Find(), Is.EquivalentTo(new[] { 2, 3 }));
         }
 
@@ -192,7 +173,7 @@ namespace VRVlog.LilToonExporter.Tests
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OtherInitializer.controller");
             other.AddParameter("Lottery", AnimatorControllerParameterType.Float); source.OtherControllers.Add(other);
             var machine = other.layers[0].stateMachine; var state = machine.AddState("Initialize automatic interval"); machine.defaultState = state;
-            state.motion = Clip("Empty incoming initializer"); state.writeDefaultValues = false;
+            state.motion = FxGraph.Clip(controller, "Empty incoming initializer"); state.writeDefaultValues = false;
             ParameterDriverExpressionTests.Driver(state, ParameterDriverExpressionTests.Op("Set", "Lottery", malformed ? float.NaN : 2));
             Assert.That(Find(), Is.Empty, "An incoming shared parameter writer makes the automatic component dependent on another playable.");
             Assert.Catch<InvalidOperationException>(() => Hold());
@@ -208,17 +189,17 @@ namespace VRVlog.LilToonExporter.Tests
             // single constant clip genuinely seeds a stationary scalar root;
             // the multi-state automatic layer itself cannot establish one.
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
-                Binding("Recovery channel"), AnimationCurve.Constant(0, 1, preparedRecovery));
-            condition.motion = Clip("Random idle reset", ("Blink", 0), ("Recovery channel", 0));
-            AnimationUtility.SetEditorCurve(faceClip, Binding("Blink"), null);
-            AnimationUtility.SetEditorCurve(closeClip, Binding("Authored"), null);
-            AnimationUtility.SetEditorCurve(closeClip, Binding("Blink"), new AnimationCurve(
+                FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1, preparedRecovery));
+            condition.motion = FxGraph.Clip(controller, "Random idle reset", ("Blink", 0), ("Recovery channel", 0));
+            AnimationUtility.SetEditorCurve(faceClip, FxGraph.Binding("Blink"), null);
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Authored"), null);
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Blink"), new AnimationCurve(
                 new Keyframe(0, 0), new Keyframe(.2f, 100), new Keyframe(.4f, 0), new Keyframe(1, 0)));
-            AnimationUtility.SetEditorCurve(closeClip, Binding("Recovery channel"), new AnimationCurve(
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Recovery channel"), new AnimationCurve(
                 new Keyframe(0, 0), new Keyframe(.4f, 0), new Keyframe(.7f, 80), new Keyframe(1, 0)));
             var openState = controller.layers[2].stateMachine.states.Single(child => child.state.name == "Open").state;
             var open = openState.motion as AnimationClip;
-            AnimationUtility.SetEditorCurve(open, Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 0));
+            AnimationUtility.SetEditorCurve(open, FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 0));
             // The source selected driver is not a producer of this idle gate.
             condition.transitions.Single().conditions = condition.transitions.Single().conditions.Where(value => value.parameter != "Enable").ToArray();
             closed.transitions.Single().exitTime = 1;
@@ -256,10 +237,10 @@ namespace VRVlog.LilToonExporter.Tests
             }
             finally { graph.Destroy(); Object.DestroyImmediate(clone); }
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
-            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller, null).Contains(Binding("Recovery channel")), Is.True,
+            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller, null).Contains(FxGraph.Binding("Recovery channel")), Is.True,
                 "The constant reset would otherwise promote the automatic channel to a scalar root.");
             Assert.That(UnownedRest(out var preserved), Is.EquivalentTo(new[] { 2 }));
-            Assert.That(preserved, Is.EquivalentTo(new[] { Binding("Blink"), Binding("Recovery channel") }));
+            Assert.That(preserved, Is.EquivalentTo(new[] { FxGraph.Binding("Blink"), FxGraph.Binding("Recovery channel") }));
             var entry = Hold();
             Assert.That(entry.Values.Single(value => value.Shape == "Authored").Weight, Is.EqualTo(75).Within(.01));
             Assert.That(entry.Values.Single(value => value.Shape == "Rest").Weight, Is.EqualTo(12).Within(.01));
@@ -393,7 +374,7 @@ namespace VRVlog.LilToonExporter.Tests
             source.ExpressionParameters.Add(RestorationGate);
             source.ParameterPersistence[RestorationGate] = (false, false);
             source.ExpressionParameterTypes[RestorationGate] = "Bool";
-            var alternative = State(2, "Restored deterministic face", Clip("Restored face", ("Blink", 0), ("Recovery channel", 60)));
+            var alternative = State(2, "Restored deterministic face", FxGraph.Clip(controller, "Restored face", ("Blink", 0), ("Recovery channel", 60)));
             var enter = condition.AddTransition(alternative); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, RestorationGate);
             var open = controller.layers[2].stateMachine.states.Single(child => child.state.name == "Open").state;
@@ -436,7 +417,7 @@ namespace VRVlog.LilToonExporter.Tests
                     var parameters = other.parameters; parameters.Single().defaultBool = true; other.parameters = parameters;
                 }
                 var machine = other.layers[0].stateMachine; var state = machine.AddState("Unrelated additional rest");
-                state.motion = Clip("Additional gate declaration", ("Rest", 12)); state.writeDefaultValues = false; machine.defaultState = state;
+                state.motion = FxGraph.Clip(controller, "Additional gate declaration", ("Rest", 12)); state.writeDefaultValues = false; machine.defaultState = state;
                 source.OtherControllers.Add(other);
             }
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
@@ -466,7 +447,7 @@ namespace VRVlog.LilToonExporter.Tests
             var native = NativeRestoredGatePose(false);
             Assert.That(native.Authored, Is.EqualTo(75).Within(.01));
             Assert.That(UnownedRest(out var preserved), Is.EquivalentTo(new[] { 2 }));
-            Assert.That(preserved, Is.EquivalentTo(new[] { Binding("Blink"), Binding("Recovery channel") }));
+            Assert.That(preserved, Is.EquivalentTo(new[] { FxGraph.Binding("Blink"), FxGraph.Binding("Recovery channel") }));
             var entry = Hold();
             Assert.That(entry.Values.Single(value => value.Shape == "Authored").Weight, Is.EqualTo(native.Authored).Within(.01));
             Assert.That(entry.Values.Any(value => value.Shape == "Blink" || value.Shape == "Recovery channel"), Is.False);
@@ -542,14 +523,14 @@ namespace VRVlog.LilToonExporter.Tests
             var disable = closed.AddTransition(rest); disable.hasExitTime = false; disable.duration = 0;
             disable.AddCondition(AnimatorConditionMode.IfNot, 0, "Enable");
             var underlay = controller.layers[0].stateMachine.defaultState;
-            AnimationUtility.SetEditorCurve((AnimationClip)underlay.motion, Binding("Authored"), AnimationCurve.Constant(0, 1, 20));
-            var enabled = State(0, "Selected gate underlay", Clip("Gate changes the lower face", ("Authored", 40)));
+            AnimationUtility.SetEditorCurve((AnimationClip)underlay.motion, FxGraph.Binding("Authored"), AnimationCurve.Constant(0, 1, 20));
+            var enabled = State(0, "Selected gate underlay", FxGraph.Clip(controller, "Gate changes the lower face", ("Authored", 40)));
             var transition = underlay.AddTransition(enabled); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.IfNot, 0, "Enable");
             var definitions = controller.layers; definitions[1].defaultWeight = .5f; controller.layers = definitions;
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
             Assert.That(UnownedRest(out var preserved), Is.EquivalentTo(new[] { 2 }));
-            Assert.That(preserved, Is.EquivalentTo(new[] { Binding("Blink"), Binding("Recovery channel") }));
+            Assert.That(preserved, Is.EquivalentTo(new[] { FxGraph.Binding("Blink"), FxGraph.Binding("Recovery channel") }));
 
             // The original native graph and actual SDK Set/Copy adapter provide
             // the selected callback witness. The Random result is irrelevant to
@@ -610,7 +591,7 @@ namespace VRVlog.LilToonExporter.Tests
             parameters.Single(parameter => parameter.name == "Requested face").defaultInt = 1; controller.parameters = parameters;
             selected.behaviours = Array.Empty<StateMachineBehaviour>();
             ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op(operation, "Forced face", 1, "Requested face"));
-            var terminal = State(2, "Selected deterministic alternative", Clip("Unowned selected face", ("Blink", 0), ("Recovery channel", 60)));
+            var terminal = State(2, "Selected deterministic alternative", FxGraph.Clip(controller, "Unowned selected face", ("Blink", 0), ("Recovery channel", 60)));
             var enter = controller.layers[2].stateMachine.AddAnyStateTransition(terminal); enter.hasExitTime = false; enter.duration = 0;
             enter.canTransitionToSelf = false; enter.AddCondition(AnimatorConditionMode.Greater, 0, "Forced face");
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
@@ -662,7 +643,7 @@ namespace VRVlog.LilToonExporter.Tests
             else if (kind == "conditional exit") closed.transitions.Single().AddCondition(AnimatorConditionMode.IfNot, 0, "Enable");
             else
             {
-                AnimationUtility.SetEditorCurve(closeClip, Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 60));
+                AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 60));
                 var reset = controller.layers[2].stateMachine.AddAnyStateTransition(closed); reset.hasExitTime = false; reset.duration = 0;
                 reset.canTransitionToSelf = true; reset.AddCondition(AnimatorConditionMode.If, 0, "Enable");
             }
@@ -726,7 +707,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (kind == "nonzero terminal")
             {
                 var terminal = child.AddState("Authored deterministic alternative"); terminal.writeDefaultValues = false;
-                terminal.motion = Clip("Nonzero child face", ("Blink", 0), ("Recovery channel", 60));
+                terminal.motion = FxGraph.Clip(controller, "Nonzero child face", ("Blink", 0), ("Recovery channel", 60));
                 var entry = child.AddEntryTransition(terminal); entry.AddCondition(AnimatorConditionMode.Equals, 1, "Mode");
             }
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
@@ -749,16 +730,16 @@ namespace VRVlog.LilToonExporter.Tests
             // Remove that support so this oracle tests the actual WD Off
             // predecessor history rather than a lower-layer reset.
             AnimationUtility.SetEditorCurve((AnimationClip)controller.layers[0].stateMachine.defaultState.motion,
-                Binding("Recovery channel"), null);
+                FxGraph.Binding("Recovery channel"), null);
             controller.AddParameter("Forced face", AnimatorControllerParameterType.Int);
             ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Forced face", 1));
-            var terminal = State(2, "Selected transient face", Clip("Transient selected face", ("Blink", 0), ("Recovery channel", 60)));
-            var empty = State(2, "Sparse held rest", Clip("No recovery reset", ("Blink", 0)));
+            var terminal = State(2, "Selected transient face", FxGraph.Clip(controller, "Transient selected face", ("Blink", 0), ("Recovery channel", 60)));
+            var empty = State(2, "Sparse held rest", FxGraph.Clip(controller, "No recovery reset", ("Blink", 0)));
             var enter = condition.AddTransition(terminal); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.Greater, 0, "Forced face");
             var leave = terminal.AddTransition(empty); leave.hasExitTime = true; leave.exitTime = .5f; leave.duration = 0;
             var before = ExportSourceFingerprint.Compute(avatar); var serialized = EditorJsonUtility.ToJson(controller);
-            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller, null).Contains(Binding("Recovery channel")), Is.False,
+            Assert.That(ExpressionDependencies.StationaryMorphBindings(controller, null).Contains(FxGraph.Binding("Recovery channel")), Is.False,
                 "No independent lower-layer constant can reset or conceal the previous authored value.");
             var clone = Object.Instantiate(avatar); var graph = PlayableGraph.Create("Native sparse held face oracle");
             ExpressionEvaluationSession evaluation = null;
@@ -788,9 +769,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         StateMachineBehaviour GlobalFxControl(AnimatorState state, float weight, float duration = 0)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCPlayableLayerControl", "Install the real VRChat SDK.");
             var control = state.AddStateMachineBehaviour(type); using var data = new SerializedObject(control);
             var target = data.FindProperty("layer"); target.enumValueIndex = Array.IndexOf(target.enumNames, "FX");
             data.FindProperty("goalWeight").floatValue = weight; data.FindProperty("blendDuration").floatValue = duration;
@@ -800,8 +779,8 @@ namespace VRVlog.LilToonExporter.Tests
         (AnimatorState Unit, AnimatorState Disabled) GlobalFxGate(string gate = "InStation", float weight = 1, float duration = 0)
         {
             controller.AddParameter(gate, AnimatorControllerParameterType.Bool); AddLayer("Global FX gate");
-            var unit = State(3, "FX enabled", Clip("FX enabled support")); GlobalFxControl(unit, weight, duration);
-            var disabled = State(3, "FX disabled", Clip("FX disabled support")); GlobalFxControl(disabled, 0);
+            var unit = State(3, "FX enabled", FxGraph.Clip(controller, "FX enabled support")); GlobalFxControl(unit, weight, duration);
+            var disabled = State(3, "FX disabled", FxGraph.Clip(controller, "FX disabled support")); GlobalFxControl(disabled, 0);
             var enter = unit.AddTransition(disabled); enter.hasExitTime = false; enter.duration = 0; enter.AddCondition(AnimatorConditionMode.If, 0, gate);
             var leave = disabled.AddTransition(unit); leave.hasExitTime = false; leave.duration = 0; leave.AddCondition(AnimatorConditionMode.IfNot, 0, gate);
             return (unit, disabled);
@@ -814,8 +793,8 @@ namespace VRVlog.LilToonExporter.Tests
             controller.AddParameter("Native relay", AnimatorControllerParameterType.Int);
             ParameterDriverExpressionTests.Driver(control.Unit, ParameterDriverExpressionTests.Op("Set", "Native relay", 1));
             var underlay = controller.layers[0].stateMachine.defaultState;
-            AnimationUtility.SetEditorCurve((AnimationClip)underlay.motion, Binding("Authored"), AnimationCurve.Constant(0, 1, 20));
-            var enabled = State(0, "Native relay face", Clip("Native relay lower face", ("Authored", 40)));
+            AnimationUtility.SetEditorCurve((AnimationClip)underlay.motion, FxGraph.Binding("Authored"), AnimationCurve.Constant(0, 1, 20));
+            var enabled = State(0, "Native relay face", FxGraph.Clip(controller, "Native relay lower face", ("Authored", 40)));
             var transition = underlay.AddTransition(enabled); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Greater, 0, "Native relay");
             var definitions = controller.layers; definitions[1].defaultWeight = .5f; controller.layers = definitions;
@@ -875,7 +854,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OtherGlobalControl.controller"); source.OtherControllers.Add(other);
                 var state = other.layers[0].stateMachine.AddState("Additional global FX writer"); other.layers[0].stateMachine.defaultState = state;
-                state.motion = Clip("Additional empty control"); state.writeDefaultValues = false; GlobalFxControl(state, 1);
+                state.motion = FxGraph.Clip(controller, "Additional empty control"); state.writeDefaultValues = false; GlobalFxControl(state, 1);
             }
             else if (kind == "unknown callback") control.Unit.AddStateMachineBehaviour<UnknownStateCallbackProbe>();
             else if (kind == "invalid routing") control.Unit.transitions.Single().destinationState = selected;
@@ -921,7 +900,7 @@ namespace VRVlog.LilToonExporter.Tests
             UnownedRandomFixture();
             if (kind == "selected output")
             {
-                AnimationUtility.SetEditorCurve(faceClip, Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 0));
+                AnimationUtility.SetEditorCurve(faceClip, FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1, 0));
                 // The selected SDK callback actually drives this upper layer.
                 // It must stay in support rather than using the pre-existing
                 // direct-clip policy for an unrelated competing face selector.
@@ -933,13 +912,13 @@ namespace VRVlog.LilToonExporter.Tests
                 var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OtherRestWriter.controller");
                 other.AddParameter("Lottery", AnimatorControllerParameterType.Float); source.OtherControllers.Add(other);
                 var machine = other.layers[0].stateMachine; var state = machine.AddState("Initialize interval"); machine.defaultState = state;
-                state.motion = Clip("Empty additional initializer"); state.writeDefaultValues = false;
+                state.motion = FxGraph.Clip(controller, "Empty additional initializer"); state.writeDefaultValues = false;
                 ParameterDriverExpressionTests.Driver(state, ParameterDriverExpressionTests.Op("Set", "Lottery", 2));
             }
             else if (kind == "escaping face reader")
             {
-                AddLayer("Dependent face"); var start = State(3, "Face", Clip("Face rest", ("Authored", 0)));
-                var next = State(3, "Other face", Clip("Face selected by interval", ("Authored", 20)));
+                AddLayer("Dependent face"); var start = State(3, "Face", FxGraph.Clip(controller, "Face rest", ("Authored", 0)));
+                var next = State(3, "Other face", FxGraph.Clip(controller, "Face selected by interval", ("Authored", 20)));
                 var transition = start.AddTransition(next); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Greater, 1, "Lottery");
             }
@@ -953,8 +932,7 @@ namespace VRVlog.LilToonExporter.Tests
             }
             else
             {
-                var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl")).FirstOrDefault(value => value != null);
-                if (type == null) Assert.Ignore("Install the real VRChat SDK.");
+                var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK.");
                 var control = selected.AddStateMachineBehaviour(type); using var data = new SerializedObject(control);
                 var playable = data.FindProperty("playable"); playable.enumValueIndex = Array.IndexOf(playable.enumNames, "FX");
                 data.FindProperty("layer").intValue = 2; data.FindProperty("goalWeight").floatValue = .5f; data.FindProperty("blendDuration").floatValue = 0; data.ApplyModifiedPropertiesWithoutUndo();
@@ -985,15 +963,15 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.AddBlendShapeFrame(shape, candidate && mismatch == "frame weight" ? 50 : 100, p, n, t);
                 if (candidate && mismatch == "frame count") mesh.AddBlendShapeFrame(shape, 200, p, n, t);
             }
-            AnimationUtility.SetEditorCurve(faceClip, Binding("Blink"), null);
-            AnimationUtility.SetEditorCurve(faceClip, Binding("まばたき"), AnimationCurve.Constant(0, 1, 3));
-            AnimationUtility.SetEditorCurve(faceClip, Binding(alias), AnimationCurve.Constant(0, 1, 0));
-            AnimationUtility.SetEditorCurve(closeClip, Binding("Blink"), null);
-            AnimationUtility.SetEditorCurve(closeClip, Binding("まばたき"), AnimationCurve.Constant(0, 1, 0));
-            AnimationUtility.SetEditorCurve(closeClip, Binding(alias), AnimationCurve.Constant(0, 1, 100));
+            AnimationUtility.SetEditorCurve(faceClip, FxGraph.Binding("Blink"), null);
+            AnimationUtility.SetEditorCurve(faceClip, FxGraph.Binding("まばたき"), AnimationCurve.Constant(0, 1, 3));
+            AnimationUtility.SetEditorCurve(faceClip, FxGraph.Binding(alias), AnimationCurve.Constant(0, 1, 0));
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("Blink"), null);
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding("まばたき"), AnimationCurve.Constant(0, 1, 0));
+            AnimationUtility.SetEditorCurve(closeClip, FxGraph.Binding(alias), AnimationCurve.Constant(0, 1, 100));
             var openClip = controller.layers[2].stateMachine.states.Single(child => child.state.name == "Open").state.motion as AnimationClip;
-            AnimationUtility.SetEditorCurve(openClip, Binding("Blink"), null);
-            AnimationUtility.SetEditorCurve(openClip, Binding(alias), AnimationCurve.Constant(0, 1, 0));
+            AnimationUtility.SetEditorCurve(openClip, FxGraph.Binding("Blink"), null);
+            AnimationUtility.SetEditorCurve(openClip, FxGraph.Binding(alias), AnimationCurve.Constant(0, 1, 0));
         }
 
         [TestCase("Auto_Blink", false)]
@@ -1003,8 +981,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             AutomaticAliasFixture(alias, tiny ? "tiny" : null);
             var automatic = NeutralShapeSampler.AutomaticChannels(avatar);
-            Assert.That(automatic, Does.Contain(Binding("まばたき")));
-            Assert.That(automatic, Does.Contain(Binding(alias)));
+            Assert.That(automatic, Does.Contain(FxGraph.Binding("まばたき")));
+            Assert.That(automatic, Does.Contain(FxGraph.Binding(alias)));
             Assert.That(BlinkShapeNames.Resolve(new[] { "まばたき", alias })[0], Is.Zero,
                 "Standard VRM blink priority remains the manual semantic family.");
             var entry = Hold();
@@ -1035,7 +1013,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(positions.Concat(normals).Concat(tangents).All(value => value.Equals(Vector3.zero)), Is.True,
                     "Unity discarded the requested tiny deltas; stored source geometry, rather than the requested array, decides automatic equivalence.");
             }
-            Assert.That(NeutralShapeSampler.AutomaticChannels(avatar).Contains(Binding(alias)), Is.False);
+            Assert.That(NeutralShapeSampler.AutomaticChannels(avatar).Contains(FxGraph.Binding(alias)), Is.False);
             Assert.Catch<InvalidOperationException>(() => Hold());
         }
 
@@ -1046,9 +1024,9 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .01f, 3).ToArray(), null, null);
             var automatic = NeutralShapeSampler.AutomaticChannels(avatar);
             foreach (var shape in new[] { "Blink", "まばたき", "Fcl_EYE_Close", "Blink_L", "Blink_R", "EyeClosedLeft", "EyeClosedRight" })
-                Assert.That(automatic.Contains(Binding(shape)), Is.True);
-            Assert.That(automatic.Contains(Binding("Authored")), Is.False);
-            Assert.That(automatic.Contains(Binding("Rest")), Is.False);
+                Assert.That(automatic.Contains(FxGraph.Binding(shape)), Is.True);
+            Assert.That(automatic.Contains(FxGraph.Binding("Authored")), Is.False);
+            Assert.That(automatic.Contains(FxGraph.Binding("Rest")), Is.False);
         }
 
         float NativeDelayedGateRecoveryAtTheCaptureHorizon(bool expectedBlend)
@@ -1090,7 +1068,7 @@ namespace VRVlog.LilToonExporter.Tests
             controller.AddParameter("Forced face", AnimatorControllerParameterType.Int);
             ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Forced face", 1));
             var open = controller.layers[2].stateMachine.states.Single(child => child.state.name == "Open").state;
-            var alternativeClip = Clip("Delayed deterministic recovery", ("Blink", 0), ("Recovery channel", 60));
+            var alternativeClip = FxGraph.Clip(controller, "Delayed deterministic recovery", ("Blink", 0), ("Recovery channel", 60));
             var alternative = State(2, "Selected delayed recovery", alternativeClip);
             var enter = condition.AddTransition(alternative); enter.hasExitTime = false; enter.duration = 0;
             enter.canTransitionToSelf = false; enter.AddCondition(AnimatorConditionMode.Greater, 0, "Forced face");
@@ -1102,11 +1080,11 @@ namespace VRVlog.LilToonExporter.Tests
             }
             else if (kind == "long chain")
             {
-                AnimationUtility.SetEditorCurve(alternativeClip, Binding("Blink"), AnimationCurve.Constant(0, 1.5f, 0));
-                AnimationUtility.SetEditorCurve(alternativeClip, Binding("Recovery channel"), AnimationCurve.Constant(0, 1.5f, 60));
-                var nextClip = Clip("Second delayed deterministic recovery", ("Blink", 0), ("Recovery channel", 60));
-                AnimationUtility.SetEditorCurve(nextClip, Binding("Blink"), AnimationCurve.Constant(0, 1.5f, 0));
-                AnimationUtility.SetEditorCurve(nextClip, Binding("Recovery channel"), AnimationCurve.Constant(0, 1.5f, 60));
+                AnimationUtility.SetEditorCurve(alternativeClip, FxGraph.Binding("Blink"), AnimationCurve.Constant(0, 1.5f, 0));
+                AnimationUtility.SetEditorCurve(alternativeClip, FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1.5f, 60));
+                var nextClip = FxGraph.Clip(controller, "Second delayed deterministic recovery", ("Blink", 0), ("Recovery channel", 60));
+                AnimationUtility.SetEditorCurve(nextClip, FxGraph.Binding("Blink"), AnimationCurve.Constant(0, 1.5f, 0));
+                AnimationUtility.SetEditorCurve(nextClip, FxGraph.Binding("Recovery channel"), AnimationCurve.Constant(0, 1.5f, 60));
                 var next = State(2, "Second selected delayed recovery", nextClip);
                 reset.destinationState = next; reset.exitTime = 1;
                 var finish = next.AddTransition(open); finish.hasExitTime = true; finish.exitTime = 1; finish.duration = 0;

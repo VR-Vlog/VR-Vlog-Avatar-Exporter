@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -19,26 +17,21 @@ namespace VRVlog.LilToonExporter.Tests
     // cannot prove that expressions never reveal the permanently hidden pupil.
     public sealed class MaPermanentAppearanceExportTests
     {
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
-
         [TestCase(false, false)]
         [TestCase(false, true)]
         [TestCase(true, false)]
         [TestCase(true, true)]
         public async Task MergedPermanentPupilHideSurvivesVrmReloadBlinkAndMenuGeometry(bool fullLilToon, bool writeDefaults)
         {
-            var descriptorType = Installed("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            var mergeType = Installed("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
-            var menuType = Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
-            var parametersType = Installed("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var mergeType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator");
+            var menuType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu");
+            var parametersType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
             if (descriptorType == null || mergeType == null || menuType == null || parametersType == null)
                 Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__MaPermanentAppearance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__MaPermanentAppearance_");
             Vrm10Instance imported = null;
             GameObject prepared = null;
             try
@@ -53,8 +46,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
                 var machine = controller.layers[0].stateMachine;
-                var neutral = State(machine, "Neutral", Clip(controller, "Common neutral", 0, 0), writeDefaults);
-                var selected = State(machine, "Smile", Clip(controller, "Selected face deliberately restores pupil", 100, 0), writeDefaults);
+                var neutral = FxGraph.State(machine, "Neutral", Clip(controller, "Common neutral", 0, 0), writeDefaults);
+                var selected = FxGraph.State(machine, "Smile", Clip(controller, "Selected face deliberately restores pupil", 100, 0), writeDefaults);
                 machine.defaultState = neutral;
                 var transition = neutral.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
@@ -64,7 +57,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var path in new[] { "Front", "Back" })
                     Curve(hide, path, "Pupil hide", 100);
                 AssetDatabase.AddObjectToAsset(hide, permanent);
-                permanent.layers[0].stateMachine.defaultState = State(permanent.layers[0].stateMachine, "Always", hide, false);
+                permanent.layers[0].stateMachine.defaultState = FxGraph.State(permanent.layers[0].stateMachine, "Always", hide, false);
                 var tool = new GameObject("Permanent appearance tool"); tool.transform.SetParent(fixture.Source.transform, false);
                 var merge = tool.AddComponent(mergeType);
                 mergeType.GetField("animator").SetValue(merge, permanent);
@@ -75,7 +68,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // This fixture exercises permanent appearance and both authored
                 // WD policies, independently of MA's MMD-world sensor/relay.
                 // MMD plus dynamic WD layers has a separate fixed-pose contract.
-                var settingsType = Installed("nadena.dev.modular_avatar.core.ModularAvatarVRChatSettings");
+                var settingsType = OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarVRChatSettings");
                 Assert.That(settingsType, Is.Not.Null);
                 var settings = fixture.Source.AddComponent(settingsType);
                 settingsType.GetProperty("MMDWorldSupport").SetValue(settings, false);
@@ -99,7 +92,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var preparedSelected = sourceSkins.ToDictionary(skin => skin.name, skin => {
                     var index = skin.sharedMesh.GetBlendShapeIndex("Smile");
                     skin.SetBlendShapeWeight(index, 100);
-                    try { return WorldVertices(skin); }
+                    try { return TestObjects.WorldVertices(skin); }
                     finally { skin.SetBlendShapeWeight(index, 0); }
                 });
                 prepared = Object.Instantiate(fixture.Source); prepared.name = fixture.Source.name;
@@ -151,7 +144,7 @@ namespace VRVlog.LilToonExporter.Tests
                     foreach (var path in new[] { "Front", "Back" })
                     {
                         var output = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
-                        var vertices = WorldVertices(output);
+                        var vertices = TestObjects.WorldVertices(output);
                         var endpoint = route.Menu > 0 ? preparedSelected[path] : nativeBlink[path];
                         // UniVRM's binary expression merger selects the endpoint
                         // above .5; precisely .5 remains neutral. The manual
@@ -207,9 +200,6 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
 
-        static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool writeDefaults)
-        { var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = writeDefaults; return state; }
-
         static void ConfigureMenu(ScriptableObject menu, ScriptableObject parameters)
         {
             using (var data = new SerializedObject(menu))
@@ -231,50 +221,23 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void ConfigureDescriptor(Component descriptor, AnimatorController controller, ScriptableObject menu, ScriptableObject parameters)
         {
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customExpressions").boolValue = true;
-            data.FindProperty("expressionsMenu").objectReferenceValue = menu;
-            data.FindProperty("expressionParameters").objectReferenceValue = parameters;
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var list = data.FindProperty("baseAnimationLayers"); list.arraySize = 1; var layer = list.GetArrayElementAtIndex(0);
-            var type = layer.FindPropertyRelative("type"); type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-            layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-            data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetExpressions(descriptor, menu, parameters); VrcAvatar.SetFx(descriptor, controller);
         }
 
         static Dictionary<string, Vector3[]> NativePose(GameObject source, AnimatorController controller, int selected, float blink)
         {
-            var copy = Object.Instantiate(source); var graph = PlayableGraph.Create("MA permanent appearance independent native oracle");
-            graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-            try
+            using var native = new NativeFxPlayback(source, controller, isolate: true, defaultWeights: true);
+            native.Playable.SetInteger("Menu", 0); native.Start();
+            native.Run(120);
+            native.Playable.SetInteger("Menu", selected);
+            native.Run(120);
+            return new[] { "Front", "Back" }.ToDictionary(path => path, path =>
             {
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.enabled = true; animator.runtimeAnimatorController = null;
-                animator.applyRootMotion = false; animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                for (var layer = 0; layer < controller.layers.Length; layer++) playable.SetLayerWeight(layer, layer == 0 ? 1 : controller.layers[layer].defaultWeight);
-                AnimationPlayableOutput.Create(graph, "Native appearance", animator).SetSourcePlayable(playable);
-                playable.SetInteger("Menu", 0); graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                playable.SetInteger("Menu", selected);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return new[] { "Front", "Back" }.ToDictionary(path => path, path =>
-                {
-                    var skin = copy.transform.Find(path).GetComponent<SkinnedMeshRenderer>();
-                    Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Pupil hide")), Is.EqualTo(100).Within(.001f));
-                    skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Blink"), blink);
-                    return WorldVertices(skin);
-                });
-            }
-            finally { if (graph.IsValid()) graph.Destroy(); Object.DestroyImmediate(copy); }
-        }
-
-        static Vector3[] WorldVertices(SkinnedMeshRenderer skin)
-        {
-            var baked = new Mesh();
-            try { skin.BakeMesh(baked, false); return baked.vertices.Select(skin.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(baked); }
+                var skin = native.Skin(path);
+                Assert.That(skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Pupil hide")), Is.EqualTo(100).Within(.001f));
+                skin.SetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Blink"), blink);
+                return TestObjects.WorldVertices(skin);
+            });
         }
 
         static float TriangleArea(Vector3[] vertices, int start) =>

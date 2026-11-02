@@ -193,9 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static object Registry(GameObject avatar, Object original, Object prepared)
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.ObjectRegistry"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Optional NDMF ObjectRegistry is not installed in this project.");
+            var type = OptionalTools.Require("nadena.dev.ndmf.ObjectRegistry", "Optional NDMF ObjectRegistry is not installed in this project.");
             var registry = Activator.CreateInstance(type, new object[] { avatar.transform, null });
             var contract = type.GetInterfaces().Single(value => value.FullName == "nadena.dev.ndmf.IObjectRegistry");
             var reference = contract.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) })
@@ -217,11 +215,8 @@ namespace VRVlog.LilToonExporter.Tests
 
             internal Fixture(bool fractionalCommon, bool writeDefaults)
             {
-                var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                    assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
-                if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
-                var name = "__FaceEmoPreparedFx_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+                var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
+                folder = TempAssetFolder.Create("__FaceEmoPreparedFx_");
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 Avatar = new GameObject("Avatar", typeof(Animator));
                 var child = new GameObject("Face", typeof(SkinnedMeshRenderer)); child.transform.SetParent(Avatar.transform, false);
@@ -231,16 +226,7 @@ namespace VRVlog.LilToonExporter.Tests
                     mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .1f, 3).ToArray(), null, null);
                 Skin.sharedMesh = mesh; Weights();
                 var descriptor = Avatar.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                    var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = Controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, Controller);
                 var baseClip = Clip("Base", ("Customization", 30));
                 SetState(0, "Base", baseClip, false);
                 Controller.AddLayer("[ USER EDIT ] DEFAULT FACE");

@@ -132,7 +132,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static object FindLilToon()
         {
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(p => p.name == "jp.lilxyzw.liltoon");
+            var package = OptionalTools.Package("jp.lilxyzw.liltoon");
             return package == null ? null : new Dictionary<string, object> { { "version", package.version }, { "source", package.source.ToString() } };
         }
 
@@ -216,7 +216,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             material.SetFloat("_TransparentMode", shader.Contains("Fur") ? 5 : shader.Contains("Gem") ? 6 : shader.Contains("Refraction") ? 3 : 2);
             material.SetFloat("_UseOutline", shader.Contains("Outline") ? 1 : 0);
-            var utility = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("lilToon.lilMaterialUtils")).FirstOrDefault(t => t != null);
+            var utility = OptionalTools.Find("lilToon.lilMaterialUtils");
             utility?.GetMethod("SetupMultiMaterial", new[] { typeof(Material) })?.Invoke(null, new object[] { material });
         }
 

@@ -14,18 +14,14 @@ namespace VRVlog.LilToonExporter.Tests
 {
     public sealed class LegacyBlinkMenuRoundTripTests
     {
-        static Type SdkType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
-
         [TestCase(false)]
         [TestCase(true)]
         public async Task SplitLegacyBlinkAndDistinctNamedMenusKeepTheirAppearanceAfterReimport(bool fullLilToon)
         {
-            var descriptorType = SdkType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             if (Shader.Find("lilToon") == null) Assert.Ignore("Install lilToon.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__LegacyBlinkMenuRoundTrip_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__LegacyBlinkMenuRoundTrip_");
             var owned = new List<Mesh>();
             Vrm10Instance imported = null;
             GameObject reference = null;
@@ -56,7 +52,7 @@ namespace VRVlog.LilToonExporter.Tests
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "FaceMenu");
                 transition = selected.AddTransition(idle); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 0, "FaceMenu");
-                var menu = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
+                var menu = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionsMenu"));
                 AssetDatabase.CreateAsset(menu, folder + "/Menu.asset");
                 using (var data = new SerializedObject(menu))
                 {
@@ -71,7 +67,7 @@ namespace VRVlog.LilToonExporter.Tests
                     }
                     data.ApplyModifiedPropertiesWithoutUndo();
                 }
-                var parameters = ScriptableObject.CreateInstance(SdkType("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
+                var parameters = ScriptableObject.CreateInstance(OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters"));
                 AssetDatabase.CreateAsset(parameters, folder + "/Parameters.asset");
                 using (var data = new SerializedObject(parameters))
                 {
@@ -133,7 +129,7 @@ namespace VRVlog.LilToonExporter.Tests
                                 key.Equals(ExpressionKey.BlinkLeft) && path == "Front" || key.Equals(ExpressionKey.BlinkRight) && path == "Back";
                             expected.SetBlendShapeWeight(0, blink || input == 0 ? 17 : 75);
                             expected.SetBlendShapeWeight(1, closesThisEye ? input * 100 : 0);
-                            AssertVertices(Vertices(expected), Vertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
+                            AssertVertices(TestObjects.WorldVertices(expected), TestObjects.WorldVertices(imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path)), path + " / " + key + " / " + input);
                         }
                     }
                 Assert.That(owned.Select(EditorJsonUtility.ToJson), Is.EqualTo(originals));
@@ -146,12 +142,6 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var mesh in owned) Object.DestroyImmediate(mesh);
                 AssetDatabase.DeleteAsset(folder);
             }
-        }
-        static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var mesh = new Mesh();
-            try { renderer.BakeMesh(mesh, false); return mesh.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(mesh); }
         }
         static void AssertVertices(Vector3[] expected, Vector3[] actual, string context)
         {

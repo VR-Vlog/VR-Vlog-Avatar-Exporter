@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
@@ -11,6 +12,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 using Session = VRVlog.LilToonExporter.ExperimentalExpressionCaptureSession;
 
@@ -51,15 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
         static (string Name, Vector3[] Deltas) Shape(string name, Vector3 delta, params int[] vertices) =>
             (name, Enumerable.Range(0, 3).Select(index => vertices.Length == 0 || vertices.Contains(index) ? delta : Vector3.zero).ToArray());
 
-        static Type DescriptorType() => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(type => type != null);
-
-        static AnimationClip FaceClip(float weight)
-        {
-            var clip = new AnimationClip { name = "Sample face" };
-            AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, weight));
-            return clip;
-        }
+        static AnimationClip FaceClip(float weight) => ExperimentalExpressionCaptureTests.FaceClip("Sample face", weight);
 
         static Dictionary<string, object> Expressions(byte[] bytes)
         {
@@ -833,7 +827,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public async Task AssignedBlinkWinsOverTheVrChatEyelidSetting()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Lid", BlinkDelta), Shape("Shut", ShutDelta));
@@ -980,7 +974,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VrChatLipSyncShapesAreTheMouthCandidates()
         {
-            var descriptorType = DescriptorType();
+            var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("VRChat SDK is required for the descriptor integration test.");
             using var fixture = Fixture(smile: false);
             var mesh = FrontMesh(fixture, Shape("Open", OpenDelta), Shape("Wide", RaiseDelta), Shape("vrc.v_aa", RightDelta));
@@ -1353,6 +1347,64 @@ namespace VRVlog.LilToonExporter.Tests
                 ExpressionPresetStore.PathOverride = previous;
                 if (File.Exists(path)) File.Delete(path);
                 AssetDatabase.DeleteAsset(folder);
+            }
+        }
+
+        static Session.PresetAssignment[] Angry() => new[] { Session.PresetAssignment.None(ExpressionPreset.angry) };
+
+        [Test]
+        public void AFileThatCannotBeReadIsNotOverwrittenBySavingAnotherAvatar()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                // Another avatar's choices, cut off in the middle.
+                const string damaged = "{\"Version\":1,\"Avatars\":[{\"Avatar\":\"avatar-b\",\"Presets\":[{\"Preset\":\"happy\",\"ClipGuid\":\"\",\"ClipLocalId\":0,\"Path\":\"Front\",\"Shape\":\"Smi";
+                File.WriteAllText(path, damaged, Encoding.UTF8);
+                var before = File.ReadAllBytes(path);
+                LogAssert.Expect(LogType.Warning, new Regex(Regex.Escape(path)));
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(before), "Other avatars' choices may still be in the file.");
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _), Is.Empty, "The board still opens with nothing chosen.");
+
+                var large = "{\"Version\":1,\"Avatars\":[]}" + new string(' ', 4 * 1024 * 1024);
+                File.WriteAllText(path, large, Encoding.UTF8);
+                before = File.ReadAllBytes(path);
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.ReadAllBytes(path), Is.EqualTo(before), "A file over the size limit is not replaced either.");
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+
+        [Test]
+        public void MissingEmptyAndReadableFilesAreStillSaved()
+        {
+            var path = Path.Combine(Path.GetTempPath(), "vrvlog-presets-" + Guid.NewGuid().ToString("N") + ".json");
+            var previous = ExpressionPresetStore.PathOverride;
+            ExpressionPresetStore.PathOverride = path;
+            try
+            {
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(File.Exists(path), Is.True, "A missing file is created.");
+                ExpressionPresetStore.Save("avatar-b", new[] { Session.PresetAssignment.None(ExpressionPreset.sad) });
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"));
+                Assert.That(ExpressionPresetStore.Load("avatar-b", out _).Single().Preset, Is.EqualTo("sad"));
+
+                File.WriteAllText(path, "  \n", Encoding.UTF8);
+                ExpressionPresetStore.Save("avatar-a", Angry());
+                Assert.That(ExpressionPresetStore.Load("avatar-a", out _).Single().Preset, Is.EqualTo("angry"), "An empty file is replaced.");
+            }
+            finally
+            {
+                ExpressionPresetStore.PathOverride = previous;
+                if (File.Exists(path)) File.Delete(path);
             }
         }
     }

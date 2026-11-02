@@ -62,9 +62,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         object Registry()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType("nadena.dev.ndmf.ObjectRegistry"))
-                .FirstOrDefault(value => value != null);
-            if (type == null) Assert.Ignore("Optional NDMF ObjectRegistry is not installed in this project.");
+            var type = OptionalTools.Require("nadena.dev.ndmf.ObjectRegistry", "Optional NDMF ObjectRegistry is not installed in this project.");
             return Activator.CreateInstance(type, new object[] { prepared.transform, null });
         }
 

@@ -11,6 +11,7 @@ using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.TestTools;
 using Object = UnityEngine.Object;
 
@@ -25,8 +26,6 @@ namespace VRVlog.LilToonExporter.Tests
         GameObject source;
 
         T Own<T>(T value) where T : Object { owned.Add(value); return value; }
-        static Type Installed(string name) => AppDomain.CurrentDomain.GetAssemblies()
-            .Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
         [TearDown]
         public void TearDown()
@@ -38,22 +37,20 @@ namespace VRVlog.LilToonExporter.Tests
 
         static void RequirePackages()
         {
-            if (Installed("Anatawa12.AvatarOptimizer.RemoveMeshInBox") == null || Installed("nadena.dev.ndmf.BuildContext") == null)
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.RemoveMeshInBox") == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF for the real box-removal integration tests.");
             // These fixtures are generic-platform avatars (no VRChat descriptor)
             // by design. AAO declares non-VRChat platform support from 1.9.0;
             // older AAO skips its passes there, so the oracle cannot run.
-            var package = UnityEditor.PackageManager.PackageInfo.GetAllRegisteredPackages().FirstOrDefault(value =>
-                value.name == "com.anatawa12.avatar-optimizer");
-            if (package != null && Version.TryParse(package.version.Split('-', '+')[0], out var version) && version < new Version(1, 9))
-                Assert.Ignore("The generic-platform box-removal fixtures require Avatar Optimizer 1.9.0 or later (installed " + package.version + ").");
+            OptionalTools.IgnoreBelow("com.anatawa12.avatar-optimizer", new Version(1, 9),
+                "The generic-platform box-removal fixtures require Avatar Optimizer 1.9.0 or later");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True,
                 "The optional AAO integration assembly must compile and register when supported AAO is installed.");
         }
 
         static Component AddOptimizer(GameObject target, string name, int version)
         {
-            var type = Installed("Anatawa12.AvatarOptimizer." + name);
+            var type = OptionalTools.Find("Anatawa12.AvatarOptimizer." + name);
             Assert.That(type, Is.Not.Null);
             var initialize = type.GetMethod("Initialize", new[] { typeof(int) });
             Assert.That(initialize, Is.Not.Null, "The supported AAO public configuration API is required.");
@@ -196,11 +193,11 @@ namespace VRVlog.LilToonExporter.Tests
                 using (var canonicalBindings = ExportOptimizationBindings.Capture(canonicalCopy))
                 {
                     exporterBindings.ValidateAndApply();
-                    var directory = Installed("nadena.dev.ndmf.OverrideTemporaryDirectoryScope");
+                    var directory = OptionalTools.Find("nadena.dev.ndmf.OverrideTemporaryDirectoryScope");
                     canonicalScope = (IDisposable)Activator.CreateInstance(directory, folder);
-                    var platform = Installed("nadena.dev.ndmf.platform.GenericPlatform").GetProperty("Instance").GetValue(null);
-                    var provider = Installed("nadena.dev.ndmf.platform.INDMFPlatformProvider");
-                    var process = Installed("nadena.dev.ndmf.AvatarProcessor").GetMethod("ProcessAvatar", new[] { typeof(GameObject), provider });
+                    var platform = OptionalTools.Find("nadena.dev.ndmf.platform.GenericPlatform").GetProperty("Instance").GetValue(null);
+                    var provider = OptionalTools.Find("nadena.dev.ndmf.platform.INDMFPlatformProvider");
+                    var process = OptionalTools.Find("nadena.dev.ndmf.AvatarProcessor").GetMethod("ProcessAvatar", new[] { typeof(GameObject), provider });
                     Assert.That(process, Is.Not.Null);
                     canonicalContext = process.Invoke(null, new[] { canonicalCopy, platform });
                     Assert.That(canonicalContext.GetType().GetProperty("Successful").GetValue(canonicalContext), Is.EqualTo(true));
@@ -230,7 +227,7 @@ namespace VRVlog.LilToonExporter.Tests
                         Assert.That(deltas, Is.EqualTo(Enumerable.Repeat(Vector3.forward * .03f, vertices.Length).ToArray()));
                     }
                     Assert.That(renderer.sharedMaterial, Is.SameAs(originalMaterial));
-                    Assert.That(renderer.GetComponent(Installed("Anatawa12.AvatarOptimizer.RemoveMeshInBox")), Is.Not.Null);
+                    Assert.That(renderer.GetComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.RemoveMeshInBox")), Is.Not.Null);
                     Assert.That(source.GetComponent<ExportOptimizationMarker>(), Is.Null);
                 }
                 Assert.That(preparedMesh == null, Is.True, "The exporter lease must destroy its generated mesh after use.");
@@ -253,8 +250,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void InstalledAvatarOptimizerFailureAbortsFullExportAndCleansOwnedAssets()
         {
             RequirePackages();
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter failure regression.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real one-click exporter failure regression.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var animator = fixture.Source.GetComponent<Animator>();
             Assert.That(animator.runtimeAnimatorController, Is.Null);
@@ -262,7 +258,7 @@ namespace VRVlog.LilToonExporter.Tests
                 "The generic fixture intentionally has no platform expression provider or valid root controller.");
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>())
                 skin.sharedMaterial.shader = shader;
-            var optimizer = fixture.Source.AddComponent(Installed("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            var optimizer = fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             Assert.That(NdmfExportPreparation.NeedsProcessing(fixture.Source), Is.True);
 
             var originalAvatar = animator.avatar;
@@ -357,8 +353,7 @@ namespace VRVlog.LilToonExporter.Tests
         public async Task BoxDeletionSurvivesExportReimportWithTraceMergeExpressionsAndMaterialRoutes(bool merge, bool fullLilToon)
         {
             RequirePackages();
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter roundtrip.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real one-click exporter roundtrip.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var mesh = fixture.Mesh; var bindposes = mesh.bindposes;
             mesh.Clear();
@@ -395,7 +390,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var add = set.GetType().GetMethod("Add", new[] { typeof(SkinnedMeshRenderer) });
                 foreach (var skin in skins) add.Invoke(set, new object[] { skin });
             }
-            fixture.Source.AddComponent(Installed("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
+            fixture.Source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
             var settings = Own(ScriptableObject.CreateInstance<VRM10Object>());
             var expression = Own(ScriptableObject.CreateInstance<VRM10Expression>());
             expression.name = "Box expression";
@@ -474,6 +469,96 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(ExportFolders(), Is.SubsetOf(temporaryFolders));
             }
             finally { if (imported != null) Object.DestroyImmediate(imported.gameObject); }
+        }
+
+        [Test]
+        public void InstalledAvatarOptimizerRepeatedlyReadsUnreadableVertexStreamsWithoutChangingSourceBuffers()
+        {
+            if (OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize") == null)
+                Assert.Ignore("Install Avatar Optimizer for the real vertex-buffer readback regression.");
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null)
+                Assert.Ignore("Avatar Optimizer vertex-buffer readback requires a graphics device.");
+
+            var meshInfo = OptionalTools.Find("Anatawa12.AvatarOptimizer.Processors.SkinnedMeshes.MeshInfo2");
+            Assert.That(meshInfo, Is.Not.Null, "Installed AAO must expose its mesh-processing assembly.");
+            var readBuffers = meshInfo.GetMethod("GetVertexBuffers", BindingFlags.Static | BindingFlags.NonPublic,
+                null, new[] { typeof(Mesh) }, null);
+            Assert.That(readBuffers, Is.Not.Null, "The pinned AAO GetVertexBuffers(Mesh) method is required.");
+
+            var positions = new[] {
+                new Vector3(-1.25f, .5f, 0),
+                new Vector3(1.5f, -.75f, .25f),
+                new Vector3(.125f, 2, -.5f),
+            };
+            var colors = new[] {
+                new Color32(1, 17, 231, 255),
+                new Color32(203, 0, 91, 127),
+                new Color32(42, 254, 3, 64),
+            };
+            var positionValues = positions.SelectMany(position => new[] { position.x, position.y, position.z }).ToArray();
+            var positionBytes = new byte[positionValues.Length * sizeof(float)];
+            Buffer.BlockCopy(positionValues, 0, positionBytes, 0, positionBytes.Length);
+            var expected = new[] {
+                positionBytes,
+                colors.SelectMany(color => new[] { color.r, color.g, color.b, color.a }).ToArray(),
+            };
+            var strides = new[] { 12, 4 };
+
+            var mesh = new Mesh { name = "Owned AAO two-stream GPU readback fixture" };
+            try
+            {
+                mesh.SetVertexBufferParams(positions.Length,
+                    new VertexAttributeDescriptor(VertexAttribute.Position, VertexAttributeFormat.Float32, 3, 0),
+                    new VertexAttributeDescriptor(VertexAttribute.Color, VertexAttributeFormat.UNorm8, 4, 1));
+                mesh.SetVertexBufferData(positions, 0, 0, positions.Length, 0, MeshUpdateFlags.DontRecalculateBounds);
+                mesh.SetVertexBufferData(colors, 0, 0, colors.Length, 1, MeshUpdateFlags.DontRecalculateBounds);
+                mesh.subMeshCount = 1;
+                mesh.SetIndices(new[] { 0, 1, 2 }, MeshTopology.Triangles, 0, false);
+                mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 6);
+                Assert.That(mesh.vertexBufferCount, Is.EqualTo(2));
+                mesh.UploadMeshData(true);
+                Assert.That(mesh.isReadable, Is.False, "Readback must use GPU data after Unity discards the CPU copy.");
+
+                // Invoke AAO itself; cleanup of its acquired handles remains AAO's responsibility.
+                // The native allocation gate runs this case with stack tracing, then reloads the domain.
+                for (var iteration = 0; iteration < 8; iteration++)
+                {
+                    var buffers = readBuffers.Invoke(null, new object[] { mesh }) as Array;
+                    Assert.That(buffers, Is.Not.Null);
+                    Assert.That(buffers.Length, Is.EqualTo(2));
+                    for (var stream = 0; stream < buffers.Length; stream++)
+                    {
+                        var tuple = buffers.GetValue(stream);
+                        var tupleType = tuple.GetType();
+                        var dataField = tupleType.GetField("Item1");
+                        var strideField = tupleType.GetField("Item2");
+                        Assert.That(dataField, Is.Not.Null);
+                        Assert.That(strideField, Is.Not.Null);
+                        Assert.That(strideField.GetValue(tuple), Is.EqualTo(strides[stream]),
+                            $"AAO iteration {iteration}, stream {stream} stride");
+                        Assert.That(dataField.GetValue(tuple), Is.EqualTo(expected[stream]),
+                            $"AAO iteration {iteration}, stream {stream} copied bytes");
+                    }
+                    Assert.That(mesh.isReadable, Is.False);
+                }
+
+                // Disposing AAO's wrappers must leave the source mesh's GPU buffers usable.
+                for (var stream = 0; stream < expected.Length; stream++)
+                {
+                    using var verifier = mesh.GetVertexBuffer(stream);
+                    Assert.That(verifier.IsValid(), Is.True);
+                    Assert.That(verifier.stride, Is.EqualTo(strides[stream]));
+                    Assert.That(verifier.count, Is.EqualTo(positions.Length));
+                    var data = new byte[verifier.count * verifier.stride];
+                    verifier.GetData(data);
+                    Assert.That(data, Is.EqualTo(expected[stream]), $"Source stream {stream} remains unchanged after AAO readback");
+                }
+                Assert.That(mesh.isReadable, Is.False);
+            }
+            finally
+            {
+                Object.DestroyImmediate(mesh);
+            }
         }
     }
 }

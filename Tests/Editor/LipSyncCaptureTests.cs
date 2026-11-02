@@ -23,8 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__LipSyncCapture_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__LipSyncCapture_");
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             fx.AddParameter(LipSyncCapture.VisemeParameter, AnimatorControllerParameterType.Int);
             fx.AddParameter("Other", AnimatorControllerParameterType.Int);
@@ -91,9 +90,9 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FixedVisemeTransitionsGiveTheirLength()
         {
-            var machine = Layer("Mouth");
-            var idle = State(machine, "Idle", null);
-            for (var value = 0; value < 15; value++) Any(machine, State(machine, "v" + value, null), true, .05f, value);
+            var machine = FxGraph.Layer(fx, "Mouth");
+            var idle = FxGraph.StartState(machine, "Idle", null, true);
+            for (var value = 0; value < 15; value++) Any(machine, FxGraph.StartState(machine, "v" + value, null, true), true, .05f, value);
             // Transitions on other parameters are not lip sync.
             Any(machine, idle, true, .3f, 1, "Other");
             Any(machine, idle, true, .3f, 2, "Other");
@@ -103,8 +102,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void MostCommonLengthWinsAndTiesTakeTheShorter()
         {
-            var machine = Layer("Mouth");
-            var mouth = State(machine, "Mouth", null);
+            var machine = FxGraph.Layer(fx, "Mouth");
+            var mouth = FxGraph.StartState(machine, "Mouth", null, true);
             Any(machine, mouth, true, .1f, 0); Any(machine, mouth, true, .1f, 1); Any(machine, mouth, true, .1f, 2);
             Any(machine, mouth, true, .05f, 3); Any(machine, mouth, true, .05f, 4);
             Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(.1f).Within(1e-6f));
@@ -115,12 +114,12 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NormalizedLengthsUseTheClipOfTheStateLeft()
         {
-            var machine = Layer("Mouth");
+            var machine = FxGraph.Layer(fx, "Mouth");
             var clip = new AnimationClip { name = "Two seconds" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.vrc.v_aa"), AnimationCurve.Linear(0, 0, 2, 100));
             AssetDatabase.AddObjectToAsset(clip, fx);
-            var timed = State(machine, "Timed", clip);
-            var empty = State(machine, "Empty", null);
+            var timed = FxGraph.StartState(machine, "Timed", clip, true);
+            var empty = FxGraph.StartState(machine, "Empty", null, true);
             // .25 of a 2 second clip is .5; without a clip .2 is .2 seconds.
             Any(machine, timed, false, .25f, 0); Any(machine, timed, false, .25f, 1);
             Any(machine, empty, false, .2f, 2);
@@ -142,19 +141,19 @@ namespace VRVlog.LilToonExporter.Tests
         public void NoVisemeTransitionGivesZero()
         {
             Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(0f));
-            var machine = Layer("Other");
-            Any(machine, State(machine, "Other", null), true, .3f, 1, "Other");
+            var machine = FxGraph.Layer(fx, "Other");
+            Any(machine, FxGraph.StartState(machine, "Other", null, true), true, .3f, 1, "Other");
             Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(0f));
         }
 
         [Test]
         public void SubStateMachineTransitionsCount()
         {
-            var machine = Layer("Mouth");
-            Any(machine, State(machine, "Root", null), true, .1f, 0);
+            var machine = FxGraph.Layer(fx, "Mouth");
+            Any(machine, FxGraph.StartState(machine, "Root", null, true), true, .1f, 0);
             var sub = machine.AddStateMachine("Visemes");
-            var from = State(sub, "From", null);
-            var to = State(sub, "To", null);
+            var from = FxGraph.StartState(sub, "From", null, true);
+            var to = FxGraph.StartState(sub, "To", null, true);
             foreach (var (source, destination, value) in new[] { (from, to, 1), (to, from, 2) })
             {
                 var transition = source.AddTransition(destination);
@@ -167,11 +166,11 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void LayersSharingAMachineEachCount()
         {
-            var first = Layer("A");
-            var mouth = State(first, "Mouth", null);
+            var first = FxGraph.Layer(fx, "A");
+            var mouth = FxGraph.StartState(first, "Mouth", null, true);
             Any(first, mouth, true, .1f, 0); Any(first, mouth, true, .1f, 1);
-            var second = Layer("B");
-            Any(second, State(second, "Mouth", null), true, .05f, 2);
+            var second = FxGraph.Layer(fx, "B");
+            Any(second, FxGraph.StartState(second, "Mouth", null, true), true, .05f, 2);
             Assert.That(LipSyncCapture.TransitionSeconds(fx), Is.EqualTo(.1f).Within(1e-6f));
             // A third layer on B's machine counts B's transition again: 2 against 2, the shorter wins.
             fx.AddLayer("C"); var layers = fx.layers; layers[layers.Length - 1].stateMachine = second; fx.layers = layers;
@@ -192,8 +191,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void VisemeParameterOnlyAvatarIsCaptured()
         {
-            var machine = Layer("Mouth");
-            for (var value = 0; value < 15; value++) Any(machine, State(machine, "v" + value, null), true, .05f, value);
+            var machine = FxGraph.Layer(fx, "Mouth");
+            for (var value = 0; value < 15; value++) Any(machine, FxGraph.StartState(machine, "v" + value, null, true), true, .05f, value);
             if (!BuildAvatar("VisemeParameterOnly", fx)) return;
             var warnings = new List<string>();
             var data = LipSyncCapture.Capture(avatar, warnings);
@@ -218,8 +217,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Default")]
         public void OtherLipSyncModesWriteNothing(string lipSync)
         {
-            var machine = Layer("Mouth");
-            Any(machine, State(machine, "Mouth", null), true, .05f, 1);
+            var machine = FxGraph.Layer(fx, "Mouth");
+            Any(machine, FxGraph.StartState(machine, "Mouth", null, true), true, .05f, 1);
             if (!BuildAvatar(lipSync, fx)) return;
             var warnings = new List<string>();
             Assert.That(LipSyncCapture.Capture(avatar, warnings), Is.Null);
@@ -263,19 +262,6 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(required[LipSyncData.Extension], Is.EqualTo("1.0.9"));
         }
 
-        private AnimatorStateMachine Layer(string name)
-        {
-            fx.AddLayer(name); var layers = fx.layers; layers[layers.Length - 1].defaultWeight = 1; fx.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = true;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
         private static void Any(AnimatorStateMachine machine, AnimatorState state, bool fixedDuration, float duration, int value,
             string parameter = LipSyncCapture.VisemeParameter)
         {
@@ -288,21 +274,11 @@ namespace VRVlog.LilToonExporter.Tests
         // An avatar whose descriptor has the Lip Sync mode and the FX layer.
         private bool BuildAvatar(string lipSync, RuntimeAnimatorController controller)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(assembly => assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(type => type != null);
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null) { Assert.Ignore("Install the real VRChat SDK."); return false; }
             avatar = new GameObject("Avatar", typeof(Animator));
             var descriptor = avatar.AddComponent(descriptorType);
-            using (var data = new SerializedObject(descriptor))
-            {
-                data.FindProperty("customizeAnimationLayers").boolValue = true;
-                var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-                var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                layer.FindPropertyRelative("isDefault").boolValue = false;
-                layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                data.ApplyModifiedPropertiesWithoutUndo();
-            }
+            VrcAvatar.SetFx(descriptor, controller);
             var field = descriptorType.GetField("lipSync");
             field.SetValue(descriptor, Enum.Parse(field.FieldType, lipSync));
             AssetDatabase.SaveAssets();

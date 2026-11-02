@@ -30,8 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor"))
-                .FirstOrDefault(t => t != null);
+            var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             if (descriptorType == null || Shader.Find("lilToon") == null) Assert.Ignore("Install the real VRChat SDK and lilToon.");
             rig = new AttachmentConnectionTests.Fixture(); avatar = rig.Source;
             foreach (var renderer in avatar.GetComponentsInChildren<SkinnedMeshRenderer>()) Object.DestroyImmediate(renderer.gameObject);
@@ -63,7 +62,7 @@ namespace VRVlog.LilToonExporter.Tests
             lipSync.SetValue(descriptor, Enum.Parse(lipSync.FieldType, "VisemeBlendShape"));
             descriptorType.GetField("VisemeSkinnedMesh").SetValue(descriptor, skin);
             descriptorType.GetField("VisemeBlendShapes").SetValue(descriptor, new[] { Shapes[0] });
-            var name = "__FacialProjection_" + Guid.NewGuid().ToString("N"); AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__FacialProjection_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("FacialSet", AnimatorControllerParameterType.Int);
         }
@@ -78,14 +77,12 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimationClip Clip(string name, float weight, bool appearance, bool moving = false)
         {
             var clip = new AnimationClip { name = name }; AssetDatabase.AddObjectToAsset(clip, controller);
-            foreach (var shape in Shapes.Skip(1)) AnimationUtility.SetEditorCurve(clip, Binding(shape), moving
+            foreach (var shape in Shapes.Skip(1)) AnimationUtility.SetEditorCurve(clip, FxGraph.Binding(shape), moving
                 ? AnimationCurve.Linear(0, weight, 1, weight + 10) : AnimationCurve.Constant(0, 1, weight));
             if (appearance) AnimationUtility.SetEditorCurve(clip,
                 EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "material._Color2nd.r"), AnimationCurve.Constant(0, 1, .9f));
             return clip;
         }
-
-        private static EditorCurveBinding Binding(string shape) => EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
         private void AddDisconnectedSurface(float scale, bool extendsOutside, bool torsoInfluence)
         {
@@ -119,10 +116,10 @@ namespace VRVlog.LilToonExporter.Tests
             AddDisconnectedSurface(scale, false, false);
             var before = ExportSourceFingerprint.Compute(avatar);
             var motion = Clip("Composed face and insert", 75, true);
-            AnimationUtility.SetEditorCurve(motion, Binding("opaque-insert"), AnimationCurve.Constant(0, 1, 80));
+            AnimationUtility.SetEditorCurve(motion, FxGraph.Binding("opaque-insert"), AnimationCurve.Constant(0, 1, 80));
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, motion, entry);
             Assert.That(entry.Values.Select(v => v.Shape), Is.EquivalentTo(new[] { Shapes[1], "opaque-insert" }));
-            Assert.That(FacialProjectionScope.Create(avatar).Morphs.Contains(Binding(Shapes[3])), Is.False,
+            Assert.That(FacialProjectionScope.Create(avatar).Morphs.Contains(FxGraph.Binding(Shapes[3])), Is.False,
                 "A disconnected head accessory outside the descriptor surface must remain excluded.");
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
         }
@@ -133,7 +130,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             AddDisconnectedSurface(1, extendsOutside, torsoInfluence);
             var scope = FacialProjectionScope.Create(avatar);
-            Assert.That(scope.Morphs.Contains(Binding("opaque-insert")), Is.False);
+            Assert.That(scope.Morphs.Contains(FxGraph.Binding("opaque-insert")), Is.False);
         }
 
         [TestCase(.92f, true, true)]
@@ -151,13 +148,8 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.boneWeights = weights;
             var before = ExportSourceFingerprint.Compute(avatar);
             var scope = FacialProjectionScope.Create(avatar);
-            Assert.That(scope?.Morphs.Contains(Binding(Shapes[1])) == true, Is.EqualTo(accepted));
+            Assert.That(scope?.Morphs.Contains(FxGraph.Binding(Shapes[1])) == true, Is.EqualTo(accepted));
             Assert.That(ExportSourceFingerprint.Compute(avatar), Is.EqualTo(before));
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool wd = false)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = wd; return state;
         }
         private static void Select(AnimatorState from, AnimatorState to)
         {
@@ -201,13 +193,13 @@ namespace VRVlog.LilToonExporter.Tests
         public void SharedMaterialInputKeepsOnlyProvenFacialAnimation(bool appearanceInFaceClip)
         {
             var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Rest", Clip("Rest", 10, false)); machine.defaultState = idle;
-            var motion = Clip("Selected", 70, appearanceInFaceClip, true); var selected = State(machine, "Selected", motion); Select(idle, selected);
+            var idle = FxGraph.State(machine, "Rest", Clip("Rest", 10, false)); machine.defaultState = idle;
+            var motion = Clip("Selected", 70, appearanceInFaceClip, true); var selected = FxGraph.State(machine, "Selected", motion); Select(idle, selected);
             controller.AddLayer("Eye material"); var layers = controller.layers; layers[1].defaultWeight = 1; controller.layers = layers;
             var color = Clip("Eye__default", 0, true);
             foreach (var binding in AnimationUtility.GetCurveBindings(color).Where(b => b.propertyName.StartsWith("blendShape."))) AnimationUtility.SetEditorCurve(color, binding, null);
-            var visual = State(layers[1].stateMachine, "Eye default", color); layers[1].stateMachine.defaultState = visual;
-            var alternate = State(layers[1].stateMachine, "Eye selected", color); Select(visual, alternate);
+            var visual = FxGraph.State(layers[1].stateMachine, "Eye default", color); layers[1].stateMachine.defaultState = visual;
+            var alternate = FxGraph.State(layers[1].stateMachine, "Eye selected", color); Select(visual, alternate);
             var before = ExportSourceFingerprint.Compute(avatar); var materialBefore = EditorJsonUtility.ToJson(material);
             var entry = new VrChatExpressionMenu.Entry();
             VrChatGestureExpressions.ReadClip(avatar, motion, entry);
@@ -247,7 +239,7 @@ namespace VRVlog.LilToonExporter.Tests
             var delta = new Vector3[8]; delta[5] = Vector3.up * .04f;
             mesh.AddBlendShapeFrame("Blink", 100, delta, null, null);
             var motion = Clip("Face and accessory", 75, true);
-            AnimationUtility.SetEditorCurve(motion, Binding("Blink"), AnimationCurve.Constant(0, 1, 90));
+            AnimationUtility.SetEditorCurve(motion, FxGraph.Binding("Blink"), AnimationCurve.Constant(0, 1, 90));
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, motion, entry);
             Assert.That(entry.Values.Select(v => v.Shape), Is.EqualTo(new[] { Shapes[1] }));
             Assert.That(entry.Messages.Any(m => m.Contains("blendShape.Blink")), Is.True);
@@ -332,7 +324,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(storedBodyDelta.Equals(Vector3.zero), Is.False,
                 "The native mesh must actually retain the body deformation: " + kind + " / " + storedBodyDelta.ToString("R"));
             var motion = Clip("Face and body", 75, true);
-            AnimationUtility.SetEditorCurve(motion, Binding(Shapes[0]), AnimationCurve.Constant(0, 1, 70));
+            AnimationUtility.SetEditorCurve(motion, FxGraph.Binding(Shapes[0]), AnimationCurve.Constant(0, 1, 70));
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, motion, entry);
             Assert.That(entry.Values.Select(v => v.Shape), Is.EqualTo(new[] { Shapes[0] }));
             Assert.That(entry.Messages.Any(m => m.Contains("blendShape." + Shapes[1])), Is.True);
@@ -343,11 +335,11 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var motion = Clip("Existing pure morph", 70, false, true);
             var machine = controller.layers[0].stateMachine;
-            var selected = State(machine, "Face", motion); machine.defaultState = selected;
+            var selected = FxGraph.State(machine, "Face", motion); machine.defaultState = selected;
             controller.AddLayer("Independent wardrobe"); var layers = controller.layers; layers[1].defaultWeight = 1; controller.layers = layers;
             var wardrobe = new AnimationClip { name = "Unrelated shoes" }; AssetDatabase.AddObjectToAsset(wardrobe, controller);
             AnimationUtility.SetEditorCurve(wardrobe, EditorCurveBinding.FloatCurve("Shoes_Sneakers", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
-            layers[1].stateMachine.defaultState = State(layers[1].stateMachine, "Wardrobe", wardrobe);
+            layers[1].stateMachine.defaultState = FxGraph.State(layers[1].stateMachine, "Wardrobe", wardrobe);
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, motion, entry);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, 0, false, metadata: Metadata(), sourceState: selected);
             Assert.That(entry.Values.Select(v => v.Shape), Is.EquivalentTo(Shapes.Skip(1)));
@@ -389,12 +381,7 @@ namespace VRVlog.LilToonExporter.Tests
         private void ConfigureDescriptorFx()
         {
             var descriptor = avatar.GetComponents<Component>().Single(c => c != null && c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            using var data = new SerializedObject(descriptor);
-            data.FindProperty("customizeAnimationLayers").boolValue = true;
-            var layers = data.FindProperty("baseAnimationLayers"); layers.arraySize = 1;
-            var layer = layers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-            type.enumValueIndex = Array.IndexOf(type.enumNames, "FX"); layer.FindPropertyRelative("isDefault").boolValue = false;
-            layer.FindPropertyRelative("animatorController").objectReferenceValue = controller; data.ApplyModifiedPropertiesWithoutUndo();
+            VrcAvatar.SetFx(descriptor, controller);
         }
 
         [TestCase(false)]
@@ -403,8 +390,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
             var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Rest", Clip("Rest", 10, true)); machine.defaultState = idle;
-            var selected = State(machine, "Gesture", Clip("Gesture", 75, true));
+            var idle = FxGraph.State(machine, "Rest", Clip("Rest", 10, true)); machine.defaultState = idle;
+            var selected = FxGraph.State(machine, "Gesture", Clip("Gesture", 75, true));
             var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft"); ConfigureDescriptorFx();
             void SetSeed(bool valid)
@@ -431,8 +418,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("GestureLeft", AnimatorControllerParameterType.Int);
             var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Rest", Clip("Rest", 10, true)); machine.defaultState = idle;
-            var selected = State(machine, "Gesture", Clip("Gesture", 75, true));
+            var idle = FxGraph.State(machine, "Rest", Clip("Rest", 10, true)); machine.defaultState = idle;
+            var selected = FxGraph.State(machine, "Gesture", Clip("Gesture", 75, true));
             var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
             ConfigureDescriptorFx();
@@ -451,17 +438,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(renderer => renderer.name == "Body");
                 var expected = reference.transform.Find("Body").GetComponent<SkinnedMeshRenderer>();
                 var materials = actual.sharedMaterials.Select(EditorJsonUtility.ToJson).ToArray();
-                Vector3[] Vertices(SkinnedMeshRenderer renderer)
-                {
-                    var baked = new Mesh();
-                    try { renderer.BakeMesh(baked, false); return baked.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-                    finally { Object.DestroyImmediate(baked); }
-                }
                 foreach (var input in new[] { 0f, 1f, 0f })
                 {
                     imported.Runtime.Expression.SetWeight(ExpressionKey.CreateCustom(expression.name), input); imported.Runtime.Process();
                     expected.SetBlendShapeWeight(1, input == 0 ? 7 : 75);
-                    var a = Vertices(expected); var b = Vertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
+                    var a = TestObjects.WorldVertices(expected); var b = TestObjects.WorldVertices(actual); Assert.That(b.Length, Is.EqualTo(a.Length));
                     for (var i = 0; i < a.Length; i++) Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f), "vertex " + i + " / input " + input);
                     Assert.That(actual.sharedMaterials.Select(EditorJsonUtility.ToJson), Is.EqualTo(materials));
                 }

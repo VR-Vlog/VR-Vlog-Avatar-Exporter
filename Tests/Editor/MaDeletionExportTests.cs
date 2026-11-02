@@ -31,15 +31,14 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // NDMF before 1.8.0 has no NDMFAvatarRoot and finds a VRChat
             // avatar by its descriptor, as a real avatar would be found.
-            var marker = Named("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? Named("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
-            if (marker == null || Named("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null)
+            var marker = OptionalTools.Find("nadena.dev.ndmf.runtime.components.NDMFAvatarRoot") ?? OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            if (marker == null || OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger") == null)
                 Assert.Ignore("Install the real Modular Avatar and NDMF packages for the deletion integration test.");
             // Mesh Cutter first appears in MA 1.14.0; Shape Changer Delete is
             // checked on every version in the supported range.
-            if (!useShapeDelete && Named("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter") == null)
+            if (!useShapeDelete && OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter") == null)
                 Assert.Ignore("Mesh Cutter needs Modular Avatar 1.14.0 or later.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the real one-click exporter.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real one-click exporter.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             fixture.Source.AddComponent(marker);
             var mesh = Object.Instantiate(fixture.Mesh);
@@ -79,15 +78,15 @@ namespace VRVlog.LilToonExporter.Tests
                 {
                     AppearancePreparationTests.AddRule(fixture.Source, "ModularAvatarShapeChanger", "Shapes", "ChangedShape",
                         front.gameObject, ("ShapeName", DeleteShape), ("ChangeType", 0), ("Value", 100f));
-                    rule = fixture.Source.GetComponentInChildren(Named("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger"));
+                    rule = fixture.Source.GetComponentInChildren(OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarShapeChanger"));
                 }
                 else
                 {
                     var node = new GameObject("Authored cutter"); node.transform.SetParent(fixture.Source.transform, false);
-                    rule = node.AddComponent(Named("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter"));
+                    rule = node.AddComponent(OptionalTools.Find("nadena.dev.modular_avatar.core.ModularAvatarMeshCutter"));
                     var reference = rule.GetType().GetProperty("Object").GetValue(rule);
                     reference.GetType().GetMethod("Set", new[] { typeof(GameObject) }).Invoke(reference, new object[] { front.gameObject });
-                    var filter = node.AddComponent(Named("nadena.dev.modular_avatar.core.vertex_filters.VertexFilterByAxisComponent"));
+                    var filter = node.AddComponent(OptionalTools.Find("nadena.dev.modular_avatar.core.vertex_filters.VertexFilterByAxisComponent"));
                     filter.GetType().GetProperty("Center").SetValue(filter, Vector3.zero);
                     filter.GetType().GetProperty("Axis").SetValue(filter, Vector3.left);
                 }
@@ -184,8 +183,7 @@ namespace VRVlog.LilToonExporter.Tests
                 remaining.RemoveAt(index);
             }
         }
-        static Type Named(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name, false)).FirstOrDefault(type => type != null);
-        static Type Required(string name) => Named(name) ?? throw new TypeLoadException(name);
+        static Type Required(string name) => OptionalTools.Find(name) ?? throw new TypeLoadException(name);
 
         sealed class PreviewSettingsScope : IDisposable
         {
@@ -211,7 +209,7 @@ namespace VRVlog.LilToonExporter.Tests
                 preferencesDirty = EditorUtility.IsDirty(preferences); globalDirty = EditorUtility.IsDirty(globalPreferences);
                 plugin = preferenceType.GetMethod("SetPreviewPluginEnabled", Members); validate = preferenceType.GetMethod("OnValidate", Members);
                 // Before MA 1.14.0 the Shape Changer preview also previews Delete.
-                var toggle = (Named("nadena.dev.modular_avatar.core.editor.MeshDeleterPreview")
+                var toggle = (OptionalTools.Find("nadena.dev.modular_avatar.core.editor.MeshDeleterPreview")
                     ?? Required("nadena.dev.modular_avatar.core.editor.ShapeChangerPreview")).GetField("EnableNode", Members).GetValue(null);
                 nodePublished = toggle.GetType().GetProperty("IsEnabled", Members).GetValue(toggle);
                 nodeValue = nodePublished.GetType().GetProperty("Value", Members); previousNode = (bool)nodeValue.GetValue(nodePublished);

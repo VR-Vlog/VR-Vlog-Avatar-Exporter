@@ -26,12 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
         Texture2D Texture(string name) => Own(new Texture2D(4, 4) { name = name });
         Material Standard(string name = "Plain") => Own(new Material(Shader.Find("Standard")) { name = name });
 
-        Material Substitute(Material source)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source) => TestObjects.Substitute(owned, source, null, out _, out _, out _);
 
         [Test] public void AStandardMaterialKeepsItsMainImageColorNormalAndEmission()
         {
@@ -474,12 +469,7 @@ namespace VRVlog.LilToonExporter.Tests
         static readonly Vector4 NeutralTone = new Vector4(0, 1, 1, 1);
         Material ColorProbe(string name = "Adjusted") => Own(new Material(Shader.Find("Hidden/VRVlogTests/ToonColorAdjustProbe")) { name = name });
 
-        Material Substitute(Material source, out bool colorSkipped)
-        {
-            var output = UnsupportedShaderSubstitution.Create(source, out colorSkipped);
-            Assert.That(output, Is.Not.Null);
-            return Own(output);
-        }
+        Material Substitute(Material source, out bool colorSkipped) => TestObjects.Substitute(owned, source, null, out colorSkipped, out _, out _);
 
         static void AssertTone(Material output, Vector4 expected) =>
             Assert.That(Vector4.Distance(output.GetVector("_MainTexHSVG"), expected), Is.LessThan(1e-6f), output.GetVector("_MainTexHSVG").ToString("F4"));

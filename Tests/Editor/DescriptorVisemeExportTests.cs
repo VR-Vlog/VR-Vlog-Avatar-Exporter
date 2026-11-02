@@ -26,9 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
 
         static Type DescriptorType()
         {
-            var type = AppDomain.CurrentDomain.GetAssemblies()
-                .Select(a => a.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", false)).FirstOrDefault(t => t != null);
-            if (type == null) Assert.Ignore("VRChat SDK is required for the descriptor viseme test.");
+            var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "VRChat SDK is required for the descriptor viseme test.");
             return type;
         }
 
@@ -65,8 +63,7 @@ namespace VRVlog.LilToonExporter.Tests
         // its shared mesh, and a Lip Sync descriptor on its Front renderer.
         AttachmentConnectionTests.Fixture ExportAvatar(IEnumerable<string> shapes, string[] visemes)
         {
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(shader); owned.Add(material);
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial = material;
@@ -232,9 +229,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(shape), 0, moves, null, null);
                 return moves[vertex];
             }
-            var folderName = "__DescriptorVisemeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__DescriptorVisemeExport_");
             Vrm10Instance imported = null;
             try
             {

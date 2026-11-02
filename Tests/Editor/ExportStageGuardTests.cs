@@ -133,8 +133,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void LeavingOutTheBuildPassesWritesAnOptimizedAvatar()
         {
-            var optimizer = InstalledType("Anatawa12.AvatarOptimizer.TraceAndOptimize");
-            if (optimizer == null || InstalledType("nadena.dev.ndmf.BuildContext") == null)
+            var optimizer = OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize");
+            if (optimizer == null || OptionalTools.Find("nadena.dev.ndmf.BuildContext") == null)
                 Assert.Ignore("Install supported Avatar Optimizer and NDMF to run the optimizer integration fixture.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             var material = new Material(Shader.Find("lilToon")) { name = "Optimized" };
@@ -212,8 +212,6 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var asset in authored) Object.DestroyImmediate(asset);
             }
         }
-
-        static Type InstalledType(string name) => AppDomain.CurrentDomain.GetAssemblies().Select(assembly => assembly.GetType(name)).FirstOrDefault(type => type != null);
 
         [Test]
         public void EveryStageBelongsToAPhase()

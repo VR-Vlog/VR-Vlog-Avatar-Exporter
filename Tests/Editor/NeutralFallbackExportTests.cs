@@ -8,8 +8,6 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
-using UnityEngine.Animations;
-using UnityEngine.Playables;
 using Object = UnityEngine.Object;
 
 namespace VRVlog.LilToonExporter.Tests
@@ -24,14 +22,10 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(false, 3)]
         public async Task UnresolvedBodyRestExportsWithIndependentOpenEyesAndAbsoluteEndpoints(bool externalInput, int worldFixMode)
         {
-            var descriptorType = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                assembly.GetType("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")).FirstOrDefault(type => type != null);
-            if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
-            var shader = Shader.Find("lilToon");
-            if (shader == null) Assert.Ignore("Install lilToon for the full exporter entry point.");
+            var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
+            var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralFallbackExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralFallbackExport_");
             Vrm10Instance imported = null;
             GameObject reference = null;
             try
@@ -91,9 +85,7 @@ namespace VRVlog.LilToonExporter.Tests
                 }
                 if (worldFixMode == 1 || worldFixMode == 2)
                 {
-                    var type = AppDomain.CurrentDomain.GetAssemblies().Select(assembly =>
-                        assembly.GetType("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint")).FirstOrDefault(value => value != null);
-                    if (type == null) Assert.Ignore("Install the real VRChat SDK with VRCParentConstraint.");
+                    var type = OptionalTools.Require("VRC.SDK3.Dynamics.Constraint.Components.VRCParentConstraint", "Install the real VRChat SDK with VRCParentConstraint.");
                     // Keep this on a rendered part so optional-gimmick pruning
                     // cannot make the world-fix regression vacuously pass.
                     constraint = fixture.Source.transform.Find("Front").gameObject.AddComponent(type);
@@ -114,16 +106,7 @@ namespace VRVlog.LilToonExporter.Tests
                     worldFixBefore = EditorJsonUtility.ToJson(worldFix);
                 }
                 var descriptor = fixture.Source.AddComponent(descriptorType);
-                using (var data = new SerializedObject(descriptor))
-                {
-                    data.FindProperty("customizeAnimationLayers").boolValue = true;
-                    var playableLayers = data.FindProperty("baseAnimationLayers"); playableLayers.arraySize = 1;
-                    var layer = playableLayers.GetArrayElementAtIndex(0); var type = layer.FindPropertyRelative("type");
-                    type.enumValueIndex = Array.IndexOf(type.enumNames, "FX");
-                    layer.FindPropertyRelative("isDefault").boolValue = false;
-                    layer.FindPropertyRelative("animatorController").objectReferenceValue = controller;
-                    data.ApplyModifiedPropertiesWithoutUndo();
-                }
+                VrcAvatar.SetFx(descriptor, controller);
                 var vrm = ScriptableObject.CreateInstance<VRM10Object>();
                 var endpoint = ScriptableObject.CreateInstance<VRM10Expression>(); endpoint.name = "Body endpoint";
                 endpoint.MorphTargetBindings = new[] { new MorphTargetBinding("Front", 0, .8f), new MorphTargetBinding("Back", 0, .8f) };
@@ -163,7 +146,7 @@ namespace VRVlog.LilToonExporter.Tests
                             expected.SetBlendShapeWeight(1, 100);
                             expected.SetBlendShapeWeight(2, key.Equals(ExpressionKey.Blink) ? input * 100 : 0);
                             var actual = imported.GetComponentsInChildren<SkinnedMeshRenderer>().Single(skin => skin.name == path);
-                            var a = Vertices(expected); var b = Vertices(actual);
+                            var a = TestObjects.WorldVertices(expected); var b = TestObjects.WorldVertices(actual);
                             Assert.That(b.Length, Is.EqualTo(a.Length));
                             for (var i = 0; i < a.Length; i++)
                                 Assert.That(Vector3.Distance(a[i], b[i]), Is.LessThan(.0005f), path + " / " + key + " / " + input +
@@ -194,39 +177,17 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
-        static Vector3[] Vertices(SkinnedMeshRenderer renderer)
-        {
-            var mesh = new Mesh();
-            try { renderer.BakeMesh(mesh, false); return mesh.vertices.Select(renderer.transform.TransformPoint).ToArray(); }
-            finally { Object.DestroyImmediate(mesh); }
-        }
-
         static float[] NativeOpenWeights(GameObject source, AnimatorController controller)
         {
             var scene = UnityEditor.SceneManagement.EditorSceneManager.NewPreviewScene();
-            GameObject copy = null; var graph = default(PlayableGraph);
             try
             {
-                copy = Object.Instantiate(source); copy.hideFlags = HideFlags.HideAndDontSave;
-                UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(copy, scene);
-                foreach (var component in copy.GetComponentsInChildren<Behaviour>(true)) component.enabled = false;
-                var animator = copy.GetComponent<Animator>(); animator.runtimeAnimatorController = null;
-                animator.enabled = true; animator.fireEvents = false; animator.applyRootMotion = false;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                graph = PlayableGraph.Create("Unmodified world fix FX oracle"); graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Original FX", animator).SetSourcePlayable(playable);
-                graph.Play(); graph.Evaluate(0);
-                for (var frame = 0; frame < 120; frame++) graph.Evaluate(1f / 60f);
-                return copy.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin =>
+                using var native = new NativeFxPlayback(source, controller, isolate: true, scene: scene);
+                native.Start(); native.Run(120);
+                return native.Copy.GetComponentsInChildren<SkinnedMeshRenderer>().Select(skin =>
                     skin.GetBlendShapeWeight(skin.sharedMesh.GetBlendShapeIndex("Open"))).ToArray();
             }
-            finally
-            {
-                if (graph.IsValid()) graph.Destroy();
-                if (copy != null) Object.DestroyImmediate(copy);
-                UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene);
-            }
+            finally { UnityEditor.SceneManagement.EditorSceneManager.ClosePreviewScene(scene); }
         }
     }
 }
