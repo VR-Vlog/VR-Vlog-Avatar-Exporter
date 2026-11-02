@@ -396,20 +396,13 @@ namespace VRVlog.LilToonExporter
 
         internal void RebindPrepared(Func<SkinnedMeshRenderer, SkinnedMeshRenderer> replacement)
         {
-            if (replacement == null) throw new ArgumentNullException(nameof(replacement));
-            var mapped = new Dictionary<SkinnedMeshRenderer, SkinnedMeshRenderer>();
-            SkinnedMeshRenderer Map(SkinnedMeshRenderer old)
-            {
-                if (!mapped.TryGetValue(old, out var current)) mapped.Add(old, current = replacement(old));
-                if (current == null) throw new InvalidOperationException(NdmfExportPreparation.UnknownRendererRelocation);
-                return current;
-            }
+            var map = new PreparedRendererMap(replacement);
             InvalidOperationException Conflict(SkinnedMeshRenderer renderer, string shape) => new InvalidOperationException(
                 "Modular Avatar / NDMF の処理で同じ瞬きの変形に異なる閉眼量が統合されました。統合前の瞬き設定を一致させてください。: " + renderer.name + " / " + shape);
             var nextEndpoints = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), float>();
             foreach (var pair in state.InferredEndpoints)
             {
-                var current = Map(pair.Key.Renderer);
+                var current = map.Require(pair.Key.Renderer);
                 var key = (current, pair.Key.Shape);
                 if (nextEndpoints.TryGetValue(key, out var endpoint) && !endpoint.Equals(pair.Value))
                     throw Conflict(current, pair.Key.Shape);
@@ -422,7 +415,7 @@ namespace VRVlog.LilToonExporter
                 var seen = new Dictionary<(SkinnedMeshRenderer Renderer, string Shape), (float Endpoint, float Weight)>();
                 foreach (var binding in Slots[slot])
                 {
-                    var row = binding.Copy(); row.Renderer = Map(binding.Renderer);
+                    var row = binding.Copy(); row.Renderer = map.Require(binding.Renderer);
                     var key = (row.Renderer, row.Shape);
                     var endpoint = Endpoint(binding);
                     if (seen.TryGetValue(key, out var previous))
@@ -441,17 +434,13 @@ namespace VRVlog.LilToonExporter
             // Keep each captured deformation obligation, including different
             // source reference weights, even when output bindings coalesce.
             var nextCandidates = state.Candidates.Select(candidate => {
-                var row = candidate.Binding.Copy(); row.Renderer = Map(row.Renderer);
+                var row = candidate.Binding.Copy(); row.Renderer = map.Require(row.Renderer);
                 return new Candidate { Binding = row, Moving = candidate.Moving, ReferenceWeight = candidate.ReferenceWeight };
             }).ToArray();
             // Publish only after every mapping and collision has been checked.
-            state.InferredEndpoints.Clear();
-            foreach (var pair in nextEndpoints) state.InferredEndpoints.Add(pair.Key, pair.Value);
-            for (var slot = 0; slot < Slots.Length; slot++)
-            {
-                Slots[slot].Clear(); Slots[slot].AddRange(nextSlots[slot]);
-            }
-            state.Candidates.Clear(); state.Candidates.AddRange(nextCandidates);
+            PreparedRendererMap.Publish(state.InferredEndpoints, nextEndpoints);
+            for (var slot = 0; slot < Slots.Length; slot++) PreparedRendererMap.Publish(Slots[slot], nextSlots[slot]);
+            PreparedRendererMap.Publish(state.Candidates, nextCandidates);
         }
 
         internal const string LostBlinkDescription = "瞬きなし（ビルド処理で閉眼用の変形が失われました）";
@@ -592,10 +581,7 @@ namespace VRVlog.LilToonExporter
             if (source == clone) throw new ArgumentException("An independent export copy is required.");
             SkinnedMeshRenderer Target(SkinnedMeshRenderer renderer)
             {
-                var route = new Stack<int>();
-                for (var t = renderer.transform; t != source.transform; t = t.parent) route.Push(t.GetSiblingIndex());
-                var target = clone.transform;
-                while (route.Count != 0) target = target.GetChild(route.Pop());
+                var target = ExportRecoveryCopySession.Resolve(renderer.transform, source.transform, clone.transform);
                 var index = Array.IndexOf(renderer.GetComponents<SkinnedMeshRenderer>(), renderer);
                 return target.GetComponents<SkinnedMeshRenderer>()[index];
             }
