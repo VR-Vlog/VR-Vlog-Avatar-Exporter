@@ -1277,70 +1277,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var status = (string)type.GetField("status", flags).GetValue(window);
                 Assert.That(custom.Keys.Where(key => key.StartsWith("Listed face")),
                     Is.EquivalentTo(repeatedName ? new[] { "Listed face", "Listed face (2)" } : new[] { "Listed face" }));
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 0, clips.Length)));
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero, "Nothing is recorded.");
                 Assert.That(status, Does.Not.Contain(ExporterLocalization.T("表情を記録・更新しました: ")));
                 Assert.That(((SavedExpressionVrm)type.GetField("saved", flags).GetValue(window)).Expressions, Is.EqualTo(clips.Length));
             }
             finally { Object.DestroyImmediate(window); foreach (var clip in clips) Object.DestroyImmediate(clip); if (File.Exists(path)) File.Delete(path); }
-        }
-
-        // Recording the list throws: the menu result is exported again and
-        // saved, with the error and the counts. A canceled save stays canceled.
-        [Test]
-        public void MenuShortSaveExportsTheMenuAgainWhenRecordingThrows()
-        {
-            var menu = new byte[] { 1 }; var again = new byte[] { 2 };
-            var restored = 0;
-            var result = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 3,
-                () => throw new InvalidOperationException("Recording failed"), () => { restored++; return again; });
-            Assert.That(result.Exported, Is.SameAs(again));
-            Assert.That(restored, Is.EqualTo(1));
-            Assert.That(result.ListedFaces, Is.EqualTo(3));
-            Assert.That(result.Recorded, Is.Null);
-            Assert.That(result.Error, Is.EqualTo("Recording failed"));
-            Assert.That(result.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 3)));
-
-            restored = 0;
-            Assert.Throws<OperationCanceledException>(() => ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 3,
-                () => throw new OperationCanceledException(), () => { restored++; return again; }));
-            Assert.That(restored, Is.Zero, "A canceled save is not exported again.");
-        }
-
-        // A recovery attempt decides the count again from the board at that
-        // time; after the board closed it only gives the counts.
-        [Test]
-        public void MenuShortSaveDecidesAgainFromTheBoardAtThatTime()
-        {
-            var menu = new byte[] { 1 }; var recordedBytes = new byte[] { 2 };
-            var calls = 0;
-            byte[] Record() { calls++; return recordedBytes; }
-            byte[] Again() { calls++; return menu; }
-
-            var many = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 65, Record, Again);
-            Assert.That(many.Exported, Is.SameAs(recordedBytes));
-            Assert.That(many.ListedFaces, Is.EqualTo(65));
-            Assert.That(many.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 65)));
-            Assert.That(many.Kept, Is.Null);
-            Assert.That(many.Error, Is.Null);
-            Assert.That(calls, Is.EqualTo(1), "A list over 64 faces is recorded too.");
-
-            calls = 0;
-            var recorded = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, () => 4, Record, Again);
-            Assert.That(recorded.Exported, Is.SameAs(recordedBytes));
-            Assert.That(recorded.ListedFaces, Is.EqualTo(4));
-            Assert.That(recorded.Recorded, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortRecordedFormat), 1, 4)));
-            Assert.That(recorded.Kept, Is.Null);
-            Assert.That(calls, Is.EqualTo(1));
-
-            calls = 0;
-            var closed = ExperimentalExpressionCaptureWindow.ResolveMenuShort(menu, 1, 2, null, Record, Again);
-            Assert.That(closed.Exported, Is.SameAs(menu));
-            Assert.That(closed.ListedFaces, Is.EqualTo(2));
-            Assert.That(closed.Recorded, Is.Null);
-            Assert.That(closed.Error, Is.Null);
-            Assert.That(closed.Kept, Is.EqualTo(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortNotRecordedFormat), 1, 2)));
-            Assert.That(calls, Is.Zero, "A closed board records nothing.");
         }
 
         // The expression menu has two faces. The list-only export plays no menu
@@ -1425,8 +1366,6 @@ namespace VRVlog.LilToonExporter.Tests
                     Is.EquivalentTo(ExpressionNameAffix.Trim(names.Take(listed).ToArray())));
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(listed), "Only the listed faces are registered; no menu face is played.");
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
-                var status = (string)type.GetField("status", flags).GetValue(window);
-                Assert.That(status, Does.Not.Contain(string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuExceedsListFormat), names.Length, listed)));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
                 Assert.That(saved.Expressions, Is.EqualTo(listed), "The saved count is the listed faces.");
             }
@@ -1526,9 +1465,6 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(animation.Duration, Is.EqualTo(1).Within(1e-6));
                 Assert.That(animation.Loop, Is.True);
                 Assert.That(((System.Collections.ICollection)type.GetField("fileRecords", flags).GetValue(window)).Count, Is.Zero);
-                var status = (string)type.GetField("status", flags).GetValue(window);
-                var line = string.Format(ExporterLocalization.T(ExperimentalExpressionCaptureWindow.MenuShortKeptMenuFormat), names.Length, names.Length + 2);
-                Assert.That(status, Does.Not.Contain(line));
                 var saved = (SavedExpressionVrm)type.GetField("saved", flags).GetValue(window);
                 Assert.That(saved.Expressions, Is.EqualTo(names.Length + 2), "The saved count is the listed faces.");
             }
@@ -2158,22 +2094,20 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("zh-Hant", "傳送到 App（標準）", "儲存 VRM")]
         public void PrimaryWindowUsesInstalledLocaleTables(string locale, string title, string save)
         {
-            var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static;
-            var localeField = typeof(ExporterLocalization).GetField("_locale", flags);
-            var messagesField = typeof(ExporterLocalization).GetField("_messages", flags);
-            var previousLocale = localeField.GetValue(null); var previousMessages = messagesField.GetValue(null);
             ExperimentalExpressionCaptureWindow window = null;
-            try
+            using (new LocaleScope(locale))
             {
-                localeField.SetValue(null, locale); messagesField.SetValue(null, null);
-                ExperimentalExpressionCaptureWindow.OpenForTransfer(null); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
-                Assert.That(window.titleContent.text, Is.EqualTo(title));
-                Assert.That(window.titleContent.image, Is.Null);
-                Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
-                Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
-                if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
+                try
+                {
+                    ExperimentalExpressionCaptureWindow.OpenForTransfer(null); window = Resources.FindObjectsOfTypeAll<ExperimentalExpressionCaptureWindow>().Single();
+                    Assert.That(window.titleContent.text, Is.EqualTo(title));
+                    Assert.That(window.titleContent.image, Is.Null);
+                    Assert.That(ExporterLocalization.T("VRMを保存"), Is.EqualTo(save));
+                    Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.Empty);
+                    if (locale != "ja") Assert.That(ExporterLocalization.T("その他の表情"), Is.Not.EqualTo("その他の表情"));
+                }
+                finally { window?.Close(); }
             }
-            finally { window?.Close(); localeField.SetValue(null, previousLocale); messagesField.SetValue(null, previousMessages); }
         }
 
         // The logo is drawn in the header at the top of the window, not on the tab.

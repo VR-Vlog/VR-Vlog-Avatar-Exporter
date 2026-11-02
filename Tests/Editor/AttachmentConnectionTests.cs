@@ -447,8 +447,9 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var skin in hairSkins)
                 {
                     AssertVertices(before[skin].Select(delta.MultiplyPoint3x4).ToArray(), WorldVertices(skin));
+                    // Nothing binds the hair morph, so the export leaves it out of the VRM.
                     Assert.That(Enumerable.Range(0, skin.sharedMesh.blendShapeCount)
-                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.EqualTo(1));
+                        .Count(i => !skin.sharedMesh.GetBlendShapeName(i).StartsWith("__VRVlog_BlinkNone_")), Is.EqualTo(0));
                 }
                 if (petSkin != null) AssertVertices(petBefore, WorldVertices(petSkin));
             }

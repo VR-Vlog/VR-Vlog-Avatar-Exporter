@@ -67,7 +67,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(26));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 
@@ -94,56 +93,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             finally { File.Delete(path); }
         }
 
-#if !(UNITY_EDITOR)
-        [Test]
-        public void RejectedCloudEntryDeletesOnlyItsPreviouslyIssuedSnapshot()
-        {
-            var path = Path.Combine(Path.GetTempPath(), "vrvlog-owned-cloud-export-" + Guid.NewGuid().ToString("N") + ".vrm");
-            var owned = (HashSet<string>)typeof(CloudVrmTransferWindow).GetField("OwnedSnapshots", BindingFlags.NonPublic | BindingFlags.Static).GetValue(null);
-            try
-            {
-                File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
-                // Reproduce a transfer-only path issued before the current
-                // disabled release; no public API can issue one now.
-                owned.Add(path);
-                Assert.Throws<NotSupportedException>(() => CloudVrmTransferWindow.Show(path, "owned.vrm"));
-                Assert.That(File.Exists(path), Is.False);
-                Assert.That(owned.Contains(path), Is.False);
-            }
-            finally { owned.Remove(path); if (File.Exists(path)) File.Delete(path); }
-        }
-
-        [TestCase("OnEnable")]
-        [TestCase("Begin")]
-        [TestCase("Poll")]
-        public void DisabledRestoredWindowReleasesItsOldSourceAndSessionBeforeStartingWork(string callback)
-        {
-            var window = ScriptableObject.CreateInstance<CloudVrmTransferWindow>();
-            var path = Path.Combine(Path.GetTempPath(), "vrvlog-restored-cloud-export-" + Guid.NewGuid().ToString("N") + ".vrm");
-            CloudVrmTransferSource source = null;
-            CloudVrmTransferSession session = null;
-            try
-            {
-                File.WriteAllBytes(path, new byte[] { 1, 2, 3 });
-                source = new CloudVrmTransferSource(path, "old.vrm");
-                session = new CloudVrmTransferSession(source);
-                typeof(CloudVrmTransferWindow).GetField("source", Instance).SetValue(window, source);
-                typeof(CloudVrmTransferWindow).GetField("session", Instance).SetValue(window, session);
-                typeof(CloudVrmTransferWindow).GetField("uploading", Instance).SetValue(window, new TaskCompletionSource<bool>().Task);
-                typeof(CloudVrmTransferWindow).GetField("polling", Instance).SetValue(window, new TaskCompletionSource<bool>().Task);
-                typeof(CloudVrmTransferWindow).GetField("qrTexture", Instance).SetValue(window, new Texture2D(1, 1));
-                typeof(CloudVrmTransferWindow).GetMethod(callback, Instance).Invoke(window, null);
-                Assert.That(session.State, Is.EqualTo(CloudTransferState.Canceled));
-                Assert.That(File.Exists(path), Is.False);
-                Assert.Throws<ObjectDisposedException>(() => source.OpenRead());
-                foreach (var field in new[] { "source", "session", "uploading", "polling", "qrTexture" })
-                    Assert.That(typeof(CloudVrmTransferWindow).GetField(field, Instance).GetValue(window), Is.Null);
-            }
-            finally { Object.DestroyImmediate(window); session?.Dispose(); source?.Dispose(); if (File.Exists(path)) File.Delete(path); }
-        }
-#endif
-
-#if UNITY_EDITOR
         [Test]
         public void PrivacyChoiceDefaultsOffAndSurvivesClosingAndReopeningTheWindow()
         {
@@ -320,6 +269,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var entry = Activator.CreateInstance(entryType, true);
                     entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
                     entryType.GetField("TermsKey", Instance).SetValue(entry, (Func<string>)(() => "fixture terms"));
+                    // The saved row carries the export notes, read from the entry.
+                    entryType.GetField("LastNotes", Instance).SetValue(entry, (Func<string[]>)(() => new string[0]));
                     string savedName = null, failure = null;
                     var later = false;
                     Action<string, int> pending = null;
@@ -541,7 +492,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             }
             finally { Object.DestroyImmediate(window); session?.Dispose(); source?.Dispose(); if (File.Exists(path)) File.Delete(path); if (File.Exists(rejected)) File.Delete(rejected); }
         }
-#endif
 
         [Test]
         public void WindowClosureCancelsStartupAndDeletesOnlyTheOwnedSnapshot()

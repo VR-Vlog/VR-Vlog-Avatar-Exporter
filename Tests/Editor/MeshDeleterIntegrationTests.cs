@@ -43,6 +43,7 @@ namespace VRVlog.LilToonExporter.Tests
             var original = Object.Instantiate(fixture.Mesh);
             Mesh deleted = null;
             var material = new Material(shader);
+            var face = new AnimationClip { name = "Hair detail face" };
             Vrm10Instance imported = null;
             try
             {
@@ -110,11 +111,14 @@ namespace VRVlog.LilToonExporter.Tests
                 var originalTriangles = original.triangles;
                 var deletedVertices = deleted.vertices;
                 var warnings = new List<string>();
+                // Unused BlendShapes are left out of the VRM: a list face binds
+                // the morph on the edited mesh so it stays in the round trip.
+                AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve(front.name, typeof(SkinnedMeshRenderer), "blendShape.Hair detail"), AnimationCurve.Constant(0, 1, 100));
 
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "MeshDeleter regression", "Tests", warnings,
                     exporterVersion: fullLilToon ? "meshdeleter-regression" : null,
                     lilToonVersion: fullLilToon ? "2.3.4" : null,
-                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None });
+                    blinkOptions: new BlinkExportOptions { Mode = BlinkExportMode.None }, listFaces: new[] { (face.name, face, 0f) });
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 Assert.That(imported, Is.Not.Null, string.Join("\n", warnings));
                 imported.Runtime.Process();
@@ -160,6 +164,7 @@ namespace VRVlog.LilToonExporter.Tests
                 if (original != null && !EditorUtility.IsPersistent(original)) Object.DestroyImmediate(original);
                 if (deleted != null && !EditorUtility.IsPersistent(deleted)) Object.DestroyImmediate(deleted);
                 Object.DestroyImmediate(material);
+                Object.DestroyImmediate(face);
             }
         }
 

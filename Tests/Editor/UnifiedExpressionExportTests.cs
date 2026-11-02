@@ -1361,7 +1361,11 @@ namespace VRVlog.LilToonExporter.Tests
                 var metadata = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
                 var custom = (Dictionary<string, object>)((Dictionary<string, object>)metadata["expressions"])["custom"];
                 foreach (var key in custom.Keys.Where(key => key.StartsWith("UE/", StringComparison.Ordinal)).ToArray()) custom.Remove(key);
-                var morph = new Dictionary<string, object> { ["index"] = 2L, ["weight"] = .4 };
+                // Unused BlendShapes are left out of the export, so the index is read by name.
+                var frontMesh = (Dictionary<string, object>)((List<object>)glb.Json["meshes"])[Convert.ToInt32(nodes[frontIndex]["mesh"])];
+                var funnel = ((List<object>)((Dictionary<string, object>)frontMesh["extras"])["targetNames"]).IndexOf("LipFunnelUpperLeft");
+                Assert.That(funnel, Is.GreaterThanOrEqualTo(0));
+                var morph = new Dictionary<string, object> { ["index"] = (long)funnel, ["weight"] = .4 };
                 if (scope != "missing") morph["node"] = scope == "scoped" ? (long)frontIndex : (long)nodes.Length + 10;
                 const string authoredName = "UE/LipFunnelUpperLeft";
                 custom[authoredName] = new Dictionary<string, object> {
@@ -1820,6 +1824,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
             Mesh menuMesh = null;
+            var face = new AnimationClip { name = "JawOpen" };
             Vrm10Instance imported = null;
             try
             {
@@ -1831,16 +1836,14 @@ namespace VRVlog.LilToonExporter.Tests
                 menuMesh.AddBlendShapeFrame(target, 100, Enumerable.Repeat(Vector3.forward * .04f, menuMesh.vertexCount).ToArray(), null, null);
                 var skins = fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>(); skins[0].sharedMesh = menuMesh;
                 foreach (var skin in skins) skin.sharedMaterial.shader = Shader.Find("lilToon");
+                // The menu face comes from the board's list, so the export binds
+                // the menu target before unused BlendShapes are left out and
+                // registers it alongside the automatic UE expressions.
+                UnityEditor.AnimationUtility.SetEditorCurve(face, UnityEditor.EditorCurveBinding.FloatCurve(skins[0].name, typeof(SkinnedMeshRenderer), "blendShape." + target),
+                    AnimationCurve.Constant(0, 1, 100));
                 var bytes = UniVrmOneClickExporter.Export(fixture.Source, "Jaw menu namespace", "Tests",
-                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null);
-                var glb = GlbDocument.Read(bytes);
-                var vrm = (Dictionary<string, object>)((Dictionary<string, object>)glb.Json["extensions"])["VRMC_vrm"];
-                var custom = (Dictionary<string, object>)((Dictionary<string, object>)vrm["expressions"])["custom"];
-                foreach (var key in custom.Keys.Where(key => key.StartsWith("UE/", StringComparison.Ordinal)).ToArray()) custom.Remove(key);
-                // Exercise the production menu registrar before automatic UE
-                // injection, using real exported meshes without optional SDKs.
-                var entry = new VrmMenuExpressions.Expression { Name = "JawOpen" }; entry.Targets.Add(target);
-                bytes = VrmUnifiedExpressions.Add(VrmMenuExpressions.Add(glb.Write(), new List<VrmMenuExpressions.Expression> { entry }));
+                    exporterVersion: fullLilToon ? "0.11.5" : null, lilToonVersion: fullLilToon ? "2.3.4" : null,
+                    listFaces: new[] { (face.name, face, 0f) });
                 Assert.That(VrmMenuExpressions.CountRegistered(bytes), Is.EqualTo(1));
                 imported = await Vrm10.LoadBytesAsync(bytes, canLoadVrm0X: false, awaitCaller: new ImmediateCaller());
                 // A menu face named after a tracking channel is numbered apart from it.
@@ -1874,6 +1877,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 if (imported != null) Object.DestroyImmediate(imported.gameObject);
                 if (menuMesh != null) Object.DestroyImmediate(menuMesh);
+                Object.DestroyImmediate(face);
             }
         }
     }
