@@ -602,28 +602,14 @@ namespace VRVlog.LilToonExporter
                 ? affected.Concat(dependencies.NativeSupportLayers) : dependencies.NativeSupportLayers;
             ValidateNativeSupportMotions(controller, validationLayers, excludedPath, avatar, neutralPlan,
                 ExpressionDependencies.NeutralClips(runtime, dependencies.NeutralFixedValues, excludedPath), unchangedAppearance);
-            var scene = EditorSceneManager.NewPreviewScene();
-            GameObject clone = null;
+            AnimatorProbe probe = null;
             var graph = default(PlayableGraph);
             try
             {
-                clone = UnityEngine.Object.Instantiate(avatar);
-                clone.name = avatar.name;
-                clone.hideFlags = HideFlags.HideAndDontSave;
-                SceneManager.MoveGameObjectToScene(clone, scene);
-                foreach (var behaviour in clone.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = clone.GetComponent<Animator>() ?? clone.AddComponent<Animator>();
-                animator.runtimeAnimatorController = null;
-                animator.enabled = true;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                animator.applyRootMotion = false;
-                animator.fireEvents = false;
-                evaluation.Animator = animator;
-                clone.SetActive(true);
-                graph = PlayableGraph.Create("VR Vlog neutral shape sampling");
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Neutral shape", animator).SetSourcePlayable(playable);
+                probe = new AnimatorProbe(avatar);
+                var clone = probe.Copy;
+                evaluation.Animator = probe.Animator;
+                graph = probe.Play("VR Vlog neutral shape sampling", controller, "Neutral shape", out var playable);
                 var defaults = new Dictionary<string, float>(metadata.Defaults, StringComparer.Ordinal);
                 if (fixedContext != null)
                     foreach (var input in fixedContext.Values) defaults[input.Key] = input.Value;
@@ -698,8 +684,7 @@ namespace VRVlog.LilToonExporter
             finally
             {
                 if (graph.IsValid()) graph.Destroy();
-                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
-                EditorSceneManager.ClosePreviewScene(scene);
+                probe?.Dispose();
             }
         }
 
@@ -1452,13 +1437,8 @@ namespace VRVlog.LilToonExporter
             {
                 if (!values.TryGetValue(parameter.name, out var value)) continue;
                 if (float.IsNaN(value) || float.IsInfinity(value)) throw new InvalidOperationException("表情パラメーターに不正な値があります。");
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, value != 0); break;
-                    case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, Mathf.RoundToInt(value)); break;
-                    case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, value); break;
-                    default: throw new InvalidOperationException("Triggerパラメーターの表情は未対応です。");
-                }
+                if (!AnimatorProbe.Write(playable, parameter.type, parameter.name, value))
+                    throw new InvalidOperationException("Triggerパラメーターの表情は未対応です。");
             }
         }
 

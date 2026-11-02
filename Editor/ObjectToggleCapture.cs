@@ -358,11 +358,9 @@ namespace VRVlog.LilToonExporter
             readonly GameObject avatar;
             readonly RuntimeAnimatorController controller;
             readonly Dictionary<string, AnimatorControllerParameter> parameters = new Dictionary<string, AnimatorControllerParameter>(StringComparer.Ordinal);
-            Scene scene;
-            GameObject copy;
+            AnimatorProbe probe;
             Transform[] transforms;
             bool[] rest;
-            Animator animator;
 
             internal Sampler(GameObject avatar, RuntimeAnimatorController controller)
             {
@@ -372,26 +370,13 @@ namespace VRVlog.LilToonExporter
 
             void Open()
             {
-                if (scene.IsValid()) return;
-                scene = EditorSceneManager.NewPreviewScene();
+                if (probe != null) return;
                 try
                 {
-                    copy = UnityEngine.Object.Instantiate(avatar);
-                    copy.name = avatar.name;
-                    copy.hideFlags = HideFlags.HideAndDontSave;
-                    SceneManager.MoveGameObjectToScene(copy, scene);
-                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                    animator = copy.GetComponent<Animator>();
-                    if (animator == null) animator = copy.AddComponent<Animator>();
-                    animator.runtimeAnimatorController = null;
-                    animator.enabled = true;
-                    animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                    animator.applyRootMotion = false;
-                    animator.fireEvents = false;
-                    copy.SetActive(true);
+                    probe = new AnimatorProbe(avatar);
                     // Instantiate keeps the hierarchy order, so index i is the
                     // same object in the avatar and in this copy.
-                    transforms = copy.GetComponentsInChildren<Transform>(true);
+                    transforms = probe.Copy.GetComponentsInChildren<Transform>(true);
                     rest = transforms.Select(transform => transform.gameObject.activeSelf).ToArray();
                     var graph = PlayableGraph.Create("VR Vlog object toggle parameters");
                     try
@@ -431,22 +416,11 @@ namespace VRVlog.LilToonExporter
             {
                 Open();
                 for (var i = 0; i < transforms.Length; i++) transforms[i].gameObject.SetActive(rest[i]);
-                var graph = PlayableGraph.Create("VR Vlog object toggle sampling");
+                var graph = probe.Play("VR Vlog object toggle sampling", controller, "Object toggles", out var playable);
                 try
                 {
-                    graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                    var playable = AnimatorControllerPlayable.Create(graph, controller);
-                    AnimationPlayableOutput.Create(graph, "Object toggles", animator).SetSourcePlayable(playable);
                     foreach (var pair in values)
-                    {
-                        if (!parameters.TryGetValue(pair.Key, out var parameter)) continue;
-                        switch (parameter.type)
-                        {
-                            case AnimatorControllerParameterType.Bool: playable.SetBool(pair.Key, pair.Value != 0f); break;
-                            case AnimatorControllerParameterType.Int: playable.SetInteger(pair.Key, Mathf.RoundToInt(pair.Value)); break;
-                            case AnimatorControllerParameterType.Float: playable.SetFloat(pair.Key, pair.Value); break;
-                        }
-                    }
+                        if (parameters.TryGetValue(pair.Key, out var parameter)) AnimatorProbe.Write(playable, parameter.type, pair.Key, pair.Value);
                     graph.Play();
                     graph.Evaluate(0f);
                     for (var frame = 0; frame < Frames; frame++) graph.Evaluate(FrameStep);
@@ -457,8 +431,8 @@ namespace VRVlog.LilToonExporter
 
             public void Dispose()
             {
-                if (copy != null) UnityEngine.Object.DestroyImmediate(copy);
-                if (scene.IsValid()) EditorSceneManager.ClosePreviewScene(scene);
+                probe?.Dispose();
+                probe = null;
             }
         }
     }

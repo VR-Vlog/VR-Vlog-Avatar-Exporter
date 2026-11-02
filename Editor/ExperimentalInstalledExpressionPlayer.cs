@@ -77,13 +77,8 @@ namespace VRVlog.LilToonExporter
                     {
                         if (!values.TryGetValue(parameter.name, out var value)) continue;
                         if (float.IsNaN(value) || float.IsInfinity(value)) throw new InvalidOperationException("表情入力の値が不正です。");
-                        switch (parameter.type)
-                        {
-                            case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, value != 0); break;
-                            case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, Mathf.RoundToInt(value)); break;
-                            case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, value); break;
-                            default: throw new InvalidOperationException("Trigger入力はこの表情収録では再現できません。");
-                        }
+                        if (!AnimatorProbe.Write(playable, parameter.type, parameter.name, value))
+                            throw new InvalidOperationException("Trigger入力はこの表情収録では再現できません。");
                     }
                 }
                 List<VrChatExpressionMenu.MorphValue> Read() => ExportRendererSelection.Enumerate(copy).OfType<SkinnedMeshRenderer>()
