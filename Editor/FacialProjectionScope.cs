@@ -43,6 +43,13 @@ namespace VRVlog.LilToonExporter
             var head = animator.GetBoneTransform(HumanBodyBones.Head);
             if (head == null) return null;
             var neck = animator.GetBoneTransform(HumanBodyBones.Neck);
+            return Estimate(avatar.transform, head, neck, DescriptorFaceShapes(avatar));
+        }
+
+        // The BlendShapes the descriptor gives a facial role, by renderer: the
+        // active lip sync route and the eyelids of eye look.
+        internal static Dictionary<SkinnedMeshRenderer, HashSet<int>> DescriptorFaceShapes(GameObject avatar)
+        {
             var descriptor = avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
                 c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
             var seeds = new Dictionary<SkinnedMeshRenderer, HashSet<int>>();
@@ -77,6 +84,15 @@ namespace VRVlog.LilToonExporter
                 VrChatExpressionMenu.Member(eyes, "eyelidType")?.ToString() == "Blendshapes" &&
                 VrChatExpressionMenu.Member(eyes, "eyelidsBlendshapes") is IEnumerable indices)
                 foreach (var index in indices.OfType<int>()) Add(eyelids, index);
+            return seeds;
+        }
+
+        // The morphs of the seed renderers that change only the head-skinned
+        // surface grown from the seed shapes. Reads only the meshes, the bones
+        // and their transforms under root.
+        internal static FacialProjectionScope Estimate(Transform root, Transform head, Transform neck,
+            Dictionary<SkinnedMeshRenderer, HashSet<int>> seeds)
+        {
             // Even on a merged Body renderer, a shape named Blink can belong
             // to a disconnected accessory. Names never establish new seeds.
             var result = new FacialProjectionScope();
@@ -228,7 +244,7 @@ namespace VRVlog.LilToonExporter
                     // mesh axes can be rotated and current bone poses can move.
                     // This never widens the descriptor's lateral/vertical
                     // extent or admits an island touching non-head geometry.
-                    var meshToAvatar = avatar.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
+                    var meshToAvatar = root.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
                     var hasDepthEnvelope = TryDepthEnvelope(vertices, enclosureSurface, meshToAvatar, mesh.bindposes,
                         Array.IndexOf(bones, head), out var depthEnvelope);
                     var visited = new HashSet<int>(domain);
@@ -246,7 +262,7 @@ namespace VRVlog.LilToonExporter
                                 island.All(index => facialBounds.Contains(vertices[index])))) domain.UnionWith(island);
                     }
                 }
-                var path = AnimationUtility.CalculateTransformPath(renderer.transform, avatar.transform);
+                var path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
                 for (var shape = 0; shape < mesh.blendShapeCount; shape++)
                 {
                     var changed = Changed(shape);
