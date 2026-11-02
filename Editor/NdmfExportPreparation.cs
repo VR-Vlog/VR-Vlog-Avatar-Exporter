@@ -128,48 +128,65 @@ namespace VRVlog.LilToonExporter
         internal static GameObject InstantiateOwnedCopy(GameObject source)
         {
             if (source == null) throw new ArgumentNullException(nameof(source));
-            var host = new GameObject("VRVlog inactive copy staging");
+            try
+            {
+                // HideAndDontSave removes GameObjects from their native scene.
+                // A preview scene provides isolation without invalidating the
+                // scene captured by NDMF diagnostics.
+                return InstantiateInactive(source, "VRVlog inactive copy staging", HideFlags.None, CopyScene(), true, copy =>
+                {
+                    copy.hideFlags = HideFlags.None;
+                    // A Missing Script has no type and appears as a null component.
+                    // Remove it from the owned copy only; the source keeps it.
+                    foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
+                        UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
+                    // The project's own UniVRM components and MToon materials become
+                    // the exporter's vendored ones before any script runs on the copy.
+                    ForeignUniVrm.Adopt(copy);
+                    foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
+                    {
+                        if (behaviour == null) continue;
+                        var type = behaviour.GetType();
+                        var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
+                        if (authoring || PreservesExportBehaviour(behaviour)) continue;
+                        var editorCallbacks = ExportTypeNames.SelfAndBaseTypes(type).Any(current => current.GetCustomAttributesData().Any(attribute =>
+                            attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" || attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode"));
+                        // Disabled editor scripts can still receive Awake on activation.
+                        // Remove editor scripts outside export/authoring contracts
+                        // before activation. Preserve inert runtime/metadata enabled
+                        // states: PhysBones and constraints use them during export.
+                        if (behaviour is MonoBehaviour && editorCallbacks) Object.DestroyImmediate(behaviour);
+                        else if (behaviour is Animator) behaviour.enabled = false;
+                    }
+                });
+            }
+            finally { ReleaseUnusedCopyScene(); }
+        }
+
+        // Clones source under an inactive host, moved to scene when it is valid,
+        // so that no copied script runs before prepare has dealt with the
+        // scripts. A hidden avatar (or one under a hidden parent) exports too:
+        // only the copy's own root is shown, still under the host, before it is
+        // taken out of the host. The source is untouched; the host is destroyed
+        // either way, and the copy too when this fails.
+        internal static GameObject InstantiateInactive(GameObject source, string hostName, HideFlags hostFlags, Scene scene,
+            bool worldPositionStays, Action<GameObject> prepare)
+        {
+            var host = new GameObject(hostName) { hideFlags = hostFlags };
             host.SetActive(false);
             GameObject copy = null;
             try
             {
-                SceneManager.MoveGameObjectToScene(host, CopyScene());
-                copy = Object.Instantiate(source, host.transform, true);
-                // HideAndDontSave removes GameObjects from their native scene.
-                // A preview scene provides isolation without invalidating the
-                // scene captured by NDMF diagnostics.
-                copy.name = source.name; copy.hideFlags = HideFlags.None;
-                // A Missing Script has no type and appears as a null component.
-                // Remove it from the owned copy only; the source keeps it.
-                foreach (var transform in copy.GetComponentsInChildren<Transform>(true))
-                    UnityEditor.GameObjectUtility.RemoveMonoBehavioursWithMissingScript(transform.gameObject);
-                // The project's own UniVRM components and MToon materials become
-                // the exporter's vendored ones before any script runs on the copy.
-                ForeignUniVrm.Adopt(copy);
-                foreach (var behaviour in copy.GetComponentsInChildren<Behaviour>(true))
-                {
-                    if (behaviour == null) continue;
-                    var type = behaviour.GetType();
-                    var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
-                    if (authoring || PreservesExportBehaviour(behaviour)) continue;
-                    var editorCallbacks = ExportTypeNames.SelfAndBaseTypes(type).Any(current => current.GetCustomAttributesData().Any(attribute =>
-                        attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" || attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode"));
-                    // Disabled editor scripts can still receive Awake on activation.
-                    // Remove editor scripts outside export/authoring contracts
-                    // before activation. Preserve inert runtime/metadata enabled
-                    // states: PhysBones and constraints use them during export.
-                    if (behaviour is MonoBehaviour && editorCallbacks) Object.DestroyImmediate(behaviour);
-                    else if (behaviour is Animator) behaviour.enabled = false;
-                }
-                // A hidden avatar (or one under a hidden parent) exports too: only
-                // the owned copy's root is shown, still under the inactive host,
-                // so nothing runs before the cleanup above. The source is untouched.
+                if (scene.IsValid()) SceneManager.MoveGameObjectToScene(host, scene);
+                copy = Object.Instantiate(source, host.transform, worldPositionStays);
+                copy.name = source.name;
+                prepare(copy);
                 if (!copy.activeSelf) copy.SetActive(true);
-                copy.transform.SetParent(null, true);
+                copy.transform.SetParent(null, worldPositionStays);
                 return copy;
             }
             catch { if (copy != null) Object.DestroyImmediate(copy); throw; }
-            finally { Object.DestroyImmediate(host); ReleaseUnusedCopyScene(); }
+            finally { Object.DestroyImmediate(host); }
         }
 #endif
 

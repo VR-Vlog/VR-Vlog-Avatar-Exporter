@@ -326,7 +326,7 @@ namespace VRVlog.LilToonExporter
             foreach (var state in states)
             {
                 AnimatorState destination = null;
-                foreach (var transition in parents[state].SelectMany(m => ActiveTransitions(m.anyStateTransitions)).Concat(ActiveTransitions(state.transitions)))
+                foreach (var transition in parents[state].SelectMany(m => AnimatorConditions.Enabled(m.anyStateTransitions)).Concat(AnimatorConditions.Enabled(state.transitions)))
                 {
                     // Check *all* conditions before evaluating: a currently false
                     // condition cannot hide an external or historical dependency.
@@ -379,25 +379,8 @@ namespace VRVlog.LilToonExporter
             if (machine.entryTransitions.Length != 0) throw new InvalidOperationException("条件付きEntry遷移は未対応です。");
             return final;
         }
-        static IEnumerable<AnimatorStateTransition> ActiveTransitions(AnimatorStateTransition[] siblings)
-        {
-            // Solo suppresses non-solo siblings even when muted or false.
-            var hasSolo = siblings.Any(t => t.solo);
-            return siblings.Where(t => !t.mute && (!hasSolo || t.solo));
-        }
-        static bool Condition(AnimatorCondition c, float value)
-        {
-            switch (c.mode)
-            {
-                case AnimatorConditionMode.If: return value != 0;
-                case AnimatorConditionMode.IfNot: return value == 0;
-                case AnimatorConditionMode.Equals: return value == c.threshold;
-                case AnimatorConditionMode.NotEqual: return value != c.threshold;
-                case AnimatorConditionMode.Greater: return value > c.threshold;
-                case AnimatorConditionMode.Less: return value < c.threshold;
-                default: throw new InvalidOperationException("未対応のAnimator条件です。");
-            }
-        }
+        static bool Condition(AnimatorCondition c, float value) => AnimatorConditions.Known(c.mode)
+            ? AnimatorConditions.Evaluate(c, value) == true : throw new InvalidOperationException("未対応のAnimator条件です。");
         // A BlendTree can move the body only through a clip under it. A tree
         // that only blends BlendShapes or object activity (Modular Avatar
         // 1.19 builds its Reactive Components this way) is not a body layer.
@@ -434,6 +417,6 @@ namespace VRVlog.LilToonExporter
         static IEnumerable<StateMachineBehaviour> Behaviours(AnimatorStateMachine m) => Machines(m).SelectMany(s => s.behaviours);
         static IEnumerable<StateMachineBehaviour> AncestorBehaviours(AnimatorStateMachine root, AnimatorState state) =>
             Machines(root).Where(m => States(m).Contains(state)).SelectMany(m => m.behaviours);
-        static IEnumerable<AnimatorStateTransition> Transitions(AnimatorStateMachine m) => Machines(m).SelectMany(s => ActiveTransitions(s.anyStateTransitions)).Concat(States(m).SelectMany(s => ActiveTransitions(s.transitions)));
+        static IEnumerable<AnimatorStateTransition> Transitions(AnimatorStateMachine m) => Machines(m).SelectMany(s => AnimatorConditions.Enabled(s.anyStateTransitions)).Concat(States(m).SelectMany(s => AnimatorConditions.Enabled(s.transitions)));
     }
 }

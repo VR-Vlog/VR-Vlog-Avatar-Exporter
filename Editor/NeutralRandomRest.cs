@@ -41,7 +41,7 @@ namespace VRVlog.LilToonExporter
                     var upper = definitions[pair.Key];
                     if (upper.blendingMode != AnimatorLayerBlendingMode.Override || upper.defaultWeight != 1 || upper.avatarMask != null) continue;
                     var curve = AnimationUtility.GetEditorCurve(pair.Value, binding);
-                    if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) continue;
+                    if (!CurveChecks.Constant(curve, emptyIsConstant: false)) continue;
                     VrChatGestureExpressions.ReadCurve(curve);
                     return true;
                 }
@@ -87,7 +87,7 @@ namespace VRVlog.LilToonExporter
                         if (!PoseSampling.IsBlendShape(binding)) { safe = false; break; }
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
                         VrChatGestureExpressions.ReadCurve(curve);
-                        changing |= active.Clips.Contains(clip) && !VrChatExpressionSampler.IsConstant(curve);
+                        changing |= active.Clips.Contains(clip) && !CurveChecks.Constant(curve);
                     }
                 }
                 if (!safe || !changing) continue;

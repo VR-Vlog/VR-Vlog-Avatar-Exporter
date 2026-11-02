@@ -602,28 +602,14 @@ namespace VRVlog.LilToonExporter
                 ? affected.Concat(dependencies.NativeSupportLayers) : dependencies.NativeSupportLayers;
             ValidateNativeSupportMotions(controller, validationLayers, excludedPath, avatar, neutralPlan,
                 ExpressionDependencies.NeutralClips(runtime, dependencies.NeutralFixedValues, excludedPath), unchangedAppearance);
-            var scene = EditorSceneManager.NewPreviewScene();
-            GameObject clone = null;
+            AnimatorProbe probe = null;
             var graph = default(PlayableGraph);
             try
             {
-                clone = UnityEngine.Object.Instantiate(avatar);
-                clone.name = avatar.name;
-                clone.hideFlags = HideFlags.HideAndDontSave;
-                SceneManager.MoveGameObjectToScene(clone, scene);
-                foreach (var behaviour in clone.GetComponentsInChildren<Behaviour>(true)) behaviour.enabled = false;
-                var animator = clone.GetComponent<Animator>() ?? clone.AddComponent<Animator>();
-                animator.runtimeAnimatorController = null;
-                animator.enabled = true;
-                animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-                animator.applyRootMotion = false;
-                animator.fireEvents = false;
-                evaluation.Animator = animator;
-                clone.SetActive(true);
-                graph = PlayableGraph.Create("VR Vlog neutral shape sampling");
-                graph.SetTimeUpdateMode(DirectorUpdateMode.Manual);
-                var playable = AnimatorControllerPlayable.Create(graph, controller);
-                AnimationPlayableOutput.Create(graph, "Neutral shape", animator).SetSourcePlayable(playable);
+                probe = new AnimatorProbe(avatar);
+                var clone = probe.Copy;
+                evaluation.Animator = probe.Animator;
+                graph = probe.Play("VR Vlog neutral shape sampling", controller, "Neutral shape", out var playable);
                 var defaults = new Dictionary<string, float>(metadata.Defaults, StringComparer.Ordinal);
                 if (fixedContext != null)
                     foreach (var input in fixedContext.Values) defaults[input.Key] = input.Value;
@@ -698,8 +684,7 @@ namespace VRVlog.LilToonExporter
             finally
             {
                 if (graph.IsValid()) graph.Destroy();
-                if (clone != null) UnityEngine.Object.DestroyImmediate(clone);
-                EditorSceneManager.ClosePreviewScene(scene);
+                probe?.Dispose();
             }
         }
 
@@ -736,7 +721,7 @@ namespace VRVlog.LilToonExporter
                     if (current.Length != 1 || current[0].weight != 1 ||
                         playable.GetNextAnimatorClipInfo(upper).Any(info => info.clip != null && info.weight > .00001f)) continue;
                     var curve = AnimationUtility.GetEditorCurve(current[0].clip, binding);
-                    if (curve == null || curve.length == 0 || !IsConstant(curve) && Terminal(upper) != current[0].clip) continue;
+                    if (curve == null || curve.length == 0 || !CurveChecks.Constant(curve) && Terminal(upper) != current[0].clip) continue;
                     VrChatGestureExpressions.ReadCurve(curve);
                     return true;
                 }
@@ -753,7 +738,7 @@ namespace VRVlog.LilToonExporter
                         if (!capturedMorphs.Contains(binding) || excludedPath?.Invoke(binding.path) == true ||
                             !PoseSampling.IsBlendShape(binding)) continue;
                         var curve = AnimationUtility.GetEditorCurve(info.clip, binding);
-                        if (IsConstant(curve)) continue;
+                        if (CurveChecks.Constant(curve)) continue;
                         if (FindRenderer(avatar, binding.path).sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0) continue;
                         // A malformed or unrepresentable curve is not a temporal
                         // preservation proof. Use the authored program's complete
@@ -818,15 +803,7 @@ namespace VRVlog.LilToonExporter
                 // than comparing sampled endpoints. Equal values alone cannot
                 // exclude Hermite/weighted overshoot or a later changing key.
                 if (curve.postWrapMode == WrapMode.Loop || curve.postWrapMode == WrapMode.PingPong) return null;
-                var keys = curve.keys;
-                for (var index = 1; index < keys.Length; index++)
-                {
-                    var left = keys[index - 1]; var right = keys[index];
-                    if (right.time <= phase) continue;
-                    if (left.value != right.value ||
-                        left.outTangent != 0 && !float.IsInfinity(left.outTangent) ||
-                        right.inTangent != 0 && !float.IsInfinity(right.inTangent)) return null;
-                }
+                if (!CurveChecks.HoldsAfter(curve, phase)) return null;
             }
             return clip;
         }
@@ -1101,7 +1078,7 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.GetCurveBindings(clip).Any(binding =>
                     !(PoseSampling.IsBlendShape(binding) ||
                       binding.type == typeof(Animator) && parameters.Contains(binding.propertyName)) ||
-                    !IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))) return false;
+                    !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)))) return false;
             return machine.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(machine.entryTransitions)
                 .Concat(states.SelectMany(state => state.transitions)).All(transition =>
                     !transition.isExit && transition.destinationStateMachine == null && states.Contains(transition.destinationState));
@@ -1152,7 +1129,7 @@ namespace VRVlog.LilToonExporter
                 if (state == null || ExpressionDependencies.HasEffectfulBehaviours(state.behaviours) || state.transitions.Length != 0 || state.iKOnFeet ||
                     state.timeParameterActive || state.speedParameterActive || state.mirrorParameterActive || state.cycleOffsetParameterActive) return false;
                 return state.motion == null || state.motion is AnimationClip clip && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0 &&
-                    AnimationUtility.GetCurveBindings(clip).All(binding => IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+                    AnimationUtility.GetCurveBindings(clip).All(binding => CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)));
             }
             var result = new HashSet<int>();
             foreach (var index in affected)
@@ -1258,7 +1235,7 @@ namespace VRVlog.LilToonExporter
                                 {
                                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
                                     ValidateNativeParameterCurve(curve, path + "." + child.state.name + " / " + binding.propertyName);
-                                    if (!IsConstant(curve)) throw Unstable("時間で変わるFXレイヤー制御の入力は固定表情に変換できません: " +
+                                    if (!CurveChecks.Constant(curve)) throw Unstable("時間で変わるFXレイヤー制御の入力は固定表情に変換できません: " +
                                         path + "." + child.state.name + " / " + binding.propertyName);
                                 }
                             }
@@ -1341,7 +1318,7 @@ namespace VRVlog.LilToonExporter
                                 ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
-                            if (IsConstant(curve)) continue;
+                            if (CurveChecks.Constant(curve)) continue;
                             // A humanoid muscle or root motion curve is an
                             // Animator binding that names no controller
                             // parameter. It cannot change a BlendShape, so a
@@ -1434,14 +1411,6 @@ namespace VRVlog.LilToonExporter
             return null;
         }
 
-        internal static bool IsConstant(AnimationCurve curve)
-        {
-            if (curve == null || curve.length == 0) return true;
-            var keys = curve.keys;
-            return keys.All(k => k.value == keys[0].value &&
-                (k.inTangent == 0 || float.IsInfinity(k.inTangent)) && (k.outTangent == 0 || float.IsInfinity(k.outTangent)));
-        }
-
         // Unsupported appearance support is not invalid VRM data. Only neutral
         // preparation can retain its authored rest; selected expression endpoints
         // still require their complete fixed value to be reproduced.
@@ -1468,13 +1437,8 @@ namespace VRVlog.LilToonExporter
             {
                 if (!values.TryGetValue(parameter.name, out var value)) continue;
                 if (float.IsNaN(value) || float.IsInfinity(value)) throw new InvalidOperationException("表情パラメーターに不正な値があります。");
-                switch (parameter.type)
-                {
-                    case AnimatorControllerParameterType.Bool: playable.SetBool(parameter.name, value != 0); break;
-                    case AnimatorControllerParameterType.Int: playable.SetInteger(parameter.name, Mathf.RoundToInt(value)); break;
-                    case AnimatorControllerParameterType.Float: playable.SetFloat(parameter.name, value); break;
-                    default: throw new InvalidOperationException("Triggerパラメーターの表情は未対応です。");
-                }
+                if (!AnimatorProbe.Write(playable, parameter.type, parameter.name, value))
+                    throw new InvalidOperationException("Triggerパラメーターの表情は未対応です。");
             }
         }
 

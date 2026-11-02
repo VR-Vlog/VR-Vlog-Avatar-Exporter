@@ -333,12 +333,7 @@ namespace VRVlog.LilToonExporter
                     document.Transforms.Add(transforms);
                 }
             }
-            var extensions = (Dictionary<string, object>)glb.Json["extensions"];
-            if (extensions.ContainsKey(ExpressionAnimationData.Extension))
-                throw new InvalidOperationException("既存の表情アニメーション拡張を上書きできません。");
-            extensions.Add(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document));
-            if (!glb.Json.TryGetValue("extensionsUsed", out var used)) glb.Json["extensionsUsed"] = used = new List<object>();
-            ((List<object>)used).Add(ExpressionAnimationData.Extension);
+            glb.PlaceExtension(ExpressionAnimationData.Extension, ExpressionAnimationData.WriteDocument(document), "既存の表情アニメーション拡張を上書きできません。");
             return glb.Write();
         }
 

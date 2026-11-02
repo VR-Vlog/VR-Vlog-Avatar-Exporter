@@ -325,21 +325,10 @@ namespace VRVlog.LilToonExporter
                     var value = type == AnimatorControllerParameterType.Float ? playable.GetFloat(condition.parameter) :
                         type == AnimatorControllerParameterType.Int ? playable.GetInteger(condition.parameter) :
                         type == AnimatorControllerParameterType.Bool ? (playable.GetBool(condition.parameter) ? 1 : 0) : float.NaN;
-                    if (!Finite(value)) return false;
-                    switch (condition.mode)
-                    {
-                        case AnimatorConditionMode.If: return value == 0;
-                        case AnimatorConditionMode.IfNot: return value != 0;
-                        case AnimatorConditionMode.Equals: return value != condition.threshold;
-                        case AnimatorConditionMode.NotEqual: return value == condition.threshold;
-                        case AnimatorConditionMode.Greater: return value <= condition.threshold;
-                        case AnimatorConditionMode.Less: return value >= condition.threshold;
-                        default: return false;
-                    }
+                    return Finite(value) && AnimatorConditions.Evaluate(condition, value) == false;
                 }
                 var transitions = current[0].transitions;
-                var solo = transitions.Any(transition => transition.solo);
-                if (transitions.Any(transition => !transition.mute && (!solo || transition.solo) &&
+                if (AnimatorConditions.Enabled(transitions).Any(transition =>
                     (transition.destinationState != current[0] || transition.canTransitionToSelf) &&
                     !transition.conditions.Any(False)))
                     throw new NeutralShapeSamplingException("FXレイヤー制御に未完了の状態遷移があるため、初期表情を確定できません: " + layer.name + " / VRCAnimatorLayerControl");

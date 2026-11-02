@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using VRVlog.AvatarFormats;
 
 namespace VRVlog.LilToonExporter
 {
@@ -81,6 +82,30 @@ namespace VRVlog.LilToonExporter
         {
             var binary = Align(binaryLength ?? Binary.Length);
             return checked(20 + Align(Encoding.UTF8.GetByteCount(JsonDom.Serialize(Json))) + (binary == 0 ? 0 : 8 + binary));
+        }
+
+        // The object reached from the root by keys, or null where a key is
+        // missing or its value is not an object.
+        internal Dictionary<string, object> Find(params string[] keys)
+        {
+            var current = Json;
+            foreach (var key in keys) current = JsonAccess.Object(current, key);
+            return current;
+        }
+
+        // Places an extension at the root and lists its name once in
+        // extensionsUsed. A new name goes last; an existing one keeps its place.
+        // With existingError an extension already there is not replaced: an
+        // InvalidOperationException with that message is thrown instead.
+        internal void PlaceExtension(string name, object extension, string existingError = null)
+        {
+            if (!Json.TryGetValue("extensions", out var rawExtensions)) Json["extensions"] = rawExtensions = new Dictionary<string, object>();
+            var extensions = (Dictionary<string, object>)rawExtensions;
+            if (existingError != null && extensions.ContainsKey(name)) throw new InvalidOperationException(existingError);
+            extensions[name] = extension;
+            if (!Json.TryGetValue("extensionsUsed", out var rawUsed)) Json["extensionsUsed"] = rawUsed = new List<object>();
+            var used = (List<object>)rawUsed;
+            if (!used.Contains(name)) used.Add(name);
         }
 
         internal Dictionary<string, object> EmbeddedBuffer()

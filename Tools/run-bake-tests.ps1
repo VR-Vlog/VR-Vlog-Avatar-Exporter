@@ -13,6 +13,7 @@ $taskSources = @(
     (Join-Path $taskRepo 'Editor/DeterministicNames.cs'),
     (Join-Path $taskRepo 'Editor/NumericChecks.cs'),
     (Join-Path $taskRepo 'Editor/GpuReadback.cs'),
+    (Join-Path $taskRepo 'Editor/LilToonMobileProfile.cs'),
     (Join-Path $PSScriptRoot 'BakeTestShim.cs'),
     (Join-Path $PSScriptRoot 'BakeBehaviorTests.cs')
 )

@@ -91,8 +91,8 @@ namespace VRVlog.LilToonExporter
             wrappedStyle = new GUIStyle(EditorStyles.label) { wordWrap = true };
         }
 
-        static Color Muted => EditorGUIUtility.isProSkin ? new Color(0.62f, 0.62f, 0.62f) : new Color(0.38f, 0.38f, 0.38f);
-        static Color Hairline => EditorGUIUtility.isProSkin ? new Color(0f, 0f, 0f, 0.35f) : new Color(0f, 0f, 0f, 0.15f);
+        static Color Muted => ExporterColors.Muted;
+        static Color Hairline => ExporterColors.Hairline;
         static Color GroupBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.04f) : new Color(0f, 0f, 0f, 0.05f);
         static Color OpenBackground => EditorGUIUtility.isProSkin ? new Color(1f, 1f, 1f, 0.07f) : new Color(0f, 0f, 0f, 0.07f);
 
