@@ -218,11 +218,7 @@ namespace VRVlog.LilToonExporter
             var nodeCount = document.Json.TryGetValue("nodes", out var rawNodes) && rawNodes is List<object> nodes ? nodes.Count : 0;
             if (data.Groups.Any(group => group.Targets.Any(target => target >= nodeCount)))
                 throw new InvalidOperationException("Object toggle target node is out of range.");
-            if (!document.Json.TryGetValue("extensions", out var rawExtensions)) document.Json["extensions"] = rawExtensions = new Dictionary<string, object>();
-            ((Dictionary<string, object>)rawExtensions)[ObjectToggleData.Extension] = extension;
-            if (!document.Json.TryGetValue("extensionsUsed", out var rawUsed)) document.Json["extensionsUsed"] = rawUsed = new List<object>();
-            var used = (List<object>)rawUsed;
-            if (!used.Contains(ObjectToggleData.Extension)) used.Add(ObjectToggleData.Extension);
+            document.PlaceExtension(ObjectToggleData.Extension, extension);
             return document.Write();
         }
 
