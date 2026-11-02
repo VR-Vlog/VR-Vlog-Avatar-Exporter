@@ -165,6 +165,28 @@ namespace VRVlog.LilToonExporter.Tests
             }
         }
 
+        [UnityTest]
+        public IEnumerator WindowClosesWhenItsAvatarIsGone()
+        {
+            using var fixture = new AttachmentConnectionTests.Fixture();
+            var source = Object.Instantiate(fixture.Source);
+            var window = Open(source, new PoseExportOptions());
+            try
+            {
+                yield return Ready(window);
+                // Opening another scene destroys the avatar while the window stays open.
+                Object.DestroyImmediate(source);
+                window.SendEvent(new Event { type = EventType.Layout });
+                yield return null;
+                Assert.That(Resources.FindObjectsOfTypeAll<PoseReviewWindow>(), Is.Empty);
+            }
+            finally
+            {
+                if (window != null) window.Close();
+                if (source != null) Object.DestroyImmediate(source);
+            }
+        }
+
         [Test]
         public void IncrementalCollectionSamplesOneCandidatePerStepAndMatchesExport()
         {
