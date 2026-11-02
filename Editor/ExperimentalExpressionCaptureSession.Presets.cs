@@ -629,8 +629,7 @@ namespace VRVlog.LilToonExporter
         // VisemeBlendShape mode on a renderer of this avatar.
         internal static (SkinnedMeshRenderer Renderer, string[] Shapes) DescriptorVisemes(GameObject source)
         {
-            var descriptor = source.GetComponents<Component>().FirstOrDefault(c => c != null &&
-                c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
+            var descriptor = VrChatExpressionMenu.Descriptor(source);
             if (VrChatExpressionMenu.Member(descriptor, "lipSync")?.ToString() != "VisemeBlendShape") return (null, null);
             var renderer = VrChatExpressionMenu.Member(descriptor, "VisemeSkinnedMesh") as SkinnedMeshRenderer;
             if (renderer == null || !renderer.transform.IsChildOf(source.transform)) return (null, null);

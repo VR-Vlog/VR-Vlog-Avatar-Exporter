@@ -101,7 +101,7 @@ namespace VRVlog.LilToonExporter
             internal readonly List<string> Messages = new List<string>();
         }
 
-        static Component Descriptor(GameObject avatar) => avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
+        internal static Component Descriptor(GameObject avatar) => avatar.GetComponents<Component>().FirstOrDefault(c => c != null &&
             c.GetType().FullName == "VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
 
         internal static Source ReadMenu(object menu, VrChatMenuImportPolicy policy = null)
