@@ -27,8 +27,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the full exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralFallbackExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralFallbackExport_");
             Vrm10Instance imported = null;
             GameObject reference = null;
             try

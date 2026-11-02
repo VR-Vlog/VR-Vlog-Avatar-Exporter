@@ -21,9 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -100,9 +98,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -148,9 +144,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = VrcAvatar.DescriptorType;
             if (descriptorType == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NeutralShapeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NeutralShapeExport_");
             Vrm10Instance imported = null;
             try
             {

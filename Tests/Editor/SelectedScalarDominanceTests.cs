@@ -19,24 +19,22 @@ namespace VRVlog.LilToonExporter.Tests
         AnimatorController controller;
         AnimatorState lower, selected;
         AnimationClip moving, face;
-        static EditorCurveBinding Binding(string shape) => EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape." + shape);
 
         [SetUp]
         public void SetUp()
         {
-            var name = "__ScalarDominance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__ScalarDominance_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Selected scalar dominance", typeof(Animator));
             var skin = new GameObject("Body", typeof(SkinnedMeshRenderer)).GetComponent<SkinnedMeshRenderer>(); skin.transform.SetParent(avatar.transform, false);
             mesh = new Mesh { name = "Prepared native underlay" }; mesh.vertices = new[] { Vector3.zero, Vector3.up, Vector3.right }; mesh.triangles = new[] { 0, 1, 2 };
             foreach (var shape in new[] { "Face", "Rest" }) mesh.AddBlendShapeFrame(shape, 100, Enumerable.Repeat(Vector3.up * .01f, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 23);
-            State(0, "Independent permanent rest", Clip("Rest", ("Rest", AnimationCurve.Constant(0, 1, 12))));
+            State(0, "Independent permanent rest", FxGraph.CurveClip(controller, "Rest", ("Rest", AnimationCurve.Constant(0, 1, 12))));
             AddLayer("Moving lower face");
-            moving = Clip("Delayed mouth movement", ("Face", new AnimationCurve(new Keyframe(0, 0), new Keyframe(10, 0), new Keyframe(10.5f, 5), new Keyframe(12, 0))));
+            moving = FxGraph.CurveClip(controller, "Delayed mouth movement", ("Face", new AnimationCurve(new Keyframe(0, 0), new Keyframe(10, 0), new Keyframe(10.5f, 5), new Keyframe(12, 0))));
             lower = State(1, "Moving", moving);
-            AddLayer("Selected upper face"); face = Clip("Held face", ("Face", AnimationCurve.Constant(0, 1, 75))); selected = State(2, "Selected", face);
+            AddLayer("Selected upper face"); face = FxGraph.CurveClip(controller, "Held face", ("Face", AnimationCurve.Constant(0, 1, 75))); selected = State(2, "Selected", face);
         }
 
         [TearDown]
@@ -44,24 +42,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh); if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        void AddLayer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers; layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-        }
-
-        AnimationClip Clip(string name, params (string Shape, AnimationCurve Curve)[] curves)
-        {
-            var clip = new AnimationClip { name = name }; AssetDatabase.AddObjectToAsset(clip, controller);
-            foreach (var item in curves) AnimationUtility.SetEditorCurve(clip, Binding(item.Shape), item.Curve);
-            return clip;
-        }
-
-        AnimatorState State(int layer, string name, AnimationClip clip)
-        {
-            var machine = controller.layers[layer].stateMachine; var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state; return state;
-        }
+        void AddLayer(string name) => FxGraph.Layer(controller, name);
+        AnimatorState State(int layer, string name, AnimationClip clip) => FxGraph.StartState(controller.layers[layer].stateMachine, name, clip);
 
         VrChatExpressionMenu.Entry Hold()
         {
@@ -80,8 +62,8 @@ namespace VRVlog.LilToonExporter.Tests
                 controller.AddParameter("Choice", AnimatorControllerParameterType.Bool);
                 ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Choice", 1));
                 AddLayer("Selected callback response");
-                var normal = State(3, "Normal", Clip("Normal response", ("Face", AnimationCurve.Constant(0, 1, 75))));
-                var response = State(3, "Response", Clip("Callback response", ("Face", AnimationCurve.Constant(0, 1, 20))));
+                var normal = State(3, "Normal", FxGraph.CurveClip(controller, "Normal response", ("Face", AnimationCurve.Constant(0, 1, 75))));
+                var response = State(3, "Response", FxGraph.CurveClip(controller, "Callback response", ("Face", AnimationCurve.Constant(0, 1, 20))));
                 var transition = normal.AddTransition(response); transition.hasExitTime = false; transition.duration = 0; transition.AddCondition(AnimatorConditionMode.If, 0, "Choice");
             }
             var sourceBefore = ExportSourceFingerprint.Compute(avatar); var controllerBefore = EditorJsonUtility.ToJson(controller);
@@ -122,7 +104,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var mask = new AvatarMask(); AssetDatabase.CreateAsset(mask, folder + "/Mask.mask");
                 mask.AddTransformPath(avatar.transform); layers[2].avatarMask = mask;
             }
-            else AnimationUtility.SetEditorCurve(moving, Binding("Rest"), AnimationCurve.Linear(0, 0, 12, 50));
+            else AnimationUtility.SetEditorCurve(moving, FxGraph.Binding("Rest"), AnimationCurve.Linear(0, 0, 12, 50));
             controller.layers = layers;
             Assert.Catch<InvalidOperationException>(() => Hold());
         }
@@ -135,11 +117,11 @@ namespace VRVlog.LilToonExporter.Tests
         {
             if (kind == "curve")
             {
-                AnimationUtility.SetEditorCurve(moving, Binding("Face"), new AnimationCurve(new Keyframe(0, 0, 0, float.NaN), new Keyframe(12, 5, 0, 0)));
-                AnimationUtility.SetEditorCurve(moving, Binding("Rest"), AnimationCurve.Constant(0, 12, 0));
-                Assert.That(float.IsNaN(AnimationUtility.GetEditorCurve(moving, Binding("Face")).keys[0].outTangent), Is.True,
+                AnimationUtility.SetEditorCurve(moving, FxGraph.Binding("Face"), new AnimationCurve(new Keyframe(0, 0, 0, float.NaN), new Keyframe(12, 5, 0, 0)));
+                AnimationUtility.SetEditorCurve(moving, FxGraph.Binding("Rest"), AnimationCurve.Constant(0, 12, 0));
+                Assert.That(float.IsNaN(AnimationUtility.GetEditorCurve(moving, FxGraph.Binding("Face")).keys[0].outTangent), Is.True,
                     "The native fixture must retain an invalid active interpolation tangent before testing dominance.");
-                Assert.That(VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(moving, Binding("Face"))), Is.False);
+                Assert.That(VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(moving, FxGraph.Binding("Face"))), Is.False);
             }
             else if (kind == "event") AnimationUtility.SetAnimationEvents(moving, new[] { new AnimationEvent { time = 10.5f, functionName = "UnknownEvent" } });
             else if (kind == "unknown callback") Assert.That(lower.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);

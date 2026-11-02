@@ -53,8 +53,7 @@ namespace VRVlog.LilToonExporter.Tests
             // gets each non-null one except Missing, which only the descriptor names.
             internal Scene(string mode, Type descriptorType, Type proxyType, string[] visemes = null)
             {
-                var folderName = "__NdmfLostMorph_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", folderName); Folder = "Assets/" + folderName;
+                Folder = TempAssetFolder.Create("__NdmfLostMorph_");
                 var source = Fixture.Source;
                 Front = source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
                 Back = source.transform.Find("Back").GetComponent<SkinnedMeshRenderer>();

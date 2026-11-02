@@ -26,8 +26,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void SetUp()
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-            var name = "__NeutralShapeSampler_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__NeutralShapeSampler_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -69,19 +68,8 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape." + shape), curve);
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
-
-        private AnimatorState State(AnimatorStateMachine machine, AnimationClip clip = null, bool writeDefaults = false)
-        {
-            var state = machine.AddState("State " + machine.states.Length); state.motion = clip; state.writeDefaultValues = writeDefaults;
-            return state;
-        }
-
-        private AnimatorStateMachine Layer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers;
-            layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
+        private AnimatorState State(AnimatorStateMachine machine, AnimationClip clip = null, bool writeDefaults = false) =>
+            FxGraph.State(machine, "State " + machine.states.Length, clip, writeDefaults);
 
         // The AnimationCurve constructor and keys setter drop NaN-valued keys;
         // AddKey keeps them, as generated clips do.
@@ -136,7 +124,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller);
             var machine = controller.layers[0].stateMachine;
             machine.defaultState.motion = clip; machine.defaultState.writeDefaultValues = true;
-            var faceLayer = Layer("Authored neutral face"); faceLayer.defaultState = State(faceLayer, face);
+            var faceLayer = FxGraph.Layer(controller, "Authored neutral face"); faceLayer.defaultState = State(faceLayer, face);
             Assert.That(avatar.transform.Find("_ignored"), Is.Null);
             Assert.That(NeutralShapeSampler.Sample(avatar).Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
             Assert.That(avatar.transform.Find("_ignored"), Is.Null);
@@ -299,7 +287,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var blank = new AnimationClip { name = "Other rest" };
                 AssetDatabase.AddObjectToAsset(blank, controller);
-                var other = Layer("Other face"); other.defaultState = State(other, blank);
+                var other = FxGraph.Layer(controller, "Other face"); other.defaultState = State(other, blank);
                 var shared = other.defaultState.AddTransition(State(other, sibling)); shared.hasExitTime = false; shared.duration = 0;
                 shared.AddCondition(AnimatorConditionMode.Equals, 23, signal);
             }
@@ -364,7 +352,7 @@ namespace VRVlog.LilToonExporter.Tests
             foreach (var axis in new[] { (Name: "x", Value: -30f), (Name: "y", Value: 0f), (Name: "z", Value: 0f) })
                 AnimationUtility.SetEditorCurve(raised, Rotation(axis.Name), AnimationCurve.Constant(0, 1, axis.Value));
             AssetDatabase.AddObjectToAsset(rest, controller); AssetDatabase.AddObjectToAsset(raised, controller);
-            var motion = Layer("Ear motion"); motion.defaultState = State(motion, rest);
+            var motion = FxGraph.Layer(controller, "Ear motion"); motion.defaultState = State(motion, rest);
             var pose = State(motion, raised);
             var select = motion.defaultState.AddTransition(pose); select.hasExitTime = false; select.duration = 0;
             select.AddCondition(AnimatorConditionMode.Equals, 23, signal);
@@ -421,7 +409,7 @@ namespace VRVlog.LilToonExporter.Tests
             var face = State(controller.layers[0].stateMachine, away);
             var choose = idle.AddTransition(face); choose.hasExitTime = false; choose.duration = 0;
             choose.AddCondition(AnimatorConditionMode.Equals, 50, signal);
-            var decision = Layer("Face decision");
+            var decision = FxGraph.Layer(controller, "Face decision");
             var rest = State(decision); decision.defaultState = rest;
             ParameterDriverExpressionTests.Driver(rest, ParameterDriverExpressionTests.Op("Set", signal, 0));
             var afk = State(decision);
@@ -461,7 +449,7 @@ namespace VRVlog.LilToonExporter.Tests
             var startup = (AnimationClip)Open(75).motion;
             AnimationUtility.SetEditorCurve(startup, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Cap mask"),
                 AnimationCurve.Constant(0, 1, 0));
-            var clothing = Layer("Current scene wardrobe differs from authored defaults");
+            var clothing = FxGraph.Layer(controller, "Current scene wardrobe differs from authored defaults");
             var capOn = Clip("Cap mask", AnimationCurve.Constant(0, 1, 100)); capOn.name = "Authored Cap ON";
             AnimationUtility.SetEditorCurve(capOn, EditorCurveBinding.FloatCurve("Outfit_Mobile", typeof(SkinnedMeshRenderer), "blendShape.Cap_OFF"),
                 AnimationCurve.Constant(0, 1, 100));
@@ -472,8 +460,8 @@ namespace VRVlog.LilToonExporter.Tests
             clothing.defaultState = State(clothing, capOn, writeDefaults);
             // A generic FaceEmo common reset may mention the mask too. It does
             // not transfer ownership away from the prepared wardrobe group.
-            var common = Layer("Common face above wardrobe"); common.defaultState = State(common, startup);
-            var pupil = Layer("Permanent pupil setting"); pupil.defaultState = State(pupil, Clip("Untouched", AnimationCurve.Constant(0, 1, 80)));
+            var common = FxGraph.Layer(controller, "Common face above wardrobe"); common.defaultState = State(common, startup);
+            var pupil = FxGraph.Layer(controller, "Permanent pupil setting"); pupil.defaultState = State(pupil, Clip("Untouched", AnimationCurve.Constant(0, 1, 80)));
             var sourceController = EditorJsonUtility.ToJson(controller);
             var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
@@ -544,7 +532,7 @@ namespace VRVlog.LilToonExporter.Tests
             var face = (AnimationClip)Open(75).motion;
             AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Cap mask"),
                 AnimationCurve.Constant(0, 1, 0));
-            var visibility = Layer("Cap visibility route");
+            var visibility = FxGraph.Layer(controller, "Cap visibility route");
             var off = new AnimationClip { name = "Cap OFF visibility" };
             var on = new AnimationClip { name = "Cap ON visibility" };
             AnimationUtility.SetEditorCurve(off, EditorCurveBinding.FloatCurve("Cap", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 0));
@@ -554,14 +542,14 @@ namespace VRVlog.LilToonExporter.Tests
             var shown = State(visibility, on);
             var show = visibility.defaultState.AddTransition(shown); show.hasExitTime = false; show.duration = 0;
             show.AddCondition(AnimatorConditionMode.If, 0, "Cap selected");
-            var mask = Layer("Separate cap mask route"); mask.defaultState = State(mask, Clip("Cap mask", AnimationCurve.Constant(0, 1, 0)));
+            var mask = FxGraph.Layer(controller, "Separate cap mask route"); mask.defaultState = State(mask, Clip("Cap mask", AnimationCurve.Constant(0, 1, 0)));
             var covered = State(mask, Clip("Cap mask", AnimationCurve.Constant(0, 1, 100)));
             var cover = mask.defaultState.AddTransition(covered); cover.hasExitTime = false; cover.duration = 0;
             cover.AddCondition(AnimatorConditionMode.If, 0, maskInput);
-            var common = Layer("Generic common reset"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Generic common reset"); common.defaultState = State(common, face);
             if (copyOperations.Count > 0)
             {
-                var aliases = Layer("Copy appearance inputs"); aliases.defaultState = State(aliases, null);
+                var aliases = FxGraph.Layer(controller, "Copy appearance inputs"); aliases.defaultState = State(aliases, null);
                 ParameterDriverExpressionTests.Driver(aliases.defaultState, copyOperations.ToArray());
             }
             var before = EditorJsonUtility.ToJson(controller);
@@ -594,7 +582,7 @@ namespace VRVlog.LilToonExporter.Tests
             var input = scenario == "custom" ? "Wardrobe mode" : scenario == "height" ? "EyeHeightAsMeters" : "AFK";
             var type = scenario == "height" ? AnimatorControllerParameterType.Float : AnimatorControllerParameterType.Bool;
             controller.AddParameter(new AnimatorControllerParameter { name = input, type = type, defaultBool = true });
-            var support = Layer("Normal or mixed appearance support");
+            var support = FxGraph.Layer(controller, "Normal or mixed appearance support");
             var idleClip = new AnimationClip { name = "Waiting" }; AssetDatabase.AddObjectToAsset(idleClip, controller);
             support.defaultState = State(support, idleClip, writeDefaults: true);
             var mixed = Clip("Open", AnimationCurve.Constant(0, 1, 10)); mixed.name = "Mixed alternate configuration";
@@ -604,10 +592,10 @@ namespace VRVlog.LilToonExporter.Tests
             var transition = support.defaultState.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(scenario == "height" ? AnimatorConditionMode.Greater : scenario == "reachable" ?
                 AnimatorConditionMode.IfNot : AnimatorConditionMode.If, 0, input);
-            var common = Layer("Face above native support"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Face above native support"); common.defaultState = State(common, face);
             if (scenario == "curve writer")
             {
-                var writer = Layer("Authored AFK curve");
+                var writer = FxGraph.Layer(controller, "Authored AFK curve");
                 var clip = new AnimationClip { name = "AFK input writer" };
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "AFK"), AnimationCurve.Constant(0, 1, 1));
                 AssetDatabase.AddObjectToAsset(clip, controller); writer.defaultState = State(writer, clip);
@@ -701,7 +689,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
             var path = ancestor ? "" : "Body";
-            var support = Layer("Appearance support cannot disable the face");
+            var support = FxGraph.Layer(controller, "Appearance support cannot disable the face");
             var clip = new AnimationClip { name = "Unsafe activation support" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, typeof(GameObject), "m_IsActive"),
                 AnimationCurve.Constant(0, 1, 0));
@@ -729,13 +717,13 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, mesh.vertexCount).ToArray();
             var target = targetKind == "bone" ? bone : targetKind == "renderer" ? skin.transform : avatar.transform;
             var preparedPosition = new Vector3(.2f, .3f, .4f); target.localPosition = preparedPosition;
-            var support = Layer("Independent transform support");
+            var support = FxGraph.Layer(controller, "Independent transform support");
             var clip = new AnimationClip { name = "Probe-only transform" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(AnimationUtility.CalculateTransformPath(target, avatar.transform),
                 typeof(Transform), "m_LocalPosition.x"), AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
             support.defaultState = State(support, clip, writeDefaults: true);
-            var common = Layer("Face above native support"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Face above native support"); common.defaultState = State(common, face);
             var before = EditorJsonUtility.ToJson(controller);
             var expected = NativeOpeningWeight();
             var values = NeutralShapeSampler.Sample(avatar);
@@ -775,7 +763,7 @@ namespace VRVlog.LilToonExporter.Tests
             var stored = AnimationUtility.GetEditorCurve(cut, EditorCurveBinding.FloatCurve(path, typeof(Transform), "m_LocalScale.x")).keys[0];
             Assert.That(kind == "value" ? float.IsNaN(stored.value) : float.IsNaN(stored.outTangent), Is.True, "The fixture must keep its NaN.");
             AssetDatabase.AddObjectToAsset(cut, controller);
-            var support = Layer("NaN scale support"); support.defaultState = State(support, cut, writeDefaults: true);
+            var support = FxGraph.Layer(controller, "NaN scale support"); support.defaultState = State(support, cut, writeDefaults: true);
             var before = EditorJsonUtility.ToJson(controller);
             var values = NeutralShapeSampler.Sample(avatar);
             Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(75).Within(.01));
@@ -816,12 +804,12 @@ namespace VRVlog.LilToonExporter.Tests
             using (var weights = new NativeArray<BoneWeight1>(Enumerable.Range(0, mesh.vertexCount)
                 .SelectMany(_ => Enumerable.Range(0, 6).Select(index => new BoneWeight1 { boneIndex = index, weight = (6 - index) / 21f })).ToArray(), Allocator.Temp))
                 mesh.SetBoneWeights(counts, weights);
-            var support = Layer("Sixth influence support");
+            var support = FxGraph.Layer(controller, "Sixth influence support");
             var clip = new AnimationClip { name = "Move sixth face influence" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Bone 5", typeof(Transform), "m_LocalPosition.x"), AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
             support.defaultState = State(support, clip, writeDefaults: true);
-            var common = Layer("Face above native support"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Face above native support"); common.defaultState = State(common, face);
             var expected = NativeOpeningWeight();
             var values = NeutralShapeSampler.Sample(avatar);
             Assert.That(expected, Is.EqualTo(75).Within(.01));
@@ -858,13 +846,13 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.boneWeights = new[] { new BoneWeight { boneIndex0 = 0, weight0 = 1 },
                 new BoneWeight { boneIndex0 = 1, weight0 = 1 }, new BoneWeight { boneIndex0 = 0, weight0 = 1 } };
             var face = (AnimationClip)Open(75).motion;
-            var support = Layer("Integrated hair appearance support");
+            var support = FxGraph.Layer(controller, "Integrated hair appearance support");
             var clip = new AnimationClip { name = "Hair configuration" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Hair bone", typeof(Transform), "m_LocalPosition.x"),
                 AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
             support.defaultState = State(support, clip, writeDefaults: true);
-            var common = Layer("Face above native support"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Face above native support"); common.defaultState = State(common, face);
             var before = EditorJsonUtility.ToJson(mesh);
             var expected = NativeOpeningWeight();
             var values = NeutralShapeSampler.Sample(avatar);
@@ -915,13 +903,13 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(face, EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape),
                 AnimationCurve.Constant(0, 1, 100));
             var target = new GameObject("Visual support"); target.transform.SetParent(avatar.transform, false);
-            var support = Layer("Native visual support");
+            var support = FxGraph.Layer(controller, "Native visual support");
             var clip = new AnimationClip { name = "Independent visual configuration" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(target.name, typeof(Transform), "m_LocalPosition.x"),
                 AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
             support.defaultState = State(support, clip, writeDefaults: true);
-            var common = Layer("Face above native support"); common.defaultState = State(common, face);
+            var common = FxGraph.Layer(controller, "Face above native support"); common.defaultState = State(common, face);
             var before = EditorJsonUtility.ToJson(face);
             var warnings = new List<string>();
             var expected = NativeOpeningWeight();
@@ -965,7 +953,7 @@ namespace VRVlog.LilToonExporter.Tests
             var renderer = clothing.GetComponent<MeshRenderer>();
             var material = new Material(Shader.Find("Unlit/Color")); renderer.sharedMaterial = material;
             var beforeMaterial = EditorJsonUtility.ToJson(material);
-            var support = Layer("Additive visual support");
+            var support = FxGraph.Layer(controller, "Additive visual support");
             var clip = new AnimationClip { name = materialCurve ? "Material support" : "Visibility support" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(clothing.name, typeof(MeshRenderer),
                 materialCurve ? "material._Color.r" : "m_Enabled"), AnimationCurve.Constant(0, 1, 0));
@@ -1018,7 +1006,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void UnknownComponentPropertyPreservesPreparedNeutralAndReportsTarget()
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
-            var support = Layer("Unknown support");
+            var support = FxGraph.Layer(controller, "Unknown support");
             var clip = new AnimationClip { name = "Unknown collider change" };
             var collider = skin.gameObject.AddComponent<BoxCollider>();
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(BoxCollider), "m_Size.x"), AnimationCurve.Constant(0, 1, 4));
@@ -1049,8 +1037,8 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "U_WorldFix_off" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(path, type, property), AnimationCurve.Constant(0, 1, value));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("Native constraint support"); support.defaultState = State(support, clip, writeDefaults: true);
-            var upper = Layer("Face above native constraint support"); upper.defaultState = State(upper, face);
+            var support = FxGraph.Layer(controller, "Native constraint support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var upper = FxGraph.Layer(controller, "Face above native constraint support"); upper.defaultState = State(upper, face);
             var layers = controller.layers; layers[2].defaultWeight = .5f; controller.layers = layers;
             var beforeController = EditorJsonUtility.ToJson(controller); var beforeClip = EditorJsonUtility.ToJson(clip);
             using var data = new SerializedObject(constraint);
@@ -1076,7 +1064,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Open(75); skin.SetBlendShapeWeight(0, 17);
             controller.AddParameter("EyeHeightAsMeters", AnimatorControllerParameterType.Float);
-            var body = Layer("Unmeasured body rest"); body.defaultState = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 63)));
+            var body = FxGraph.Layer(controller, "Unmeasured body rest"); body.defaultState = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 63)));
             var alternate = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 91)));
             var change = body.defaultState.AddTransition(alternate); change.hasExitTime = false; change.duration = 0;
             change.AddCondition(AnimatorConditionMode.Greater, .5f, "EyeHeightAsMeters");
@@ -1085,8 +1073,8 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "World fix with write defaults" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(target.name, type, "FreezeToWorld"), AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("Native WD closure"); support.defaultState = State(support, clip, writeDefaults: true);
-            var top = Layer("Incomplete highest override"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
+            var support = FxGraph.Layer(controller, "Native WD closure"); support.defaultState = State(support, clip, writeDefaults: true);
+            var top = FxGraph.Layer(controller, "Incomplete highest override"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
             var layers = controller.layers; layers[3].defaultWeight = masked ? 1 : .5f;
             if (masked)
             {
@@ -1129,7 +1117,7 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(future, controller);
             var changed = State(controller.layers[0].stateMachine, future);
             var transition = initial.AddTransition(changed); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
-            var top = Layer("Highest constant face"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
+            var top = FxGraph.Layer(controller, "Highest constant face"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
             var before = EditorJsonUtility.ToJson(controller); var beforeMesh = EditorJsonUtility.ToJson(mesh);
             var beforeClip = EditorJsonUtility.ToJson(future); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
@@ -1158,7 +1146,7 @@ namespace VRVlog.LilToonExporter.Tests
             var selected = State(machine, Clip("Open", AnimationCurve.Constant(0, 1, 90)));
             var read = late.AddTransition(selected); read.hasExitTime = false; read.duration = 0;
             read.AddCondition(AnimatorConditionMode.Greater, .5f, "Face");
-            var top = Layer("Highest constant face"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
+            var top = FxGraph.Layer(controller, "Highest constant face"); top.defaultState = State(top, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
             using (var data = new SerializedObject(driver))
                 Assert.That(float.IsNaN(data.FindProperty("parameters").GetArrayElementAtIndex(0).FindPropertyRelative("value").floatValue), Is.True);
             var before = EditorJsonUtility.ToJson(controller); var beforeDriver = EditorJsonUtility.ToJson(driver);
@@ -1183,7 +1171,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "Constraint and body option" };
             AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("World fixation"); support.defaultState = State(support, clip);
+            var support = FxGraph.Layer(controller, "World fixation"); support.defaultState = State(support, clip);
             if (sharedInput)
             {
                 controller.AddParameter("Appearance option", AnimatorControllerParameterType.Int);
@@ -1193,7 +1181,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var alternate = State(support, otherFix);
                 var transition = support.defaultState.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "Appearance option");
-                var body = Layer("Coupled body option"); body.defaultState = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 63)));
+                var body = FxGraph.Layer(controller, "Coupled body option"); body.defaultState = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 63)));
                 var other = State(body, Clip("Untouched", AnimationCurve.Constant(0, 1, 91)));
                 var changed = body.defaultState.AddTransition(other); changed.hasExitTime = false; changed.duration = 0;
                 changed.AddCondition(AnimatorConditionMode.Equals, 1, "Appearance option");
@@ -1228,7 +1216,7 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = "Constraint execution switch" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(target.name, type, "m_Enabled"), AnimationCurve.Constant(0, 1, enabled));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("Constraint execution support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var support = FxGraph.Layer(controller, "Constraint execution support"); support.defaultState = State(support, clip, writeDefaults: true);
             var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values, Is.Empty);
@@ -1258,7 +1246,7 @@ namespace VRVlog.LilToonExporter.Tests
             var binding = EditorCurveBinding.FloatCurve(target.name, type, "m_Enabled");
             AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, enabled));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("Dynamics support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var support = FxGraph.Layer(controller, "Dynamics support"); support.defaultState = State(support, clip, writeDefaults: true);
             var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Select(value => value.Shape), Is.EqualTo(new[] { "Open" }));
@@ -1286,7 +1274,7 @@ namespace VRVlog.LilToonExporter.Tests
             var binding = EditorCurveBinding.FloatCurve(target.name, typeof(ParticleSystem), "EmissionModule.rateOverTime.scalar");
             AnimationUtility.SetEditorCurve(clip, binding, AnimationCurve.Constant(0, 1, 5));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var support = Layer("Particle support"); support.defaultState = State(support, clip, writeDefaults: true);
+            var support = FxGraph.Layer(controller, "Particle support"); support.defaultState = State(support, clip, writeDefaults: true);
             var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Select(value => value.Shape), Is.EqualTo(new[] { "Open" }));
@@ -1311,7 +1299,7 @@ namespace VRVlog.LilToonExporter.Tests
             var target = new GameObject("Required world fix"); target.transform.SetParent(avatar.transform, false); target.AddComponent(type);
             var clip = Clip("Untouched", AnimationCurve.Constant(0, 1, 63));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve(target.name, type, "FreezeToWorld"), AnimationCurve.Constant(0, 1, 1));
-            var support = Layer("Required coupled option"); support.defaultState = State(support, clip);
+            var support = FxGraph.Layer(controller, "Required coupled option"); support.defaultState = State(support, clip);
             var before = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings,
                 requiredMorphs: new[] { EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Untouched") });
@@ -1330,7 +1318,7 @@ namespace VRVlog.LilToonExporter.Tests
             var unknown = new AnimationClip { name = "Unknown collider fallback" };
             AnimationUtility.SetEditorCurve(unknown, EditorCurveBinding.FloatCurve("Body", typeof(BoxCollider), "m_Size.x"), AnimationCurve.Constant(0, 1, 4));
             AssetDatabase.AddObjectToAsset(unknown, controller);
-            var first = Layer("First unknown support"); first.defaultState = State(first, unknown, writeDefaults: true);
+            var first = FxGraph.Layer(controller, "First unknown support"); first.defaultState = State(first, unknown, writeDefaults: true);
             var malformed = new AnimationClip { name = "Later invalid clip" };
             if (animationEvent) AnimationUtility.SetAnimationEvents(malformed, new[] { new AnimationEvent { time = .3f, functionName = "ShouldNeverRun" } });
             else
@@ -1340,7 +1328,7 @@ namespace VRVlog.LilToonExporter.Tests
                     new AnimationCurve(new Keyframe(0, 0, 0, float.NaN), new Keyframe(1, 1, 1, 0)));
             }
             AssetDatabase.AddObjectToAsset(malformed, controller);
-            var later = Layer("Later malformed support"); later.defaultState = State(later, malformed, writeDefaults: true);
+            var later = FxGraph.Layer(controller, "Later malformed support"); later.defaultState = State(later, malformed, writeDefaults: true);
             var before = EditorJsonUtility.ToJson(controller); var beforeClip = EditorJsonUtility.ToJson(malformed);
             var warnings = new List<string>();
             var error = Assert.Throws<InvalidOperationException>(() => NeutralShapeSampler.Sample(avatar, warnings: warnings));
@@ -1401,7 +1389,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Open(75);
             var target = new GameObject("Unsupported transform"); target.transform.SetParent(avatar.transform, false);
-            var support = Layer("Unknown transform support");
+            var support = FxGraph.Layer(controller, "Unknown transform support");
             var clip = new AnimationClip { name = "Known transform support" };
             var valid = EditorCurveBinding.FloatCurve(target.name, typeof(Transform), "m_LocalPosition.x");
             AnimationUtility.SetEditorCurve(clip, valid, AnimationCurve.Constant(0, 1, 1));
@@ -1459,10 +1447,10 @@ namespace VRVlog.LilToonExporter.Tests
         public void IndependentAutomaticBlinkAndVisemeDoNotBecomeTheRestFace()
         {
             Open();
-            var blink = Layer("Automatic blinking");
+            var blink = FxGraph.Layer(controller, "Automatic blinking");
             blink.defaultState = State(blink, Clip("Blink", AnimationCurve.Linear(0, 0, 10, 100)));
             controller.AddParameter("Viseme", AnimatorControllerParameterType.Int);
-            var mouth = Layer("Lip sync");
+            var mouth = FxGraph.Layer(controller, "Lip sync");
             var idle = State(mouth, Clip("vrc.v.aa", AnimationCurve.Constant(0, 1, 0))); mouth.defaultState = idle;
             var spoken = State(mouth, Clip("vrc.v.aa", AnimationCurve.Constant(0, 1, 100)));
             var transition = idle.AddTransition(spoken); transition.hasExitTime = false; transition.duration = 0;
@@ -1475,7 +1463,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AutomaticAnimationSharingTheOpeningChannelKeepsItsPreparedRest()
         {
-            Open(); skin.SetBlendShapeWeight(0, 17); var blink = Layer("Blink also changes opening");
+            Open(); skin.SetBlendShapeWeight(0, 17); var blink = FxGraph.Layer(controller, "Blink also changes opening");
             var clip = Clip("Blink", AnimationCurve.Linear(0, 0, 10, 100));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Open"),
                 AnimationCurve.Linear(0, 100, 10, 0));
@@ -1997,7 +1985,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("EyeHeightAsMeters", AnimatorControllerParameterType.Float);
             var first = controller.layers[0].stateMachine;
-            var second = Layer("Independent group");
+            var second = FxGraph.Layer(controller, "Independent group");
             var unresolved = unresolvedFirst ? first : second;
             var resolved = unresolvedFirst ? second : first;
             resolved.defaultState = State(resolved, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
@@ -2023,7 +2011,7 @@ namespace VRVlog.LilToonExporter.Tests
             var state = Open(); skin.SetBlendShapeWeight(1, 100);
             AnimationUtility.SetEditorCurve((AnimationClip)state.motion,
                 EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Blink"), AnimationCurve.Constant(0, 1, 0));
-            var blink = Layer("BLINK"); blink.defaultState = State(blink, Clip("Blink", AnimationCurve.Linear(0, 0, 10, 100)));
+            var blink = FxGraph.Layer(controller, "BLINK"); blink.defaultState = State(blink, Clip("Blink", AnimationCurve.Linear(0, 0, 10, 100)));
             var values = NeutralShapeSampler.Sample(avatar);
             Assert.That(values.Single(value => value.Shape == "Open").Weight, Is.EqualTo(100).Within(.01));
             Assert.That(values.Single(value => value.Shape == "Blink").Weight, Is.Zero.Within(.01));
@@ -2033,7 +2021,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AutomaticChannelTimedInitializerStillResetsItsStaticClosingWeight()
         {
             Open(); skin.SetBlendShapeWeight(1, 100);
-            var blink = Layer("Blink initializer");
+            var blink = FxGraph.Layer(controller, "Blink initializer");
             var initial = State(blink, Clip("Blink", AnimationCurve.Constant(0, 1, 0))); blink.defaultState = initial;
             var held = State(blink);
             var transition = initial.AddTransition(held); transition.hasExitTime = true; transition.exitTime = .01f; transition.duration = 0;
@@ -2061,18 +2049,18 @@ namespace VRVlog.LilToonExporter.Tests
             var parameters = controller.parameters;
             parameters.Single(parameter => parameter.name == "FaceEmo_SYNC_CN_WAIT_FACE_EMOTE_BY_VOICE").defaultBool = waitByVoice;
             controller.parameters = parameters;
-            var input = Layer("INPUT CONVERTER L");
+            var input = FxGraph.Layer(controller, "INPUT CONVERTER L");
             var neutral = State(input); input.defaultState = neutral;
             ParameterDriverExpressionTests.Driver(neutral, ParameterDriverExpressionTests.Op("Set", "FaceEmo_EM_EMOTE_PRESELECT", 0));
             input.AddEntryTransition(neutral).AddCondition(AnimatorConditionMode.Equals, 0, "GestureLeft");
             var gesture = State(input);
             ParameterDriverExpressionTests.Driver(gesture, ParameterDriverExpressionTests.Op("Set", "FaceEmo_EM_EMOTE_PRESELECT", 1));
             input.AddEntryTransition(gesture).AddCondition(AnimatorConditionMode.Equals, 1, "GestureLeft");
-            var control = Layer("FACE EMOTE SET CONTROL"); control.defaultState = State(control);
+            var control = FxGraph.Layer(controller, "FACE EMOTE SET CONTROL"); control.defaultState = State(control);
             ParameterDriverExpressionTests.Driver(control.defaultState,
                 ParameterDriverExpressionTests.Op("Set", "FaceEmo_SYNC_EM_EMOTE", 1),
                 ParameterDriverExpressionTests.Op("Set", "FaceEmo_SYNC_CN_WAIT_FACE_EMOTE_BY_VOICE", waitByVoice ? 1 : 0));
-            var player = Layer("[ USER EDIT ] FACE EMOTE PLAYER");
+            var player = FxGraph.Layer(controller, "[ USER EDIT ] FACE EMOTE PLAYER");
             var normal = player.AddStateMachine("Not AFK");
             player.AddEntryTransition(normal).AddCondition(AnimatorConditionMode.IfNot, 0, "AFK");
             var afk = player.AddStateMachine("AFK");
@@ -2156,7 +2144,7 @@ namespace VRVlog.LilToonExporter.Tests
             var gate = controller.layers[0].stateMachine;
             gate.defaultState = State(gate);
             ParameterDriverExpressionTests.Driver(gate.defaultState, ParameterDriverExpressionTests.Op("Set", "Face", 1));
-            var face = Layer("Face"); var idle = State(face, Clip("Open", AnimationCurve.Constant(0, 1, 0))); face.defaultState = idle;
+            var face = FxGraph.Layer(controller, "Face"); var idle = State(face, Clip("Open", AnimationCurve.Constant(0, 1, 0))); face.defaultState = idle;
             var open = State(face, Clip("Open", AnimationCurve.Constant(0, 1, 100)));
             var transition = idle.AddTransition(open); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Face");
@@ -2208,7 +2196,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void AutomaticBlinkWithWriteDefaultsKeepsTheFullNativeClosureAndConstantRest()
         {
-            Open(); var blink = Layer("Blink with implicit writes");
+            Open(); var blink = FxGraph.Layer(controller, "Blink with implicit writes");
             blink.defaultState = State(blink, Clip("Blink", AnimationCurve.Linear(0, 0, 10, 100)), writeDefaults: true);
             Assert.That(NativeOpeningWeight(), Is.EqualTo(100).Within(.01),
                 "This original graph keeps Open at 100; Write Defaults alone does not establish a reset value or prove independence.");

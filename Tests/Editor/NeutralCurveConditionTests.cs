@@ -20,8 +20,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void SetUp()
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-            var name = "__NeutralCurveConditions_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__NeutralCurveConditions_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -29,7 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Opening", 100, Enumerable.Repeat(Vector3.up, 3).ToArray(), null, null);
             body.GetComponent<SkinnedMeshRenderer>().sharedMesh = mesh;
             var open = Clip("Opening", "Body", typeof(SkinnedMeshRenderer), "blendShape.Opening", AnimationCurve.Constant(0, 1, 100));
-            State(controller.layers[0].stateMachine, "Neutral face", open, false);
+            FxGraph.StartState(controller.layers[0].stateMachine, "Neutral face", open, false);
             var descriptor = avatar.AddComponent(descriptorType);
             VrcAvatar.SetFx(descriptor, controller);
         }
@@ -48,27 +47,13 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
 
-        AnimatorStateMachine Layer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers;
-            layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
-
-        static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool writeDefaults)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = writeDefaults;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
         void Relay(AnimationCurve curve)
         {
             controller.AddParameter("Relay value", AnimatorControllerParameterType.Float);
             var clip = Clip("Relay value", "", typeof(Animator), "Relay value", curve);
-            var machine = Layer("Parameter lifecycle");
-            var first = State(machine, "Startup", clip, true);
-            var second = State(machine, "Different state", clip, true);
+            var machine = FxGraph.Layer(controller, "Parameter lifecycle");
+            var first = FxGraph.StartState(machine, "Startup", clip, true);
+            var second = FxGraph.StartState(machine, "Different state", clip, true);
             var transition = first.AddTransition(second);
             transition.hasExitTime = true; transition.exitTime = .75f; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Less, .5f, "Relay value");
@@ -81,8 +66,8 @@ namespace VRVlog.LilToonExporter.Tests
             Relay(AnimationCurve.Constant(0, 1, 1));
             if (staticWriteDefaultsLayer)
             {
-                var machine = Layer("Static empty layer");
-                State(machine, "Held", new AnimationClip(), true);
+                var machine = FxGraph.Layer(controller, "Static empty layer");
+                FxGraph.StartState(machine, "Held", new AnimationClip(), true);
                 AssetDatabase.AddObjectToAsset(machine.defaultState.motion, controller);
             }
             var values = NeutralShapeSampler.Sample(avatar);
@@ -102,8 +87,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void CompetingParameterDriverPreventsTheRelayProof()
         {
             Relay(AnimationCurve.Constant(0, 1, 1));
-            var machine = Layer("Competing writer");
-            var state = State(machine, "Set relay", null, false);
+            var machine = FxGraph.Layer(controller, "Competing writer");
+            var state = FxGraph.StartState(machine, "Set relay", null, false);
             ParameterDriverExpressionTests.Driver(state, ParameterDriverExpressionTests.Op("Set", "Relay value", 0));
             AssertPreparedFallback();
         }

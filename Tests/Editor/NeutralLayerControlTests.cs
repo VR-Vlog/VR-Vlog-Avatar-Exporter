@@ -30,8 +30,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             if (VrcAvatar.ComponentType("VRCAvatarDescriptor") == null || VrcAvatar.ComponentType("VRCAnimatorLayerControl") == null || VrcAvatar.ComponentType("VRCPlayableLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__NeutralLayerControl_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__NeutralLayerControl_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -54,19 +53,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
 
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
-        private static AnimatorStateMachine Layer(AnimatorController target, string name)
-        {
-            target.AddLayer(name); var layers = target.layers; layers[layers.Length - 1].defaultWeight = 1; target.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
-
         private static AnimationClip Clip(AnimatorController target, string name, IEnumerable<string> paths = null, string shape = null, float weight = 0)
         {
             var clip = new AnimationClip { name = name };
@@ -78,16 +64,10 @@ namespace VRVlog.LilToonExporter.Tests
 
         private static void BuildGraph(AnimatorController target, string[] paths, out AnimatorState body, out AnimatorState control)
         {
-            State(target.layers[0].stateMachine, "Uncontrolled base", Clip(target, "Base"));
-            body = State(Layer(target, "Controlled body"), "Body rest", Clip(target, "Body rest", paths, "Body size", 63));
-            control = State(Layer(target, "Layer weight control"), "Control", Clip(target, "Control"));
-            State(Layer(target, "Independent upper face"), "Always open", Clip(target, "Always open", paths, "Open", 100));
-        }
-
-        private static AnimatorStateTransition Transition(AnimatorState from, AnimatorState to, string parameter, AnimatorConditionMode mode, float threshold)
-        {
-            var transition = from.AddTransition(to); transition.hasExitTime = false; transition.duration = 0;
-            transition.AddCondition(mode, threshold, parameter); return transition;
+            FxGraph.StartState(target.layers[0].stateMachine, "Uncontrolled base", Clip(target, "Base"));
+            body = FxGraph.StartState(FxGraph.Layer(target, "Controlled body"), "Body rest", Clip(target, "Body rest", paths, "Body size", 63));
+            control = FxGraph.StartState(FxGraph.Layer(target, "Layer weight control"), "Control", Clip(target, "Control"));
+            FxGraph.StartState(FxGraph.Layer(target, "Independent upper face"), "Always open", Clip(target, "Always open", paths, "Open", 100));
         }
 
         private static StateMachineBehaviour Control(AnimatorState state, string target = "FX", int layer = BodyLayer,
@@ -129,13 +109,13 @@ namespace VRVlog.LilToonExporter.Tests
             var layers = target.layers; layers[ControlLayer].name = maNames ? "Modular Avatar: MMD Control" : "Generic relay controller"; target.layers = layers;
             var clip = Clip(target, "Relay signal");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), parameter), AnimationCurve.Constant(0, 1, 1));
-            var initial = State(machine, maNames ? "Initial" : "Starting", clip);
-            var normal = State(machine, maNames ? "NotMMD" : "Enabled", clip);
-            var mmd = State(machine, maNames ? "MMD" : "Disabled", clip);
+            var initial = FxGraph.StartState(machine, maNames ? "Initial" : "Starting", clip);
+            var normal = FxGraph.StartState(machine, maNames ? "NotMMD" : "Enabled", clip);
+            var mmd = FxGraph.StartState(machine, maNames ? "MMD" : "Disabled", clip);
             machine.defaultState = initial;
-            Transition(initial, mmd, parameter, AnimatorConditionMode.Less, .5f);
-            Transition(mmd, normal, parameter, AnimatorConditionMode.Greater, .5f);
-            Transition(normal, mmd, parameter, AnimatorConditionMode.Less, .5f);
+            FxGraph.Transition(initial, mmd, parameter, AnimatorConditionMode.Less, .5f);
+            FxGraph.Transition(mmd, normal, parameter, AnimatorConditionMode.Greater, .5f);
+            FxGraph.Transition(normal, mmd, parameter, AnimatorConditionMode.Less, .5f);
             Control(normal, weight: 1); Control(mmd, weight: 0);
         }
 
@@ -144,9 +124,9 @@ namespace VRVlog.LilToonExporter.Tests
             target.AddParameter("InStation", AnimatorControllerParameterType.Bool);
             var machine = target.layers[0].stateMachine;
             Control(machine.defaultState, global: true, weight: 1);
-            var station = State(machine, "Station FX zero", Clip(target, "Station"));
+            var station = FxGraph.StartState(machine, "Station FX zero", Clip(target, "Station"));
             Control(station, global: true, weight: 0);
-            Transition(machine.defaultState, station, "InStation", AnimatorConditionMode.If, 0);
+            FxGraph.Transition(machine.defaultState, station, "InStation", AnimatorConditionMode.If, 0);
         }
 
         private static void FiniteTiming(AnimatorStateTransition transition, bool fixedDuration)
@@ -494,14 +474,14 @@ namespace VRVlog.LilToonExporter.Tests
             else if (variation == "changing defaults")
             {
                 bodyState.writeDefaultValues = true;
-                var future = State(controller.layers[BodyLayer].stateMachine, "Future WD", Clip(controller, "Future WD motion"));
+                var future = FxGraph.StartState(controller.layers[BodyLayer].stateMachine, "Future WD", Clip(controller, "Future WD motion"));
                 var transition = bodyState.AddTransition(future); transition.hasExitTime = true; transition.exitTime = 20; transition.duration = 0;
             }
             else
             {
                 var additional = AnimatorController.CreateAnimatorControllerAtPath(folder + "/RelayProducer.controller");
                 additional.AddParameter("Generic layer relay", AnimatorControllerParameterType.Float);
-                var state = State(additional.layers[0].stateMachine, "Another signal producer", Clip(additional, "Another signal"));
+                var state = FxGraph.StartState(additional.layers[0].stateMachine, "Another signal producer", Clip(additional, "Another signal"));
                 AnimationUtility.SetEditorCurve((AnimationClip)state.motion, signal, AnimationCurve.Constant(0, 1, 1));
                 SetControllers(descriptor, controller, additional);
             }
@@ -558,7 +538,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var layers = controller.layers; layers[BodyLayer].defaultWeight = weight; controller.layers = layers;
             Control(controlState, weight: weight);
-            var later = State(controller.layers[ControlLayer].stateMachine, "Equivalent command", Clip(controller, "Equivalent command motion"));
+            var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Equivalent command", Clip(controller, "Equivalent command motion"));
             var transition = controlState.AddTransition(later); transition.hasExitTime = false; transition.duration = 0;
             Control(later, weight: weight);
             var before = CaptureAssets(); var warnings = new List<string>();
@@ -580,12 +560,12 @@ namespace VRVlog.LilToonExporter.Tests
             if (variation == "third controller")
             {
                 var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Competing.controller");
-                var state = State(other.layers[0].stateMachine, "Competing producer", Clip(other, "Competing empty"));
+                var state = FxGraph.StartState(other.layers[0].stateMachine, "Competing producer", Clip(other, "Competing empty"));
                 Control(state, weight: 0); SetControllers(descriptor, controller, other);
             }
             else
             {
-                var later = State(controller.layers[ControlLayer].stateMachine, "Another reachable command", Clip(controller, "Another command motion"));
+                var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Another reachable command", Clip(controller, "Another command motion"));
                 var transition = controlState.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
                 Control(later, weight: variation == "changed goal" || variation == "global command" ? 0 : 1,
                     duration: variation == "delayed command" ? 2 : 0, global: variation == "global command");
@@ -630,7 +610,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (otherController)
             {
                 other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
-                state = State(other.layers[0].stateMachine, "Body playable command", Clip(other, "Other empty"));
+                state = FxGraph.StartState(other.layers[0].stateMachine, "Body playable command", Clip(other, "Other empty"));
                 SetControllers(descriptor, controller, other);
             }
             var command = Control(state, target, layer: 0, weight: .5f, duration: 2);
@@ -650,9 +630,8 @@ namespace VRVlog.LilToonExporter.Tests
             var parameter = type == "Bool" ? "AFK" : type == "Int" ? "TrackingType" : "GestureLeftWeight";
             controller.AddParameter(new AnimatorControllerParameter { name = parameter,
                 type = (AnimatorControllerParameterType)Enum.Parse(typeof(AnimatorControllerParameterType), type), defaultBool = true, defaultInt = 0, defaultFloat = 1 });
-            var dormant = State(controller.layers[ControlLayer].stateMachine, "Dormant SDK control", Clip(controller, "Dormant"));
-            Transition(controlState, dormant, parameter, type == "Bool" ? AnimatorConditionMode.If : type == "Int" ? AnimatorConditionMode.Equals : AnimatorConditionMode.Greater,
-                type == "Float" ? .5f : 0);
+            var dormant = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Dormant SDK control", Clip(controller, "Dormant"));
+            FxGraph.Transition(controlState, dormant, parameter, type == "Bool" ? AnimatorConditionMode.If : type == "Int" ? AnimatorConditionMode.Equals : AnimatorConditionMode.Greater, type == "Float" ? .5f : 0);
             Control(dormant, duration: 2); var before = CaptureAssets(); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Single(value => value.Shape == "Body size").Weight, Is.EqualTo(63).Within(.01));
@@ -665,7 +644,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AReachableAdditionalPlayableFxCommandKeepsPreparedNeutralWithoutRunningCallbacks(bool global)
         {
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
-            var state = State(other.layers[0].stateMachine, "Additional SDK control", Clip(other, "Additional empty"));
+            var state = FxGraph.StartState(other.layers[0].stateMachine, "Additional SDK control", Clip(other, "Additional empty"));
             var command = Control(state, global: global); SetControllers(descriptor, controller, other);
             var commandBefore = EditorJsonUtility.ToJson(command); var before = CaptureAssets(); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
@@ -689,8 +668,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void MalformedSdkLayerControlDataRemainsHardEvenOnADormantBranch(string corruption)
         {
             controller.AddParameter("AFK", AnimatorControllerParameterType.Bool);
-            var dormant = State(controller.layers[ControlLayer].stateMachine, "Invalid dormant control", Clip(controller, "Invalid dormant"));
-            Transition(controlState, dormant, "AFK", AnimatorConditionMode.If, 0);
+            var dormant = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Invalid dormant control", Clip(controller, "Invalid dormant"));
+            FxGraph.Transition(controlState, dormant, "AFK", AnimatorConditionMode.If, 0);
             var command = Control(dormant);
             using (var data = new SerializedObject(command))
             {
@@ -721,7 +700,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void KnownLayerControlFallbackCannotHideUnknownCallbacksOrBadAnimationData(string damage)
         {
             Control(controlState);
-            var later = State(controller.layers[ControlLayer].stateMachine, "Later unsafe data", Clip(controller, "Later unsafe clip"));
+            var later = FxGraph.StartState(controller.layers[ControlLayer].stateMachine, "Later unsafe data", Clip(controller, "Later unsafe clip"));
             var transition = controlState.AddTransition(later); transition.hasExitTime = true; transition.exitTime = 10; transition.duration = 0;
             var clip = (AnimationClip)later.motion;
             if (damage == "unknown") Assert.That(later.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);
@@ -768,13 +747,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Additional.controller");
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Additional default", Clip(other, "Additional empty"));
+            var idle = FxGraph.StartState(machine, "Additional default", Clip(other, "Additional empty"));
             Control(idle, global: true); // All captured FX roots require prepared-rest fallback.
-            var bad = State(machine, "Additional unsafe state", Clip(other, "Additional unsafe clip"));
+            var bad = FxGraph.StartState(machine, "Additional unsafe state", Clip(other, "Additional unsafe clip"));
             if (dormant)
             {
                 other.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
-                Transition(idle, bad, "AFK", AnimatorConditionMode.If, 0);
+                FxGraph.Transition(idle, bad, "AFK", AnimatorConditionMode.If, 0);
             }
             else
             {
@@ -791,8 +770,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 other.AddParameter("Driver read", AnimatorControllerParameterType.Float);
                 ParameterDriverExpressionTests.Driver(bad, ParameterDriverExpressionTests.Op("Set", "Driver read", float.NaN));
-                var after = State(machine, "Reads malformed destination", Clip(other, "Additional end"));
-                Transition(bad, after, "Driver read", AnimatorConditionMode.Greater, .5f);
+                var after = FxGraph.StartState(machine, "Reads malformed destination", Clip(other, "Additional end"));
+                FxGraph.Transition(bad, after, "Driver read", AnimatorConditionMode.Greater, .5f);
             }
             SetControllers(descriptor, controller, other); return other;
         }
@@ -819,9 +798,9 @@ namespace VRVlog.LilToonExporter.Tests
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Action.controller");
             other.AddParameter(input, AnimatorControllerParameterType.Float);
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Action reads FX driver", Clip(other, "Action idle"));
-            var later = State(machine, "Action later", Clip(other, "Action later"));
-            Transition(idle, later, input, AnimatorConditionMode.Greater, .5f);
+            var idle = FxGraph.StartState(machine, "Action reads FX driver", Clip(other, "Action idle"));
+            var later = FxGraph.StartState(machine, "Action later", Clip(other, "Action later"));
+            FxGraph.Transition(idle, later, input, AnimatorConditionMode.Greater, .5f);
             var control = Control(idle, global: true); SetControllers(descriptor, controller, other);
             var before = CaptureAssets(); var beforeOther = EditorJsonUtility.ToJson(other);
             var beforeControl = EditorJsonUtility.ToJson(control); var beforeDriver = EditorJsonUtility.ToJson(driver);
@@ -846,21 +825,21 @@ namespace VRVlog.LilToonExporter.Tests
             var moving = Clip(fx, "Unresolved lower native motion", new[] { "Body" }, "Body size", 63);
             AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape.Body size"),
                 AnimationCurve.Linear(0, 63, 1, 91));
-            State(fx.layers[0].stateMachine, "Moving lower", moving);
+            FxGraph.StartState(fx.layers[0].stateMachine, "Moving lower", moving);
             var selectedClip = Clip(fx, "Authored direct endpoint", new[] { "Body" }, "Body size", 80);
             AnimatorState selected = null;
             if (inactiveProvenance)
             {
-                selected = State(Layer(fx, "Inactive authored slot"), "Authored candidate", selectedClip);
+                selected = FxGraph.StartState(FxGraph.Layer(fx, "Inactive authored slot"), "Authored candidate", selectedClip);
                 var layers = fx.layers; layers[1].defaultWeight = 0; fx.layers = layers;
             }
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/DirectAction.controller");
             other.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
             var machine = other.layers[0].stateMachine;
-            var idle = State(machine, "Normal Action", Clip(other, "Action idle"));
-            var command = State(machine, "Additional direct-clip control", Clip(other, "Action command"));
+            var idle = FxGraph.StartState(machine, "Normal Action", Clip(other, "Action idle"));
+            var command = FxGraph.StartState(machine, "Additional direct-clip control", Clip(other, "Action command"));
             Control(command, layer: 0);
-            Transition(idle, command, "AFK", AnimatorConditionMode.If, 0);
+            FxGraph.Transition(idle, command, "AFK", AnimatorConditionMode.If, 0);
             if (!dormant) machine.defaultState = command;
             SetControllers(descriptor, fx, other);
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });

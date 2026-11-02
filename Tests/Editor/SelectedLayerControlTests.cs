@@ -27,8 +27,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             if (OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor") == null || OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl") == null)
                 Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__SelectedLayerControl_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__SelectedLayerControl_");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
             skin = body.GetComponent<SkinnedMeshRenderer>();
@@ -46,18 +45,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (avatar != null) Object.DestroyImmediate(avatar);
             if (mesh != null) Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip)
-        {
-            var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state; return state;
-        }
-
-        private static AnimatorStateMachine Layer(AnimatorController fx, string name)
-        {
-            fx.AddLayer(name); var layers = fx.layers; layers[layers.Length - 1].defaultWeight = 1; fx.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
         }
 
         private static void To(AnimatorState from, AnimatorState to, float value)
@@ -79,13 +66,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/" + name + ".controller");
             fx.AddParameter("Menu", AnimatorControllerParameterType.Int);
-            State(fx.layers[0].stateMachine, "Base rest", Clip(fx, "Base rest", paths, shape, baseWeight));
-            control = State(Layer(fx, "SDK command source"), "Command", Clip(fx, "Empty command motion"));
-            State(Layer(fx, "Unrelated slot 2"), "Empty", Clip(fx, "Empty 2"));
-            State(Layer(fx, "Unrelated slot 3"), "Empty", Clip(fx, "Empty 3"));
-            var target = Layer(fx, "Controlled face at physical index 4");
-            rest = State(target, "Neutral", Clip(fx, "Neutral", paths, shape, 60));
-            endpoint = State(target, "Selected endpoint", Clip(fx, "Selected endpoint", paths, shape, 80));
+            FxGraph.StartState(fx.layers[0].stateMachine, "Base rest", Clip(fx, "Base rest", paths, shape, baseWeight));
+            control = FxGraph.StartState(FxGraph.Layer(fx, "SDK command source"), "Command", Clip(fx, "Empty command motion"));
+            FxGraph.StartState(FxGraph.Layer(fx, "Unrelated slot 2"), "Empty", Clip(fx, "Empty 2"));
+            FxGraph.StartState(FxGraph.Layer(fx, "Unrelated slot 3"), "Empty", Clip(fx, "Empty 3"));
+            var target = FxGraph.Layer(fx, "Controlled face at physical index 4");
+            rest = FxGraph.StartState(target, "Neutral", Clip(fx, "Neutral", paths, shape, 60));
+            endpoint = FxGraph.StartState(target, "Selected endpoint", Clip(fx, "Selected endpoint", paths, shape, 80));
             To(rest, endpoint, 1); To(endpoint, rest, 0);
             var layers = fx.layers; layers[TargetLayer].defaultWeight = weight; fx.layers = layers; return fx;
         }
@@ -166,7 +153,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (dormantEnable)
             {
                 controller.AddParameter(new AnimatorControllerParameter { name = "AFK", type = AnimatorControllerParameterType.Bool, defaultBool = true });
-                var dormant = State(controller.layers[1].stateMachine, "Dormant enable", Clip(controller, "Dormant enable"));
+                var dormant = FxGraph.StartState(controller.layers[1].stateMachine, "Dormant enable", Clip(controller, "Dormant enable"));
                 Control(dormant, 1);
                 var transition = command.AddTransition(dormant); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.If, 0, "AFK");
@@ -198,8 +185,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DirectBaseClipWithoutStateProvenanceCannotDiscardItsLayerControl()
         {
-            var candidate = State(controller.layers[0].stateMachine, "Base callback candidate",
-                Clip(controller, "Base callback candidate", new[] { "Body" }, value: 80));
+            var candidate = FxGraph.StartState(controller.layers[0].stateMachine, "Base callback candidate", Clip(controller, "Base callback candidate", new[] { "Body" }, value: 80));
             Control(candidate, 1);
             var layers = controller.layers; layers[TargetLayer].defaultWeight = 0; controller.layers = layers;
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)candidate.motion, entry);

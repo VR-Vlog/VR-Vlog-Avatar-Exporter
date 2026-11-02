@@ -21,8 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             if (Shader.Find("lilToon") == null) Assert.Ignore("Install lilToon.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__LegacyBlinkMenuRoundTrip_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__LegacyBlinkMenuRoundTrip_");
             var owned = new List<Mesh>();
             Vrm10Instance imported = null;
             GameObject reference = null;

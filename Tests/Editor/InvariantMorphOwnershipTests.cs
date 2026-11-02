@@ -24,8 +24,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__InvariantOwnership_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__InvariantOwnership_");
             avatar = new GameObject("Avatar", typeof(Animator));
             var renderer = new GameObject("Face", typeof(SkinnedMeshRenderer)).GetComponent<SkinnedMeshRenderer>();
             renderer.transform.SetParent(avatar.transform, false); mesh = BaseShapeFixture.Create(); renderer.sharedMesh = mesh;
@@ -37,11 +36,11 @@ namespace VRVlog.LilToonExporter.Tests
             offClip = Clip("Outfit off and face reset", 30, false);
             onClip = Clip("Outfit on and same face reset", 30, true);
             var machine = controller.layers[0].stateMachine;
-            off = State(machine, "Off", offClip); on = State(machine, "On", onClip); machine.defaultState = off;
+            off = FxGraph.State(machine, "Off", offClip); on = FxGraph.State(machine, "On", onClip); machine.defaultState = off;
             var transition = off.AddTransition(on); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Outfit");
             controller.AddLayer("Selected authored face"); var layers = controller.layers; layers[1].defaultWeight = 1;
-            faceClip = Clip("Selected face", 75); face = State(layers[1].stateMachine, "Face", faceClip);
+            faceClip = Clip("Selected face", 75); face = FxGraph.State(layers[1].stateMachine, "Face", faceClip);
             layers[1].stateMachine.defaultState = face; controller.layers = layers;
         }
 
@@ -59,11 +58,6 @@ namespace VRVlog.LilToonExporter.Tests
             if (active.HasValue) AnimationUtility.SetEditorCurve(clip,
                 EditorCurveBinding.FloatCurve("Coat", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, active.Value ? 1 : 0));
             return clip;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
         }
 
         private NeutralShapePlan Plan() => NeutralShapePlan.Create(avatar, controller, new[] { new[] { Morph } },
@@ -139,7 +133,7 @@ namespace VRVlog.LilToonExporter.Tests
             // come through their shared custom input, not clip co-location.
             AnimationUtility.SetEditorCurve(offClip, Morph, null); AnimationUtility.SetEditorCurve(onClip, Morph, null);
             var machine = controller.layers[1].stateMachine;
-            var alternate = State(machine, "Other face", Clip("Other face", varying ? 50 : 75));
+            var alternate = FxGraph.State(machine, "Other face", Clip("Other face", varying ? 50 : 75));
             var transition = face.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Outfit");
             Assert.That(Plan().PreservedMorphs.Contains(Morph), Is.EqualTo(varying));

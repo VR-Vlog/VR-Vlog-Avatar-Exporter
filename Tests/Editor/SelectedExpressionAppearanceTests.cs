@@ -31,8 +31,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void SetUp()
         {
             var shader = OptionalTools.RequireShader("lilToon", "Install the real lilToon package.");
-            var name = "__SelectedAppearance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__SelectedAppearance_");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
             dummy = new GameObject("Dummy"); dummy.transform.SetParent(avatar.transform, false);

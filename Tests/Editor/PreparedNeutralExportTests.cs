@@ -35,8 +35,7 @@ namespace VRVlog.LilToonExporter.Tests
             var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__IndependentSkinBoneNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__IndependentSkinBoneNeutral_");
             Vrm10Instance imported = null;
             GameObject native = null, expected = null;
             var graph = PlayableGraph.Create("Independent skin bone native reference");
@@ -146,8 +145,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__ManualBlinkAppearance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ManualBlinkAppearance_");
             Vrm10Instance imported = null; GameObject expected = null;
             try
             {
@@ -199,8 +197,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__StrippedTrackingAppearance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__StrippedTrackingAppearance_");
             var profile = ScriptableObject.CreateInstance<VrmTrackingProfile>();
             Vrm10Instance imported = null; GameObject expected = null;
             try
@@ -303,8 +300,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__PreparedNeutralExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__PreparedNeutralExport_");
             Vrm10Instance imported = null;
             try
             {
@@ -362,8 +358,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = VrcAvatar.DescriptorType; if (type == null) Assert.Ignore("Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__NdmfPreparedNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__NdmfPreparedNeutral_");
             Vrm10Instance imported = null;
             NdmfExportPreparation preparation = null;
             var baked = new Mesh();

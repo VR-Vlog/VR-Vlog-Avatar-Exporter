@@ -93,8 +93,7 @@ namespace VRVlog.LilToonExporter.Tests
             AppearancePreparationTests.AddRule(gate, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", face,
                 ("ShapeName", "Smile"), ("ChangeType", 1), ("Value", 100f));
             gate.SetActive(false);
-            var folderName = "__MaReactiveActivation_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__MaReactiveActivation_");
             var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             var clip = new AnimationClip { name = "Activate authored reaction" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Gate", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
@@ -150,8 +149,7 @@ namespace VRVlog.LilToonExporter.Tests
             AppearancePreparationTests.AddRule(decoy, "ModularAvatarShapeChanger", "Shapes", "ChangedShape", back.gameObject,
                 ("ShapeName", "Smile"), ("ChangeType", 1), ("Value", 100f));
             decoy.SetActive(false);
-            var folderName = "__MaMergeMotion_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__MaMergeMotion_");
             var owned = new List<Mesh>();
             GameObject oracle = null;
             try

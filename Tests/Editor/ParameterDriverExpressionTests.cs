@@ -23,8 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__ExpressionDrivers_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__ExpressionDrivers_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
             controller.AddParameter("Face", AnimatorControllerParameterType.Int);
@@ -40,18 +39,6 @@ namespace VRVlog.LilToonExporter.Tests
         public void TearDown()
         {
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh); AssetDatabase.DeleteAsset(folder);
-        }
-
-        private AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip motion = null)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
-        }
-
-        private AnimatorStateMachine Layer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers;
-            layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
         }
 
         private static void Transition(AnimatorState from, AnimatorState to, string parameter, float value, AnimatorConditionMode mode = AnimatorConditionMode.Equals)
@@ -72,8 +59,8 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState Gate()
         {
             var machine = controller.layers[0].stateMachine;
-            var idle = State(machine, "Idle"); machine.defaultState = idle;
-            var gate = State(machine, "Select face"); Transition(idle, gate, "Menu", 1); return gate;
+            var idle = FxGraph.State(machine, "Idle"); machine.defaultState = idle;
+            var gate = FxGraph.State(machine, "Select face"); Transition(idle, gate, "Menu", 1); return gate;
         }
 
         internal static VrChatParameterDriver.Operation Op(string kind, string destination, float value = 0, string source = null) =>
@@ -131,8 +118,8 @@ namespace VRVlog.LilToonExporter.Tests
         private AnimatorState NeutralFxGate(string parameter = "Dance")
         {
             controller.AddParameter(parameter, AnimatorControllerParameterType.Int);
-            var machine = Layer("Dance gate"); var neutral = State(machine, "DISABLE dance"); machine.defaultState = neutral;
-            var disabled = State(machine, "ENABLE dance");
+            var machine = FxGraph.Layer(controller, "Dance gate"); var neutral = FxGraph.State(machine, "DISABLE dance"); machine.defaultState = neutral;
+            var disabled = FxGraph.State(machine, "ENABLE dance");
             PlayableControl(neutral, "FX", 1, 0); PlayableControl(disabled, "FX", 0, 0);
             Transition(neutral, disabled, parameter, 1);
             return neutral;
@@ -140,9 +127,9 @@ namespace VRVlog.LilToonExporter.Tests
 
         private void FaceLayer(int selected = 1, bool missing = false)
         {
-            var machine = Layer("Face layer");
-            var idle = State(machine, "Neutral", Clip("Neutral", 0, missing)); machine.defaultState = idle;
-            var smile = State(machine, "Smile", Clip("Smile", 75, missing));
+            var machine = FxGraph.Layer(controller, "Face layer");
+            var idle = FxGraph.State(machine, "Neutral", Clip("Neutral", 0, missing)); machine.defaultState = idle;
+            var smile = FxGraph.State(machine, "Smile", Clip("Smile", 75, missing));
             Transition(idle, smile, "Face", selected);
         }
 
@@ -163,7 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void NonUnitFxCommandCannotBeCancelledByAnotherCommandOnTheSameState()
         {
             Gate().motion = Clip("Menu face", 75);
-            var machine = Layer("Multiple FX commands"); var state = State(machine, "Disable then restore"); machine.defaultState = state;
+            var machine = FxGraph.Layer(controller, "Multiple FX commands"); var state = FxGraph.State(machine, "Disable then restore"); machine.defaultState = state;
             PlayableControl(state, "FX", 0, 0); PlayableControl(state, "FX", 1, 0);
             Assert.That(Assert.Throws<InvalidOperationException>(() => Play(new Dictionary<string, float> { ["Menu"] = 1 })).Message,
                 Does.Contain("Disable then restore").And.Contain("FXの重み"));
@@ -175,8 +162,8 @@ namespace VRVlog.LilToonExporter.Tests
         public void BodyPlayableControlAndTrackedHandDoNotBlockFixedFacialSampler(string target, string type)
         {
             var face = Gate(); face.motion = Clip("Menu face", 75);
-            var dance = Layer("Dance"); var idle = State(dance, "0"); dance.defaultState = idle;
-            var selected = State(dance, "1"); Transition(idle, selected, "Menu", 1);
+            var dance = FxGraph.Layer(controller, "Dance"); var idle = FxGraph.State(dance, "0"); dance.defaultState = idle;
+            var selected = FxGraph.State(dance, "1"); Transition(idle, selected, "Menu", 1);
             var off = PlayableControl(idle, target, 0, type: type);
             var on = PlayableControl(selected, target, 1, type: type);
             Assert.That(VrChatParameterDriver.IsNonFxPlayableControl(off), Is.True);
@@ -254,11 +241,11 @@ namespace VRVlog.LilToonExporter.Tests
         public void BodyControlDoesNotMakeAnExcludedOnlyLayerLookLikeAFace()
         {
             var gate = Gate(); gate.motion = Clip("Menu face", 75);
-            var machine = Layer("Excluded decoration");
+            var machine = FxGraph.Layer(controller, "Excluded decoration");
             var clip = new AnimationClip { name = "Decoration" };
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Decoration", typeof(GameObject), "m_IsActive"), AnimationCurve.Constant(0, 1, 1));
             AssetDatabase.AddObjectToAsset(clip, controller);
-            var state = State(machine, "Decoration", clip); machine.defaultState = state;
+            var state = FxGraph.State(machine, "Decoration", clip); machine.defaultState = state;
             PlayableControl(state, "Action");
             var excluded = VrChatExpressionSampler.FindExcludedLayers(controller, controller, path => path == "Decoration");
             Assert.That(excluded, Does.Contain(controller.layers.Length - 1));
@@ -355,20 +342,20 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Gate().motion = Clip("Menu face", 75);
             controller.AddParameter("InStation", AnimatorControllerParameterType.Bool);
-            var root = Layer("Entry exit FX gate");
-            var neutral = State(root, "Neutral FX"); root.defaultState = neutral;
+            var root = FxGraph.Layer(controller, "Entry exit FX gate");
+            var neutral = FxGraph.State(root, "Neutral FX"); root.defaultState = neutral;
             PlayableControl(neutral, "FX", 1, 0);
             var nested = root.AddStateMachine("Nested gate");
-            var fallback = State(nested, "Unreached entry fallback"); nested.defaultState = fallback;
+            var fallback = FxGraph.State(nested, "Unreached entry fallback"); nested.defaultState = fallback;
             var fallbackCommand = PlayableControl(fallback, "FX", 0, 0);
-            var entry = State(nested, "Entry command");
+            var entry = FxGraph.State(nested, "Entry command");
             var entryCommand = PlayableControl(entry, "FX", 1, 0);
             nested.AddEntryTransition(entry);
             var enter = neutral.AddTransition(nested); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, "InStation");
             var exit = entry.AddExitTransition(); exit.hasExitTime = false; exit.duration = 0;
             exit.AddCondition(AnimatorConditionMode.If, 0, "InStation");
-            var disabled = State(root, "Exit disables FX");
+            var disabled = FxGraph.State(root, "Exit disables FX");
             var disabledCommand = PlayableControl(disabled, "FX", 0, 0);
             root.AddStateMachineTransition(nested, disabled);
             var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
@@ -388,15 +375,15 @@ namespace VRVlog.LilToonExporter.Tests
         {
             Gate().motion = Clip("Menu face", 75);
             controller.AddParameter("InStation", AnimatorControllerParameterType.Bool);
-            var root = Layer("Parent AnyState FX gate");
-            var neutral = State(root, "Neutral FX"); root.defaultState = neutral;
+            var root = FxGraph.Layer(controller, "Parent AnyState FX gate");
+            var neutral = FxGraph.State(root, "Neutral FX"); root.defaultState = neutral;
             PlayableControl(neutral, "FX", 1, 0);
             var nested = root.AddStateMachine("Nested active state");
-            var active = State(nested, "Active nested FX"); nested.defaultState = active;
+            var active = FxGraph.State(nested, "Active nested FX"); nested.defaultState = active;
             var activeCommand = PlayableControl(active, "FX", 1, 0);
             var enter = neutral.AddTransition(nested); enter.hasExitTime = false; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.IfNot, 0, "InStation");
-            var disabled = State(root, "Parent AnyState disables FX");
+            var disabled = FxGraph.State(root, "Parent AnyState disables FX");
             var disabledCommand = PlayableControl(disabled, "FX", 0, 0);
             var any = root.AddAnyStateTransition(disabled); any.hasExitTime = false; any.duration = 0; any.canTransitionToSelf = false;
             any.AddCondition(AnimatorConditionMode.If, 0, "InStation");

@@ -112,8 +112,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (mergeType.GetProperty("MergeBlendShapes") == null) Assert.Ignore("This rename fixture requires the AAO 1.8+ configuration API.");
             Assert.That(ExportOptimizationMarker.AvatarOptimizerAdapterAvailable, Is.True);
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__AaoNeutralEndpoint_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__AaoNeutralEndpoint_");
             var settings = ScriptableObject.CreateInstance<VRM10Object>(); var happy = ScriptableObject.CreateInstance<VRM10Expression>();
             var profile = ScriptableObject.CreateInstance<VrmTrackingProfile>();
             var mask = new Texture2D(2, 1, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Point };

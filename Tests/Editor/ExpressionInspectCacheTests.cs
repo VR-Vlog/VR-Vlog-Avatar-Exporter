@@ -21,8 +21,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__ExpressionInspectCache_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__ExpressionInspectCache_");
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             fx.AddParameter("Menu", AnimatorControllerParameterType.Int);
             fx.AddParameter("Axis", AnimatorControllerParameterType.Float);

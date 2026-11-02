@@ -33,8 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Ignore("Install the real MA, NDMF and VRChat SDK packages.");
             var shader = OptionalTools.RequireShader("lilToon", "Install lilToon for the real exporter entry point.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__MaPermanentAppearance_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__MaPermanentAppearance_");
             Vrm10Instance imported = null;
             GameObject prepared = null;
             try
@@ -49,8 +48,8 @@ namespace VRVlog.LilToonExporter.Tests
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
                 var machine = controller.layers[0].stateMachine;
-                var neutral = State(machine, "Neutral", Clip(controller, "Common neutral", 0, 0), writeDefaults);
-                var selected = State(machine, "Smile", Clip(controller, "Selected face deliberately restores pupil", 100, 0), writeDefaults);
+                var neutral = FxGraph.State(machine, "Neutral", Clip(controller, "Common neutral", 0, 0), writeDefaults);
+                var selected = FxGraph.State(machine, "Smile", Clip(controller, "Selected face deliberately restores pupil", 100, 0), writeDefaults);
                 machine.defaultState = neutral;
                 var transition = neutral.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
@@ -60,7 +59,7 @@ namespace VRVlog.LilToonExporter.Tests
                 foreach (var path in new[] { "Front", "Back" })
                     Curve(hide, path, "Pupil hide", 100);
                 AssetDatabase.AddObjectToAsset(hide, permanent);
-                permanent.layers[0].stateMachine.defaultState = State(permanent.layers[0].stateMachine, "Always", hide, false);
+                permanent.layers[0].stateMachine.defaultState = FxGraph.State(permanent.layers[0].stateMachine, "Always", hide, false);
                 var tool = new GameObject("Permanent appearance tool"); tool.transform.SetParent(fixture.Source.transform, false);
                 var merge = tool.AddComponent(mergeType);
                 mergeType.GetField("animator").SetValue(merge, permanent);
@@ -202,9 +201,6 @@ namespace VRVlog.LilToonExporter.Tests
             { Curve(clip, path, "Pupil hide", pupil); Curve(clip, path, "Blink", 0); Curve(clip, path, "Smile", smile); }
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
-
-        static AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool writeDefaults)
-        { var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = writeDefaults; return state; }
 
         static void ConfigureMenu(ScriptableObject menu, ScriptableObject parameters)
         {

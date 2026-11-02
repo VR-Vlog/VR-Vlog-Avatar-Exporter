@@ -121,8 +121,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var descriptorType = OptionalTools.Find("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor");
                 if (descriptorType == null) { Avatar.Dispose(); Assert.Ignore("Install the real VRChat SDK."); }
-                var name = "__FaceEmoMergedUnderlay_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); directory = "Assets/" + name;
+                directory = TempAssetFolder.Create("__FaceEmoMergedUnderlay_");
                 controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
                 var descriptor = Avatar.Copy.AddComponent(descriptorType);
                 VrcAvatar.SetFx(descriptor, controller);

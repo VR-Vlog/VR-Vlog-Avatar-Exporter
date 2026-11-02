@@ -743,8 +743,7 @@ namespace VRVlog.LilToonExporter.Tests
             skin.sharedMaterial = Own(new Material(Shader.Find("Unlit/Color")));
             skin.SetBlendShapeWeight(0, 75);
             source.AddComponent(OptionalTools.Find("Anatawa12.AvatarOptimizer.TraceAndOptimize"));
-            var folderName = "__AaoRebasedNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__AaoRebasedNeutral_");
             var meshes = new List<Mesh>();
             ExportOptimizationBindings bindings = null;
             Vector3[] NativeVertices(SkinnedMeshRenderer renderer)

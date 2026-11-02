@@ -24,8 +24,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__NeutralParameterCurves_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__NeutralParameterCurves_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -34,7 +33,7 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.AddBlendShapeFrame("Size", 100, Enumerable.Repeat(Vector3.up, 3).ToArray(), null, null);
             mesh.AddBlendShapeFrame("Face", 100, Enumerable.Repeat(Vector3.right, 3).ToArray(), null, null);
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17);
-            bodyState = State(controller.layers[0].stateMachine, "Authored body", BodyClip("Authored body", 63), true);
+            bodyState = FxGraph.StartState(controller.layers[0].stateMachine, "Authored body", BodyClip("Authored body", 63), true);
         }
 
         [TearDown]
@@ -53,13 +52,6 @@ namespace VRVlog.LilToonExporter.Tests
 
         private AnimationClip BodyClip(string name, float value) => Clip(name, bodyBinding, AnimationCurve.Constant(0, 12, value));
 
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion, bool writeDefaults)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = writeDefaults;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
-        }
-
         private AnimatorState Helper(string name = "Internal helper", bool writeDefaults = false,
             float weight = 1, AnimatorLayerBlendingMode mode = AnimatorLayerBlendingMode.Override)
         {
@@ -68,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
                 new AnimationCurve(new Keyframe(0, 0), new Keyframe(10, 0), new Keyframe(12, 1)));
             controller.AddLayer("Parameter support"); var layers = controller.layers;
             layers[layers.Length - 1].defaultWeight = weight; layers[layers.Length - 1].blendingMode = mode; controller.layers = layers;
-            return State(layers[layers.Length - 1].stateMachine, "Internal animation", clip, writeDefaults);
+            return FxGraph.StartState(layers[layers.Length - 1].stateMachine, "Internal animation", clip, writeDefaults);
         }
 
         private ExpressionDependencies Dependencies(VrChatExpressionMenu.Source metadata) => ExpressionDependencies.AnalyzeNeutral(
@@ -158,7 +150,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var helper = Helper();
             var machine = controller.layers[1].stateMachine;
-            var later = State(machine, "Later defaults", helper.motion, true);
+            var later = FxGraph.StartState(machine, "Later defaults", helper.motion, true);
             var transition = helper.AddTransition(later); transition.hasExitTime = true;
             transition.exitTime = 1; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Greater, .5f, "Internal helper");
@@ -195,8 +187,8 @@ namespace VRVlog.LilToonExporter.Tests
             controller.AddLayer("Generated gesture feedback"); var layers = controller.layers;
             layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
             var machine = layers[layers.Length - 1].stateMachine;
-            var waiting = State(machine, "Waiting", factor, writeDefaults);
-            var listening = State(machine, "Listening", factor, writeDefaults);
+            var waiting = FxGraph.StartState(machine, "Waiting", factor, writeDefaults);
+            var listening = FxGraph.StartState(machine, "Listening", factor, writeDefaults);
             waiting.timeParameterActive = true; waiting.timeParameter = "Proxy";
             listening.timeParameterActive = true; listening.timeParameter = "GestureLeftWeight";
             foreach (var state in new[] { waiting, listening })
@@ -220,7 +212,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var full = Clip("Full facial gesture", binding, AnimationCurve.Constant(0, 1, 100));
                 controller.AddLayer("Unrelated facial response"); var layers = controller.layers;
                 layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-                State(layers[layers.Length - 1].stateMachine, "Facial response", Tree("Face tree", "Smoothed", zero, full), writeDefaults);
+                FxGraph.StartState(layers[layers.Length - 1].stateMachine, "Facial response", Tree("Face tree", "Smoothed", zero, full), writeDefaults);
             }
             var before = EditorJsonUtility.ToJson(controller);
             var expected = NativeBodyWeight();

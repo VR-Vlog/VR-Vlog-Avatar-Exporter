@@ -30,23 +30,22 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var descriptorType = VrcAvatar.ComponentType("VRCAvatarDescriptor");
             if (descriptorType == null || VrcAvatar.ComponentType("VRCAnimatorTrackingControl") == null) Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__AdditionalParameterConstants_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__AdditionalParameterConstants_");
             fx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             additional = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Gesture.controller");
             fx.AddParameter(Axis, AnimatorControllerParameterType.Float); additional.AddParameter(Axis, AnimatorControllerParameterType.Float);
             fx.AddParameter("IsLocal", AnimatorControllerParameterType.Bool); additional.AddParameter("IsLocal", AnimatorControllerParameterType.Bool);
             fx.AddParameter("Menu", AnimatorControllerParameterType.Int);
-            neutral = State(fx.layers[0].stateMachine, "Neutral", Clip("Face75", 75));
+            neutral = FxGraph.State(fx.layers[0].stateMachine, "Neutral", Clip("Face75", 75));
             fx.layers[0].stateMachine.defaultState = neutral;
-            var selected = State(fx.layers[0].stateMachine, "Selected", Clip("Face100", 100));
-            Transition(neutral, selected).AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
+            var selected = FxGraph.State(fx.layers[0].stateMachine, "Selected", Clip("Face100", 100));
+            FxGraph.Transition(neutral, selected).AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
             fx.AddLayer("Tracking only"); var layers = fx.layers; layers[1].defaultWeight = 1; fx.layers = layers;
-            tracking = State(layers[1].stateMachine, "Tracking", Clip("Empty")); layers[1].stateMachine.defaultState = tracking;
-            var off = State(layers[1].stateMachine, "Animation", Clip("Empty2"));
-            Transition(tracking, off).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
+            tracking = FxGraph.State(layers[1].stateMachine, "Tracking", Clip("Empty")); layers[1].stateMachine.defaultState = tracking;
+            var off = FxGraph.State(layers[1].stateMachine, "Animation", Clip("Empty2"));
+            FxGraph.Transition(tracking, off).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
             Tracking(tracking, "Tracking"); Tracking(off, "Animation");
-            reset = State(additional.layers[0].stateMachine, "Reset", Clip("Additional empty"));
+            reset = FxGraph.State(additional.layers[0].stateMachine, "Reset", Clip("Additional empty"));
             additional.layers[0].stateMachine.defaultState = reset;
             driver = ParameterDriverExpressionTests.Driver(reset, ParameterDriverExpressionTests.Op("Set", Axis));
             source = new VrChatExpressionMenu.Source { Controller = fx, NeutralInputInventoryComplete = true };
@@ -75,16 +74,6 @@ namespace VRVlog.LilToonExporter.Tests
             var clip = new AnimationClip { name = name };
             if (value.HasValue) AnimationUtility.SetEditorCurve(clip, OpenBinding, AnimationCurve.Constant(0, 1, value.Value));
             AssetDatabase.AddObjectToAsset(clip, fx); return clip;
-        }
-
-        private static AnimatorState State(AnimatorStateMachine machine, string name, Motion motion)
-        {
-            var state = machine.AddState(name); state.motion = motion; state.writeDefaultValues = false; return state;
-        }
-
-        private static AnimatorStateTransition Transition(AnimatorState from, AnimatorState to)
-        {
-            var transition = from.AddTransition(to); transition.hasExitTime = false; transition.duration = 0; return transition;
         }
 
         private static void Tracking(AnimatorState state, string mode)
@@ -143,8 +132,8 @@ namespace VRVlog.LilToonExporter.Tests
             var motion = Clip("Unreachable parameter curve");
             AnimationUtility.SetEditorCurve(motion, EditorCurveBinding.FloatCurve("", typeof(Animator), Axis),
                 AnimationCurve.Constant(0, 1, .75f));
-            var dormant = State(machine, "Unreachable writer", motion);
-            Transition(machine.defaultState, dormant).AddCondition(AnimatorConditionMode.If, 0, gate);
+            var dormant = FxGraph.State(machine, "Unreachable writer", motion);
+            FxGraph.Transition(machine.defaultState, dormant).AddCondition(AnimatorConditionMode.If, 0, gate);
             source.Defaults[gate] = 0; source.Defaults[Axis] = initial;
         }
 
@@ -260,7 +249,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/ImplicitDefaults.controller");
                 controller.AddParameter(Axis, AnimatorControllerParameterType.Float);
-                var empty = State(controller.layers[0].stateMachine, "Implicit reset", Clip("Other empty"));
+                var empty = FxGraph.State(controller.layers[0].stateMachine, "Implicit reset", Clip("Other empty"));
                 controller.layers[0].stateMachine.defaultState = empty; source.OtherControllers.Add(controller); SetControllers();
             }
             DormantParameterCurve(controller, true, initial);
@@ -371,9 +360,9 @@ namespace VRVlog.LilToonExporter.Tests
             else if (kind == "third writer" || kind == "circular gate")
             {
                 var third = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Third.controller"); third.AddParameter(Axis, AnimatorControllerParameterType.Float);
-                var start = State(third.layers[0].stateMachine, "Initial", Clip("Third empty")); third.layers[0].stateMachine.defaultState = start;
-                var writer = kind == "third writer" ? start : State(third.layers[0].stateMachine, "Possible", Clip("Third possible"));
-                if (kind == "circular gate") Transition(start, writer).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
+                var start = FxGraph.State(third.layers[0].stateMachine, "Initial", Clip("Third empty")); third.layers[0].stateMachine.defaultState = start;
+                var writer = kind == "third writer" ? start : FxGraph.State(third.layers[0].stateMachine, "Possible", Clip("Third possible"));
+                if (kind == "circular gate") FxGraph.Transition(start, writer).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
                 ParameterDriverExpressionTests.Driver(writer, ParameterDriverExpressionTests.Op("Set", Axis, 1)); source.OtherControllers.Add(third);
             }
             else if (kind == "Add" || kind == "Copy" || kind == "Random")
@@ -464,8 +453,8 @@ namespace VRVlog.LilToonExporter.Tests
             var boolean = kind == "Bool Add";
             var type = boolean ? AnimatorControllerParameterType.Bool : AnimatorControllerParameterType.Float;
             fx.AddParameter("Needed", type); additional.AddParameter("Needed", type);
-            var possible = State(fx.layers[0].stateMachine, "Needed branch", Clip("Needed face", 25));
-            Transition(neutral, possible).AddCondition(boolean ? AnimatorConditionMode.If : AnimatorConditionMode.Greater, .5f, "Needed");
+            var possible = FxGraph.State(fx.layers[0].stateMachine, "Needed branch", Clip("Needed face", 25));
+            FxGraph.Transition(neutral, possible).AddCondition(boolean ? AnimatorConditionMode.If : AnimatorConditionMode.Greater, .5f, "Needed");
             // Preserve the valid first callback; malformed needed operations
             // in a later callback must still prevent sampling.
             driver = ParameterDriverExpressionTests.Driver(reset, ParameterDriverExpressionTests.Op("Set", Axis),
@@ -480,13 +469,13 @@ namespace VRVlog.LilToonExporter.Tests
         public void OnlyAnIndependentUnchangedInputCanPruneAConflictingProducer()
         {
             fx.AddParameter("FaceMode", AnimatorControllerParameterType.Int); additional.AddParameter("FaceMode", AnimatorControllerParameterType.Int);
-            var other = State(additional.layers[0].stateMachine, "Different option", Clip("Option empty"));
-            Transition(reset, other).AddCondition(AnimatorConditionMode.Equals, 1, "FaceMode");
+            var other = FxGraph.State(additional.layers[0].stateMachine, "Different option", Clip("Option empty"));
+            FxGraph.Transition(reset, other).AddCondition(AnimatorConditionMode.Equals, 1, "FaceMode");
             ParameterDriverExpressionTests.Driver(other, ParameterDriverExpressionTests.Op("Set", Axis, 1));
             // Appearance ownership still covers authored menu alternatives.
             source.MenuInputs.Add("FaceMode");
-            var alternate = State(fx.layers[0].stateMachine, "Alternative appearance", Clip("Alternative", 25));
-            Transition(neutral, alternate).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
+            var alternate = FxGraph.State(fx.layers[0].stateMachine, "Alternative appearance", Clip("Alternative", 25));
+            FxGraph.Transition(neutral, alternate).AddCondition(AnimatorConditionMode.Greater, .5f, Axis);
             Assert.That(ExpressionDependencies.NormalInputLayers(fx, source, Context(), null)[0].Clips.Contains((AnimationClip)alternate.motion), Is.True);
         }
 
@@ -513,10 +502,10 @@ namespace VRVlog.LilToonExporter.Tests
             fx.AddParameter(gate, AnimatorControllerParameterType.Bool);
             var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/DormantGesture.controller");
             controller.AddParameter(gate, AnimatorControllerParameterType.Bool); controller.AddParameter(Axis, AnimatorControllerParameterType.Float);
-            var idle = State(controller.layers[0].stateMachine, "Normal", Clip("Normal additional empty"));
+            var idle = FxGraph.State(controller.layers[0].stateMachine, "Normal", Clip("Normal additional empty"));
             controller.layers[0].stateMachine.defaultState = idle;
-            var writer = State(controller.layers[0].stateMachine, "Only reset", Clip("Dormant additional empty"));
-            Transition(idle, writer).AddCondition(AnimatorConditionMode.If, 0, gate);
+            var writer = FxGraph.State(controller.layers[0].stateMachine, "Only reset", Clip("Dormant additional empty"));
+            FxGraph.Transition(idle, writer).AddCondition(AnimatorConditionMode.If, 0, gate);
             ParameterDriverExpressionTests.Driver(writer, ParameterDriverExpressionTests.Op("Set", Axis, value));
             // Construct a fresh controller rather than deleting its existing
             // SDK subassets. There is genuinely no startup reset callback.
@@ -566,7 +555,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var third = AnimatorController.CreateAnimatorControllerAtPath(folder + "/GateProducer.controller");
                 third.AddParameter("ResetGate", AnimatorControllerParameterType.Bool);
-                var writer = State(third.layers[0].stateMachine, "Gate producer", Clip("Gate producer empty"));
+                var writer = FxGraph.State(third.layers[0].stateMachine, "Gate producer", Clip("Gate producer empty"));
                 third.layers[0].stateMachine.defaultState = writer;
                 ParameterDriverExpressionTests.Driver(writer, ParameterDriverExpressionTests.Op("Set", "ResetGate", 1));
                 source.OtherControllers.Add(third); SetControllers();
@@ -661,7 +650,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 var third = AnimatorController.CreateAnimatorControllerAtPath(folder + "/LocalProducer.controller");
                 third.AddParameter("IsLocal", AnimatorControllerParameterType.Bool);
-                var state = State(third.layers[0].stateMachine, "Write local", Clip("Local empty"));
+                var state = FxGraph.State(third.layers[0].stateMachine, "Write local", Clip("Local empty"));
                 third.layers[0].stateMachine.defaultState = state;
                 ParameterDriverExpressionTests.Driver(state, ParameterDriverExpressionTests.Op("Set", "IsLocal", 1));
                 source.OtherControllers.Add(third); SetControllers();

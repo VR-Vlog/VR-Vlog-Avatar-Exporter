@@ -23,9 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var folder = "__VRVlogMenuTests_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            directory = "Assets/" + folder;
+            directory = TempAssetFolder.Create("__VRVlogMenuTests_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
             avatar = new GameObject("Avatar", typeof(Animator));
             var face = new GameObject("Face", typeof(SkinnedMeshRenderer));

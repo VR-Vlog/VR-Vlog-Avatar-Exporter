@@ -61,9 +61,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (descriptorType == null || mergeType == null)
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF for inactive FX authoring.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__InstalledInactiveMa_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__InstalledInactiveMa_");
             try
             {
                 fixture.Mesh.ClearBlendShapes();
@@ -116,8 +114,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF to run their real processing pipeline.");
 
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__InstalledNdmfNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__InstalledNdmfNeutral_");
             var vrm = ScriptableObject.CreateInstance<VRM10Object>();
             var expression = ScriptableObject.CreateInstance<VRM10Expression>();
             Vrm10Instance imported = null;
@@ -217,8 +214,7 @@ namespace VRVlog.LilToonExporter.Tests
             if (descriptorType == null || replaceType == null)
                 Assert.Ignore("Install the real VRChat SDK, Modular Avatar and NDMF to run their real processing pipeline.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__InstalledNdmfReplacement_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__InstalledNdmfReplacement_");
             var replacementMesh = Object.Instantiate(fixture.Mesh);
             Vrm10Instance imported = null;
             try

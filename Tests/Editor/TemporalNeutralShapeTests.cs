@@ -23,15 +23,11 @@ namespace VRVlog.LilToonExporter.Tests
         private SkinnedMeshRenderer skin;
         private AnimatorController controller;
 
-        private static EditorCurveBinding Binding(string shape, string path = "Body") =>
-            EditorCurveBinding.FloatCurve(path, typeof(SkinnedMeshRenderer), "blendShape." + shape);
-
         [SetUp]
         public void SetUp()
         {
             var descriptor = VrcAvatar.DescriptorType; if (descriptor == null) Assert.Ignore("Install the real VRChat SDK.");
-            var name = "__TemporalNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__TemporalNeutral_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             avatar = new GameObject("Temporal neutral reference", typeof(Animator));
             var body = new GameObject("Body", typeof(SkinnedMeshRenderer)); body.transform.SetParent(avatar.transform, false);
@@ -50,20 +46,10 @@ namespace VRVlog.LilToonExporter.Tests
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        private AnimationClip Clip(string name, params (string Shape, AnimationCurve Curve)[] curves)
-        {
-            var clip = new AnimationClip { name = name };
-            foreach (var item in curves) AnimationUtility.SetEditorCurve(clip, Binding(item.Shape), item.Curve);
-            AssetDatabase.AddObjectToAsset(clip, controller); return clip;
-        }
-
         private AnimatorState State(int layer, AnimationClip clip, bool writeDefaults = false)
         {
             var machine = controller.layers[layer].stateMachine;
-            var state = machine.AddState("State " + machine.states.Length); state.motion = clip; state.writeDefaultValues = writeDefaults;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
+            return FxGraph.StartState(machine, "State " + machine.states.Length, clip, writeDefaults);
         }
 
         private int Layer(string name, float weight = 1, AnimatorLayerBlendingMode mode = AnimatorLayerBlendingMode.Override)
@@ -86,12 +72,12 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("Weighted", true)]
         public void TemporalRestKeepsPreparedWeightAndReconstructsTheIndependentConstant(string kind, bool loop)
         {
-            var clip = Clip("Authored idle", ("Temporal", Varying(kind)), ("Constant", AnimationCurve.Constant(0, 12, 63)));
+            var clip = FxGraph.CurveClip(controller, "Authored idle", ("Temporal", Varying(kind)), ("Constant", AnimationCurve.Constant(0, 12, 63)));
             var settings = AnimationUtility.GetAnimationClipSettings(clip); settings.loopTime = loop;
             AnimationUtility.SetAnimationClipSettings(clip, settings); State(0, clip);
             var meshBefore = EditorJsonUtility.ToJson(mesh); var clipBefore = EditorJsonUtility.ToJson(clip);
             var controllerBefore = EditorJsonUtility.ToJson(controller); var warnings = new List<string>();
-            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings, requiredMorphs: new[] { Binding("Temporal") });
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings, requiredMorphs: new[] { FxGraph.Binding("Temporal") });
             Assert.That(values.Select(value => value.Shape), Is.EquivalentTo(new[] { "Constant" }));
             Assert.That(values.Single().Weight, Is.EqualTo(NativeWeight("Constant")).Within(.001));
             Assert.That(values.Single().Weight, Is.EqualTo(63).Within(.001));
@@ -115,7 +101,7 @@ namespace VRVlog.LilToonExporter.Tests
                 skin.SetBlendShapeWeight(index, 17);
                 curves.Add((name, index < 17 ? Varying("Delayed") : AnimationCurve.Constant(0, 12, 63)));
             }
-            var clip = Clip("Complete authored idle", curves.ToArray()); State(0, clip);
+            var clip = FxGraph.CurveClip(controller, "Complete authored idle", curves.ToArray()); State(0, clip);
             var before = EditorJsonUtility.ToJson(clip); var warnings = new List<string>();
             var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Count, Is.EqualTo(115));
@@ -130,8 +116,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void InactiveAlternateTemporalClipDoesNotChangeTheActiveConstantCapture()
         {
-            State(0, Clip("Active flat rest", ("Temporal", AnimationCurve.Constant(0, 1, 51))));
-            State(0, Clip("Unreachable animated alternative", ("Temporal", Varying("Delayed"))));
+            State(0, FxGraph.CurveClip(controller, "Active flat rest", ("Temporal", AnimationCurve.Constant(0, 1, 51))));
+            State(0, FxGraph.CurveClip(controller, "Unreachable animated alternative", ("Temporal", Varying("Delayed"))));
             var warnings = new List<string>(); var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Single(value => value.Shape == "Temporal").Weight, Is.EqualTo(51).Within(.001));
             Assert.That(warnings.Any(value => value.Contains("時間で変わる")), Is.False);
@@ -144,13 +130,12 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void TemporalCaptureKeepsIndependentNativeOverrideAdditiveAndWriteDefaults(bool additive, bool writeDefaults)
         {
-            State(0, Clip("Lower native rest", ("Temporal", Varying("Delayed")), ("Constant", AnimationCurve.Constant(0, 12, 20)),
-                ("Implicit", AnimationCurve.Constant(0, 12, 27))));
+            State(0, FxGraph.CurveClip(controller, "Lower native rest", ("Temporal", Varying("Delayed")), ("Constant", AnimationCurve.Constant(0, 12, 20)), ("Implicit", AnimationCurve.Constant(0, 12, 27))));
             var upper = Layer("Independent native contribution", .5f, additive ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override);
-            var contribution = Clip("Upper static contribution", ("Constant", AnimationCurve.Constant(0, 12, 60)));
+            var contribution = FxGraph.CurveClip(controller, "Upper static contribution", ("Constant", AnimationCurve.Constant(0, 12, 60)));
             if (additive)
             {
-                var reference = Clip("Explicit additive zero reference", ("Constant", AnimationCurve.Constant(0, 12, 0)));
+                var reference = FxGraph.CurveClip(controller, "Explicit additive zero reference", ("Constant", AnimationCurve.Constant(0, 12, 0)));
                 AnimationUtility.SetAdditiveReferencePose(contribution, reference, 0);
             }
             State(upper, contribution, writeDefaults);
@@ -171,10 +156,10 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("VariableUpper")]
         public void OnlyAFullUnmaskedExplicitConstantOverrideDominatesTheLowerTemporalCurve(string mode)
         {
-            State(0, Clip("Lower changing rest", ("Temporal", Varying("Delayed")), ("Constant", AnimationCurve.Constant(0, 12, 63))));
+            State(0, FxGraph.CurveClip(controller, "Lower changing rest", ("Temporal", Varying("Delayed")), ("Constant", AnimationCurve.Constant(0, 12, 63))));
             var upper = Layer("Upper writer", mode == "Fractional" ? .5f : mode == "NearFull" ? .999995f : 1,
                 mode == "Additive" ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override);
-            var clip = Clip("Upper rest", ("Temporal", mode == "VariableUpper" ? Varying("Nonloop") : AnimationCurve.Constant(0, 12, 0)));
+            var clip = FxGraph.CurveClip(controller, "Upper rest", ("Temporal", mode == "VariableUpper" ? Varying("Nonloop") : AnimationCurve.Constant(0, 12, 0)));
             State(upper, clip);
             if (mode == "Masked")
             {
@@ -204,22 +189,22 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase("InvalidRandomDriver")]
         public void UnresolvedTemporalGraphKeepsPreparedRestButStillRejectsUnsupportedDrivers(string kind)
         {
-            var clip = Clip("Temporal-only idle", ("Temporal", Varying("Delayed"))); var state = State(0, clip);
+            var clip = FxGraph.CurveClip(controller, "Temporal-only idle", ("Temporal", Varying("Delayed"))); var state = State(0, clip);
             if (kind == "TimedState" || kind == "TimedUpper")
             {
                 var layer = 0;
                 if (kind == "TimedUpper")
                 {
                     layer = Layer("Initially dominating upper rest");
-                    state = State(layer, Clip("Upper flat rest", ("Temporal", AnimationCurve.Constant(0, 12, 0))));
+                    state = State(layer, FxGraph.CurveClip(controller, "Upper flat rest", ("Temporal", AnimationCurve.Constant(0, 12, 0))));
                 }
-                var alternate = State(layer, Clip("Later state", ("Temporal", AnimationCurve.Constant(0, 1, 80))));
+                var alternate = State(layer, FxGraph.CurveClip(controller, "Later state", ("Temporal", AnimationCurve.Constant(0, 1, 80))));
                 var transition = state.AddTransition(alternate); transition.hasExitTime = true; transition.exitTime = 5; transition.duration = 0;
             }
             else
             {
                 controller.AddParameter("Changing input", AnimatorControllerParameterType.Float);
-                var alternate = State(0, Clip("Controlled state", ("Temporal", AnimationCurve.Constant(0, 1, 80))));
+                var alternate = State(0, FxGraph.CurveClip(controller, "Controlled state", ("Temporal", AnimationCurve.Constant(0, 1, 80))));
                 var transition = state.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
                 transition.AddCondition(AnimatorConditionMode.Greater, 1, "Changing input");
                 if (kind == "AnimatorCurve") AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Changing input"), Varying("Delayed"));
@@ -259,10 +244,10 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DirectFixedExpressionSamplingStillRejectsItsActualTemporalCurve()
         {
-            State(0, Clip("Temporal direct route", ("Temporal", Varying("Delayed"))));
+            State(0, FxGraph.CurveClip(controller, "Temporal direct route", ("Temporal", Varying("Delayed"))));
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
-            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, new HashSet<EditorCurveBinding> { Binding("Temporal") }, null, metadata,
+            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, new HashSet<EditorCurveBinding> { FxGraph.Binding("Temporal") }, null, metadata,
                 fixedContext: context, preserveCommittedMorphs: true);
             Assert.Catch<NeutralShapeSamplingException>(() => VrChatExpressionSampler.SampleNeutral(avatar, controller, dependencies, metadata, null, context));
         }
@@ -301,15 +286,15 @@ namespace VRVlog.LilToonExporter.Tests
             var idleClip = new AnimationClip { name = "Authored moving idle" };
             foreach (var path in new[] { "Front", "Back" })
             {
-                AnimationUtility.SetEditorCurve(idleClip, Binding("Blink", path), Varying("Delayed"));
-                AnimationUtility.SetEditorCurve(idleClip, Binding("Static detail", path), AnimationCurve.Constant(0, 12, 50));
+                AnimationUtility.SetEditorCurve(idleClip, FxGraph.Binding("Blink", path), Varying("Delayed"));
+                AnimationUtility.SetEditorCurve(idleClip, FxGraph.Binding("Static detail", path), AnimationCurve.Constant(0, 12, 50));
             }
             var settings = AnimationUtility.GetAnimationClipSettings(idleClip); settings.loopTime = true;
             AnimationUtility.SetAnimationClipSettings(idleClip, settings); AssetDatabase.AddObjectToAsset(idleClip, fx);
             var machine = fx.layers[0].stateMachine;
             var idle = machine.AddState("Idle authored expression"); idle.writeDefaultValues = false; idle.motion = idleClip; machine.defaultState = idle;
             var pose = new AnimationClip { name = "Selected static face" };
-            foreach (var path in new[] { "Front", "Back" }) AnimationUtility.SetEditorCurve(pose, Binding("Blink", path), AnimationCurve.Constant(0, 1, 80));
+            foreach (var path in new[] { "Front", "Back" }) AnimationUtility.SetEditorCurve(pose, FxGraph.Binding("Blink", path), AnimationCurve.Constant(0, 1, 80));
             AssetDatabase.AddObjectToAsset(pose, fx); var selected = machine.AddState("Selected face"); selected.writeDefaultValues = false; selected.motion = pose;
             var intoSelected = idle.AddTransition(selected); intoSelected.hasExitTime = false; intoSelected.duration = 0;
             intoSelected.AddCondition(AnimatorConditionMode.Equals, 2, "GestureRight");
@@ -319,7 +304,7 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 fx.AddLayer("Permanent explicit open eyes"); var layers = fx.layers; layers[1].defaultWeight = 1; fx.layers = layers;
                 var open = new AnimationClip { name = "Full Override open rest" };
-                foreach (var path in new[] { "Front", "Back" }) AnimationUtility.SetEditorCurve(open, Binding("Blink", path), AnimationCurve.Constant(0, 12, 0));
+                foreach (var path in new[] { "Front", "Back" }) AnimationUtility.SetEditorCurve(open, FxGraph.Binding("Blink", path), AnimationCurve.Constant(0, 12, 0));
                 AssetDatabase.AddObjectToAsset(open, fx); var upper = layers[1].stateMachine;
                 var state = upper.AddState("Open"); state.motion = open; state.writeDefaultValues = false; upper.defaultState = state;
             }

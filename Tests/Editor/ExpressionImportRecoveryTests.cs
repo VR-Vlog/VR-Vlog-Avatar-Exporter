@@ -171,24 +171,19 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void FaceEmoRegisteredClipUsesTheSameRecoveryForPoseAndAnimation()
         {
-            var folderName = "__FaceEmoRecovery_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
-            try
-            {
-                Curve("Blink", AnimationCurve.Linear(0, 0, 1, 100));
-                Curve(Missing, AnimationCurve.Linear(0, 0, 1, 100));
-                AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
-                var list = new { Modes = new[] { new { DisplayName = "Wink", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Face.anim") } } } } } };
-                var menu = new VrChatExpressionMenu.Source();
-                FaceEmoPreparedFxIntegrationTests.ReadListed(avatar, list, menu);
-                clone = Object.Instantiate(avatar);
-                new PreparedExpressionBindings(clone, menu).Capture(menu);
-                var entry = menu.Entries.Single();
-                Assert.That(entry.Error, Is.Null);
-                Assert.That(entry.Values.Single().Shape, Is.EqualTo("Blink"));
-                Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
-            }
-            finally { AssetDatabase.DeleteAsset(folder); }
+            using var temp = new TempAssetFolder("__FaceEmoRecovery_"); var folder = temp.Path;
+            Curve("Blink", AnimationCurve.Linear(0, 0, 1, 100));
+            Curve(Missing, AnimationCurve.Linear(0, 0, 1, 100));
+            AssetDatabase.CreateAsset(clip, folder + "/Face.anim");
+            var list = new { Modes = new[] { new { DisplayName = "Wink", Branches = new[] { new { BaseAnimation = new { GUID = AssetDatabase.AssetPathToGUID(folder + "/Face.anim") } } } } } };
+            var menu = new VrChatExpressionMenu.Source();
+            FaceEmoPreparedFxIntegrationTests.ReadListed(avatar, list, menu);
+            clone = Object.Instantiate(avatar);
+            new PreparedExpressionBindings(clone, menu).Capture(menu);
+            var entry = menu.Entries.Single();
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.Values.Single().Shape, Is.EqualTo("Blink"));
+            Assert.That(entry.Animation.Single().Shape, Is.EqualTo("Blink"));
         }
     }
 }

@@ -216,8 +216,7 @@ namespace VRVlog.LilToonExporter.Tests
             internal Fixture(bool fractionalCommon, bool writeDefaults)
             {
                 var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-                var name = "__FaceEmoPreparedFx_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+                folder = TempAssetFolder.Create("__FaceEmoPreparedFx_");
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 Avatar = new GameObject("Avatar", typeof(Animator));
                 var child = new GameObject("Face", typeof(SkinnedMeshRenderer)); child.transform.SetParent(Avatar.transform, false);

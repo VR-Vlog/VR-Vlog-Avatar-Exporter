@@ -193,9 +193,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void OnlyParametersOfLayersThatSwitchObjectsArePlayed()
         {
-            var folder = "__VRVlogObjectToggleLayers_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            var directory = "Assets/" + folder;
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleLayers_");
             try
             {
                 var fx = AnimatorController.CreateAnimatorControllerAtPath(directory + "/FX.controller");
@@ -259,9 +257,7 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void SyncedLayersAndOverridesPlayEveryParameterWhenAnyOfTheirClipsSwitchesObjects()
         {
-            var folder = "__VRVlogObjectToggleSynced_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folder);
-            var directory = "Assets/" + folder;
+            var directory = TempAssetFolder.Create("__VRVlogObjectToggleSynced_");
             try
             {
                 var serial = 0;
@@ -405,9 +401,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Avatar = new AttachmentConnectionTests.Fixture();
                 try
                 {
-                    var folder = "__VRVlogObjectToggleTests_" + Guid.NewGuid().ToString("N");
-                    AssetDatabase.CreateFolder("Assets", folder);
-                    directory = "Assets/" + folder;
+                    directory = TempAssetFolder.Create("__VRVlogObjectToggleTests_");
                     var mesh = new Mesh { name = "Toggle part" };
                     mesh.vertices = new[] { new Vector3(-.1f, 1.6f, .1f), new Vector3(.1f, 1.6f, .1f), new Vector3(0, 1.8f, .1f) };
                     mesh.triangles = new[] { 0, 1, 2 };

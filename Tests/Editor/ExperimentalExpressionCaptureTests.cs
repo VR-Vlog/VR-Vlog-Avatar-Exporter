@@ -1289,8 +1289,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExperimentalCapture_");
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
@@ -1376,8 +1375,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExperimentalCapture_");
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
@@ -1607,8 +1605,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
             foreach (var skin in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterial.shader = Shader.Find("lilToon");
-            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExperimentalCapture_");
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             var type = typeof(ExperimentalExpressionCaptureWindow);
             var window = ScriptableObject.CreateInstance<ExperimentalExpressionCaptureWindow>();
@@ -2243,8 +2240,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__ExperimentalCapture_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExperimentalCapture_");
             try
             {
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
@@ -2455,8 +2451,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void RecommendationsFollowActualMergeAnimatorReferencesInsteadOfScanningByName()
         {
             using var fixture = new AttachmentConnectionTests.Fixture();
-            var folderName = "__ExplicitRecommendations_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName); var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__ExplicitRecommendations_");
             try
             {
                 var controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Faces.controller");

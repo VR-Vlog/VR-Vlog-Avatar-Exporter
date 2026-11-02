@@ -20,15 +20,11 @@ namespace VRVlog.LilToonExporter.Tests
         AnimationClip randomClip;
         StateMachineBehaviour randomDriver;
 
-        static EditorCurveBinding Binding(string shape) =>
-            EditorCurveBinding.FloatCurve("Body", typeof(SkinnedMeshRenderer), "blendShape." + shape);
-
         [SetUp]
         public void SetUp()
         {
             var descriptorType = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor", "Install the real VRChat SDK.");
-            var name = "__RandomNeutral_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__RandomNeutral_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Choice", AnimatorControllerParameterType.Bool);
             avatar = new GameObject("Prepared appearance", typeof(Animator));
@@ -41,16 +37,15 @@ namespace VRVlog.LilToonExporter.Tests
             skin.sharedMesh = mesh; skin.SetBlendShapeWeight(0, 17); skin.SetBlendShapeWeight(1, 35); skin.SetBlendShapeWeight(2, 27);
             var descriptor = avatar.AddComponent(descriptorType);
             VrcAvatar.SetFx(descriptor, controller);
-            var rest = Clip("Authored fixed rest", ("Rest", AnimationCurve.Constant(0, 1, 63)),
-                ("Transient", AnimationCurve.Constant(0, 1, 0)));
+            var rest = FxGraph.CurveClip(controller, "Authored fixed rest", ("Rest", AnimationCurve.Constant(0, 1, 63)), ("Transient", AnimationCurve.Constant(0, 1, 0)));
             State(0, rest);
             controller.AddLayer("Self-contained random idle");
             var definitions = controller.layers; definitions[1].defaultWeight = 1; controller.layers = definitions;
-            randomClip = Clip("Live idle phase", ("Transient", AnimationCurve.Linear(0, 1, 1, 80)));
+            randomClip = FxGraph.CurveClip(controller, "Live idle phase", ("Transient", AnimationCurve.Linear(0, 1, 1, 80)));
             randomState = State(1, randomClip);
             randomDriver = ParameterDriverExpressionTests.Driver(randomState, ParameterDriverExpressionTests.Op("Random", "Choice"));
             RandomField("valueMin", 0); RandomField("valueMax", 1); RandomField("chance", .5f);
-            var other = State(1, Clip("Other idle phase", ("Transient", AnimationCurve.Linear(0, 80, 1, 1))));
+            var other = State(1, FxGraph.CurveClip(controller, "Other idle phase", ("Transient", AnimationCurve.Linear(0, 80, 1, 1))));
             var enter = randomState.AddTransition(other); enter.hasExitTime = true; enter.exitTime = 1; enter.duration = 0;
             enter.AddCondition(AnimatorConditionMode.If, 0, "Choice");
             var repeat = other.AddTransition(randomState); repeat.hasExitTime = true; repeat.exitTime = 1; repeat.duration = 0;
@@ -62,20 +57,10 @@ namespace VRVlog.LilToonExporter.Tests
             Object.DestroyImmediate(avatar); Object.DestroyImmediate(mesh);
             if (folder != null) AssetDatabase.DeleteAsset(folder);
         }
-
-        AnimationClip Clip(string name, params (string Shape, AnimationCurve Curve)[] curves)
-        {
-            var clip = new AnimationClip { name = name };
-            foreach (var curve in curves) AnimationUtility.SetEditorCurve(clip, Binding(curve.Shape), curve.Curve);
-            AssetDatabase.AddObjectToAsset(clip, controller); return clip;
-        }
-
         AnimatorState State(int layer, AnimationClip clip)
         {
             var machine = controller.layers[layer].stateMachine;
-            var state = machine.AddState("State " + machine.states.Length); state.motion = clip; state.writeDefaultValues = false;
-            if (machine.states.Length == 1) machine.defaultState = state;
-            return state;
+            return FxGraph.StartState(machine, "State " + machine.states.Length, clip);
         }
 
         void RandomField(string name, float value)
@@ -111,7 +96,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var before = EditorJsonUtility.ToJson(controller); var clipBefore = EditorJsonUtility.ToJson(randomClip);
             var warnings = new List<string>();
-            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings, requiredMorphs: new[] { Binding("Transient") });
+            var values = NeutralShapeSampler.Sample(avatar, warnings: warnings, requiredMorphs: new[] { FxGraph.Binding("Transient") });
             Assert.That(values.Select(value => value.Shape), Is.EquivalentTo(new[] { "Rest" }));
             Assert.That(values.Single().Weight, Is.EqualTo(63).Within(.001));
             NeutralShapeSnapshot.Apply(avatar, values);
@@ -195,9 +180,9 @@ namespace VRVlog.LilToonExporter.Tests
             layers[2].defaultWeight = kind == "Fractional" ? .5f : 1;
             layers[2].blendingMode = kind == "Additive" ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override;
             controller.layers = layers;
-            var clip = Clip("Upper rest", ("Transient", AnimationCurve.Constant(0, 1, 41)));
+            var clip = FxGraph.CurveClip(controller, "Upper rest", ("Transient", AnimationCurve.Constant(0, 1, 41)));
             if (kind == "Additive")
-                AnimationUtility.SetAdditiveReferencePose(clip, Clip("Zero reference", ("Transient", AnimationCurve.Constant(0, 1, 0))), 0);
+                AnimationUtility.SetAdditiveReferencePose(clip, FxGraph.CurveClip(controller, "Zero reference", ("Transient", AnimationCurve.Constant(0, 1, 0))), 0);
             State(2, clip);
             var values = NeutralShapeSampler.Sample(avatar);
             Assert.That(values.Any(value => value.Shape == "Transient"), Is.EqualTo(kind == "Full"));
@@ -212,8 +197,8 @@ namespace VRVlog.LilToonExporter.Tests
             controller.AddParameter("Upper selection", AnimatorControllerParameterType.Bool);
             controller.AddLayer("Upper selection graph");
             var layers = controller.layers; layers[2].defaultWeight = 1; controller.layers = layers;
-            var state = State(2, Clip("Initial upper constant", ("Transient", AnimationCurve.Constant(0, 1, 49))));
-            var alternate = State(2, Clip("Alternate upper constant", ("Transient", AnimationCurve.Constant(0, 1, 70))));
+            var state = State(2, FxGraph.CurveClip(controller, "Initial upper constant", ("Transient", AnimationCurve.Constant(0, 1, 49))));
+            var alternate = State(2, FxGraph.CurveClip(controller, "Alternate upper constant", ("Transient", AnimationCurve.Constant(0, 1, 70))));
             var transition = state.AddTransition(alternate); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.If, 0, "Upper selection");
             var warnings = new List<string>();
@@ -229,7 +214,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AnUnreachableRandomBranchDoesNotReplaceTheAuthoredConstantRest()
         {
             controller.AddParameter("Enable idle", AnimatorControllerParameterType.Bool);
-            var idle = State(1, Clip("Selected constant rest", ("Transient", AnimationCurve.Constant(0, 1, 49))));
+            var idle = State(1, FxGraph.CurveClip(controller, "Selected constant rest", ("Transient", AnimationCurve.Constant(0, 1, 49))));
             controller.layers[1].stateMachine.defaultState = idle;
             var transition = idle.AddTransition(randomState); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.If, 0, "Enable idle");
@@ -246,7 +231,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             var context = FixedExpressionContext.Create(controller, metadata.Defaults, metadata);
-            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, new HashSet<EditorCurveBinding> { Binding("Transient") },
+            var dependencies = ExpressionDependencies.AnalyzeNeutral(controller, new HashSet<EditorCurveBinding> { FxGraph.Binding("Transient") },
                 null, metadata, fixedContext: context, preserveCommittedMorphs: true);
             Assert.Catch<InvalidOperationException>(() => VrChatExpressionSampler.SampleNeutral(avatar, controller,
                 dependencies, metadata, null, context));
@@ -261,7 +246,7 @@ namespace VRVlog.LilToonExporter.Tests
             transition.AddCondition(AnimatorConditionMode.If, 0, "Choice");
             controller.AddLayer("Independent fixed component");
             var layers = controller.layers; layers[2].defaultWeight = 1; controller.layers = layers;
-            State(2, Clip("Independent authored fixed value", ("Unwritten", AnimationCurve.Constant(0, 1, 88))));
+            State(2, FxGraph.CurveClip(controller, "Independent authored fixed value", ("Unwritten", AnimationCurve.Constant(0, 1, 88))));
             var warnings = new List<string>(); var values = NeutralShapeSampler.Sample(avatar, warnings: warnings);
             Assert.That(values.Select(value => value.Shape), Is.EqualTo(new[] { "Unwritten" }));
             Assert.That(values.Single().Weight, Is.EqualTo(88).Within(.001));
@@ -361,7 +346,7 @@ namespace VRVlog.LilToonExporter.Tests
                 Assert.That(randomState.behaviours.Contains(unknown), Is.True,
                     "The unknown behavior must be attached before testing the fallback guard.");
             }
-            else AnimationUtility.SetEditorCurve(randomClip, Binding("Transient"), new AnimationCurve(new Keyframe(0, float.NaN)));
+            else AnimationUtility.SetEditorCurve(randomClip, FxGraph.Binding("Transient"), new AnimationCurve(new Keyframe(0, float.NaN)));
             var error = AssertFatal();
             if (kind == "unknown behaviour") Assert.That(error.Message, Does.Contain(nameof(UnknownStateCallbackProbe)));
         }

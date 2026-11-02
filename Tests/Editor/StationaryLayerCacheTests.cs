@@ -23,8 +23,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__StationaryLayerCache_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__StationaryLayerCache_");
             fx = Controller("FX", 1, out hair);
             other = Controller("Other", 0, out _);
             overrides = new AnimatorOverrideController(fx) { name = "Overrides" };

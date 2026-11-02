@@ -229,9 +229,7 @@ namespace VRVlog.LilToonExporter.Tests
                 mesh.GetBlendShapeFrameVertices(mesh.GetBlendShapeIndex(shape), 0, moves, null, null);
                 return moves[vertex];
             }
-            var folderName = "__DescriptorVisemeExport_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", folderName);
-            var folder = "Assets/" + folderName;
+            var folder = TempAssetFolder.Create("__DescriptorVisemeExport_");
             Vrm10Instance imported = null;
             try
             {

@@ -252,8 +252,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var parameterType = OptionalTools.Find("VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters");
                 if (descriptorType == null || menuType == null || parameterType == null)
                     Assert.Ignore("Install the real VRChat SDK to run descriptor/menu retry, prepared pose reread and full VRM round-trip tests.");
-                var folderName = "__MenuRecoverySdk_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", folderName); directory = "Assets/" + folderName;
+                directory = TempAssetFolder.Create("__MenuRecoverySdk_");
                 Descriptor = avatar.AddComponent(descriptorType); VrcAvatar.Set(Descriptor, "customExpressions", true); VrcAvatar.Set(Descriptor, "customizeAnimationLayers", true);
                 Root = NewMenu(forcePersistent: persistentRootOnly); var face = NewMenu(); AddControl(face, "Menu face", "Toggle", "Face", 1);
                 AddControl(Root, "Faces", "SubMenu", subMenu: face);

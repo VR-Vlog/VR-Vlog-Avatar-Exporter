@@ -27,8 +27,7 @@ namespace VRVlog.LilToonExporter.Tests
         [SetUp]
         public void SetUp()
         {
-            var name = "__MergedFxDefaults_" + Guid.NewGuid().ToString("N");
-            AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+            folder = TempAssetFolder.Create("__MergedFxDefaults_");
             controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
             controller.AddParameter("Menu", AnimatorControllerParameterType.Int);
             avatar = new GameObject("Avatar", typeof(Animator));
@@ -55,38 +54,28 @@ namespace VRVlog.LilToonExporter.Tests
             AssetDatabase.AddObjectToAsset(clip, controller); return clip;
         }
 
-        AnimatorState State(AnimatorStateMachine machine, string name, AnimationClip clip, bool writeDefaults = false)
-        { var state = machine.AddState(name); state.motion = clip; state.writeDefaultValues = writeDefaults; return state; }
-
-        AnimatorStateMachine AddLayer(string name)
-        {
-            controller.AddLayer(name); var layers = controller.layers;
-            layers[layers.Length - 1].defaultWeight = 1; controller.layers = layers;
-            return layers[layers.Length - 1].stateMachine;
-        }
-
         void Menu(AnimatorStateMachine machine, bool writesPupil = false, bool writeDefaults = false)
         {
-            var idle = State(machine, "Idle", writesPupil ? Clip("Idle", ("Face size", 0), ("Pupil removal", 0)) : Clip("Idle", ("Face size", 0)), writeDefaults);
-            var selected = State(machine, "Selected", writesPupil ? Clip("Selected", ("Face size", 75), ("Pupil removal", 0)) : Clip("Selected", ("Face size", 75)), writeDefaults);
+            var idle = FxGraph.State(machine, "Idle", writesPupil ? Clip("Idle", ("Face size", 0), ("Pupil removal", 0)) : Clip("Idle", ("Face size", 0)), writeDefaults);
+            var selected = FxGraph.State(machine, "Selected", writesPupil ? Clip("Selected", ("Face size", 75), ("Pupil removal", 0)) : Clip("Selected", ("Face size", 75)), writeDefaults);
             machine.defaultState = idle;
             var transition = idle.AddTransition(selected); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Menu");
         }
 
         void Permanent(AnimatorStateMachine machine, bool writeDefaults = false)
-        { machine.defaultState = State(machine, "Always", Clip("Always remove pupil", ("Pupil removal", 100)), writeDefaults); }
+        { machine.defaultState = FxGraph.State(machine, "Always", Clip("Always remove pupil", ("Pupil removal", 100)), writeDefaults); }
 
         static Dictionary<string, float> Parameters(int value) => new Dictionary<string, float> { ["Menu"] = value };
 
         AnimatorStateMachine EquivalentRelay(int transitionMode, bool writeDefaults, out AnimatorState other)
         {
             controller.AddParameter("Relay", AnimatorControllerParameterType.Float);
-            var relay = AddLayer("Parameter relay");
+            var relay = FxGraph.Layer(controller, "Parameter relay");
             var clip = Clip("Shared constant relay");
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Relay"), AnimationCurve.Constant(0, 1, 1));
-            var initial = State(relay, "Initial", clip, writeDefaults);
-            other = State(relay, "Other", clip, writeDefaults); relay.defaultState = initial;
+            var initial = FxGraph.State(relay, "Initial", clip, writeDefaults);
+            other = FxGraph.State(relay, "Other", clip, writeDefaults); relay.defaultState = initial;
             var transition = initial.AddTransition(other);
             transition.hasExitTime = transitionMode == 0; transition.exitTime = 10;
             transition.hasFixedDuration = true; transition.duration = transitionMode == 2 ? 10 : 0;
@@ -125,7 +114,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void EquivalentConstantRelayPreservesNativeNeutralAndMenuEvenDuringTransitions(int transitionMode, bool writeDefaults)
         {
             Menu(controller.layers[0].stateMachine);
-            EquivalentRelay(transitionMode, writeDefaults, out _); Permanent(AddLayer("Permanent pupil"));
+            EquivalentRelay(transitionMode, writeDefaults, out _); Permanent(FxGraph.Layer(controller, "Permanent pupil"));
             var original = EditorJsonUtility.ToJson(controller);
             var selectedReference = NativeRelayPose(1);
             Assert.That(selectedReference.InTransition, Is.EqualTo(transitionMode == 2), "The long-transition case must actually be sampled mid-transition.");
@@ -154,8 +143,8 @@ namespace VRVlog.LilToonExporter.Tests
                 controller.AddParameter("Relay", AnimatorControllerParameterType.Float);
                 AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Relay"), AnimationCurve.Constant(0, 1, 1));
             }
-            var upper = AddLayer("Write Defaults only");
-            upper.defaultState = State(upper, "Always", clip, writeDefaults: true);
+            var upper = FxGraph.Layer(controller, "Write Defaults only");
+            upper.defaultState = FxGraph.State(upper, "Always", clip, writeDefaults: true);
             Assert.That(ExpressionDependencies.StationaryMorphBindings(controller).Count, Is.Zero,
                 "This regression must reach the former early-return path without a permanent morph layer.");
             var selected = (AnimationClip)controller.layers[0].stateMachine.states.Single(child => child.state.name == "Selected").state.motion;
@@ -185,8 +174,8 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(baseClip, EditorCurveBinding.FloatCurve("", typeof(Animator), "Relay"), AnimationCurve.Constant(0, 1, 1));
             }
             var baseMachine = controller.layers[0].stateMachine;
-            baseMachine.defaultState = State(baseMachine, "Base", baseClip, writeDefaults: true);
-            var gestureMachine = AddLayer("Fractional gesture"); Menu(gestureMachine);
+            baseMachine.defaultState = FxGraph.State(baseMachine, "Base", baseClip, writeDefaults: true);
+            var gestureMachine = FxGraph.Layer(controller, "Fractional gesture"); Menu(gestureMachine);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             Assert.That(ExpressionDependencies.StationaryMorphBindings(controller).Count, Is.Zero);
             Assert.That(VrChatExpressionSampler.HasEquivalentConstantStates(controller, 0), Is.True);
@@ -218,13 +207,13 @@ namespace VRVlog.LilToonExporter.Tests
             controller.AddParameter(new AnimatorControllerParameter
             { name = parameter, type = type, defaultFloat = 1 - authoredDefault, defaultBool = authoredDefault == 0 });
             var baseMachine = controller.layers[0].stateMachine;
-            var idle = State(baseMachine, "No contact", Clip("No contact", ("Pupil removal", 0)));
-            var active = State(baseMachine, "Contact", Clip("Contact", ("Pupil removal", 100)));
+            var idle = FxGraph.State(baseMachine, "No contact", Clip("No contact", ("Pupil removal", 0)));
+            var active = FxGraph.State(baseMachine, "Contact", Clip("Contact", ("Pupil removal", 100)));
             baseMachine.defaultState = idle;
             var transition = idle.AddTransition(active); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(type == AnimatorControllerParameterType.Bool ? AnimatorConditionMode.If : AnimatorConditionMode.Greater,
                 type == AnimatorControllerParameterType.Bool ? 0 : .5f, parameter);
-            var gestureMachine = AddLayer("Fractional gesture"); Menu(gestureMachine);
+            var gestureMachine = FxGraph.Layer(controller, "Fractional gesture"); Menu(gestureMachine);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var metadata = new VrChatExpressionMenu.Source { Controller = controller };
             metadata.ExternalParameters.Add(parameter); metadata.Defaults[parameter] = authoredDefault;
@@ -252,13 +241,13 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter(parameter, type);
             var baseMachine = controller.layers[0].stateMachine;
-            var idle = State(baseMachine, "Unknown neutral", Clip("Unknown neutral", ("Face size", 20)));
-            var active = State(baseMachine, "Unknown active", Clip("Unknown active", ("Face size", 90)));
+            var idle = FxGraph.State(baseMachine, "Unknown neutral", Clip("Unknown neutral", ("Face size", 20)));
+            var active = FxGraph.State(baseMachine, "Unknown active", Clip("Unknown active", ("Face size", 90)));
             baseMachine.defaultState = idle;
             var transition = idle.AddTransition(active); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(type == AnimatorControllerParameterType.Trigger ? AnimatorConditionMode.If : AnimatorConditionMode.Greater,
                 type == AnimatorControllerParameterType.Trigger ? 0 : .5f, parameter);
-            var gestureMachine = AddLayer("Gesture"); Menu(gestureMachine);
+            var gestureMachine = FxGraph.Layer(controller, "Gesture"); Menu(gestureMachine);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var metadata = new VrChatExpressionMenu.Source { Controller = controller };
             metadata.ExternalParameters.Add(parameter);
@@ -288,18 +277,18 @@ namespace VRVlog.LilToonExporter.Tests
             mesh.bindposes = new[] { bone.transform.worldToLocalMatrix * renderer.transform.localToWorldMatrix };
             mesh.boneWeights = Enumerable.Repeat(new BoneWeight { boneIndex0 = 0, weight0 = 1 }, mesh.vertexCount).ToArray();
             renderer.SetBlendShapeWeight(0, 20); renderer.SetBlendShapeWeight(2, 35);
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Base", Clip("Base", ("Face size", 30)));
-            var selectedMachine = AddLayer("Fractional player"); Menu(selectedMachine, writeDefaults: writeDefaults);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Base", Clip("Base", ("Face size", 30)));
+            var selectedMachine = FxGraph.Layer(controller, "Fractional player"); Menu(selectedMachine, writeDefaults: writeDefaults);
             var moving = Clip("Independent additive bone loop");
             AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Influencing bone", typeof(Transform), "localEulerAnglesRaw.z"),
                 AnimationCurve.Linear(0, 0, 1, 60));
             var settings = AnimationUtility.GetAnimationClipSettings(moving); settings.loopTime = true;
             AnimationUtility.SetAnimationClipSettings(moving, settings);
-            var support = AddLayer("Independent additive bone"); support.defaultState = State(support, "Loop", moving);
+            var support = FxGraph.Layer(controller, "Independent additive bone"); support.defaultState = FxGraph.State(support, "Loop", moving);
             var wardrobe = Clip("Prepared wardrobe", ("Pupil removal", 100));
             AnimationUtility.SetEditorCurve(wardrobe, EditorCurveBinding.FloatCurve("Influencing bone", typeof(Transform), "localEulerAnglesRaw.x"),
                 AnimationCurve.Constant(0, 1, 40));
-            var clothing = AddLayer("Wardrobe"); clothing.defaultState = State(clothing, "On", wardrobe, writeDefaults);
+            var clothing = FxGraph.Layer(controller, "Wardrobe"); clothing.defaultState = FxGraph.State(clothing, "On", wardrobe, writeDefaults);
             var layers = controller.layers; layers[1].defaultWeight = .5f;
             layers[2].blendingMode = AnimatorLayerBlendingMode.Additive; layers[2].defaultWeight = .5f; controller.layers = layers;
             var reference = NativePose(avatar, controller, "Face", new Dictionary<string, int> { ["Menu"] = 1 });
@@ -332,12 +321,12 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void DirectScalarSupportCannotDisableTheCapturedRenderer()
         {
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Base", Clip("Base", ("Face size", 30)));
-            var selectedMachine = AddLayer("Fractional player"); Menu(selectedMachine);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Base", Clip("Base", ("Face size", 30)));
+            var selectedMachine = FxGraph.Layer(controller, "Fractional player"); Menu(selectedMachine);
             var disable = Clip("Disable captured renderer");
             AnimationUtility.SetEditorCurve(disable, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "m_Enabled"),
                 AnimationCurve.Constant(0, 1, 0));
-            var support = AddLayer("Additive activation"); support.defaultState = State(support, "Disable", disable);
+            var support = FxGraph.Layer(controller, "Additive activation"); support.defaultState = FxGraph.State(support, "Disable", disable);
             var layers = controller.layers; layers[1].defaultWeight = .5f; layers[2].blendingMode = AnimatorLayerBlendingMode.Additive;
             layers[2].defaultWeight = .5f; controller.layers = layers;
             var selected = selectedMachine.states.Single(child => child.state.name == "Selected").state;
@@ -356,7 +345,7 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void DirectScalarProbeDefersUnknownAuthoredChannelsToPreparedResolution(bool generated, bool animated)
         {
-            Permanent(controller.layers[0].stateMachine); var machine = AddLayer("Fractional direct player"); Menu(machine);
+            Permanent(controller.layers[0].stateMachine); var machine = FxGraph.Layer(controller, "Fractional direct player"); Menu(machine);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var selected = machine.states.Single(child => child.state.name == "Selected").state;
             AnimationUtility.SetEditorCurve((AnimationClip)selected.motion,
@@ -391,9 +380,9 @@ namespace VRVlog.LilToonExporter.Tests
             var selected = controller.layers[0].stateMachine.states.Single(child => child.state.name == "Selected").state;
             selected.motion = Clip("Base selected", ("Face size", 80));
             ParameterDriverExpressionTests.Driver(selected, ParameterDriverExpressionTests.Op("Set", "Face input", 1));
-            var upper = AddLayer("Dynamic upper face");
-            var idle = State(upper, "Idle", Clip("Upper idle", ("Face size", 30)));
-            var active = State(upper, "Active", Clip("Upper active", ("Face size", 20))); upper.defaultState = idle;
+            var upper = FxGraph.Layer(controller, "Dynamic upper face");
+            var idle = FxGraph.State(upper, "Idle", Clip("Upper idle", ("Face size", 30)));
+            var active = FxGraph.State(upper, "Active", Clip("Upper active", ("Face size", 20))); upper.defaultState = idle;
             var transition = idle.AddTransition(active); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Face input");
             Assert.That(ExpressionDependencies.StationaryMorphBindings(controller), Is.Empty,
@@ -415,22 +404,21 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true, true)]
         public void ProvenMovingDirectClipKeepsNativeSupportWithoutAnUnrelatedUpperExpressionReset(bool additive, bool writeDefaults)
         {
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Native lower pose",
-                Clip("Native lower pose", ("Face size", 20)));
-            var selectedMachine = AddLayer("Selected gesture"); Menu(selectedMachine, writeDefaults: writeDefaults);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Native lower pose", Clip("Native lower pose", ("Face size", 20)));
+            var selectedMachine = FxGraph.Layer(controller, "Selected gesture"); Menu(selectedMachine, writeDefaults: writeDefaults);
             var selected = selectedMachine.states.Single(child => child.state.name == "Selected").state;
             var moving = (AnimationClip)selected.motion;
             var binding = EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size");
             AnimationUtility.SetEditorCurve(moving, binding, AnimationCurve.Linear(0, 20, 1, 80));
             controller.AddParameter("Other face selection", AnimatorControllerParameterType.Int);
-            var competitor = AddLayer("Other registered face player");
-            var reset = State(competitor, "DEFAULT", Clip("Other default face", ("Face size", 0)));
-            var other = State(competitor, "BYPASS", Clip("Other selected face", ("Face size", 95)));
+            var competitor = FxGraph.Layer(controller, "Other registered face player");
+            var reset = FxGraph.State(competitor, "DEFAULT", Clip("Other default face", ("Face size", 0)));
+            var other = FxGraph.State(competitor, "BYPASS", Clip("Other selected face", ("Face size", 95)));
             competitor.defaultState = reset;
             var transition = reset.AddTransition(other); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 1, "Other face selection");
-            var support = AddLayer("Authored permanent support");
-            support.defaultState = State(support, "Always", additive ?
+            var support = FxGraph.Layer(controller, "Authored permanent support");
+            support.defaultState = FxGraph.State(support, "Always", additive ?
                 Clip("Additive authored support", ("Face size", 10), ("Pupil removal", 100)) :
                 Clip("Permanent pupil", ("Pupil removal", 100)), writeDefaults);
             var layers = controller.layers; layers[1].defaultWeight = .5f;
@@ -476,8 +464,8 @@ namespace VRVlog.LilToonExporter.Tests
             var moving = (AnimationClip)selected.motion;
             AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
                 AnimationCurve.Linear(0, 20, 1, 80));
-            var permanent = AddLayer("Permanent explicit face override");
-            permanent.defaultState = State(permanent, "Always", Clip("Permanent face", ("Face size", 35)), writeDefaults);
+            var permanent = FxGraph.Layer(controller, "Permanent explicit face override");
+            permanent.defaultState = FxGraph.State(permanent, "Always", Clip("Permanent face", ("Face size", 35)), writeDefaults);
             var expected = NativePose(avatar, controller, "Face", new Dictionary<string, int> { ["Menu"] = 1 });
             var original = EditorJsonUtility.ToJson(controller);
             var entry = new VrChatExpressionMenu.Entry(); VrChatGestureExpressions.ReadClip(avatar, moving, entry);
@@ -491,9 +479,8 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ProvenMovingDirectClipRetainsTheConfiguredSingleStateBlendTreeSupport()
         {
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Lower pose",
-                Clip("Lower pose", ("Face size", 20), ("Pupil removal", 0)));
-            var player = AddLayer("Moving direct player"); Menu(player, writesPupil: true);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Lower pose", Clip("Lower pose", ("Face size", 20), ("Pupil removal", 0)));
+            var player = FxGraph.Layer(controller, "Moving direct player"); Menu(player, writesPupil: true);
             var selected = player.states.Single(child => child.state.name == "Selected").state;
             var moving = (AnimationClip)selected.motion;
             AnimationUtility.SetEditorCurve(moving, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"),
@@ -502,7 +489,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationCurve.Linear(0, 0, 1, 80));
             controller.AddParameter(new AnimatorControllerParameter
             { name = "Configured size", type = AnimatorControllerParameterType.Float, defaultFloat = .25f });
-            var configured = AddLayer("Configured size BlendTree");
+            var configured = FxGraph.Layer(controller, "Configured size BlendTree");
             var tree = new BlendTree { name = "Authored size setting", blendType = BlendTreeType.Simple1D,
                 blendParameter = "Configured size", useAutomaticThresholds = false };
             AssetDatabase.AddObjectToAsset(tree, controller);
@@ -550,7 +537,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             controller.AddParameter("Unused callback", AnimatorControllerParameterType.Int);
             Menu(controller.layers[0].stateMachine);
-            var player = AddLayer("Inactive direct player"); var selected = State(player, "Selected", Clip("Inactive selected", ("Face size", 80)));
+            var player = FxGraph.Layer(controller, "Inactive direct player"); var selected = FxGraph.State(player, "Selected", Clip("Inactive selected", ("Face size", 80)));
             player.defaultState = selected; var layers = controller.layers; layers[1].defaultWeight = 0; controller.layers = layers;
             if (influence != "none") ParameterDriverExpressionTests.Driver(selected,
                 ParameterDriverExpressionTests.Op("Set", influence == "retained" ? "Menu" : "Unused callback", 1));
@@ -576,7 +563,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void ConstantRelayProofRejectsOutputOrCallbackDifferences(string difference)
         {
             Menu(controller.layers[0].stateMachine);
-            var relay = EquivalentRelay(0, true, out var other); Permanent(AddLayer("Permanent pupil"));
+            var relay = EquivalentRelay(0, true, out var other); Permanent(FxGraph.Layer(controller, "Permanent pupil"));
             var clip = (AnimationClip)other.motion;
             switch (difference)
             {
@@ -599,7 +586,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAvatarParameterDriver", "Install the real VRChat SDK for callback equivalence regression.");
             Menu(controller.layers[0].stateMachine);
-            EquivalentRelay(0, true, out var other); Permanent(AddLayer("Permanent pupil"));
+            EquivalentRelay(0, true, out var other); Permanent(FxGraph.Layer(controller, "Permanent pupil"));
             other.AddStateMachineBehaviour(type);
             Assert.That(VrChatExpressionSampler.HasEquivalentConstantStates(controller, 1), Is.False);
         }
@@ -629,7 +616,7 @@ namespace VRVlog.LilToonExporter.Tests
             var permanent = AnimatorController.CreateAnimatorControllerAtPath(folder + "/Merge.controller");
             var pupil = new AnimationClip { name = "Permanent pupil" }; AssetDatabase.AddObjectToAsset(pupil, permanent);
             AnimationUtility.SetEditorCurve(pupil, EditorCurveBinding.FloatCurve("Front", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"), AnimationCurve.Constant(0, 1, 100));
-            permanent.layers[0].stateMachine.defaultState = State(permanent.layers[0].stateMachine, "Always", pupil);
+            permanent.layers[0].stateMachine.defaultState = FxGraph.State(permanent.layers[0].stateMachine, "Always", pupil);
             var descriptor = source.AddComponent(descriptorType);
             VrcAvatar.SetFx(descriptor, controller);
             var tool = new GameObject("Permanent pupil tool"); tool.transform.SetParent(source.transform, false);
@@ -710,14 +697,14 @@ namespace VRVlog.LilToonExporter.Tests
                 defaultInt = parameter.defaultInt, defaultFloat = parameter.defaultFloat
             }).ToArray();
             var baseMachine = reference.layers[0].stateMachine;
-            baseMachine.defaultState = State(baseMachine, "Registered expression", clip);
+            baseMachine.defaultState = FxGraph.State(baseMachine, "Registered expression", clip);
             foreach (var original in fx.layers.Skip(1))
             {
                 Assert.That(original.stateMachine.states.Length, Is.EqualTo(1), "This reference owns only the fixture's stationary upper layers.");
                 reference.AddLayer(original.name); var layers = reference.layers; var layer = layers[layers.Length - 1];
                 layer.defaultWeight = original.defaultWeight; layer.blendingMode = original.blendingMode; layer.avatarMask = original.avatarMask;
                 var state = original.stateMachine.defaultState;
-                layer.stateMachine.defaultState = State(layer.stateMachine, "Authored permanent", (AnimationClip)state.motion, state.writeDefaultValues);
+                layer.stateMachine.defaultState = FxGraph.State(layer.stateMachine, "Authored permanent", (AnimationClip)state.motion, state.writeDefaultValues);
                 reference.layers = layers;
             }
             return NativePose(source, reference, path, new Dictionary<string, int>());
@@ -748,7 +735,7 @@ namespace VRVlog.LilToonExporter.Tests
                 await BlendShapeSettingsTestSupport.WaitForEditorUpdates();
                 using var fixture = new AttachmentConnectionTests.Fixture();
                 var originalVertices = fixture.Mesh.vertices;
-                var state = State(controller.layers[0].stateMachine, "Native range oracle", null);
+                var state = FxGraph.State(controller.layers[0].stateMachine, "Native range oracle", null);
                 controller.layers[0].stateMachine.defaultState = state;
                 foreach (var frames in new[] { new[] { 100f }, new[] { -50f }, new[] { 20f, 80f }, new[] { -20f, 80f },
                     new[] { -100f, -20f }, new[] { 50f, 200f } })
@@ -860,7 +847,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve((AnimationClip)child.state.motion,
                     EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"),
                     AnimationCurve.Constant(0, 1, 0));
-            Permanent(AddLayer("Weighted permanent"), writeDefaults);
+            Permanent(FxGraph.Layer(controller, "Weighted permanent"), writeDefaults);
             if (additive)
             {
                 // Author a zero additive reference instead of inheriting the
@@ -936,7 +923,7 @@ namespace VRVlog.LilToonExporter.Tests
             fx.AddLayer("Disjoint additive pupil");
             var layers = fx.layers; var layer = layers[layers.Length - 1];
             layer.defaultWeight = weight; layer.blendingMode = AnimatorLayerBlendingMode.Additive;
-            layer.stateMachine.defaultState = State(layer.stateMachine, "Always", fixedClip, writeDefaults); fx.layers = layers;
+            layer.stateMachine.defaultState = FxGraph.State(layer.stateMachine, "Always", fixedClip, writeDefaults); fx.layers = layers;
             var sourceSkin = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
             var beforeMesh = EditorJsonUtility.ToJson(fixture.Mesh);
             var beforeController = EditorJsonUtility.ToJson(fx);
@@ -962,12 +949,11 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void NeutralAdditiveAutomaticSupportKeepsNativeDefaultsWithoutBakingMovingBlink()
         {
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Authored face",
-                Clip("Authored face", ("Face size", 35)));
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Authored face", Clip("Authored face", ("Face size", 35)));
             var blink = Clip("Live additive blink");
             var blinkBinding = EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink");
             AnimationUtility.SetEditorCurve(blink, blinkBinding, AnimationCurve.Linear(0, 0, 30, 100));
-            var machine = AddLayer("Live additive blink"); machine.defaultState = State(machine, "Live blink", blink);
+            var machine = FxGraph.Layer(controller, "Live additive blink"); machine.defaultState = FxGraph.State(machine, "Live blink", blink);
             var layers = controller.layers; layers[1].defaultWeight = .5f;
             layers[1].blendingMode = AnimatorLayerBlendingMode.Additive; controller.layers = layers;
             var sourceSkin = avatar.GetComponentInChildren<SkinnedMeshRenderer>();
@@ -993,9 +979,8 @@ namespace VRVlog.LilToonExporter.Tests
         [TestCase(true)]
         public void NeutralCommittedRootsRetainNativeClosureAndCheckOtherPlayableEffects(bool otherTouchesCommittedMorph)
         {
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Authored face",
-                Clip("Authored face", ("Face size", 35)));
-            Permanent(AddLayer("Implicit default closure"), writeDefaults: true);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Authored face", Clip("Authored face", ("Face size", 35)));
+            Permanent(FxGraph.Layer(controller, "Implicit default closure"), writeDefaults: true);
             var metadata = new VrChatExpressionMenu.Source { Controller = controller };
             var faceBinding = EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size");
             var pupilBinding = EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal");
@@ -1003,8 +988,7 @@ namespace VRVlog.LilToonExporter.Tests
             var legacy = ExpressionDependencies.AnalyzeNeutral(controller, roots, null, metadata);
             Assert.That(legacy.Morphs, Does.Contain(pupilBinding), "Existing callers retain their complete implicit-default capture contract.");
             var other = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OtherPlayable.controller");
-            other.layers[0].stateMachine.defaultState = State(other.layers[0].stateMachine, "Other playable",
-                Clip("Other playable", (otherTouchesCommittedMorph ? "Face size" : "Pupil removal", 80)));
+            other.layers[0].stateMachine.defaultState = FxGraph.State(other.layers[0].stateMachine, "Other playable", Clip("Other playable", (otherTouchesCommittedMorph ? "Face size" : "Pupil removal", 80)));
             metadata.OtherControllers.Add(other);
             if (otherTouchesCommittedMorph)
             {
@@ -1051,8 +1035,8 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(safeClip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Blink"),
                 AnimationCurve.Linear(0, 0, 30, 100));
             var machine = controller.layers[0].stateMachine;
-            var unsafeState = State(machine, "Skipped unsupported", unsafeClip);
-            var steady = State(machine, "Steady supported", safeClip);
+            var unsafeState = FxGraph.State(machine, "Skipped unsupported", unsafeClip);
+            var steady = FxGraph.State(machine, "Steady supported", safeClip);
             machine.defaultState = unsafeState;
             void Immediately(AnimatorState source, AnimatorState target)
             {
@@ -1061,11 +1045,11 @@ namespace VRVlog.LilToonExporter.Tests
             }
             if (intermediate)
             {
-                var initial = State(machine, "Safe initial", safeClip); machine.defaultState = initial;
+                var initial = FxGraph.State(machine, "Safe initial", safeClip); machine.defaultState = initial;
                 Immediately(initial, unsafeState);
             }
             Immediately(unsafeState, steady);
-            Permanent(AddLayer("Fractional pupil"), writeDefaults);
+            Permanent(FxGraph.Layer(controller, "Fractional pupil"), writeDefaults);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var before = EditorJsonUtility.ToJson(controller);
             var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
@@ -1084,13 +1068,13 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationCurve.Linear(0, 0, 30, 100));
             var unsafeClip = Clip("Unobserved unsupported base", ("Face size", 90));
             AnimationUtility.SetAnimationEvents(unsafeClip, new[] { new AnimationEvent { time = 30, functionName = "UnsupportedFutureCallback" } });
-            var machine = controller.layers[0].stateMachine; var current = State(machine, "Current supported", safeClip); machine.defaultState = current;
+            var machine = controller.layers[0].stateMachine; var current = FxGraph.State(machine, "Current supported", safeClip); machine.defaultState = current;
             controller.AddParameter("BaseTree", AnimatorControllerParameterType.Float);
             var tree = new BlendTree { name = "Support tree", blendType = BlendTreeType.Simple1D, blendParameter = "BaseTree", useAutomaticThresholds = false };
             AssetDatabase.AddObjectToAsset(tree, controller);
             tree.children = new[] { new ChildMotion { motion = safeClip, threshold = 0, timeScale = 1 }, new ChildMotion { motion = unsafeClip, threshold = 1, timeScale = 1 } };
             current.motion = tree;
-            Permanent(AddLayer("Fractional pupil"));
+            Permanent(FxGraph.Layer(controller, "Fractional pupil"));
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var before = EditorJsonUtility.ToJson(controller);
             var error = Assert.Throws<InvalidOperationException>(() => SampleNativeSupportBase());
@@ -1121,7 +1105,7 @@ namespace VRVlog.LilToonExporter.Tests
             fx.AddLayer("Weighted permanent pupil");
             var layers = fx.layers; var layer = layers[layers.Length - 1]; layer.defaultWeight = .5f;
             layer.blendingMode = additive ? AnimatorLayerBlendingMode.Additive : AnimatorLayerBlendingMode.Override;
-            layer.stateMachine.defaultState = State(layer.stateMachine, "Always", fixedClip); fx.layers = layers;
+            layer.stateMachine.defaultState = FxGraph.State(layer.stateMachine, "Always", fixedClip); fx.layers = layers;
             var material = new Material(shader);
             foreach (var renderer in fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) renderer.sharedMaterial = material;
             var sourceFront = fixture.Source.transform.Find("Front").GetComponent<SkinnedMeshRenderer>();
@@ -1163,11 +1147,11 @@ namespace VRVlog.LilToonExporter.Tests
         public void UnrelatedGestureLayerDoesNotBecomeANeutralSamplingRoot()
         {
             Menu(controller.layers[0].stateMachine);
-            Permanent(AddLayer("Permanent"));
+            Permanent(FxGraph.Layer(controller, "Permanent"));
             controller.AddParameter("GestureRight", AnimatorControllerParameterType.Int);
-            var machine = AddLayer("Unrelated gesture");
-            var idle = State(machine, "Idle", Clip("Gesture neutral", ("Blink", 0))); machine.defaultState = idle;
-            var gesture = State(machine, "Gesture", Clip("Gesture eye", ("Blink", 100)));
+            var machine = FxGraph.Layer(controller, "Unrelated gesture");
+            var idle = FxGraph.State(machine, "Idle", Clip("Gesture neutral", ("Blink", 0))); machine.defaultState = idle;
+            var gesture = FxGraph.State(machine, "Gesture", Clip("Gesture eye", ("Blink", 100)));
             var transition = idle.AddTransition(gesture); transition.hasExitTime = false; transition.duration = 0;
             transition.AddCondition(AnimatorConditionMode.Equals, 2, "GestureRight");
             var seeds = ExpressionDependencies.StationaryMorphBindings(controller);
@@ -1195,7 +1179,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void PermanentOverrideSuppressesPupilAnimationWithoutLosingOtherAnimatedChannels()
         {
             Menu(controller.layers[0].stateMachine, true);
-            Permanent(AddLayer("Permanent"));
+            Permanent(FxGraph.Layer(controller, "Permanent"));
             var clip = (AnimationClip)controller.layers[0].stateMachine.states.Single(item => item.state.name == "Selected").state.motion;
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"), AnimationCurve.Linear(0, 0, 1, 80));
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"), AnimationCurve.Linear(0, 0, 1, 75));
@@ -1213,7 +1197,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void DirectAnimatedClipRetainsNativeLayerWeightAndPriority()
         {
             Permanent(controller.layers[0].stateMachine);
-            var machine = AddLayer("Weighted expression"); Menu(machine, true);
+            var machine = FxGraph.Layer(controller, "Weighted expression"); Menu(machine, true);
             var layers = controller.layers; layers[1].defaultWeight = .5f; controller.layers = layers;
             var clip = (AnimationClip)machine.states.Single(item => item.state.name == "Selected").state.motion;
             AnimationUtility.SetEditorCurve(clip, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"), AnimationCurve.Linear(0, 0, 1, 80));
@@ -1273,7 +1257,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var binding = AnimationUtility.GetCurveBindings(fixedClip).Single();
                 AnimationUtility.SetEditorCurve(fixedClip, binding, null); binding.path = "Prepared rig/Face";
                 AnimationUtility.SetEditorCurve(fixedClip, binding, AnimationCurve.Constant(0, 1, 100));
-                controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Merged permanent", fixedClip, writeDefaults);
+                controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Merged permanent", fixedClip, writeDefaults);
                 var source = new VrChatExpressionMenu.Source { Controller = controller };
                 FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, Excluded, snapshot);
                 var entry = source.Entries.Single();
@@ -1399,7 +1383,7 @@ namespace VRVlog.LilToonExporter.Tests
                 var binding = AnimationUtility.GetCurveBindings(fixedClip).Single();
                 AnimationUtility.SetEditorCurve(fixedClip, binding, null); binding.path = "Head/Face";
                 AnimationUtility.SetEditorCurve(fixedClip, binding, AnimationCurve.Constant(0, 1, 100));
-                controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Merged permanent", fixedClip);
+                controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Merged permanent", fixedClip);
                 var source = new VrChatExpressionMenu.Source { Controller = controller };
                 FaceEmoPreparedFxIntegrationTests.ReadListed(clone, registered, source, exclusions.ContainsPath, snapshot);
                 var entry = source.Entries.Single();
@@ -1448,7 +1432,7 @@ namespace VRVlog.LilToonExporter.Tests
             AnimationUtility.SetEditorCurve(permanent, EditorCurveBinding.FloatCurve(authoredPath, typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"),
                 AnimationCurve.Constant(0, 1, 100));
             AssetDatabase.AddObjectToAsset(permanent, controller);
-            controller.layers[0].stateMachine.defaultState = State(controller.layers[0].stateMachine, "Always", permanent);
+            controller.layers[0].stateMachine.defaultState = FxGraph.State(controller.layers[0].stateMachine, "Always", permanent);
             var descriptor = source.AddComponent(descriptorType);
             var emptyFx = AnimatorController.CreateAnimatorControllerAtPath(folder + "/OriginalFX.controller");
             VrcAvatar.SetFx(descriptor, emptyFx);
@@ -1495,8 +1479,8 @@ namespace VRVlog.LilToonExporter.Tests
         {
             AnimatorStateMachine selectedMachine;
             var selectedLayer = permanentLast ? 0 : 1;
-            if (permanentLast) { selectedMachine = controller.layers[0].stateMachine; Menu(selectedMachine, true, writeDefaults); Permanent(AddLayer("Permanent"), writeDefaults); }
-            else { Permanent(controller.layers[0].stateMachine, writeDefaults); selectedMachine = AddLayer("Selected"); Menu(selectedMachine, true, writeDefaults); }
+            if (permanentLast) { selectedMachine = controller.layers[0].stateMachine; Menu(selectedMachine, true, writeDefaults); Permanent(FxGraph.Layer(controller, "Permanent"), writeDefaults); }
+            else { Permanent(controller.layers[0].stateMachine, writeDefaults); selectedMachine = FxGraph.Layer(controller, "Selected"); Menu(selectedMachine, true, writeDefaults); }
             var clip = (AnimationClip)selectedMachine.states.Single(item => item.state.name == "Selected").state.motion;
             var entry = new VrChatExpressionMenu.Entry();
             VrChatGestureExpressions.ReadClip(avatar, clip, entry);
@@ -1508,7 +1492,7 @@ namespace VRVlog.LilToonExporter.Tests
         public void AdditiveDirectClipIsRejectedWithoutGuessingItsReferencePose()
         {
             Permanent(controller.layers[0].stateMachine);
-            var machine = AddLayer("Additive expression"); Menu(machine, true);
+            var machine = FxGraph.Layer(controller, "Additive expression"); Menu(machine, true);
             var layers = controller.layers; layers[1].blendingMode = AnimatorLayerBlendingMode.Additive; controller.layers = layers;
             var clip = (AnimationClip)machine.states.Single(item => item.state.name == "Selected").state.motion;
             var entry = new VrChatExpressionMenu.Entry();
@@ -1527,7 +1511,7 @@ namespace VRVlog.LilToonExporter.Tests
             var type = OptionalTools.Require("VRC.SDK3.Avatars.Components.VRCAnimatorLayerControl", "Install the real VRChat SDK for animator layer-control integration.");
             var machine = controller.layers[0].stateMachine;
             Menu(machine, true);
-            Permanent(AddLayer("Permanent pupil"));
+            Permanent(FxGraph.Layer(controller, "Permanent pupil"));
             var layers = controller.layers;
             layers[1].defaultWeight = 1 - goalWeight;
             controller.layers = layers;
@@ -1563,17 +1547,17 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(sample, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Face size"), AnimationCurve.Constant(0, 1, 75));
                 AnimationUtility.SetEditorCurve(sample, EditorCurveBinding.FloatCurve("Face", typeof(SkinnedMeshRenderer), "blendShape.Pupil removal"), AnimationCurve.Constant(0, 1, input));
                 AssetDatabase.AddObjectToAsset(sample, reference);
-                reference.layers[0].stateMachine.defaultState = State(reference.layers[0].stateMachine, "Direct clip", sample);
+                reference.layers[0].stateMachine.defaultState = FxGraph.State(reference.layers[0].stateMachine, "Direct clip", sample);
                 if (standalone)
                 {
                     reference.AddLayer("Original base"); var nativeLayers = reference.layers;
                     nativeLayers[1].defaultWeight = 1;
-                    nativeLayers[1].stateMachine.defaultState = State(nativeLayers[1].stateMachine, "Original default", (AnimationClip)machine.defaultState.motion);
+                    nativeLayers[1].stateMachine.defaultState = FxGraph.State(nativeLayers[1].stateMachine, "Original default", (AnimationClip)machine.defaultState.motion);
                     reference.layers = nativeLayers;
                 }
                 reference.AddLayer("Controlled permanent"); var finalLayers = reference.layers; var upper = finalLayers[finalLayers.Length - 1];
                 upper.defaultWeight = goalWeight;
-                upper.stateMachine.defaultState = State(upper.stateMachine, "Permanent", (AnimationClip)controller.layers[1].stateMachine.defaultState.motion);
+                upper.stateMachine.defaultState = FxGraph.State(upper.stateMachine, "Permanent", (AnimationClip)controller.layers[1].stateMachine.defaultState.motion);
                 reference.layers = finalLayers;
                 expected.Add(input, NativePose(avatar, reference, "Face", new Dictionary<string, int>()).Weights["Pupil removal"]);
             }

@@ -145,8 +145,7 @@ namespace VRVlog.LilToonExporter.Tests
                 // The export writes lilToon materials only.
                 material = new Material(Shader.Find("lilToon"));
                 foreach (var skin in Fixture.Source.GetComponentsInChildren<SkinnedMeshRenderer>()) skin.sharedMaterials = new[] { material };
-                var name = "__ExpressionBones_" + Guid.NewGuid().ToString("N");
-                AssetDatabase.CreateFolder("Assets", name); folder = "Assets/" + name;
+                folder = TempAssetFolder.Create("__ExpressionBones_");
                 Controller = AnimatorController.CreateAnimatorControllerAtPath(folder + "/FX.controller");
                 var idle = Controller.layers[0].stateMachine.AddState("Idle"); idle.writeDefaultValues = false;
                 var descriptor = Fixture.Source.AddComponent(descriptorType);
