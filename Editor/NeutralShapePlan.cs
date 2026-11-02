@@ -67,19 +67,19 @@ namespace VRVlog.LilToonExporter
             IEnumerable<IEnumerable<EditorCurveBinding>> roots, Func<string, bool> excludedPath = null,
             IEnumerable<EditorCurveBinding> requiredMorphs = null, ICollection<string> warnings = null,
             VrChatExpressionMenu.Source source = null, FixedExpressionContext fixedContext = null, bool retainUnresolvedRest = false,
-            bool allowUnchangedAppearance = false)
+            bool allowUnchangedAppearance = false, FxAnalysis analysis = null)
         {
             var plan = new NeutralShapePlan(prepared, roots.SelectMany(group => group));
             plan.RetainUnresolvedRest = retainUnresolvedRest;
             plan.AllowUnchangedAppearance = allowUnchangedAppearance;
             plan.ResolveCommittedMorphs();
-            var ownershipLayers = ExpressionDependencies.NormalInputLayers(runtime, source, fixedContext, excludedPath);
+            var ownershipLayers = ExpressionDependencies.NormalInputLayers(runtime, source, fixedContext, excludedPath, analysis: analysis);
             // The clips the neutral probe reaches with fixed inputs, computed
             // as the sampler does: their explicit holds define each layer's rest.
             // Kept per layer, aligned with ownershipLayers (both come from Inspect).
             var restClips = fixedContext == null ? null : ExpressionDependencies.NeutralLayerClips(runtime,
                 ExpressionDependencies.FixedNeutralValues(runtime, source, ExpressionDependencies.Inspect(runtime, excludedPath,
-                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true), excludedPath, fixedContext), excludedPath);
+                    new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), true, analysis: analysis), excludedPath, fixedContext, analysis: analysis), excludedPath, analysis: analysis);
             var definitions = ExpressionDependencies.Controller(runtime).layers;
             // Matching raw values prove an Override contribution. Additive
             // defaults/reference poses can change another layer's appearance;

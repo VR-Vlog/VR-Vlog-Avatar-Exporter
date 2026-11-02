@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
         // layer could otherwise change a channel that appears fully overridden.
         // Execution dependencies stay intact; only scalar capture is independent.
         internal static int IndependentTopOverride(RuntimeAnimatorController runtime,
-            ISet<EditorCurveBinding> capturedMorphs, Func<string, bool> excludedPath)
+            ISet<EditorCurveBinding> capturedMorphs, Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
             if (capturedMorphs == null || capturedMorphs.Count == 0) return -1;
             var layers = ExpressionDependencies.Controller(runtime).layers;
@@ -25,7 +25,7 @@ namespace VRVlog.LilToonExporter
             var index = layers.Length - 1;
             var layer = layers[index];
             if (layer.blendingMode != AnimatorLayerBlendingMode.Override || layer.defaultWeight != 1 || layer.avatarMask != null ||
-                !ExpressionDependencies.StationaryLayers(runtime, excludedPath).TryGetValue(index, out var clip) ||
+                !ExpressionDependencies.StationaryLayers(runtime, excludedPath, analysis: analysis).TryGetValue(index, out var clip) ||
                 AnimationUtility.GetAnimationEvents(clip).Length != 0) return -1;
             foreach (var binding in capturedMorphs)
             {
@@ -39,13 +39,13 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static HashSet<string> Required(RuntimeAnimatorController runtime, ExpressionDependencies dependencies,
-            Func<string, bool> excludedPath)
+            Func<string, bool> excludedPath, FxAnalysis analysis = null)
         {
             var controller = ExpressionDependencies.Controller(runtime);
             var replacements = ExpressionDependencies.Overrides(runtime);
             var unknown = new List<string>();
             var drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
-            var info = ExpressionDependencies.Inspect(runtime, excludedPath, drivers, unknown, true, dependencies.NeutralFixedValues);
+            var info = ExpressionDependencies.Inspect(runtime, excludedPath, drivers, unknown, true, dependencies.NeutralFixedValues, analysis: analysis);
             // Dependency analysis normally rejects these first. An incomplete
             // graph must never turn into permission to ignore its parameters.
             if (unknown.Count != 0) return null;

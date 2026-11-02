@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using VRVlog.LilToonExporter.Vendor.UniGLTF;
@@ -408,7 +409,8 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 SetSeed(valid);
                 var result = VrChatExpressionSampler.Analyze(avatar, null, new[] { ("Gesture", (Object)selected.motion, 0f) });
-                Assert.That(result.FacialProjectionSession, Is.Null, "Geometry proof must not escape the Analyze snapshot.");
+                Assert.That(typeof(VrChatExpressionMenu.Source).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .Any(field => field.FieldType == typeof(FacialProjectionScope.Session)), Is.False, "Geometry proof must not escape the Analyze snapshot.");
                 Assert.That(result.Entries.Single().UsesFacialProjection, Is.EqualTo(valid));
             }
         }

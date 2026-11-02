@@ -99,11 +99,11 @@ namespace VRVlog.LilToonExporter.Tests
         };
 
         private static string Run(RuntimeAnimatorController runtime, int index, out ExpressionDependencies.Layer[] layers,
-            out Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers)
+            out Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program> drivers, FxAnalysis analysis = null)
         {
             drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
             var unknown = new List<string>();
-            layers = ExpressionDependencies.Inspect(runtime, Cases[index].Excluded, drivers, unknown, true, Cases[index].Neutral);
+            layers = ExpressionDependencies.Inspect(runtime, Cases[index].Excluded, drivers, unknown, true, Cases[index].Neutral, analysis: analysis);
             return Snapshot(layers, drivers, unknown);
         }
 
@@ -116,22 +116,23 @@ namespace VRVlog.LilToonExporter.Tests
             Run(fx, 0, out var layers, out _);
             Assert.That(layers[1].WeightControls.Count + layers[1].FxCommands.Count, Is.GreaterThan(0));
             Assert.That(expected[0], Does.Contain(nameof(UnknownStateCallbackProbe)));
-            using var cache = ExpressionInspectCache.Begin();
+            var cache = new FxAnalysis();
             for (var round = 0; round < 2; round++)
                 for (var index = 0; index < Cases.Length; index++)
-                    Assert.That(Run(fx, index, out _, out _), Is.EqualTo(expected[index]), "round " + round + " case " + index);
-            // Path exclusion is replayed; only the three neutral inputs walk the graph.
-            Assert.That(cache.Misses, Is.EqualTo(3));
-            Assert.That(cache.Hits, Is.EqualTo(Cases.Length * 2 - 3));
+                    Assert.That(Run(fx, index, out _, out _, cache), Is.EqualTo(expected[index]), "round " + round + " case " + index);
+            // A kept walk already left its excluded paths out, so the path
+            // exclusion is part of the key: each case walks the graph once.
+            Assert.That(cache.Misses, Is.EqualTo(Cases.Length));
+            Assert.That(cache.Hits, Is.EqualTo(Cases.Length));
         }
 
         private string Run(IDictionary<string, ISet<float>> domains, Dictionary<string, float> neutral = null, bool typed = false,
-            Func<string, bool> excluded = null)
+            Func<string, bool> excluded = null, FxAnalysis analysis = null)
         {
             var drivers = new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>();
             var unknown = new List<string>();
             var layers = ExpressionDependencies.Inspect(fx, excluded ?? (path => path == "Hair"), drivers, unknown, true,
-                neutral ?? new Dictionary<string, float>(StringComparer.Ordinal), typed, domains: domains);
+                neutral ?? new Dictionary<string, float>(StringComparer.Ordinal), typed, domains: domains, analysis: analysis);
             return Snapshot(layers, drivers, unknown);
         }
 
@@ -146,38 +147,38 @@ namespace VRVlog.LilToonExporter.Tests
         {
             // Menu = 0 prunes the transition to Selected; adding 1 keeps it.
             // Every call builds new dictionaries and sets with the same content.
-            Func<string>[] cases =
+            Func<FxAnalysis, string>[] cases =
             {
-                () => Run(Domains(0)),
-                () => Run(Domains(1, 0)),
-                () => Run(null),
-                () => Run(new Dictionary<string, ISet<float>>(StringComparer.Ordinal)),
-                () => Run(Domains()),
-                // Path exclusion is not in the key: these replay case 1.
-                () => Run(Domains(1, 0), excluded: path => false),
-                () => Run(Domains(1, 0), excluded: path => path == "Body"),
+                analysis => Run(Domains(0), analysis: analysis),
+                analysis => Run(Domains(1, 0), analysis: analysis),
+                analysis => Run(null, analysis: analysis),
+                analysis => Run(new Dictionary<string, ISet<float>>(StringComparer.Ordinal), analysis: analysis),
+                analysis => Run(Domains(), analysis: analysis),
+                // Path exclusion is in the key: these walk again.
+                analysis => Run(Domains(1, 0), excluded: path => false, analysis: analysis),
+                analysis => Run(Domains(1, 0), excluded: path => path == "Body", analysis: analysis),
                 // A fixed value of the same input wins over its domain.
-                () => Run(Domains(1, 0), Fixed("Menu", 0)),
-                () => Run(Domains(0), Fixed("Axis", 0)),
-                () => Run(Domains(1, 0), typed: true),
-                () => Run(Domains(0), typed: true),
+                analysis => Run(Domains(1, 0), Fixed("Menu", 0), analysis: analysis),
+                analysis => Run(Domains(0), Fixed("Axis", 0), analysis: analysis),
+                analysis => Run(Domains(1, 0), typed: true, analysis: analysis),
+                analysis => Run(Domains(0), typed: true, analysis: analysis),
             };
-            var expected = cases.Select(run => run()).ToArray();
+            var expected = cases.Select(run => run(null)).ToArray();
             Assert.That(expected[0], Does.Not.Contain("Smile"));
             Assert.That(expected[1], Does.Contain("Smile"));
             Assert.That(expected[7], Does.Not.Contain("Smile"));
             Assert.That(expected[9], Does.Contain("Smile"));
             Assert.That(expected[10], Does.Not.Contain("Smile"));
             Assert.That(new[] { expected[1], expected[5], expected[6] }.Distinct().Count(), Is.EqualTo(3));
-            using var cache = ExpressionInspectCache.Begin();
+            var cache = new FxAnalysis();
             for (var round = 0; round < 2; round++)
                 for (var index = 0; index < cases.Length; index++)
-                    Assert.That(cases[index](), Is.EqualTo(expected[index]), "round " + round + " case " + index);
+                    Assert.That(cases[index](cache), Is.EqualTo(expected[index]), "round " + round + " case " + index);
             // Null domains, an empty dictionary and an empty set are separate entries.
-            Assert.That(cache.Misses, Is.EqualTo(cases.Length - 2));
-            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 2));
-            Assert.That(Run(Domains(0, 1)), Is.EqualTo(expected[1]));
-            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 3));
+            Assert.That(cache.Misses, Is.EqualTo(cases.Length));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length));
+            Assert.That(Run(Domains(0, 1), analysis: cache), Is.EqualTo(expected[1]));
+            Assert.That(cache.Hits, Is.EqualTo(cases.Length + 1));
         }
 
         private sealed class SameFloat : IEqualityComparer<float>
@@ -192,11 +193,11 @@ namespace VRVlog.LilToonExporter.Tests
             var ignoreCase = new Dictionary<string, ISet<float>>(StringComparer.OrdinalIgnoreCase) { ["Menu"] = new HashSet<float> { 0 } };
             var sorted = new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new SortedSet<float> { 0 } };
             var compared = new Dictionary<string, ISet<float>>(StringComparer.Ordinal) { ["Menu"] = new HashSet<float>(new SameFloat()) { 0 } };
-            using var cache = ExpressionInspectCache.Begin();
+            var cache = new FxAnalysis();
             foreach (var domains in new[] { ignoreCase, sorted, compared })
             {
-                Run(domains);
-                Run(domains);
+                Run(domains, analysis: cache);
+                Run(domains, analysis: cache);
             }
             Assert.That(cache.Hits + cache.Misses, Is.EqualTo(0));
         }
@@ -207,11 +208,11 @@ namespace VRVlog.LilToonExporter.Tests
             var expected = Run(overrides, 0, out var fresh, out _);
             Assert.That(fresh[0].Clips.Select(clip => clip.name), Does.Contain("Wink").And.Not.Contain("Smile"));
             var original = Run(fx, 0, out _, out _);
-            using var cache = ExpressionInspectCache.Begin();
-            Assert.That(Run(fx, 0, out _, out _), Is.EqualTo(original));
-            Assert.That(Run(overrides, 0, out _, out _), Is.EqualTo(expected));
-            Assert.That(Run(overrides, 0, out _, out _), Is.EqualTo(expected));
-            Assert.That(Run(fx, 0, out _, out _), Is.EqualTo(original));
+            var cache = new FxAnalysis();
+            Assert.That(Run(fx, 0, out _, out _, cache), Is.EqualTo(original));
+            Assert.That(Run(overrides, 0, out _, out _, cache), Is.EqualTo(expected));
+            Assert.That(Run(overrides, 0, out _, out _, cache), Is.EqualTo(expected));
+            Assert.That(Run(fx, 0, out _, out _, cache), Is.EqualTo(original));
             Assert.That(cache.Misses, Is.EqualTo(2));
             Assert.That(cache.Hits, Is.EqualTo(2));
         }
@@ -219,18 +220,23 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ReplayGivesTheCallerFreshObjects()
         {
-            using var cache = ExpressionInspectCache.Begin();
-            Run(fx, 0, out var first, out var firstDrivers);
+            // The caller gets its own array and driver map; the walked layers
+            // are shared and read-only, and a caller that narrows one copies it.
+            var cache = new FxAnalysis();
+            Run(fx, 0, out var first, out var firstDrivers, cache);
+            var original = first[0];
+            first[0] = original.Copy();
             first[0].Reads.Add("Edited by caller");
-            first[0].DriverPrograms[0].Operations.Clear();
-            Run(fx, 0, out var second, out var secondDrivers);
+            firstDrivers.Remove(driver);
+            Run(fx, 0, out var second, out var secondDrivers, cache);
             Assert.That(cache.Hits, Is.EqualTo(1));
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second[0], Is.SameAs(original));
             Assert.That(second[0].Reads, Does.Not.Contain("Edited by caller"));
             Assert.That(second[0].DriverPrograms[0].Operations.Count, Is.EqualTo(2));
-            Assert.That(second[0].DriverPrograms[0], Is.Not.SameAs(first[0].DriverPrograms[0]));
             // The driver map and the layer list share one program, as in a fresh walk.
             Assert.That(secondDrivers[driver], Is.SameAs(second[0].DriverPrograms[0]));
-            Assert.That(firstDrivers[driver], Is.SameAs(first[0].DriverPrograms[0]));
+            Assert.That(first[0].DriverPrograms[0], Is.SameAs(second[0].DriverPrograms[0]));
         }
 
         [Test]
@@ -241,9 +247,9 @@ namespace VRVlog.LilToonExporter.Tests
             {
                 probe.AddLayer("Base");
                 probe.layers[0].stateMachine.AddState("Idle");
-                using var cache = ExpressionInspectCache.Begin();
-                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>());
-                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>());
+                var cache = new FxAnalysis();
+                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), analysis: cache);
+                ExpressionDependencies.Inspect(probe, null, new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), new List<string>(), analysis: cache);
                 Assert.That(cache.Hits + cache.Misses, Is.EqualTo(0));
             }
             finally { Object.DestroyImmediate(probe); }
@@ -252,8 +258,14 @@ namespace VRVlog.LilToonExporter.Tests
         [Test]
         public void ClosingTheScopeStopsCaching()
         {
-            using (ExpressionInspectCache.Begin()) Assert.That(ExpressionInspectCache.Current, Is.Not.Null);
-            Assert.That(ExpressionInspectCache.Current, Is.Null);
+            // There is no ambient scope: a call that is not handed the
+            // analysis walks afresh and leaves the analysis untouched.
+            var cache = new FxAnalysis();
+            Run(fx, 0, out var kept, out _, cache);
+            Run(fx, 0, out var fresh, out _);
+            Assert.That(cache.Hits, Is.EqualTo(0));
+            Assert.That(cache.Misses, Is.EqualTo(1));
+            Assert.That(fresh[0], Is.Not.SameAs(kept[0]));
         }
 
         private static string Snapshot(ExpressionDependencies.Layer[] layers,

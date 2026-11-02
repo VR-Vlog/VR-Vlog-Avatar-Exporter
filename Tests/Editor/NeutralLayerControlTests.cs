@@ -314,7 +314,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var metadata = VrChatExpressionMenu.Read(avatar, new VrChatMenuImportPolicy { SkipAll = true });
             var entry = new VrChatExpressionMenu.Entry();
-            VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)bodyState.motion, entry, metadata: metadata);
+            VrChatGestureExpressions.ReadClip(avatar, (AnimationClip)bodyState.motion, entry);
             VrChatExpressionSampler.ApplyPermanentOverrides(avatar, controller, entry, BodyLayer,
                 metadata: metadata, sourceState: bodyState);
             Assert.That(entry.Error, Is.Null);

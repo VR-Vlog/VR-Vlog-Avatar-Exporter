@@ -22,23 +22,18 @@ namespace VRVlog.LilToonExporter
         internal static HashSet<int> FindUnownedRandomRest(GameObject avatar, RuntimeAnimatorController runtime,
             VrChatExpressionMenu.Source source, ISet<EditorCurveBinding> selectedMorphs,
             FixedExpressionContext context, out HashSet<EditorCurveBinding> preservedMorphs,
-            ISet<string> selectedInputs = null)
+            ISet<string> selectedInputs = null, FxAnalysis analysis = null)
         {
             preservedMorphs = new HashSet<EditorCurveBinding>();
             var result = new HashSet<int>();
-            if (!InspectKnown(runtime, source, out var layers, out var others, out var types)) return result;
-            var unitFxCommands = HasOnlyUnchangedUnitFxCommands(runtime, source, layers, others, context, selectedInputs);
+            if (!InspectKnown(runtime, source, out var layers, out var others, out var types, analysis: analysis)) return result;
+            var unitFxCommands = HasOnlyUnchangedUnitFxCommands(runtime, source, layers, others, context, selectedInputs, analysis: analysis);
             // An empty output plan asks only whether the existing strict rest
             // proof permits omission. It cannot alter the actual scalar plan.
             // Nor does it depend on the selection, so one analysis proves it once.
-            var cache = ExpressionInspectCache.Current;
-            var key = cache?.RandomRestSignature(avatar, runtime, source, context);
-            if (key == null || !cache.TryRandomRest(key, source, out var rest))
-            {
-                var proof = NeutralShapePlan.CreateProjection(avatar, Array.Empty<EditorCurveBinding>(), Array.Empty<AnimationClip>());
-                rest = NeutralRandomRest.Preserve(runtime, source, proof, null, context);
-                if (key != null) cache.StoreRandomRest(key, source, rest);
-            }
+            HashSet<int> Prove() => NeutralRandomRest.Preserve(runtime, source,
+                NeutralShapePlan.CreateProjection(avatar, Array.Empty<EditorCurveBinding>(), Array.Empty<AnimationClip>()), null, context, analysis: analysis);
+            var rest = analysis != null ? analysis.RandomRest(avatar, runtime, source, context, Prove) : Prove();
             foreach (var index in rest)
             {
                 var layer = layers[index];
@@ -135,20 +130,19 @@ namespace VRVlog.LilToonExporter
         // location-rich diagnostic, and no component is suspended on a guess.
         private static bool InspectKnown(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source,
             out ExpressionDependencies.Layer[] layers, out List<ExpressionDependencies.Layer> others,
-            out Dictionary<string, AnimatorControllerParameterType> types)
+            out Dictionary<string, AnimatorControllerParameterType> types, FxAnalysis analysis = null)
         {
             var unknown = new List<string>();
             layers = ExpressionDependencies.Inspect(runtime, null,
-                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true);
+                new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown, true, analysis: analysis);
             others = new List<ExpressionDependencies.Layer>();
             foreach (var other in source.OtherControllers.Where(value => value != null))
                 others.AddRange(ExpressionDependencies.Inspect(other, null,
                     new Dictionary<StateMachineBehaviour, VrChatParameterDriver.Program>(), unknown,
-                    typedConditions: true, fxLayerCount: layers.Length));
+                    typedConditions: true, fxLayerCount: layers.Length, analysis: analysis));
             types = null;
             if (unknown.Count != 0) return false;
-            types = ExpressionDependencies.UniqueParameters(runtime).GroupBy(parameter => parameter.name, StringComparer.Ordinal)
-                .Where(group => group.Count() == 1).ToDictionary(group => group.Key, group => group.Single().type, StringComparer.Ordinal);
+            types = ExpressionDependencies.ParameterTypes(runtime, analysis);
             return true;
         }
 
@@ -168,7 +162,7 @@ namespace VRVlog.LilToonExporter
 
         internal static bool HasOnlyUnchangedUnitFxCommands(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source,
             ExpressionDependencies.Layer[] layers, IList<ExpressionDependencies.Layer> others, FixedExpressionContext context,
-            ISet<string> selectedInputs = null)
+            ISet<string> selectedInputs = null, FxAnalysis analysis = null)
         {
             // Another playable's global command participates in the component.
             // Keep that unresolved cross-playable effect in ordinary evaluation.
@@ -177,7 +171,7 @@ namespace VRVlog.LilToonExporter
             var controller = ExpressionDependencies.Controller(runtime);
             var normal = FixedExpressionContext.Create(runtime, source.Defaults, source);
             var written = new HashSet<string>(layers.Concat(others).SelectMany(layer => layer.Writes), StringComparer.Ordinal);
-            var fixedValues = ExpressionDependencies.FixedNeutralValues(runtime, source, layers, null, context);
+            var fixedValues = ExpressionDependencies.FixedNeutralValues(runtime, source, layers, null, context, analysis: analysis);
             // A selected input, SDK callback or dormant Animator curve cannot
             // establish a false gate. Use only explicitly modeled normal input
             // values that are unchanged in this probe and have no raw writer.
@@ -506,12 +500,12 @@ namespace VRVlog.LilToonExporter
         }
 
         internal static HashSet<int> Find(RuntimeAnimatorController runtime, VrChatExpressionMenu.Source source,
-            ISet<EditorCurveBinding> automatic, int selectedLayer, ISet<EditorCurveBinding> selectedMorphs)
+            ISet<EditorCurveBinding> automatic, int selectedLayer, ISet<EditorCurveBinding> selectedMorphs, FxAnalysis analysis = null)
         {
             var result = new HashSet<int>();
             if (automatic == null || automatic.Count == 0 || !selectedMorphs.Overlaps(automatic)) return result;
             var controller = ExpressionDependencies.Controller(runtime); var definitions = controller.layers;
-            if (!InspectKnown(runtime, source, out var layers, out var others, out var types)) return result;
+            if (!InspectKnown(runtime, source, out var layers, out var others, out var types, analysis: analysis)) return result;
             var compatible = new HashSet<int>(); var seeds = new HashSet<int>();
             bool ClipOnly(AnimatorStateMachine machine, HashSet<AnimatorStateMachine> visited)
             {
