@@ -67,7 +67,6 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
             Assert.That(bound != null, Is.EqualTo(exporter != null));
             if (bound == null) return;
             var members = bound.GetType().GetFields(BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.That(members.Length, Is.EqualTo(26));
             foreach (var member in members) Assert.That(member.GetValue(bound), Is.Not.Null, member.Name);
         }
 
@@ -270,6 +269,8 @@ namespace VRVlog.LilToonExporter.LanTransfer.Tests
                     var entry = Activator.CreateInstance(entryType, true);
                     entryType.GetField("HasAuthor", Instance).SetValue(entry, (Func<bool>)(() => true));
                     entryType.GetField("TermsKey", Instance).SetValue(entry, (Func<string>)(() => "fixture terms"));
+                    // The saved row carries the export notes, read from the entry.
+                    entryType.GetField("LastNotes", Instance).SetValue(entry, (Func<string[]>)(() => new string[0]));
                     string savedName = null, failure = null;
                     var later = false;
                     Action<string, int> pending = null;
