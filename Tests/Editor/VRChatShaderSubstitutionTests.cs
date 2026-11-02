@@ -62,7 +62,7 @@ namespace VRVlog.LilToonExporter.Tests
                 "VRChat/Mobile/Worlds/Supersampled UI", "VRChat/Sprites/Default", "VRChat/Sprites/Diffuse",
                 "Video/RealtimeEmissiveGamma", "VRChat/Panosphere", "VRChat/Mobile/Skybox", "FX/MirrorReflection",
             };
-            Assert.That(UnsupportedShaderSubstitution.VRChatShaderNames, Is.EquivalentTo(expected));
+            Assert.That(UnsupportedShaderSubstitution.VRChatShaders.Keys, Is.EquivalentTo(expected));
         }
 
         [Test] public void AnotherShaderNameKeepsTheGenericMapping()

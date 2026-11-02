@@ -54,9 +54,6 @@ namespace VRVlog.LilToonExporter
             return all.Where(f => !roots.Any(root => root != f && f.Target.transform.IsChildOf(root.Target.transform))).ToArray();
         }
 
-        // A parent the user keeps also keeps this finding.
-        internal static bool Inherited(ExportGimmickFinding finding, ExportSettings settings) => InheritedFrom(finding, settings) != null;
-
         // The nearest kept parent the row follows, or null.
         internal static GameObject InheritedFrom(ExportGimmickFinding finding, ExportSettings settings) =>
             settings.IncludedGimmicks.Where(go => go != null && go != finding.Target && finding.Target.transform.IsChildOf(go.transform))

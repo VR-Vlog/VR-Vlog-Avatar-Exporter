@@ -96,8 +96,6 @@ namespace VRVlog.LilToonExporter
             Binary = bytes;
         }
 
-        internal int AppendBinary(byte[] payload) => AppendBinaryBatch(new[] { payload })[0];
-
         internal int[] AppendBinaryBatch(IReadOnlyList<byte[]> payloads)
         {
             EmbeddedBuffer();

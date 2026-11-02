@@ -28,7 +28,7 @@ namespace VRVlog.LilToonExporter.Tests
             };
             var document = GlbDocument.Read(Build(json, new byte[] { 1, 2, 3 }));
 
-            var offset = document.AppendBinary(new byte[] { 4, 5 });
+            var offset = document.AppendBinaryBatch(new[] { new byte[] { 4, 5 } })[0];
             var roundTrip = GlbDocument.Read(document.Write());
             var buffer = (Dictionary<string, object>)((List<object>)roundTrip.Json["buffers"])[0];
 

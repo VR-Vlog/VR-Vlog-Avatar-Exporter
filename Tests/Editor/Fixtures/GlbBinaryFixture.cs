@@ -60,7 +60,7 @@ namespace VRVlog.LilToonExporter.Tests
             check(GlbBinaryOptimizer.Compact(doc) == 0, "Original partial overlaps preserve their aliasing semantics");
 
             doc = Document();
-            var independent = doc.AppendBinary(new byte[] { 71, 73, 79, 83 });
+            var independent = doc.AppendBinaryBatch(new[] { new byte[] { 71, 73, 79, 83 } })[0];
             ((Dictionary<string, object>)Views(doc)[0])["extensions"] = D("EXT_meshopt_compression",
                 D("buffer", 0L, "byteOffset", (long)independent, "byteLength", 4L));
             var extended = doc.Write();
