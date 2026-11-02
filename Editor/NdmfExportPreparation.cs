@@ -45,7 +45,7 @@ namespace VRVlog.LilToonExporter
         // NDMF tracks asset replacements made by authoring/optimization passes.
         // Keep the optional public registry available to the preparation callback.
         internal object ObjectRegistry { get; private set; }
-        private const string MaNamespace = "nadena.dev.modular_avatar.core.";
+        private const string MaNamespace = ExportTypeNames.MaNamespace;
         // Weak keys keep reference-context markers scoped to owned copies.
         // Authored NDMF markers retain their existing processing semantics.
         private static readonly ConditionalWeakTable<GameObject, CopyAvatarRoot> copyAvatarRoots =
@@ -152,10 +152,8 @@ namespace VRVlog.LilToonExporter
                     var type = behaviour.GetType();
                     var authoring = IsAuthoringTag(type) || type.GetInterfaces().Any(contract => contract.FullName == "VRC.SDKBase.IEditorOnly");
                     if (authoring || PreservesExportBehaviour(behaviour)) continue;
-                    var editorCallbacks = false;
-                    for (var current = type; current != null; current = current.BaseType)
-                        editorCallbacks |= current.GetCustomAttributesData().Any(attribute => attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" ||
-                            attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode");
+                    var editorCallbacks = ExportTypeNames.SelfAndBaseTypes(type).Any(current => current.GetCustomAttributesData().Any(attribute =>
+                        attribute.AttributeType.FullName == "UnityEngine.ExecuteAlways" || attribute.AttributeType.FullName == "UnityEngine.ExecuteInEditMode"));
                     // Disabled editor scripts can still receive Awake on activation.
                     // Remove editor scripts outside export/authoring contracts
                     // before activation. Preserve inert runtime/metadata enabled
@@ -252,9 +250,7 @@ namespace VRVlog.LilToonExporter
             // VRCFury itself skips avatars whose only component is its debug info,
             // and its test copy is an avatar it has already built.
             if (type.FullName == "VF.Model.VRCFuryDebugInfo" || type.FullName == "VF.Model.VRCFuryTest") return false;
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == "VF.Component.VRCFuryComponent") return true;
-            return false;
+            return ExportTypeNames.InheritsFrom(type, "VF.Component.VRCFuryComponent");
         }
 
         private void ApplyVrcFury(GameObject clone, ICollection<string> warnings)
@@ -392,7 +388,7 @@ namespace VRVlog.LilToonExporter
         private void CaptureRendererReplacements(GameObject clone, object context)
         {
             var registry = context?.GetType().GetProperty("ObjectRegistry", BindingFlags.Public | BindingFlags.Instance)?.GetValue(context);
-            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == "nadena.dev.ndmf.IObjectRegistry");
+            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry);
             var getReference = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
             if (getReference == null) return;
             foreach (var current in clone.GetComponentsInChildren<Renderer>(true))
@@ -415,9 +411,7 @@ namespace VRVlog.LilToonExporter
 
         private static bool IsAuthoringTag(Type type)
         {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent" ||
-                    current.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
+            if (ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag) || ExportTypeNames.InheritsFrom(type, ExportTypeNames.AaoAvatarTag)) return true;
             return type.GetInterfaces().Any(i => i.FullName == "nadena.dev.ndmf.INDMFEditorOnly" ||
                 i.FullName == "nadena.dev.ndmf.runtime.INDMFEditorOnly");
         }
@@ -440,7 +434,7 @@ namespace VRVlog.LilToonExporter
 
         private static string FollowingProperty(Component component)
         {
-            for (var type = component.GetType(); type != null; type = type.BaseType)
+            foreach (var type in ExportTypeNames.SelfAndBaseTypes(component.GetType()))
             {
                 if (type.FullName == MaNamespace + "ModularAvatarMergeArmature") return "mergeTargetObject";
                 if (type.FullName == MaNamespace + "ModularAvatarBoneProxy") return "target";
@@ -734,13 +728,8 @@ namespace VRVlog.LilToonExporter
             !clone.GetComponents<Component>().Any(c => c != null && AvatarOptimizerPlatformTypes.Contains(c.GetType().FullName)) &&
             clone.GetComponentsInChildren<Component>(true).Any(IsAvatarOptimizerComponent);
 
-        private static bool IsAvatarOptimizerComponent(Component component)
-        {
-            if (component == null) return false;
-            for (var type = component.GetType(); type != null; type = type.BaseType)
-                if (type.FullName == "Anatawa12.AvatarOptimizer.AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsAvatarOptimizerComponent(Component component) =>
+            component != null && ExportTypeNames.InheritsFrom(component.GetType(), ExportTypeNames.AaoAvatarTag);
 
         // The lent controller keeps one empty layer: Animator::Sample, which
         // AnimationMode.SampleAnimationClip calls (as plugins that photograph menu
@@ -925,12 +914,7 @@ namespace VRVlog.LilToonExporter
             }
         }
 
-        private static bool IsMaTag(Type type)
-        {
-            for (var current = type; current != null; current = current.BaseType)
-                if (current.FullName == MaNamespace + "AvatarTagComponent") return true;
-            return false;
-        }
+        private static bool IsMaTag(Type type) => ExportTypeNames.InheritsFrom(type, ExportTypeNames.MaAvatarTag);
 
         private void IsolateSharedAssets(GameObject clone, HashSet<Object> sourceAssets, HashSet<Object> cloneAssets,
             Action<Material, Material> materialCopyObserver)
