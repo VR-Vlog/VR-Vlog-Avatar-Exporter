@@ -398,20 +398,30 @@ namespace VRVlog.LilToonExporter
             warnings?.Add(ExporterLocalization.T(LostGeneratedMorphs) + string.Join(", ", lost));
         }
 
+        // IObjectRegistry.GetReference(Object, bool create) of an NDMF build's
+        // registry, or null when the registry is null or does not expose it.
+        internal static MethodInfo RegistryGetReference(object registry) =>
+            registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry)
+                ?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
+
+        // The original object the registry records for value, read without
+        // creating a reference. null when the registry cannot be read or records
+        // nothing for value; exceptions from the registry reach the caller.
+        internal static Object RegisteredOriginal(object registry, Object value)
+        {
+            var reference = RegistryGetReference(registry)?.Invoke(registry, new object[] { value, false });
+            return reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference) as Object;
+        }
+
         // NDMF's registry records provenance for diagnostic references. Read its
         // existing references without creating entries or guessing by shape/name.
         // Only one-to-one registered component replacement can carry a channel.
         private void CaptureRendererReplacements(GameObject clone, object context)
         {
             var registry = context?.GetType().GetProperty("ObjectRegistry", BindingFlags.Public | BindingFlags.Instance)?.GetValue(context);
-            var contract = registry?.GetType().GetInterfaces().FirstOrDefault(type => type.FullName == ExportTypeNames.NdmfObjectRegistry);
-            var getReference = contract?.GetMethod("GetReference", new[] { typeof(Object), typeof(bool) });
-            if (getReference == null) return;
             foreach (var current in clone.GetComponentsInChildren<Renderer>(true))
             {
-                var reference = getReference.Invoke(registry, new object[] { current, false });
-                var original = reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)?.GetValue(reference)
-                    as Renderer;
+                var original = RegisteredOriginal(registry, current) as Renderer;
                 if (ReferenceEquals(original, null)) continue;
                 // A build can retain the original disabled component. Its own
                 // diagnostic reference is not a competing replacement.

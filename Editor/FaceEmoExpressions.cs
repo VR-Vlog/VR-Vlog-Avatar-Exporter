@@ -31,7 +31,7 @@ namespace VRVlog.LilToonExporter
             Func<string, string[]> toAuthoringPaths, Func<string, SkinnedMeshRenderer> toPreparedRenderer,
             Func<string, bool> excludedPath, bool composeValues = true)
         {
-            var entries = source.Entries.Where(entry => entry.Error == null && entry.Id?.StartsWith("faceemo/", StringComparison.Ordinal) == true).ToArray();
+            var entries = source.Entries.Where(entry => entry.Error == null && entry.Source == VRVlog.Expressions.ExpressionSource.FaceEmo).ToArray();
             if (entries.Length == 0) return;
             var metadata = VrChatExpressionMenu.Read(prepared, new VrChatMenuImportPolicy { SkipAll = true });
             if (metadata.Controller == null) return;
@@ -299,15 +299,9 @@ namespace VRVlog.LilToonExporter
                 // NDMF records committed animator clips against the original
                 // asset. Read that existing provenance without creating a
                 // reference; augmented clips need not have identical curves.
-                var contract = objectRegistry.GetType().GetInterfaces().FirstOrDefault(type =>
-                    type.FullName == "nadena.dev.ndmf.IObjectRegistry");
-                var method = contract?.GetMethod("GetReference", new[] { typeof(UnityEngine.Object), typeof(bool) });
-                if (method == null) return false;
                 try
                 {
-                    var reference = method.Invoke(objectRegistry, new object[] { clip, false });
-                    var origin = reference?.GetType().GetProperty("Object", BindingFlags.Public | BindingFlags.Instance)
-                        ?.GetValue(reference) as UnityEngine.Object;
+                    var origin = NdmfExportPreparation.RegisteredOriginal(objectRegistry, clip);
                     return origin != null && (origin == registered || origin == isolatedCopyOf?.Invoke(registered));
                 }
                 catch (TargetInvocationException) { return false; }
@@ -496,10 +490,10 @@ namespace VRVlog.LilToonExporter
         }
 
         private static bool IsRepository(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.Data.MenuRepositoryComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoMenuRepository;
 
         private static bool IsLauncher(Component component) => component != null &&
-            component.GetType().FullName == "Suzuryg.FaceEmo.Components.FaceEmoLauncherComponent";
+            component.GetType().FullName == ExportTypeNames.FaceEmoLauncher;
 
         internal static bool TargetsAvatar(GameObject avatar, object settings)
         {
@@ -589,8 +583,8 @@ namespace VRVlog.LilToonExporter
         }
 
         // The list-only export reads a listed clip FaceEmo registers through
-        // here too, so its permanent overrides and, for an entry whose Id
-        // starts with "faceemo/", the common DEFAULT FACE apply as they do here.
+        // here too, so its permanent overrides and, for an entry whose Source
+        // is FaceEmo, the common DEFAULT FACE apply as they do here.
         internal static void ReadClip(GameObject avatar, AnimationClip clip, VrChatExpressionMenu.Entry entry, VrChatExpressionMenu.Source source,
             Func<string, bool> excludedPath, BindingSnapshot bindings)
         {
