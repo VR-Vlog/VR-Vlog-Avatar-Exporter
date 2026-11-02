@@ -160,8 +160,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static string T(string source) => ExporterLocalization.T(source);
         private AppTransferFlow Flow => flow ?? (flow = new AppTransferFlow());
 
-        // The exporter assembly compiles only with a supported UniVRM. Bind it by
-        // name where it is used, as the exporter does for this module.
+        // Bind the exporter by name where it is used, as the exporter does for this module.
         private ExportEntry Exporter
         {
             get
@@ -637,7 +636,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             saveResult.text = result;
             saveResult.tooltip = detail;
             saveResult.EnableInClassList("save-result--warn", warn);
-            saveOpen.text = T("保存先を開く");
+            saveOpen.text = T(ExportResultText.OpenSaveLocation);
             Show(saveOpen, saveProblem == null && savedCopy != null && File.Exists(savedCopy));
         }
 
@@ -978,7 +977,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
             privacyText.RegisterCallback<ClickEvent>(_ => privacyToggle.value = !privacyToggle.value);
             readTerms.RegisterCallback<ClickEvent>(_ => Application.OpenURL(AppTransferFlow.TermsUrl));
             privacyLink.RegisterCallback<ClickEvent>(_ => Application.OpenURL(CloudVrmTransferWindow.PrivacyPolicyUrl));
-            // The VRM terms are the IMGUI section shared with the export window.
+            // The VRM terms are the exporter's IMGUI section (AppTransferExport.DrawTerms).
             termsView = root.Q<IMGUIContainer>("terms");
             termsView.onGUIHandler = DrawTerms;
             diagnosticsButton.clicked += DependencyDiagnostics.OpenDiagnostics;

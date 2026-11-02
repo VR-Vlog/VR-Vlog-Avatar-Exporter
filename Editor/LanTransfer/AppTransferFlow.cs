@@ -61,10 +61,10 @@ namespace VRVlog.LilToonExporter.LanTransfer
         internal const string NoNotes = "書き出し時の注意はありません";
         internal const string NoteCount = "書き出し時の注意 {0}件";
         internal const string OtherNotes = "変換の内容";
-        internal const string CopyDiagnostics = "診断情報をコピー";
-        internal const string DiagnosticsCopied = "コピーしました";
-        internal const string DiagnosticsHint = "名前やパスは含みません";
-        internal const string NamedDiagnosticsItem = "名前・パスを含めてコピー（DM など非公開の場だけ）";
+        internal const string CopyDiagnostics = ExportResultText.CopyDiagnostics;
+        internal const string DiagnosticsCopied = ExportResultText.DiagnosticsCopied;
+        internal const string DiagnosticsHint = ExportResultText.DiagnosticsHint;
+        internal const string NamedDiagnosticsItem = ExportResultText.NamedDiagnosticsItem;
         internal const string ItemCount = "{0}件";
         internal const string ShowRest = "残り{0}件を表示";
         internal const string LayoutMissing = "画面のファイルを読み込めません（パッケージを再インポートすると直ります）";

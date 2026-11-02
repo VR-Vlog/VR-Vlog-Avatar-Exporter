@@ -57,7 +57,7 @@ namespace VRVlog.LilToonExporter.LanTransfer
         private static bool CanOpenFromMenu() => CloudTransferAvailability.Enabled && ExporterMenu.OneAvatarRootSelected();
 
         // The detailed transfer starts on the expression board. When the exporter cannot
-        // run, the quick window opens instead and says why.
+        // run, this window opens in its detailed form and says why.
         [MenuItem(DetailedMenuPath, false, DetailedMenuPriority)]
         [MenuItem(DetailedMenuBarPath, false, DetailedMenuBarPriority)]
         [MenuItem(DetailedAssetsPath, false, DetailedAssetsPriority)]
