@@ -7,6 +7,7 @@ using VRVlog.LilToonExporter.Vendor.UniVRM10;
 using VRVlog.LilToonExporter.Vendor.UniGLTF.Extensions.VRMC_vrm;
 using UnityEngine;
 using VRVlog.LilToonExporter.Vendor.VRM10.MToon10;
+using static VRVlog.LilToonExporter.MobileMaterialMath;
 
 namespace VRVlog.LilToonExporter
 {
@@ -1008,7 +1009,7 @@ namespace VRVlog.LilToonExporter
                     var original = slots[i];
                     if (original == null) continue;
                     var official = ExportRecoveryReport.Official(original);
-                    if (!controls.Any(property => original.HasProperty(property) && original.GetFloat(property) != 0) &&
+                    if (!controls.Any(property => NonZero(original, property)) &&
                         !(official && original.HasProperty("_UseAudioLink") && audioKeywords.Any(original.IsKeywordEnabled))) continue;
                     if (!replacements.TryGetValue(original, out var material))
                     {
@@ -1299,13 +1300,13 @@ namespace VRVlog.LilToonExporter
             if (shader == null) throw new InvalidOperationException("UniVRMのMToon10シェーダーを利用できません。");
             var material = new Material(shader) { name = source.name };
             created.Add(material);
-            var shadowEnabled = source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > 0.5f;
-            var backlightEnabled = source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > 0.5f;
+            var shadowEnabled = Enabled(source, "_UseShadow");
+            var backlightEnabled = Enabled(source, "_UseBacklight");
             var normalEnabled = EnabledOrTexture(source, "_UseBumpMap", "_BumpMap");
             var emissionEnabled = EnabledOrTexture(source, "_UseEmission", "_EmissionMap") &&
                 !LilToonEmissionPolicy.IsSuppressed(source, suppressSharedTextureEmission);
             var matcapAdditive = MatcapAdditive(source);
-            var rimEnabled = source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > 0.5f;
+            var rimEnabled = Enabled(source, "_UseRim");
             var hidden = HiddenInFallback(source);
             var outlineEnabled = !hidden && LilToonMaterialReader.HasPortableOutline(source);
             var shadeTexture = ShadeTexture(source);
@@ -1409,7 +1410,7 @@ namespace VRVlog.LilToonExporter
                     if (HiddenInFallback(source)) color.a = 0f;
                     return color;
                 case MaterialColorType.shadeColor:
-                    if (!(source.HasProperty("_UseShadow") && source.GetFloat("_UseShadow") > .5f)) return Color(source, "_Color", UnityEngine.Color.white);
+                    if (!Enabled(source, "_UseShadow")) return Color(source, "_Color", UnityEngine.Color.white);
                     var shade = MobileMaterialMath.Shadow2ndShade(Color(source, "_ShadowColor", UnityEngine.Color.gray), Color(source, "_Shadow2ndColor", UnityEngine.Color.clear),
                         Float(source, "_ShadowBorder", 0.5f), Float(source, "_Shadow2ndBorder", 0.15f));
                     // The shade image is the main image unless a shadow color
@@ -1425,10 +1426,10 @@ namespace VRVlog.LilToonExporter
                         * (1f - Mathf.Clamp01(Float(source, "_EmissionFluorescence", 0f))) * LilToonEmissionPolicy.GradientFactor(source) : UnityEngine.Color.black;
                 case MaterialColorType.matcapColor: return MatcapAdditive(source)
                     ? MobileMaterialMath.MatcapColor(Color(source, "_MatCapColor", UnityEngine.Color.white), Float(source, "_MatCapBlend", 1f)) : UnityEngine.Color.black;
-                case MaterialColorType.rimColor: return source.HasProperty("_UseRim") && source.GetFloat("_UseRim") > .5f
+                case MaterialColorType.rimColor: return Enabled(source, "_UseRim")
                     ? MobileMaterialMath.MatcapColor(Color(source, "_RimColor", UnityEngine.Color.black), 1f)
                     // lilToon 2.x scales backlight by its color alpha, like the rim above.
-                    : source.HasProperty("_UseBacklight") && source.GetFloat("_UseBacklight") > .5f
+                    : Enabled(source, "_UseBacklight")
                         ? MobileMaterialMath.MatcapColor(Color(source, "_BacklightColor", UnityEngine.Color.black), 1f) : UnityEngine.Color.black;
                 case MaterialColorType.outlineColor: return Color(source, "_OutlineColor", UnityEngine.Color.black);
                 default: throw new ArgumentOutOfRangeException(nameof(type));
@@ -1447,7 +1448,6 @@ namespace VRVlog.LilToonExporter
             return mode == 1 ? MToon10AlphaMode.Cutout : mode == 2 ? MToon10AlphaMode.Transparent : MToon10AlphaMode.Opaque;
         }
 
-        private static float Float(Material material, string property, float fallback) => material.HasProperty(property) ? material.GetFloat(property) : fallback;
         private static Color Color(Material material, string property, Color fallback) => material.HasProperty(property) ? material.GetColor(property) : fallback;
         private static Texture Texture(Material material, string property) => material.HasProperty(property) ? material.GetTexture(property) : null;
         private static Texture ShadeTexture(Material material)
@@ -1456,14 +1456,12 @@ namespace VRVlog.LilToonExporter
             return texture == Texture2D.whiteTexture ? null : texture;
         }
         private static bool EnabledOrTexture(Material material, string enableProperty, string textureProperty) =>
-            material.HasProperty(enableProperty)
-                ? material.GetFloat(enableProperty) > 0.5f
-                : Texture(material, textureProperty) != null;
+            material.HasProperty(enableProperty) ? Enabled(material, enableProperty) : Texture(material, textureProperty) != null;
 
         // MToon adds its MatCap. lilToon's multiply mode (3) darkens instead,
         // so adding it would brighten the surface; such a MatCap is omitted.
         private static bool MatcapAdditive(Material material) =>
-            material.HasProperty("_UseMatCap") && material.GetFloat("_UseMatCap") > 0.5f &&
+            Enabled(material, "_UseMatCap") &&
             Mathf.RoundToInt(Float(material, "_MatCapBlendMode", 1f)) != 3;
     }
 }
