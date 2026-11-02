@@ -317,7 +317,7 @@ namespace VRVlog.LilToonExporter
         internal static bool IsSuppressed(UnityEngine.Material material, bool enabled) => false;
         internal static bool HasHdrTextureEmission(UnityEngine.Material material) => false;
     }
-    // Alpha compositing is verified by AlphaMaskTests in a real Unity GPU run.
+    // Alpha compositing is verified by EmissionMaskBakeTests in a real Unity GPU run.
     internal static class AlphaMaskBaker
     {
         internal static void CheckUvRange(UnityEngine.Renderer renderer, int slot, UnityEngine.Material material, ICollection<string> warnings) { }
