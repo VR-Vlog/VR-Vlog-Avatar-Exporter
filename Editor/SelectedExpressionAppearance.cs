@@ -130,7 +130,7 @@ namespace VRVlog.LilToonExporter
                 var curve = AnimationUtility.GetEditorCurve(clip, EditorCurveBinding.FloatCurve(binding.path, typeof(Transform), property + "." + axis));
                 // NaN never equals itself, so IsConstant alone would call such
                 // a curve moving. Invalid data is not motion of the channel.
-                return curve != null && VrChatExpressionSampler.IsValidNativeCurve(curve) && !VrChatExpressionSampler.IsConstant(curve);
+                return curve != null && VrChatExpressionSampler.IsValidNativeCurve(curve) && !CurveChecks.Constant(curve);
             });
         }
 
@@ -139,15 +139,9 @@ namespace VRVlog.LilToonExporter
             value = 0;
             var curve = AnimationUtility.GetEditorCurve(clip, binding);
             VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.path + " / " + binding.propertyName);
-            if (curve == null || curve.length == 0) return false;
-            var keys = curve.keys; value = keys[0].value;
-            if (keys.Any(key => key.value != keys[0].value)) return false;
             // Unused first-in/last-out tangents cannot change a segment. Active
             // nonzero tangents could overshoot despite equal endpoint values.
-            for (var i = 0; i + 1 < keys.Length; i++)
-                if (keys[i].outTangent != 0 && !float.IsInfinity(keys[i].outTangent) ||
-                    keys[i + 1].inTangent != 0 && !float.IsInfinity(keys[i + 1].inTangent)) return false;
-            return true;
+            return CurveChecks.Constant(curve, out value, emptyIsConstant: false, endTangents: false);
         }
 
         private static bool MatchesMaterialValue(Material material, string property, float value)

@@ -99,15 +99,7 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.GetCurveBindings(clip).All(binding => Constant(AnimationUtility.GetEditorCurve(clip, binding), out _));
         }
 
-        static bool Constant(AnimationCurve curve, out float value)
-        {
-            value = 0;
-            if (curve == null || curve.length == 0) return false;
-            value = curve.keys[0].value;
-            if (float.IsNaN(value) || float.IsInfinity(value)) return false;
-            var constant = value;
-            return curve.keys.All(key => Finite(key.time) && key.value == constant && (key.inTangent == 0 || float.IsInfinity(key.inTangent)) &&
-                (key.outTangent == 0 || float.IsInfinity(key.outTangent)));
-        }
+        static bool Constant(AnimationCurve curve, out float value) =>
+            CurveChecks.Constant(curve, out value, emptyIsConstant: false, finite: true);
     }
 }

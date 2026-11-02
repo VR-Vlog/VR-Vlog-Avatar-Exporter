@@ -259,7 +259,7 @@ namespace VRVlog.LilToonExporter
                 foreach (var clip in layer.Clips)
                 {
                     var curve = AnimationUtility.GetEditorCurve(clip, morph);
-                    if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve) ||
+                    if (!CurveChecks.Constant(curve, emptyIsConstant: false) ||
                         weight.HasValue && weight.Value != curve.keys[0].value)
                     { invariant = false; break; }
                     weight = curve.keys[0].value;
@@ -439,7 +439,7 @@ namespace VRVlog.LilToonExporter
         {
             if (avatar == null || binding.type != typeof(GameObject) || binding.propertyName != "m_IsActive") return false;
             var curve = AnimationUtility.GetEditorCurve(clip, binding);
-            if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return false;
+            if (!CurveChecks.Constant(curve, emptyIsConstant: false)) return false;
             var value = curve.keys[0].value;
             if (value != 0 && value != 1) return false;
             var matches = avatar.GetComponentsInChildren<Transform>(true).Where(transform =>

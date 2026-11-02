@@ -17,7 +17,7 @@ namespace VRVlog.LilToonExporter
     {
         internal static bool HasChangingMorph(AnimationClip clip, Func<string, bool> excludedPath) =>
             AnimationUtility.GetCurveBindings(clip).Where(binding => PoseSampling.IsBlendShape(binding) && excludedPath?.Invoke(binding.path) != true)
-                .Any(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+                .Any(binding => !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)));
 
         private sealed class Target
         {

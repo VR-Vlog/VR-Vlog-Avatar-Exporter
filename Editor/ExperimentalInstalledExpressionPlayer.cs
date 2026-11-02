@@ -215,7 +215,7 @@ namespace VRVlog.LilToonExporter
                     if (!stateInfo.loop && stateInfo.normalizedTime >= 1 && currentState.speed > 0 &&
                         !currentState.speedParameterActive && !currentState.timeParameterActive &&
                         controller.GetStateEffectiveMotion(currentState, layer) == clip && !clip.isLooping) continue;
-                    var varyingCurves = AnimationUtility.GetCurveBindings(clip).Where(Needed).Where(binding => !VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))).ToArray();
+                    var varyingCurves = AnimationUtility.GetCurveBindings(clip).Where(Needed).Where(binding => !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))).ToArray();
                     var varying = varyingCurves.Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip).Where(Needed).Where(binding => AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(key => key.value).Distinct().Count() > 1)).ToArray();
                     // A settled face keeps the clip's final key or loop start.
                     // Parameter and object reference curves and parameter-driven

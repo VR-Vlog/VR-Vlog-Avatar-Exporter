@@ -238,7 +238,7 @@ namespace VRVlog.LilToonExporter
                     var skin = (binding.path.Length == 0 ? avatar.transform : avatar.transform.Find(binding.path))?.GetComponent<SkinnedMeshRenderer>();
                     var shape = skin?.sharedMesh == null ? -1 : skin.sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length));
                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    if (shape < 0 || curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve) ||
+                    if (shape < 0 || !CurveChecks.Constant(curve, emptyIsConstant: false) ||
                         curve.keys[0].value != skin.GetBlendShapeWeight(shape)) return false;
                 }
                 // An omitted WD Off binding can retain a previous nonzero
@@ -545,7 +545,7 @@ namespace VRVlog.LilToonExporter
                         VrChatGestureExpressions.ReadCurve(curve);
                         if (automatic.Contains(binding))
                         {
-                            varyingAutomatic |= !VrChatExpressionSampler.IsConstant(curve) ||
+                            varyingAutomatic |= !CurveChecks.Constant(curve) ||
                                 automaticConstants.TryGetValue(binding, out var previous) && previous != curve.keys[0].value;
                             automaticConstants[binding] = curve.keys[0].value;
                         }
@@ -564,7 +564,7 @@ namespace VRVlog.LilToonExporter
                     {
                         var curve = AnimationUtility.GetEditorCurve(clip, binding);
                         if (curve == null) { missing = true; continue; }
-                        if (curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve) ||
+                        if (!CurveChecks.Constant(curve, emptyIsConstant: false) ||
                             invariant.HasValue && curve.keys[0].value != invariant.Value) { safe = false; break; }
                         invariant = curve.keys[0].value;
                     }

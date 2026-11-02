@@ -736,7 +736,7 @@ namespace VRVlog.LilToonExporter
                     if (current.Length != 1 || current[0].weight != 1 ||
                         playable.GetNextAnimatorClipInfo(upper).Any(info => info.clip != null && info.weight > .00001f)) continue;
                     var curve = AnimationUtility.GetEditorCurve(current[0].clip, binding);
-                    if (curve == null || curve.length == 0 || !IsConstant(curve) && Terminal(upper) != current[0].clip) continue;
+                    if (curve == null || curve.length == 0 || !CurveChecks.Constant(curve) && Terminal(upper) != current[0].clip) continue;
                     VrChatGestureExpressions.ReadCurve(curve);
                     return true;
                 }
@@ -753,7 +753,7 @@ namespace VRVlog.LilToonExporter
                         if (!capturedMorphs.Contains(binding) || excludedPath?.Invoke(binding.path) == true ||
                             !PoseSampling.IsBlendShape(binding)) continue;
                         var curve = AnimationUtility.GetEditorCurve(info.clip, binding);
-                        if (IsConstant(curve)) continue;
+                        if (CurveChecks.Constant(curve)) continue;
                         if (FindRenderer(avatar, binding.path).sharedMesh.GetBlendShapeIndex(binding.propertyName.Substring("blendShape.".Length)) < 0) continue;
                         // A malformed or unrepresentable curve is not a temporal
                         // preservation proof. Use the authored program's complete
@@ -818,15 +818,7 @@ namespace VRVlog.LilToonExporter
                 // than comparing sampled endpoints. Equal values alone cannot
                 // exclude Hermite/weighted overshoot or a later changing key.
                 if (curve.postWrapMode == WrapMode.Loop || curve.postWrapMode == WrapMode.PingPong) return null;
-                var keys = curve.keys;
-                for (var index = 1; index < keys.Length; index++)
-                {
-                    var left = keys[index - 1]; var right = keys[index];
-                    if (right.time <= phase) continue;
-                    if (left.value != right.value ||
-                        left.outTangent != 0 && !float.IsInfinity(left.outTangent) ||
-                        right.inTangent != 0 && !float.IsInfinity(right.inTangent)) return null;
-                }
+                if (!CurveChecks.HoldsAfter(curve, phase)) return null;
             }
             return clip;
         }
@@ -1101,7 +1093,7 @@ namespace VRVlog.LilToonExporter
                 AnimationUtility.GetCurveBindings(clip).Any(binding =>
                     !(PoseSampling.IsBlendShape(binding) ||
                       binding.type == typeof(Animator) && parameters.Contains(binding.propertyName)) ||
-                    !IsConstant(AnimationUtility.GetEditorCurve(clip, binding)))) return false;
+                    !CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)))) return false;
             return machine.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(machine.entryTransitions)
                 .Concat(states.SelectMany(state => state.transitions)).All(transition =>
                     !transition.isExit && transition.destinationStateMachine == null && states.Contains(transition.destinationState));
@@ -1152,7 +1144,7 @@ namespace VRVlog.LilToonExporter
                 if (state == null || ExpressionDependencies.HasEffectfulBehaviours(state.behaviours) || state.transitions.Length != 0 || state.iKOnFeet ||
                     state.timeParameterActive || state.speedParameterActive || state.mirrorParameterActive || state.cycleOffsetParameterActive) return false;
                 return state.motion == null || state.motion is AnimationClip clip && AnimationUtility.GetObjectReferenceCurveBindings(clip).Length == 0 &&
-                    AnimationUtility.GetCurveBindings(clip).All(binding => IsConstant(AnimationUtility.GetEditorCurve(clip, binding)));
+                    AnimationUtility.GetCurveBindings(clip).All(binding => CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding)));
             }
             var result = new HashSet<int>();
             foreach (var index in affected)
@@ -1258,7 +1250,7 @@ namespace VRVlog.LilToonExporter
                                 {
                                     var curve = AnimationUtility.GetEditorCurve(clip, binding);
                                     ValidateNativeParameterCurve(curve, path + "." + child.state.name + " / " + binding.propertyName);
-                                    if (!IsConstant(curve)) throw Unstable("時間で変わるFXレイヤー制御の入力は固定表情に変換できません: " +
+                                    if (!CurveChecks.Constant(curve)) throw Unstable("時間で変わるFXレイヤー制御の入力は固定表情に変換できません: " +
                                         path + "." + child.state.name + " / " + binding.propertyName);
                                 }
                             }
@@ -1341,7 +1333,7 @@ namespace VRVlog.LilToonExporter
                                 ValidateNativeParameterCurve(curve, CurveLabel());
                                 continue;
                             }
-                            if (IsConstant(curve)) continue;
+                            if (CurveChecks.Constant(curve)) continue;
                             // A humanoid muscle or root motion curve is an
                             // Animator binding that names no controller
                             // parameter. It cannot change a BlendShape, so a
@@ -1432,14 +1424,6 @@ namespace VRVlog.LilToonExporter
             }
             index = 0;
             return null;
-        }
-
-        internal static bool IsConstant(AnimationCurve curve)
-        {
-            if (curve == null || curve.length == 0) return true;
-            var keys = curve.keys;
-            return keys.All(k => k.value == keys[0].value &&
-                (k.inTangent == 0 || float.IsInfinity(k.inTangent)) && (k.outTangent == 0 || float.IsInfinity(k.outTangent)));
         }
 
         // Unsupported appearance support is not invalid VRM data. Only neutral

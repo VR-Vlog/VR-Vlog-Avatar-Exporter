@@ -796,7 +796,7 @@ namespace VRVlog.LilToonExporter
                         // leaves the relay unproven instead of failing the rest.
                         VrChatExpressionSampler.ValidateNativeParameterCurve(curve, clip.name + " / " + binding.propertyName,
                             NeutralShapePlan.ChecksCurveValues(binding));
-                        if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return false;
+                        if (!CurveChecks.Constant(curve, emptyIsConstant: false)) return false;
                     }
                     return true;
                 }
@@ -894,7 +894,7 @@ namespace VRVlog.LilToonExporter
                 var bindings = (cache?.CurveBindings(clip) ?? AnimationUtility.GetCurveBindings(clip))
                     .Where(binding => excludedPath?.Invoke(binding.path) != true).ToArray();
                 if (bindings.Length == 0 || bindings.Any(binding => !PoseSampling.IsBlendShape(binding) ||
-                    !(cache?.Constant(clip, binding) ?? VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
+                    !(cache?.Constant(clip, binding) ?? CurveChecks.Constant(AnimationUtility.GetEditorCurve(clip, binding))))) continue;
                 result.Add(index, clip);
             }
             return result;

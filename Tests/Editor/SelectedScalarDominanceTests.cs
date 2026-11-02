@@ -113,7 +113,7 @@ namespace VRVlog.LilToonExporter.Tests
                 AnimationUtility.SetEditorCurve(moving, FxGraph.Binding("Rest"), AnimationCurve.Constant(0, 12, 0));
                 Assert.That(float.IsNaN(AnimationUtility.GetEditorCurve(moving, FxGraph.Binding("Face")).keys[0].outTangent), Is.True,
                     "The native fixture must retain an invalid active interpolation tangent before testing dominance.");
-                Assert.That(VrChatExpressionSampler.IsConstant(AnimationUtility.GetEditorCurve(moving, FxGraph.Binding("Face"))), Is.False);
+                Assert.That(CurveChecks.Constant(AnimationUtility.GetEditorCurve(moving, FxGraph.Binding("Face"))), Is.False);
             }
             else if (kind == "event") AnimationUtility.SetAnimationEvents(moving, new[] { new AnimationEvent { time = 10.5f, functionName = "UnknownEvent" } });
             else if (kind == "unknown callback") Assert.That(lower.AddStateMachineBehaviour<UnknownStateCallbackProbe>(), Is.Not.Null);

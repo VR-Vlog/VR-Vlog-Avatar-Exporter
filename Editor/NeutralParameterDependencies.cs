@@ -32,7 +32,7 @@ namespace VRVlog.LilToonExporter
                 if (!PoseSampling.IsBlendShape(binding) ||
                     excludedPath?.Invoke(binding.path) == true) return -1;
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                if (curve == null || curve.length == 0 || !VrChatExpressionSampler.IsConstant(curve)) return -1;
+                if (!CurveChecks.Constant(curve, emptyIsConstant: false)) return -1;
                 VrChatGestureExpressions.ReadCurve(curve);
             }
             return index;
