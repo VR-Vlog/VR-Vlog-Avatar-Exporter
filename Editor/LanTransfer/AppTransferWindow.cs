@@ -194,8 +194,8 @@ namespace VRVlog.LilToonExporter.LanTransfer
         // draws. Unity 2022.3 leaves the added texture without the font's hideFlags (later versions copy
         // them), so the next scene opening would destroy it. The font announces each added texture
         // through an internal editor callback, the one the editor uses to store it in a font saved as an
-        // asset; this passes DontSave on there, for the panel's fonts only. A version without the
-        // callback is a later one, which copies the flags itself.
+        // asset; this passes DontSave on there, for the panel's fonts only. Later versions that copy the
+        // flags themselves still raise the callback, so this only repeats what they already did.
         [InitializeOnLoadMethod]
         private static void KeepAddedAtlasTextures()
         {
