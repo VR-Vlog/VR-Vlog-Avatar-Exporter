@@ -816,18 +816,19 @@ namespace VRVlog.LilToonExporter
             !(value is GameObject) && !(value is Component) && !(value is Shader) &&
             !(value is ComputeShader) && !(value is MonoScript);
 
-        private static IEnumerable<Object> References(Object value)
+        private static List<Object> References(Object value)
         {
+            var result = new List<Object>();
             // Mesh/texture payloads can contain millions of scalar elements,
             // but do not contain asset references that need remapping here.
-            if (value is Mesh || value is Texture) yield break;
-            using (var serialized = new SerializedObject(value))
+            if (value is Mesh || value is Texture) return result;
+            SerializedReferences.Visit(value, property =>
             {
-                var property = serialized.GetIterator();
-                while (property.Next(true))
-                    if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
-                        yield return property.objectReferenceValue;
-            }
+                if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue != null)
+                    result.Add(property.objectReferenceValue);
+                return false;
+            });
+            return result;
         }
 
         private static void RequireCopySceneReferences(GameObject clone, HashSet<Object> cloneAssets)
@@ -840,22 +841,19 @@ namespace VRVlog.LilToonExporter
             foreach (var holder in holders)
             {
                 if (holder is Mesh || holder is Texture) continue;
-                using (var serialized = new SerializedObject(holder))
+                SerializedReferences.Visit(holder, property =>
                 {
-                    var property = serialized.GetIterator();
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var reference = property.objectReferenceValue;
-                        var target = reference is GameObject gameObject ? gameObject.transform :
-                            (reference as Component)?.transform;
-                        if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
-                            throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
-                                ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
-                                "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
-                                "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
-                    }
-                }
+                    if (property.propertyType != SerializedPropertyType.ObjectReference) return false;
+                    var reference = property.objectReferenceValue;
+                    var target = reference is GameObject gameObject ? gameObject.transform :
+                        (reference as Component)?.transform;
+                    if (target != null && !EditorUtility.IsPersistent(reference) && !IsWithinCopy(target, clone))
+                        throw new InvalidOperationException(holder.name + " (" + holder.GetType().Name + ") / " + property.propertyPath +
+                            ": 設定に書き出し用コピーの外部を指すシーン参照が残っています。参照先: " + ScenePath(target) +
+                            "。元のアバターやシーンを保護するため NDMF の処理を中止しました。" +
+                            "対象コンポーネントの参照先を同じアバター内に設定し、衣装だけでなくアバター全体を選んで書き出してください。");
+                    return false;
+                });
             }
         }
 
@@ -905,31 +903,25 @@ namespace VRVlog.LilToonExporter
                         Invoke(() => { set.Invoke(reference, new object[] { target }); return null; });
                     }
                 }
-                using (var serialized = new SerializedObject(component))
+                SerializedReferences.Visit(component, property =>
                 {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) continue;
-                        var direct = property.FindPropertyRelative("targetObject");
-                        var path = property.FindPropertyRelative("referencePath");
-                        if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
-                            path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) continue;
-                        var stale = direct.objectReferenceValue as GameObject;
-                        if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) continue;
-                        var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
-                        // Merge Armature's runtime getter includes MA's own
-                        // special handling for duplicated Armature transforms.
-                        // Preserve that effective target instead of choosing one.
-                        if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
-                            resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
-                        if (resolved == null || !IsWithinCopy(resolved.transform, clone)) continue;
-                        direct.objectReferenceValue = resolved;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (property.propertyType != SerializedPropertyType.Generic || property.type != type.Name) return false;
+                    var direct = property.FindPropertyRelative("targetObject");
+                    var path = property.FindPropertyRelative("referencePath");
+                    if (direct?.propertyType != SerializedPropertyType.ObjectReference ||
+                        path?.propertyType != SerializedPropertyType.String || string.IsNullOrEmpty(path.stringValue)) return false;
+                    var stale = direct.objectReferenceValue as GameObject;
+                    if (stale == null || EditorUtility.IsPersistent(stale) || IsWithinCopy(stale.transform, clone)) return false;
+                    var resolved = Invoke(() => resolve.Invoke(null, new object[] { property })) as GameObject;
+                    // Merge Armature's runtime getter includes MA's own
+                    // special handling for duplicated Armature transforms.
+                    // Preserve that effective target instead of choosing one.
+                    if (property.propertyPath == "mergeTarget" && FollowingProperty(component) == "mergeTargetObject")
+                        resolved = ReadFollowingTarget(component, "mergeTargetObject")?.gameObject;
+                    if (resolved == null || !IsWithinCopy(resolved.transform, clone)) return false;
+                    direct.objectReferenceValue = resolved;
+                    return true;
+                });
             }
         }
 
@@ -1004,20 +996,7 @@ namespace VRVlog.LilToonExporter
             foreach (var target in targets)
             {
                 if (target is Mesh || target is Texture) continue;
-                using (var serialized = new SerializedObject(target))
-                {
-                    var property = serialized.GetIterator();
-                    var changed = false;
-                    while (property.Next(true))
-                    {
-                        if (property.propertyType != SerializedPropertyType.ObjectReference) continue;
-                        var original = property.objectReferenceValue;
-                        if (original == null || !replacements.TryGetValue(original, out var replacement)) continue;
-                        property.objectReferenceValue = replacement;
-                        changed = true;
-                    }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                SerializedReferences.Replace(target, replacements);
             }
         }
 

@@ -341,15 +341,7 @@ namespace VRVlog.LilToonExporter
             // this prevents a material setter from restoring the source asset.
             if (replacements.Count != 0)
                 foreach (var component in copy.GetComponentsInChildren<Component>(true))
-                {
-                    if (component == null) continue;
-                    using var serialized = new SerializedObject(component);
-                    var property = serialized.GetIterator(); var changed = false;
-                    while (property.Next(true))
-                        if (property.propertyType == SerializedPropertyType.ObjectReference && property.objectReferenceValue is Material material && replacements.TryGetValue(material, out var replacement))
-                        { property.objectReferenceValue = replacement; changed = true; }
-                    if (changed) serialized.ApplyModifiedPropertiesWithoutUndo();
-                }
+                    if (component != null) SerializedReferences.Replace(component, replacements);
             foreach (var action in ExportRecoveryOptions.ActionsOrEmpty(options))
             {
                 if (action.Kind == ExportRecoveryActionKind.ExcludeHiddenRenderer && renderers.TryGetValue(action.Renderer, out var renderer) && renderer != null)
