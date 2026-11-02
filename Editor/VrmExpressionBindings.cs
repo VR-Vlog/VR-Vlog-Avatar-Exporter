@@ -37,7 +37,7 @@ namespace VRVlog.LilToonExporter
         // that explains it. descriptor is the VRChat descriptor's Lip Sync; it
         // fills an empty mouth preset before the known names do and is not
         // listed, since the avatar author chose those shapes.
-        public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null, bool inferBlink = true,
+        public static byte[] AddMissing(byte[] bytes, ICollection<string> warnings = null,
             bool inferEmotions = false, ICollection<(string Preset, string Source, string Format)> filledPresets = null,
             IReadOnlyDictionary<string, string> emotionCandidates = null,
             IReadOnlyDictionary<string, IReadOnlyList<(string Shape, float Weight)>> emotionShapes = null, ExpressionShapeNames shapeNames = null,
@@ -52,63 +52,6 @@ namespace VRVlog.LilToonExporter
             var expressions = Object(vrm, "expressions");
             var presets = Object(expressions, "preset");
             var changed = false;
-            if (inferBlink && !BlinkShapeNames.Presets.Any(key => presets != null && presets.ContainsKey(key)))
-            {
-                var blinkBinds = new[] { new List<object>(), new List<object>(), new List<object>() };
-                var completePairs = true;
-                var completeRenderers = true;
-                for (var nodeIndex = 0; nodeIndex < nodes.Count; nodeIndex++)
-                {
-                    var node = nodes[nodeIndex] as Dictionary<string, object>;
-                    if (node == null || !node.TryGetValue("mesh", out var rawMesh)) continue;
-                    var meshIndex = Index(rawMesh, meshes.Count, "mesh");
-                    var mesh = meshes[meshIndex] as Dictionary<string, object>;
-                    var names = List(Object(mesh, "extras"), "targetNames");
-                    if (names == null) continue;
-                    var resolved = BlinkShapeNames.Resolve(names.Select(n => n as string).ToArray());
-                    if (resolved[0] == -2)
-                    {
-                        Warn(warnings, "Blink: 同名の閉眼用シェイプが複数あります。確認・調整で指定してください。");
-                        completeRenderers = false;
-                        continue;
-                    }
-                    if (resolved[0] < 0 && resolved[1] == BlinkShapeNames.PartialPair)
-                    {
-                        Warn(warnings, "Blink: 閉眼用の左右がそろっていないメッシュがあります。確認・調整で指定してください。");
-                        completeRenderers = false;
-                        continue;
-                    }
-                    if (resolved[0] >= 0 && resolved[1] < 0) completePairs = false;
-                    for (var slot = 0; slot < resolved.Length; slot++)
-                    {
-                        var target = resolved[slot];
-                        if (target < 0) continue;
-                        var primitives = List(mesh, "primitives");
-                        if (primitives == null || primitives.Count == 0) continue;
-                        foreach (var rawPrimitive in primitives)
-                        {
-                            var targets = List(rawPrimitive as Dictionary<string, object>, "targets");
-                            if (targets == null || target >= targets.Count)
-                                throw new InvalidOperationException("表情名とmorph targetの対応が不正です。");
-                        }
-                        var bind = new Dictionary<string, object> {
-                            { "node", (long)nodeIndex }, { "index", (long)target }, { "weight", 1.0 }
-                        };
-                        blinkBinds[slot].Add(bind);
-                        if (resolved[0] < 0 && slot > 0) blinkBinds[0].Add(bind);
-                    }
-                }
-                for (var slot = 0; slot < blinkBinds.Length; slot++)
-                {
-                    if (!completeRenderers || blinkBinds[slot].Count == 0 || slot > 0 && !completePairs) continue;
-                    if (expressions == null) vrm["expressions"] = expressions = new Dictionary<string, object>();
-                    if (presets == null) expressions["preset"] = presets = new Dictionary<string, object>();
-                    presets[BlinkShapeNames.Presets[slot]] = new Dictionary<string, object> {
-                        { "morphTargetBinds", blinkBinds[slot] }, { "isBinary", false }
-                    };
-                    changed = true;
-                }
-            }
             foreach (var mapping in ExpressionNameInference.MouthShapes)
             {
                 // An authored preset, including an intentionally empty one,
@@ -190,14 +133,10 @@ namespace VRVlog.LilToonExporter
                     presets = Object(Object(vrm, "expressions"), "preset");
                 }
             }
-            if (inferBlink && (presets == null || (!presets.ContainsKey("blink") &&
-                !(presets.ContainsKey("blinkLeft") && presets.ContainsKey("blinkRight")))))
-                Warn(warnings, ExporterLocalization.T(BlinkNotGeneratedWarning));
             return changed ? glb.Write() : bytes;
         }
 
         internal const string DuplicateExpressionFormat = "{0}: mesh {1} に同名の表情が複数あるため自動設定を省略しました。";
-        internal const string BlinkNotGeneratedWarning = "瞬きのVRM設定を自動生成できませんでした。元アバターにVRMのBlink設定を追加してください。";
         internal const string FilledFormat = "{0}: 名前から自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string ShapeFilledFormat = "{0}: 表情が動かすBlendShapeから自動で設定しました（{1}）。書き出したVRMで表情の動きを確認してください。";
         internal const string DuplicateNameFormat = "{0}: mesh {1} に同名のBlendShape（{2}）が複数あるため、この名前は自動設定に使いませんでした。";

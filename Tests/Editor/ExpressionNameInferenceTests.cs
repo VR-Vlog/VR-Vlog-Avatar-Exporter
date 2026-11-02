@@ -138,7 +138,7 @@ namespace VRVlog.LilToonExporter.Tests
             List<string> formats = null)
         {
             var all = new List<(string Preset, string Source, string Format)>();
-            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, inferEmotions: inferEmotions, filledPresets: all,
+            var output = VrmExpressionBindings.AddMissing(bytes, warnings, inferEmotions: inferEmotions, filledPresets: all,
                 emotionCandidates: paths, emotionShapes: shapes, shapeNames: table);
             filled?.AddRange(all.Select(item => (item.Preset, item.Source)));
             formats?.AddRange(all.Select(item => item.Format));
@@ -218,7 +218,7 @@ namespace VRVlog.LilToonExporter.Tests
             Assert.That(filled, Is.EqualTo(new[] { ("angry", "怒り"), ("sad", "Sad (2)") }), "A numbered menu face still names its emotion.");
             Assert.That(presets.ContainsKey("happy"), Is.False, "The authored 笑顔 is not a candidate.");
             Assert.That(Infer(bytes, registered: Array.Empty<string>()), Is.EqualTo(bytes), "Without registered faces nothing is filled from custom names.");
-            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferEmotions: true), Is.EqualTo(bytes),
+            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferEmotions: true), Is.EqualTo(bytes),
                 "A caller that names no candidates fills nothing from custom names.");
         }
 
@@ -391,7 +391,7 @@ namespace VRVlog.LilToonExporter.Tests
             var bytes = Glb(null, Obj("笑顔", MenuFace(Bind(0, 1))), Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Angry", "composite")));
             var filled = new List<(string Preset, string Source)>();
             Assert.That(Infer(bytes, filled: filled, inferEmotions: false), Is.EqualTo(bytes));
-            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false), Is.EqualTo(bytes), "The default leaves emotions alone.");
+            Assert.That(VrmExpressionBindings.AddMissing(bytes), Is.EqualTo(bytes), "The default leaves emotions alone.");
             Assert.That(filled, Is.Empty);
         }
 
@@ -574,7 +574,7 @@ namespace VRVlog.LilToonExporter.Tests
             var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = faceNode };
             foreach (var (slot, preset) in VrmExpressionBindings.DescriptorVisemes.Slots)
                 if (!string.IsNullOrEmpty(visemes[slot])) descriptor.Shapes[preset] = visemes[slot];
-            return VrmExpressionBindings.AddMissing(bytes, warnings, inferBlink: false, descriptor: descriptor);
+            return VrmExpressionBindings.AddMissing(bytes, warnings, descriptor: descriptor);
         }
 
         [Test]
@@ -582,7 +582,7 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var bytes = Glb(null, null, Arr(Obj("name", "Body", "mesh", 0L), Obj("name", "Face", "mesh", 1L)),
                 Arr(Mesh("body"), Mesh("Mouth.A1", "Mouth.I1", "Mouth.U1", "Mouth.E1", "Mouth.O1")));
-            Assert.That(Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false)), Is.Empty,
+            Assert.That(Presets(VrmExpressionBindings.AddMissing(bytes)), Is.Empty,
                 "These names match no known mouth name, so name inference alone leaves the lip-sync slots empty.");
 
             var warnings = new List<string>();
@@ -771,20 +771,20 @@ namespace VRVlog.LilToonExporter.Tests
         {
             var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "eyeLookUpLeft", "eyeLookUpRight", "lookDown", "Fcl_ALL_Joy")));
             var all = new List<(string Preset, string Source, string Format)>();
-            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, filledPresets: all, inferNeutralAndGaze: true));
+            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, filledPresets: all, inferNeutralAndGaze: true));
             Assert.That(presets.Keys, Is.EquivalentTo(new[] { "neutral", "lookUp", "lookDown" }));
             Assert.That(Canonical(presets["lookUp"]), Is.EqualTo(Canonical(Obj("morphTargetBinds", Arr(Bind(0, 1), Bind(0, 2)), "isBinary", false))));
             Assert.That(all.Select(item => item.Preset), Is.EqualTo(new[] { "neutral", "lookUp", "lookDown" }));
-            Assert.That(VrmExpressionBindings.AddMissing(bytes, inferBlink: false), Is.EqualTo(bytes), "The default still fills no neutral or gaze.");
+            Assert.That(VrmExpressionBindings.AddMissing(bytes), Is.EqualTo(bytes), "The default still fills no neutral or gaze.");
         }
 
         [Test]
         public void KeptEmptyPresetsAreNotFilled()
         {
             var bytes = Glb(null, null, Arr(Obj("mesh", 0L)), Arr(Mesh("Fcl_ALL_Neutral", "lookUp", "lookDown")));
-            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferNeutralAndGaze: true, keepEmptyPresets: new[] { "lookUp" }));
+            var presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferNeutralAndGaze: true, keepEmptyPresets: new[] { "lookUp" }));
             Assert.That(presets.Keys, Is.EquivalentTo(new[] { "neutral", "lookDown" }), "A preset the user set to none stays empty.");
-            presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferBlink: false, inferEmotions: true, keepEmptyPresets: new[] { "neutral" }));
+            presets = Presets(VrmExpressionBindings.AddMissing(bytes, inferEmotions: true, keepEmptyPresets: new[] { "neutral" }));
             Assert.That(presets.Keys, Is.EquivalentTo(new[] { "lookUp", "lookDown" }));
         }
 
@@ -804,7 +804,7 @@ namespace VRVlog.LilToonExporter.Tests
             var all = new List<(string Preset, string Source, string Format)>();
             var descriptor = new VrmExpressionBindings.DescriptorVisemes { Node = 0 };
             descriptor.Shapes["aa"] = "vrc.v_aa";
-            VrmExpressionBindings.AddMissing(bytes, inferBlink: false, filledPresets: all, descriptor: descriptor);
+            VrmExpressionBindings.AddMissing(bytes, filledPresets: all, descriptor: descriptor);
             Assert.That(all.Select(item => item.Preset), Is.EqualTo(new[] { "ih" }));
         }
 
@@ -860,7 +860,6 @@ namespace VRVlog.LilToonExporter.Tests
                 var table = file.entries.ToDictionary(entry => entry.source, entry => entry.translated);
                 foreach (var (source, arguments) in new[] {
                     (VrmExpressionBindings.DuplicateExpressionFormat, new object[] { "happy", 3 }),
-                    (VrmExpressionBindings.BlinkNotGeneratedWarning, new object[0]),
                     (VrChatExpressionBaker.BakedFormat, new object[] { 4 }),
                     (VrChatExpressionBaker.NoneBakedWarning, new object[0]) })
                 {
